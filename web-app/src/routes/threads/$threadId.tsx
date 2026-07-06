@@ -42,6 +42,7 @@ import {
   getSiblings,
   getVersionInfo,
   hasBranching,
+  repairDetachedAssistants,
 } from '@/lib/message-branching'
 import {
   ThreadMessage,
@@ -313,8 +314,20 @@ function ThreadDetail() {
           unknown
         >
 
-        const parentForAssistant = pendingAssistantParentId.current
+        let parentForAssistant = pendingAssistantParentId.current
         pendingAssistantParentId.current = null
+
+        // Never persist a detached assistant in a branched thread: if the
+        // pending link was lost (e.g. a multi-step turn consumed the ref before
+        // this reply finished), fall back to the user message this reply
+        // answers. A null parentId would make computeActivePath treat the
+        // assistant as a phantom root and drop it from the visible path.
+        if (
+          parentForAssistant == null &&
+          hasBranching(useMessages.getState().getMessages(threadId))
+        ) {
+          parentForAssistant = resolveAssistantParent(undefined)
+        }
 
         const assistantMessage: ThreadMessage = {
           type: 'text',
@@ -690,6 +703,16 @@ function ThreadDetail() {
             }
           }
 
+          // Migrate threads corrupted by the pre-#8357 bug: assistant replies
+          // saved with parentId:null are phantom roots that computeActivePath
+          // drops. Re-parent them to the user turn they answer and persist.
+          const repaired = repairDetachedAssistants(messagesToSet)
+          if (repaired.length > 0) {
+            const byId = new Map(repaired.map((m) => [m.id, m]))
+            messagesToSet = messagesToSet.map((m) => byId.get(m.id) ?? m)
+            for (const m of repaired) updateMessage(m)
+          }
+
           setMessages(threadId, messagesToSet)
 
           const hydrated: Record<string, string> = {}
@@ -1031,27 +1054,34 @@ function ThreadDetail() {
     }
   }, [threadId, updateMessage])
 
+  // Dismiss any active thread-level banner error and strip its persisted
+  // metadata. The banner stands in for a failed last assistant turn (hidden by
+  // the render filter), so leaving it set would blank a healthy assistant on
+  // whatever branch we navigate to next.
+  const clearBannerErrors = useCallback(() => {
+    if (oomError) setOomError(undefined)
+    if (backendError) setBackendError(undefined)
+    if (contextLimitError) setContextLimitError(null)
+    if (oomError || backendError || contextLimitError) stripBannerMetadata()
+  }, [
+    oomError,
+    setOomError,
+    backendError,
+    setBackendError,
+    contextLimitError,
+    stripBannerMetadata,
+  ])
+
   // Handle submit from ChatInput
   const handleSubmit = useCallback(
     async (
       text: string,
       files?: Array<{ type: string; mediaType: string; url: string }>
     ) => {
-      if (oomError) setOomError(undefined)
-      if (backendError) setBackendError(undefined)
-      if (contextLimitError) setContextLimitError(null)
-      if (oomError || backendError || contextLimitError) stripBannerMetadata()
+      clearBannerErrors()
       await processAndSendMessage(text, files)
     },
-    [
-      processAndSendMessage,
-      oomError,
-      setOomError,
-      backendError,
-      setBackendError,
-      contextLimitError,
-      stripBannerMetadata,
-    ]
+    [processAndSendMessage, clearBannerErrors]
   )
 
   // Versioning helpers --------------------------------------------------------
@@ -1114,10 +1144,11 @@ function ThreadDetail() {
       if (!next) return
       titleAbortRef.current?.abort()
       titleAbortRef.current = null
+      clearBannerErrors()
       setActiveBranch(next)
       syncActivePath()
     },
-    [threadId, setActiveBranch, syncActivePath]
+    [threadId, setActiveBranch, syncActivePath, clearBannerErrors]
   )
 
   // Resolve the user message that an assistant reply hangs off of.
