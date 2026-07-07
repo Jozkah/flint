@@ -5,6 +5,10 @@ vi.mock('@tauri-apps/plugin-http', () => ({
   fetch: vi.fn(),
 }))
 
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
+}))
+
 vi.mock('@/constants/providers', () => ({
   predefinedProviders: [
     {
@@ -63,9 +67,11 @@ vi.mock('@/lib/models', () => ({
 
 vi.mock('@/lib/provider-api-keys', () => ({
   providerRemoteApiKeyChain: vi.fn().mockReturnValue([]),
+  API_KEY_FALLBACKS_SETTING_KEY: 'api-key-fallbacks',
 }))
 
 import { fetch as fetchTauri } from '@tauri-apps/plugin-http'
+import { invoke } from '@tauri-apps/api/core'
 import { EngineManager } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
 import { providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
@@ -425,6 +431,24 @@ describe('TauriProvidersService', () => {
       ])
     })
 
+    it('blanks api-key and api-key-fallbacks so keys never reach settings.json', async () => {
+      const mockUpdate = vi.fn()
+      vi.mocked(ExtensionManager.getInstance).mockReturnValue({
+        getEngine: vi.fn().mockReturnValue({ updateSettings: mockUpdate }),
+      } as any)
+
+      await svc.updateSettings('openai', [
+        { key: 'api-key', controller_type: 'input', controller_props: { value: 'sk-secret' } } as any,
+        { key: 'api-key-fallbacks', controller_type: 'input', controller_props: { value: 'sk-a\nsk-b' } } as any,
+        { key: 'base-url', controller_type: 'input', controller_props: { value: 'https://x' } } as any,
+      ])
+
+      const persisted = mockUpdate.mock.calls[0][0]
+      expect(persisted.find((s: any) => s.key === 'api-key').controllerProps.value).toBe('')
+      expect(persisted.find((s: any) => s.key === 'api-key-fallbacks').controllerProps.value).toBe('')
+      expect(persisted.find((s: any) => s.key === 'base-url').controllerProps.value).toBe('https://x')
+    })
+
     it('rethrows on error', async () => {
       vi.mocked(ExtensionManager.getInstance).mockReturnValue({
         getEngine: vi.fn().mockReturnValue({
@@ -434,6 +458,24 @@ describe('TauriProvidersService', () => {
 
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       await expect(svc.updateSettings('test', [])).rejects.toThrow('fail')
+      errSpy.mockRestore()
+    })
+  })
+
+  describe('deleteProviderKeys', () => {
+    it('invokes delete_provider_keys with the provider name', async () => {
+      vi.mocked(invoke).mockResolvedValueOnce(undefined)
+      await svc.deleteProviderKeys('openai')
+      expect(invoke).toHaveBeenCalledWith('delete_provider_keys', {
+        provider: 'openai',
+      })
+    })
+
+    it('swallows and logs errors so a failed delete never throws', async () => {
+      vi.mocked(invoke).mockRejectedValueOnce(new Error('keyring down'))
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      await expect(svc.deleteProviderKeys('openai')).resolves.toBeUndefined()
+      expect(errSpy).toHaveBeenCalled()
       errSpy.mockRestore()
     })
   })

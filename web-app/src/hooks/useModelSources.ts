@@ -46,6 +46,10 @@ export const useModelSources = create<ModelSourcesState>()(
       },
     }),
     {
+      // Kept in webview localStorage, not the backend settings store: this is a
+      // re-fetchable network cache (the full Hub catalog, ~500 KB), not a user
+      // setting. Persisting it to settings.json rewrote the whole file on every
+      // Hub visit. localStorage is synchronous, so no skipHydration needed.
       name: localStorageKey.modelSources,
       storage: createJSONStorage(() => localStorage),
     }

@@ -9,9 +9,13 @@ import { ModelCapabilities } from '@/types/models'
 import { modelSettings } from '@/lib/predefined'
 import { ExtensionManager } from '@/lib/extension'
 import { fetch as fetchTauri } from '@tauri-apps/plugin-http'
+import { invoke } from '@tauri-apps/api/core'
 import { DefaultProvidersService } from './default'
 import { getModelCapabilities } from '@/lib/models'
-import { providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
+import {
+  API_KEY_FALLBACKS_SETTING_KEY,
+  providerRemoteApiKeyChain,
+} from '@/lib/provider-api-keys'
 
 export class TauriProvidersService extends DefaultProvidersService {
   fetch(): typeof fetch {
@@ -126,6 +130,14 @@ export class TauriProvidersService extends DefaultProvidersService {
     } catch (error: unknown) {
       console.error('Error getting providers in Tauri:', error)
       return []
+    }
+  }
+
+  async deleteProviderKeys(providerName: string): Promise<void> {
+    try {
+      await invoke('delete_provider_keys', { provider: providerName })
+    } catch (error) {
+      console.error(`Failed to delete keyring keys for ${providerName}:`, error)
     }
   }
 
@@ -269,6 +281,11 @@ export class TauriProvidersService extends DefaultProvidersService {
     settings: ProviderSetting[]
   ): Promise<void> {
     try {
+      // API keys are persisted to the OS keyring only (via
+      // register_provider_config), never to the extension's settings.json.
+      // Blank the key entries at this single chokepoint regardless of caller.
+      const isSecretKey = (key: string) =>
+        key === 'api-key' || key === API_KEY_FALLBACKS_SETTING_KEY
       return ExtensionManager.getInstance()
         .getEngine(providerName)
         ?.updateSettings(
@@ -276,8 +293,9 @@ export class TauriProvidersService extends DefaultProvidersService {
             ...setting,
             controllerProps: {
               ...setting.controller_props,
-              value:
-                setting.controller_props.value !== undefined
+              value: isSecretKey(setting.key)
+                ? ''
+                : setting.controller_props.value !== undefined
                   ? setting.controller_props.value
                   : '',
             },
