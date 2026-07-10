@@ -257,6 +257,53 @@ describe('model-factory deep coverage', () => {
     })
   })
 
+  /* google api-key rotation */
+  describe('google api-key rotation', () => {
+    it('rotates to the next key via x-goog-api-key on 429', async () => {
+      const realFetch = globalThis.fetch
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(new Response('{}', { status: 429 }))
+        .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch
+      try {
+        await ModelFactory.createModel(
+          'gemini-pro',
+          mkProvider('google', { api_key: 'key1', api_key_fallbacks: ['key2'] }),
+          {}
+        )
+        // The native @ai-sdk/google client always sends the primary key in
+        // this header; the rotating fetch must OVERRIDE it, not append.
+        const { fetch: rotatingFetch } = (globalThis as any).__capturedGoogleCfg
+        await rotatingFetch('https://g/v1beta/models', {
+          method: 'POST',
+          headers: { 'x-goog-api-key': 'key1' },
+          body: JSON.stringify({ messages: [] }),
+        })
+
+        expect(fetchMock).toHaveBeenCalledTimes(2)
+        const firstHeaders = new Headers(fetchMock.mock.calls[0][1].headers)
+        const secondHeaders = new Headers(fetchMock.mock.calls[1][1].headers)
+        expect(firstHeaders.get('x-goog-api-key')).toBe('key1')
+        expect(secondHeaders.get('x-goog-api-key')).toBe('key2')
+        // single header, not a duplicated/appended value
+        expect(secondHeaders.get('x-goog-api-key')).not.toContain('key1')
+      } finally {
+        globalThis.fetch = realFetch
+      }
+    })
+
+    it('uses a plain custom fetch (no rotation) with a single key', async () => {
+      await ModelFactory.createModel(
+        'gemini-pro',
+        mkProvider('google', { api_key: 'only', api_key_fallbacks: [] }),
+        {}
+      )
+      const { apiKey } = (globalThis as any).__capturedGoogleCfg
+      expect(apiKey).toBe('only')
+    })
+  })
+
   /* openai-compatible empty base_url */
   describe('openai-compatible', () => {
     it('uses default base_url when none provided', async () => {
