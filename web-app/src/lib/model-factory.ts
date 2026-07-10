@@ -628,7 +628,10 @@ export function decodeVideoSentinelsInBody(body: Record<string, unknown>): void 
   }
 }
 
-type ApiKeyHeaderMode = 'authorization-bearer' | 'x-api-key'
+type ApiKeyHeaderMode =
+  | 'authorization-bearer'
+  | 'x-api-key'
+  | 'x-goog-api-key'
 
 /** Retries with the next key when the upstream returns 401, 403, or 429. */
 function createApiKeyRotatingFetch(
@@ -650,6 +653,8 @@ function createApiKeyRotatingFetch(
       const nextHeaders = new Headers(init?.headers as HeadersInit | undefined)
       if (headerMode === 'authorization-bearer') {
         nextHeaders.set('Authorization', `Bearer ${key}`)
+      } else if (headerMode === 'x-goog-api-key') {
+        nextHeaders.set('x-goog-api-key', key)
       } else {
         nextHeaders.set('x-api-key', key)
       }
@@ -1097,7 +1102,18 @@ export class ModelFactory {
     }
 
     const keyChain = providerRemoteApiKeyChain(provider)
-    const fetchImpl = createCustomFetch(getRuntimeFetch(), parameters)
+    // Rotate over configured keys on 401/403/429 (e.g. exhausted free-tier
+    // quota). The native Google client authenticates via `x-goog-api-key`, so
+    // the rotating fetch must override that header — not Authorization.
+    const fetchImpl =
+      keyChain.length > 1
+        ? createApiKeyRotatingFetch(
+            getRuntimeFetch(),
+            keyChain,
+            parameters,
+            'x-goog-api-key'
+          )
+        : createCustomFetch(getRuntimeFetch(), parameters)
 
     const rawBase = provider.base_url?.trim()
     const baseURL = rawBase
