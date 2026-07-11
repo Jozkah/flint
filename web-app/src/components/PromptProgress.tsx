@@ -14,6 +14,10 @@ export function PromptProgress({ hideIdle = false }: { hideIdle?: boolean }) {
     (threadId ? state.loadingModels[threadId] : undefined) ??
     state.loadingModel
   )
+  const loadProgress = useAppState((state) =>
+    (threadId ? state.modelLoadProgressByThread[threadId] : undefined) ??
+    state.modelLoadProgress
+  )
 
   const percentage =
     promptProgress && promptProgress.total > 0
@@ -32,8 +36,13 @@ export function PromptProgress({ hideIdle = false }: { hideIdle?: boolean }) {
     return null
   }
 
+  const loadPercentage =
+    loadingModel && loadProgress ? Math.round(loadProgress.value * 100) : undefined
+
   const label = loadingModel
-    ? 'Loading model…'
+    ? loadPercentage !== undefined
+      ? `Loading model: ${loadPercentage}%`
+      : 'Loading model…'
     : showReading
       ? `Reading: ${percentage}%`
       : 'Working…'
@@ -49,6 +58,9 @@ export function PromptProgress({ hideIdle = false }: { hideIdle?: boolean }) {
       </div>
       {showReading && !loadingModel && (
         <Progress value={percentage} className="h-1 bg-secondary/60" />
+      )}
+      {loadingModel && loadPercentage !== undefined && (
+        <Progress value={loadPercentage} className="h-1 bg-secondary/60" />
       )}
       {detail && (
         <div className="text-xs text-muted-foreground tabular-nums">

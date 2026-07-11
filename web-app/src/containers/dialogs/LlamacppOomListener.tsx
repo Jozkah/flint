@@ -9,6 +9,12 @@ import {
   stampErrorOnLastUserMessage,
 } from './llamacppRouterError'
 
+type LoadProgressPayload = {
+  model: string
+  stage?: string
+  value: number
+}
+
 export default function LlamacppOomListener() {
   useEffect(() => {
     if (!isPlatformTauri()) return
@@ -35,9 +41,25 @@ export default function LlamacppOomListener() {
       console.warn('listen llamacpp-router-backend-error failed:', e)
       return () => {}
     })
+    const unlistenLoadProgress = listen<LoadProgressPayload>(
+      'llamacpp-model-load-progress',
+      (event) => {
+        const { model, stage, value } = event.payload
+        const progress = { modelId: model, stage, value }
+        useAppState.getState().updateModelLoadProgress(progress)
+        const threadId = useAppState.getState().currentStreamThreadId
+        if (threadId) {
+          useAppState.getState().updateThreadModelLoadProgress(threadId, progress)
+        }
+      }
+    ).catch((e) => {
+      console.warn('listen llamacpp-model-load-progress failed:', e)
+      return () => {}
+    })
     return () => {
       void unlistenOom.then((fn) => fn?.())
       void unlistenBackend.then((fn) => fn?.())
+      void unlistenLoadProgress.then((fn) => fn?.())
     }
   }, [])
 

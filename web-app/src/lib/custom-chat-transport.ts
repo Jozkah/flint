@@ -895,6 +895,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           if (!loaded.includes(modelId)) {
             useAppState.getState().updateLoadingModel(true)
             useAppState.getState().updateThreadLoadingModel(threadId, true)
+            useAppState.getState().updateModelLoadProgress(undefined)
+            useAppState.getState().updateThreadModelLoadProgress(threadId, undefined)
           }
         } catch {
           // Ignore probe failures; the router will still load on demand
@@ -923,9 +925,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       )
       useAppState.getState().updateLoadingModel(false)
       useAppState.getState().updateThreadLoadingModel(threadId, false)
+      useAppState.getState().updateModelLoadProgress(undefined)
+      useAppState.getState().updateThreadModelLoadProgress(threadId, undefined)
     } catch (error) {
       useAppState.getState().updateLoadingModel(false)
       useAppState.getState().updateThreadLoadingModel(threadId, false)
+      useAppState.getState().updateModelLoadProgress(undefined)
+      useAppState.getState().updateThreadModelLoadProgress(threadId, undefined)
       console.error('Failed to create model:', error)
       throw new Error(
         `Failed to create model: ${error instanceof Error ? error.message : JSON.stringify(error)}`

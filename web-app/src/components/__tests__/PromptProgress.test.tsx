@@ -57,6 +57,34 @@ describe('PromptProgress', () => {
     ).toBeInTheDocument()
   })
 
+  it('should show load percentage while loading model', () => {
+    mockUseAppState.mockImplementation((selector) =>
+      selector({
+        promptProgress: undefined,
+        loadingModel: true,
+        modelLoadProgress: { modelId: 'model-1', value: 0.42 },
+      })
+    )
+
+    render(<PromptProgress />)
+
+    expect(screen.getByText('Loading model: 42%')).toBeInTheDocument()
+  })
+
+  it('should fall back to generic loading label when no progress event has arrived yet', () => {
+    mockUseAppState.mockImplementation((selector) =>
+      selector({
+        promptProgress: undefined,
+        loadingModel: true,
+        modelLoadProgress: undefined,
+      })
+    )
+
+    render(<PromptProgress />)
+
+    expect(screen.getByText('Loading model…')).toBeInTheDocument()
+  })
+
   it('should handle zero total gracefully', () => {
     const mockProgress = {
       cache: 0,
