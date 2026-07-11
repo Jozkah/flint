@@ -86,10 +86,18 @@ pub struct RouterHandle {
 ///
 /// `models_max == 0` is forwarded as-is; the upstream README documents 0 as
 /// "unlimited" — we let the server interpret that.
+///
+/// The API key is deliberately NOT passed here as `--api-key`: argv is
+/// visible to any other process on the machine (`ps`/Task Manager, `/proc`),
+/// and we already log the full argv at startup. It's set as the
+/// `LLAMA_API_KEY` env var instead (`start_router`, env-only, not inherited
+/// by child processes the same way a command-line arg would show up in
+/// process listings) - llama-server reads either, preferring the CLI flag
+/// when both are present (hence the "will be overwritten" warning it used to
+/// print when we set both).
 pub fn router_args(
     preset_path: &Path,
     port: u16,
-    api_key: &str,
     models_max: u32,
     default_args: &[String],
 ) -> Vec<String> {
@@ -102,14 +110,20 @@ pub fn router_args(
         "127.0.0.1".to_string(),
         "--port".to_string(),
         port.to_string(),
-        "--api-key".to_string(),
-        api_key.to_string(),
     ];
     // Web-UI disable flag (`--no-webui` pre-b9222, `--no-ui` from b9222) is
     // appended by the TS caller via `default_args` because the spelling
     // depends on the backend build number.
     args.extend(default_args.iter().cloned());
     args
+}
+
+/// Merges `LLAMA_API_KEY` into `envs`, always overwriting any prior value.
+/// Pure / unit-testable - authoritative so this invariant holds even if a
+/// future call site forgets to set it or sets a stale one.
+fn with_api_key_env(mut envs: HashMap<String, String>, api_key: &str) -> HashMap<String, String> {
+    envs.insert("LLAMA_API_KEY".to_string(), api_key.to_string());
+    envs
 }
 
 /// Spawn `llama-server` in router mode and wait for it to become ready.
@@ -135,7 +149,11 @@ pub async fn start_router(
         models_max
     );
 
-    let args = router_args(&preset_path, port, &api_key, models_max, &default_args);
+    // Authoritative: always carry the key via env, never argv (see
+    // `router_args`'s doc comment).
+    let envs = with_api_key_env(envs, &api_key);
+
+    let args = router_args(&preset_path, port, models_max, &default_args);
     log::info!("Router argv: {:?}", args);
 
     // Resolve readiness timeout (seconds). Match existing convention by
@@ -627,7 +645,7 @@ mod tests {
     #[test]
     fn router_args_contains_required_flags() {
         let preset = PathBuf::from("/tmp/preset.ini");
-        let args = router_args(&preset, 1337, "secret-key", 4, &[]);
+        let args = router_args(&preset, 1337, 4, &[]);
 
         // Required flags present
         let joined = args.join(" ");
@@ -636,7 +654,6 @@ mod tests {
         assert!(joined.contains("--models-max 4"));
         assert!(joined.contains("--host 127.0.0.1"));
         assert!(joined.contains("--port 1337"));
-        assert!(joined.contains("--api-key secret-key"));
         // Web-UI disable flag is now appended by the caller (it's
         // build-number-dependent: --no-webui vs --no-ui), so it must NOT be
         // baked into the base argv.
@@ -645,10 +662,44 @@ mod tests {
     }
 
     #[test]
+    fn with_api_key_env_sets_the_key() {
+        let envs = with_api_key_env(HashMap::new(), "secret-key");
+        assert_eq!(envs.get("LLAMA_API_KEY"), Some(&"secret-key".to_string()));
+    }
+
+    #[test]
+    fn with_api_key_env_overwrites_a_stale_value() {
+        let mut initial = HashMap::new();
+        initial.insert("LLAMA_API_KEY".to_string(), "stale-key".to_string());
+        let envs = with_api_key_env(initial, "fresh-key");
+        assert_eq!(envs.get("LLAMA_API_KEY"), Some(&"fresh-key".to_string()));
+    }
+
+    #[test]
+    fn with_api_key_env_preserves_other_vars() {
+        let mut initial = HashMap::new();
+        initial.insert("LLAMA_ARG_TIMEOUT".to_string(), "60".to_string());
+        let envs = with_api_key_env(initial, "secret-key");
+        assert_eq!(envs.get("LLAMA_ARG_TIMEOUT"), Some(&"60".to_string()));
+        assert_eq!(envs.get("LLAMA_API_KEY"), Some(&"secret-key".to_string()));
+    }
+
+    #[test]
+    fn router_args_never_carries_the_api_key() {
+        // The key must travel via the LLAMA_API_KEY env var only - argv is
+        // visible to any other process on the machine (ps/Task Manager) and
+        // gets logged verbatim at startup.
+        let preset = PathBuf::from("/tmp/preset.ini");
+        let args = router_args(&preset, 1337, 4, &[]);
+        assert!(!args.iter().any(|a| a == "--api-key"));
+        assert!(!args.join(" ").to_lowercase().contains("api-key"));
+    }
+
+    #[test]
     fn router_args_appends_default_args_in_order() {
         let preset = PathBuf::from("/tmp/p.ini");
         let extras = vec!["--threads".to_string(), "8".to_string(), "--metrics".to_string()];
-        let args = router_args(&preset, 8080, "k", 2, &extras);
+        let args = router_args(&preset, 8080, 2, &extras);
 
         // The defaults must appear after our base flags, preserving order.
         let last_three: Vec<&String> = args.iter().rev().take(3).collect::<Vec<_>>().into_iter().rev().collect();
@@ -659,7 +710,7 @@ mod tests {
     fn router_args_passes_through_models_max_zero() {
         // README: 0 means unlimited; we forward as-is.
         let preset = PathBuf::from("/tmp/p.ini");
-        let args = router_args(&preset, 8080, "k", 0, &[]);
+        let args = router_args(&preset, 8080, 0, &[]);
         let joined = args.join(" ");
         assert!(joined.contains("--models-max 0"));
     }
