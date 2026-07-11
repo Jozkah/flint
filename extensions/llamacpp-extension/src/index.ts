@@ -3050,6 +3050,9 @@ export default class llamacpp_extension extends AIEngine {
     // (chunk.prompt_progress?.processed / chunk.prompt_progress?.total) * 100
     // chunk.prompt_progress?.cache is for past tokens already in kv cache
     opts.return_progress = true
+    // Per-chunk timings so callers can track live token counts during
+    // generation instead of only once the stream finishes.
+    opts.timings_per_token = true
 
     const body = JSON.stringify(opts)
     if (opts.stream) {

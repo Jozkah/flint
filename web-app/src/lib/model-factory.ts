@@ -84,7 +84,14 @@ interface LlamaCppTimings {
   predicted_n?: number
   predicted_per_second?: number
   prompt_per_second?: number
+  cache_n?: number
 }
+
+// prompt_n only counts tokens freshly processed this turn; tokens served from
+// the KV cache (the rest of the conversation) are reported separately in
+// cache_n, so total prompt/context usage is the sum of both.
+const totalPromptTokens = (timings: LlamaCppTimings): number =>
+  (timings.prompt_n ?? 0) + (timings.cache_n ?? 0)
 
 interface LlamaCppPromptProgress {
   total?: number
@@ -109,7 +116,7 @@ const providerMetadataExtractor: MetadataExtractor = {
     if (body?.timings) {
       return {
         providerMetadata: {
-          promptTokens: body.timings.prompt_n ?? null,
+          promptTokens: totalPromptTokens(body.timings),
           completionTokens: body.timings.predicted_n ?? null,
           tokensPerSecond: body.timings.predicted_per_second ?? null,
           promptPerSecond: body.timings.prompt_per_second ?? null,
@@ -134,6 +141,16 @@ const providerMetadataExtractor: MetadataExtractor = {
         }
         if (chunk?.timings) {
           lastTimings = chunk.timings
+          const liveStats = {
+            promptTokens: totalPromptTokens(lastTimings),
+            completionTokens: lastTimings.predicted_n ?? 0,
+            tokensPerSecond: lastTimings.predicted_per_second ?? null,
+            promptPerSecond: lastTimings.prompt_per_second ?? null,
+          }
+          state.updateLiveTokenStats(liveStats)
+          if (streamThreadId) {
+            state.updateThreadLiveTokenStats(streamThreadId, liveStats)
+          }
         }
         const pp = chunk?.prompt_progress
         if (
@@ -157,7 +174,7 @@ const providerMetadataExtractor: MetadataExtractor = {
         if (lastTimings) {
           return {
             providerMetadata: {
-              promptTokens: lastTimings.prompt_n ?? null,
+              promptTokens: totalPromptTokens(lastTimings),
               completionTokens: lastTimings.predicted_n ?? null,
               tokensPerSecond: lastTimings.predicted_per_second ?? null,
               promptPerSecond: lastTimings.prompt_per_second ?? null,
@@ -378,6 +395,9 @@ export function createCustomFetch(
     const merged = { ...rawBody, ...normalised }
     if (keepLlamacppOnly && merged.stream === true) {
       merged.return_progress = true
+      // Requests per-chunk timings so the token counter can update live
+      // during generation instead of only once the stream finishes.
+      merged.timings_per_token = true
     }
     // llama-server convention: max_tokens = -1 means "unlimited". Users who
     // set max_output_tokens = 0 in assistant params mean "no cap", not

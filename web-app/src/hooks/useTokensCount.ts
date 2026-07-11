@@ -3,6 +3,7 @@ import { ThreadMessage } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
 import { parseContextOverflow } from '@/utils/error'
 import { useModelProvider } from './useModelProvider'
+import { useAppState } from './useAppState'
 
 export interface ModelProps {
   nCtx: number
@@ -99,6 +100,13 @@ export const useTokensCount = (messages: ThreadMessage[] = []) => {
   const modelId =
     selectedProvider === 'llamacpp' ? selectedModel?.id : undefined
 
+  const threadId = messages[0]?.thread_id
+  // Populated per-chunk while a llama.cpp turn is streaming (timings_per_token);
+  // cleared on stream start/finish/error, so its presence means "live now".
+  const liveStats = useAppState((s) =>
+    threadId ? s.liveTokenStatsByThread[threadId] : undefined
+  )
+
   useEffect(() => {
     if (!modelId) {
       setModelProps(undefined)
@@ -138,7 +146,13 @@ export const useTokensCount = (messages: ThreadMessage[] = []) => {
       }
     }
     const overflow = getActiveContextOverflow(messages)
-    const usage = getLatestServerUsage(messages)
+    const usage = liveStats
+      ? {
+          inputTokens: liveStats.promptTokens,
+          outputTokens: liveStats.completionTokens,
+          totalTokens: liveStats.promptTokens + liveStats.completionTokens,
+        }
+      : getLatestServerUsage(messages)
     const tokenCount = overflow?.requestTokens ?? usage.totalTokens ?? 0
     const maxTokens = overflow?.contextTokens ?? modelProps?.nCtx
     const percentage = maxTokens ? (tokenCount / maxTokens) * 100 : undefined
@@ -180,6 +194,7 @@ export const useTokensCount = (messages: ThreadMessage[] = []) => {
     selectedProvider,
     modelProps,
     loading,
+    liveStats,
     getProviderByName,
     selectedModel?.name,
     selectedModel?.capabilities,

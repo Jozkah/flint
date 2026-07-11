@@ -9,6 +9,13 @@ export type PromptProgress = {
   total: number
 }
 
+export type LiveTokenStats = {
+  promptTokens: number
+  completionTokens: number
+  tokensPerSecond: number | null
+  promptPerSecond: number | null
+}
+
 type AppErrorMessage = {
   message?: string
   title?: string
@@ -26,12 +33,14 @@ type AppState = {
   showOutOfContextDialog?: boolean
   errorMessage?: AppErrorMessage
   promptProgress?: PromptProgress
+  liveTokenStats?: LiveTokenStats
   activeModels: string[]
   cancelToolCall?: () => void
 
   streamingContents: Record<string, ThreadMessage>
   loadingModels: Record<string, boolean>
   promptProgresses: Record<string, PromptProgress>
+  liveTokenStatsByThread: Record<string, LiveTokenStats>
   cancelToolCalls: Record<string, () => void>
   errorMessages: Record<string, AppErrorMessage>
   busyThreads: Record<string, boolean>
@@ -55,6 +64,7 @@ type AppState = {
   setCancelToolCall: (cancel: (() => void) | undefined) => void
   setErrorMessage: (error: AppErrorMessage | undefined) => void
   updatePromptProgress: (progress: PromptProgress | undefined) => void
+  updateLiveTokenStats: (stats: LiveTokenStats | undefined) => void
   setActiveModels: (models: string[]) => void
 
   updateThreadStreamingContent: (
@@ -65,6 +75,10 @@ type AppState = {
   updateThreadPromptProgress: (
     threadId: string,
     progress: PromptProgress | undefined
+  ) => void
+  updateThreadLiveTokenStats: (
+    threadId: string,
+    stats: LiveTokenStats | undefined
   ) => void
   setThreadCancelToolCall: (
     threadId: string,
@@ -94,6 +108,7 @@ export const useAppState = create<AppState>()((set) => ({
   streamingContents: {},
   loadingModels: {},
   promptProgresses: {},
+  liveTokenStatsByThread: {},
   cancelToolCalls: {},
   errorMessages: {},
   busyThreads: {},
@@ -175,6 +190,11 @@ export const useAppState = create<AppState>()((set) => ({
       promptProgress: progress,
     }))
   },
+  updateLiveTokenStats: (stats) => {
+    set(() => ({
+      liveTokenStats: stats,
+    }))
+  },
   setActiveModels: (models: string[]) => {
     set(() => ({
       activeModels: models,
@@ -208,6 +228,13 @@ export const useAppState = create<AppState>()((set) => ({
       else delete next[threadId]
       return { promptProgresses: next }
     }),
+  updateThreadLiveTokenStats: (threadId, stats) =>
+    set((state) => {
+      const next = { ...state.liveTokenStatsByThread }
+      if (stats) next[threadId] = stats
+      else delete next[threadId]
+      return { liveTokenStatsByThread: next }
+    }),
   setThreadCancelToolCall: (threadId, cancel) =>
     set((state) => {
       const next = { ...state.cancelToolCalls }
@@ -227,6 +254,7 @@ export const useAppState = create<AppState>()((set) => ({
       const streamingContents = { ...state.streamingContents }
       const loadingModels = { ...state.loadingModels }
       const promptProgresses = { ...state.promptProgresses }
+      const liveTokenStatsByThread = { ...state.liveTokenStatsByThread }
       const cancelToolCalls = { ...state.cancelToolCalls }
       const errorMessages = { ...state.errorMessages }
       const busyThreads = { ...state.busyThreads }
@@ -234,6 +262,7 @@ export const useAppState = create<AppState>()((set) => ({
       delete streamingContents[threadId]
       delete loadingModels[threadId]
       delete promptProgresses[threadId]
+      delete liveTokenStatsByThread[threadId]
       delete cancelToolCalls[threadId]
       delete errorMessages[threadId]
       delete busyThreads[threadId]
@@ -242,6 +271,7 @@ export const useAppState = create<AppState>()((set) => ({
         streamingContents,
         loadingModels,
         promptProgresses,
+        liveTokenStatsByThread,
         cancelToolCalls,
         errorMessages,
         busyThreads,

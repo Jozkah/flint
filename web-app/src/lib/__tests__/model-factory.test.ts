@@ -314,6 +314,22 @@ describe('createCustomFetch — max_tokens coercion', () => {
     expect(sent.max_tokens).toBe(0)
   })
 
+  it('sets timings_per_token when keepLlamacppOnly and streaming', async () => {
+    const sent = await captureSentBody({}, true, { stream: true })
+    expect(sent.timings_per_token).toBe(true)
+    expect(sent.return_progress).toBe(true)
+  })
+
+  it('does not set timings_per_token when not streaming', async () => {
+    const sent = await captureSentBody({}, true, { stream: false })
+    expect(sent.timings_per_token).toBeUndefined()
+  })
+
+  it('does not set timings_per_token for non-llamacpp providers', async () => {
+    const sent = await captureSentBody({}, false, { stream: true })
+    expect(sent.timings_per_token).toBeUndefined()
+  })
+
   it('leaves non-zero max_tokens alone', async () => {
     const sent = await captureSentBody({}, true, { max_tokens: 512 })
     expect(sent.max_tokens).toBe(512)

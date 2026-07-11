@@ -1103,6 +1103,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     let streamStartTime: number | undefined
     useAppState.getState().updatePromptProgress(undefined)
     useAppState.getState().updateThreadPromptProgress(threadId, undefined)
+    useAppState.getState().updateLiveTokenStats(undefined)
+    useAppState.getState().updateThreadLiveTokenStats(threadId, undefined)
 
     const result = streamText({
       model: this.model,
@@ -1197,6 +1199,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           useAppState.getState().updateLoadingModel(false)
           useAppState.getState().updateThreadPromptProgress(threadId, undefined)
           useAppState.getState().updateThreadLoadingModel(threadId, false)
+          useAppState.getState().updateLiveTokenStats(undefined)
+          useAppState.getState().updateThreadLiveTokenStats(threadId, undefined)
           if (useAppState.getState().currentStreamThreadId === threadId) {
             useAppState.getState().setCurrentStreamThreadId(undefined)
           }
@@ -1223,6 +1227,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           useAppState.getState().updateLoadingModel(false)
           useAppState.getState().updateThreadPromptProgress(threadId, undefined)
           useAppState.getState().updateThreadLoadingModel(threadId, false)
+          useAppState.getState().updateLiveTokenStats(undefined)
+          useAppState.getState().updateThreadLiveTokenStats(threadId, undefined)
           if (useAppState.getState().currentStreamThreadId === threadId) {
             useAppState.getState().setCurrentStreamThreadId(undefined)
           }

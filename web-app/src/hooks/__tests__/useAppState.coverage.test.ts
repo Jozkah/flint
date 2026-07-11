@@ -132,6 +132,45 @@ describe('useAppState - coverage', () => {
     expect(result.current.promptProgress).toBeUndefined()
   })
 
+  it('should update live token stats globally and per-thread', () => {
+    const { result } = renderHook(() => useAppState())
+    const stats = {
+      promptTokens: 12,
+      completionTokens: 34,
+      tokensPerSecond: 56.7,
+      promptPerSecond: 89.1,
+    }
+
+    act(() => {
+      result.current.updateLiveTokenStats(stats)
+      result.current.updateThreadLiveTokenStats('t1', stats)
+    })
+    expect(result.current.liveTokenStats).toEqual(stats)
+    expect(result.current.liveTokenStatsByThread['t1']).toEqual(stats)
+
+    act(() => {
+      result.current.updateLiveTokenStats(undefined)
+      result.current.updateThreadLiveTokenStats('t1', undefined)
+    })
+    expect(result.current.liveTokenStats).toBeUndefined()
+    expect(result.current.liveTokenStatsByThread['t1']).toBeUndefined()
+  })
+
+  it('should clear liveTokenStatsByThread on clearThreadState', () => {
+    const { result } = renderHook(() => useAppState())
+
+    act(() => {
+      result.current.updateThreadLiveTokenStats('t1', {
+        promptTokens: 1,
+        completionTokens: 2,
+        tokensPerSecond: 3,
+        promptPerSecond: 4,
+      })
+      result.current.clearThreadState('t1')
+    })
+    expect(result.current.liveTokenStatsByThread['t1']).toBeUndefined()
+  })
+
   it('should set active models', () => {
     const { result } = renderHook(() => useAppState())
 
