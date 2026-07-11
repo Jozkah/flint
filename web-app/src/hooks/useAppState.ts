@@ -20,6 +20,7 @@ export type ModelLoadProgress = {
   modelId: string
   value: number
   stage?: string
+  stages?: string[]
 }
 
 type AppErrorMessage = {

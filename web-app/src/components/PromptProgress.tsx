@@ -39,9 +39,18 @@ export function PromptProgress({ hideIdle = false }: { hideIdle?: boolean }) {
   const loadPercentage =
     loadingModel && loadProgress ? Math.round(loadProgress.value * 100) : undefined
 
+  // Only worth naming the stage when the load actually has more than one
+  // (vision encoder and/or speculative-decoding draft model on top of the
+  // main weights) - a plain text-only load is always a single "text_model"
+  // stage for its entire duration, so calling that out would be noise.
+  const stageLabel =
+    loadingModel && loadProgress && (loadProgress.stages?.length ?? 0) > 1
+      ? describeLoadStage(loadProgress.stage)
+      : undefined
+
   const label = loadingModel
     ? loadPercentage !== undefined
-      ? `Loading model: ${loadPercentage}%`
+      ? `Loading ${stageLabel ?? 'model'}: ${loadPercentage}%`
       : 'Loading model…'
     : showReading
       ? `Reading: ${percentage}%`
@@ -59,9 +68,6 @@ export function PromptProgress({ hideIdle = false }: { hideIdle?: boolean }) {
       {showReading && !loadingModel && (
         <Progress value={percentage} className="h-1 bg-secondary/60" />
       )}
-      {loadingModel && loadPercentage !== undefined && (
-        <Progress value={loadPercentage} className="h-1 bg-secondary/60" />
-      )}
       {detail && (
         <div className="text-xs text-muted-foreground tabular-nums">
           {detail}
@@ -69,6 +75,19 @@ export function PromptProgress({ hideIdle = false }: { hideIdle?: boolean }) {
       )}
     </div>
   )
+}
+
+function describeLoadStage(stage: string | undefined): string | undefined {
+  switch (stage) {
+    case 'text_model':
+      return 'text model'
+    case 'mmproj_model':
+      return 'vision encoder'
+    case 'spec_model':
+      return 'draft model'
+    default:
+      return undefined
+  }
 }
 
 function buildDetail(progress: {

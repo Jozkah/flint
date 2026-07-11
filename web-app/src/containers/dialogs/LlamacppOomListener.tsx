@@ -12,6 +12,7 @@ import {
 type LoadProgressPayload = {
   model: string
   stage?: string
+  stages: string[]
   value: number
 }
 
@@ -49,8 +50,8 @@ export default function LlamacppOomListener() {
     const unlistenLoadProgress = listen<LoadProgressPayload>(
       'llamacpp-model-load-progress',
       (event) => {
-        const { model, stage, value } = event.payload
-        const progress = { modelId: model, stage, value }
+        const { model, stage, stages, value } = event.payload
+        const progress = { modelId: model, stage, stages, value }
         useAppState.getState().updateModelLoadProgress(progress)
         const threadId = useAppState.getState().currentStreamThreadId
         if (threadId) {

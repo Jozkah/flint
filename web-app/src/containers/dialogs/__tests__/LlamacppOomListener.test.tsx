@@ -44,13 +44,19 @@ describe('LlamacppOomListener - model load progress', () => {
     expect(loadProgressHandler).toBeDefined()
     act(() => {
       loadProgressHandler?.({
-        payload: { model: 'model-1', stage: 'text_model', value: 0.75 },
+        payload: {
+          model: 'model-1',
+          stage: 'mmproj_model',
+          stages: ['text_model', 'mmproj_model'],
+          value: 0.75,
+        },
       })
     })
 
     expect(useAppState.getState().modelLoadProgress).toEqual({
       modelId: 'model-1',
-      stage: 'text_model',
+      stage: 'mmproj_model',
+      stages: ['text_model', 'mmproj_model'],
       value: 0.75,
     })
   })

@@ -41,10 +41,18 @@ async fn http_client() -> reqwest::Client {
 
 /// Payload for the `llamacpp-model-load-progress` event, mirrored from the
 /// router's `/models/sse` `status_change` events (`progress.value` is 0.0-1.0).
+/// `stage` is the upstream stage identifier being loaded right now
+/// (`text_model` | `mmproj_model` | `spec_model`); `stages` is the full set
+/// for this load - always includes `text_model`, plus `mmproj_model` for a
+/// vision-capable model and/or `spec_model` for speculative decoding. A
+/// plain text-only load (the common case) has exactly one stage, so the
+/// frontend uses `stages.len() > 1` to decide whether naming the stage is
+/// worth surfacing at all.
 #[derive(serde::Serialize, Clone)]
 pub struct LoadProgressPayload {
     pub model: String,
     pub stage: Option<String>,
+    pub stages: Vec<String>,
     pub value: f64,
 }
 
@@ -74,9 +82,19 @@ fn parse_load_progress_event(block: &str, model_id: &str) -> Option<LoadProgress
             .get("current")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
+        let stages = progress
+            .get("stages")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
         return Some(LoadProgressPayload {
             model: model_id.to_string(),
             stage,
+            stages,
             value,
         });
     }
@@ -954,7 +972,41 @@ mod load_progress_tests {
         let payload = parse_load_progress_event(&block, "model-1").expect("should parse");
         assert_eq!(payload.model, "model-1");
         assert_eq!(payload.stage.as_deref(), Some("text_model"));
+        assert_eq!(payload.stages, vec!["text_model".to_string()]);
         assert!((payload.value - 0.42).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parses_a_multi_stage_vision_model_load() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({
+                "status": "loading",
+                "progress": {
+                    "stages": ["text_model", "mmproj_model"],
+                    "current": "mmproj_model",
+                    "value": 0.8
+                }
+            }),
+        );
+        let payload = parse_load_progress_event(&block, "model-1").expect("should parse");
+        assert_eq!(payload.stage.as_deref(), Some("mmproj_model"));
+        assert_eq!(
+            payload.stages,
+            vec!["text_model".to_string(), "mmproj_model".to_string()]
+        );
+    }
+
+    #[test]
+    fn defaults_missing_stages_array_to_empty() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({ "progress": { "current": "text_model", "value": 0.5 } }),
+        );
+        let payload = parse_load_progress_event(&block, "model-1").expect("should parse");
+        assert!(payload.stages.is_empty());
     }
 
     #[test]
