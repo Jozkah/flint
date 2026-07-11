@@ -106,6 +106,13 @@ export const useTokensCount = (messages: ThreadMessage[] = []) => {
   const liveStats = useAppState((s) =>
     threadId ? s.liveTokenStatsByThread[threadId] : undefined
   )
+  // getModelProps only succeeds once the router has autoloaded the model, which
+  // normally doesn't happen until the first turn is sent. Refetch as soon as that
+  // load finishes so the counter can appear mid-turn instead of waiting for the
+  // full response (and the resulting messages.length bump) to land.
+  const loadingModel = useAppState((s) =>
+    threadId ? s.loadingModels[threadId] : s.loadingModel
+  )
 
   useEffect(() => {
     if (!modelId) {
@@ -134,7 +141,7 @@ export const useTokensCount = (messages: ThreadMessage[] = []) => {
         if (id !== reqId.current) return
         setLoading(false)
       })
-  }, [modelId, messages.length])
+  }, [modelId, messages.length, loadingModel])
 
   const tokenData: TokenCountData = useMemo(() => {
     if (selectedProvider !== 'llamacpp' || !modelId) {
