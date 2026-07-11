@@ -19,6 +19,22 @@ use tokio::time::Instant;
 
 pub type ErrorCallback = Arc<dyn Fn(&'static str, String) + Send + Sync + 'static>;
 
+/// Matches the various phrasings llama-server has used for its
+/// ready-to-serve log line across versions. `line_lower` must already be
+/// lowercased by the caller. Router mode logs `"llama_server: listening on
+/// http://<host>:<port>"` - note the colon between "server" and "listening"
+/// (`"server: listening on"`), which does NOT match the older
+/// `"server listening on"` (no colon) wording still used elsewhere, so both
+/// must be checked explicitly rather than relying on one subsuming the
+/// other.
+fn is_ready_line(line_lower: &str) -> bool {
+    line_lower.contains("http server listening")
+        || line_lower.contains("server is listening on")
+        || line_lower.contains("server listening on")
+        || line_lower.contains("server: listening on")
+        || line_lower.contains("starting the main loop")
+}
+
 fn is_oom_line(line_lower: &str) -> bool {
     if line_lower.contains("erroroutofdevicememory")
         || line_lower.contains("erroroutofhostmemory")
@@ -217,11 +233,7 @@ pub async fn start_router(
                         log::info!("[llamacpp-router stdout] {}", line);
                     }
                     let line_lower = line.to_lowercase();
-                    if line_lower.contains("http server listening")
-                        || line_lower.contains("server is listening on")
-                        || line_lower.contains("server listening on")
-                        || line_lower.contains("starting the main loop")
-                    {
+                    if is_ready_line(&line_lower) {
                         let _ = stdout_ready_tx.send(true).await;
                     }
                     if let Some(cb) = &stdout_on_error {
@@ -270,11 +282,7 @@ pub async fn start_router(
                         stderr_buffer.push('\n');
                         log::info!("[llamacpp-router] {}", line);
                         let line_lower = line.to_lowercase();
-                        if line_lower.contains("server is listening on")
-                            || line_lower.contains("server listening on")
-                            || line_lower.contains("starting the main loop")
-                            || line_lower.contains("http server listening")
-                        {
+                        if is_ready_line(&line_lower) {
                             let _ = ready_tx.send(true).await;
                         }
                         if let Some(cb) = &stderr_on_error {
@@ -682,6 +690,31 @@ mod tests {
         let envs = with_api_key_env(initial, "secret-key");
         assert_eq!(envs.get("LLAMA_ARG_TIMEOUT"), Some(&"60".to_string()));
         assert_eq!(envs.get("LLAMA_API_KEY"), Some(&"secret-key".to_string()));
+    }
+
+    #[test]
+    fn is_ready_line_matches_router_mode_wording() {
+        // Regression: router mode logs "llama_server: listening on
+        // http://host:port" (colon before "listening"), which the older
+        // "server listening on" (no colon) pattern does not match -
+        // readiness was never detected and start_router hung for the full
+        // 600s timeout despite the server already serving requests.
+        let line = "0.00.021.026 i srv  llama_server: listening on http://127.0.0.1:55707";
+        assert!(is_ready_line(line));
+    }
+
+    #[test]
+    fn is_ready_line_still_matches_older_wordings() {
+        assert!(is_ready_line("http server listening on 127.0.0.1:8080"));
+        assert!(is_ready_line("server is listening on http://127.0.0.1:8080"));
+        assert!(is_ready_line("server listening on 127.0.0.1:8080"));
+        assert!(is_ready_line("starting the main loop"));
+    }
+
+    #[test]
+    fn is_ready_line_rejects_unrelated_lines() {
+        assert!(!is_ready_line("srv log_server_r: request: post /v1/chat/completions"));
+        assert!(!is_ready_line("loaded 5 custom model presets"));
     }
 
     #[test]
