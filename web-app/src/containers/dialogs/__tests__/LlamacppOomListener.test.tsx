@@ -5,11 +5,15 @@ import LlamacppOomListener from '../LlamacppOomListener'
 import { useAppState } from '@/hooks/useAppState'
 
 let loadProgressHandler: ((event: { payload: unknown }) => void) | undefined
+let unloadHandler: ((event: { payload: unknown }) => void) | undefined
 
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn((eventName: string, handler: (event: { payload: unknown }) => void) => {
     if (eventName === 'llamacpp-model-load-progress') {
       loadProgressHandler = handler
+    }
+    if (eventName === 'llamacpp-model-unloaded') {
+      unloadHandler = handler
     }
     return Promise.resolve(() => {})
   }),
@@ -71,5 +75,44 @@ describe('LlamacppOomListener - model load progress', () => {
       stage: undefined,
       value: 0.3,
     })
+  })
+})
+
+describe('LlamacppOomListener - model unloaded', () => {
+  beforeEach(() => {
+    unloadHandler = undefined
+    act(() => {
+      useAppState.setState({ activeModels: ['model-1', 'model-2'] })
+    })
+  })
+
+  it('removes the unloaded model from activeModels', async () => {
+    render(<LlamacppOomListener />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(unloadHandler).toBeDefined()
+    act(() => {
+      unloadHandler?.({ payload: { model: 'model-1', exit_code: 0 } })
+    })
+
+    expect(useAppState.getState().activeModels).toEqual(['model-2'])
+  })
+
+  it('is a no-op when the unloaded model was already reconciled', async () => {
+    act(() => {
+      useAppState.setState({ activeModels: ['model-2'] })
+    })
+    render(<LlamacppOomListener />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    act(() => {
+      unloadHandler?.({ payload: { model: 'model-1', exit_code: 137 } })
+    })
+
+    expect(useAppState.getState().activeModels).toEqual(['model-2'])
   })
 })

@@ -137,6 +137,118 @@ fn spawn_load_progress_listener<R: Runtime>(
     })
 }
 
+/// Payload for the `llamacpp-model-unloaded` event: any model transition to
+/// `status: "unloaded"` seen on `/models/sse`, regardless of cause (explicit
+/// unload, LRU eviction under `models_max`, or a crash - `exit_code` is 0 for
+/// the first two, nonzero for a crash). Forwarded unconditionally; the
+/// frontend already knows about unloads it requested itself, so reconciling
+/// already-correct state is a harmless no-op.
+#[derive(serde::Serialize, Clone)]
+pub struct UnloadEventPayload {
+    pub model: String,
+    pub exit_code: Option<i64>,
+}
+
+/// Parses one SSE event block, returning an unload payload only for a
+/// `status_change` event whose `data.status` is `"unloaded"`. `None` for any
+/// other event/status or malformed input.
+fn parse_unload_event(block: &str) -> Option<UnloadEventPayload> {
+    for line in block.lines() {
+        let data = line
+            .strip_prefix("data: ")
+            .or_else(|| line.strip_prefix("data:"))?;
+        let json: serde_json::Value = serde_json::from_str(data).ok()?;
+        if json.get("event").and_then(|v| v.as_str()) != Some("status_change") {
+            continue;
+        }
+        let model = json.get("model").and_then(|v| v.as_str())?;
+        let status = json
+            .get("data")
+            .and_then(|d| d.get("status"))
+            .and_then(|v| v.as_str())?;
+        if status != "unloaded" {
+            continue;
+        }
+        let exit_code = json
+            .get("data")
+            .and_then(|d| d.get("exit_code"))
+            .and_then(|v| v.as_i64());
+        return Some(UnloadEventPayload {
+            model: model.to_string(),
+            exit_code,
+        });
+    }
+    None
+}
+
+/// Subscribes to the router's `/models/sse` feed for the router's entire
+/// lifetime, re-emitting every model-unload transition (explicit unload, LRU
+/// eviction, crash) as `llamacpp-model-unloaded`. Unlike
+/// `spawn_load_progress_listener` (per-model, aborted once loading finishes)
+/// this runs continuously and reconnects with backoff on a dropped
+/// connection, since the router process can outlive many individual loads.
+///
+/// `/models/sse` itself was introduced upstream in build b9688 (#23976); on
+/// an older backend the initial connection succeeds at the TCP/HTTP layer
+/// but the route 404s, so we give up permanently after the first failed
+/// connection instead of retrying forever against a route that will never
+/// exist. A transient connection error (router mid-restart) is retried with
+/// exponential backoff instead, since that's recoverable.
+fn spawn_unload_watcher<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    port: u16,
+    api_key: String,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        use futures_util::StreamExt;
+
+        let client = http_client().await;
+        let url = format!("http://127.0.0.1:{}/models/sse", port);
+        let mut backoff = Duration::from_millis(500);
+        const MAX_BACKOFF: Duration = Duration::from_secs(30);
+
+        loop {
+            let resp = match client.get(&url).bearer_auth(&api_key).send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    log::debug!(
+                        "model unload watcher: failed to connect to /models/sse: {}; retrying in {:?}",
+                        e,
+                        backoff
+                    );
+                    tokio::time::sleep(backoff).await;
+                    backoff = (backoff * 2).min(MAX_BACKOFF);
+                    continue;
+                }
+            };
+            if !resp.status().is_success() {
+                log::debug!(
+                    "model unload watcher: /models/sse returned {} (backend predates b9688?); giving up",
+                    resp.status()
+                );
+                return;
+            }
+            backoff = Duration::from_millis(500);
+
+            let mut stream = resp.bytes_stream();
+            let mut buf = String::new();
+            while let Some(chunk) = stream.next().await {
+                let Ok(bytes) = chunk else { break };
+                buf.push_str(&String::from_utf8_lossy(&bytes));
+                while let Some(pos) = buf.find("\n\n") {
+                    let event_block: String = buf.drain(..pos + 2).collect();
+                    if let Some(payload) = parse_unload_event(&event_block) {
+                        let _ = app_handle.emit("llamacpp-model-unloaded", payload);
+                    }
+                }
+            }
+            // Stream ended (router restarted or connection dropped); briefly
+            // pause then reconnect.
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    })
+}
+
 async fn post_load<R: Runtime>(
     app_handle: &tauri::AppHandle<R>,
     port: u16,
@@ -611,12 +723,23 @@ pub async fn start_router<R: Runtime>(
         .router_pid
         .store(handle.pid, std::sync::atomic::Ordering::SeqCst);
     *guard = Some(handle);
+
+    let watcher = spawn_unload_watcher(app_handle.clone(), info.port, info.api_key.clone());
+    *state.unload_watcher.lock().await = Some(watcher);
+
     Ok(info)
+}
+
+async fn stop_unload_watcher(state: &LlamacppState) {
+    if let Some(handle) = state.unload_watcher.lock().await.take() {
+        handle.abort();
+    }
 }
 
 #[tauri::command]
 pub async fn stop_router<R: Runtime>(app_handle: tauri::AppHandle<R>) -> Result<(), String> {
     let state: State<Arc<LlamacppState>> = app_handle.state();
+    stop_unload_watcher(&state).await;
     let mut guard = state.router.lock().await;
     if let Some(handle) = guard.take() {
         state
@@ -725,6 +848,7 @@ pub async fn try_graceful_stop_router<R: Runtime>(
             state
                 .router_pid
                 .store(0, std::sync::atomic::Ordering::SeqCst);
+            stop_unload_watcher(&state).await;
             Ok(None)
         }
         Err((h, busy)) => {
@@ -799,6 +923,7 @@ pub async fn force_kill_router_tree<R: Runtime>(
         let mut guard = state.router.lock().await;
         guard.take()
     };
+    stop_unload_watcher(&state).await;
     match (maybe_handle, pid) {
         (Some(handle), _) => crate::router::force_kill_router_tree(handle).await,
         (None, p) if p != 0 => crate::router::force_kill_router_tree_by_pid(p),
@@ -901,5 +1026,88 @@ mod load_progress_tests {
         );
         let payload = parse_load_progress_event(&block, "model-1").expect("should parse");
         assert!(payload.stage.is_none());
+    }
+}
+
+#[cfg(test)]
+mod unload_watcher_tests {
+    use super::parse_unload_event;
+
+    fn sse_block(model: &str, event: &str, data: serde_json::Value) -> String {
+        let payload = serde_json::json!({ "model": model, "event": event, "data": data });
+        format!("data: {}\n\n", payload)
+    }
+
+    #[test]
+    fn parses_an_unload_event_with_exit_code() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({ "status": "unloaded", "exit_code": 137 }),
+        );
+        let payload = parse_unload_event(&block).expect("should parse");
+        assert_eq!(payload.model, "model-1");
+        assert_eq!(payload.exit_code, Some(137));
+    }
+
+    #[test]
+    fn parses_a_clean_unload_with_zero_exit_code() {
+        // LRU eviction / explicit unload: clean stop, exit_code 0.
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({ "status": "unloaded", "exit_code": 0 }),
+        );
+        let payload = parse_unload_event(&block).expect("should parse");
+        assert_eq!(payload.exit_code, Some(0));
+    }
+
+    #[test]
+    fn ignores_non_unloaded_status() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({ "status": "loading" }),
+        );
+        assert!(parse_unload_event(&block).is_none());
+    }
+
+    #[test]
+    fn ignores_non_status_change_events() {
+        let block = sse_block(
+            "model-1",
+            "model_remove",
+            serde_json::json!({}),
+        );
+        assert!(parse_unload_event(&block).is_none());
+    }
+
+    #[test]
+    fn defaults_missing_exit_code_to_none() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({ "status": "unloaded" }),
+        );
+        let payload = parse_unload_event(&block).expect("should parse");
+        assert_eq!(payload.exit_code, None);
+    }
+
+    #[test]
+    fn ignores_malformed_json() {
+        let block = "data: not json\n\n".to_string();
+        assert!(parse_unload_event(&block).is_none());
+    }
+
+    #[test]
+    fn ignores_missing_status_field() {
+        let block = sse_block("model-1", "status_change", serde_json::json!({}));
+        assert!(parse_unload_event(&block).is_none());
+    }
+
+    #[test]
+    fn ignores_blocks_with_no_data_line() {
+        let block = "event: ping\n\n".to_string();
+        assert!(parse_unload_event(&block).is_none());
     }
 }

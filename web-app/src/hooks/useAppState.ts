@@ -75,6 +75,7 @@ type AppState = {
   updateLiveTokenStats: (stats: LiveTokenStats | undefined) => void
   updateModelLoadProgress: (progress: ModelLoadProgress | undefined) => void
   setActiveModels: (models: string[]) => void
+  removeActiveModel: (modelId: string) => void
 
   updateThreadStreamingContent: (
     threadId: string,
@@ -217,6 +218,11 @@ export const useAppState = create<AppState>()((set) => ({
   setActiveModels: (models: string[]) => {
     set(() => ({
       activeModels: models,
+    }))
+  },
+  removeActiveModel: (modelId: string) => {
+    set((state) => ({
+      activeModels: state.activeModels.filter((id) => id !== modelId),
     }))
   },
 

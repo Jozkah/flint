@@ -212,4 +212,24 @@ describe('useAppState - coverage', () => {
     expect(result.current.activeModels).toEqual(['model-a', 'model-b'])
   })
 
+  it('should remove a single active model', () => {
+    const { result } = renderHook(() => useAppState())
+
+    act(() => {
+      result.current.setActiveModels(['model-a', 'model-b'])
+      result.current.removeActiveModel('model-a')
+    })
+    expect(result.current.activeModels).toEqual(['model-b'])
+  })
+
+  it('should no-op removing a model that is not active', () => {
+    const { result } = renderHook(() => useAppState())
+
+    act(() => {
+      result.current.setActiveModels(['model-a'])
+      result.current.removeActiveModel('model-does-not-exist')
+    })
+    expect(result.current.activeModels).toEqual(['model-a'])
+  })
+
 })

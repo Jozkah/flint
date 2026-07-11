@@ -15,6 +15,11 @@ type LoadProgressPayload = {
   value: number
 }
 
+type UnloadEventPayload = {
+  model: string
+  exit_code?: number | null
+}
+
 export default function LlamacppOomListener() {
   useEffect(() => {
     if (!isPlatformTauri()) return
@@ -56,10 +61,25 @@ export default function LlamacppOomListener() {
       console.warn('listen llamacpp-model-load-progress failed:', e)
       return () => {}
     })
+    // Fired for every model unload the router observes (explicit unload, LRU
+    // eviction under models_max, or a crash) - forwarded unconditionally.
+    // Jan already flips activeModels off for unloads it requested itself, so
+    // reconciling an already-correct state here is a harmless no-op; the
+    // real value is catching router-side evictions Jan didn't initiate.
+    const unlistenUnloaded = listen<UnloadEventPayload>(
+      'llamacpp-model-unloaded',
+      (event) => {
+        useAppState.getState().removeActiveModel(event.payload.model)
+      }
+    ).catch((e) => {
+      console.warn('listen llamacpp-model-unloaded failed:', e)
+      return () => {}
+    })
     return () => {
       void unlistenOom.then((fn) => fn?.())
       void unlistenBackend.then((fn) => fn?.())
       void unlistenLoadProgress.then((fn) => fn?.())
+      void unlistenUnloaded.then((fn) => fn?.())
     }
   }, [])
 
