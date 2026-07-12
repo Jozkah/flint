@@ -44,22 +44,16 @@ export function SamplerDefaults({
               )
         return (
           <div key={key} className="space-y-2">
-            <div className="flex items-start justify-between gap-8">
-              <div className="mb-1 shrink-0 basis-28 truncate">
-                <span title={def.title} className="font-medium">
-                  {def.title}
-                </span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <DynamicControllerSetting
-                  title={def.title}
-                  description={def.description}
-                  controllerType={def.controllerType}
-                  controllerProps={{ ...(def.controllerProps ?? {}), value }}
-                  onChange={(newValue) => onChange(key, newValue)}
-                />
-              </div>
+            <div className="mb-1">
+              <span className="font-medium">{def.title}</span>
             </div>
+            <DynamicControllerSetting
+              title={def.title}
+              description={def.description}
+              controllerType={def.controllerType}
+              controllerProps={{ ...(def.controllerProps ?? {}), value }}
+              onChange={(newValue) => onChange(key, newValue)}
+            />
             <p className="text-muted-foreground leading-normal text-xs">
               {def.description}
             </p>
