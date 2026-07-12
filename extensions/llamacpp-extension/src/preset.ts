@@ -284,9 +284,9 @@ export async function generatePreset(
   ) {
     lines.push(`rope-freq-scale = ${config.rope_freq_scale}`)
   }
-  // context-shift default = enabled
-  if (config.ctx_shift === false) {
-    lines.push('context-shift = false')
+  // context-shift default = disabled
+  if (config.ctx_shift === true) {
+    lines.push('context-shift = true')
   }
   // cache-ram default = 8192 MiB
   if (

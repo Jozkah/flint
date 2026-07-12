@@ -210,6 +210,26 @@ describe('generatePreset ctx-size default', () => {
   })
 })
 
+describe('generatePreset context-shift', () => {
+  it('emits context-shift = true when ctx_shift is enabled', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { ctx_shift: true } as any, {
+      supportsMtp: false,
+    })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('context-shift = true')
+  })
+
+  it('omits context-shift when disabled, matching llama.cpp own default', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { ctx_shift: false } as any, {
+      supportsMtp: false,
+    })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).not.toContain('context-shift')
+  })
+})
+
 describe('generatePreset embedding ctx-size', () => {
   it('pins embedders to native ctx-size = 0 so they do not inherit the global 8192', async () => {
     setupModel('minilm', { embedding: true })
