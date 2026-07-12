@@ -120,6 +120,7 @@ const PRESET_AFFECTING_KEYS = new Set<string>([
   'cache_reuse',
   'swa_full',
   'keep',
+  'kv_unified',
 ])
 
 /**

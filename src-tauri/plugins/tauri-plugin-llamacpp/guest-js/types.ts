@@ -80,6 +80,7 @@ export type LlamacppConfig = {
   cache_reuse: number
   swa_full: boolean
   keep: number
+  kv_unified: boolean
 }
 
 export type ModelPlan = {

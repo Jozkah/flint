@@ -307,6 +307,11 @@ export async function generatePreset(
   if (config.swa_full === true) {
     lines.push('swa-full = true')
   }
+  // kv-unified default = auto (enabled when slot count is auto); explicit
+  // opt-in only, since the auto default already covers the common case.
+  if (config.kv_unified === true) {
+    lines.push('kv-unified = true')
+  }
   // keep default = 0
   if (
     typeof config.keep === 'number' &&

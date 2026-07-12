@@ -388,6 +388,15 @@
     }
   },
   {
+    "key": "kv_unified",
+    "title": "Unified KV Cache",
+    "description": "Use a single unified KV buffer shared across all slots. Saves memory when running multiple parallel slots; default is auto.",
+    "controllerType": "checkbox",
+    "controllerProps": {
+      "value": false
+    }
+  },
+  {
     "key": "keep",
     "title": "Keep First N Tokens",
     "description": "Number of tokens from the initial prompt to keep when context is shifted (--keep). -1 = keep all.",
