@@ -47,6 +47,12 @@ type ModelYaml = ModelConfig & {
   mmproj_offload?: boolean
 }
 
+// One extra llama-server slot beyond the user-visible "Parallel Sequences"
+// count, reserved for background requests (e.g. thread auto-titling) that
+// must never be able to evict the user's own chat KV cache from its slot.
+// Hidden from the setting's UI value; see reservedSlotId in thread-title-summarizer.ts.
+export const RESERVED_BACKGROUND_SLOTS = 1
+
 export const MTP_MIN_BUILD = 9193
 
 const DEFAULT_EMBEDDING_UBATCH = 2048
@@ -182,9 +188,10 @@ export async function generatePreset(
   ) {
     lines.push(`cache-type-v = ${escapeIniValue(config.cache_type_v)}`)
   }
-  // parallel default = -1 (auto); positive user value is intent.
+  // parallel default = -1 (auto); positive user value is intent. The reserved
+  // slot is added on top and never exposed in the setting's own value.
   if (typeof config.parallel === 'number' && config.parallel > 0) {
-    lines.push(`parallel = ${config.parallel}`)
+    lines.push(`parallel = ${config.parallel + RESERVED_BACKGROUND_SLOTS}`)
   }
   // cont-batching default = true; emit only the explicit-off case.
   if (config.cont_batching === false) {
@@ -387,7 +394,7 @@ export async function generatePreset(
       lines.push(`cache-type-v = ${escapeIniValue(mc.cache_type_v)}`)
     }
     if (typeof mc.parallel === 'number' && mc.parallel > 0) {
-      lines.push(`parallel = ${mc.parallel}`)
+      lines.push(`parallel = ${mc.parallel + RESERVED_BACKGROUND_SLOTS}`)
     }
     if (mc.cont_batching === false) {
       lines.push('cont-batching = false')

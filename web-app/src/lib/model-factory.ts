@@ -585,6 +585,15 @@ export function stripAssistantReasoningInBody(
   }
 }
 
+/** Reads the per-provider "Strip reasoning from context" checkbox; defaults to true. */
+function shouldStripReasoningFromContext(provider?: ProviderObject): boolean {
+  const setting = provider?.settings?.find(
+    (s) => s.key === 'strip_reasoning_from_context'
+  )
+  const value = setting?.controller_props?.value
+  return typeof value === 'boolean' ? value : true
+}
+
 /** Wraps `inner` to strip reasoning fields from assistant messages before send. */
 function withAssistantReasoningStripped(
   inner: typeof globalThis.fetch
@@ -875,12 +884,19 @@ export class ModelFactory {
           })()
         }
       : undefined
-    const customFetch = createCustomFetch(
+    // Reasoning content re-shapes assistant turns (content + sibling
+    // reasoning_content) relative to what llama-server originally streamed
+    // and cached, so stripping it (default on) preserves KV-cache prefix
+    // reuse across turns; some models recommend keeping it, hence the toggle.
+    let customFetch = createCustomFetch(
       httpFetch,
       parameters,
       true,
       onLlamacppServerError
     )
+    if (shouldStripReasoningFromContext(provider)) {
+      customFetch = withAssistantReasoningStripped(customFetch)
+    }
 
     return new OpenAICompatibleChatLanguageModel(modelId, {
       provider: 'llamacpp',
@@ -945,7 +961,10 @@ export class ModelFactory {
     // rebuilds upstream errors from buffered text rather than re-decoding the
     // raw stream) with every other provider, then layer MLX's /cancel-on-abort
     // on top.
-    const baseCustomFetch = createCustomFetch(httpFetch, parameters)
+    let baseCustomFetch = createCustomFetch(httpFetch, parameters)
+    if (shouldStripReasoningFromContext(provider)) {
+      baseCustomFetch = withAssistantReasoningStripped(baseCustomFetch)
+    }
     const customFetch: typeof globalThis.fetch = async (
       input: RequestInfo | URL,
       init?: RequestInit

@@ -222,7 +222,7 @@
   {
     "key": "parallel",
     "title": "Parallel Sequences",
-    "description": "Number of parallel sequences to decode (0 = llama.cpp default of 1). Set to 1 to also enable -kvu for optimized single-request serving.",
+    "description": "Number of parallel sequences to decode for your own chat requests (0 = llama.cpp default of 4). Jan reserves one additional internal slot beyond this for background requests (e.g. thread auto-titling), so they don't evict your chat's KV cache.",
     "controllerType": "input",
     "controllerProps": {
       "value": 1,
@@ -257,6 +257,15 @@
     "controllerType": "checkbox",
     "controllerProps": {
       "value": false
+    }
+  },
+  {
+    "key": "strip_reasoning_from_context",
+    "title": "Strip reasoning from context",
+    "description": "Remove prior turns' thinking/reasoning content before resending history. Improves KV-cache reuse across turns, but some models (e.g. newer Qwen releases) recommend keeping it for better multi-turn reasoning.",
+    "controllerType": "checkbox",
+    "controllerProps": {
+      "value": true
     }
   },
   {
@@ -381,7 +390,7 @@
   {
     "key": "swa_full",
     "title": "Full SWA Cache",
-    "description": "Use full-size SWA cache. May improve quality at the cost of memory.",
+    "description": "Use full-size KV cache for sliding-window-attention models (e.g. Gemma). Enable this if such a model reprocesses the entire prompt every turn instead of reusing cache; costs more memory.",
     "controllerType": "checkbox",
     "controllerProps": {
       "value": false

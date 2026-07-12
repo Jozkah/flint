@@ -159,6 +159,31 @@ describe('generatePreset MTP emission', () => {
   })
 })
 
+describe('generatePreset parallel reservation', () => {
+  it('adds one reserved background slot on top of the global parallel value', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { parallel: 1 } as any, {
+      supportsMtp: false,
+    })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('parallel = 2')
+  })
+
+  it('adds one reserved background slot on top of a per-model parallel override', async () => {
+    setupModel('llama', { parallel: 3 })
+    await generatePreset('/p', '/jan', {} as any, { supportsMtp: false })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('parallel = 4')
+  })
+
+  it('omits parallel when unset, leaving llama.cpp auto-default untouched', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', {} as any, { supportsMtp: false })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).not.toContain('parallel =')
+  })
+})
+
 describe('generatePreset ctx-size default', () => {
   it('emits ctx-size = 8192 in [*] when fit is off and no ctx_size is set', async () => {
     setupModel('llama', {})
