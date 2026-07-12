@@ -376,6 +376,23 @@ export function createCustomFetch(
     return Number.isNaN(n) ? value : n
   }
 
+  // Internal param keys that don't match the llama-server wire field name.
+  const WIRE_KEY_REMAP: Record<string, string> = {
+    max_output_tokens: 'max_tokens',
+    dynatemp_exp: 'dynatemp_exponent',
+  }
+
+  // Server expects an array of sampler names; the UI stores a comma/
+  // semicolon-separated string for easy editing.
+  const coerceSamplers = (value: unknown): unknown => {
+    if (typeof value !== 'string') return value
+    const names = value
+      .split(/[,;]/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    return names.length > 0 ? names : undefined
+  }
+
   const buildBody = (
     rawBody: Record<string, unknown>,
     includeOurParams: boolean
@@ -389,8 +406,13 @@ export function createCustomFetch(
     for (const [key, value] of Object.entries(parameters)) {
       if (CLIENT_SIDE_PARAM_KEYS.has(key)) continue
       if (!keepLlamacppOnly && LLAMACPP_ONLY_PARAM_KEYS.has(key)) continue
-      const targetKey = key === 'max_output_tokens' ? 'max_tokens' : key
-      normalised[targetKey] = coerceNumericParam(key, value)
+      const targetKey = WIRE_KEY_REMAP[key] ?? key
+      const coerced =
+        key === 'samplers'
+          ? coerceSamplers(value)
+          : coerceNumericParam(key, value)
+      if (coerced === undefined) continue
+      normalised[targetKey] = coerced
     }
     const merged = { ...rawBody, ...normalised }
     if (keepLlamacppOnly && merged.stream === true) {
