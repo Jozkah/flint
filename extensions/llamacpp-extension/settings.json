@@ -390,10 +390,15 @@
   {
     "key": "kv_unified",
     "title": "Unified KV Cache",
-    "description": "Use a single unified KV buffer shared across all slots. Saves memory when running multiple parallel slots; default is auto.",
-    "controllerType": "checkbox",
+    "description": "Use a single unified KV buffer shared across all slots. Saves memory when running multiple parallel slots.",
+    "controllerType": "dropdown",
     "controllerProps": {
-      "value": false
+      "value": "auto",
+      "options": [
+        { "value": "auto", "name": "Auto" },
+        { "value": "on", "name": "On" },
+        { "value": "off", "name": "Off" }
+      ]
     }
   },
   {

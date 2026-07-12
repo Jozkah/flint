@@ -307,10 +307,11 @@ export async function generatePreset(
   if (config.swa_full === true) {
     lines.push('swa-full = true')
   }
-  // kv-unified default = auto (enabled when slot count is auto); explicit
-  // opt-in only, since the auto default already covers the common case.
-  if (config.kv_unified === true) {
+  // auto = omit the flag, let llama.cpp decide based on slot count
+  if (config.kv_unified === 'on') {
     lines.push('kv-unified = true')
+  } else if (config.kv_unified === 'off') {
+    lines.push('kv-unified = false')
   }
   // keep default = 0
   if (

@@ -116,7 +116,7 @@ export function normalizeLlamacppConfig(config: any): LlamacppConfig {
     cache_reuse: asI32(config.cache_reuse, 0),
     swa_full: asBool(config.swa_full),
     keep: asI32(config.keep, 0),
-    kv_unified: asBool(config.kv_unified),
+    kv_unified: asString(config.kv_unified, 'auto'),
   }
 }
 

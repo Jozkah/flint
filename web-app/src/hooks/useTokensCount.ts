@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ThreadMessage } from '@janhq/core'
-import { ExtensionManager } from '@/lib/extension'
 import { parseContextOverflow } from '@/utils/error'
+import {
+  getLlamacppExtension,
+  type LlamacppModelProps,
+} from '@/lib/llamacppRouterProps'
 import { useModelProvider } from './useModelProvider'
 import { useAppState } from './useAppState'
 
-export interface ModelProps {
-  nCtx: number
-  totalSlots?: number
-  modelAlias?: string
-  isSleeping?: boolean
-}
+export type ModelProps = LlamacppModelProps
 
 export interface TokenCountData {
   tokenCount: number
@@ -35,10 +33,6 @@ interface UsageMeta {
   totalTokens?: number
 }
 
-interface LlamacppExtensionLike {
-  getModelProps?: (modelId: string) => Promise<ModelProps | undefined>
-}
-
 // The token-usage popup normally reflects the last *successful* turn. When a
 // request overflows, that turn is never recorded, so the popup would keep
 // showing a comfortable percentage next to an "out of context" error. Parse
@@ -61,22 +55,6 @@ const getLatestServerUsage = (messages: ThreadMessage[]): UsageMeta => {
       return usage
   }
   return {}
-}
-
-const getLlamacppExtension = (): LlamacppExtensionLike | undefined => {
-  const mgr = ExtensionManager.getInstance()
-  const candidates = [
-    mgr.getByName('@janhq/llamacpp-extension'),
-    mgr.getByName('llamacpp-extension'),
-  ]
-  for (const c of candidates) {
-    if (c && typeof (c as LlamacppExtensionLike).getModelProps === 'function')
-      return c as LlamacppExtensionLike
-  }
-  return mgr.listExtensions().find(
-    (ext) =>
-      typeof (ext as LlamacppExtensionLike).getModelProps === 'function'
-  ) as LlamacppExtensionLike | undefined
 }
 
 const readSettingNumber = (v: unknown): number | undefined => {

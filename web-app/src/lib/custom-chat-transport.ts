@@ -23,6 +23,11 @@ import { useMCPServers } from '@/hooks/useMCPServers'
 import { useAppState } from '@/hooks/useAppState'
 import { invoke } from '@tauri-apps/api/core'
 import { ExtensionManager } from '@/lib/extension'
+import { getLlamacppExtension } from '@/lib/llamacppRouterProps'
+import {
+  tokensForThinkingBudgetLevel,
+  isThinkingBudgetLevelKey,
+} from '@/lib/thinkingBudget'
 import {
   ExtensionTypeEnum,
   VectorDBExtension,
@@ -118,6 +123,42 @@ function extractModelSamplingDefaults(
     }
   }
   return out
+}
+
+/**
+ * `thinking_budget_tokens` is stored as a symbolic level (low/medium/high/
+ * xhigh/unlimited), not a frozen absolute count — llama.cpp's --fit can pick
+ * a runtime n_ctx far from the configured/default size, and that's only known
+ * once the model is actually loaded. Resolve against the live n_ctx here, at
+ * send time, instead of whatever context size was in scope when the level
+ * was picked in ChatInput.
+ */
+async function resolveThinkingBudgetTokens(
+  model: Model | null | undefined,
+  modelId: string | undefined
+): Promise<number | undefined> {
+  const rawLevel = model?.settings?.thinking_budget_tokens?.controller_props?.value
+  if (!isThinkingBudgetLevelKey(rawLevel)) return undefined
+  if (rawLevel === 'unlimited') return -1
+
+  let contextSize: number | undefined
+  if (modelId) {
+    try {
+      contextSize = (await getLlamacppExtension()?.getModelProps?.(modelId))?.nCtx
+    } catch {
+      // Model not loaded yet or router unreachable; fall through to configured/default.
+    }
+  }
+  if (!contextSize) {
+    const configured = model?.settings?.ctx_len?.controller_props?.value
+    contextSize =
+      typeof configured === 'number'
+        ? configured
+        : typeof configured === 'string' && configured !== ''
+          ? Number(configured)
+          : undefined
+  }
+  return tokensForThinkingBudgetLevel(rawLevel, contextSize || 8192)
 }
 
 /**
@@ -907,6 +948,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       // overrides (router mode can't bake them into CLI args). Assistant
       // params still win — they're the explicit per-conversation override.
       const modelSamplingDefaults = extractModelSamplingDefaults(selectedModel)
+      if (providerId === 'llamacpp') {
+        const thinkingBudgetTokens = await resolveThinkingBudgetTokens(
+          selectedModel,
+          modelId
+        )
+        if (thinkingBudgetTokens !== undefined) {
+          modelSamplingDefaults.thinking_budget_tokens = thinkingBudgetTokens
+        }
+      }
 
       // Create the model before refreshing tools so the MCP orchestrator can run
       // structured LLM routing when many servers are connected.
