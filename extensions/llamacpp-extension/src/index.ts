@@ -3386,7 +3386,13 @@ export default class llamacpp_extension extends AIEngine {
     }
   }
 
-  async embed(text: string[]): Promise<EmbeddingResponse> {
+  /**
+   * Resolves the default/preferred embedding model, importing and loading
+   * sentence-transformer-mini as the fallback, then ensures a session exists.
+   * Shared by embed() and getEmbeddingContextSize() so both agree on which
+   * model is "the" embedding model.
+   */
+  private async ensureEmbeddingModelLoaded(): Promise<SessionInfo> {
     const downloadedModelList = await this.list()
     const installedEmbedding = downloadedModelList.filter(
       (m) => (m as any).embedding === true
@@ -3394,11 +3400,11 @@ export default class llamacpp_extension extends AIEngine {
     const hasMini = downloadedModelList.some(
       (m) => m.id === 'sentence-transformer-mini'
     )
-    let preferred = getDefaultEmbeddingModelId('llamacpp')
+    let preferred = await getDefaultEmbeddingModelId('llamacpp')
 
     if (!preferred && installedEmbedding.length === 1 && !hasMini) {
       preferred = installedEmbedding[0].id
-      setDefaultEmbeddingModelId('llamacpp', preferred)
+      await setDefaultEmbeddingModelId('llamacpp', preferred)
       logger.info(
         `Auto-promoted "${preferred}" as default embedding model (single installed model, sentence-transformer-mini not present)`
       )
@@ -3427,6 +3433,51 @@ export default class llamacpp_extension extends AIEngine {
       }
       sInfo = await this.load(targetModelId, undefined, true)
     }
+    return sInfo as SessionInfo
+  }
+
+  /**
+   * Actual post-fit context window of the embedding model, read from the
+   * router's /props endpoint (the same source getModelProps uses for chat
+   * models). Used by RAG ingestion to size chunks so they don't exceed the
+   * model's n_ctx (e.g. sentence-transformer-mini natively caps at 256).
+   */
+  async getEmbeddingContextSize(): Promise<number | undefined> {
+    const sInfo = await this.ensureEmbeddingModelLoaded()
+    const props = await this.getModelProps(sInfo.model_id)
+    return props?.nCtx
+  }
+
+  /**
+   * Real token counts from the embedding model's own tokenizer via /tokenize
+   * on its session port. Char-based chunking can't reliably predict token
+   * count (subword tokenizers vary widely by content), so callers that need
+   * a hard guarantee against exceed_context_size_error should verify with
+   * this rather than estimating from character length.
+   */
+  async countEmbeddingTokens(texts: string[]): Promise<number[]> {
+    const sInfo = await this.ensureEmbeddingModelLoaded()
+    const counts: number[] = []
+    for (const text of texts) {
+      const res = await fetch(`http://localhost:${sInfo.port}/tokenize`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sInfo.api_key}`,
+        },
+        body: JSON.stringify({ content: text }),
+      })
+      if (!res.ok) {
+        throw new Error(`Tokenize request failed with status ${res.status}`)
+      }
+      const json = (await res.json()) as { tokens?: unknown[] }
+      counts.push(Array.isArray(json.tokens) ? json.tokens.length : 0)
+    }
+    return counts
+  }
+
+  async embed(text: string[]): Promise<EmbeddingResponse> {
+    const sInfo = await this.ensureEmbeddingModelLoaded()
 
     const ubatchSize =
       (this.config?.ubatch_size && this.config.ubatch_size > 0
@@ -3457,7 +3508,7 @@ export default class llamacpp_extension extends AIEngine {
     }
 
     const sendBatch = async (batchInput: string[]) => {
-      const response = await attemptRequest(sInfo as SessionInfo, batchInput)
+      const response = await attemptRequest(sInfo, batchInput)
       if (!response.ok) {
         const errorData = await response.json().catch(() => null)
         throw new Error(
@@ -3474,7 +3525,7 @@ export default class llamacpp_extension extends AIEngine {
     }
 
     return mergeEmbedResponses(
-      (sInfo as SessionInfo).model_id,
+      sInfo.model_id,
       batchResults
     ) as EmbeddingResponse
   }

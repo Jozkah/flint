@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core'
+
 // File path utilities
 export function basenameNoExt(filePath: string): string {
   const VALID_EXTENSIONS = [".tar.gz", ".zip"];
@@ -32,11 +34,34 @@ interface ProxyState {
   noProxy: string
 }
 
-export function getDefaultEmbeddingModelId(
-  provider: string = 'llamacpp'
-): string | undefined {
+const DEFAULT_EMBEDDING_MODEL_KEY = 'default-embedding-model'
+
+// The web-app's useDefaultEmbeddingModel store persists this key through
+// the Rust settings backend (settings_get/settings_set -> settings.json),
+// not webview localStorage, on desktop. Read/write the same backend so this
+// extension sees the model the user actually picked in Settings; localStorage
+// is only a fallback for `dev:web` (no Tauri shell).
+async function readDefaultEmbeddingModelRaw(): Promise<string | null> {
   try {
-    const raw = localStorage.getItem('default-embedding-model')
+    const value = await invoke<string | null>('settings_get', {
+      key: DEFAULT_EMBEDDING_MODEL_KEY,
+    })
+    if (value != null) return value
+  } catch {
+    /* not running under Tauri, or command unavailable */
+  }
+  try {
+    return localStorage.getItem(DEFAULT_EMBEDDING_MODEL_KEY)
+  } catch {
+    return null
+  }
+}
+
+export async function getDefaultEmbeddingModelId(
+  provider: string = 'llamacpp'
+): Promise<string | undefined> {
+  try {
+    const raw = await readDefaultEmbeddingModelRaw()
     if (!raw) return undefined
     const parsed = JSON.parse(raw)
     const map = parsed?.state?.defaultByProvider
@@ -47,18 +72,31 @@ export function getDefaultEmbeddingModelId(
   }
 }
 
-export function setDefaultEmbeddingModelId(provider: string, modelId: string) {
+export async function setDefaultEmbeddingModelId(
+  provider: string,
+  modelId: string
+) {
   try {
-    const raw = localStorage.getItem('default-embedding-model')
+    const raw = await readDefaultEmbeddingModelRaw()
     const parsed = raw ? JSON.parse(raw) : { state: {}, version: 0 }
     const state = parsed.state ?? {}
     const map = state.defaultByProvider ?? {}
     map[provider] = modelId
     parsed.state = { ...state, defaultByProvider: map }
     if (parsed.version === undefined) parsed.version = 0
-    localStorage.setItem('default-embedding-model', JSON.stringify(parsed))
+    const serialized = JSON.stringify(parsed)
+    try {
+      await invoke('settings_set', {
+        key: DEFAULT_EMBEDDING_MODEL_KEY,
+        value: serialized,
+      })
+      return
+    } catch {
+      /* not running under Tauri, or command unavailable */
+    }
+    localStorage.setItem(DEFAULT_EMBEDDING_MODEL_KEY, serialized)
   } catch {
-    /* localStorage write failed; non-fatal */
+    /* non-fatal */
   }
 }
 
