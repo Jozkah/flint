@@ -16,6 +16,19 @@ const LEVEL_TO_OPENAI_EFFORT: Partial<Record<ThinkingBudgetLevelKey, string>> = 
   xhigh: 'xhigh',
 }
 
+// The AI SDK adds budget_tokens on top of max_tokens, so these are safe caps
+// regardless of the request's output limit (Anthropic minimum is 1024).
+const ANTHROPIC_LEVEL_BUDGET_TOKENS: Record<
+  Exclude<ThinkingBudgetLevelKey, 'unlimited'>,
+  number
+> = {
+  low: 4096,
+  medium: 8192,
+  high: 16384,
+  xhigh: 32768,
+}
+const DEFAULT_ANTHROPIC_BUDGET_TOKENS = 8192
+
 function readReasoning(model: Model | null | undefined): ReasoningChoice {
   const v = model?.settings?.reasoning?.controller_props?.value
   return v === 'on' || v === 'off' || v === 'auto' ? v : undefined
@@ -66,10 +79,26 @@ export function buildReasoningProviderOptions(
       return { anthropic: { thinking: { type: 'disabled' } } }
     }
     if (reasoning === 'on' || level) {
-      // Adaptive lets Claude size its own thinking budget; 'summarized' streams
-      // the thought summary we render in the reasoning trace.
+      const id = (model?.id ?? '').toLowerCase()
+      // Adaptive thinking exists on Claude 4.6+ only; pre-4.6 models reject it
+      // with a 400 and require enabled + budget_tokens. `display` shipped with
+      // 4.7, so it is omitted on the 4.6 family. Unknown ids get the
+      // current-generation default (adaptive + summarized).
+      const isPre46 = /(opus|sonnet|haiku)-([0-3]|4-[0-5])\b/.test(id)
+      if (isPre46) {
+        const budgetTokens =
+          level && level !== 'unlimited'
+            ? ANTHROPIC_LEVEL_BUDGET_TOKENS[level]
+            : DEFAULT_ANTHROPIC_BUDGET_TOKENS
+        return { anthropic: { thinking: { type: 'enabled', budgetTokens } } }
+      }
+      const supportsDisplay = !/(opus|sonnet)-4-6\b/.test(id)
       return {
-        anthropic: { thinking: { type: 'adaptive', display: 'summarized' } },
+        anthropic: {
+          thinking: supportsDisplay
+            ? { type: 'adaptive', display: 'summarized' }
+            : { type: 'adaptive' },
+        },
       }
     }
     return undefined

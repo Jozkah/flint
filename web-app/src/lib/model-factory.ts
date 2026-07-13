@@ -363,7 +363,8 @@ export function createCustomFetch(
   baseFetch: typeof globalThis.fetch,
   parameters: Record<string, unknown>,
   keepLlamacppOnly = false,
-  onLlamacppServerError?: () => void
+  onLlamacppServerError?: () => void,
+  filterNamedSseEvents = false
 ): typeof globalThis.fetch {
   // Params entered via a text input arrive as strings (see InputControl).
   // Providers reject a string where a number is required, so coerce back to a
@@ -460,12 +461,17 @@ export function createCustomFetch(
       throw new Error(`${friendly} (${requestUrlOf(input)})`)
     }
     if (res.ok) {
-      // Servers may interleave custom named SSE events (e.g. tool-progress)
-      // with chat.completion.chunk data. The AI SDK validates every data line
-      // against the chunk schema regardless of event type, so strip non-default
-      // events before the stream reaches it.
+      // OpenAI-compatible servers may interleave custom named SSE events (e.g.
+      // tool-progress) with chat.completion.chunk data; the AI SDK validates
+      // every data line against the chunk schema, so strip non-default events.
+      // Opt-in only: Anthropic and the OpenAI Responses API use named SSE
+      // events as their protocol, so filtering there blanks the whole stream.
       const contentType = res.headers.get('content-type') || ''
-      if (res.body && contentType.includes('text/event-stream')) {
+      if (
+        filterNamedSseEvents &&
+        res.body &&
+        contentType.includes('text/event-stream')
+      ) {
         return new Response(filterDefaultSseEvents(res.body), {
           status: res.status,
           statusText: res.statusText,
@@ -709,9 +715,16 @@ function createApiKeyRotatingFetch(
   baseFetch: typeof globalThis.fetch,
   apiKeys: string[],
   parameters: Record<string, unknown>,
-  headerMode: ApiKeyHeaderMode
+  headerMode: ApiKeyHeaderMode,
+  filterNamedSseEvents = false
 ): typeof globalThis.fetch {
-  const inner = createCustomFetch(baseFetch, parameters)
+  const inner = createCustomFetch(
+    baseFetch,
+    parameters,
+    false,
+    undefined,
+    filterNamedSseEvents
+  )
   if (apiKeys.length <= 1) {
     return inner
   }
@@ -738,6 +751,22 @@ function createApiKeyRotatingFetch(
     }
     throw new Error('API key rotation exhausted')
   }
+}
+
+// An empty apiKey still puts an empty auth header on the wire, which upstreams
+// answer with misleading 401s (e.g. Anthropic's "x-api-key header is
+// required"). Fail here with an actionable message instead.
+function requireRemoteApiKey(
+  provider: ProviderObject,
+  keyChain: string[]
+): string {
+  const key = keyChain[0] ?? provider.api_key?.trim()
+  if (!key) {
+    throw new Error(
+      `No API key configured for ${provider.provider}. Add one in Settings > Model Providers.`
+    )
+  }
+  return key
 }
 
 function getRuntimeFetch(): typeof globalThis.fetch {
@@ -897,7 +926,8 @@ export class ModelFactory {
       httpFetch,
       parameters,
       true,
-      onLlamacppServerError
+      onLlamacppServerError,
+      true
     )
     if (shouldStripReasoningFromContext(provider)) {
       customFetch = withAssistantReasoningStripped(customFetch)
@@ -966,7 +996,13 @@ export class ModelFactory {
     // rebuilds upstream errors from buffered text rather than re-decoding the
     // raw stream) with every other provider, then layer MLX's /cancel-on-abort
     // on top.
-    let baseCustomFetch = createCustomFetch(httpFetch, parameters)
+    let baseCustomFetch = createCustomFetch(
+      httpFetch,
+      parameters,
+      false,
+      undefined,
+      true
+    )
     if (shouldStripReasoningFromContext(provider)) {
       baseCustomFetch = withAssistantReasoningStripped(baseCustomFetch)
     }
@@ -1040,7 +1076,7 @@ export class ModelFactory {
         : createCustomFetch(getRuntimeFetch(), parameters)
 
     const anthropic = createAnthropic({
-      apiKey: keyChain[0] ?? provider.api_key ?? '',
+      apiKey: requireRemoteApiKey(provider, keyChain),
       baseURL: provider.base_url,
       headers: Object.keys(headers).length > 0 ? headers : undefined,
       fetch: fetchImpl,
@@ -1079,7 +1115,7 @@ export class ModelFactory {
         : createCustomFetch(getRuntimeFetch(), parameters)
 
     const openai = createOpenAI({
-      apiKey: keyChain[0] ?? provider.api_key ?? '',
+      apiKey: requireRemoteApiKey(provider, keyChain),
       baseURL: provider.base_url,
       headers: Object.keys(headers).length > 0 ? headers : undefined,
       fetch: fetchImpl,
@@ -1123,7 +1159,7 @@ export class ModelFactory {
         : createCustomFetch(getRuntimeFetch(), parameters)
 
     const mistral = createMistral({
-      apiKey: keyChain[0] ?? provider.api_key ?? '',
+      apiKey: requireRemoteApiKey(provider, keyChain),
       baseURL: provider.base_url,
       headers: Object.keys(headers).length > 0 ? headers : undefined,
       fetch: fetchImpl,
@@ -1161,7 +1197,7 @@ export class ModelFactory {
         : createCustomFetch(getRuntimeFetch(), parameters)
 
     const xai = createXai({
-      apiKey: keyChain[0] ?? provider.api_key ?? '',
+      apiKey: requireRemoteApiKey(provider, keyChain),
       baseURL: provider.base_url,
       headers: Object.keys(headers).length > 0 ? headers : undefined,
       fetch: fetchImpl,
@@ -1207,7 +1243,7 @@ export class ModelFactory {
       : 'https://generativelanguage.googleapis.com/v1beta'
 
     const google = createGoogleGenerativeAI({
-      apiKey: keyChain[0] ?? provider.api_key ?? '',
+      apiKey: requireRemoteApiKey(provider, keyChain),
       baseURL,
       headers: Object.keys(headers).length > 0 ? headers : undefined,
       fetch: fetchImpl,
@@ -1244,9 +1280,10 @@ export class ModelFactory {
             getRuntimeFetch(),
             keyChain,
             parameters,
-            'authorization-bearer'
+            'authorization-bearer',
+            true
           )
-        : createCustomFetch(getRuntimeFetch(), parameters)
+        : createCustomFetch(getRuntimeFetch(), parameters, false, undefined, true)
 
     if (provider.provider === 'groq') {
       fetchImpl = withAssistantReasoningStripped(fetchImpl)

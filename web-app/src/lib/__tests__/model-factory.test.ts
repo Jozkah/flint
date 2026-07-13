@@ -282,6 +282,57 @@ describe('createCustomFetch — transport error wrapping', () => {
   })
 })
 
+describe('ModelFactory — missing API key guard', () => {
+  it('throws an actionable error instead of sending an empty credential', async () => {
+    const provider = {
+      provider: 'anthropic',
+      base_url: 'https://api.anthropic.com/v1',
+      api_key: '',
+      models: [],
+    } as unknown as ProviderObject
+    await expect(
+      ModelFactory.createModel('claude-opus-4-8', provider)
+    ).rejects.toThrow(/No API key configured for anthropic/)
+  })
+})
+
+describe('createCustomFetch — named SSE event filtering scope', () => {
+  const NAMED_EVENT_STREAM = [
+    'event: message_start',
+    'data: {"type":"message_start"}',
+    '',
+    'event: content_block_delta',
+    'data: {"type":"content_block_delta"}',
+    '',
+  ].join('\n')
+
+  function sseFetch(): typeof globalThis.fetch {
+    return (async () =>
+      new Response(NAMED_EVENT_STREAM, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })) as typeof globalThis.fetch
+  }
+
+  it('passes named SSE events through untouched by default (native protocols)', async () => {
+    const wrapped = createCustomFetch(sseFetch(), {})
+    const res = await wrapped('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      body: '{}',
+    })
+    expect(await res.text()).toBe(NAMED_EVENT_STREAM)
+  })
+
+  it('strips named SSE events when filterNamedSseEvents is enabled', async () => {
+    const wrapped = createCustomFetch(sseFetch(), {}, false, undefined, true)
+    const res = await wrapped('http://localhost:1337/v1/chat/completions', {
+      method: 'POST',
+      body: '{}',
+    })
+    expect(await res.text()).not.toContain('message_start')
+  })
+})
+
 describe('createCustomFetch — max_tokens coercion', () => {
   async function captureSentBody(
     parameters: Record<string, unknown>,
