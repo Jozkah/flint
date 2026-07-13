@@ -27,6 +27,13 @@ pub struct ProviderConfig {
     pub base_url: Option<String>,
     pub custom_headers: Vec<ProviderCustomHeader>,
     pub models: Vec<String>,
+    /// Upstream wire API this provider speaks. `None`/`"openai"` = OpenAI
+    /// chat/completions (verbatim passthrough). Other values select a
+    /// translating converter (e.g. `"openai-responses"`, `"google"`,
+    /// `"anthropic"`) so the proxy can accept OpenAI-shaped requests and talk
+    /// the provider's native API.
+    #[serde(default)]
+    pub api_type: Option<String>,
 }
 
 impl ProviderConfig {
