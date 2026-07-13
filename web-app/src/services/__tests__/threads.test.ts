@@ -246,14 +246,12 @@ describe('DefaultThreadsService', () => {
   })
 
   describe('edge cases and error handling', () => {
-    it('should handle fetchThreads when extension manager returns null', async () => {
+    it('should throw when the conversational extension is not ready (startup race)', async () => {
       ;(ExtensionManager.getInstance as any).mockReturnValue({
         get: vi.fn().mockReturnValue(null),
       })
 
-      const result = await threadsService.fetchThreads()
-
-      expect(result).toEqual([])
+      await expect(threadsService.fetchThreads()).rejects.toThrow()
     })
 
     it('should handle createThread when extension manager returns null', async () => {

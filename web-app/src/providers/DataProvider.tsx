@@ -278,12 +278,30 @@ export function DataProvider() {
   }, [serviceHub])
 
   useEffect(() => {
-    serviceHub
-      .threads()
-      .fetchThreads()
-      .then((threads) => {
-        setThreads(threads)
-      })
+    // fetchThreads throws while the Conversational extension is still loading
+    // (startup race, e.g. reload mid-stream). Retry with backoff instead of
+    // letting a single failed fetch leave the thread list permanently empty.
+    let cancelled = false
+    let attempt = 0
+    let timer: ReturnType<typeof setTimeout>
+    const load = () => {
+      serviceHub
+        .threads()
+        .fetchThreads()
+        .then((threads) => {
+          if (!cancelled) setThreads(threads)
+        })
+        .catch(() => {
+          if (cancelled || attempt >= 20) return
+          attempt += 1
+          timer = setTimeout(load, Math.min(1000, 150 * attempt))
+        })
+    }
+    load()
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
   }, [serviceHub, setThreads])
 
   // Sync remote providers with backend when providers change

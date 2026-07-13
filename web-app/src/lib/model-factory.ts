@@ -84,7 +84,14 @@ interface LlamaCppTimings {
   predicted_n?: number
   predicted_per_second?: number
   prompt_per_second?: number
+  cache_n?: number
 }
+
+// prompt_n only counts tokens freshly processed this turn; tokens served from
+// the KV cache (the rest of the conversation) are reported separately in
+// cache_n, so total prompt/context usage is the sum of both.
+const totalPromptTokens = (timings: LlamaCppTimings): number =>
+  (timings.prompt_n ?? 0) + (timings.cache_n ?? 0)
 
 interface LlamaCppPromptProgress {
   total?: number
@@ -109,7 +116,7 @@ const providerMetadataExtractor: MetadataExtractor = {
     if (body?.timings) {
       return {
         providerMetadata: {
-          promptTokens: body.timings.prompt_n ?? null,
+          promptTokens: totalPromptTokens(body.timings),
           completionTokens: body.timings.predicted_n ?? null,
           tokensPerSecond: body.timings.predicted_per_second ?? null,
           promptPerSecond: body.timings.prompt_per_second ?? null,
@@ -134,6 +141,16 @@ const providerMetadataExtractor: MetadataExtractor = {
         }
         if (chunk?.timings) {
           lastTimings = chunk.timings
+          const liveStats = {
+            promptTokens: totalPromptTokens(lastTimings),
+            completionTokens: lastTimings.predicted_n ?? 0,
+            tokensPerSecond: lastTimings.predicted_per_second ?? null,
+            promptPerSecond: lastTimings.prompt_per_second ?? null,
+          }
+          state.updateLiveTokenStats(liveStats)
+          if (streamThreadId) {
+            state.updateThreadLiveTokenStats(streamThreadId, liveStats)
+          }
         }
         const pp = chunk?.prompt_progress
         if (
@@ -157,7 +174,7 @@ const providerMetadataExtractor: MetadataExtractor = {
         if (lastTimings) {
           return {
             providerMetadata: {
-              promptTokens: lastTimings.prompt_n ?? null,
+              promptTokens: totalPromptTokens(lastTimings),
               completionTokens: lastTimings.predicted_n ?? null,
               tokensPerSecond: lastTimings.predicted_per_second ?? null,
               promptPerSecond: lastTimings.prompt_per_second ?? null,
@@ -359,6 +376,23 @@ export function createCustomFetch(
     return Number.isNaN(n) ? value : n
   }
 
+  // Internal param keys that don't match the llama-server wire field name.
+  const WIRE_KEY_REMAP: Record<string, string> = {
+    max_output_tokens: 'max_tokens',
+    dynatemp_exp: 'dynatemp_exponent',
+  }
+
+  // Server expects an array of sampler names; the UI stores a comma/
+  // semicolon-separated string for easy editing.
+  const coerceSamplers = (value: unknown): unknown => {
+    if (typeof value !== 'string') return value
+    const names = value
+      .split(/[,;]/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    return names.length > 0 ? names : undefined
+  }
+
   const buildBody = (
     rawBody: Record<string, unknown>,
     includeOurParams: boolean
@@ -372,12 +406,25 @@ export function createCustomFetch(
     for (const [key, value] of Object.entries(parameters)) {
       if (CLIENT_SIDE_PARAM_KEYS.has(key)) continue
       if (!keepLlamacppOnly && LLAMACPP_ONLY_PARAM_KEYS.has(key)) continue
-      const targetKey = key === 'max_output_tokens' ? 'max_tokens' : key
-      normalised[targetKey] = coerceNumericParam(key, value)
+      const targetKey = WIRE_KEY_REMAP[key] ?? key
+      const coerced =
+        key === 'samplers'
+          ? coerceSamplers(value)
+          : coerceNumericParam(key, value)
+      if (coerced === undefined) continue
+      normalised[targetKey] = coerced
     }
     const merged = { ...rawBody, ...normalised }
+    if (keepLlamacppOnly) {
+      // Assert the server default explicitly so a preset/CLI override can't
+      // silently disable prompt-prefix KV reuse across turns.
+      merged.cache_prompt = true
+    }
     if (keepLlamacppOnly && merged.stream === true) {
       merged.return_progress = true
+      // Requests per-chunk timings so the token counter can update live
+      // during generation instead of only once the stream finishes.
+      merged.timings_per_token = true
     }
     // llama-server convention: max_tokens = -1 means "unlimited". Users who
     // set max_output_tokens = 0 in assistant params mean "no cap", not
@@ -541,6 +588,15 @@ export function stripAssistantReasoningInBody(
     if ('reasoning_content' in m) delete m.reasoning_content
     if ('reasoning' in m) delete m.reasoning
   }
+}
+
+/** Reads the per-provider "Strip reasoning from context" checkbox; defaults to true. */
+function shouldStripReasoningFromContext(provider?: ProviderObject): boolean {
+  const setting = provider?.settings?.find(
+    (s) => s.key === 'strip_reasoning_from_context'
+  )
+  const value = setting?.controller_props?.value
+  return typeof value === 'boolean' ? value : true
 }
 
 /** Wraps `inner` to strip reasoning fields from assistant messages before send. */
@@ -833,12 +889,19 @@ export class ModelFactory {
           })()
         }
       : undefined
-    const customFetch = createCustomFetch(
+    // Reasoning content re-shapes assistant turns (content + sibling
+    // reasoning_content) relative to what llama-server originally streamed
+    // and cached, so stripping it (default on) preserves KV-cache prefix
+    // reuse across turns; some models recommend keeping it, hence the toggle.
+    let customFetch = createCustomFetch(
       httpFetch,
       parameters,
       true,
       onLlamacppServerError
     )
+    if (shouldStripReasoningFromContext(provider)) {
+      customFetch = withAssistantReasoningStripped(customFetch)
+    }
 
     return new OpenAICompatibleChatLanguageModel(modelId, {
       provider: 'llamacpp',
@@ -903,7 +966,10 @@ export class ModelFactory {
     // rebuilds upstream errors from buffered text rather than re-decoding the
     // raw stream) with every other provider, then layer MLX's /cancel-on-abort
     // on top.
-    const baseCustomFetch = createCustomFetch(httpFetch, parameters)
+    let baseCustomFetch = createCustomFetch(httpFetch, parameters)
+    if (shouldStripReasoningFromContext(provider)) {
+      baseCustomFetch = withAssistantReasoningStripped(baseCustomFetch)
+    }
     const customFetch: typeof globalThis.fetch = async (
       input: RequestInfo | URL,
       init?: RequestInit
@@ -1019,7 +1085,12 @@ export class ModelFactory {
       fetch: fetchImpl,
     })
 
-    return openai.chat(modelId)
+    // The genuine OpenAI provider always supports the Responses API, so use it
+    // unconditionally: it is a superset of Chat Completions and the only surface
+    // that returns reasoning summaries. Custom OpenAI-compatible providers route
+    // through createOpenAICompatibleModel, not here, so this cannot hit a proxy
+    // that only implements /chat/completions.
+    return openai.responses(modelId)
   }
 
   /**

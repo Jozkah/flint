@@ -238,6 +238,23 @@ describe('DataProvider', () => {
     })
   })
 
+  it('retries fetchThreads when it throws (extension not ready) and never wipes the list on failure', async () => {
+    hubState.fetchThreads
+      .mockRejectedValueOnce(new Error('Conversational extension not available yet'))
+      .mockResolvedValueOnce([{ id: 't1' }])
+
+    render(<DataProvider />)
+
+    await waitFor(() => {
+      expect(hubState.fetchThreads).toHaveBeenCalledTimes(2)
+    })
+    // The failed first attempt must not push an empty array.
+    expect(h.setThreads).not.toHaveBeenCalledWith([])
+    await waitFor(() => {
+      expect(h.setThreads).toHaveBeenCalledWith([{ id: 't1' }])
+    })
+  })
+
   it('passes DEFAULT_MCP_SETTINGS when mcp config lacks values', async () => {
     hubState.getMCPConfig.mockResolvedValue({})
     render(<DataProvider />)

@@ -277,6 +277,7 @@ pub fn run() {
             provider_configs: Arc::new(Mutex::new(HashMap::new())),
             model_param_defaults: Arc::new(Mutex::new(HashMap::new())),
             mcp_reconnect_notify: Arc::new(tokio::sync::Notify::new()),
+            mcp_last_known_tools: Arc::new(Mutex::new(HashMap::new())),
         })
         .setup(|app| {
             app.handle().plugin(

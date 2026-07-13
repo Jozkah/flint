@@ -43,6 +43,11 @@ import { parseCitationsFromToolOutput } from '@/lib/citation-parser'
 import type { RagCitation } from '@/components/Citations'
 import { useGroundingStore } from '@/stores/grounding-store'
 import { injectCitationMarkers } from '@/lib/grounding'
+import {
+  ReasoningTimeline,
+  ReasoningActiveStep,
+} from '@/components/ai-elements/reasoning-timeline'
+import { splitReasoningParagraphs } from '@/lib/reasoning'
 
 const CHAT_STATUS = {
   STREAMING: 'streaming',
@@ -476,10 +481,6 @@ export const MessageItem = memo(
       const groupIsStreaming =
         isStreaming && lastEntryIndex === message.parts.length - 1
 
-      // Keep the trace expanded while a tool is still running or awaiting the
-      // user's approval — collapsing it would hide the approval controls.
-      const keepOpen = hasPendingToolCall || awaitingApproval
-
       // While streaming, surface only the latest step (current reasoning
       // paragraph or tool call) so each step replaces the previous one rather
       // than the whole trace scrolling by. The full trace renders once done.
@@ -510,17 +511,36 @@ export const MessageItem = memo(
         meaningful.length > 0 &&
         meaningful[meaningful.length - 1].part.type.startsWith('tool-')
 
+      // Only reasoning text is worth expanding for — a tool-only step collapses
+      // to the header. While streaming that means the current step is a
+      // reasoning paragraph that has completed at least once (something for
+      // ReasoningActiveStep to render); once done, any reasoning text qualifies.
+      const hasDisplayableContent = groupIsStreaming
+        ? lastMeaningful?.part.type === CONTENT_TYPE.REASONING &&
+          splitReasoningParagraphs(lastMeaningful.part.text ?? '').length >= 2
+        : entries.some(
+            (e) =>
+              e.part.type === CONTENT_TYPE.REASONING &&
+              Boolean(e.part.text && e.part.text.trim())
+          )
+
+      // Force open only while a tool awaits approval — its approve/deny controls
+      // live inside the collapsible and must stay mounted. A running (already
+      // approved) tool does not force it open, so tool-only steps collapse.
+      const forceOpen = awaitingApproval
+      const shouldCollapse = hasFollowingContent || !hasDisplayableContent
+
       return (
         <ChainOfThought
           key={groupKey}
           className="w-full text-muted-foreground"
           isStreaming={groupIsStreaming}
-          shouldCollapse={hasFollowingContent && !keepOpen}
-          forceOpen={keepOpen}
-          defaultOpen={true}
+          shouldCollapse={shouldCollapse}
+          forceOpen={forceOpen}
+          defaultOpen={hasDisplayableContent && !hasFollowingContent}
         >
           <ChainOfThoughtHeader
-            streamingLabel={currentStepIsTool ? 'Using tools...' : 'Reasoning...'}
+            streamingLabel={currentStepIsTool ? 'Using tools...' : 'Thinking'}
             completedVerb={hasTools ? 'Worked' : 'Thought'}
           />
           <ChainOfThoughtContent>
@@ -530,44 +550,43 @@ export const MessageItem = memo(
                   partIndex === message.parts.length - 1
                 const partIsStreaming = isStreaming && isLastMsgPart
 
-                return (
-                  <div
-                    key={`${message.id}-r-${partIndex}`}
-                    className="relative"
-                  >
-                    {partIsStreaming && (
-                      <div className="absolute top-0 left-0 right-0 h-8 bg-linear-to-br from-neutral-50 mask-t-from-98% dark:from-background to-transparent pointer-events-none z-10" />
-                    )}
+                // Streaming: show only the current paragraph as a single
+                // active step (bounded height, swaps as each paragraph
+                // completes). Done/historical: full dot-railed step timeline.
+                if (partIsStreaming) {
+                  return (
                     <div
-                      ref={partIsStreaming ? reasoningContainerRef : null}
-                      onScroll={
-                        partIsStreaming ? onReasoningScroll : undefined
-                      }
-                      className={twMerge(
-                        'w-full overflow-auto relative',
-                        partIsStreaming
-                          ? 'max-h-64 opacity-70 mt-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
-                          : 'h-auto opacity-100'
-                      )}
+                      key={`${message.id}-r-${partIndex}`}
+                      className="relative"
                     >
                       <div
-                        dir="auto"
-                        className="select-text whitespace-pre-wrap wrap-break-word text-sm text-main-view-fg/70"
+                        ref={reasoningContainerRef}
+                        onScroll={onReasoningScroll}
+                        className={twMerge(
+                          'w-full overflow-auto relative max-h-40',
+                          '[scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
+                        )}
                       >
-                        {part.text}
+                        <ReasoningActiveStep text={part.text} />
                       </div>
+                      {!isReasoningAtBottom && (
+                        <Button
+                          className="absolute bottom-2 left-[50%] translate-x-[-50%] rounded-full size-7 z-10"
+                          onClick={onReasoningScrollToBottom}
+                          size="icon"
+                          type="button"
+                          variant="outline"
+                        >
+                          <IconArrowDown className="size-3" />
+                        </Button>
+                      )}
                     </div>
-                    {partIsStreaming && !isReasoningAtBottom && (
-                      <Button
-                        className="absolute bottom-2 left-[50%] translate-x-[-50%] rounded-full size-7 z-10"
-                        onClick={onReasoningScrollToBottom}
-                        size="icon"
-                        type="button"
-                        variant="outline"
-                      >
-                        <IconArrowDown className="size-3" />
-                      </Button>
-                    )}
+                  )
+                }
+
+                return (
+                  <div key={`${message.id}-r-${partIndex}`} className="relative">
+                    <ReasoningTimeline text={part.text} />
                   </div>
                 )
               }
@@ -739,7 +758,9 @@ export const MessageItem = memo(
           message.role === 'assistant' &&
           !awaitingApproval &&
           (hasPendingToolCall || status === CHAT_STATUS.SUBMITTED) && (
-            <PromptProgress hideIdle={hasPendingToolCall} />
+            <div className="mt-2">
+              <PromptProgress hideIdle={hasPendingToolCall} />
+            </div>
           )}
 
         {typeof messageError === 'string' && messageError.length > 0 && (

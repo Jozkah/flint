@@ -1,6 +1,9 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::core::{downloads::models::DownloadManagerState, mcp::models::McpSettings};
+use crate::core::{
+    downloads::models::DownloadManagerState,
+    mcp::models::{McpSettings, ToolWithServer},
+};
 use rmcp::{
     model::{CallToolRequestParam, CallToolResult, InitializeRequestParam, Tool},
     service::RunningService,
@@ -24,6 +27,13 @@ pub struct ProviderConfig {
     pub base_url: Option<String>,
     pub custom_headers: Vec<ProviderCustomHeader>,
     pub models: Vec<String>,
+    /// Upstream wire API this provider speaks. `None`/`"openai"` = OpenAI
+    /// chat/completions (verbatim passthrough). Other values select a
+    /// translating converter (e.g. `"openai-responses"`, `"google"`,
+    /// `"anthropic"`) so the proxy can accept OpenAI-shaped requests and talk
+    /// the provider's native API.
+    #[serde(default)]
+    pub api_type: Option<String>,
 }
 
 impl ProviderConfig {
@@ -67,6 +77,12 @@ pub struct AppState {
     pub model_param_defaults: Arc<Mutex<HashMap<String, serde_json::Value>>>,
     /// Wakes up MCP monitors to trigger an immediate health check + reconnect
     pub mcp_reconnect_notify: Arc<Notify>,
+    /// Last successful tool listing per enabled server, served when a server
+    /// is transiently disconnected so its schema stays present and stable in
+    /// the prompt instead of disappearing/reappearing across reconnects.
+    /// Cleared only on explicit user deactivation, never on a transient
+    /// list-tools failure.
+    pub mcp_last_known_tools: Arc<Mutex<HashMap<String, Vec<ToolWithServer>>>>,
 }
 
 impl Default for AppState {
@@ -86,6 +102,7 @@ impl Default for AppState {
             provider_configs: Default::default(),
             model_param_defaults: Default::default(),
             mcp_reconnect_notify: Arc::new(Notify::new()),
+            mcp_last_known_tools: Default::default(),
         }
     }
 }

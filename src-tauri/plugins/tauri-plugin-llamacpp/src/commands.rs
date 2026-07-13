@@ -39,7 +39,240 @@ async fn http_client() -> reqwest::Client {
         .unwrap_or_else(|_| reqwest::Client::new())
 }
 
-async fn post_load(port: u16, api_key: &str, model_id: &str) -> ServerResult<()> {
+/// Payload for the `llamacpp-model-load-progress` event, mirrored from the
+/// router's `/models/sse` `status_change` events (`progress.value` is 0.0-1.0).
+/// `stage` is the upstream stage identifier being loaded right now
+/// (`text_model` | `mmproj_model` | `spec_model`); `stages` is the full set
+/// for this load - always includes `text_model`, plus `mmproj_model` for a
+/// vision-capable model and/or `spec_model` for speculative decoding. A
+/// plain text-only load (the common case) has exactly one stage, so the
+/// frontend uses `stages.len() > 1` to decide whether naming the stage is
+/// worth surfacing at all.
+#[derive(serde::Serialize, Clone)]
+pub struct LoadProgressPayload {
+    pub model: String,
+    pub stage: Option<String>,
+    pub stages: Vec<String>,
+    pub value: f64,
+}
+
+/// Parses one SSE "event block" (text up to and including a `\n\n`
+/// separator) and returns a progress payload if it's a `status_change` event
+/// for `model_id` carrying a non-null `progress` field. Returns `None` for
+/// any other event, a different model, or malformed input - callers should
+/// simply skip the block.
+fn parse_load_progress_event(block: &str, model_id: &str) -> Option<LoadProgressPayload> {
+    for line in block.lines() {
+        let data = line
+            .strip_prefix("data: ")
+            .or_else(|| line.strip_prefix("data:"))?;
+        let json: serde_json::Value = serde_json::from_str(data).ok()?;
+        if json.get("model").and_then(|v| v.as_str()) != Some(model_id) {
+            continue;
+        }
+        if json.get("event").and_then(|v| v.as_str()) != Some("status_change") {
+            continue;
+        }
+        let progress = json.get("data").and_then(|d| d.get("progress"))?;
+        if progress.is_null() {
+            continue;
+        }
+        let value = progress.get("value").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let stage = progress
+            .get("current")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let stages = progress
+            .get("stages")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        return Some(LoadProgressPayload {
+            model: model_id.to_string(),
+            stage,
+            stages,
+            value,
+        });
+    }
+    None
+}
+
+/// Subscribes to the router's `/models/sse` feed and re-emits `progress`
+/// updates for `model_id` as Tauri events, until the connection drops or the
+/// task is aborted by the caller once loading finishes.
+///
+/// `/models/sse` was introduced upstream in build b9747 (server: real-time
+/// model load progress tracking, #24828); this plugin doesn't track backend
+/// build numbers, so rather than gating ahead of time we just check the
+/// response here. Older backends 404 (or otherwise fail) and we return
+/// immediately without emitting anything - the UI already has a workaround,
+/// falling back to its plain "Loading model..." spinner (`loadingModel`,
+/// entirely unaffected by this listener) in `PromptProgress.tsx`.
+fn spawn_load_progress_listener<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    port: u16,
+    api_key: String,
+    model_id: String,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        use futures_util::StreamExt;
+
+        let client = http_client().await;
+        let url = format!("http://127.0.0.1:{}/models/sse", port);
+        let resp = match client.get(&url).bearer_auth(&api_key).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                log::debug!("model load progress: failed to connect to /models/sse: {}", e);
+                return;
+            }
+        };
+        if !resp.status().is_success() {
+            log::debug!(
+                "model load progress unavailable on this backend (/models/sse returned {}); \
+                 falling back to the plain loading indicator",
+                resp.status()
+            );
+            return;
+        }
+
+        let mut stream = resp.bytes_stream();
+        let mut buf = String::new();
+        while let Some(chunk) = stream.next().await {
+            let Ok(bytes) = chunk else { break };
+            buf.push_str(&String::from_utf8_lossy(&bytes));
+
+            while let Some(pos) = buf.find("\n\n") {
+                let event_block: String = buf.drain(..pos + 2).collect();
+                if let Some(payload) = parse_load_progress_event(&event_block, &model_id) {
+                    let _ = app_handle.emit("llamacpp-model-load-progress", payload);
+                }
+            }
+        }
+    })
+}
+
+/// Payload for the `llamacpp-model-unloaded` event: any model transition to
+/// `status: "unloaded"` seen on `/models/sse`, regardless of cause (explicit
+/// unload, LRU eviction under `models_max`, or a crash - `exit_code` is 0 for
+/// the first two, nonzero for a crash). Forwarded unconditionally; the
+/// frontend already knows about unloads it requested itself, so reconciling
+/// already-correct state is a harmless no-op.
+#[derive(serde::Serialize, Clone)]
+pub struct UnloadEventPayload {
+    pub model: String,
+    pub exit_code: Option<i64>,
+}
+
+/// Parses one SSE event block, returning an unload payload only for a
+/// `status_change` event whose `data.status` is `"unloaded"`. `None` for any
+/// other event/status or malformed input.
+fn parse_unload_event(block: &str) -> Option<UnloadEventPayload> {
+    for line in block.lines() {
+        let data = line
+            .strip_prefix("data: ")
+            .or_else(|| line.strip_prefix("data:"))?;
+        let json: serde_json::Value = serde_json::from_str(data).ok()?;
+        if json.get("event").and_then(|v| v.as_str()) != Some("status_change") {
+            continue;
+        }
+        let model = json.get("model").and_then(|v| v.as_str())?;
+        let status = json
+            .get("data")
+            .and_then(|d| d.get("status"))
+            .and_then(|v| v.as_str())?;
+        if status != "unloaded" {
+            continue;
+        }
+        let exit_code = json
+            .get("data")
+            .and_then(|d| d.get("exit_code"))
+            .and_then(|v| v.as_i64());
+        return Some(UnloadEventPayload {
+            model: model.to_string(),
+            exit_code,
+        });
+    }
+    None
+}
+
+/// Subscribes to the router's `/models/sse` feed for the router's entire
+/// lifetime, re-emitting every model-unload transition (explicit unload, LRU
+/// eviction, crash) as `llamacpp-model-unloaded`. Unlike
+/// `spawn_load_progress_listener` (per-model, aborted once loading finishes)
+/// this runs continuously and reconnects with backoff on a dropped
+/// connection, since the router process can outlive many individual loads.
+///
+/// `/models/sse` itself was introduced upstream in build b9688 (#23976); on
+/// an older backend the initial connection succeeds at the TCP/HTTP layer
+/// but the route 404s, so we give up permanently after the first failed
+/// connection instead of retrying forever against a route that will never
+/// exist. A transient connection error (router mid-restart) is retried with
+/// exponential backoff instead, since that's recoverable.
+fn spawn_unload_watcher<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    port: u16,
+    api_key: String,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        use futures_util::StreamExt;
+
+        let client = http_client().await;
+        let url = format!("http://127.0.0.1:{}/models/sse", port);
+        let mut backoff = Duration::from_millis(500);
+        const MAX_BACKOFF: Duration = Duration::from_secs(30);
+
+        loop {
+            let resp = match client.get(&url).bearer_auth(&api_key).send().await {
+                Ok(r) => r,
+                Err(e) => {
+                    log::debug!(
+                        "model unload watcher: failed to connect to /models/sse: {}; retrying in {:?}",
+                        e,
+                        backoff
+                    );
+                    tokio::time::sleep(backoff).await;
+                    backoff = (backoff * 2).min(MAX_BACKOFF);
+                    continue;
+                }
+            };
+            if !resp.status().is_success() {
+                log::debug!(
+                    "model unload watcher: /models/sse returned {} (backend predates b9688?); giving up",
+                    resp.status()
+                );
+                return;
+            }
+            backoff = Duration::from_millis(500);
+
+            let mut stream = resp.bytes_stream();
+            let mut buf = String::new();
+            while let Some(chunk) = stream.next().await {
+                let Ok(bytes) = chunk else { break };
+                buf.push_str(&String::from_utf8_lossy(&bytes));
+                while let Some(pos) = buf.find("\n\n") {
+                    let event_block: String = buf.drain(..pos + 2).collect();
+                    if let Some(payload) = parse_unload_event(&event_block) {
+                        let _ = app_handle.emit("llamacpp-model-unloaded", payload);
+                    }
+                }
+            }
+            // Stream ended (router restarted or connection dropped); briefly
+            // pause then reconnect.
+            tokio::time::sleep(Duration::from_millis(500)).await;
+        }
+    })
+}
+
+async fn post_load<R: Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    port: u16,
+    api_key: &str,
+    model_id: &str,
+) -> ServerResult<()> {
     let client = http_client().await;
     let url = format!("http://127.0.0.1:{}/models/load", port);
     let resp = client
@@ -67,9 +300,18 @@ async fn post_load(port: u16, api_key: &str, model_id: &str) -> ServerResult<()>
         }
     }
 
+    let progress_task = spawn_load_progress_listener(
+        app_handle.clone(),
+        port,
+        api_key.to_string(),
+        model_id.to_string(),
+    );
+
     // /models/load returns success once loading is *initiated*; poll /models
     // until the entry transitions from "loading" to "loaded" (or fails).
-    wait_until_loaded(port, api_key, model_id, Duration::from_secs(600)).await
+    let result = wait_until_loaded(port, api_key, model_id, Duration::from_secs(600)).await;
+    progress_task.abort();
+    result
 }
 
 async fn wait_until_loaded(
@@ -336,7 +578,7 @@ pub async fn load_llama_model<R: Runtime>(
     let (port, api_key, pid) = router_endpoint(&app_handle)
         .await
         .map_err(ServerError::InvalidArgument)?;
-    post_load(port, &api_key, &model_id).await?;
+    post_load(&app_handle, port, &api_key, &model_id).await?;
     Ok(SessionInfo {
         pid: pid as i32,
         port: port as i32,
@@ -386,7 +628,7 @@ pub async fn ensure_session_ready<R: Runtime>(
     is_embedding: bool,
 ) -> Result<SessionInfo, String> {
     let (port, api_key, pid) = router_endpoint(&app_handle).await?;
-    post_load(port, &api_key, &model_id)
+    post_load(&app_handle, port, &api_key, &model_id)
         .await
         .map_err(|e| e.to_string())?;
     Ok(SessionInfo {
@@ -499,12 +741,23 @@ pub async fn start_router<R: Runtime>(
         .router_pid
         .store(handle.pid, std::sync::atomic::Ordering::SeqCst);
     *guard = Some(handle);
+
+    let watcher = spawn_unload_watcher(app_handle.clone(), info.port, info.api_key.clone());
+    *state.unload_watcher.lock().await = Some(watcher);
+
     Ok(info)
+}
+
+async fn stop_unload_watcher(state: &LlamacppState) {
+    if let Some(handle) = state.unload_watcher.lock().await.take() {
+        handle.abort();
+    }
 }
 
 #[tauri::command]
 pub async fn stop_router<R: Runtime>(app_handle: tauri::AppHandle<R>) -> Result<(), String> {
     let state: State<Arc<LlamacppState>> = app_handle.state();
+    stop_unload_watcher(&state).await;
     let mut guard = state.router.lock().await;
     if let Some(handle) = guard.take() {
         state
@@ -613,6 +866,7 @@ pub async fn try_graceful_stop_router<R: Runtime>(
             state
                 .router_pid
                 .store(0, std::sync::atomic::Ordering::SeqCst);
+            stop_unload_watcher(&state).await;
             Ok(None)
         }
         Err((h, busy)) => {
@@ -687,10 +941,225 @@ pub async fn force_kill_router_tree<R: Runtime>(
         let mut guard = state.router.lock().await;
         guard.take()
     };
+    stop_unload_watcher(&state).await;
     match (maybe_handle, pid) {
         (Some(handle), _) => crate::router::force_kill_router_tree(handle).await,
         (None, p) if p != 0 => crate::router::force_kill_router_tree_by_pid(p),
         _ => {}
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod load_progress_tests {
+    use super::parse_load_progress_event;
+
+    fn sse_block(model: &str, event: &str, data: serde_json::Value) -> String {
+        let payload = serde_json::json!({ "model": model, "event": event, "data": data });
+        format!("data: {}\n\n", payload)
+    }
+
+    #[test]
+    fn parses_a_matching_progress_event() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({
+                "status": "loading",
+                "progress": { "stages": ["text_model"], "current": "text_model", "value": 0.42 }
+            }),
+        );
+        let payload = parse_load_progress_event(&block, "model-1").expect("should parse");
+        assert_eq!(payload.model, "model-1");
+        assert_eq!(payload.stage.as_deref(), Some("text_model"));
+        assert_eq!(payload.stages, vec!["text_model".to_string()]);
+        assert!((payload.value - 0.42).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn parses_a_multi_stage_vision_model_load() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({
+                "status": "loading",
+                "progress": {
+                    "stages": ["text_model", "mmproj_model"],
+                    "current": "mmproj_model",
+                    "value": 0.8
+                }
+            }),
+        );
+        let payload = parse_load_progress_event(&block, "model-1").expect("should parse");
+        assert_eq!(payload.stage.as_deref(), Some("mmproj_model"));
+        assert_eq!(
+            payload.stages,
+            vec!["text_model".to_string(), "mmproj_model".to_string()]
+        );
+    }
+
+    #[test]
+    fn defaults_missing_stages_array_to_empty() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({ "progress": { "current": "text_model", "value": 0.5 } }),
+        );
+        let payload = parse_load_progress_event(&block, "model-1").expect("should parse");
+        assert!(payload.stages.is_empty());
+    }
+
+    #[test]
+    fn ignores_events_for_a_different_model() {
+        let block = sse_block(
+            "other-model",
+            "status_change",
+            serde_json::json!({ "progress": { "current": "text_model", "value": 0.5 } }),
+        );
+        assert!(parse_load_progress_event(&block, "model-1").is_none());
+    }
+
+    #[test]
+    fn ignores_non_status_change_events() {
+        let block = sse_block(
+            "model-1",
+            "download_progress",
+            serde_json::json!({ "done": 10, "total": 100 }),
+        );
+        assert!(parse_load_progress_event(&block, "model-1").is_none());
+    }
+
+    #[test]
+    fn ignores_status_change_without_progress() {
+        let block = sse_block("model-1", "status_change", serde_json::json!({ "status": "loaded" }));
+        assert!(parse_load_progress_event(&block, "model-1").is_none());
+    }
+
+    #[test]
+    fn ignores_null_progress() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({ "status": "loaded", "progress": null }),
+        );
+        assert!(parse_load_progress_event(&block, "model-1").is_none());
+    }
+
+    #[test]
+    fn ignores_malformed_json() {
+        let block = "data: not json at all\n\n".to_string();
+        assert!(parse_load_progress_event(&block, "model-1").is_none());
+    }
+
+    #[test]
+    fn ignores_blocks_with_no_data_line() {
+        let block = "event: ping\n\n".to_string();
+        assert!(parse_load_progress_event(&block, "model-1").is_none());
+    }
+
+    #[test]
+    fn defaults_missing_value_to_zero() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({ "progress": { "current": "text_model" } }),
+        );
+        let payload = parse_load_progress_event(&block, "model-1").expect("should parse");
+        assert_eq!(payload.value, 0.0);
+        assert_eq!(payload.stage.as_deref(), Some("text_model"));
+    }
+
+    #[test]
+    fn defaults_missing_stage_to_none() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({ "progress": { "value": 0.9 } }),
+        );
+        let payload = parse_load_progress_event(&block, "model-1").expect("should parse");
+        assert!(payload.stage.is_none());
+    }
+}
+
+#[cfg(test)]
+mod unload_watcher_tests {
+    use super::parse_unload_event;
+
+    fn sse_block(model: &str, event: &str, data: serde_json::Value) -> String {
+        let payload = serde_json::json!({ "model": model, "event": event, "data": data });
+        format!("data: {}\n\n", payload)
+    }
+
+    #[test]
+    fn parses_an_unload_event_with_exit_code() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({ "status": "unloaded", "exit_code": 137 }),
+        );
+        let payload = parse_unload_event(&block).expect("should parse");
+        assert_eq!(payload.model, "model-1");
+        assert_eq!(payload.exit_code, Some(137));
+    }
+
+    #[test]
+    fn parses_a_clean_unload_with_zero_exit_code() {
+        // LRU eviction / explicit unload: clean stop, exit_code 0.
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({ "status": "unloaded", "exit_code": 0 }),
+        );
+        let payload = parse_unload_event(&block).expect("should parse");
+        assert_eq!(payload.exit_code, Some(0));
+    }
+
+    #[test]
+    fn ignores_non_unloaded_status() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({ "status": "loading" }),
+        );
+        assert!(parse_unload_event(&block).is_none());
+    }
+
+    #[test]
+    fn ignores_non_status_change_events() {
+        let block = sse_block(
+            "model-1",
+            "model_remove",
+            serde_json::json!({}),
+        );
+        assert!(parse_unload_event(&block).is_none());
+    }
+
+    #[test]
+    fn defaults_missing_exit_code_to_none() {
+        let block = sse_block(
+            "model-1",
+            "status_change",
+            serde_json::json!({ "status": "unloaded" }),
+        );
+        let payload = parse_unload_event(&block).expect("should parse");
+        assert_eq!(payload.exit_code, None);
+    }
+
+    #[test]
+    fn ignores_malformed_json() {
+        let block = "data: not json\n\n".to_string();
+        assert!(parse_unload_event(&block).is_none());
+    }
+
+    #[test]
+    fn ignores_missing_status_field() {
+        let block = sse_block("model-1", "status_change", serde_json::json!({}));
+        assert!(parse_unload_event(&block).is_none());
+    }
+
+    #[test]
+    fn ignores_blocks_with_no_data_line() {
+        let block = "event: ping\n\n".to_string();
+        assert!(parse_unload_event(&block).is_none());
+    }
 }
