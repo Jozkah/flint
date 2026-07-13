@@ -415,6 +415,11 @@ export function createCustomFetch(
       normalised[targetKey] = coerced
     }
     const merged = { ...rawBody, ...normalised }
+    if (keepLlamacppOnly) {
+      // Assert the server default explicitly so a preset/CLI override can't
+      // silently disable prompt-prefix KV reuse across turns.
+      merged.cache_prompt = true
+    }
     if (keepLlamacppOnly && merged.stream === true) {
       merged.return_progress = true
       // Requests per-chunk timings so the token counter can update live

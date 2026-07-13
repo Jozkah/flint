@@ -330,6 +330,21 @@ describe('createCustomFetch — max_tokens coercion', () => {
     expect(sent.timings_per_token).toBeUndefined()
   })
 
+  it('sets cache_prompt=true when keepLlamacppOnly is true', async () => {
+    const sent = await captureSentBody({}, true, {})
+    expect(sent.cache_prompt).toBe(true)
+  })
+
+  it('does not set cache_prompt for non-llamacpp providers', async () => {
+    const sent = await captureSentBody({}, false, {})
+    expect(sent.cache_prompt).toBeUndefined()
+  })
+
+  it('preserves an explicit id_slot passed via parameters (title-gen path)', async () => {
+    const sent = await captureSentBody({ id_slot: 3 }, true, {})
+    expect(sent.id_slot).toBe(3)
+  })
+
   it('leaves non-zero max_tokens alone', async () => {
     const sent = await captureSentBody({}, true, { max_tokens: 512 })
     expect(sent.max_tokens).toBe(512)

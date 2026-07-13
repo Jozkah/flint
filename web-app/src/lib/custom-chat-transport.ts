@@ -603,6 +603,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private routerModel: LanguageModel | null = null
   private routerModelKey = ''
   private tools: Record<string, Tool> = {}
+  // Smart tool routing selects tools from the latest user message, which would
+  // change the tool set (and thus the cached prompt prefix) every turn. Freeze
+  // the routed set for the thread's lifetime so the prefix stays stable;
+  // re-route only when the connected servers or disabled-tool set changes.
+  private frozenRoutedTools: MCPTool[] | null = null
+  private frozenRoutedSig = ''
   private onTokenUsage?: TokenUsageCallback
   private hasDocuments = false
   private modelSupportsTools = false
@@ -770,26 +776,37 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           mcpService.getToolsForServers &&
           mcpService.getServerSummaries
         ) {
-          const routerModel =
-            mcpSettings.useLightweightRouterModel &&
-            mcpSettings.routerModelProvider.trim() &&
-            mcpSettings.routerModelId.trim()
-              ? (await this.resolveRouterModel(mcpSettings)) ?? this.model
-              : this.model
-          mcpTools = await mcpOrchestrator.getRelevantTools(
-            this.lastUserMessage,
-            {
-              getTools: () => mcpService.getTools(),
-              getToolsForServers: (names) =>
-                mcpService.getToolsForServers!(names),
-              getServerSummaries: () => mcpService.getServerSummaries!(),
-            },
-            disabledToolKeys,
-            {
-              routerModel,
-              abortSignal,
-            }
-          )
+          const summaries = await mcpService.getServerSummaries!()
+          const routedSig = JSON.stringify({
+            servers: summaries.map((s) => s.name).sort(),
+            disabled: [...disabledToolKeys].sort(),
+          })
+          if (this.frozenRoutedTools && this.frozenRoutedSig === routedSig) {
+            mcpTools = this.frozenRoutedTools
+          } else {
+            const routerModel =
+              mcpSettings.useLightweightRouterModel &&
+              mcpSettings.routerModelProvider.trim() &&
+              mcpSettings.routerModelId.trim()
+                ? (await this.resolveRouterModel(mcpSettings)) ?? this.model
+                : this.model
+            mcpTools = await mcpOrchestrator.getRelevantTools(
+              this.lastUserMessage,
+              {
+                getTools: () => mcpService.getTools(),
+                getToolsForServers: (names) =>
+                  mcpService.getToolsForServers!(names),
+                getServerSummaries: () => Promise.resolve(summaries),
+              },
+              disabledToolKeys,
+              {
+                routerModel,
+                abortSignal,
+              }
+            )
+            this.frozenRoutedTools = mcpTools
+            this.frozenRoutedSig = routedSig
+          }
         } else {
           mcpTools = await mcpService.getTools()
         }
@@ -966,6 +983,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       }
       if (isPredefinedRemoteProvider(effectiveProviderName)) {
         for (const key of Object.keys(paramsSettings)) delete mergedParams[key]
+      }
+      // Pin chat to slot 0 so llama-server reuses this thread's cached KV
+      // prefix across turns; title generation uses the reserved background
+      // slot (RESERVED_BACKGROUND_SLOTS) and can't evict it.
+      if (providerId === 'llamacpp') {
+        mergedParams.id_slot = 0
       }
       this.model = await ModelFactory.createModel(
         modelId,
