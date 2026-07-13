@@ -28,6 +28,7 @@ import {
   tokensForThinkingBudgetLevel,
   isThinkingBudgetLevelKey,
 } from '@/lib/thinkingBudget'
+import { buildReasoningProviderOptions } from '@/lib/reasoningProviderOptions'
 import {
   ExtensionTypeEnum,
   VectorDBExtension,
@@ -1175,6 +1176,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const modelSupportsTools = selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools
     const shouldEnableTools = hasTools && modelSupportsTools
 
+    // Cloud providers take reasoning via the AI SDK's per-request
+    // providerOptions (native thinking config), not the raw body.
+    const reasoningProviderOptions = buildReasoningProviderOptions(
+      providerId,
+      useModelProvider.getState().selectedModel
+    )
+
     let streamStartTime: number | undefined
     useAppState.getState().updatePromptProgress(undefined)
     useAppState.getState().updateThreadPromptProgress(threadId, undefined)
@@ -1189,6 +1197,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       toolChoice: shouldEnableTools ? 'auto' : undefined,
       system: effectiveSystem,
       ...(maxOutputTokens !== undefined ? { maxTokens: maxOutputTokens } : {}),
+      ...(reasoningProviderOptions
+        ? { providerOptions: reasoningProviderOptions }
+        : {}),
       experimental_repairToolCall: async ({ toolCall, error }) => {
         // Windows paths (`C:\Users\...`) contain invalid JSON escapes that make
         // the SDK's argument parse fail. Re-escape lone backslashes and retry

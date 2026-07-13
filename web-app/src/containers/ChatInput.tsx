@@ -2234,8 +2234,16 @@ const ChatInput = memo(function ChatInput({
                 )}
 
                 {!effectiveAgentMode &&
-                  selectedProvider === 'llamacpp' &&
+                  (selectedProvider === 'llamacpp' ||
+                    selectedProvider === 'google' ||
+                    selectedProvider === 'gemini' ||
+                    selectedProvider === 'anthropic' ||
+                    selectedProvider === 'openai') &&
                   (() => {
+                    // The token-budget submenu only applies to local llama.cpp
+                    // (budget resolved against live n_ctx). Cloud providers size
+                    // their own budget dynamically, so on/off/auto is enough.
+                    const showThinkingBudget = selectedProvider === 'llamacpp'
                     const reasoningValue =
                       (selectedModel?.settings?.reasoning?.controller_props
                         ?.value as 'auto' | 'on' | 'off' | undefined) ?? 'auto'
@@ -2282,6 +2290,114 @@ const ChatInput = memo(function ChatInput({
                       // chat transport both observe the new value.
                       selectModelProvider(selectedProvider, selectedModel.id)
                     }
+                    const clearModelSetting = (settingKey: string) => {
+                      if (!selectedProvider || !selectedModel) return
+                      const providerObj = getProviderByName(selectedProvider)
+                      if (!providerObj) return
+                      const modelIndex = providerObj.models.findIndex(
+                        (m) => m.id === selectedModel.id
+                      )
+                      if (modelIndex === -1) return
+                      const nextSettings = { ...(selectedModel.settings ?? {}) }
+                      delete nextSettings[settingKey]
+                      const updatedModels = [...providerObj.models]
+                      updatedModels[modelIndex] = {
+                        ...selectedModel,
+                        settings: nextSettings,
+                      } as Model
+                      updateProvider(selectedProvider, { models: updatedModels })
+                      selectModelProvider(selectedProvider, selectedModel.id)
+                    }
+
+                    // OpenAI reasoning models expose a discrete effort (no
+                    // on/off, no token budget). Reuse the thinking_budget_tokens
+                    // level as the effort value; "Default" clears it so the
+                    // model uses its own default effort.
+                    if (selectedProvider === 'openai') {
+                      const rawEffort =
+                        selectedModel?.settings?.thinking_budget_tokens
+                          ?.controller_props?.value
+                      const currentEffort =
+                        isThinkingBudgetLevelKey(rawEffort) &&
+                        rawEffort !== 'unlimited'
+                          ? rawEffort
+                          : undefined
+                      const EFFORTS: ThinkingBudgetLevelKey[] = [
+                        'low',
+                        'medium',
+                        'high',
+                        'xhigh',
+                      ]
+                      const effortLabel = currentEffort
+                        ? THINKING_BUDGET_LEVELS.find(
+                            (l) => l.key === currentEffort
+                          )!.label
+                        : 'Default'
+                      return (
+                        <DropdownMenu>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  aria-label={`Reasoning effort: ${effortLabel}`}
+                                >
+                                  <IconBrain
+                                    size={18}
+                                    className={cn(
+                                      'text-muted-foreground',
+                                      currentEffort && 'text-primary'
+                                    )}
+                                  />
+                                </Button>
+                              </DropdownMenuTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Reasoning effort: {effortLabel}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuItem
+                              onClick={() =>
+                                clearModelSetting('thinking_budget_tokens')
+                              }
+                            >
+                              Default
+                              {!currentEffort && (
+                                <span className="ml-auto text-xs text-muted-foreground">
+                                  ✓
+                                </span>
+                              )}
+                            </DropdownMenuItem>
+                            {EFFORTS.map((key) => (
+                              <DropdownMenuItem
+                                key={key}
+                                onClick={() =>
+                                  updateModelSetting(
+                                    'thinking_budget_tokens',
+                                    'Reasoning Effort',
+                                    'dropdown',
+                                    key
+                                  )
+                                }
+                              >
+                                {
+                                  THINKING_BUDGET_LEVELS.find(
+                                    (l) => l.key === key
+                                  )!.label
+                                }
+                                {currentEffort === key && (
+                                  <span className="ml-auto text-xs text-muted-foreground">
+                                    ✓
+                                  </span>
+                                )}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )
+                    }
                     const setReasoning = (value: 'auto' | 'on' | 'off') =>
                       updateModelSetting(
                         'reasoning',
@@ -2300,7 +2416,7 @@ const ChatInput = memo(function ChatInput({
                         ? 'Reasoning forced on for every request.'
                         : reasoningValue === 'off'
                           ? 'Reasoning disabled for every request.'
-                          : "Reasoning auto-detected from the model's chat template."
+                          : "Reasoning uses the model's default."
 
                     // Stored as a symbolic level, not an absolute token count:
                     // the live context size (post auto-fit) is only known once
@@ -2380,44 +2496,53 @@ const ChatInput = memo(function ChatInput({
                               </span>
                             )}
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuSub>
-                            <DropdownMenuSubTrigger>
-                              <span className="flex-1">Thinking Budget</span>
-                              <span className="text-xs text-muted-foreground">
-                                {currentBudgetLabel}
-                              </span>
-                            </DropdownMenuSubTrigger>
-                            <DropdownMenuSubContent
-                              collisionPadding={{ bottom: 16 }}
-                            >
-                              {THINKING_BUDGET_LEVELS.map((level) => {
-                                const approxTokens = tokensForThinkingBudgetLevel(
-                                  level.key,
-                                  approxContextSize
-                                )
-                                return (
-                                  <DropdownMenuItem
-                                    key={level.key}
-                                    onClick={() => setThinkingBudget(level.key)}
-                                    className="gap-2"
-                                  >
-                                    <span className="flex-1">{level.label}</span>
-                                    <span className="w-14 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-                                      {approxTokens === -1
-                                        ? ''
-                                        : `~${approxTokens}`}
-                                    </span>
-                                    <span className="w-3 shrink-0 text-xs text-muted-foreground">
-                                      {currentBudgetLevel === level.key
-                                        ? '✓'
-                                        : ''}
-                                    </span>
-                                  </DropdownMenuItem>
-                                )
-                              })}
-                            </DropdownMenuSubContent>
-                          </DropdownMenuSub>
+                          {showThinkingBudget && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuSub>
+                                <DropdownMenuSubTrigger>
+                                  <span className="flex-1">Thinking Budget</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {currentBudgetLabel}
+                                  </span>
+                                </DropdownMenuSubTrigger>
+                                <DropdownMenuSubContent
+                                  collisionPadding={{ bottom: 16 }}
+                                >
+                                  {THINKING_BUDGET_LEVELS.map((level) => {
+                                    const approxTokens =
+                                      tokensForThinkingBudgetLevel(
+                                        level.key,
+                                        approxContextSize
+                                      )
+                                    return (
+                                      <DropdownMenuItem
+                                        key={level.key}
+                                        onClick={() =>
+                                          setThinkingBudget(level.key)
+                                        }
+                                        className="gap-2"
+                                      >
+                                        <span className="flex-1">
+                                          {level.label}
+                                        </span>
+                                        <span className="w-14 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+                                          {approxTokens === -1
+                                            ? ''
+                                            : `~${approxTokens}`}
+                                        </span>
+                                        <span className="w-3 shrink-0 text-xs text-muted-foreground">
+                                          {currentBudgetLevel === level.key
+                                            ? '✓'
+                                            : ''}
+                                        </span>
+                                      </DropdownMenuItem>
+                                    )
+                                  })}
+                                </DropdownMenuSubContent>
+                              </DropdownMenuSub>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     )
