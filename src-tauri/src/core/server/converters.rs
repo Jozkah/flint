@@ -104,6 +104,11 @@ pub trait UpstreamConverter: Send + Sync {
         ("authorization", format!("Bearer {key}"))
     }
 
+    /// Fixed headers the native API requires (Anthropic: `anthropic-version`).
+    fn extra_headers(&self) -> Vec<(&'static str, &'static str)> {
+        Vec::new()
+    }
+
     /// Rewrite the inbound chat/completions body into the native request body.
     fn convert_request(&self, body: &Value) -> Value;
 
@@ -121,6 +126,7 @@ pub fn converter_for(api_type: Option<&str>) -> Option<Box<dyn UpstreamConverter
     match api_type {
         Some("openai-responses") => Some(Box::new(OpenAIResponsesConverter::new())),
         Some("google") => Some(Box::new(GoogleGenerateContentConverter::new())),
+        Some("anthropic") => Some(Box::new(AnthropicMessagesConverter::new())),
         _ => None,
     }
 }
@@ -137,6 +143,8 @@ pub struct StreamState {
     pub tool_index: HashMap<String, usize>,
     pub next_tool_index: usize,
     pub finished: bool,
+    /// Prompt tokens captured early (Anthropic sends them in `message_start`).
+    pub input_tokens: i64,
 }
 
 /// Fronts OpenAI's `/v1/responses` API, exposing it as chat/completions so the
@@ -777,6 +785,355 @@ impl UpstreamConverter for GoogleGenerateContentConverter {
     }
 }
 
+/// Anthropic requires a `max_tokens`; chat/completions may omit it.
+const ANTHROPIC_DEFAULT_MAX_TOKENS: i64 = 4096;
+
+/// Fronts Anthropic's `/v1/messages` API. Auth is `x-api-key` plus a fixed
+/// `anthropic-version` header. The registered provider `base_url` should include
+/// the version prefix, e.g. `https://api.anthropic.com/v1`.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct AnthropicMessagesConverter;
+
+impl AnthropicMessagesConverter {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+fn map_anthropic_finish(reason: &str, saw_tool: bool) -> &'static str {
+    if saw_tool {
+        return "tool_calls";
+    }
+    match reason {
+        "max_tokens" => "length",
+        "tool_use" => "tool_calls",
+        "refusal" => "content_filter",
+        _ => "stop",
+    }
+}
+
+fn anthropic_usage(input_tokens: i64, output_tokens: i64) -> Value {
+    json!({
+        "prompt_tokens": input_tokens,
+        "completion_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+    })
+}
+
+/// Append `blocks` to the last message when it shares `role`, else start a new
+/// one. Anthropic rejects consecutive same-role messages, so tool results and
+/// adjacent turns must be merged.
+fn push_merged(messages: &mut Vec<Value>, role: &str, blocks: Vec<Value>) {
+    if blocks.is_empty() {
+        return;
+    }
+    if let Some(last) = messages.last_mut() {
+        if last.get("role").and_then(|r| r.as_str()) == Some(role) {
+            if let Some(arr) = last.get_mut("content").and_then(|c| c.as_array_mut()) {
+                arr.extend(blocks);
+                return;
+            }
+        }
+    }
+    messages.push(json!({"role": role, "content": blocks}));
+}
+
+impl UpstreamConverter for AnthropicMessagesConverter {
+    fn upstream_path(&self, _body: &Value) -> String {
+        "/messages".to_string()
+    }
+
+    fn auth_header(&self, key: &str) -> (&'static str, String) {
+        ("x-api-key", key.to_string())
+    }
+
+    fn extra_headers(&self) -> Vec<(&'static str, &'static str)> {
+        vec![("anthropic-version", "2023-06-01")]
+    }
+
+    fn convert_request(&self, body: &Value) -> Value {
+        let mut out = json!({});
+        if let Some(model) = body.get("model") {
+            out["model"] = model.clone();
+        }
+        let max_tokens = body
+            .get("max_tokens")
+            .or_else(|| body.get("max_completion_tokens"))
+            .and_then(|v| v.as_i64())
+            .unwrap_or(ANTHROPIC_DEFAULT_MAX_TOKENS);
+        out["max_tokens"] = json!(max_tokens);
+        for key in ["temperature", "top_p", "stream"] {
+            if let Some(v) = body.get(key) {
+                out[key] = v.clone();
+            }
+        }
+
+        let mut system: Vec<String> = Vec::new();
+        let mut messages: Vec<Value> = Vec::new();
+        if let Some(msgs) = body.get("messages").and_then(|m| m.as_array()) {
+            for msg in msgs {
+                let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("user");
+                let content = msg.get("content").cloned().unwrap_or(Value::Null);
+                match role {
+                    "system" | "developer" => system.push(message_text(&content)),
+                    "assistant" => {
+                        let mut blocks: Vec<Value> = Vec::new();
+                        let text = message_text(&content);
+                        if !text.is_empty() {
+                            blocks.push(json!({"type": "text", "text": text}));
+                        }
+                        if let Some(calls) = msg.get("tool_calls").and_then(|c| c.as_array()) {
+                            for call in calls {
+                                let func = call.get("function");
+                                let args_str = func
+                                    .and_then(|f| f.get("arguments"))
+                                    .and_then(|a| a.as_str())
+                                    .unwrap_or("{}");
+                                let input: Value = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
+                                blocks.push(json!({
+                                    "type": "tool_use",
+                                    "id": call.get("id").cloned().unwrap_or(Value::Null),
+                                    "name": func.and_then(|f| f.get("name")).cloned().unwrap_or(Value::Null),
+                                    "input": input,
+                                }));
+                            }
+                        }
+                        push_merged(&mut messages, "assistant", blocks);
+                    }
+                    "tool" => {
+                        push_merged(
+                            &mut messages,
+                            "user",
+                            vec![json!({
+                                "type": "tool_result",
+                                "tool_use_id": msg.get("tool_call_id").cloned().unwrap_or(Value::Null),
+                                "content": message_text(&content),
+                            })],
+                        );
+                    }
+                    _ => push_merged(
+                        &mut messages,
+                        "user",
+                        vec![json!({"type": "text", "text": message_text(&content)})],
+                    ),
+                }
+            }
+        }
+        out["messages"] = json!(messages);
+        if !system.is_empty() {
+            out["system"] = json!(system.join("\n\n"));
+        }
+
+        if let Some(tools) = body.get("tools").and_then(|t| t.as_array()) {
+            let mapped: Vec<Value> = tools
+                .iter()
+                .filter_map(|t| {
+                    let func = t.get("function")?;
+                    Some(json!({
+                        "name": func.get("name").cloned().unwrap_or(Value::Null),
+                        "description": func.get("description").cloned().unwrap_or(Value::Null),
+                        "input_schema": func.get("parameters").cloned().unwrap_or(json!({"type": "object"})),
+                    }))
+                })
+                .collect();
+            if !mapped.is_empty() {
+                out["tools"] = json!(mapped);
+            }
+        }
+        if let Some(tc) = body.get("tool_choice") {
+            out["tool_choice"] = match tc.as_str() {
+                Some("none") => json!({"type": "none"}),
+                Some("required") => json!({"type": "any"}),
+                Some("auto") => json!({"type": "auto"}),
+                _ => {
+                    // {"type":"function","function":{"name":...}} -> {"type":"tool","name":...}
+                    match tc.get("function").and_then(|f| f.get("name")) {
+                        Some(name) => json!({"type": "tool", "name": name}),
+                        None => json!({"type": "auto"}),
+                    }
+                }
+            };
+        }
+
+        out
+    }
+
+    fn convert_response(&self, upstream: &Value) -> Value {
+        let mut content = String::new();
+        let mut reasoning = String::new();
+        let mut tool_calls: Vec<Value> = Vec::new();
+
+        if let Some(blocks) = upstream.get("content").and_then(|c| c.as_array()) {
+            for block in blocks {
+                match block.get("type").and_then(|t| t.as_str()) {
+                    Some("text") => {
+                        if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
+                            content.push_str(t);
+                        }
+                    }
+                    Some("thinking") => {
+                        if let Some(t) = block.get("thinking").and_then(|t| t.as_str()) {
+                            reasoning.push_str(t);
+                        }
+                    }
+                    Some("tool_use") => {
+                        let input = block.get("input").cloned().unwrap_or_else(|| json!({}));
+                        tool_calls.push(json!({
+                            "id": block.get("id").cloned().unwrap_or(Value::Null),
+                            "type": "function",
+                            "function": {
+                                "name": block.get("name").cloned().unwrap_or(Value::Null),
+                                "arguments": serde_json::to_string(&input).unwrap_or_default(),
+                            }
+                        }));
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let mut message = json!({"role": "assistant"});
+        let saw_tool = !tool_calls.is_empty();
+        message["content"] = if content.is_empty() && saw_tool {
+            Value::Null
+        } else {
+            json!(content)
+        };
+        if !reasoning.is_empty() {
+            message["reasoning_content"] = json!(reasoning);
+        }
+        if saw_tool {
+            message["tool_calls"] = json!(tool_calls);
+        }
+        let finish_reason = map_anthropic_finish(
+            upstream.get("stop_reason").and_then(|r| r.as_str()).unwrap_or("end_turn"),
+            saw_tool,
+        );
+        let usage = upstream.get("usage");
+        let input_tokens = usage.and_then(|u| u.get("input_tokens")).and_then(|v| v.as_i64()).unwrap_or(0);
+        let output_tokens = usage.and_then(|u| u.get("output_tokens")).and_then(|v| v.as_i64()).unwrap_or(0);
+
+        json!({
+            "id": upstream.get("id").cloned().unwrap_or_else(|| json!("chatcmpl-proxy")),
+            "object": "chat.completion",
+            "created": 0,
+            "model": upstream.get("model").cloned().unwrap_or(Value::Null),
+            "choices": [{
+                "index": 0,
+                "message": message,
+                "finish_reason": finish_reason,
+            }],
+            "usage": anthropic_usage(input_tokens, output_tokens),
+        })
+    }
+
+    fn convert_stream_event(&self, event: &SseEvent, state: &mut StreamState) -> Vec<String> {
+        if event.data == "[DONE]" || state.finished {
+            return Vec::new();
+        }
+        let data: Value = match serde_json::from_str(&event.data) {
+            Ok(v) => v,
+            Err(_) => return Vec::new(),
+        };
+        let kind = if event.event.is_empty() {
+            data.get("type").and_then(|t| t.as_str()).unwrap_or("")
+        } else {
+            event.event.as_str()
+        };
+
+        let mut out: Vec<String> = Vec::new();
+        match kind {
+            "message_start" => {
+                if let Some(msg) = data.get("message") {
+                    if let Some(id) = msg.get("id").and_then(|v| v.as_str()) {
+                        state.id = id.to_string();
+                    }
+                    if let Some(model) = msg.get("model").and_then(|v| v.as_str()) {
+                        state.model = model.to_string();
+                    }
+                    if let Some(t) = msg.get("usage").and_then(|u| u.get("input_tokens")).and_then(|v| v.as_i64()) {
+                        state.input_tokens = t;
+                    }
+                }
+            }
+            "content_block_start" => {
+                let block = data.get("content_block");
+                let block_type = block.and_then(|b| b.get("type")).and_then(|t| t.as_str());
+                push_role_chunk(state, &mut out);
+                if block_type == Some("tool_use") {
+                    let block_index = data.get("index").and_then(|v| v.as_i64()).unwrap_or(0).to_string();
+                    let idx = state.next_tool_index;
+                    state.next_tool_index += 1;
+                    state.tool_index.insert(block_index, idx);
+                    state.saw_tool_call = true;
+                    out.push(chunk_str(
+                        state,
+                        json!({"tool_calls": [{
+                            "index": idx,
+                            "id": block.and_then(|b| b.get("id")).cloned().unwrap_or(Value::Null),
+                            "type": "function",
+                            "function": {
+                                "name": block.and_then(|b| b.get("name")).cloned().unwrap_or(Value::Null),
+                                "arguments": "",
+                            }
+                        }]}),
+                        None,
+                    ));
+                }
+            }
+            "content_block_delta" => {
+                let delta = data.get("delta");
+                match delta.and_then(|d| d.get("type")).and_then(|t| t.as_str()) {
+                    Some("text_delta") => {
+                        if let Some(text) = delta.and_then(|d| d.get("text")).and_then(|t| t.as_str()) {
+                            push_role_chunk(state, &mut out);
+                            out.push(chunk_str(state, json!({"content": text}), None));
+                        }
+                    }
+                    Some("thinking_delta") => {
+                        if let Some(text) = delta.and_then(|d| d.get("thinking")).and_then(|t| t.as_str()) {
+                            push_role_chunk(state, &mut out);
+                            out.push(chunk_str(state, json!({"reasoning_content": text}), None));
+                        }
+                    }
+                    Some("input_json_delta") => {
+                        let block_index = data.get("index").and_then(|v| v.as_i64()).unwrap_or(0).to_string();
+                        let idx = *state.tool_index.get(&block_index).unwrap_or(&0);
+                        if let Some(partial) = delta.and_then(|d| d.get("partial_json")).and_then(|t| t.as_str()) {
+                            out.push(chunk_str(
+                                state,
+                                json!({"tool_calls": [{"index": idx, "function": {"arguments": partial}}]}),
+                                None,
+                            ));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            "message_delta" => {
+                // Carries the terminal stop_reason + cumulative output tokens.
+                let reason = data
+                    .get("delta")
+                    .and_then(|d| d.get("stop_reason"))
+                    .and_then(|r| r.as_str())
+                    .unwrap_or("end_turn");
+                let finish = map_anthropic_finish(reason, state.saw_tool_call);
+                let output_tokens = data
+                    .get("usage")
+                    .and_then(|u| u.get("output_tokens"))
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                let usage = anthropic_usage(state.input_tokens, output_tokens);
+                out.push(chunk_str_with_usage(state, json!({}), Some(finish), Some(&usage)));
+                out.push("[DONE]".to_string());
+                state.finished = true;
+            }
+            _ => {}
+        }
+        out
+    }
+}
+
 fn push_role_chunk(state: &mut StreamState, out: &mut Vec<String>) {
     if !state.role_sent {
         state.role_sent = true;
@@ -1366,5 +1723,205 @@ mod google_generate_content_tests {
         let finish: Value = serde_json::from_str(&out[2]).unwrap();
         assert_eq!(finish["choices"][0]["finish_reason"], json!("tool_calls"));
         assert_eq!(out[3], "[DONE]");
+    }
+}
+
+#[cfg(test)]
+mod anthropic_messages_tests {
+    use super::*;
+
+    fn conv() -> AnthropicMessagesConverter {
+        AnthropicMessagesConverter::new()
+    }
+
+    #[test]
+    fn auth_and_headers() {
+        let c = conv();
+        assert_eq!(c.auth_header("k"), ("x-api-key", "k".to_string()));
+        assert_eq!(c.extra_headers(), vec![("anthropic-version", "2023-06-01")]);
+        assert_eq!(c.upstream_path(&json!({})), "/messages");
+    }
+
+    #[test]
+    fn request_maps_system_messages_and_default_max_tokens() {
+        let body = json!({
+            "model": "claude-sonnet-4",
+            "messages": [
+                {"role": "system", "content": "be brief"},
+                {"role": "user", "content": "hi"}
+            ]
+        });
+        let out = conv().convert_request(&body);
+        assert_eq!(out["model"], json!("claude-sonnet-4"));
+        assert_eq!(out["system"], json!("be brief"));
+        assert_eq!(out["max_tokens"], json!(ANTHROPIC_DEFAULT_MAX_TOKENS));
+        assert_eq!(
+            out["messages"],
+            json!([{"role": "user", "content": [{"type": "text", "text": "hi"}]}])
+        );
+    }
+
+    #[test]
+    fn request_merges_consecutive_tool_results_into_one_user_message() {
+        let body = json!({
+            "model": "claude-sonnet-4",
+            "max_tokens": 256,
+            "messages": [
+                {"role": "user", "content": "go"},
+                {"role": "assistant", "content": "", "tool_calls": [
+                    {"id": "a", "type": "function", "function": {"name": "f1", "arguments": "{\"x\":1}"}},
+                    {"id": "b", "type": "function", "function": {"name": "f2", "arguments": "{}"}}
+                ]},
+                {"role": "tool", "tool_call_id": "a", "content": "r1"},
+                {"role": "tool", "tool_call_id": "b", "content": "r2"}
+            ]
+        });
+        let out = conv().convert_request(&body);
+        assert_eq!(out["max_tokens"], json!(256));
+        let msgs = out["messages"].as_array().unwrap();
+        assert_eq!(msgs.len(), 3);
+        assert_eq!(msgs[1]["role"], json!("assistant"));
+        assert_eq!(
+            msgs[1]["content"],
+            json!([
+                {"type": "tool_use", "id": "a", "name": "f1", "input": {"x": 1}},
+                {"type": "tool_use", "id": "b", "name": "f2", "input": {}}
+            ])
+        );
+        // Both tool results merged into a single user message.
+        assert_eq!(msgs[2]["role"], json!("user"));
+        assert_eq!(
+            msgs[2]["content"],
+            json!([
+                {"type": "tool_result", "tool_use_id": "a", "content": "r1"},
+                {"type": "tool_result", "tool_use_id": "b", "content": "r2"}
+            ])
+        );
+    }
+
+    #[test]
+    fn request_maps_tools_and_tool_choice() {
+        let body = json!({
+            "model": "c",
+            "messages": [],
+            "tools": [{"type": "function", "function": {"name": "f", "description": "d", "parameters": {"type": "object"}}}],
+            "tool_choice": "required"
+        });
+        let out = conv().convert_request(&body);
+        assert_eq!(
+            out["tools"],
+            json!([{"name": "f", "description": "d", "input_schema": {"type": "object"}}])
+        );
+        assert_eq!(out["tool_choice"], json!({"type": "any"}));
+    }
+
+    #[test]
+    fn request_maps_named_tool_choice() {
+        let body = json!({
+            "model": "c",
+            "messages": [],
+            "tool_choice": {"type": "function", "function": {"name": "pick"}}
+        });
+        let out = conv().convert_request(&body);
+        assert_eq!(out["tool_choice"], json!({"type": "tool", "name": "pick"}));
+    }
+
+    #[test]
+    fn response_maps_text_thinking_tool_use_and_usage() {
+        let upstream = json!({
+            "id": "msg_1",
+            "model": "claude-sonnet-4",
+            "content": [
+                {"type": "thinking", "thinking": "hmm"},
+                {"type": "text", "text": "hello"},
+                {"type": "tool_use", "id": "tu_1", "name": "f", "input": {"a": 1}}
+            ],
+            "stop_reason": "tool_use",
+            "usage": {"input_tokens": 12, "output_tokens": 6}
+        });
+        let out = conv().convert_response(&upstream);
+        let choice = &out["choices"][0];
+        assert_eq!(choice["message"]["content"], json!("hello"));
+        assert_eq!(choice["message"]["reasoning_content"], json!("hmm"));
+        assert_eq!(choice["finish_reason"], json!("tool_calls"));
+        let tc = &choice["message"]["tool_calls"][0];
+        assert_eq!(tc["id"], json!("tu_1"));
+        assert_eq!(tc["function"]["arguments"], json!("{\"a\":1}"));
+        assert_eq!(out["usage"], json!({"prompt_tokens": 12, "completion_tokens": 6, "total_tokens": 18}));
+    }
+
+    fn ev(event: &str, data: Value) -> SseEvent {
+        SseEvent { event: event.to_string(), data: data.to_string() }
+    }
+
+    #[test]
+    fn stream_full_sequence() {
+        let c = conv();
+        let mut state = StreamState::default();
+        c.convert_stream_event(
+            &ev("message_start", json!({"message": {"id": "msg_1", "model": "claude-sonnet-4", "usage": {"input_tokens": 10}}})),
+            &mut state,
+        );
+        let block = c.convert_stream_event(
+            &ev("content_block_start", json!({"index": 0, "content_block": {"type": "text"}})),
+            &mut state,
+        );
+        // role chunk on first content block
+        assert_eq!(block.len(), 1);
+        let role: Value = serde_json::from_str(&block[0]).unwrap();
+        assert_eq!(role["choices"][0]["delta"]["role"], json!("assistant"));
+        assert_eq!(role["id"], json!("msg_1"));
+
+        let text = c.convert_stream_event(
+            &ev("content_block_delta", json!({"index": 0, "delta": {"type": "text_delta", "text": "hi"}})),
+            &mut state,
+        );
+        assert_eq!(text.len(), 1);
+        let content: Value = serde_json::from_str(&text[0]).unwrap();
+        assert_eq!(content["choices"][0]["delta"]["content"], json!("hi"));
+
+        let reasoning = c.convert_stream_event(
+            &ev("content_block_delta", json!({"index": 0, "delta": {"type": "thinking_delta", "thinking": "why"}})),
+            &mut state,
+        );
+        let r: Value = serde_json::from_str(&reasoning[0]).unwrap();
+        assert_eq!(r["choices"][0]["delta"]["reasoning_content"], json!("why"));
+
+        let done = c.convert_stream_event(
+            &ev("message_delta", json!({"delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 5}})),
+            &mut state,
+        );
+        assert_eq!(done.len(), 2);
+        let finish: Value = serde_json::from_str(&done[0]).unwrap();
+        assert_eq!(finish["choices"][0]["finish_reason"], json!("stop"));
+        assert_eq!(finish["usage"], json!({"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}));
+        assert_eq!(done[1], "[DONE]");
+        assert!(state.finished);
+    }
+
+    #[test]
+    fn stream_tool_use_emits_header_and_argument_deltas() {
+        let c = conv();
+        let mut state = StreamState::default();
+        let start = c.convert_stream_event(
+            &ev("content_block_start", json!({"index": 1, "content_block": {"type": "tool_use", "id": "tu_1", "name": "f"}})),
+            &mut state,
+        );
+        // role chunk + tool header
+        assert_eq!(start.len(), 2);
+        let header: Value = serde_json::from_str(&start[1]).unwrap();
+        let tc = &header["choices"][0]["delta"]["tool_calls"][0];
+        assert_eq!(tc["index"], json!(0));
+        assert_eq!(tc["id"], json!("tu_1"));
+        assert_eq!(tc["function"]["name"], json!("f"));
+
+        let arg = c.convert_stream_event(
+            &ev("content_block_delta", json!({"index": 1, "delta": {"type": "input_json_delta", "partial_json": "{\"a\""}})),
+            &mut state,
+        );
+        let arg_chunk: Value = serde_json::from_str(&arg[0]).unwrap();
+        let atc = &arg_chunk["choices"][0]["delta"]["tool_calls"][0];
+        assert_eq!(atc["index"], json!(0));
+        assert_eq!(atc["function"]["arguments"], json!("{\"a\""));
     }
 }

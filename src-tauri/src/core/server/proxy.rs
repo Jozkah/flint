@@ -2665,6 +2665,13 @@ async fn proxy_request(
             log::debug!("No session API key for this attempt");
         }
 
+        // Fixed headers the native API requires (Anthropic: anthropic-version).
+        if let Some(conv) = &upstream_converter {
+            for (name, value) in conv.extra_headers() {
+                outbound_req = outbound_req.header(name, value);
+            }
+        }
+
         let outbound_req_with_body = outbound_req.body(body_bytes_for_proxy.clone());
 
         match outbound_req_with_body.send().await {
