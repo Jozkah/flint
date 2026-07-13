@@ -64,7 +64,6 @@ import { hasVideoSentinel, splitVideoSentinels } from './video-sentinel'
 import { filterDefaultSseEvents } from './sseEventTypeFilter'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
-import { isThinkingBudgetLevelKey } from '@/lib/thinkingBudget'
 import {
   LLAMACPP_ONLY_PARAM_KEYS,
   paramsSettings,
@@ -1086,17 +1085,12 @@ export class ModelFactory {
       fetch: fetchImpl,
     })
 
-    // Reasoning summaries (reasoningSummary) are only returned by the Responses
-    // API, so switch to it when the user set a concrete effort level. Everyone
-    // else stays on Chat Completions to avoid breaking OpenAI-compatible
-    // proxies that only implement /chat/completions.
-    const effortLevel =
-      provider.models?.find((m) => m.id === modelId)?.settings
-        ?.thinking_budget_tokens?.controller_props?.value
-    const useResponses =
-      isThinkingBudgetLevelKey(effortLevel) && effortLevel !== 'unlimited'
-
-    return useResponses ? openai.responses(modelId) : openai.chat(modelId)
+    // The genuine OpenAI provider always supports the Responses API, so use it
+    // unconditionally: it is a superset of Chat Completions and the only surface
+    // that returns reasoning summaries. Custom OpenAI-compatible providers route
+    // through createOpenAICompatibleModel, not here, so this cannot hit a proxy
+    // that only implements /chat/completions.
+    return openai.responses(modelId)
   }
 
   /**
