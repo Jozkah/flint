@@ -92,8 +92,17 @@ use std::collections::HashMap;
 /// Anthropic `/v1/messages`); the proxy selects one by `ProviderConfig.api_type`
 /// and otherwise forwards verbatim.
 pub trait UpstreamConverter: Send + Sync {
-    /// Path suffix appended to the provider `base_url` (e.g. `/responses`).
-    fn upstream_path(&self) -> &'static str;
+    /// Path suffix appended to the provider `base_url`. Derived from the request
+    /// body because some APIs encode the model and action in the URL (Google:
+    /// `/models/{model}:streamGenerateContent?alt=sse`).
+    fn upstream_path(&self, body: &Value) -> String;
+
+    /// Authorization header for the upstream request. Defaults to OpenAI-style
+    /// `Authorization: Bearer`; providers using a different scheme (Google:
+    /// `x-goog-api-key`) override this.
+    fn auth_header(&self, key: &str) -> (&'static str, String) {
+        ("authorization", format!("Bearer {key}"))
+    }
 
     /// Rewrite the inbound chat/completions body into the native request body.
     fn convert_request(&self, body: &Value) -> Value;
@@ -111,6 +120,7 @@ pub trait UpstreamConverter: Send + Sync {
 pub fn converter_for(api_type: Option<&str>) -> Option<Box<dyn UpstreamConverter>> {
     match api_type {
         Some("openai-responses") => Some(Box::new(OpenAIResponsesConverter::new())),
+        Some("google") => Some(Box::new(GoogleGenerateContentConverter::new())),
         _ => None,
     }
 }
@@ -155,8 +165,8 @@ fn message_text(content: &Value) -> String {
 }
 
 impl UpstreamConverter for OpenAIResponsesConverter {
-    fn upstream_path(&self) -> &'static str {
-        "/responses"
+    fn upstream_path(&self, _body: &Value) -> String {
+        "/responses".to_string()
     }
 
     fn convert_request(&self, body: &Value) -> Value {
@@ -411,12 +421,12 @@ impl UpstreamConverter for OpenAIResponsesConverter {
             }
             "response.completed" | "response.incomplete" => {
                 let finish = if state.saw_tool_call { "tool_calls" } else { "stop" };
-                out.push(chunk_str_with_usage(
-                    state,
-                    json!({}),
-                    Some(finish),
-                    data.get("response").and_then(|r| r.get("usage")),
-                ));
+                let usage = data
+                    .get("response")
+                    .and_then(|r| r.get("usage"))
+                    .map(|u| convert_usage(Some(u)))
+                    .filter(|u| !u.is_null());
+                out.push(chunk_str_with_usage(state, json!({}), Some(finish), usage.as_ref()));
                 out.push("[DONE]".to_string());
                 state.finished = true;
             }
@@ -433,6 +443,335 @@ impl UpstreamConverter for OpenAIResponsesConverter {
                 state.finished = true;
             }
             _ => {}
+        }
+        out
+    }
+}
+
+/// Fronts Google's Gemini `generateContent` API. The model and action are
+/// encoded in the URL and streaming uses `?alt=sse`; auth is `x-goog-api-key`.
+/// The registered provider `base_url` must include the API version, e.g.
+/// `https://generativelanguage.googleapis.com/v1beta`.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GoogleGenerateContentConverter;
+
+impl GoogleGenerateContentConverter {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+/// Map a Gemini `finishReason` to a chat/completions `finish_reason`.
+fn map_gemini_finish(reason: &str, saw_tool: bool) -> &'static str {
+    if saw_tool {
+        return "tool_calls";
+    }
+    match reason {
+        "MAX_TOKENS" => "length",
+        "SAFETY" | "RECITATION" | "PROHIBITED_CONTENT" | "BLOCKLIST" => "content_filter",
+        _ => "stop",
+    }
+}
+
+/// Map Gemini `usageMetadata` to chat/completions usage.
+fn convert_gemini_usage(usage: Option<&Value>) -> Value {
+    let Some(u) = usage else {
+        return Value::Null;
+    };
+    let prompt = u.get("promptTokenCount").and_then(|v| v.as_i64()).unwrap_or(0);
+    let candidates = u
+        .get("candidatesTokenCount")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let thoughts = u.get("thoughtsTokenCount").and_then(|v| v.as_i64()).unwrap_or(0);
+    let completion = candidates + thoughts;
+    let total = u
+        .get("totalTokenCount")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(prompt + completion);
+    json!({
+        "prompt_tokens": prompt,
+        "completion_tokens": completion,
+        "total_tokens": total,
+    })
+}
+
+impl UpstreamConverter for GoogleGenerateContentConverter {
+    fn upstream_path(&self, body: &Value) -> String {
+        let model = body.get("model").and_then(|m| m.as_str()).unwrap_or("");
+        let streaming = body.get("stream").and_then(|s| s.as_bool()).unwrap_or(false);
+        if streaming {
+            format!("/models/{model}:streamGenerateContent?alt=sse")
+        } else {
+            format!("/models/{model}:generateContent")
+        }
+    }
+
+    fn auth_header(&self, key: &str) -> (&'static str, String) {
+        ("x-goog-api-key", key.to_string())
+    }
+
+    fn convert_request(&self, body: &Value) -> Value {
+        // tool_call_id -> function name, so tool results become functionResponse
+        // parts (Gemini keys them by name, not call id).
+        let mut call_names: HashMap<String, String> = HashMap::new();
+        if let Some(messages) = body.get("messages").and_then(|m| m.as_array()) {
+            for msg in messages {
+                if let Some(calls) = msg.get("tool_calls").and_then(|c| c.as_array()) {
+                    for call in calls {
+                        if let (Some(id), Some(name)) = (
+                            call.get("id").and_then(|v| v.as_str()),
+                            call.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str()),
+                        ) {
+                            call_names.insert(id.to_string(), name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut contents: Vec<Value> = Vec::new();
+        let mut system_parts: Vec<Value> = Vec::new();
+        if let Some(messages) = body.get("messages").and_then(|m| m.as_array()) {
+            for msg in messages {
+                let role = msg.get("role").and_then(|r| r.as_str()).unwrap_or("user");
+                let content = msg.get("content").cloned().unwrap_or(Value::Null);
+                match role {
+                    "system" | "developer" => {
+                        system_parts.push(json!({"text": message_text(&content)}));
+                    }
+                    "assistant" => {
+                        let mut parts: Vec<Value> = Vec::new();
+                        let text = message_text(&content);
+                        if !text.is_empty() {
+                            parts.push(json!({"text": text}));
+                        }
+                        if let Some(calls) = msg.get("tool_calls").and_then(|c| c.as_array()) {
+                            for call in calls {
+                                let func = call.get("function");
+                                let name = func.and_then(|f| f.get("name")).cloned().unwrap_or(Value::Null);
+                                let args_str = func
+                                    .and_then(|f| f.get("arguments"))
+                                    .and_then(|a| a.as_str())
+                                    .unwrap_or("{}");
+                                let args: Value = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
+                                parts.push(json!({"functionCall": {"name": name, "args": args}}));
+                            }
+                        }
+                        if !parts.is_empty() {
+                            contents.push(json!({"role": "model", "parts": parts}));
+                        }
+                    }
+                    "tool" => {
+                        let call_id = msg.get("tool_call_id").and_then(|v| v.as_str()).unwrap_or("");
+                        let name = call_names.get(call_id).cloned().unwrap_or_else(|| call_id.to_string());
+                        let text = message_text(&content);
+                        // Gemini requires the functionResponse `response` to be an object.
+                        let response: Value = serde_json::from_str(&text)
+                            .ok()
+                            .filter(|v: &Value| v.is_object())
+                            .unwrap_or_else(|| json!({"result": text}));
+                        contents.push(json!({
+                            "role": "user",
+                            "parts": [{"functionResponse": {"name": name, "response": response}}]
+                        }));
+                    }
+                    _ => contents.push(json!({"role": "user", "parts": [{"text": message_text(&content)}]})),
+                }
+            }
+        }
+
+        let mut out = json!({"contents": contents});
+        if !system_parts.is_empty() {
+            out["systemInstruction"] = json!({"parts": system_parts});
+        }
+
+        let mut gen_config = json!({});
+        if let Some(v) = body.get("temperature") {
+            gen_config["temperature"] = v.clone();
+        }
+        if let Some(v) = body.get("top_p") {
+            gen_config["topP"] = v.clone();
+        }
+        if let Some(v) = body.get("max_tokens").or_else(|| body.get("max_completion_tokens")) {
+            gen_config["maxOutputTokens"] = v.clone();
+        }
+        if body.get("reasoning_effort").and_then(|e| e.as_str()).is_some() {
+            gen_config["thinkingConfig"] = json!({"thinkingBudget": -1, "includeThoughts": true});
+        }
+        if gen_config.as_object().is_some_and(|o| !o.is_empty()) {
+            out["generationConfig"] = gen_config;
+        }
+
+        if let Some(tools) = body.get("tools").and_then(|t| t.as_array()) {
+            let decls: Vec<Value> = tools
+                .iter()
+                .filter_map(|t| {
+                    let func = t.get("function")?;
+                    Some(json!({
+                        "name": func.get("name").cloned().unwrap_or(Value::Null),
+                        "description": func.get("description").cloned().unwrap_or(Value::Null),
+                        "parameters": func.get("parameters").cloned().unwrap_or(json!({})),
+                    }))
+                })
+                .collect();
+            if !decls.is_empty() {
+                out["tools"] = json!([{"functionDeclarations": decls}]);
+            }
+        }
+        if let Some(mode) = body.get("tool_choice").and_then(|c| c.as_str()) {
+            let g_mode = match mode {
+                "none" => "NONE",
+                "required" => "ANY",
+                _ => "AUTO",
+            };
+            out["toolConfig"] = json!({"functionCallingConfig": {"mode": g_mode}});
+        }
+
+        out
+    }
+
+    fn convert_response(&self, upstream: &Value) -> Value {
+        let candidate = upstream
+            .get("candidates")
+            .and_then(|c| c.as_array())
+            .and_then(|c| c.first());
+        let mut content = String::new();
+        let mut reasoning = String::new();
+        let mut tool_calls: Vec<Value> = Vec::new();
+
+        if let Some(parts) = candidate
+            .and_then(|c| c.get("content"))
+            .and_then(|c| c.get("parts"))
+            .and_then(|p| p.as_array())
+        {
+            for part in parts {
+                if let Some(fc) = part.get("functionCall") {
+                    let args = fc.get("args").cloned().unwrap_or_else(|| json!({}));
+                    tool_calls.push(json!({
+                        "id": format!("call_{}", tool_calls.len()),
+                        "type": "function",
+                        "function": {
+                            "name": fc.get("name").cloned().unwrap_or(Value::Null),
+                            "arguments": serde_json::to_string(&args).unwrap_or_default(),
+                        }
+                    }));
+                } else if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+                    if part.get("thought").and_then(|t| t.as_bool()).unwrap_or(false) {
+                        reasoning.push_str(text);
+                    } else {
+                        content.push_str(text);
+                    }
+                }
+            }
+        }
+
+        let mut message = json!({"role": "assistant"});
+        message["content"] = if content.is_empty() && !tool_calls.is_empty() {
+            Value::Null
+        } else {
+            json!(content)
+        };
+        if !reasoning.is_empty() {
+            message["reasoning_content"] = json!(reasoning);
+        }
+        let saw_tool = !tool_calls.is_empty();
+        if saw_tool {
+            message["tool_calls"] = json!(tool_calls);
+        }
+        let finish_reason = map_gemini_finish(
+            candidate
+                .and_then(|c| c.get("finishReason"))
+                .and_then(|r| r.as_str())
+                .unwrap_or("STOP"),
+            saw_tool,
+        );
+
+        json!({
+            "id": upstream.get("responseId").cloned().unwrap_or_else(|| json!("chatcmpl-proxy")),
+            "object": "chat.completion",
+            "created": 0,
+            "model": upstream.get("modelVersion").cloned().unwrap_or(Value::Null),
+            "choices": [{
+                "index": 0,
+                "message": message,
+                "finish_reason": finish_reason,
+            }],
+            "usage": convert_gemini_usage(upstream.get("usageMetadata")),
+        })
+    }
+
+    fn convert_stream_event(&self, event: &SseEvent, state: &mut StreamState) -> Vec<String> {
+        if event.data == "[DONE]" || state.finished {
+            return Vec::new();
+        }
+        let data: Value = match serde_json::from_str(&event.data) {
+            Ok(v) => v,
+            Err(_) => return Vec::new(),
+        };
+        if let Some(model) = data.get("modelVersion").and_then(|v| v.as_str()) {
+            if state.model.is_empty() {
+                state.model = model.to_string();
+            }
+        }
+        if let Some(id) = data.get("responseId").and_then(|v| v.as_str()) {
+            if state.id.is_empty() {
+                state.id = id.to_string();
+            }
+        }
+
+        let mut out: Vec<String> = Vec::new();
+        let candidate = data
+            .get("candidates")
+            .and_then(|c| c.as_array())
+            .and_then(|c| c.first());
+
+        if let Some(parts) = candidate
+            .and_then(|c| c.get("content"))
+            .and_then(|c| c.get("parts"))
+            .and_then(|p| p.as_array())
+        {
+            for part in parts {
+                if let Some(fc) = part.get("functionCall") {
+                    let idx = state.next_tool_index;
+                    state.next_tool_index += 1;
+                    state.saw_tool_call = true;
+                    push_role_chunk(state, &mut out);
+                    let args = fc.get("args").cloned().unwrap_or_else(|| json!({}));
+                    out.push(chunk_str(
+                        state,
+                        json!({"tool_calls": [{
+                            "index": idx,
+                            "id": format!("call_{idx}"),
+                            "type": "function",
+                            "function": {
+                                "name": fc.get("name").cloned().unwrap_or(Value::Null),
+                                "arguments": serde_json::to_string(&args).unwrap_or_default(),
+                            }
+                        }]}),
+                        None,
+                    ));
+                } else if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+                    push_role_chunk(state, &mut out);
+                    let key = if part.get("thought").and_then(|t| t.as_bool()).unwrap_or(false) {
+                        "reasoning_content"
+                    } else {
+                        "content"
+                    };
+                    out.push(chunk_str(state, json!({ key: text }), None));
+                }
+            }
+        }
+
+        if let Some(reason) = candidate.and_then(|c| c.get("finishReason")).and_then(|r| r.as_str()) {
+            let finish = map_gemini_finish(reason, state.saw_tool_call);
+            let usage = data
+                .get("usageMetadata")
+                .map(|u| convert_gemini_usage(Some(u)))
+                .filter(|u| !u.is_null());
+            out.push(chunk_str_with_usage(state, json!({}), Some(finish), usage.as_ref()));
+            out.push("[DONE]".to_string());
+            state.finished = true;
         }
         out
     }
@@ -456,6 +795,7 @@ fn chunk_str(state: &StreamState, delta: Value, finish: Option<&str>) -> String 
     .to_string()
 }
 
+/// Build a finish chunk. `usage` is already chat-shaped (`prompt_tokens` etc.).
 fn chunk_str_with_usage(
     state: &StreamState,
     delta: Value,
@@ -470,7 +810,7 @@ fn chunk_str_with_usage(
         "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
     });
     if let Some(u) = usage {
-        chunk["usage"] = convert_usage(Some(u));
+        chunk["usage"] = u.clone();
     }
     chunk.to_string()
 }
@@ -808,5 +1148,223 @@ mod openai_responses_tests {
         assert!(c
             .convert_stream_event(&SseEvent { event: String::new(), data: "not json".into() }, &mut state)
             .is_empty());
+    }
+}
+
+#[cfg(test)]
+mod google_generate_content_tests {
+    use super::*;
+
+    fn conv() -> GoogleGenerateContentConverter {
+        GoogleGenerateContentConverter::new()
+    }
+
+    #[test]
+    fn path_encodes_model_and_action() {
+        let c = conv();
+        assert_eq!(
+            c.upstream_path(&json!({"model": "gemini-2.5-pro"})),
+            "/models/gemini-2.5-pro:generateContent"
+        );
+        assert_eq!(
+            c.upstream_path(&json!({"model": "gemini-2.5-pro", "stream": true})),
+            "/models/gemini-2.5-pro:streamGenerateContent?alt=sse"
+        );
+    }
+
+    #[test]
+    fn auth_uses_goog_api_key() {
+        assert_eq!(conv().auth_header("k"), ("x-goog-api-key", "k".to_string()));
+    }
+
+    #[test]
+    fn request_maps_roles_system_and_thinking() {
+        let body = json!({
+            "model": "gemini-2.5-pro",
+            "messages": [
+                {"role": "system", "content": "be brief"},
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "hello"}
+            ],
+            "temperature": 0.5,
+            "top_p": 0.9,
+            "max_tokens": 100,
+            "reasoning_effort": "high"
+        });
+        let out = conv().convert_request(&body);
+        assert_eq!(out["systemInstruction"], json!({"parts": [{"text": "be brief"}]}));
+        assert_eq!(
+            out["contents"],
+            json!([
+                {"role": "user", "parts": [{"text": "hi"}]},
+                {"role": "model", "parts": [{"text": "hello"}]}
+            ])
+        );
+        assert_eq!(out["generationConfig"]["temperature"], json!(0.5));
+        assert_eq!(out["generationConfig"]["topP"], json!(0.9));
+        assert_eq!(out["generationConfig"]["maxOutputTokens"], json!(100));
+        assert_eq!(
+            out["generationConfig"]["thinkingConfig"],
+            json!({"thinkingBudget": -1, "includeThoughts": true})
+        );
+    }
+
+    #[test]
+    fn request_maps_tool_calls_and_results() {
+        let body = json!({
+            "model": "gemini-2.5-pro",
+            "messages": [
+                {"role": "user", "content": "weather?"},
+                {"role": "assistant", "content": "", "tool_calls": [
+                    {"id": "call_1", "type": "function", "function": {"name": "getw", "arguments": "{\"city\":\"NYC\"}"}}
+                ]},
+                {"role": "tool", "tool_call_id": "call_1", "content": "{\"temp\":20}"}
+            ],
+            "tools": [
+                {"type": "function", "function": {"name": "getw", "description": "d", "parameters": {"type": "object"}}}
+            ],
+            "tool_choice": "required"
+        });
+        let out = conv().convert_request(&body);
+        let contents = out["contents"].as_array().unwrap();
+        assert_eq!(
+            contents[1],
+            json!({"role": "model", "parts": [{"functionCall": {"name": "getw", "args": {"city": "NYC"}}}]})
+        );
+        assert_eq!(
+            contents[2],
+            json!({"role": "user", "parts": [{"functionResponse": {"name": "getw", "response": {"temp": 20}}}]})
+        );
+        assert_eq!(
+            out["tools"],
+            json!([{"functionDeclarations": [{"name": "getw", "description": "d", "parameters": {"type": "object"}}]}])
+        );
+        assert_eq!(out["toolConfig"], json!({"functionCallingConfig": {"mode": "ANY"}}));
+    }
+
+    #[test]
+    fn tool_result_wraps_non_json_content() {
+        let body = json!({
+            "model": "g",
+            "messages": [{"role": "tool", "tool_call_id": "x", "content": "plain text"}]
+        });
+        let out = conv().convert_request(&body);
+        assert_eq!(
+            out["contents"][0]["parts"][0]["functionResponse"]["response"],
+            json!({"result": "plain text"})
+        );
+    }
+
+    #[test]
+    fn response_maps_text_thought_and_usage() {
+        let upstream = json!({
+            "responseId": "r1",
+            "modelVersion": "gemini-2.5-pro",
+            "candidates": [{
+                "content": {"role": "model", "parts": [
+                    {"text": "thinking...", "thought": true},
+                    {"text": "answer"}
+                ]},
+                "finishReason": "STOP"
+            }],
+            "usageMetadata": {"promptTokenCount": 8, "candidatesTokenCount": 4, "thoughtsTokenCount": 2, "totalTokenCount": 14}
+        });
+        let out = conv().convert_response(&upstream);
+        let choice = &out["choices"][0];
+        assert_eq!(choice["message"]["content"], json!("answer"));
+        assert_eq!(choice["message"]["reasoning_content"], json!("thinking..."));
+        assert_eq!(choice["finish_reason"], json!("stop"));
+        assert_eq!(out["id"], json!("r1"));
+        assert_eq!(out["model"], json!("gemini-2.5-pro"));
+        assert_eq!(out["usage"], json!({"prompt_tokens": 8, "completion_tokens": 6, "total_tokens": 14}));
+    }
+
+    #[test]
+    fn response_maps_function_call() {
+        let upstream = json!({
+            "candidates": [{
+                "content": {"parts": [{"functionCall": {"name": "getw", "args": {"city": "NYC"}}}]},
+                "finishReason": "STOP"
+            }]
+        });
+        let out = conv().convert_response(&upstream);
+        let choice = &out["choices"][0];
+        assert_eq!(choice["finish_reason"], json!("tool_calls"));
+        assert_eq!(choice["message"]["content"], Value::Null);
+        let tc = &choice["message"]["tool_calls"][0];
+        assert_eq!(tc["id"], json!("call_0"));
+        assert_eq!(tc["function"]["name"], json!("getw"));
+        assert_eq!(tc["function"]["arguments"], json!("{\"city\":\"NYC\"}"));
+    }
+
+    fn ev(data: Value) -> SseEvent {
+        SseEvent { event: String::new(), data: data.to_string() }
+    }
+
+    #[test]
+    fn stream_emits_role_reasoning_content_and_finish() {
+        let c = conv();
+        let mut state = StreamState::default();
+        let first = c.convert_stream_event(
+            &ev(json!({
+                "modelVersion": "gemini-2.5-pro",
+                "candidates": [{"content": {"parts": [{"text": "hmm", "thought": true}]}}]
+            })),
+            &mut state,
+        );
+        assert_eq!(first.len(), 2);
+        let role: Value = serde_json::from_str(&first[0]).unwrap();
+        assert_eq!(role["choices"][0]["delta"]["role"], json!("assistant"));
+        assert_eq!(role["model"], json!("gemini-2.5-pro"));
+        let reason: Value = serde_json::from_str(&first[1]).unwrap();
+        assert_eq!(reason["choices"][0]["delta"]["reasoning_content"], json!("hmm"));
+
+        let second = c.convert_stream_event(
+            &ev(json!({"candidates": [{"content": {"parts": [{"text": "hello"}]}}]})),
+            &mut state,
+        );
+        assert_eq!(second.len(), 1);
+        let content: Value = serde_json::from_str(&second[0]).unwrap();
+        assert_eq!(content["choices"][0]["delta"]["content"], json!("hello"));
+
+        let last = c.convert_stream_event(
+            &ev(json!({
+                "candidates": [{"finishReason": "STOP"}],
+                "usageMetadata": {"promptTokenCount": 3, "candidatesTokenCount": 2, "totalTokenCount": 5}
+            })),
+            &mut state,
+        );
+        assert_eq!(last.len(), 2);
+        let finish: Value = serde_json::from_str(&last[0]).unwrap();
+        assert_eq!(finish["choices"][0]["finish_reason"], json!("stop"));
+        assert_eq!(finish["usage"]["prompt_tokens"], json!(3));
+        assert_eq!(last[1], "[DONE]");
+        assert!(state.finished);
+    }
+
+    #[test]
+    fn stream_function_call_emits_full_tool_call() {
+        let c = conv();
+        let mut state = StreamState::default();
+        let out = c.convert_stream_event(
+            &ev(json!({
+                "candidates": [{
+                    "content": {"parts": [{"functionCall": {"name": "getw", "args": {"x": 1}}}]},
+                    "finishReason": "STOP"
+                }]
+            })),
+            &mut state,
+        );
+        // role chunk + tool_calls chunk + finish + [DONE]
+        assert_eq!(out.len(), 4);
+        let tool: Value = serde_json::from_str(&out[1]).unwrap();
+        let tc = &tool["choices"][0]["delta"]["tool_calls"][0];
+        assert_eq!(tc["index"], json!(0));
+        assert_eq!(tc["id"], json!("call_0"));
+        assert_eq!(tc["function"]["name"], json!("getw"));
+        assert_eq!(tc["function"]["arguments"], json!("{\"x\":1}"));
+        let finish: Value = serde_json::from_str(&out[2]).unwrap();
+        assert_eq!(finish["choices"][0]["finish_reason"], json!("tool_calls"));
+        assert_eq!(out[3], "[DONE]");
     }
 }

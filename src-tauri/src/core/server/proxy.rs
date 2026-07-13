@@ -2238,8 +2238,8 @@ async fn proxy_request(
                                 if let Some(api_url) = provider_cfg.base_url.clone() {
                                     let path = converter
                                         .as_ref()
-                                        .map(|c| c.upstream_path())
-                                        .unwrap_or(destination_path.as_str());
+                                        .map(|c| c.upstream_path(&json_body))
+                                        .unwrap_or_else(|| destination_path.clone());
                                     target_base_url = Some(format!("{api_url}{path}"));
                                 } else {
                                     target_base_url = None;
@@ -2655,7 +2655,12 @@ async fn proxy_request(
         }
 
         if let Some(key) = key_opt {
-            outbound_req = outbound_req.header("Authorization", format!("Bearer {key}"));
+            // The converter decides the auth scheme (Google uses x-goog-api-key).
+            let (auth_name, auth_value) = match &upstream_converter {
+                Some(conv) => conv.auth_header(key),
+                None => ("authorization", format!("Bearer {key}")),
+            };
+            outbound_req = outbound_req.header(auth_name, auth_value);
         } else {
             log::debug!("No session API key for this attempt");
         }
