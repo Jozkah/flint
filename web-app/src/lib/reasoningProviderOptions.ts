@@ -1,3 +1,4 @@
+import type { JSONObject } from '@ai-sdk/provider'
 import {
   isThinkingBudgetLevelKey,
   type ThinkingBudgetLevelKey,
@@ -44,7 +45,7 @@ function readBudgetLevel(
 export function buildReasoningProviderOptions(
   providerId: string,
   model: Model | null | undefined
-): Record<string, Record<string, unknown>> | undefined {
+): Record<string, JSONObject> | undefined {
   const reasoning = readReasoning(model)
   const level = readBudgetLevel(model)
 
