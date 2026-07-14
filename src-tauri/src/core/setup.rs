@@ -2,7 +2,7 @@ use flate2::read::GzDecoder;
 use std::{
     fs::{self, File},
     io::Read,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
@@ -23,6 +23,21 @@ use crate::core::mcp::helpers::add_server_config;
 use super::{
     extensions::commands::get_jan_extensions_path, mcp::helpers::run_mcp_commands, state::AppState,
 };
+
+fn extensions_manifest_intact(manifest_path: &Path) -> bool {
+    let Ok(data) = fs::read_to_string(manifest_path) else {
+        return false;
+    };
+    let Ok(entries) = serde_json::from_str::<Vec<serde_json::Value>>(&data) else {
+        return false;
+    };
+    !entries.is_empty()
+        && entries.iter().all(|ext| {
+            ext.get("url")
+                .and_then(|u| u.as_str())
+                .is_some_and(|u| Path::new(u).exists())
+        })
+}
 
 pub fn install_extensions<R: Runtime>(app: tauri::AppHandle<R>, force: bool) -> Result<(), String> {
     // Skip extension installation on mobile platforms
@@ -48,9 +63,10 @@ pub fn install_extensions<R: Runtime>(app: tauri::AppHandle<R>, force: bool) -> 
         clean_up = true;
     }
     log::info!("Installing extensions. Clean up: {clean_up}");
-    // A bare directory is not proof of a completed install; gate on the manifest
-    // so a previously-aborted run self-heals on the next launch.
-    if !clean_up && extensions_json_path.exists() {
+    // A bare directory (or a surviving manifest) is not proof of a completed
+    // install; gate on the manifest AND on the files it points at so a partial
+    // or externally-deleted install self-heals on the next launch.
+    if !clean_up && extensions_manifest_intact(&extensions_json_path) {
         return Ok(());
     }
 
@@ -711,4 +727,52 @@ fn setup_window_theme_listener<R: Runtime>(
             let _ = app_handle_clone.emit("theme-changed", theme_str);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn write_manifest(dir: &Path, urls: &[&str]) -> PathBuf {
+        let entries: Vec<serde_json::Value> = urls
+            .iter()
+            .map(|u| serde_json::json!({ "name": "@janhq/x", "url": u }))
+            .collect();
+        let manifest = dir.join("extensions.json");
+        fs::write(&manifest, serde_json::to_string(&entries).unwrap()).unwrap();
+        manifest
+    }
+
+    #[test]
+    fn intact_when_all_referenced_files_exist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ext = tmp.path().join("dist/index.js");
+        fs::create_dir_all(ext.parent().unwrap()).unwrap();
+        fs::write(&ext, "").unwrap();
+        let manifest = write_manifest(tmp.path(), &[ext.to_str().unwrap()]);
+        assert!(extensions_manifest_intact(&manifest));
+    }
+
+    #[test]
+    fn not_intact_when_a_referenced_file_is_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let manifest = write_manifest(tmp.path(), &[tmp.path().join("gone.js").to_str().unwrap()]);
+        assert!(!extensions_manifest_intact(&manifest));
+    }
+
+    #[test]
+    fn not_intact_when_manifest_missing_or_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(!extensions_manifest_intact(&tmp.path().join("extensions.json")));
+        let empty = write_manifest(tmp.path(), &[]);
+        assert!(!extensions_manifest_intact(&empty));
+    }
+
+    #[test]
+    fn not_intact_when_extensions_dir_absent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let manifest = tmp.path().join("extensions").join("extensions.json");
+        assert!(!extensions_manifest_intact(&manifest));
+    }
 }
