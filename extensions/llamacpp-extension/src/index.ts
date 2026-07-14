@@ -55,6 +55,11 @@ import {
   type EmbedBatchResult,
 } from './util'
 import { generatePreset, MTP_MIN_BUILD } from './preset'
+import {
+  getBackendSetting,
+  setBackendSetting,
+  removeBackendSetting,
+} from './backend-settings'
 import { basename } from '@tauri-apps/api/path'
 import {
   loadLlamaModel,
@@ -152,7 +157,8 @@ type PersistedModelState = {
   settings?: Record<string, PersistedProviderSetting>
 }
 
-const MODEL_PROVIDER_LOCAL_STORAGE_KEY = 'model-provider'
+const MODEL_PROVIDER_STORE_KEY = 'model-provider'
+const INTERFACE_SETTINGS_STORE_KEY = 'setting-appearance'
 const LLAMACPP_MODEL_SETTINGS_BACKFILL_KEY =
   'llamacpp_model_yaml_backfill_v1'
 
@@ -256,9 +262,9 @@ const MODEL_SETTINGS_YAML_MAPPING: Record<
   },
 }
 
-function readPersistedLlamacppModels(): PersistedModelState[] {
+async function readPersistedLlamacppModels(): Promise<PersistedModelState[]> {
   try {
-    const raw = localStorage.getItem(MODEL_PROVIDER_LOCAL_STORAGE_KEY)
+    const raw = await getBackendSetting(MODEL_PROVIDER_STORE_KEY)
     if (!raw) return []
     const parsed = JSON.parse(raw)
     const providers = parsed?.state?.providers
@@ -270,6 +276,22 @@ function readPersistedLlamacppModels(): PersistedModelState[] {
   } catch (error) {
     logger.warn('Failed to read persisted llamacpp model settings:', error)
     return []
+  }
+}
+
+// Interface settings persist to the Rust settings store (settings.json), not
+// webview localStorage — see web-app/src/lib/backendStorage.ts. The value is
+// the Zustand-persisted blob `{ state: {...} }`. Defaults to true (feature on).
+async function readAutoGenerateTitleSetting(): Promise<boolean> {
+  try {
+    const raw = await getBackendSetting(INTERFACE_SETTINGS_STORE_KEY)
+    if (!raw) return true
+    const parsed = JSON.parse(raw)
+    const value = parsed?.state?.autoGenerateTitle
+    return typeof value === 'boolean' ? value : true
+  } catch (error) {
+    logger.warn('Failed to read autoGenerateTitle setting:', error)
+    return true
   }
 }
 
@@ -555,12 +577,16 @@ export default class llamacpp_extension extends AIEngine {
     await writeSettingsFile(settings)
   }
 
+  // The ONLY sanctioned localStorage use in this extension: a one-time read +
+  // clear migrating pre-backend llamacpp settings into the file store. All
+  // other persistence goes through backend-settings.ts. Guarded by
+  // no-localstorage.test.ts via the `localstorage-migration-allowed` markers.
   private async migrateLocalStorageToFile(): Promise<void> {
     if (await settingsFileExists()) return
     if (!this.name) return
     let raw: string | null = null
     try {
-      raw = localStorage.getItem(this.name)
+      raw = localStorage.getItem(this.name) // localstorage-migration-allowed
     } catch {
       raw = null
     }
@@ -578,7 +604,7 @@ export default class llamacpp_extension extends AIEngine {
       return
     }
     try {
-      localStorage.removeItem(this.name)
+      localStorage.removeItem(this.name) // localstorage-migration-allowed
     } catch (e) {
       logger.warn('Failed to clear migrated localStorage entry:', e)
     }
@@ -636,7 +662,10 @@ export default class llamacpp_extension extends AIEngine {
       providerPath,
       janDataFolderPath,
       this.config,
-      { supportsMtp }
+      {
+        supportsMtp,
+        reservedBackgroundSlots: (await readAutoGenerateTitleSetting()) ? 1 : 0,
+      }
     )
 
     const backendExe = await getBackendExePath(backend, version)
@@ -734,6 +763,7 @@ export default class llamacpp_extension extends AIEngine {
     const supportsMtp = build >= MTP_MIN_BUILD
     await generatePreset(providerPath, janDataFolderPath, this.config, {
       supportsMtp,
+      reservedBackgroundSlots: (await readAutoGenerateTitleSetting()) ? 1 : 0,
     })
 
     try {
@@ -845,7 +875,7 @@ export default class llamacpp_extension extends AIEngine {
 
   private async migrateAutoUnloadToModelsMax(): Promise<void> {
     const MIGRATION_KEY = 'llamacpp_models_max_migrated_v1'
-    if (localStorage.getItem(MIGRATION_KEY)) return
+    if (await getBackendSetting(MIGRATION_KEY)) return
 
     try {
       const old = await this.getSetting<boolean | undefined>(
@@ -873,39 +903,26 @@ export default class llamacpp_extension extends AIEngine {
       return
     }
 
-    localStorage.setItem(MIGRATION_KEY, '1')
+    await setBackendSetting(MIGRATION_KEY, '1')
   }
 
-  private getStoredBackendType(): string | null {
-    try {
-      return localStorage.getItem('llama_cpp_backend_type')
-    } catch (error) {
-      logger.warn('Failed to read backend type from localStorage:', error)
-      return null
-    }
+  private async getStoredBackendType(): Promise<string | null> {
+    return getBackendSetting('llama_cpp_backend_type')
   }
 
-  private setStoredBackendType(backendType: string): void {
-    try {
-      localStorage.setItem('llama_cpp_backend_type', backendType)
-      logger.info(`Stored backend type preference: ${backendType}`)
-    } catch (error) {
-      logger.warn('Failed to store backend type in localStorage:', error)
-    }
+  private async setStoredBackendType(backendType: string): Promise<void> {
+    await setBackendSetting('llama_cpp_backend_type', backendType)
+    logger.info(`Stored backend type preference: ${backendType}`)
   }
 
-  private clearStoredBackendType(): void {
-    try {
-      localStorage.removeItem('llama_cpp_backend_type')
-      logger.info('Cleared stored backend type preference')
-    } catch (error) {
-      logger.warn('Failed to clear backend type from localStorage:', error)
-    }
+  private async clearStoredBackendType(): Promise<void> {
+    await removeBackendSetting('llama_cpp_backend_type')
+    logger.info('Cleared stored backend type preference')
   }
 
   private async migrateFitOff(): Promise<void> {
     const MIGRATION_KEY = 'llamacpp_fit_off_v1'
-    if (localStorage.getItem(MIGRATION_KEY)) return
+    if (await getBackendSetting(MIGRATION_KEY)) return
 
     if (this.config.fit === true) {
       const settings = await this.getSettings()
@@ -921,15 +938,15 @@ export default class llamacpp_extension extends AIEngine {
       logger.info('Migrated fit setting: disabled')
     }
 
-    localStorage.setItem(MIGRATION_KEY, '1')
+    await setBackendSetting(MIGRATION_KEY, '1')
   }
 
   private async migratePersistedModelSettingsToYaml(): Promise<void> {
-    if (localStorage.getItem(LLAMACPP_MODEL_SETTINGS_BACKFILL_KEY)) return
+    if (await getBackendSetting(LLAMACPP_MODEL_SETTINGS_BACKFILL_KEY)) return
 
-    const persistedModels = readPersistedLlamacppModels()
+    const persistedModels = await readPersistedLlamacppModels()
     if (persistedModels.length === 0) {
-      localStorage.setItem(LLAMACPP_MODEL_SETTINGS_BACKFILL_KEY, '1')
+      await setBackendSetting(LLAMACPP_MODEL_SETTINGS_BACKFILL_KEY, '1')
       return
     }
 
@@ -973,7 +990,7 @@ export default class llamacpp_extension extends AIEngine {
       }
     }
 
-    localStorage.setItem(LLAMACPP_MODEL_SETTINGS_BACKFILL_KEY, '1')
+    await setBackendSetting(LLAMACPP_MODEL_SETTINGS_BACKFILL_KEY, '1')
   }
 
   async configureBackends(): Promise<void> {
@@ -1009,7 +1026,7 @@ export default class llamacpp_extension extends AIEngine {
       }
 
       // Get stored backend preference
-      const storedBackendType = this.getStoredBackendType()
+      const storedBackendType = await this.getStoredBackendType()
       let bestAvailableBackendString = ''
 
       // "Recommended" is computed against upstream releases only — a
@@ -1036,7 +1053,7 @@ export default class llamacpp_extension extends AIEngine {
           logger.info(
             `Migrating stored backend type preference from old '${storedBackendType}' to new common type: '${migrationTarget}'`
           )
-          this.setStoredBackendType(migrationTarget)
+          await this.setStoredBackendType(migrationTarget)
         }
 
         const effectiveStoredBackendType = migrationTarget || storedBackendType
@@ -1059,7 +1076,7 @@ export default class llamacpp_extension extends AIEngine {
             `Stored backend type '${effectiveStoredBackendType}' not available, falling back to best backend`
           )
           // Clear the invalid stored preference
-          this.clearStoredBackendType()
+          await this.clearStoredBackendType()
           // bestAvailableBackendString remains as the priority one calculated earlier
         }
       }
@@ -1125,18 +1142,18 @@ export default class llamacpp_extension extends AIEngine {
         ) {
           initialVersion = priorVersion
           initialBackend = normalizedBackend
-          const currentStoredBackend = this.getStoredBackendType()
+          const currentStoredBackend = await this.getStoredBackendType()
           if (currentStoredBackend !== normalizedBackend) {
-            this.setStoredBackendType(normalizedBackend)
+            await this.setStoredBackendType(normalizedBackend)
             logger.info(
               `Stored backend type preference from saved setting: ${normalizedBackend}`
             )
           }
         }
       } else if (bestBackend) {
-        const currentStoredBackend = this.getStoredBackendType()
+        const currentStoredBackend = await this.getStoredBackendType()
         if (currentStoredBackend !== bestBackend) {
-          this.setStoredBackendType(bestBackend)
+          await this.setStoredBackendType(bestBackend)
           logger.info(
             `Stored backend type preference from best available: ${bestBackend}`
           )
@@ -1432,7 +1449,7 @@ export default class llamacpp_extension extends AIEngine {
 
       // Map backend type for stored preference only (not for download/config)
       const effectiveBackendType = await mapOldBackendToNew(backend)
-      const currentStoredBackend = this.getStoredBackendType()
+      const currentStoredBackend = await this.getStoredBackendType()
 
       // Persist settings and stored preference before mutating in-memory config,
       // so that if any of these steps fail, config remains consistent.
@@ -1450,7 +1467,7 @@ export default class llamacpp_extension extends AIEngine {
       )
 
       if (currentStoredBackend !== effectiveBackendType) {
-        this.setStoredBackendType(effectiveBackendType)
+        await this.setStoredBackendType(effectiveBackendType)
         logger.info(
           `Updated stored backend type preference: ${effectiveBackendType}`
         )
@@ -1717,7 +1734,8 @@ export default class llamacpp_extension extends AIEngine {
 
           this.recomposeVersionBackend()
           const composite = this.config.version_backend
-          const currentStored = this.getStoredBackendType() || undefined
+          const currentStored =
+            (await this.getStoredBackendType()) || undefined
           const result = await handleSettingUpdate(
             'version_backend',
             composite,
@@ -1725,7 +1743,7 @@ export default class llamacpp_extension extends AIEngine {
           )
 
           if (result.backend_type_updated && result.effective_backend_type) {
-            this.setStoredBackendType(result.effective_backend_type)
+            await this.setStoredBackendType(result.effective_backend_type)
             logger.info(
               `Updated backend type preference to: ${result.effective_backend_type}`
             )
@@ -2025,7 +2043,7 @@ export default class llamacpp_extension extends AIEngine {
 
   private async migrateLegacyModels() {
     // Attempt to migrate only once
-    if (localStorage.getItem('cortex_models_migrated') === 'true') return
+    if ((await getBackendSetting('cortex_models_migrated')) === 'true') return
 
     const janDataFolderPath = await getJanDataFolderPath()
     const modelsDir = await joinPath([janDataFolderPath, 'models'])
@@ -2125,7 +2143,7 @@ export default class llamacpp_extension extends AIEngine {
         }
       }
     }
-    localStorage.setItem('cortex_models_migrated', 'true')
+    await setBackendSetting('cortex_models_migrated', 'true')
   }
 
   /*
@@ -2386,7 +2404,7 @@ export default class llamacpp_extension extends AIEngine {
         downloadItems.push({
           url: path,
           save_path: localPath,
-          proxy: getProxyConfig(),
+          proxy: await getProxyConfig(),
           sha256:
             saveName === 'model.gguf'
               ? opts.modelSha256

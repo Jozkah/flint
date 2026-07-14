@@ -188,6 +188,26 @@ describe('generatePreset parallel reservation', () => {
     const ini = writtenFiles['/p/router.preset.ini']
     expect(ini).not.toContain('parallel =')
   })
+
+  it('reserves no extra slot when reservedBackgroundSlots is 0 (global)', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { parallel: 1 } as any, {
+      supportsMtp: false,
+      reservedBackgroundSlots: 0,
+    })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('parallel = 1')
+  })
+
+  it('reserves no extra slot when reservedBackgroundSlots is 0 (per-model)', async () => {
+    setupModel('llama', { parallel: 3 })
+    await generatePreset('/p', '/jan', {} as any, {
+      supportsMtp: false,
+      reservedBackgroundSlots: 0,
+    })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('parallel = 3')
+  })
 })
 
 describe('generatePreset ctx-size default', () => {

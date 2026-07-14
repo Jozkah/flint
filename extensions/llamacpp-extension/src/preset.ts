@@ -76,9 +76,15 @@ export async function generatePreset(
   providerPath: string,
   janDataFolderPath: string,
   config: LlamacppConfig,
-  opts: { supportsMtp?: boolean } = {}
+  opts: { supportsMtp?: boolean; reservedBackgroundSlots?: number } = {}
 ): Promise<{ path: string; embeddingCount: number }> {
   const supportsMtp = opts.supportsMtp === true
+  // Reserved background slot count (thread auto-titling). Disabling that
+  // feature drops it to 0 so no extra parallel slot is provisioned.
+  const reservedBackgroundSlots =
+    typeof opts.reservedBackgroundSlots === 'number'
+      ? opts.reservedBackgroundSlots
+      : RESERVED_BACKGROUND_SLOTS
   const modelsDir = await joinPath([providerPath, 'models'])
 
   // Ensure the directory exists; an empty install is fine — we still emit a
@@ -191,7 +197,7 @@ export async function generatePreset(
   // parallel default = -1 (auto); positive user value is intent. The reserved
   // slot is added on top and never exposed in the setting's own value.
   if (typeof config.parallel === 'number' && config.parallel > 0) {
-    lines.push(`parallel = ${config.parallel + RESERVED_BACKGROUND_SLOTS}`)
+    lines.push(`parallel = ${config.parallel + reservedBackgroundSlots}`)
   }
   // cont-batching default = true; emit only the explicit-off case.
   if (config.cont_batching === false) {
@@ -394,7 +400,7 @@ export async function generatePreset(
       lines.push(`cache-type-v = ${escapeIniValue(mc.cache_type_v)}`)
     }
     if (typeof mc.parallel === 'number' && mc.parallel > 0) {
-      lines.push(`parallel = ${mc.parallel + RESERVED_BACKGROUND_SLOTS}`)
+      lines.push(`parallel = ${mc.parallel + reservedBackgroundSlots}`)
     }
     if (mc.cont_batching === false) {
       lines.push('cont-batching = false')

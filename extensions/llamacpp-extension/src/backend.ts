@@ -54,7 +54,7 @@ export async function fetchRemoteBackends(): Promise<BackendVersion[]> {
   try {
     return await invoke<BackendVersion[]>(
       'plugin:llamacpp|fetch_remote_supported_backends',
-      { supportedBackends, proxy: getProxyConfig() }
+      { supportedBackends, proxy: await getProxyConfig() }
     )
   } catch (e) {
     logger.debug(
@@ -139,7 +139,7 @@ export async function downloadBackend(
 ): Promise<void> {
   const janDataFolderPath = await getJanDataFolderPath()
   const sysInfo = await getSystemInfo()
-  const proxyConfig = getProxyConfig()
+  const proxyConfig = await getProxyConfig()
 
   const downloadItems: Array<{
     url: string

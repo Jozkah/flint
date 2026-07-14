@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import llamacpp_extension from '../index'
 
 import { normalizeLlamacppConfig } from '@janhq/tauri-plugin-llamacpp-api'
+import { getBackendSetting, setBackendSetting } from '../backend-settings'
+
+vi.mock('../backend-settings')
 
 // Mock fetch globally
 global.fetch = vi.fn()
@@ -428,11 +431,11 @@ describe('llamacpp_extension', () => {
 
   describe('migrateFitOff', () => {
     beforeEach(() => {
-      vi.mocked(localStorage.getItem).mockReturnValue(null)
+      vi.mocked(getBackendSetting).mockResolvedValue(null)
     })
 
     it('should skip migration if already migrated', async () => {
-      vi.mocked(localStorage.getItem).mockReturnValue('1')
+      vi.mocked(getBackendSetting).mockResolvedValue('1')
       extension['config'] = { fit: true } as any
       extension['getSettings'] = vi.fn()
 
@@ -450,7 +453,7 @@ describe('llamacpp_extension', () => {
 
       expect(extension['getSettings']).not.toHaveBeenCalled()
       expect(extension['updateSettings']).not.toHaveBeenCalled()
-      expect(localStorage.setItem).toHaveBeenCalledWith('llamacpp_fit_off_v1', '1')
+      expect(setBackendSetting).toHaveBeenCalledWith('llamacpp_fit_off_v1', '1')
     })
 
     it('should disable fit when it is true', async () => {
@@ -467,7 +470,7 @@ describe('llamacpp_extension', () => {
       expect(updatedSettings.find((s: any) => s.key === 'fit').controllerProps.value).toBe(false)
       expect(updatedSettings.find((s: any) => s.key === 'ctx_size').controllerProps.value).toBe(2048)
       expect(extension['config'].fit).toBe(false)
-      expect(localStorage.setItem).toHaveBeenCalledWith('llamacpp_fit_off_v1', '1')
+      expect(setBackendSetting).toHaveBeenCalledWith('llamacpp_fit_off_v1', '1')
     })
 
     it('should not modify other settings during fit migration', async () => {

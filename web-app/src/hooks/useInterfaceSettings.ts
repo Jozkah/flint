@@ -112,12 +112,14 @@ interface InterfaceSettingsState {
   showTokenSpeed: boolean
   coloredUserBubble: boolean
   renderHtmlArtifacts: boolean
+  autoGenerateTitle: boolean
   setFontSize: (size: FontSize) => void
   setAccentColor: (color: AccentColorValue) => void
   setNotificationPosition: (position: NotificationPosition) => void
   setShowTokenSpeed: (show: boolean) => void
   setColoredUserBubble: (colored: boolean) => void
   setRenderHtmlArtifacts: (render: boolean) => void
+  setAutoGenerateTitle: (auto: boolean) => void
   resetInterface: () => void
 }
 
@@ -130,6 +132,7 @@ type InterfaceSettingsPersistedSlice = Omit<
   | 'setShowTokenSpeed'
   | 'setColoredUserBubble'
   | 'setRenderHtmlArtifacts'
+  | 'setAutoGenerateTitle'
 >
 
 export const fontSizeOptions = [
@@ -150,6 +153,7 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
     showTokenSpeed: true,
     coloredUserBubble: true,
     renderHtmlArtifacts: false,
+    autoGenerateTitle: true,
   }
 }
 
@@ -188,6 +192,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             showTokenSpeed: true,
             coloredUserBubble: true,
             renderHtmlArtifacts: false,
+            autoGenerateTitle: true,
           })
         },
 
@@ -223,6 +228,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         setRenderHtmlArtifacts: (render) => {
           set({ renderHtmlArtifacts: render })
         },
+
+        setAutoGenerateTitle: (auto) => {
+          set({ autoGenerateTitle: auto })
+        },
       }
     },
     {
@@ -236,6 +245,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         showTokenSpeed: state.showTokenSpeed,
         coloredUserBubble: state.coloredUserBubble,
         renderHtmlArtifacts: state.renderHtmlArtifacts,
+        autoGenerateTitle: state.autoGenerateTitle,
       }),
       // Apply settings when hydrating from storage
       onRehydrateStorage: () => (state) => {
@@ -275,6 +285,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
 
           if (typeof state.renderHtmlArtifacts !== 'boolean') {
             state.renderHtmlArtifacts = false
+          }
+
+          if (typeof state.autoGenerateTitle !== 'boolean') {
+            state.autoGenerateTitle = true
           }
         }
 

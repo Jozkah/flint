@@ -1,5 +1,5 @@
-import { invoke } from '@tauri-apps/api/core'
 import { logger } from '@janhq/core'
+import { getBackendSetting, setBackendSetting } from './backend-settings'
 
 // File path utilities
 export function basenameNoExt(filePath: string): string {
@@ -43,19 +43,7 @@ const DEFAULT_EMBEDDING_MODEL_KEY = 'default-embedding-model'
 // extension sees the model the user actually picked in Settings; localStorage
 // is only a fallback for `dev:web` (no Tauri shell).
 async function readDefaultEmbeddingModelRaw(): Promise<string | null> {
-  try {
-    const value = await invoke<string | null>('settings_get', {
-      key: DEFAULT_EMBEDDING_MODEL_KEY,
-    })
-    if (value != null) return value
-  } catch {
-    /* not running under Tauri, or command unavailable */
-  }
-  try {
-    return localStorage.getItem(DEFAULT_EMBEDDING_MODEL_KEY)
-  } catch {
-    return null
-  }
+  return getBackendSetting(DEFAULT_EMBEDDING_MODEL_KEY)
 }
 
 export async function getDefaultEmbeddingModelId(
@@ -86,28 +74,18 @@ export async function setDefaultEmbeddingModelId(
     parsed.state = { ...state, defaultByProvider: map }
     if (parsed.version === undefined) parsed.version = 0
     const serialized = JSON.stringify(parsed)
-    try {
-      await invoke('settings_set', {
-        key: DEFAULT_EMBEDDING_MODEL_KEY,
-        value: serialized,
-      })
-      return
-    } catch {
-      /* not running under Tauri, or command unavailable */
-    }
-    localStorage.setItem(DEFAULT_EMBEDDING_MODEL_KEY, serialized)
+    await setBackendSetting(DEFAULT_EMBEDDING_MODEL_KEY, serialized)
   } catch {
     /* non-fatal */
   }
 }
 
-export function getProxyConfig(): Record<
+export async function getProxyConfig(): Promise<Record<
   string,
   string | string[] | boolean
-> | null {
+> | null> {
   try {
-    // Retrieve proxy configuration from localStorage
-    const proxyConfigString = localStorage.getItem('setting-proxy-config')
+    const proxyConfigString = await getBackendSetting('setting-proxy-config')
     if (!proxyConfigString) {
       return null
     }

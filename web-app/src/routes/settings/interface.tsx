@@ -28,6 +28,8 @@ function InterfaceSettings() {
     setColoredUserBubble,
     renderHtmlArtifacts,
     setRenderHtmlArtifacts,
+    autoGenerateTitle,
+    setAutoGenerateTitle,
   } = useInterfaceSettings()
 
   return (
@@ -98,6 +100,16 @@ function InterfaceSettings() {
                   <Switch
                     checked={renderHtmlArtifacts}
                     onCheckedChange={setRenderHtmlArtifacts}
+                  />
+                }
+              />
+              <CardItem
+                title={t('settings:interface.autoGenerateTitle')}
+                description={t('settings:interface.autoGenerateTitleDesc')}
+                actions={
+                  <Switch
+                    checked={autoGenerateTitle}
+                    onCheckedChange={setAutoGenerateTitle}
                   />
                 }
               />
