@@ -877,58 +877,6 @@ pub async fn try_graceful_stop_router<R: Runtime>(
     }
 }
 
-/// Issues `POST /models/unload` for `model_id` only if `/slots?model=<id>`
-/// reports `is_processing: true`. Returns whether an unload was triggered.
-#[tauri::command]
-pub async fn force_stop_model<R: Runtime>(
-    app_handle: tauri::AppHandle<R>,
-    model_id: String,
-) -> Result<bool, String> {
-    let (port, api_key, _pid) = router_endpoint(&app_handle).await?;
-    let client = http_client().await;
-
-    let slots_url = format!("http://127.0.0.1:{}/slots", port);
-    let resp = client
-        .get(&slots_url)
-        .query(&[("model", model_id.as_str())])
-        .bearer_auth(&api_key)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Ok(false);
-    }
-    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let busy = json
-        .as_array()
-        .map(|arr| {
-            arr.iter().any(|s| {
-                s.get("is_processing")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-            })
-        })
-        .unwrap_or(false);
-    if !busy {
-        return Ok(false);
-    }
-
-    let url = format!("http://127.0.0.1:{}/models/unload", port);
-    let resp = client
-        .post(&url)
-        .bearer_auth(&api_key)
-        .json(&ModelRequestBody { model: &model_id })
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    log::info!(
-        "force_stop_model: unload {} returned {}",
-        model_id,
-        resp.status()
-    );
-    Ok(true)
-}
-
 #[tauri::command]
 pub async fn force_kill_router_tree<R: Runtime>(
     app_handle: tauri::AppHandle<R>,

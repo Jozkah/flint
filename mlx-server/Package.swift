@@ -14,6 +14,9 @@ let package = Package(
         .package(url: "https://github.com/ml-explore/mlx-swift", .upToNextMinor(from: "0.31.3")),
         .package(url: "https://github.com/ml-explore/mlx-swift-lm", branch: "main"),
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.3.0"),
+        // Pin transitive swift-jinja: 2.4.0 changed Value.object keys from String to
+        // ObjectKey, which fails to build against swift-transformers 1.3.3's jinjaValue().
+        .package(url: "https://github.com/huggingface/swift-jinja.git", "2.3.0"..<"2.4.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.7.0"),
         .package(url: "https://github.com/hummingbird-project/hummingbird", from: "2.19.0"),
     ],

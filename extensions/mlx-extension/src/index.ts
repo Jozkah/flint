@@ -23,9 +23,9 @@ import {
   events,
   AppEvent,
   DownloadEvent,
+  logger,
 } from '@janhq/core'
 
-import { info, warn, error as logError } from '@tauri-apps/plugin-log'
 import { invoke } from '@tauri-apps/api/core'
 import {
   loadMlxModel,
@@ -36,21 +36,6 @@ import { readGgufMetadata, ModelConfig } from '@janhq/tauri-plugin-llamacpp-api'
 
 // Error message constant
 const OUT_OF_CONTEXT_SIZE = 'the request exceeds the available context size.'
-
-const logger = {
-  info: function (...args: any[]) {
-    console.log(...args)
-    info(args.map((arg) => ` ${arg}`).join(` `))
-  },
-  warn: function (...args: any[]) {
-    console.warn(...args)
-    warn(args.map((arg) => ` ${arg}`).join(` `))
-  },
-  error: function (...args: any[]) {
-    console.error(...args)
-    logError(args.map((arg) => ` ${arg}`).join(` `))
-  },
-}
 
 export default class mlx_extension extends AIEngine {
   provider: string = 'mlx'

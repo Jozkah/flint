@@ -99,7 +99,7 @@ pub async fn register_provider_config(
     let mut configs = provider_configs.lock().await;
     let provider_name = request.provider.clone();
     configs.insert(provider_name.clone(), config);
-    log::info!("Registered provider config: {provider_name}");
+    log::debug!("Registered provider config: {provider_name}");
     Ok(())
 }
 

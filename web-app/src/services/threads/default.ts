@@ -33,48 +33,46 @@ export class DefaultThreadsService implements ThreadsService {
       throw new Error('Conversational extension not available yet')
     }
 
-    try {
-      const threads = await ext.listThreads()
-      if (!Array.isArray(threads)) return []
+    // Let listThreads failures propagate: a rejected invoke means "backend not
+    // ready / errored", not "no threads" — the caller retries instead of
+    // wiping the list with [].
+    const threads = await ext.listThreads()
+    if (!Array.isArray(threads)) return []
 
-      // new String("id") !== "id"
-      threads.forEach((e) => {
-        e.id = e.id?.toString()
-        e.assistants?.forEach((a) => {
-          a.id = a.id?.toString()
-          if (a.model) a.model.id = a.model.id?.toString()
-        })
+    // new String("id") !== "id"
+    threads.forEach((e) => {
+      e.id = e.id?.toString()
+      e.assistants?.forEach((a) => {
+        a.id = a.id?.toString()
+        if (a.model) a.model.id = a.model.id?.toString()
       })
+    })
 
-      // Filter out temporary threads from the list
-      const filteredThreads = threads.filter((e) => e.id !== TEMPORARY_CHAT_ID)
+    // Filter out temporary threads from the list
+    const filteredThreads = threads.filter((e) => e.id !== TEMPORARY_CHAT_ID)
 
-      return filteredThreads.map((e) => {
-        const model = fromModelResponse(e.assistants?.[0]?.model)
-        const assistants = e.assistants
+    return filteredThreads.map((e) => {
+      const model = fromModelResponse(e.assistants?.[0]?.model)
+      const assistants = e.assistants
 
-        return {
-          ...e,
-          updated:
-            typeof e.updated === 'number' && e.updated > 1e12
-              ? Math.floor(e.updated / 1000)
-              : (e.updated ?? 0),
+      return {
+        ...e,
+        updated:
+          typeof e.updated === 'number' && e.updated > 1e12
+            ? Math.floor(e.updated / 1000)
+            : (e.updated ?? 0),
+        order: e.metadata?.order,
+        isFavorite: e.metadata?.is_favorite,
+        model,
+        assistants,
+        metadata: {
+          ...e.metadata,
+          // Override extracted fields to avoid duplication
           order: e.metadata?.order,
-          isFavorite: e.metadata?.is_favorite,
-          model,
-          assistants,
-          metadata: {
-            ...e.metadata,
-            // Override extracted fields to avoid duplication
-            order: e.metadata?.order,
-            is_favorite: e.metadata?.is_favorite,
-          },
-        } as Thread
-      })
-    } catch (e) {
-      console.error('Error fetching threads:', e)
-      return []
-    }
+          is_favorite: e.metadata?.is_favorite,
+        },
+      } as Thread
+    })
   }
 
   async createThread(thread: Thread): Promise<Thread> {

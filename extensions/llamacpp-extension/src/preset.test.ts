@@ -4,6 +4,12 @@ const writtenFiles: Record<string, string> = {}
 const modelYamls: Record<string, unknown> = {}
 
 vi.mock('@janhq/core', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
   fs: {
     existsSync: vi.fn(async (p: string) => p === '/p/models' || p in modelYamls),
     mkdir: vi.fn(async () => undefined),
@@ -181,6 +187,26 @@ describe('generatePreset parallel reservation', () => {
     await generatePreset('/p', '/jan', {} as any, { supportsMtp: false })
     const ini = writtenFiles['/p/router.preset.ini']
     expect(ini).not.toContain('parallel =')
+  })
+
+  it('reserves no extra slot when reservedBackgroundSlots is 0 (global)', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { parallel: 1 } as any, {
+      supportsMtp: false,
+      reservedBackgroundSlots: 0,
+    })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('parallel = 1')
+  })
+
+  it('reserves no extra slot when reservedBackgroundSlots is 0 (per-model)', async () => {
+    setupModel('llama', { parallel: 3 })
+    await generatePreset('/p', '/jan', {} as any, {
+      supportsMtp: false,
+      reservedBackgroundSlots: 0,
+    })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('parallel = 3')
   })
 })
 
