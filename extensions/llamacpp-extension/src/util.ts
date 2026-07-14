@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { logger } from '@janhq/core'
 
 // File path utilities
 export function basenameNoExt(filePath: string): string {
@@ -149,8 +150,7 @@ export function getProxyConfig(): Record<
     proxyConfig.verify_peer_ssl = proxyState.verifyPeerSSL
     proxyConfig.verify_host_ssl = proxyState.verifyHostSSL
 
-    // Log proxy configuration for debugging
-    console.log('Using proxy configuration:', {
+    logger.info('Using proxy configuration:', {
       url: proxyState.proxyUrl,
       hasAuth: !!(proxyState.proxyUsername && proxyState.proxyPassword),
       noProxyCount: proxyConfig.no_proxy
@@ -165,7 +165,7 @@ export function getProxyConfig(): Record<
 
     return proxyConfig
   } catch (error) {
-    console.error('Failed to parse proxy configuration:', error)
+    logger.error('Failed to parse proxy configuration:', error)
     if (error instanceof SyntaxError) {
       // JSON parsing error - return null
       return null

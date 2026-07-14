@@ -17,6 +17,12 @@ const MOCK_JAN_PATH_STRING = '/path/to/jan'
 
 // Mock the core dependencies
 vi.mock('@janhq/core', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
   getJanDataFolderPath: vi.fn().mockResolvedValue('/path/to/jan'),
   fs: {
     existsSync: vi.fn(),

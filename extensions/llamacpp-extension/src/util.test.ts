@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { logger } from '@janhq/core'
 import {
   buildEmbedBatches,
   detectMtpLayersFromGgufMeta,
@@ -7,29 +8,9 @@ import {
   truncateToTokenBudget,
 } from './util'
 
-// Mock console.log and console.error to avoid noise in tests
-const mockConsole = {
-  log: vi.fn(),
-  error: vi.fn(),
-}
-
-// Set up mocks
 beforeEach(() => {
-  // Clear all mocks
   vi.clearAllMocks()
-
-  // Clear localStorage mocks
   vi.mocked(localStorage.getItem).mockClear()
-
-  // Mock console
-  Object.defineProperty(console, 'log', {
-    value: mockConsole.log,
-    writable: true,
-  })
-  Object.defineProperty(console, 'error', {
-    value: mockConsole.error,
-    writable: true,
-  })
 })
 
 describe('getProxyConfig', () => {
@@ -406,7 +387,7 @@ describe('getProxyConfig', () => {
 
     getProxyConfig()
 
-    expect(mockConsole.log).toHaveBeenCalledWith('Using proxy configuration:', {
+    expect(logger.info).toHaveBeenCalledWith('Using proxy configuration:', {
       url: 'https://proxy.example.com:8080',
       hasAuth: true,
       noProxyCount: 2,
@@ -439,7 +420,7 @@ describe('getProxyConfig', () => {
 
     getProxyConfig()
 
-    expect(mockConsole.log).toHaveBeenCalledWith('Using proxy configuration:', {
+    expect(logger.info).toHaveBeenCalledWith('Using proxy configuration:', {
       url: 'http://proxy.example.com:8080',
       hasAuth: false,
       noProxyCount: 0,
@@ -457,7 +438,7 @@ describe('getProxyConfig', () => {
     const result = getProxyConfig()
 
     expect(result).toBeNull()
-    expect(mockConsole.error).toHaveBeenCalledWith(
+    expect(logger.error).toHaveBeenCalledWith(
       'Failed to parse proxy configuration:',
       expect.any(SyntaxError)
     )

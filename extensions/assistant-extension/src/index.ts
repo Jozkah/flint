@@ -1,4 +1,4 @@
-import { Assistant, AssistantExtension, fs, joinPath } from '@janhq/core'
+import { Assistant, AssistantExtension, fs, joinPath, logger } from '@janhq/core'
 
 const V2_IDENTITY_LINE =
   'You are Jan, a helpful AI assistant who assists users with their requests. Jan is trained by Menlo Research (https://www.menlo.ai).'
@@ -49,7 +49,7 @@ export default class JanAssistantExtension extends AssistantExtension {
         return isNaN(version) ? 0 : version
       }
     } catch (error) {
-      console.error('Failed to read migration version:', error)
+      logger.error('Failed to read migration version:', error)
     }
     return 0
   }
@@ -61,7 +61,7 @@ export default class JanAssistantExtension extends AssistantExtension {
     try {
       await fs.writeFileSync(this.MIGRATION_FILE, version.toString())
     } catch (error) {
-      console.error('Failed to save migration version:', error)
+      logger.error('Failed to save migration version:', error)
     }
   }
 
@@ -72,24 +72,24 @@ export default class JanAssistantExtension extends AssistantExtension {
     const currentVersion = await this.getCurrentMigrationVersion()
 
     if (currentVersion < 1) {
-      console.log('Running migration v1: Update assistant instructions')
+      logger.info('Running migration v1: Update assistant instructions')
       await this.migrateAssistantInstructions()
       await this.saveMigrationVersion(1)
     }
 
     if (currentVersion < 2) {
-      console.log('Running migration v2: Update to Menlo Research instructions')
+      logger.info('Running migration v2: Update to Menlo Research instructions')
       await this.migrateToMenloInstructions()
       await this.saveMigrationVersion(2)
     }
 
     if (currentVersion < 3) {
-      console.log('Running migration v3: Strip identity preamble from default assistant')
+      logger.info('Running migration v3: Strip identity preamble from default assistant')
       await this.migrateStripIdentityPreamble()
       await this.saveMigrationVersion(3)
     }
 
-    console.log(
+    logger.info(
       `Migrations complete. Current version: ${this.CURRENT_MIGRATION_VERSION}`
     )
   }
@@ -128,9 +128,9 @@ export default class JanAssistantExtension extends AssistantExtension {
             assistantPath,
             JSON.stringify(assistant, null, 2)
           )
-          console.log(`Migrated instructions for assistant: ${assistant.id}`)
+          logger.info(`Migrated instructions for assistant: ${assistant.id}`)
         } catch (error) {
-          console.error(`Failed to migrate assistant ${assistant.id}:`, error)
+          logger.error(`Failed to migrate assistant ${assistant.id}:`, error)
         }
       }
     }
@@ -198,11 +198,11 @@ Current date: {{current_date}}`
             assistantPath,
             JSON.stringify(assistantWithParams, null, 2)
           )
-          console.log(
+          logger.info(
             `Migrated to Menlo instructions for assistant: ${assistant.id}`
           )
         } catch (error) {
-          console.error(`Failed to migrate assistant ${assistant.id}:`, error)
+          logger.error(`Failed to migrate assistant ${assistant.id}:`, error)
         }
       }
     }
@@ -233,9 +233,9 @@ Current date: {{current_date}}`
 
       try {
         await fs.writeFileSync(assistantPath, JSON.stringify(assistant, null, 2))
-        console.log(`Stripped identity preamble for assistant: ${assistant.id}`)
+        logger.info(`Stripped identity preamble for assistant: ${assistant.id}`)
       } catch (error) {
-        console.error(`Failed to migrate assistant ${assistant.id}:`, error)
+        logger.error(`Failed to migrate assistant ${assistant.id}:`, error)
       }
     }
   }
@@ -262,7 +262,7 @@ Current date: {{current_date}}`
         const assistantData = JSON.parse(await fs.readFileSync(assistantPath))
         assistantsData.push(assistantData as Assistant)
       } catch (error) {
-        console.error(`Failed to read assistant ${assistant}:`, error)
+        logger.error(`Failed to read assistant ${assistant}:`, error)
       }
     }
     // Return loaded assistants, or fall back to default if none found

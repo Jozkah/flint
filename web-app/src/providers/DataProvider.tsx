@@ -59,7 +59,7 @@ async function registerRemoteProvider(provider: ModelProvider) {
 
   try {
     await invoke('register_provider_config', { request })
-    console.log(`Registered remote provider: ${provider.provider}`)
+    console.debug(`Registered remote provider: ${provider.provider}`)
   } catch (error) {
     console.error(`Failed to register provider ${provider.provider}:`, error)
   }

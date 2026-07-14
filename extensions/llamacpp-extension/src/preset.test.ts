@@ -4,6 +4,12 @@ const writtenFiles: Record<string, string> = {}
 const modelYamls: Record<string, unknown> = {}
 
 vi.mock('@janhq/core', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
   fs: {
     existsSync: vi.fn(async (p: string) => p === '/p/models' || p in modelYamls),
     mkdir: vi.fn(async () => undefined),

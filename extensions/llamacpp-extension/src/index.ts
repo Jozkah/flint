@@ -24,6 +24,7 @@ import {
   chatCompletionRequestMessage,
   SettingComponentProps,
   DropdownComponentProps,
+  logger,
 } from '@janhq/core'
 import {
   readSettingsFile,
@@ -31,7 +32,6 @@ import {
   settingsFileExists,
 } from './settings-store'
 
-import { error, info, warn } from '@tauri-apps/plugin-log'
 import { listen } from '@tauri-apps/api/event'
 import {
   listSupportedBackends,
@@ -123,39 +123,6 @@ const PRESET_AFFECTING_KEYS = new Set<string>([
   'kv_unified',
 ])
 
-/**
- * Override the default app.log function to use Jan's logging system.
- * @param args
- */
-function formatLogArg(arg: unknown): string {
-  if (arg instanceof Error) {
-    return arg.stack ? `${arg.message}\n${arg.stack}` : arg.message
-  }
-  if (arg === null || arg === undefined) return String(arg)
-  if (typeof arg === 'object') {
-    try {
-      return JSON.stringify(arg)
-    } catch {
-      return String(arg)
-    }
-  }
-  return String(arg)
-}
-
-const logger = {
-  info: function (...args: any[]) {
-    console.log(...args)
-    info(args.map((arg) => ` ${formatLogArg(arg)}`).join(` `))
-  },
-  warn: function (...args: any[]) {
-    console.warn(...args)
-    warn(args.map((arg) => ` ${formatLogArg(arg)}`).join(` `))
-  },
-  error: function (...args: any[]) {
-    console.error(...args)
-    error(args.map((arg) => ` ${formatLogArg(arg)}`).join(` `))
-  },
-}
 
 /**
  * A class that implements the InferenceExtension interface from the @janhq/core package.
@@ -2133,7 +2100,7 @@ export default class llamacpp_extension extends AIEngine {
             }
           }
         } catch (error) {
-          console.error(`Error migrating model ${child}:`, error)
+          logger.error(`Error migrating model ${child}:`, error)
         }
       }
 
