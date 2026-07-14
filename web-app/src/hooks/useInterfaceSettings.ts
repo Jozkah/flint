@@ -112,14 +112,12 @@ interface InterfaceSettingsState {
   showTokenSpeed: boolean
   coloredUserBubble: boolean
   renderHtmlArtifacts: boolean
-  foldInterstitialReasoning: boolean
   setFontSize: (size: FontSize) => void
   setAccentColor: (color: AccentColorValue) => void
   setNotificationPosition: (position: NotificationPosition) => void
   setShowTokenSpeed: (show: boolean) => void
   setColoredUserBubble: (colored: boolean) => void
   setRenderHtmlArtifacts: (render: boolean) => void
-  setFoldInterstitialReasoning: (fold: boolean) => void
   resetInterface: () => void
 }
 
@@ -132,7 +130,6 @@ type InterfaceSettingsPersistedSlice = Omit<
   | 'setShowTokenSpeed'
   | 'setColoredUserBubble'
   | 'setRenderHtmlArtifacts'
-  | 'setFoldInterstitialReasoning'
 >
 
 export const fontSizeOptions = [
@@ -153,7 +150,6 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
     showTokenSpeed: true,
     coloredUserBubble: true,
     renderHtmlArtifacts: false,
-    foldInterstitialReasoning: true,
   }
 }
 
@@ -192,7 +188,6 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             showTokenSpeed: true,
             coloredUserBubble: true,
             renderHtmlArtifacts: false,
-            foldInterstitialReasoning: true,
           })
         },
 
@@ -228,10 +223,6 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         setRenderHtmlArtifacts: (render) => {
           set({ renderHtmlArtifacts: render })
         },
-
-        setFoldInterstitialReasoning: (fold) => {
-          set({ foldInterstitialReasoning: fold })
-        },
       }
     },
     {
@@ -245,7 +236,6 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         showTokenSpeed: state.showTokenSpeed,
         coloredUserBubble: state.coloredUserBubble,
         renderHtmlArtifacts: state.renderHtmlArtifacts,
-        foldInterstitialReasoning: state.foldInterstitialReasoning,
       }),
       // Apply settings when hydrating from storage
       onRehydrateStorage: () => (state) => {
@@ -285,10 +275,6 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
 
           if (typeof state.renderHtmlArtifacts !== 'boolean') {
             state.renderHtmlArtifacts = false
-          }
-
-          if (typeof state.foldInterstitialReasoning !== 'boolean') {
-            state.foldInterstitialReasoning = true
           }
         }
 

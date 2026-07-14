@@ -1,43 +1,38 @@
 import { memo } from 'react'
+import type React from 'react'
 import { cn } from '@/lib/utils'
 import { splitReasoningParagraphs } from '@/lib/reasoning'
 
 type StepRowProps = {
-  text: string
+  text?: string
   connector?: boolean
+  children?: React.ReactNode
 }
 
-const StepRow = ({ text, connector = false }: StepRowProps) => (
+/**
+ * One step on the dotted timeline rail: a dot plus content, with an optional
+ * dotted connector descending to the next step. Pass `text` for a plain
+ * reasoning paragraph, or `children` to host arbitrary content (e.g. a tool
+ * call) on the same continuous rail.
+ */
+export const StepRow = ({ text, connector = false, children }: StepRowProps) => (
   <li className="relative flex gap-2.5">
     {connector && (
       <span className="absolute left-[3px] top-3.5 -bottom-2.5 border-l border-dotted border-border" />
     )}
     <span className="relative z-10 mt-1.5 size-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
-    <div
-      dir="auto"
-      className="select-text whitespace-pre-wrap wrap-break-word text-sm text-main-view-fg/70"
-    >
-      {text}
-    </div>
+    {children ? (
+      <div className="min-w-0 flex-1">{children}</div>
+    ) : (
+      <div
+        dir="auto"
+        className="select-text whitespace-pre-wrap wrap-break-word text-sm text-main-view-fg/70"
+      >
+        {text}
+      </div>
+    )}
   </li>
 )
-
-/**
- * Full stepped reasoning trace — one dot-railed step per paragraph, joined by a
- * single dotted connector. Shown when reasoning has finished (or for historical
- * messages) where the whole trace is revealed on expand.
- */
-export const ReasoningTimeline = memo(({ text }: { text: string }) => {
-  const steps = splitReasoningParagraphs(text)
-  if (steps.length === 0) return null
-  return (
-    <ol className="relative flex flex-col gap-2.5">
-      {steps.map((step, i) => (
-        <StepRow key={i} text={step} connector={i < steps.length - 1} />
-      ))}
-    </ol>
-  )
-})
 
 /**
  * While reasoning streams, show only the most recently *completed* paragraph as
@@ -69,5 +64,4 @@ export const ReasoningActiveStep = memo(({ text }: { text: string }) => {
   )
 })
 
-ReasoningTimeline.displayName = 'ReasoningTimeline'
 ReasoningActiveStep.displayName = 'ReasoningActiveStep'
