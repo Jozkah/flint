@@ -447,7 +447,7 @@ __metadata:
     "@janhq/tauri-plugin-hardware-api": "link:../../src-tauri/plugins/tauri-plugin-hardware"
     "@janhq/tauri-plugin-llamacpp-api": "link:../../src-tauri/plugins/tauri-plugin-llamacpp"
     "@tauri-apps/api": "npm:2.8.0"
-    "@tauri-apps/plugin-http": "npm:2.5.0"
+    "@tauri-apps/plugin-http": "npm:2.5.9"
     "@vitest/ui": "npm:2.1.9"
     cpx: "npm:1.5.0"
     fetch-retry: "npm:^5.0.6"
@@ -469,7 +469,7 @@ __metadata:
     "@janhq/tauri-plugin-llamacpp-api": "link:../../src-tauri/plugins/tauri-plugin-llamacpp"
     "@janhq/tauri-plugin-mlx-api": "link:../../src-tauri/plugins/tauri-plugin-mlx"
     "@tauri-apps/api": "npm:2.8.0"
-    "@tauri-apps/plugin-http": "npm:2.5.0"
+    "@tauri-apps/plugin-http": "npm:2.5.9"
     cpx: "npm:1.5.0"
     rimraf: "npm:3.0.2"
     rolldown: "npm:1.0.0-beta.1"
@@ -840,19 +840,26 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@tauri-apps/api@npm:2.8.0, @tauri-apps/api@npm:^2.6.0":
+"@tauri-apps/api@npm:2.8.0":
   version: 2.8.0
   resolution: "@tauri-apps/api@npm:2.8.0"
   checksum: 10c0/fb111e4d7572372997b440ebe6879543fa8c4765151878e3fddfbfe809b18da29eed142ce83061d14a9ca6d896b3266dc8a4927c642d71cdc0b4277dc7e3aabf
   languageName: node
   linkType: hard
 
-"@tauri-apps/plugin-http@npm:2.5.0":
-  version: 2.5.0
-  resolution: "@tauri-apps/plugin-http@npm:2.5.0"
+"@tauri-apps/api@npm:^2.11.0":
+  version: 2.11.1
+  resolution: "@tauri-apps/api@npm:2.11.1"
+  checksum: 10c0/78a08a64ee7eab9d34bd4ba1bdc3a2440c7e9cc5737b3f1d77bd80fa38b0cb5e9601efe04da40c947c5da2ca38dc702bec21b4ae96b18ee5f3e82980d1f0b325
+  languageName: node
+  linkType: hard
+
+"@tauri-apps/plugin-http@npm:2.5.9":
+  version: 2.5.9
+  resolution: "@tauri-apps/plugin-http@npm:2.5.9"
   dependencies:
-    "@tauri-apps/api": "npm:^2.6.0"
-  checksum: 10c0/eed47bb2adf012cde4409c4decae30e6b759f5828cb959cf43fc34c5fdfe68e6670f14f1134c8c4c941bc3fdb00e312772ebd72ec94e15c56ed1b7fbd47dd91c
+    "@tauri-apps/api": "npm:^2.11.0"
+  checksum: 10c0/2780766439b57c6d2260781f6611d58d475e72c8842735a4bf3ad3ff43505ec7a9fd6fe7f6f49b37eb089c0e02416ea896c3e96a458046a8e26c3812bcd57c46
   languageName: node
   linkType: hard
 

@@ -1,5 +1,4 @@
 import TextareaAutosize from 'react-textarea-autosize'
-import { invoke } from '@tauri-apps/api/core'
 import { cn, formatBytes } from '@/lib/utils'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useThreads } from '@/hooks/useThreads'
@@ -567,18 +566,8 @@ const ChatInput = memo(function ChatInput({
         abortControllers[threadId]?.abort()
       }
       cancelToolCall?.()
-      // Escalate: if the llama.cpp model is still processing after the HTTP
-      // abort, force-unload it so generation actually stops. KV cache is lost.
-      const modelId = selectedModel?.id
-      if (selectedProvider === 'llamacpp' && modelId) {
-        setTimeout(() => {
-          invoke('plugin:llamacpp|force_stop_model', { modelId }).catch((e) => {
-            console.warn('force_stop_model failed:', e)
-          })
-        }, 500)
-      }
     },
-    [abortControllers, cancelToolCall, onStop, selectedModel?.id, selectedProvider]
+    [abortControllers, cancelToolCall, onStop]
   )
 
   const fileInputRef = useRef<HTMLInputElement>(null)
