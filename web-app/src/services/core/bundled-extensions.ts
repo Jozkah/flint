@@ -16,7 +16,6 @@ type BundledEntry = {
   productName: string
   version: string
   description: string
-  platforms?: Array<'darwin' | 'win32' | 'linux'>
   // Runs on mobile (no native plugin dependencies). Desktop-only otherwise.
   mobile?: boolean
 }
@@ -56,14 +55,6 @@ const ENTRIES: BundledEntry[] = [
     description: 'This extension enables llama.cpp chat completion API calls',
   },
   {
-    load: () => import('@janhq/mlx-extension'),
-    name: '@janhq/mlx-extension',
-    productName: 'MLX Inference Engine',
-    version: '1.0.0',
-    description: 'This extension enables MLX-Swift inference on Apple Silicon Macs',
-    platforms: ['darwin'],
-  },
-  {
     load: () => import('@janhq/rag-extension'),
     name: '@janhq/rag-extension',
     productName: 'RAG Tools',
@@ -80,14 +71,23 @@ const ENTRIES: BundledEntry[] = [
   },
 ]
 
+// The MLX extension depends on @janhq/tauri-plugin-mlx-api, which only exists
+// on macOS. IS_MACOS is a build-time constant, so this import() is dead-code
+// eliminated on other platforms and never enters the bundle graph.
+if (IS_MACOS) {
+  ENTRIES.push({
+    load: () => import('@janhq/mlx-extension'),
+    name: '@janhq/mlx-extension',
+    productName: 'MLX Inference Engine',
+    version: '1.0.0',
+    description: 'This extension enables MLX-Swift inference on Apple Silicon Macs',
+  })
+}
+
 export async function getBundledExtensions(
   opts: { mobile?: boolean } = {}
 ): Promise<ExtensionManifest[]> {
-  const active = ENTRIES.filter((e) =>
-    opts.mobile
-      ? e.mobile
-      : !e.platforms || (IS_MACOS && e.platforms.includes('darwin'))
-  )
+  const active = ENTRIES.filter((e) => (opts.mobile ? e.mobile : true))
   return Promise.all(
     active.map(async ({ load, name, productName, description, version }) => {
       const { default: Ctor } = await load()
