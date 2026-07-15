@@ -161,6 +161,26 @@ describe('onLoad', () => {
     await ext.onLoad()
     expect(files.get(`${ROOT}/.migration_version`)).toBe('3')
   })
+
+  it('seeds the default assistant with parameters when none are persisted', async () => {
+    const ext = makeExt()
+    await ext.onLoad()
+    const seeded = readAssistant((ext as any).defaultAssistant.id)
+    expect(seeded.id).toBe((ext as any).defaultAssistant.id)
+    expect(seeded.parameters).toEqual({
+      temperature: 0.7,
+      top_k: 20,
+      top_p: 0.8,
+      repeat_penalty: 1.12,
+    })
+  })
+
+  it('does not overwrite an existing persisted assistant on load', async () => {
+    seedAssistant('jan', { id: 'jan', name: 'Custom', instructions: 'mine' })
+    const ext = makeExt()
+    await ext.onLoad()
+    expect(readAssistant('jan').name).toBe('Custom')
+  })
 })
 
 describe('migrations', () => {

@@ -49,6 +49,13 @@ describe('getRAGTools', () => {
     expect(topK.maximum).toBe(3)
   })
 
+  it('falls back to 3 for a NaN limit (maximum and default stay finite)', () => {
+    const [, retrieve] = getRAGTools(NaN)
+    const topK = retrieve.inputSchema.properties!.top_k as Record<string, any>
+    expect(topK.maximum).toBe(3)
+    expect(topK.default).toBe(3)
+  })
+
   it('requires file_id, start_order and end_order on get_chunks', () => {
     const chunks = getRAGTools(3).find((t) => t.name === GET_CHUNKS)!
     expect(chunks.inputSchema.required).toEqual([

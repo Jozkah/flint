@@ -132,14 +132,17 @@ describe('assistants', () => {
     expect(api.getThreadAssistant).toHaveBeenCalledWith({ threadId: 't1' })
   })
 
-  it('createThreadAssistant forwards positional arguments (not an object)', async () => {
+  it('createThreadAssistant wraps args in a single object matching the api contract', async () => {
     const assistant = { id: 'a1' } as any
     api.createThreadAssistant.mockResolvedValue(assistant)
 
     await expect(ext.createThreadAssistant('t1', assistant)).resolves.toBe(
       assistant
     )
-    expect(api.createThreadAssistant).toHaveBeenCalledWith('t1', assistant)
+    expect(api.createThreadAssistant).toHaveBeenCalledWith({
+      threadId: 't1',
+      assistant,
+    })
   })
 
   it('modifyThreadAssistant wraps both arguments in a single object', async () => {
