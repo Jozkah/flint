@@ -2723,11 +2723,13 @@ __metadata:
   dependencies:
     "@janhq/core": "workspace:*"
     cpx: "npm:1.5.0"
+    jsdom: "npm:^26.1.0"
     rimraf: "npm:6.0.1"
     rolldown: "npm:1.0.0-beta.1"
     run-script-os: "npm:1.1.6"
     ts-loader: "npm:^9.5.0"
     typescript: "npm:5.9.2"
+    vitest: "npm:3.2.4"
   languageName: unknown
   linkType: soft
 
@@ -2737,10 +2739,12 @@ __metadata:
   dependencies:
     "@janhq/core": "workspace:*"
     cpx: "npm:1.5.0"
+    jsdom: "npm:^26.1.0"
     rimraf: "npm:6.0.1"
     rolldown: "npm:1.0.0-beta.1"
     ts-loader: "npm:^9.5.0"
     typescript: "npm:5.9.2"
+    vitest: "npm:3.2.4"
   languageName: unknown
   linkType: soft
 
@@ -2778,6 +2782,7 @@ __metadata:
     "@janhq/core": "workspace:*"
     "@tauri-apps/api": "npm:2.8.0"
     cpx: "npm:1.5.0"
+    jsdom: "npm:^26.1.0"
     rimraf: "npm:6.0.1"
     rolldown: "npm:1.0.0-beta.1"
     run-script-os: "npm:1.1.6"
@@ -2856,9 +2861,11 @@ __metadata:
     "@tauri-apps/api": "npm:2.8.0"
     "@tauri-apps/plugin-http": "npm:2.5.9"
     cpx: "npm:1.5.0"
+    jsdom: "npm:^26.1.0"
     rimraf: "npm:3.0.2"
     rolldown: "npm:1.0.0-beta.1"
     typescript: "npm:5.9.2"
+    vitest: "npm:3.2.4"
   languageName: unknown
   linkType: soft
 
@@ -2870,9 +2877,11 @@ __metadata:
     "@janhq/tauri-plugin-rag-api": "link:../../src-tauri/plugins/tauri-plugin-rag"
     "@janhq/tauri-plugin-vector-db-api": "link:../../src-tauri/plugins/tauri-plugin-vector-db"
     cpx: "npm:1.5.0"
+    jsdom: "npm:^26.1.0"
     rimraf: "npm:6.0.1"
     rolldown: "npm:1.0.0-beta.1"
     typescript: "npm:5.9.2"
+    vitest: "npm:3.2.4"
   languageName: unknown
   linkType: soft
 
@@ -2939,9 +2948,11 @@ __metadata:
     "@janhq/tauri-plugin-rag-api": "link:../../src-tauri/plugins/tauri-plugin-rag"
     "@janhq/tauri-plugin-vector-db-api": "link:../../src-tauri/plugins/tauri-plugin-vector-db"
     cpx: "npm:1.5.0"
+    jsdom: "npm:^26.1.0"
     rimraf: "npm:6.0.1"
     rolldown: "npm:1.0.0-beta.1"
     typescript: "npm:5.9.2"
+    vitest: "npm:3.2.4"
   languageName: unknown
   linkType: soft
 

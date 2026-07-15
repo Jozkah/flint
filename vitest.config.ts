@@ -9,8 +9,14 @@ export default defineConfig({
       // Web-app package - use its own vitest config
       './web-app',
 
-      // Extensions that ship their own tests
+      // Extensions - each ships its own vitest config
+      './extensions/assistant-extension',
+      './extensions/conversational-extension',
+      './extensions/download-extension',
       './extensions/llamacpp-extension',
+      './extensions/mlx-extension',
+      './extensions/rag-extension',
+      './extensions/vector-db-extension',
     ],
     coverage: {
       provider: 'v8',
@@ -23,7 +29,6 @@ export default defineConfig({
         '**/src/**/*.test.tsx',
         '**/src/test/**/*',
         'src-tauri',
-        'extensions',
       ],
     },
   },
