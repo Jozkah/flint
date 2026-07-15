@@ -19,16 +19,13 @@
     "typescript": "5.9.2"
   },
   "dependencies": {
-    "@janhq/core": "../../core/package.tgz",
+    "@janhq/core": "workspace:*",
     "ts-loader": "^9.5.0"
   },
   "files": [
     "dist/*",
     "package.json",
     "README.md"
-  ],
-  "bundleDependencies": [
-    "@janhq/core"
   ],
   "installConfig": {
     "hoistingLimits": "workspaces"

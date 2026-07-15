@@ -2721,7 +2721,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@janhq/assistant-extension@workspace:extensions/assistant-extension"
   dependencies:
-    "@janhq/core": ../../core/package.tgz
+    "@janhq/core": "workspace:*"
     cpx: "npm:1.5.0"
     rimraf: "npm:6.0.1"
     rolldown: "npm:1.0.0-beta.1"
@@ -2735,7 +2735,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@janhq/conversational-extension@workspace:extensions/conversational-extension"
   dependencies:
-    "@janhq/core": ../../core/package.tgz
+    "@janhq/core": "workspace:*"
     cpx: "npm:1.5.0"
     rimraf: "npm:6.0.1"
     rolldown: "npm:1.0.0-beta.1"
@@ -2743,90 +2743,6 @@ __metadata:
     typescript: "npm:5.9.2"
   languageName: unknown
   linkType: soft
-
-"@janhq/core@file:../../core/package.tgz::locator=%40janhq%2Fassistant-extension%40workspace%3Aextensions%2Fassistant-extension":
-  version: 0.1.10
-  resolution: "@janhq/core@file:../../core/package.tgz#../../core/package.tgz::hash=fe8808&locator=%40janhq%2Fassistant-extension%40workspace%3Aextensions%2Fassistant-extension"
-  dependencies:
-    rxjs: "npm:^7.8.1"
-    ulidx: "npm:^2.3.0"
-  peerDependencies:
-    react: 19.0.0
-  checksum: 10c0/8a8328d22eee9ea3ac063118fc4da4e198322ed3531ed3f66afed49f165bf4ae379cc6d77bd6165c03e8a341264b6198b2a6a661ea0d08861d2c41ea28033e78
-  languageName: node
-  linkType: hard
-
-"@janhq/core@file:../../core/package.tgz::locator=%40janhq%2Fconversational-extension%40workspace%3Aextensions%2Fconversational-extension":
-  version: 0.1.10
-  resolution: "@janhq/core@file:../../core/package.tgz#../../core/package.tgz::hash=fe8808&locator=%40janhq%2Fconversational-extension%40workspace%3Aextensions%2Fconversational-extension"
-  dependencies:
-    rxjs: "npm:^7.8.1"
-    ulidx: "npm:^2.3.0"
-  peerDependencies:
-    react: 19.0.0
-  checksum: 10c0/8a8328d22eee9ea3ac063118fc4da4e198322ed3531ed3f66afed49f165bf4ae379cc6d77bd6165c03e8a341264b6198b2a6a661ea0d08861d2c41ea28033e78
-  languageName: node
-  linkType: hard
-
-"@janhq/core@file:../../core/package.tgz::locator=%40janhq%2Fdownload-extension%40workspace%3Aextensions%2Fdownload-extension":
-  version: 0.1.10
-  resolution: "@janhq/core@file:../../core/package.tgz#../../core/package.tgz::hash=fe8808&locator=%40janhq%2Fdownload-extension%40workspace%3Aextensions%2Fdownload-extension"
-  dependencies:
-    rxjs: "npm:^7.8.1"
-    ulidx: "npm:^2.3.0"
-  peerDependencies:
-    react: 19.0.0
-  checksum: 10c0/8a8328d22eee9ea3ac063118fc4da4e198322ed3531ed3f66afed49f165bf4ae379cc6d77bd6165c03e8a341264b6198b2a6a661ea0d08861d2c41ea28033e78
-  languageName: node
-  linkType: hard
-
-"@janhq/core@file:../../core/package.tgz::locator=%40janhq%2Fllamacpp-extension%40workspace%3Aextensions%2Fllamacpp-extension":
-  version: 0.1.10
-  resolution: "@janhq/core@file:../../core/package.tgz#../../core/package.tgz::hash=fe8808&locator=%40janhq%2Fllamacpp-extension%40workspace%3Aextensions%2Fllamacpp-extension"
-  dependencies:
-    rxjs: "npm:^7.8.1"
-    ulidx: "npm:^2.3.0"
-  peerDependencies:
-    react: 19.0.0
-  checksum: 10c0/8a8328d22eee9ea3ac063118fc4da4e198322ed3531ed3f66afed49f165bf4ae379cc6d77bd6165c03e8a341264b6198b2a6a661ea0d08861d2c41ea28033e78
-  languageName: node
-  linkType: hard
-
-"@janhq/core@file:../../core/package.tgz::locator=%40janhq%2Fmlx-extension%40workspace%3Aextensions%2Fmlx-extension":
-  version: 0.1.10
-  resolution: "@janhq/core@file:../../core/package.tgz#../../core/package.tgz::hash=fe8808&locator=%40janhq%2Fmlx-extension%40workspace%3Aextensions%2Fmlx-extension"
-  dependencies:
-    rxjs: "npm:^7.8.1"
-    ulidx: "npm:^2.3.0"
-  peerDependencies:
-    react: 19.0.0
-  checksum: 10c0/8a8328d22eee9ea3ac063118fc4da4e198322ed3531ed3f66afed49f165bf4ae379cc6d77bd6165c03e8a341264b6198b2a6a661ea0d08861d2c41ea28033e78
-  languageName: node
-  linkType: hard
-
-"@janhq/core@file:../../core/package.tgz::locator=%40janhq%2Frag-extension%40workspace%3Aextensions%2Frag-extension":
-  version: 0.1.10
-  resolution: "@janhq/core@file:../../core/package.tgz#../../core/package.tgz::hash=fe8808&locator=%40janhq%2Frag-extension%40workspace%3Aextensions%2Frag-extension"
-  dependencies:
-    rxjs: "npm:^7.8.1"
-    ulidx: "npm:^2.3.0"
-  peerDependencies:
-    react: 19.0.0
-  checksum: 10c0/8a8328d22eee9ea3ac063118fc4da4e198322ed3531ed3f66afed49f165bf4ae379cc6d77bd6165c03e8a341264b6198b2a6a661ea0d08861d2c41ea28033e78
-  languageName: node
-  linkType: hard
-
-"@janhq/core@file:../../core/package.tgz::locator=%40janhq%2Fvector-db-extension%40workspace%3Aextensions%2Fvector-db-extension":
-  version: 0.1.10
-  resolution: "@janhq/core@file:../../core/package.tgz#../../core/package.tgz::hash=fe8808&locator=%40janhq%2Fvector-db-extension%40workspace%3Aextensions%2Fvector-db-extension"
-  dependencies:
-    rxjs: "npm:^7.8.1"
-    ulidx: "npm:^2.3.0"
-  peerDependencies:
-    react: 19.0.0
-  checksum: 10c0/8a8328d22eee9ea3ac063118fc4da4e198322ed3531ed3f66afed49f165bf4ae379cc6d77bd6165c03e8a341264b6198b2a6a661ea0d08861d2c41ea28033e78
-  languageName: node
-  linkType: hard
 
 "@janhq/core@workspace:*, @janhq/core@workspace:core":
   version: 0.0.0-use.local
@@ -2859,7 +2775,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@janhq/download-extension@workspace:extensions/download-extension"
   dependencies:
-    "@janhq/core": ../../core/package.tgz
+    "@janhq/core": "workspace:*"
     "@tauri-apps/api": "npm:2.8.0"
     cpx: "npm:1.5.0"
     rimraf: "npm:6.0.1"
@@ -2912,7 +2828,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@janhq/llamacpp-extension@workspace:extensions/llamacpp-extension"
   dependencies:
-    "@janhq/core": ../../core/package.tgz
+    "@janhq/core": "workspace:*"
     "@janhq/tauri-plugin-hardware-api": "link:../../src-tauri/plugins/tauri-plugin-hardware"
     "@janhq/tauri-plugin-llamacpp-api": "link:../../src-tauri/plugins/tauri-plugin-llamacpp"
     "@tauri-apps/api": "npm:2.8.0"
@@ -2934,7 +2850,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@janhq/mlx-extension@workspace:extensions/mlx-extension"
   dependencies:
-    "@janhq/core": ../../core/package.tgz
+    "@janhq/core": "workspace:*"
     "@janhq/tauri-plugin-llamacpp-api": "link:../../src-tauri/plugins/tauri-plugin-llamacpp"
     "@janhq/tauri-plugin-mlx-api": "link:../../src-tauri/plugins/tauri-plugin-mlx"
     "@tauri-apps/api": "npm:2.8.0"
@@ -2950,7 +2866,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@janhq/rag-extension@workspace:extensions/rag-extension"
   dependencies:
-    "@janhq/core": ../../core/package.tgz
+    "@janhq/core": "workspace:*"
     "@janhq/tauri-plugin-rag-api": "link:../../src-tauri/plugins/tauri-plugin-rag"
     "@janhq/tauri-plugin-vector-db-api": "link:../../src-tauri/plugins/tauri-plugin-vector-db"
     cpx: "npm:1.5.0"
@@ -3019,7 +2935,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@janhq/vector-db-extension@workspace:extensions/vector-db-extension"
   dependencies:
-    "@janhq/core": ../../core/package.tgz
+    "@janhq/core": "workspace:*"
     "@janhq/tauri-plugin-rag-api": "link:../../src-tauri/plugins/tauri-plugin-rag"
     "@janhq/tauri-plugin-vector-db-api": "link:../../src-tauri/plugins/tauri-plugin-vector-db"
     cpx: "npm:1.5.0"

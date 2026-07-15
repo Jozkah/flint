@@ -17,6 +17,8 @@ type BundledEntry = {
   version: string
   description: string
   platforms?: Array<'darwin' | 'win32' | 'linux'>
+  // Runs on mobile (no native plugin dependencies). Desktop-only otherwise.
+  mobile?: boolean
 }
 
 // Lazily imported so the extension bundles are NOT part of the service-hub
@@ -37,6 +39,7 @@ const ENTRIES: BundledEntry[] = [
     productName: 'Conversational',
     version: '1.0.0',
     description: 'Enables conversations and state persistence via your file system.',
+    mobile: true,
   },
   {
     load: () => import('@janhq/download-extension'),
@@ -77,9 +80,13 @@ const ENTRIES: BundledEntry[] = [
   },
 ]
 
-export async function getBundledExtensions(): Promise<ExtensionManifest[]> {
-  const active = ENTRIES.filter(
-    (e) => !e.platforms || (IS_MACOS && e.platforms.includes('darwin'))
+export async function getBundledExtensions(
+  opts: { mobile?: boolean } = {}
+): Promise<ExtensionManifest[]> {
+  const active = ENTRIES.filter((e) =>
+    opts.mobile
+      ? e.mobile
+      : !e.platforms || (IS_MACOS && e.platforms.includes('darwin'))
   )
   return Promise.all(
     active.map(async ({ load, name, productName, description, version }) => {
