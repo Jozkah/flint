@@ -3507,7 +3507,7 @@ export default class llamacpp_extension extends AIEngine {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${sInfo.api_key}`,
         },
-        body: JSON.stringify({ content: text }),
+        body: JSON.stringify({ content: text, model: sInfo.model_id }),
       })
       if (!res.ok) {
         throw new Error(`Tokenize request failed with status ${res.status}`)
