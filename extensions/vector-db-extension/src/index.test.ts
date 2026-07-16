@@ -161,6 +161,41 @@ describe('chunk sizing against embedding context', () => {
     await expect((ext as any).splitChunkToFit('', 10, llm)).resolves.toEqual([])
     expect(llm.countEmbeddingTokens).not.toHaveBeenCalled()
   })
+
+  it('clampToEmbeddingContext propagates a failing ctx-size probe', async () => {
+    getByName.mockReturnValue(
+      makeEngine({
+        getEmbeddingContextSize: vi
+          .fn()
+          .mockRejectedValue(new Error('router down')),
+      })
+    )
+    await expect((ext as any).clampToEmbeddingContext(4000, 100)).rejects.toThrow(
+      /embedding context size.*router down/i
+    )
+  })
+
+  it('ensureChunksFitEmbeddingContext propagates a failing ctx-size probe', async () => {
+    getByName.mockReturnValue(
+      makeEngine({
+        getEmbeddingContextSize: vi
+          .fn()
+          .mockRejectedValue(new Error('model failed to load')),
+      })
+    )
+    await expect(
+      (ext as any).ensureChunksFitEmbeddingContext(['x'])
+    ).rejects.toThrow(/embedding context size.*model failed to load/i)
+  })
+
+  it('splitChunkToFit propagates a failing token count instead of passing oversized chunks', async () => {
+    const llm = {
+      countEmbeddingTokens: vi.fn().mockRejectedValue(new Error('tokenize 500')),
+    }
+    await expect((ext as any).splitChunkToFit('text', 10, llm)).rejects.toThrow(
+      /count embedding tokens.*tokenize 500/i
+    )
+  })
 })
 
 describe('ingestFile (thread)', () => {
