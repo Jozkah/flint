@@ -597,13 +597,13 @@ export function stripAssistantReasoningInBody(
   }
 }
 
-/** Reads the per-provider "Strip reasoning from context" checkbox; defaults to true. */
+/** Reads the per-provider "Strip reasoning from context" checkbox; defaults to false. */
 function shouldStripReasoningFromContext(provider?: ProviderObject): boolean {
   const setting = provider?.settings?.find(
     (s) => s.key === 'strip_reasoning_from_context'
   )
   const value = setting?.controller_props?.value
-  return typeof value === 'boolean' ? value : true
+  return typeof value === 'boolean' ? value : false
 }
 
 /** Wraps `inner` to strip reasoning fields from assistant messages before send. */

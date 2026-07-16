@@ -57,10 +57,6 @@ macro_rules! invoke_commands_with_extras {
         core::app::settings_store::settings_remove,
         core::server::provider_secrets::set_secret,
         core::server::provider_secrets::get_secret,
-        // Extension commands
-        core::extensions::commands::get_jan_extensions_path,
-        core::extensions::commands::install_extensions,
-        core::extensions::commands::get_active_extensions,
         // System commands
         core::system::commands::relaunch,
         core::system::commands::open_app_directory,
@@ -321,12 +317,6 @@ pub fn run() {
                 .and_then(|v| v.as_str().map(String::from))
                 .unwrap_or_default();
             let app_version = app.config().version.clone().unwrap_or_default();
-            // Migrate extensions
-            if let Err(e) =
-                setup::install_extensions(app.handle().clone(), stored_version != app_version)
-            {
-                log::error!("Failed to install extensions: {e}");
-            }
 
             // Migrate MCP servers
             if let Err(e) = setup::migrate_mcp_servers(app.handle().clone(), store.clone()) {
