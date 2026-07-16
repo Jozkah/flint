@@ -265,7 +265,7 @@
     "description": "Remove prior turns' thinking/reasoning content before resending history. Improves KV-cache reuse across turns, but some models (e.g. newer Qwen releases) recommend keeping it for better multi-turn reasoning.",
     "controllerType": "checkbox",
     "controllerProps": {
-      "value": true
+      "value": false
     }
   },
   {
