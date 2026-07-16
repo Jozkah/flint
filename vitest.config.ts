@@ -14,7 +14,9 @@ export default defineConfig({
       './extensions/conversational-extension',
       './extensions/download-extension',
       './extensions/llamacpp-extension',
-      './extensions/mlx-extension',
+      // mlx depends on @janhq/tauri-plugin-mlx-api, which only resolves on
+      // macOS; skip its project elsewhere to avoid a resolve failure.
+      ...(process.platform === 'darwin' ? ['./extensions/mlx-extension'] : []),
       './extensions/rag-extension',
       './extensions/vector-db-extension',
     ],
