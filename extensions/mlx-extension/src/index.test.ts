@@ -56,6 +56,21 @@ describe('onSettingUpdate', () => {
   })
 })
 
+describe('getModelProps', () => {
+  it('returns the configured ctx_size as nCtx with the model alias', async () => {
+    const ext = newExt()
+    ext.onSettingUpdate('ctx_size', 8192)
+    const props = await ext.getModelProps('org/model')
+    expect(props).toEqual({ nCtx: 8192, modelAlias: 'org/model' })
+  })
+
+  it('falls back to a 4096 default when ctx_size is unset', async () => {
+    const ext = newExt()
+    const props = await ext.getModelProps('org/model')
+    expect(props.nCtx).toBe(4096)
+  })
+})
+
 describe('createDownloadTaskId', () => {
   it('prefixes the provider and strips everything after the first dot', () => {
     const ext = newExt()
