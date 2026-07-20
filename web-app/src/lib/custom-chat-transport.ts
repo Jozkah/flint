@@ -21,7 +21,7 @@ import { useThreads } from '@/hooks/useThreads'
 import { useAttachments } from '@/hooks/useAttachments'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { useAppState } from '@/hooks/useAppState'
-import { invoke } from '@tauri-apps/api/core'
+import { unloadLlamaModel, getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import { ExtensionManager } from '@/lib/extension'
 import { getLlamacppExtension } from '@/lib/llamacppRouterProps'
 import {
@@ -1021,6 +1021,62 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       normalized.text || normalized.reasoning ? normalized : null
   }
 
+  /**
+   * Race model creation (which blocks on llama-server load, up to 600s)
+   * against the request's abort signal. `invoke()` has no cancellation of
+   * its own, so an abort during "Loading model..." would otherwise be
+   * silently ignored until load either finishes or times out. On abort we
+   * fire-and-forget an unload of the (possibly still-loading) model so the
+   * router doesn't keep spawning/holding a llama-server nobody wants.
+   */
+  private createModelOrAbort(
+    modelId: string,
+    provider: ProviderObject,
+    parameters: Record<string, unknown>,
+    providerId: string,
+    abortSignal: AbortSignal | undefined
+  ): Promise<LanguageModel> {
+    const modelPromise = ModelFactory.createModel(modelId, provider, parameters)
+    if (!abortSignal) return modelPromise
+
+    // Target lib is ES2021 here (see tsconfig.app.json), predating
+    // Promise.withResolvers (ES2024), so the executor form is required.
+    return new Promise<LanguageModel>((resolve, reject) => {
+      const onAbort = () => {
+        if (providerId === 'llamacpp') {
+          // Call the plugin's unload command directly instead of through the
+          // extension's `unload()` method: that method first looks up an
+          // active *loaded* session and throws if none is found, but a
+          // model aborted mid-load is still in the "loading" state (not
+          // "loaded") and would never resolve to a session -- silently
+          // skipping the unload and leaking the still-loading llama-server.
+          // See https://github.com/janhq/jan/issues/8432.
+          unloadLlamaModel(modelId).catch(() => {
+            // Best-effort: model may not have started loading yet, or may
+            // already have finished/failed on its own.
+          })
+        }
+        const err = new Error('Aborted')
+        err.name = 'AbortError'
+        reject(err)
+      }
+      if (abortSignal.aborted) {
+        onAbort()
+        return
+      }
+      abortSignal.addEventListener('abort', onAbort, { once: true })
+      modelPromise
+        .then((model) => {
+          abortSignal.removeEventListener('abort', onAbort)
+          resolve(model)
+        })
+        .catch((error) => {
+          abortSignal.removeEventListener('abort', onAbort)
+          reject(error)
+        })
+    })
+  }
+
   async sendMessages(
     options: {
       chatId: string
@@ -1067,9 +1123,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
       if (providerId === 'llamacpp') {
         try {
-          const loaded = await invoke<string[]>(
-            'plugin:llamacpp|get_loaded_models'
-          )
+          const loaded = await getLoadedModels()
           if (!loaded.includes(modelId)) {
             useAppState.getState().updateLoadingModel(true)
             useAppState.getState().updateThreadLoadingModel(threadId, true)
@@ -1111,10 +1165,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       if (providerId === 'llamacpp') {
         mergedParams.id_slot = 0
       }
-      this.model = await ModelFactory.createModel(
+      this.model = await this.createModelOrAbort(
         modelId,
         updatedProvider ?? provider,
-        mergedParams
+        mergedParams,
+        providerId,
+        options.abortSignal
       )
       useAppState.getState().updateLoadingModel(false)
       useAppState.getState().updateThreadLoadingModel(threadId, false)
@@ -1126,6 +1182,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       useAppState.getState().updateModelLoadProgress(undefined)
       useAppState.getState().updateThreadModelLoadProgress(threadId, undefined)
       console.error('Failed to create model:', error)
+      // Preserve AbortError identity so callers/UI can tell a user-initiated
+      // Stop from an actual model-load failure.
+      if (error instanceof Error && error.name === 'AbortError') throw error
       throw new Error(
         `Failed to create model: ${error instanceof Error ? error.message : JSON.stringify(error)}`
       )
