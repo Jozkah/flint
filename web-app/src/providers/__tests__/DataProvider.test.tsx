@@ -16,6 +16,7 @@ const h = vi.hoisted(() => {
     setSettings: vi.fn(),
     setAssistants: vi.fn(),
     setThreads: vi.fn(),
+    setThreadsLoading: vi.fn(),
     threadsInStore: {} as Record<string, unknown>,
     registrationListeners: new Set<() => void>(),
     setLastServerModels: vi.fn(),
@@ -85,8 +86,15 @@ vi.mock('@/lib/extension', () => ({
 }))
 
 vi.mock('@/hooks/useThreads', () => {
-  const useThreads = vi.fn(() => ({ setThreads: h.setThreads })) as unknown as {
-    (): unknown
+  const state = () => ({
+    setThreads: h.setThreads,
+    setThreadsLoading: h.setThreadsLoading,
+    threads: h.threadsInStore,
+  })
+  const useThreads = vi.fn((selector?: (s: unknown) => unknown) =>
+    selector ? selector(state()) : state()
+  ) as unknown as {
+    (selector?: (s: unknown) => unknown): unknown
     getState: () => { threads: Record<string, unknown> }
   }
   useThreads.getState = () => ({ threads: h.threadsInStore })

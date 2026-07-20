@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ThreadMessage } from '@janhq/core'
 import { parseContextOverflow } from '@/utils/error'
 import {
-  getLlamacppExtension,
+  getLocalPropsExtension,
   type LlamacppModelProps,
 } from '@/lib/llamacppRouterProps'
 import { useModelProvider } from './useModelProvider'
@@ -75,8 +75,9 @@ export const useTokensCount = (messages: ThreadMessage[] = []) => {
   const [loading, setLoading] = useState(false)
   const reqId = useRef(0)
 
-  const modelId =
-    selectedProvider === 'llamacpp' ? selectedModel?.id : undefined
+  const isLocalProvider =
+    selectedProvider === 'llamacpp' || selectedProvider === 'mlx'
+  const modelId = isLocalProvider ? selectedModel?.id : undefined
 
   const threadId = messages[0]?.thread_id
   // Populated per-chunk while a llama.cpp turn is streaming (timings_per_token);
@@ -98,7 +99,7 @@ export const useTokensCount = (messages: ThreadMessage[] = []) => {
       setLoading(false)
       return
     }
-    const ext = getLlamacppExtension()
+    const ext = getLocalPropsExtension(selectedProvider)
     if (!ext?.getModelProps) {
       setModelProps(undefined)
       return
@@ -119,10 +120,30 @@ export const useTokensCount = (messages: ThreadMessage[] = []) => {
         if (id !== reqId.current) return
         setLoading(false)
       })
-  }, [modelId, messages.length, loadingModel])
+  }, [modelId, selectedProvider, messages.length, loadingModel])
 
   const tokenData: TokenCountData = useMemo(() => {
-    if (selectedProvider !== 'llamacpp' || !modelId) {
+    if (!isLocalProvider) {
+      if (!selectedModel) {
+        return {
+          tokenCount: 0,
+          loading: false,
+          isNearLimit: false,
+          fitEnabled: false,
+        }
+      }
+      const usage = getLatestServerUsage(messages)
+      return {
+        tokenCount: usage.totalTokens ?? 0,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        loading: false,
+        isNearLimit: false,
+        fitEnabled: false,
+        modelDisplayName: selectedModel.name || selectedModel.id,
+      }
+    }
+    if (!modelId) {
       return {
         tokenCount: 0,
         loading: false,
@@ -143,7 +164,7 @@ export const useTokensCount = (messages: ThreadMessage[] = []) => {
     const percentage = maxTokens ? (tokenCount / maxTokens) * 100 : undefined
     const isNearLimit = overflow != null || (percentage ? percentage > 85 : false)
 
-    const provider = getProviderByName('llamacpp')
+    const provider = getProviderByName(selectedProvider)
     const fitEnabled =
       provider?.settings?.find((s) => s.key === 'fit')?.controller_props
         ?.value === true
@@ -177,13 +198,12 @@ export const useTokensCount = (messages: ThreadMessage[] = []) => {
     messages,
     modelId,
     selectedProvider,
+    isLocalProvider,
     modelProps,
     loading,
     liveStats,
     getProviderByName,
-    selectedModel?.name,
-    selectedModel?.capabilities,
-    selectedModel?.settings?.ctx_len?.controller_props?.value,
+    selectedModel,
   ])
 
   return {

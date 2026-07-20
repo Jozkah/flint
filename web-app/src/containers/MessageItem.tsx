@@ -18,17 +18,20 @@ import {
   ToolOutput,
 } from '@/components/ai-elements/tool'
 import { CopyButton } from './CopyButton'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { formatDate } from '@/utils/formatDate'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMessageErrors } from '@/stores/message-errors'
 import {
   IconRefresh,
+  IconPlayerPlay,
   IconPaperclip,
   IconArrowDown,
   IconAlertTriangle,
   IconChevronLeft,
   IconChevronRight,
+  IconCircleCheck,
 } from '@tabler/icons-react'
 import { EditMessageDialog } from '@/containers/dialogs/EditMessageDialog'
 import { DeleteMessageDialog } from '@/containers/dialogs/DeleteMessageDialog'
@@ -70,6 +73,7 @@ export type MessageItemProps = {
   onReasoningScroll?: () => void
   onReasoningScrollToBottom?: () => void
   onRegenerate?: (messageId: string) => void
+  onContinue?: (messageId: string) => void
   onEdit?: (messageId: string, newText: string) => void
   onDelete?: (messageId: string) => void
   versionInfo?: { index: number; count: number }
@@ -93,11 +97,13 @@ export const MessageItem = memo(
     onReasoningScroll,
     onReasoningScrollToBottom,
     onRegenerate,
+    onContinue,
     onEdit,
     onDelete,
     versionInfo,
     onSwitchVersion,
   }: MessageItemProps) => {
+    const { t } = useTranslation()
     const selectedModel = useModelProvider((state) => state.selectedModel)
     const coloredUserBubble = useInterfaceSettings((s) => s.coloredUserBubble)
     const metadata = message.metadata as Record<string, unknown> | undefined
@@ -112,6 +118,12 @@ export const MessageItem = memo(
     const handleRegenerate = useCallback(() => {
       onRegenerate?.(message.id)
     }, [onRegenerate, message.id])
+
+    const handleContinue = useCallback(() => {
+      onContinue?.(message.id)
+    }, [onContinue, message.id])
+
+    const isStopped = metadata?.stopped === true
 
     const handleEdit = useCallback(
       (newText: string) => {
@@ -566,6 +578,15 @@ export const MessageItem = memo(
             )
         }
         if (steps.length === 0) return null
+        steps.push(
+          <StepRow
+            key={`${message.id}-done`}
+            marker={
+              <IconCircleCheck className="size-4 text-muted-foreground/60" />
+            }
+            text={t('chat:done')}
+          />
+        )
         return (
           <ol className="relative flex flex-col gap-2.5">
             {steps.map((step, i) =>
@@ -838,12 +859,27 @@ export const MessageItem = memo(
                   <DeleteMessageDialog onDelete={handleDelete} />
                 )}
 
+                {selectedModel &&
+                  onContinue &&
+                  !isStreaming &&
+                  isLastMessage &&
+                  isStopped && (
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={handleContinue}
+                      title={t('chat:actions.continue')}
+                    >
+                      <IconPlayerPlay size={16} />
+                    </Button>
+                  )}
+
                 {selectedModel && onRegenerate && !isStreaming && isLastMessage && (
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     onClick={handleRegenerate}
-                    title="Regenerate response"
+                    title={t('chat:actions.regenerate')}
                   >
                     <IconRefresh size={16} />
                   </Button>

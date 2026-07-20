@@ -2540,7 +2540,7 @@ const ChatInput = memo(function ChatInput({
             </div>
 
             <div className="flex items-center gap-2">
-              {selectedProvider === 'llamacpp' &&
+              {(selectedProvider === 'llamacpp' ? isModelActive : !!selectedModel) &&
                 tokenCounterCompact &&
                 !effectiveAgentMode &&
                 !initialMessage &&
@@ -2612,8 +2612,7 @@ const ChatInput = memo(function ChatInput({
         </div>
       )}
 
-      {selectedProvider === 'llamacpp' &&
-        isModelActive &&
+      {(selectedProvider === 'llamacpp' ? isModelActive : !!selectedModel) &&
         !effectiveAgentMode &&
         !tokenCounterCompact &&
         !initialMessage &&

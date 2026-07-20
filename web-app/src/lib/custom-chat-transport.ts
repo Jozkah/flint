@@ -44,7 +44,7 @@ import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import { encodeAudioSentinel, parseAudioDataUrl } from '@/lib/audio-sentinel'
 import { encodeVideoSentinel, parseVideoDataUrl } from '@/lib/video-sentinel'
-import { isPredefinedRemoteProvider, getProviderApiType } from '@/lib/providerCaps'
+import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
 import { paramsSettings } from '@/lib/predefinedParams'
 
 export type TokenUsageCallback = (
@@ -59,6 +59,8 @@ export type OnFinishCallback = (params: {
   message: UIMessage
   isAbort?: boolean
 }) => void
+/** Partial assistant output replayed as a prefill to resume a stopped turn. */
+export type ContinuationContent = { text?: string; reasoning?: string }
 export type ServiceHub = {
   rag(): {
     getTools(): Promise<
@@ -497,6 +499,63 @@ export function resolveOrphanToolCalls(messages: UIMessage[]): UIMessage[] {
   })
 }
 
+/**
+ * Split any assistant message whose parts place non-tool content (text,
+ * reasoning, file) AFTER tool-call parts into consecutive assistant messages,
+ * one per "wave". This is required for two reasons:
+ *
+ * 1. Correctness: the Claude API rejects an assistant turn that interleaves
+ *    tool_use with text (error 400); it needs tool_use / tool_result pairing.
+ * 2. Prompt-cache stability: when a tool-call turn completes, the AI SDK stores
+ *    the follow-up text in the SAME assistant UIMessage as the tool call, so
+ *    `convertToModelMessages` renders `assistant(tool-call, text)` then
+ *    `tool(result)`. But that turn was generated in two requests — the cache
+ *    was seeded with `assistant(tool-call)` then `tool(result)`, with no text
+ *    yet. Splitting restores the generated order `assistant(tool-call)` ->
+ *    `tool(result)` -> `assistant(text)`, so the prefix stays byte-identical
+ *    across turns and llama.cpp reuses the KV cache.
+ *
+ * A message with no tool parts, or with all non-tool parts before the tool
+ * parts, is returned unchanged.
+ */
+export function splitAssistantToolWaves(messages: UIMessage[]): UIMessage[] {
+  return messages.flatMap((message) => {
+    if (message.role !== 'assistant') return [message]
+
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    if (parts.length === 0) return [message]
+
+    const isToolPart = (p: (typeof parts)[number]) =>
+      typeof p.type === 'string' && p.type.startsWith('tool-')
+
+    const waves: (typeof parts)[] = []
+    let currentWave: typeof parts = []
+    let seenToolParts = false
+
+    for (const part of parts) {
+      if (isToolPart(part)) {
+        seenToolParts = true
+        currentWave.push(part)
+      } else if (seenToolParts) {
+        waves.push(currentWave)
+        currentWave = [part]
+        seenToolParts = false
+      } else {
+        currentWave.push(part)
+      }
+    }
+    if (currentWave.length > 0) waves.push(currentWave)
+
+    if (waves.length <= 1) return [message]
+
+    return waves.map((waveParts, i) => ({
+      ...message,
+      id: `${message.id}_w${i}`,
+      parts: waveParts,
+    }))
+  })
+}
+
 export function coalesceMessagesForAlternation(
   messages: UIMessage[]
 ): UIMessage[] {
@@ -604,17 +663,18 @@ function extractLatestUserText(messages: UIMessage[]): string {
 }
 
 /**
- * Wraps a UIMessageChunk stream so that when the first `text-start` chunk
- * arrives, a `text-delta` carrying `prefixText` is immediately injected into
- * the same text block. This makes the new message show the partial content
- * right away while continuation tokens stream in after it.
+ * Wraps a UIMessageChunk stream so the partial content of a resumed turn is
+ * injected back into the new message right away: `reasoning` into the first
+ * `reasoning-start` block and `text` into the first `text-start` block. This
+ * makes the continuation look seamless instead of dropping the partial output.
  */
-function prependTextDeltaToUIStream(
+function prependContinuationToUIStream(
   stream: ReadableStream<UIMessageChunk>,
-  prefixText: string
+  prefix: ContinuationContent
 ): ReadableStream<UIMessageChunk> {
   const reader = stream.getReader()
-  let prefixEmitted = false
+  let reasoningEmitted = !prefix.reasoning
+  let textEmitted = !prefix.text
   return new ReadableStream<UIMessageChunk>({
     async pull(controller) {
       try {
@@ -624,10 +684,24 @@ function prependTextDeltaToUIStream(
           return
         }
         controller.enqueue(value)
-        if (!prefixEmitted && (value as { type: string }).type === 'text-start') {
-          prefixEmitted = true
-          const id = (value as { type: 'text-start'; id: string }).id
-          controller.enqueue({ type: 'text-delta', id, delta: prefixText } as UIMessageChunk)
+        const type = (value as { type: string }).type
+        if (!reasoningEmitted && type === 'reasoning-start') {
+          reasoningEmitted = true
+          const id = (value as { id: string }).id
+          controller.enqueue({
+            type: 'reasoning-delta',
+            id,
+            delta: prefix.reasoning,
+          } as UIMessageChunk)
+        }
+        if (!textEmitted && type === 'text-start') {
+          textEmitted = true
+          const id = (value as { id: string }).id
+          controller.enqueue({
+            type: 'text-delta',
+            id,
+            delta: prefix.text,
+          } as UIMessageChunk)
         }
       } catch (error) {
         controller.error(error)
@@ -657,7 +731,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private systemMessage?: string
   private serviceHub: ServiceHub | null
   private threadId?: string
-  private continueFromContent: string | null = null
+  private continueFromContent: ContinuationContent | null = null
   /** Latest user message text — used by the MCP orchestrator for tool routing. */
   private lastUserMessage = ''
   /**
@@ -936,10 +1010,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
   /**
    * Set partial assistant content to send as a prefill on the next request,
-   * so the model continues generation from where it left off.
+   * so the model continues generation from where it left off. Accepts a plain
+   * text string, or structured content carrying reasoning so a turn stopped
+   * mid-thinking resumes inside its reasoning block.
    */
-  setContinueFromContent(content: string) {
-    this.continueFromContent = content
+  setContinueFromContent(content: string | ContinuationContent) {
+    const normalized: ContinuationContent =
+      typeof content === 'string' ? { text: content } : content
+    this.continueFromContent =
+      normalized.text || normalized.reasoning ? normalized : null
   }
 
   async sendMessages(
@@ -1054,55 +1133,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     await this.refreshTools(options.abortSignal)
 
-    // Fix for Anthropic serial tool-use (error 400): when an assistant message
-    // contains tool parts interleaved with text parts (serial tool calls),
-    // split it into separate messages so convertToModelMessages produces the
-    // tool_use / tool_result pairing that the Claude API requires.
-    // See: https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use#parallel-tool-use
-    const effectiveApiType = getProviderApiType(provider)
-    const messagesToConvert = (() => {
-      if (effectiveApiType !== 'anthropic') {
-        return options.messages
-      }
-      return options.messages.flatMap((message) => {
-        if (message.role !== 'assistant') return [message]
-
-        const parts = Array.isArray(message.parts) ? message.parts : []
-        if (parts.length === 0) return [message]
-
-        const isToolPart = (p: (typeof parts)[number]) =>
-          p.type.startsWith('tool-')
-
-        const waves: (typeof parts)[] = []
-        let currentWave: typeof parts = []
-        let seenToolParts = false
-
-        for (const part of parts) {
-          if (isToolPart(part)) {
-            seenToolParts = true
-            currentWave.push(part)
-          } else if (!isToolPart(part) && seenToolParts) {
-            // Any non-tool part (text, reasoning, file, etc.) after tool parts
-            // marks the start of a new wave
-            waves.push(currentWave)
-            currentWave = [part]
-            seenToolParts = false
-          } else {
-            currentWave.push(part)
-          }
-        }
-        if (currentWave.length > 0) waves.push(currentWave)
-
-        // No serial tool calls detected — return original message unchanged
-        if (waves.length <= 1) return [message]
-
-        return waves.map((waveParts, i) => ({
-          ...message,
-          id: `${message.id}_w${i}`,
-          parts: waveParts,
-        }))
-      })
-    })()
+    // Split assistant turns that place text after tool calls into separate
+    // messages. Required by the Claude API (tool_use / tool_result pairing) and
+    // it keeps the prompt prefix byte-identical across turns so llama.cpp reuses
+    // the KV cache. See `splitAssistantToolWaves`.
+    const messagesToConvert = splitAssistantToolWaves(options.messages)
 
     const inferenceParams = this.getActiveInferenceParams()
 
@@ -1209,7 +1244,25 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const continueContent = this.continueFromContent
     this.continueFromContent = null
     const modelMessages = continueContent
-      ? [...baseMessages, { role: 'assistant' as const, content: continueContent }]
+      ? [
+          ...baseMessages,
+          {
+            role: 'assistant' as const,
+            content: [
+              ...(continueContent.reasoning
+                ? [
+                    {
+                      type: 'reasoning' as const,
+                      text: continueContent.reasoning,
+                    },
+                  ]
+                : []),
+              ...(continueContent.text
+                ? [{ type: 'text' as const, text: continueContent.text }]
+                : []),
+            ],
+          },
+        ]
       : baseMessages
 
     // Include tools only if we have tools loaded AND model supports them
@@ -1376,7 +1429,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // very first text-delta so the new message immediately shows it and the
     // user sees a seamless continuation rather than an empty box.
     const finalStream = continueContent
-      ? prependTextDeltaToUIStream(uiStream, continueContent)
+      ? prependContinuationToUIStream(uiStream, continueContent)
       : uiStream
 
     return finalStream

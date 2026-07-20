@@ -207,3 +207,91 @@ describe('CustomChatTransport prompt-prefix stability across turns', () => {
     ).toBe(JSON.stringify(secondMessages))
   })
 })
+
+describe('CustomChatTransport assistant completion (continuation prefill)', () => {
+  beforeEach(() => {
+    streamTextCalls.length = 0
+    h.disabledTools = []
+    h.servers = ['srv']
+    h.getRelevantTools.mockReset()
+    h.getRelevantTools.mockResolvedValue([
+      { name: 'tool_a', description: 'a', inputSchema: {}, server: 'srv' },
+    ])
+  })
+
+  const history: UIMessage[] = [
+    user('u1', 'write a poem'),
+    assistant('a1', 'here goes'),
+    user('u2', 'continue'),
+  ]
+
+  it('appends the partial content as a trailing assistant prefill message', async () => {
+    const transport = new CustomChatTransport('you are jan', 'thread-1')
+    transport.setContinueFromContent('Roses are red,')
+    await drain(await send(transport, history))
+
+    expect(streamTextCalls).toHaveLength(1)
+    const messages = streamTextCalls[0].messages as Array<{
+      role: string
+      content: unknown
+    }>
+    const last = messages[messages.length - 1]
+    expect(last.role).toBe('assistant')
+    expect(last.content).toEqual([{ type: 'text', text: 'Roses are red,' }])
+  })
+
+  it('prefills reasoning so a turn stopped mid-thinking resumes inside <think>', async () => {
+    const transport = new CustomChatTransport('you are jan', 'thread-1')
+    transport.setContinueFromContent({ reasoning: 'let me think', text: '' })
+    await drain(await send(transport, history))
+
+    const messages = streamTextCalls[0].messages as Array<{
+      role: string
+      content: unknown
+    }>
+    const last = messages[messages.length - 1]
+    expect(last.role).toBe('assistant')
+    expect(last.content).toEqual([{ type: 'reasoning', text: 'let me think' }])
+  })
+
+  it('leaves the cached prefix byte-identical (prefill only appends)', async () => {
+    const transport = new CustomChatTransport('you are jan', 'thread-1')
+
+    // Normal send seeds the cache prefix.
+    await drain(await send(transport, history))
+    // Continuation send of the same history appends the prefill.
+    transport.setContinueFromContent('Roses are red,')
+    await drain(await send(transport, history))
+
+    expect(streamTextCalls).toHaveLength(2)
+    const [normal, cont] = streamTextCalls
+    const normalMessages = normal.messages as unknown[]
+    const contMessages = cont.messages as unknown[]
+
+    // The prefill adds exactly one trailing message; everything before it is
+    // re-serialized byte-for-byte, so llama.cpp reuses the KV cache.
+    expect(contMessages).toHaveLength(normalMessages.length + 1)
+    expect(JSON.stringify(contMessages.slice(0, normalMessages.length))).toBe(
+      JSON.stringify(normalMessages)
+    )
+  })
+
+  it('consumes the prefill once (next send appends nothing)', async () => {
+    const transport = new CustomChatTransport('you are jan', 'thread-1')
+
+    transport.setContinueFromContent('Roses are red,')
+    await drain(await send(transport, history))
+    // A second send without re-setting must not re-append the prefill.
+    await drain(await send(transport, history))
+
+    expect(streamTextCalls).toHaveLength(2)
+    const [withPrefill, without] = streamTextCalls
+    const withMessages = withPrefill.messages as unknown[]
+    const withoutMessages = without.messages as unknown[]
+    expect(withMessages).toHaveLength(withoutMessages.length + 1)
+    const last = (withoutMessages[withoutMessages.length - 1] as {
+      role: string
+    }).role
+    expect(last).toBe('user')
+  })
+})

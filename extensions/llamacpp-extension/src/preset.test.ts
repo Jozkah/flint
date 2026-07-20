@@ -261,6 +261,44 @@ describe('generatePreset ctx-size default', () => {
   })
 })
 
+describe('generatePreset n-gpu-layers under fit', () => {
+  it('emits global n-gpu-layers when fit is off', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { fit: false, n_gpu_layers: 20 } as any, {
+      supportsMtp: false,
+    })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('n-gpu-layers = 20')
+  })
+
+  it('omits global n-gpu-layers when auto-fit is enabled so fit owns offload', async () => {
+    setupModel('llama', {})
+    await generatePreset('/p', '/jan', { fit: true, n_gpu_layers: 20 } as any, {
+      supportsMtp: false,
+    })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).not.toContain('n-gpu-layers')
+  })
+
+  it('emits per-model n-gpu-layers when fit is off', async () => {
+    setupModel('llama', { n_gpu_layers: 33 })
+    await generatePreset('/p', '/jan', { fit: false } as any, {
+      supportsMtp: false,
+    })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('n-gpu-layers = 33')
+  })
+
+  it('omits per-model n-gpu-layers when auto-fit is enabled', async () => {
+    setupModel('llama', { n_gpu_layers: 33 })
+    await generatePreset('/p', '/jan', { fit: true } as any, {
+      supportsMtp: false,
+    })
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).not.toContain('n-gpu-layers')
+  })
+})
+
 describe('generatePreset context-shift', () => {
   it('emits context-shift = true when ctx_shift is enabled', async () => {
     setupModel('llama', {})

@@ -826,6 +826,14 @@ export default class mlx_extension extends AIEngine {
     }
   }
 
+  // The MLX server is launched with a fixed context window (cfg.ctx_size),
+  // so the token counter can show a real percentage instead of a bare count.
+  async getModelProps(
+    modelId: string
+  ): Promise<{ nCtx: number; modelAlias?: string }> {
+    return { nCtx: this.config.ctx_size ?? 4096, modelAlias: modelId }
+  }
+
   async isVisionSupported(modelPath: string): Promise<boolean> {
     // Check if model is a Vision Language Model by examining config.json
     // modelPath can be a folder path or a file path; resolve to directory
