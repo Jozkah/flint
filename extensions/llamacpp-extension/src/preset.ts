@@ -169,7 +169,13 @@ export async function generatePreset(
     lines.push(`ctx-size = ${ctxSize}`)
   }
   // n-gpu-layers default = 0 / auto; emit any non-negative explicit value.
-  if (typeof config.n_gpu_layers === 'number' && config.n_gpu_layers >= 0) {
+  // Skip when auto-fit is on: an explicit n-gpu-layers makes fit abort its
+  // layer-offload computation (llama.cpp common/fit.cpp), so fit owns ngl too.
+  if (
+    !fitEnabled &&
+    typeof config.n_gpu_layers === 'number' &&
+    config.n_gpu_layers >= 0
+  ) {
     lines.push(`n-gpu-layers = ${config.n_gpu_layers}`)
   }
   // flash-attn default = 'auto'; explicit on/off only.
@@ -376,7 +382,12 @@ export async function generatePreset(
       lines.push(`ctx-size = ${mc.ctx_size}`)
       ctxEmitted = true
     }
-    if (typeof mc.n_gpu_layers === 'number' && mc.n_gpu_layers >= 0) {
+    // Skipped when auto-fit is on so fit computes GPU offload (see [*] above).
+    if (
+      !fitEnabled &&
+      typeof mc.n_gpu_layers === 'number' &&
+      mc.n_gpu_layers >= 0
+    ) {
       lines.push(`n-gpu-layers = ${mc.n_gpu_layers}`)
     }
     if (
