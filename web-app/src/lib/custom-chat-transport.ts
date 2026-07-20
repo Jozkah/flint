@@ -44,7 +44,7 @@ import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import { encodeAudioSentinel, parseAudioDataUrl } from '@/lib/audio-sentinel'
 import { encodeVideoSentinel, parseVideoDataUrl } from '@/lib/video-sentinel'
-import { isPredefinedRemoteProvider, getProviderApiType } from '@/lib/providerCaps'
+import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
 import { paramsSettings } from '@/lib/predefinedParams'
 
 export type TokenUsageCallback = (
@@ -494,6 +494,63 @@ export function resolveOrphanToolCalls(messages: UIMessage[]): UIMessage[] {
 
     if (!mutated) return message
     return { ...message, parts: nextParts }
+  })
+}
+
+/**
+ * Split any assistant message whose parts place non-tool content (text,
+ * reasoning, file) AFTER tool-call parts into consecutive assistant messages,
+ * one per "wave". This is required for two reasons:
+ *
+ * 1. Correctness: the Claude API rejects an assistant turn that interleaves
+ *    tool_use with text (error 400); it needs tool_use / tool_result pairing.
+ * 2. Prompt-cache stability: when a tool-call turn completes, the AI SDK stores
+ *    the follow-up text in the SAME assistant UIMessage as the tool call, so
+ *    `convertToModelMessages` renders `assistant(tool-call, text)` then
+ *    `tool(result)`. But that turn was generated in two requests — the cache
+ *    was seeded with `assistant(tool-call)` then `tool(result)`, with no text
+ *    yet. Splitting restores the generated order `assistant(tool-call)` ->
+ *    `tool(result)` -> `assistant(text)`, so the prefix stays byte-identical
+ *    across turns and llama.cpp reuses the KV cache.
+ *
+ * A message with no tool parts, or with all non-tool parts before the tool
+ * parts, is returned unchanged.
+ */
+export function splitAssistantToolWaves(messages: UIMessage[]): UIMessage[] {
+  return messages.flatMap((message) => {
+    if (message.role !== 'assistant') return [message]
+
+    const parts = Array.isArray(message.parts) ? message.parts : []
+    if (parts.length === 0) return [message]
+
+    const isToolPart = (p: (typeof parts)[number]) =>
+      typeof p.type === 'string' && p.type.startsWith('tool-')
+
+    const waves: (typeof parts)[] = []
+    let currentWave: typeof parts = []
+    let seenToolParts = false
+
+    for (const part of parts) {
+      if (isToolPart(part)) {
+        seenToolParts = true
+        currentWave.push(part)
+      } else if (seenToolParts) {
+        waves.push(currentWave)
+        currentWave = [part]
+        seenToolParts = false
+      } else {
+        currentWave.push(part)
+      }
+    }
+    if (currentWave.length > 0) waves.push(currentWave)
+
+    if (waves.length <= 1) return [message]
+
+    return waves.map((waveParts, i) => ({
+      ...message,
+      id: `${message.id}_w${i}`,
+      parts: waveParts,
+    }))
   })
 }
 
@@ -1054,55 +1111,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     await this.refreshTools(options.abortSignal)
 
-    // Fix for Anthropic serial tool-use (error 400): when an assistant message
-    // contains tool parts interleaved with text parts (serial tool calls),
-    // split it into separate messages so convertToModelMessages produces the
-    // tool_use / tool_result pairing that the Claude API requires.
-    // See: https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use#parallel-tool-use
-    const effectiveApiType = getProviderApiType(provider)
-    const messagesToConvert = (() => {
-      if (effectiveApiType !== 'anthropic') {
-        return options.messages
-      }
-      return options.messages.flatMap((message) => {
-        if (message.role !== 'assistant') return [message]
-
-        const parts = Array.isArray(message.parts) ? message.parts : []
-        if (parts.length === 0) return [message]
-
-        const isToolPart = (p: (typeof parts)[number]) =>
-          p.type.startsWith('tool-')
-
-        const waves: (typeof parts)[] = []
-        let currentWave: typeof parts = []
-        let seenToolParts = false
-
-        for (const part of parts) {
-          if (isToolPart(part)) {
-            seenToolParts = true
-            currentWave.push(part)
-          } else if (!isToolPart(part) && seenToolParts) {
-            // Any non-tool part (text, reasoning, file, etc.) after tool parts
-            // marks the start of a new wave
-            waves.push(currentWave)
-            currentWave = [part]
-            seenToolParts = false
-          } else {
-            currentWave.push(part)
-          }
-        }
-        if (currentWave.length > 0) waves.push(currentWave)
-
-        // No serial tool calls detected — return original message unchanged
-        if (waves.length <= 1) return [message]
-
-        return waves.map((waveParts, i) => ({
-          ...message,
-          id: `${message.id}_w${i}`,
-          parts: waveParts,
-        }))
-      })
-    })()
+    // Split assistant turns that place text after tool calls into separate
+    // messages. Required by the Claude API (tool_use / tool_result pairing) and
+    // it keeps the prompt prefix byte-identical across turns so llama.cpp reuses
+    // the KV cache. See `splitAssistantToolWaves`.
+    const messagesToConvert = splitAssistantToolWaves(options.messages)
 
     const inferenceParams = this.getActiveInferenceParams()
 
