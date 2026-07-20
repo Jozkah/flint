@@ -22,8 +22,7 @@
     "vitest": "3.2.4"
   },
   "dependencies": {
-    "@janhq/core": "workspace:*",
-    "ts-loader": "^9.5.0"
+    "@janhq/core": "workspace:*"
   },
   "files": [
     "dist/*",
