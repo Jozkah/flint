@@ -4,6 +4,10 @@ import '@testing-library/jest-dom'
 
 // ---- Module mocks ----------------------------------------------------------
 
+vi.mock('@/i18n/react-i18next-compat', () => ({
+  useTranslation: () => ({ t: (k: string) => k }),
+}))
+
 const selectedModelRef = vi.hoisted(() => ({ current: { id: 'm1' } as any }))
 vi.mock('@/hooks/useModelProvider', () => ({
   useModelProvider: (selector: any) =>
@@ -182,7 +186,7 @@ describe('MessageItem', () => {
         onRegenerate={onRegenerate}
       />
     )
-    const regenBtn = screen.getByTitle('Regenerate response')
+    const regenBtn = screen.getByTitle('chat:actions.regenerate')
     fireEvent.click(regenBtn)
     expect(onRegenerate).toHaveBeenCalledWith('msg-1')
   })
@@ -198,7 +202,53 @@ describe('MessageItem', () => {
         onRegenerate={onRegenerate}
       />
     )
-    expect(screen.queryByTitle('Regenerate response')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('chat:actions.regenerate')).not.toBeInTheDocument()
+  })
+
+  it('shows Continue button on a stopped last assistant message', () => {
+    const onContinue = vi.fn()
+    render(
+      <MessageItem
+        message={
+          makeMsg({ metadata: { createdAt: new Date(), stopped: true } }) as any
+        }
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+        onContinue={onContinue}
+      />
+    )
+    const btn = screen.getByTitle('chat:actions.continue')
+    fireEvent.click(btn)
+    expect(onContinue).toHaveBeenCalledWith('msg-1')
+  })
+
+  it('hides Continue button when the turn finished normally', () => {
+    render(
+      <MessageItem
+        message={makeMsg() as any}
+        isFirstMessage
+        isLastMessage
+        status={'ready' as any}
+        onContinue={vi.fn()}
+      />
+    )
+    expect(screen.queryByTitle('chat:actions.continue')).not.toBeInTheDocument()
+  })
+
+  it('hides Continue button on a stopped message that is not last', () => {
+    render(
+      <MessageItem
+        message={
+          makeMsg({ metadata: { createdAt: new Date(), stopped: true } }) as any
+        }
+        isFirstMessage
+        isLastMessage={false}
+        status={'ready' as any}
+        onContinue={vi.fn()}
+      />
+    )
+    expect(screen.queryByTitle('chat:actions.continue')).not.toBeInTheDocument()
   })
 
   it('fires onEdit when edit dialog saves', () => {
@@ -529,6 +579,6 @@ describe('MessageItem', () => {
         onRegenerate={onRegenerate}
       />
     )
-    expect(screen.queryByTitle('Regenerate response')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('chat:actions.regenerate')).not.toBeInTheDocument()
   })
 })

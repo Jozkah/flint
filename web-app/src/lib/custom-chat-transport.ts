@@ -59,6 +59,8 @@ export type OnFinishCallback = (params: {
   message: UIMessage
   isAbort?: boolean
 }) => void
+/** Partial assistant output replayed as a prefill to resume a stopped turn. */
+export type ContinuationContent = { text?: string; reasoning?: string }
 export type ServiceHub = {
   rag(): {
     getTools(): Promise<
@@ -661,17 +663,18 @@ function extractLatestUserText(messages: UIMessage[]): string {
 }
 
 /**
- * Wraps a UIMessageChunk stream so that when the first `text-start` chunk
- * arrives, a `text-delta` carrying `prefixText` is immediately injected into
- * the same text block. This makes the new message show the partial content
- * right away while continuation tokens stream in after it.
+ * Wraps a UIMessageChunk stream so the partial content of a resumed turn is
+ * injected back into the new message right away: `reasoning` into the first
+ * `reasoning-start` block and `text` into the first `text-start` block. This
+ * makes the continuation look seamless instead of dropping the partial output.
  */
-function prependTextDeltaToUIStream(
+function prependContinuationToUIStream(
   stream: ReadableStream<UIMessageChunk>,
-  prefixText: string
+  prefix: ContinuationContent
 ): ReadableStream<UIMessageChunk> {
   const reader = stream.getReader()
-  let prefixEmitted = false
+  let reasoningEmitted = !prefix.reasoning
+  let textEmitted = !prefix.text
   return new ReadableStream<UIMessageChunk>({
     async pull(controller) {
       try {
@@ -681,10 +684,24 @@ function prependTextDeltaToUIStream(
           return
         }
         controller.enqueue(value)
-        if (!prefixEmitted && (value as { type: string }).type === 'text-start') {
-          prefixEmitted = true
-          const id = (value as { type: 'text-start'; id: string }).id
-          controller.enqueue({ type: 'text-delta', id, delta: prefixText } as UIMessageChunk)
+        const type = (value as { type: string }).type
+        if (!reasoningEmitted && type === 'reasoning-start') {
+          reasoningEmitted = true
+          const id = (value as { id: string }).id
+          controller.enqueue({
+            type: 'reasoning-delta',
+            id,
+            delta: prefix.reasoning,
+          } as UIMessageChunk)
+        }
+        if (!textEmitted && type === 'text-start') {
+          textEmitted = true
+          const id = (value as { id: string }).id
+          controller.enqueue({
+            type: 'text-delta',
+            id,
+            delta: prefix.text,
+          } as UIMessageChunk)
         }
       } catch (error) {
         controller.error(error)
@@ -714,7 +731,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private systemMessage?: string
   private serviceHub: ServiceHub | null
   private threadId?: string
-  private continueFromContent: string | null = null
+  private continueFromContent: ContinuationContent | null = null
   /** Latest user message text — used by the MCP orchestrator for tool routing. */
   private lastUserMessage = ''
   /**
@@ -993,10 +1010,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
   /**
    * Set partial assistant content to send as a prefill on the next request,
-   * so the model continues generation from where it left off.
+   * so the model continues generation from where it left off. Accepts a plain
+   * text string, or structured content carrying reasoning so a turn stopped
+   * mid-thinking resumes inside its reasoning block.
    */
-  setContinueFromContent(content: string) {
-    this.continueFromContent = content
+  setContinueFromContent(content: string | ContinuationContent) {
+    const normalized: ContinuationContent =
+      typeof content === 'string' ? { text: content } : content
+    this.continueFromContent =
+      normalized.text || normalized.reasoning ? normalized : null
   }
 
   async sendMessages(
@@ -1222,7 +1244,25 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const continueContent = this.continueFromContent
     this.continueFromContent = null
     const modelMessages = continueContent
-      ? [...baseMessages, { role: 'assistant' as const, content: continueContent }]
+      ? [
+          ...baseMessages,
+          {
+            role: 'assistant' as const,
+            content: [
+              ...(continueContent.reasoning
+                ? [
+                    {
+                      type: 'reasoning' as const,
+                      text: continueContent.reasoning,
+                    },
+                  ]
+                : []),
+              ...(continueContent.text
+                ? [{ type: 'text' as const, text: continueContent.text }]
+                : []),
+            ],
+          },
+        ]
       : baseMessages
 
     // Include tools only if we have tools loaded AND model supports them
@@ -1389,7 +1429,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // very first text-delta so the new message immediately shows it and the
     // user sees a seamless continuation rather than an empty box.
     const finalStream = continueContent
-      ? prependTextDeltaToUIStream(uiStream, continueContent)
+      ? prependContinuationToUIStream(uiStream, continueContent)
       : uiStream
 
     return finalStream
