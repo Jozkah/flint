@@ -7,6 +7,7 @@ type StepRowProps = {
   text?: string
   connector?: boolean
   children?: React.ReactNode
+  marker?: React.ReactNode
 }
 
 /**
@@ -15,12 +16,25 @@ type StepRowProps = {
  * reasoning paragraph, or `children` to host arbitrary content (e.g. a tool
  * call) on the same continuous rail.
  */
-export const StepRow = ({ text, connector = false, children }: StepRowProps) => (
+export const StepRow = ({
+  text,
+  connector = false,
+  children,
+  marker,
+}: StepRowProps) => (
   <li className="relative flex gap-2.5">
     {connector && (
       <span className="absolute left-[3px] top-3.5 -bottom-2.5 border-l border-dotted border-border" />
     )}
-    <span className="relative z-10 mt-1.5 size-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+    {marker ? (
+      <span className="relative z-10 mt-1.5 flex size-1.5 shrink-0 items-center justify-center">
+        <span className="absolute flex items-center justify-center">
+          {marker}
+        </span>
+      </span>
+    ) : (
+      <span className="relative z-10 mt-1.5 size-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+    )}
     {children ? (
       <div className="min-w-0 flex-1">{children}</div>
     ) : (

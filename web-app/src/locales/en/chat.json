@@ -16,5 +16,6 @@
   "actions": {
     "regenerate": "Regenerate response",
     "continue": "Continue generating"
-  }
+  },
+  "done": "Done"
 }

@@ -31,6 +31,7 @@ import {
   IconAlertTriangle,
   IconChevronLeft,
   IconChevronRight,
+  IconCircleCheck,
 } from '@tabler/icons-react'
 import { EditMessageDialog } from '@/containers/dialogs/EditMessageDialog'
 import { DeleteMessageDialog } from '@/containers/dialogs/DeleteMessageDialog'
@@ -577,6 +578,15 @@ export const MessageItem = memo(
             )
         }
         if (steps.length === 0) return null
+        steps.push(
+          <StepRow
+            key={`${message.id}-done`}
+            marker={
+              <IconCircleCheck className="size-4 text-muted-foreground/60" />
+            }
+            text={t('chat:done')}
+          />
+        )
         return (
           <ol className="relative flex flex-col gap-2.5">
             {steps.map((step, i) =>
