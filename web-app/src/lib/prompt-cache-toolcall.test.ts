@@ -121,3 +121,90 @@ describe('prompt cache stability across a tool-call turn', () => {
     expect(textIdx).toBeGreaterThan(toolResultIdx)
   })
 })
+
+/**
+ * The previous assistant turn (and the whole prefix before the new user
+ * message) must be re-serialized byte-for-byte when the next user turn is
+ * appended, otherwise llama.cpp reprocesses the prior turn instead of reusing
+ * the KV cache. This covers plain text, reasoning (which preserve-reasoning
+ * models resend so the server can re-emit prior <think>), and tool-call turns.
+ */
+describe('previous assistant turn is byte-identical in the next user turn', () => {
+  const user1: UIMessage = {
+    id: 'u1',
+    role: 'user',
+    parts: [{ type: 'text', text: 'question' }],
+  } as UIMessage
+  const user2: UIMessage = {
+    id: 'u2',
+    role: 'user',
+    parts: [{ type: 'text', text: 'follow-up' }],
+  } as UIMessage
+
+  const cases: Array<{ name: string; assistant: UIMessage }> = [
+    {
+      name: 'plain text',
+      assistant: {
+        id: 'a1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'The answer is 42.' }],
+      } as UIMessage,
+    },
+    {
+      name: 'reasoning + text (preserve-reasoning)',
+      assistant: {
+        id: 'a1',
+        role: 'assistant',
+        parts: [
+          { type: 'reasoning', text: 'let me think about it' },
+          { type: 'text', text: 'The answer is 42.' },
+        ],
+      } as unknown as UIMessage,
+    },
+    {
+      name: 'tool-call + text',
+      assistant: {
+        id: 'a1',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-mcp__fs__list',
+            toolCallId: 'call_1',
+            input: { path: '/tmp' },
+            state: 'output-available',
+            output: { files: ['a', 'b'] },
+          },
+          { type: 'text', text: 'Two files.' },
+        ],
+      } as unknown as UIMessage,
+    },
+  ]
+
+  for (const { name, assistant } of cases) {
+    it(`keeps the ${name} assistant turn byte-identical`, async () => {
+      const before = await pipeline([user1, assistant])
+      const after = await pipeline([user1, assistant, user2])
+
+      expect(after.length).toBe(before.length + 1)
+      expect(JSON.stringify(after.slice(0, before.length))).toBe(
+        JSON.stringify(before)
+      )
+    })
+  }
+
+  it('resends the reasoning content (not dropped) for preserve-reasoning models', async () => {
+    const assistant = cases[1].assistant
+    const prompt = await pipeline([user1, assistant, user2])
+    const hasReasoning = prompt.some(
+      (m) =>
+        m.role === 'assistant' &&
+        Array.isArray(m.content) &&
+        m.content.some(
+          (c) =>
+            (c as { type?: string }).type === 'reasoning' &&
+            (c as { text?: string }).text === 'let me think about it'
+        )
+    )
+    expect(hasReasoning).toBe(true)
+  })
+})
