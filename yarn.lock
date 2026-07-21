@@ -2727,7 +2727,6 @@ __metadata:
     rimraf: "npm:6.0.1"
     rolldown: "npm:1.0.0-beta.1"
     run-script-os: "npm:1.1.6"
-    ts-loader: "npm:^9.5.0"
     typescript: "npm:5.9.2"
     vitest: "npm:3.2.4"
   languageName: unknown
@@ -2742,7 +2741,6 @@ __metadata:
     jsdom: "npm:^26.1.0"
     rimraf: "npm:6.0.1"
     rolldown: "npm:1.0.0-beta.1"
-    ts-loader: "npm:^9.5.0"
     typescript: "npm:5.9.2"
     vitest: "npm:3.2.4"
   languageName: unknown
@@ -2838,13 +2836,12 @@ __metadata:
     "@janhq/tauri-plugin-llamacpp-api": "link:../../src-tauri/plugins/tauri-plugin-llamacpp"
     "@tauri-apps/api": "npm:2.8.0"
     "@tauri-apps/plugin-http": "npm:2.5.9"
-    "@vitest/ui": "npm:2.1.9"
+    "@vitest/ui": "npm:3.2.4"
     cpx: "npm:1.5.0"
     fetch-retry: "npm:^5.0.6"
     jsdom: "npm:26.1.0"
     rimraf: "npm:3.0.2"
     rolldown: "npm:1.0.0-beta.1"
-    ts-loader: "npm:^9.5.0"
     typescript: "npm:5.9.2"
     ulidx: "npm:2.4.1"
     vitest: "npm:3.2.4"
@@ -2892,12 +2889,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@janhq/tauri-plugin-llamacpp-api@link:../src-tauri/plugins/tauri-plugin-llamacpp::locator=%40janhq%2Fweb-app%40workspace%3Aweb-app":
-  version: 0.0.0-use.local
-  resolution: "@janhq/tauri-plugin-llamacpp-api@link:../src-tauri/plugins/tauri-plugin-llamacpp::locator=%40janhq%2Fweb-app%40workspace%3Aweb-app"
-  languageName: node
-  linkType: soft
-
 "@janhq/tauri-plugin-hardware-api@link:../../src-tauri/plugins/tauri-plugin-hardware::locator=%40janhq%2Fllamacpp-extension%40workspace%3Aextensions%2Fllamacpp-extension":
   version: 0.0.0-use.local
   resolution: "@janhq/tauri-plugin-hardware-api@link:../../src-tauri/plugins/tauri-plugin-hardware::locator=%40janhq%2Fllamacpp-extension%40workspace%3Aextensions%2Fllamacpp-extension"
@@ -2913,6 +2904,12 @@ __metadata:
 "@janhq/tauri-plugin-llamacpp-api@link:../../src-tauri/plugins/tauri-plugin-llamacpp::locator=%40janhq%2Fmlx-extension%40workspace%3Aextensions%2Fmlx-extension":
   version: 0.0.0-use.local
   resolution: "@janhq/tauri-plugin-llamacpp-api@link:../../src-tauri/plugins/tauri-plugin-llamacpp::locator=%40janhq%2Fmlx-extension%40workspace%3Aextensions%2Fmlx-extension"
+  languageName: node
+  linkType: soft
+
+"@janhq/tauri-plugin-llamacpp-api@link:../src-tauri/plugins/tauri-plugin-llamacpp::locator=%40janhq%2Fweb-app%40workspace%3Aweb-app":
+  version: 0.0.0-use.local
+  resolution: "@janhq/tauri-plugin-llamacpp-api@link:../src-tauri/plugins/tauri-plugin-llamacpp::locator=%40janhq%2Fweb-app%40workspace%3Aweb-app"
   languageName: node
   linkType: soft
 
@@ -2961,6 +2958,7 @@ __metadata:
     vitest: "npm:3.2.4"
   languageName: unknown
   linkType: soft
+
 "@janhq/web-app@workspace:web-app":
   version: 0.0.0-use.local
   resolution: "@janhq/web-app@workspace:web-app"
@@ -7630,7 +7628,24 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@vitest/ui@npm:2.1.9, @vitest/ui@npm:^2.1.8":
+"@vitest/ui@npm:3.2.4":
+  version: 3.2.4
+  resolution: "@vitest/ui@npm:3.2.4"
+  dependencies:
+    "@vitest/utils": "npm:3.2.4"
+    fflate: "npm:^0.8.2"
+    flatted: "npm:^3.3.3"
+    pathe: "npm:^2.0.3"
+    sirv: "npm:^3.0.1"
+    tinyglobby: "npm:^0.2.14"
+    tinyrainbow: "npm:^2.0.0"
+  peerDependencies:
+    vitest: 3.2.4
+  checksum: 10c0/c3de1b757905d050706c7ab0199185dd8c7e115f2f348b8d5a7468528c6bf90c2c46096e8901602349ac04f5ba83ac23cd98c38827b104d5151cf8ba21739a0c
+  languageName: node
+  linkType: hard
+
+"@vitest/ui@npm:^2.1.8":
   version: 2.1.9
   resolution: "@vitest/ui@npm:2.1.9"
   dependencies:
@@ -8773,7 +8788,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"chalk@npm:^4.0.0, chalk@npm:^4.1.0, chalk@npm:^4.1.2":
+"chalk@npm:^4.0.0, chalk@npm:^4.1.2":
   version: 4.1.2
   resolution: "chalk@npm:4.1.2"
   dependencies:
@@ -11286,6 +11301,13 @@ __metadata:
   version: 3.3.3
   resolution: "flatted@npm:3.3.3"
   checksum: 10c0/e957a1c6b0254aa15b8cce8533e24165abd98fadc98575db082b786b5da1b7d72062b81bfdcd1da2f4d46b6ed93bec2434e62333e9b4261d79ef2e75a10dd538
+  languageName: node
+  linkType: hard
+
+"flatted@npm:^3.3.3":
+  version: 3.4.2
+  resolution: "flatted@npm:3.4.2"
+  checksum: 10c0/a65b67aae7172d6cdf63691be7de6c5cd5adbdfdfe2e9da1a09b617c9512ed794037741ee53d93114276bff3f93cd3b0d97d54f9b316e1e4885dde6e9ffdf7ed
   languageName: node
   linkType: hard
 
@@ -16269,13 +16291,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"picomatch@npm:^4.0.0":
-  version: 4.0.5
-  resolution: "picomatch@npm:4.0.5"
-  checksum: 10c0/947bc6b6e1ff1e6c5aaf95b107a0839d12802f4f7b867663f67d47accba939ca1cb582cf99dfc30438efa1c4648ac5990967e783e8929c36b03e8440704ef1bd
-  languageName: node
-  linkType: hard
-
 "picomatch@npm:^4.0.2, picomatch@npm:^4.0.3":
   version: 4.0.3
   resolution: "picomatch@npm:4.0.3"
@@ -18331,7 +18346,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"sirv@npm:^3.0.0":
+"sirv@npm:^3.0.0, sirv@npm:^3.0.1":
   version: 3.0.2
   resolution: "sirv@npm:3.0.2"
   dependencies:
@@ -19412,24 +19427,6 @@ __metadata:
   version: 2.2.0
   resolution: "ts-dedent@npm:2.2.0"
   checksum: 10c0/175adea838468cc2ff7d5e97f970dcb798bbcb623f29c6088cb21aa2880d207c5784be81ab1741f56b9ac37840cbaba0c0d79f7f8b67ffe61c02634cafa5c303
-  languageName: node
-  linkType: hard
-
-"ts-loader@npm:^9.5.0":
-  version: 9.6.2
-  resolution: "ts-loader@npm:9.6.2"
-  dependencies:
-    chalk: "npm:^4.1.0"
-    picomatch: "npm:^4.0.0"
-    source-map: "npm:^0.7.4"
-  peerDependencies:
-    loader-utils: "*"
-    typescript: "*"
-    webpack: ^4.0.0 || ^5.0.0
-  peerDependenciesMeta:
-    loader-utils:
-      optional: true
-  checksum: 10c0/6102336ee598124249e07cce6bb3d4ee0586f962697b7388d1957296a2c7d5164b95757797db237bdb7b8f0c5a52d2f22ca5013d3337823d8e9e0e731ce03c67
   languageName: node
   linkType: hard
 
