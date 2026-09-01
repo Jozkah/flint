@@ -3,6 +3,7 @@ import { route } from '@/constants/routes'
 import HeaderPage from '@/containers/HeaderPage'
 import SettingsMenu from '@/containers/SettingsMenu'
 import { Card, CardItem } from '@/containers/Card'
+import { SettingTarget } from '@/components/SettingTarget'
 import { Switch } from '@/components/ui/switch'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Input } from '@/components/ui/input'
@@ -65,21 +66,25 @@ function HTTPSProxyContent() {
                 </div>
               }
             >
-              <CardItem
-                title={t('settings:httpsProxy.proxyUrl')}
-                className="block"
-                description={
-                  <div className="space-y-2">
-                    <p>{t('settings:httpsProxy.proxyUrlDesc')}</p>
-                    <Input
-                      className="w-full"
-                      placeholder={t('settings:httpsProxy.proxyUrlPlaceholder')}
-                      value={proxyUrl}
-                      onChange={(e) => setProxyUrl(e.target.value)}
-                    />
-                  </div>
-                }
-              />
+              <SettingTarget anchor="settings-https-proxy-proxy-url">
+                <CardItem
+                  title={t('settings:httpsProxy.proxyUrl')}
+                  className="block"
+                  description={
+                    <div className="space-y-2">
+                      <p>{t('settings:httpsProxy.proxyUrlDesc')}</p>
+                      <Input
+                        className="w-full"
+                        placeholder={t(
+                          'settings:httpsProxy.proxyUrlPlaceholder'
+                        )}
+                        value={proxyUrl}
+                        onChange={(e) => setProxyUrl(e.target.value)}
+                      />
+                    </div>
+                  }
+                />
+              </SettingTarget>
               <CardItem
                 title={t('settings:httpsProxy.authentication')}
                 className="block"
@@ -117,30 +122,36 @@ function HTTPSProxyContent() {
                   </div>
                 }
               />
-              <CardItem
-                title={t('settings:httpsProxy.noProxy')}
-                className="block"
-                description={
-                  <div className="space-y-2">
-                    <p>{t('settings:httpsProxy.noProxyDesc')}</p>
-                    <Input
-                      placeholder={t('settings:httpsProxy.noProxyPlaceholder')}
-                      value={noProxy}
-                      onChange={(e) => setNoProxy(e.target.value)}
+              <SettingTarget anchor="settings-https-proxy-no-proxy">
+                <CardItem
+                  title={t('settings:httpsProxy.noProxy')}
+                  className="block"
+                  description={
+                    <div className="space-y-2">
+                      <p>{t('settings:httpsProxy.noProxyDesc')}</p>
+                      <Input
+                        placeholder={t(
+                          'settings:httpsProxy.noProxyPlaceholder'
+                        )}
+                        value={noProxy}
+                        onChange={(e) => setNoProxy(e.target.value)}
+                      />
+                    </div>
+                  }
+                />
+              </SettingTarget>
+              <SettingTarget anchor="settings-https-proxy-ignore-ssl">
+                <CardItem
+                  title={t('settings:httpsProxy.ignoreSsl')}
+                  description={t('settings:httpsProxy.ignoreSslDesc')}
+                  actions={
+                    <Switch
+                      checked={proxyIgnoreSSL}
+                      onCheckedChange={(checked) => setProxyIgnoreSSL(checked)}
                     />
-                  </div>
-                }
-              />
-              <CardItem
-                title={t('settings:httpsProxy.ignoreSsl')}
-                description={t('settings:httpsProxy.ignoreSslDesc')}
-                actions={
-                  <Switch
-                    checked={proxyIgnoreSSL}
-                    onCheckedChange={(checked) => setProxyIgnoreSSL(checked)}
-                  />
-                }
-              />
+                  }
+                />
+              </SettingTarget>
             </Card>
           </div>
         </div>

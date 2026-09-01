@@ -4,6 +4,7 @@ import SettingsMenu from '@/containers/SettingsMenu'
 import HeaderPage from '@/containers/HeaderPage'
 import { Switch } from '@/components/ui/switch'
 import { Card, CardItem } from '@/containers/Card'
+import { SettingTarget } from '@/components/SettingTarget'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useAnalytic } from '@/hooks/useAnalytic'
 import posthog from 'posthog-js'
@@ -50,11 +51,13 @@ function Privacy() {
                 </div>
               }
             >
-              <CardItem
-                title={t('settings:privacy.helpUsImprove')}
-                description={<p>{t('settings:privacy.helpUsImproveDesc')}</p>}
-                align="start"
-              />
+              <SettingTarget anchor="settings-privacy-analytics">
+                <CardItem
+                  title={t('settings:privacy.helpUsImprove')}
+                  description={<p>{t('settings:privacy.helpUsImproveDesc')}</p>}
+                  align="start"
+                />
+              </SettingTarget>
               <CardItem
                 description={
                   <div className="text-foreground">

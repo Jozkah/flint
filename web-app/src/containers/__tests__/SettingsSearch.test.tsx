@@ -1,0 +1,289 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { act, render, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { SettingsSearch } from '../SettingsSearch'
+import { SettingTarget } from '@/components/SettingTarget'
+import { useSettingsSearch } from '@/hooks/useSettingsSearch'
+import { useNavigate } from '@tanstack/react-router'
+
+Object.defineProperty(global, 'IS_MACOS', { value: false, writable: true })
+
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: vi.fn(),
+}))
+
+// English titles, so queries can be asserted against real translated text
+// rather than raw keys.
+const EN: Record<string, string> = {
+  'common:general': 'General',
+  'common:appearance': 'Appearance',
+  'common:privacy': 'Privacy',
+  'common:https_proxy': 'HTTPS Proxy',
+  'common:hardware': 'Hardware',
+  'common:modelProviders': 'Model Providers',
+  'settings:interface.theme': 'Theme',
+  'settings:interface.themeDesc': 'Choose a light or dark look.',
+  'settings:privacy.helpUsImprove': 'Help us improve',
+  'settings:httpsProxy.proxyUrl': 'Proxy URL',
+  'common:language': 'Language',
+  'common:settingsSearch.label': 'Search settings',
+  'common:settingsSearch.placeholder': 'Search settings',
+  'common:settingsSearch.results': 'Search results',
+  'common:settingsSearch.empty': 'No matching settings.',
+  'common:settingsSearch.clear': 'Clear search',
+}
+
+let dictionary: Record<string, string> = EN
+
+vi.mock('@/i18n/react-i18next-compat', () => ({
+  useTranslation: () => ({
+    t: (key: string, opts?: Record<string, unknown>) => {
+      const value = dictionary[key] ?? key
+      return opts && 'count' in opts ? `${opts.count} results` : value
+    },
+    i18n: { language: 'en' },
+  }),
+}))
+
+let providers: any[] = []
+vi.mock('@/hooks/useModelProvider', () => ({
+  useModelProvider: () => ({ providers }),
+}))
+
+vi.mock('@/lib/utils', async () => {
+  const actual = await vi.importActual<any>('@/lib/utils')
+  return { ...actual, getProviderTitle: (p: string) => p }
+})
+
+const mockNavigate = vi.fn()
+
+const type = async (text: string) => {
+  const user = userEvent.setup()
+  const input = screen.getByLabelText('Search settings')
+  await user.click(input)
+  await user.type(input, text)
+  return { user, input }
+}
+
+const optionTexts = () =>
+  screen.queryAllByRole('option').map((el) => el.textContent ?? '')
+
+const selectedIndex = () =>
+  screen
+    .getAllByRole('option')
+    .findIndex((el) => el.getAttribute('aria-selected') === 'true')
+
+describe('SettingsSearch', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    dictionary = EN
+    providers = []
+    useSettingsSearch.setState({ query: '', pendingTarget: null })
+    ;(useNavigate as any).mockReturnValue(mockNavigate)
+  })
+
+  it('finds a setting by its exact name', async () => {
+    render(<SettingsSearch />)
+    await type('Theme')
+    expect(optionTexts()[0]).toContain('Theme')
+  })
+
+  it('finds a setting by keyword synonym', async () => {
+    render(<SettingsSearch />)
+    await type('dark mode')
+    expect(optionTexts().join(' ')).toContain('Theme')
+  })
+
+  it('tolerates typos', async () => {
+    render(<SettingsSearch />)
+    await type('thme')
+    expect(optionTexts().join(' ')).toContain('Theme')
+  })
+
+  it('matches case-insensitively', async () => {
+    render(<SettingsSearch />)
+    await type('THEME')
+    expect(optionTexts().join(' ')).toContain('Theme')
+  })
+
+  it('searches translated labels in the active language', async () => {
+    dictionary = { ...EN, 'settings:interface.theme': 'Apariencia visual' }
+    render(<SettingsSearch />)
+    await type('Apariencia')
+    expect(optionTexts().join(' ')).toContain('Apariencia visual')
+  })
+
+  it('shows an empty state for a query that matches nothing', async () => {
+    render(<SettingsSearch />)
+    await type('zzzzzznotasetting')
+    expect(screen.getByText('No matching settings.')).toBeInTheDocument()
+    expect(optionTexts()).toHaveLength(0)
+  })
+
+  it('navigates to a page-level result', async () => {
+    render(<SettingsSearch />)
+    const { user } = await type('Hardware')
+    await user.click(screen.getAllByRole('option')[0])
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: '/settings/hardware' })
+    )
+  })
+
+  it('supports arrow-key navigation and Enter to open', async () => {
+    render(<SettingsSearch />)
+    const { user } = await type('proxy')
+    expect(selectedIndex()).toBe(0)
+
+    await user.keyboard('{ArrowDown}')
+    expect(selectedIndex()).toBe(1)
+
+    await user.keyboard('{ArrowUp}')
+    expect(selectedIndex()).toBe(0)
+
+    await user.keyboard('{Enter}')
+    expect(mockNavigate).toHaveBeenCalled()
+  })
+
+  it('closes on Escape, and clears the query on a second Escape', async () => {
+    render(<SettingsSearch />)
+    const { user } = await type('Theme')
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(useSettingsSearch.getState().query).toBe('Theme')
+
+    await user.keyboard('{Escape}')
+    expect(useSettingsSearch.getState().query).toBe('')
+  })
+
+  it('clears the query with the clear button', async () => {
+    render(<SettingsSearch />)
+    const { user } = await type('Theme')
+    await user.click(screen.getByLabelText('Clear search'))
+    expect(useSettingsSearch.getState().query).toBe('')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('keeps the query while navigating between settings pages', async () => {
+    const { unmount } = render(<SettingsSearch />)
+    await type('Theme')
+    // A route change remounts the sidebar; the store outlives it.
+    unmount()
+    render(<SettingsSearch />)
+    expect(screen.getByLabelText('Search settings')).toHaveValue('Theme')
+  })
+
+  it('includes active providers and drops them when they go away', async () => {
+    providers = [
+      {
+        provider: 'openai',
+        active: true,
+        settings: [{ key: 'api-key', title: 'API Key' }],
+      },
+    ]
+    const first = render(<SettingsSearch />)
+    await type('openai')
+    expect(optionTexts().join(' ').toLowerCase()).toContain('openai')
+
+    first.unmount()
+    useSettingsSearch.setState({ query: '', pendingTarget: null })
+    providers = []
+    render(<SettingsSearch />)
+    await type('openai')
+    expect(optionTexts().join(' ').toLowerCase()).not.toContain('openai')
+  })
+
+  it('navigates to a provider route with its params', async () => {
+    providers = [{ provider: 'openai', active: true, settings: [] }]
+    render(<SettingsSearch />)
+    const { user } = await type('openai')
+    await user.click(screen.getAllByRole('option')[0])
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: '/settings/providers/$providerName',
+        params: { providerName: 'openai' },
+      })
+    )
+  })
+
+  it('requests a scroll target for an individual setting', async () => {
+    render(<SettingsSearch />)
+    const { user } = await type('Theme')
+    await user.click(screen.getAllByRole('option')[0])
+    expect(useSettingsSearch.getState().pendingTarget).toBe(
+      'settings-appearance-theme'
+    )
+  })
+
+  it('never puts provider secrets or values in the index', async () => {
+    providers = [
+      {
+        provider: 'openai',
+        active: true,
+        settings: [
+          {
+            key: 'api-key',
+            title: 'API Key',
+            controller_props: { value: 'sk-test-SHOULD-NOT-APPEAR' },
+          } as any,
+        ],
+      },
+    ]
+    render(<SettingsSearch />)
+    await type('api key')
+    expect(document.body.innerHTML).not.toContain('sk-test-SHOULD-NOT-APPEAR')
+  })
+})
+
+describe('SettingTarget', () => {
+  beforeEach(() => {
+    useSettingsSearch.setState({ query: '', pendingTarget: null })
+  })
+
+  it('scrolls, focuses and highlights the requested setting, once', async () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+
+    const { rerender } = render(
+      <SettingTarget anchor="settings-appearance-theme">
+        <button>Theme control</button>
+      </SettingTarget>
+    )
+    // Nothing requested yet: quiet.
+    expect(scrollIntoView).not.toHaveBeenCalled()
+
+    act(() =>
+      useSettingsSearch.getState().requestTarget('settings-appearance-theme')
+    )
+    rerender(
+      <SettingTarget anchor="settings-appearance-theme">
+        <button>Theme control</button>
+      </SettingTarget>
+    )
+
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled())
+    const group = document.getElementById('settings-appearance-theme')!
+    expect(group).toHaveAttribute('data-setting-highlight', 'true')
+    expect(document.activeElement).toBe(group)
+    // Claimed: a later render must not re-trigger it.
+    expect(useSettingsSearch.getState().pendingTarget).toBeNull()
+  })
+
+  it('ignores a request aimed at a different anchor', async () => {
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    useSettingsSearch.getState().requestTarget('settings-general-language')
+
+    render(
+      <SettingTarget anchor="settings-appearance-theme">
+        <button>Theme control</button>
+      </SettingTarget>
+    )
+    expect(scrollIntoView).not.toHaveBeenCalled()
+    expect(useSettingsSearch.getState().pendingTarget).toBe(
+      'settings-general-language'
+    )
+  })
+})

@@ -719,5 +719,14 @@
     "copyPath": "Copy relative path",
     "copyCode": "Copy code",
     "addToChat": "Add to chat ({{range}})"
+  },
+  "settingsSearch": {
+    "label": "Search settings",
+    "placeholder": "Search settings",
+    "results": "Search results",
+    "count_one": "1 result",
+    "count_other": "{{count}} results",
+    "empty": "No matching settings.",
+    "clear": "Clear search"
   }
 }

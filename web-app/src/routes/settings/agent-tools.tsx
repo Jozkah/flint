@@ -4,6 +4,7 @@ import { route } from '@/constants/routes'
 import HeaderPage from '@/containers/HeaderPage'
 import SettingsMenu from '@/containers/SettingsMenu'
 import { Card, CardItem } from '@/containers/Card'
+import { SettingTarget } from '@/components/SettingTarget'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -254,17 +255,19 @@ function AgentToolsContent() {
                 </div>
               }
             >
-              <CardItem
-                title={t('settings:agentTools.enable')}
-                description={t('settings:agentTools.enableDesc')}
-                align="start"
-                actions={
-                  <Switch
-                    checked={agentToolsEnabled}
-                    onCheckedChange={setAgentToolsEnabled}
-                  />
-                }
-              />
+              <SettingTarget anchor="settings-agent-tools-enable">
+                <CardItem
+                  title={t('settings:agentTools.enable')}
+                  description={t('settings:agentTools.enableDesc')}
+                  align="start"
+                  actions={
+                    <Switch
+                      checked={agentToolsEnabled}
+                      onCheckedChange={setAgentToolsEnabled}
+                    />
+                  }
+                />
+              </SettingTarget>
               <CardItem
                 title={t('settings:agentTools.shell')}
                 align="start"
@@ -293,18 +296,20 @@ function AgentToolsContent() {
               {/* Only offered where it can be enforced: with no backend there is
                   no shell to give network access to in the first place. */}
               {sandbox?.enforces && (
-                <CardItem
-                  title={t('settings:agentTools.network')}
-                  description={t('settings:agentTools.networkDesc')}
-                  align="start"
-                  actions={
-                    <Switch
-                      checked={bashNetworkEnabled}
-                      onCheckedChange={setBashNetworkEnabled}
-                      disabled={!agentToolsEnabled}
-                    />
-                  }
-                />
+                <SettingTarget anchor="settings-agent-tools-network">
+                  <CardItem
+                    title={t('settings:agentTools.network')}
+                    description={t('settings:agentTools.networkDesc')}
+                    align="start"
+                    actions={
+                      <Switch
+                        checked={bashNetworkEnabled}
+                        onCheckedChange={setBashNetworkEnabled}
+                        disabled={!agentToolsEnabled}
+                      />
+                    }
+                  />
+                </SettingTarget>
               )}
             </Card>
 

@@ -3,6 +3,7 @@ import { route } from '@/constants/routes'
 import HeaderPage from '@/containers/HeaderPage'
 import SettingsMenu from '@/containers/SettingsMenu'
 import { Card, CardItem } from '@/containers/Card'
+import { SettingTarget } from '@/components/SettingTarget'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import {
@@ -80,10 +81,12 @@ function WebSearchContent() {
                 </div>
               }
             >
-              <CardItem
-                title={t('settings:webSearch.enable')}
-                description={t('settings:webSearch.enableDesc')}
-              />
+              <SettingTarget anchor="settings-web-search-enable">
+                <CardItem
+                  title={t('settings:webSearch.enable')}
+                  description={t('settings:webSearch.enableDesc')}
+                />
+              </SettingTarget>
               <CardItem
                 title={t('settings:webSearch.provider')}
                 description={t('settings:webSearch.providerDesc')}
@@ -119,75 +122,81 @@ function WebSearchContent() {
                 }
               />
               {provider.requiresEndpoint ? (
-                <CardItem
-                  title={t('settings:webSearch.endpoint', {
-                    provider: provider.label,
-                  })}
-                  className="block"
-                  description={
-                    <div className="space-y-2">
-                      <p>
-                        {t('settings:webSearch.endpointDesc', {
-                          provider: provider.label,
-                        })}
-                      </p>
-                      <Input
-                        type="text"
-                        className="w-full"
-                        placeholder={t('settings:webSearch.endpointPlaceholder')}
-                        value={endpoint}
-                        onChange={(e) =>
-                          setEndpoint(provider.id, e.target.value)
-                        }
-                      />
-                    </div>
-                  }
-                />
-              ) : (
-                <CardItem
-                  title={t('settings:webSearch.apiKey', {
-                    provider: provider.label,
-                  })}
-                  className="block"
-                  description={
-                    <div className="space-y-2">
-                      <p>
-                        {t(
-                          provider.keyless
-                            ? 'settings:webSearch.apiKeyOptional'
-                            : 'settings:webSearch.apiKeyRequired',
-                          { provider: provider.label }
-                        )}
-                      </p>
-                      <div className="relative">
+                <SettingTarget anchor="settings-web-search-endpoint">
+                  <CardItem
+                    title={t('settings:webSearch.endpoint', {
+                      provider: provider.label,
+                    })}
+                    className="block"
+                    description={
+                      <div className="space-y-2">
+                        <p>
+                          {t('settings:webSearch.endpointDesc', {
+                            provider: provider.label,
+                          })}
+                        </p>
                         <Input
-                          type={showKey ? 'text' : 'password'}
-                          className="w-full pr-16"
+                          type="text"
+                          className="w-full"
                           placeholder={t(
-                            'settings:webSearch.apiKeyPlaceholder',
-                            { provider: provider.label }
+                            'settings:webSearch.endpointPlaceholder'
                           )}
-                          value={apiKey}
+                          value={endpoint}
                           onChange={(e) =>
-                            setApiKey(provider.id, e.target.value)
+                            setEndpoint(provider.id, e.target.value)
                           }
                         />
-                        <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
-                          <button
-                            onClick={() => setShowKey(!showKey)}
-                            className="p-1 rounded hover:bg-foreground/5 text-foreground/70"
-                          >
-                            {showKey ? (
-                              <EyeOff size={16} />
-                            ) : (
-                              <Eye size={16} />
+                      </div>
+                    }
+                  />
+                </SettingTarget>
+              ) : (
+                <SettingTarget anchor="settings-web-search-api-key">
+                  <CardItem
+                    title={t('settings:webSearch.apiKey', {
+                      provider: provider.label,
+                    })}
+                    className="block"
+                    description={
+                      <div className="space-y-2">
+                        <p>
+                          {t(
+                            provider.keyless
+                              ? 'settings:webSearch.apiKeyOptional'
+                              : 'settings:webSearch.apiKeyRequired',
+                            { provider: provider.label }
+                          )}
+                        </p>
+                        <div className="relative">
+                          <Input
+                            type={showKey ? 'text' : 'password'}
+                            className="w-full pr-16"
+                            placeholder={t(
+                              'settings:webSearch.apiKeyPlaceholder',
+                              { provider: provider.label }
                             )}
-                          </button>
+                            value={apiKey}
+                            onChange={(e) =>
+                              setApiKey(provider.id, e.target.value)
+                            }
+                          />
+                          <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+                            <button
+                              onClick={() => setShowKey(!showKey)}
+                              className="p-1 rounded hover:bg-foreground/5 text-foreground/70"
+                            >
+                              {showKey ? (
+                                <EyeOff size={16} />
+                              ) : (
+                                <Eye size={16} />
+                              )}
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  }
-                />
+                    }
+                  />
+                </SettingTarget>
               )}
             </Card>
           </div>

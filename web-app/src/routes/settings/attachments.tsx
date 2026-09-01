@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import SettingsMenu from '@/containers/SettingsMenu'
 import HeaderPage from '@/containers/HeaderPage'
 import { Card, CardItem } from '@/containers/Card'
+import { SettingTarget } from '@/components/SettingTarget'
 import { useAttachments } from '@/hooks/useAttachments'
 import type { SettingComponentProps } from '@janhq/core'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -12,6 +13,19 @@ import { useShallow } from 'zustand/react/shallow'
 export const Route = createFileRoute('/settings/attachments')({
   component: AttachmentsSettings,
 })
+
+// Search anchors for the settings this page exposes to settings search.
+//
+// The rows here are rendered from the extension's schema rather than written
+// out one by one, so the anchor cannot be attached to a literal CardItem the
+// way the other settings pages do it. This maps the schema key
+// (extensions/rag-extension/settings.json) to the registry's stable anchor id
+// (SETTINGS_ITEMS in @/lib/settingsSearch). Keys absent here render unwrapped.
+const SETTING_ANCHORS: Record<string, string> = {
+  enabled: 'settings-attachments-enable',
+  parse_mode: 'settings-attachments-parse-mode',
+  max_file_size_mb: 'settings-attachments-max-file',
+}
 
 // Helper to extract constraints from settingsDefs
 function getConstraints(def: SettingComponentProps) {
@@ -256,7 +270,7 @@ function AttachmentsSettings() {
                   ? t(d.descriptionKey)
                   : d.description
 
-                return (
+                const card = (
                   <CardItem
                     key={d.key}
                     title={title}
@@ -269,6 +283,15 @@ function AttachmentsSettings() {
                       />
                     }
                   />
+                )
+
+                const anchor = SETTING_ANCHORS[d.key]
+                if (!anchor) return card
+
+                return (
+                  <SettingTarget key={d.key} anchor={anchor}>
+                    {card}
+                  </SettingTarget>
                 )
               })}
             </Card>
