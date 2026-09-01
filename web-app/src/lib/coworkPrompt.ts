@@ -46,6 +46,8 @@ export type CoworkPromptOptions = {
   workspacePath: string | null
   /** An attached project folder, readable but never writable. */
   readOnlyFolder: string | null
+  /** The attached project's current git branch, when one could be read. */
+  gitBranch?: string | null
   planMode: boolean
   /** False when no OS sandbox enforces, in which case `bash` is not offered. */
   bashAvailable: boolean
@@ -79,10 +81,15 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
     lines.push(
       '',
       `The user attached a project folder: \`${opts.readOnlyFolder}\`.`,
+      ...(opts.gitBranch
+        ? [`Its current git branch is \`${opts.gitBranch}\`.`]
+        : []),
       'It is mounted READ-ONLY. You can read, search and list inside it, but every',
       'write, edit or shell command targeting it will be refused. To work on one of',
       'its files, copy it into your workspace first and edit the copy there. Do not',
-      'retry a refused write against the original path.'
+      'retry a refused write against the original path.',
+      'Everything you create or edit lands in your workspace, never in the attached',
+      'project — never describe a workspace write as a change to the user’s repository.'
     )
   } else {
     lines.push('', 'No project folder is attached, so there is nothing outside the workspace to read.')

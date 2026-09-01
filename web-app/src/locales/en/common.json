@@ -698,5 +698,26 @@
   "askSelectedCount": "{{count}} selected",
   "askSomethingElse": "Something else",
   "askSomethingElsePlaceholder": "Type your own answer",
-  "submit": "Submit"
+  "submit": "Submit",
+  "codePanel": {
+    "title": "Code",
+    "explorer": "Project explorer",
+    "openFiles": "Open files",
+    "closeTab": "Close {{name}}",
+    "loading": "Loading…",
+    "emptyDir": "Empty folder",
+    "truncated": "Folder truncated — too many entries to list.",
+    "noProject": "Attach a project folder to browse its code here.",
+    "attachProject": "Attach project",
+    "tooLarge": "This file is too large to display ({{size}}).",
+    "binary": "This file looks binary and cannot be displayed.",
+    "sensitive": "This file looks like credentials and was not opened.",
+    "openAnyway": "Open anyway",
+    "retry": "Retry",
+    "closeMissing": "Close tab",
+    "toggleWrap": "Toggle word wrap",
+    "copyPath": "Copy relative path",
+    "copyCode": "Copy code",
+    "addToChat": "Add to chat ({{range}})"
+  }
 }

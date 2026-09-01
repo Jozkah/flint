@@ -587,6 +587,62 @@ fn output_sink(
     })
 }
 
+/// List one directory level of the attached read-only project, for the Cowork
+/// code panel's lazy file tree.
+///
+/// `root` passes the same validation as a read-only tool mount
+/// (`validate_read_root`): the workspace, the Jan data folder and the
+/// filesystem root are all refused, so the browse surface cannot reach
+/// anything the tool surface could not. Containment of `rel` inside `root` is
+/// enforced again in `project_browse`.
+#[tauri::command]
+pub async fn project_list_dir(
+    data_folder: String,
+    root: String,
+    rel: String,
+) -> Result<crate::project_browse::ProjectListing, AgentToolsError> {
+    let workspace_root = workspace::permanent_store(Path::new(&data_folder));
+    let canonical = workspace::validate_read_root(
+        Path::new(&root),
+        &workspace_root,
+        Some(Path::new(&data_folder)),
+    )?;
+    tokio::task::spawn_blocking(move || {
+        crate::project_browse::list_dir(&canonical.to_string_lossy(), &rel)
+    })
+    .await
+    .map_err(|e| AgentToolsError::from(e.to_string()))?
+    .map_err(AgentToolsError::from)
+}
+
+/// Read one file of the attached read-only project for display in the code
+/// viewer. Verbatim content, no model-facing truncation footer; size caps and
+/// binary/sensitive refusal happen in `project_browse`.
+#[tauri::command]
+pub async fn project_read_file(
+    data_folder: String,
+    root: String,
+    rel: String,
+    allow_sensitive: Option<bool>,
+) -> Result<crate::project_browse::ProjectFile, AgentToolsError> {
+    let workspace_root = workspace::permanent_store(Path::new(&data_folder));
+    let canonical = workspace::validate_read_root(
+        Path::new(&root),
+        &workspace_root,
+        Some(Path::new(&data_folder)),
+    )?;
+    tokio::task::spawn_blocking(move || {
+        crate::project_browse::read_file(
+            &canonical.to_string_lossy(),
+            &rel,
+            allow_sensitive.unwrap_or(false),
+        )
+    })
+    .await
+    .map_err(|e| AgentToolsError::from(e.to_string()))?
+    .map_err(AgentToolsError::from)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

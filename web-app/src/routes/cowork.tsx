@@ -46,6 +46,23 @@ import { artifactsFromParts } from '@/lib/coworkArtifacts'
 import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
+import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
+import { Code2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
+  codeRefToken,
+  emptyCodePanelState,
+  expandCodeRefs,
+  openTab,
+  sandboxTabPath,
+  shouldOpenInCode,
+  type CodeRef,
+} from '@/lib/coworkCode'
 import { CoworkChangesChip } from '@/containers/CoworkChangesChip'
 import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
@@ -111,14 +128,34 @@ function CoworkPage() {
   // The step just finished, so the counter tracks a run instead of jumping once
   // at the end. Falls back to the committed usage between runs.
   const [liveUsage, setLiveUsage] = useState<Usage | null>(null)
-  // The rail holds one panel at a time: preview and diff both want the width,
-  // so showing them together starves the transcript (C7).
+  // The rail holds one panel at a time: preview, diff and code all want the
+  // width, so showing two together starves the transcript (C7).
   const [rail, setRail] = useState<
-    { kind: 'preview'; path: string } | { kind: 'diff' } | null
+    { kind: 'preview'; path: string } | { kind: 'diff' } | { kind: 'code' } | null
   >(null)
-  const showPreview = useCallback(
-    (path: string) => setRail({ kind: 'preview', path }),
+  /** Open a tab in the Code panel. `sandbox` marks paths under the session
+   * workspace (agent artifacts) rather than the attached project. */
+  const openCode = useCallback(
+    (path: string, opts?: { sandbox?: boolean }) => {
+      const sid = ensureCurrentSession()
+      const store = useCoworkSessions.getState()
+      const current = store.sessions.find((s) => s.id === sid)
+      const tabPath = opts?.sandbox ? sandboxTabPath(path) : path
+      store.setCodePanel(
+        sid,
+        openTab(current?.codePanel ?? emptyCodePanelState(), tabPath)
+      )
+      setRail({ kind: 'code' })
+    },
     []
+  )
+  // Source artifacts open as code, not as a plain-text preview dump.
+  const showPreview = useCallback(
+    (path: string) => {
+      if (shouldOpenInCode(path)) openCode(path, { sandbox: true })
+      else setRail({ kind: 'preview', path })
+    },
+    [openCode]
   )
   const [ask, setAsk] = useState<{
     requestId: string
@@ -173,6 +210,28 @@ function CoworkPage() {
       .then(setGitBranch)
       .catch(() => setGitBranch(null))
   }, [folder])
+
+  // Selected-code references staged by “Add to chat”: the visible prompt gets
+  // the concise `@path:start-end` token, and the refs wait here until submit,
+  // when the model's copy of the message is expanded with the selected text.
+  const pendingRefs = useRef<CodeRef[]>([])
+  useEffect(() => {
+    pendingRefs.current = []
+  }, [session?.id])
+
+  const addCodeToChat = useCallback((ref: CodeRef) => {
+    pendingRefs.current = [
+      ...pendingRefs.current.filter(
+        (existing) => codeRefToken(existing) !== codeRefToken(ref)
+      ),
+      ref,
+    ]
+    const { prompt, setPrompt } = usePrompt.getState()
+    const token = codeRefToken(ref)
+    if (!prompt.includes(token)) {
+      setPrompt(prompt ? `${prompt.trimEnd()} ${token} ` : `${token} `)
+    }
+  }, [])
 
   const attachFolder = useCallback(async () => {
     const picked = await serviceHub.dialog().open({ directory: true })
@@ -300,6 +359,7 @@ function CoworkPage() {
       webSearch,
       workspacePath,
       readOnlyFolder: current?.folder ?? null,
+      gitBranch,
     })
     await transport.refreshTools()
 
@@ -333,13 +393,18 @@ function CoworkPage() {
     }
 
     const baseMessages = current?.messages ?? []
+    // The transcript shows `text` as typed; the model additionally receives the
+    // staged code references expanded under it (exact path, line range and the
+    // selected source). Only content the user explicitly selected travels.
+    const modelText = text ? expandCodeRefs(text, pendingRefs.current) : text
+    pendingRefs.current = []
     const messages = text
       ? [
           ...baseMessages,
           {
             id: `${sid}-user-${baseMessages.length}`,
             role: 'user',
-            parts: [{ type: 'text', text }],
+            parts: [{ type: 'text', text: modelText }],
           } as any,
         ]
       : [...baseMessages]
@@ -726,6 +791,30 @@ function CoworkPage() {
                         )
                       }
                     />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          aria-pressed={rail?.kind === 'code'}
+                          aria-label={t('common:codePanel.title')}
+                          onClick={() =>
+                            setRail((r) =>
+                              r?.kind === 'code' ? null : { kind: 'code' }
+                            )
+                          }
+                          className={cn(
+                            'shrink-0',
+                            rail?.kind === 'code' && 'text-primary'
+                          )}
+                        >
+                          <Code2 className="size-3.5 shrink-0" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {t('common:codePanel.title')}
+                      </TooltipContent>
+                    </Tooltip>
                     <div className="ml-auto flex items-center">
                       <SkillSelector folder={folder} />
                     </div>
@@ -745,6 +834,19 @@ function CoworkPage() {
         )}
         {rail?.kind === 'diff' && (
           <CoworkDiffPanel files={fileDiffs} onClose={() => setRail(null)} />
+        )}
+        {rail?.kind === 'code' && session?.id && (
+          <CoworkCodePanel
+            folder={folder}
+            workspacePath={workspacePath}
+            state={session.codePanel}
+            onStateChange={(next) =>
+              useCoworkSessions.getState().setCodePanel(session.id, next)
+            }
+            onAddToChat={addCodeToChat}
+            onAttach={() => void attachFolder()}
+            onClose={() => setRail(null)}
+          />
         )}
       </div>
     </div>

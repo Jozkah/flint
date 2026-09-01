@@ -1,5 +1,7 @@
 import { invoke, Channel } from '@tauri-apps/api/core'
 import {
+  ProjectFile,
+  ProjectListing,
   SkillMeta,
   ToolOutputChunk,
   ToolResult,
@@ -8,6 +10,9 @@ import {
 } from './types'
 
 export {
+  ProjectEntry,
+  ProjectFile,
+  ProjectListing,
   SkillMeta,
   ToolOutputChunk,
   ToolResult,
@@ -213,6 +218,42 @@ export async function memoryDelete(
  */
 export async function toolSchemas(): Promise<ToolSchema[]> {
   return await invoke('plugin:agent-tools|tool_schemas')
+}
+
+/**
+ * List one directory level of the attached read-only project, filtered
+ * (`.git`, dependency folders, gitignored files) and sorted directories-first.
+ * Root containment is enforced in Rust; `rel` may not escape `root`.
+ */
+export async function projectListDir(
+  dataFolder: string,
+  root: string,
+  rel: string
+): Promise<ProjectListing> {
+  return await invoke('plugin:agent-tools|project_list_dir', {
+    dataFolder,
+    root,
+    rel,
+  })
+}
+
+/**
+ * Read one project file verbatim for the code viewer. Oversized and binary
+ * files come back flagged with empty content; sensitive files (`.env`, keys)
+ * are refused unless `allowSensitive` marks an explicit user override.
+ */
+export async function projectReadFile(
+  dataFolder: string,
+  root: string,
+  rel: string,
+  allowSensitive?: boolean
+): Promise<ProjectFile> {
+  return await invoke('plugin:agent-tools|project_read_file', {
+    dataFolder,
+    root,
+    rel,
+    allowSensitive,
+  })
 }
 
 /** Which OS sandbox, if any, can confine a shell on this machine. */

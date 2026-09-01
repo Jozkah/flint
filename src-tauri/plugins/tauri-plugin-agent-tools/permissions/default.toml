@@ -20,4 +20,6 @@ permissions = [
     "allow-sandbox-status",
     "allow-execute-tool",
     "allow-execute-tool-streaming",
+    "allow-project-list-dir",
+    "allow-project-read-file",
 ]

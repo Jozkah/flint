@@ -4,6 +4,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { coworkTurnsToUIMessages } from '@/lib/coworkTurns'
+import { emptyCodePanelState, type CodePanelState } from '@/lib/coworkCode'
 import type {
   CoworkTurn,
   SubagentRun,
@@ -58,6 +59,9 @@ export type CoworkSession = {
   todos?: TodoList
   /** Plan mode: the agent reads and proposes, without writing. Absent means off. */
   planMode?: boolean
+  /** Code panel state: open tabs, active tab, explorer expansion, word wrap.
+   * Absent on sessions from before the code workspace existed. */
+  codePanel?: CodePanelState
   updated: number
 }
 
@@ -69,6 +73,8 @@ type CoworkSessionsState = {
   deleteSession: (id: string) => void
   setFolder: (id: string, folder: string | null) => void
   setPlanMode: (id: string, planMode: boolean) => void
+  /** Replace the session's code-panel state (tabs, expansion, word wrap). */
+  setCodePanel: (id: string, codePanel: CodePanelState) => void
   setTitle: (id: string, title: string) => void
   setMessages: (id: string, messages: UIMessage[]) => void
   setGoal: (id: string, goal: CoworkGoal | null) => void
@@ -161,6 +167,15 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           ),
         })),
 
+      // `updated` untouched on purpose: switching a tab is not "session
+      // activity" and must not reorder the session list.
+      setCodePanel: (id, codePanel) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id ? { ...x, codePanel } : x
+          ),
+        })),
+
       setTitle: (id, title) =>
         set((s) => ({
           sessions: s.sessions.map((x) => (x.id === id ? { ...x, title } : x)),
@@ -243,17 +258,21 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // hydrateBackendStores() once the ServiceHub is ready.
       storage: createJSONStorage(() => backendStorage),
       skipHydration: true,
-      version: 1,
+      version: 2,
       // v0 persisted an OpenAI-shaped `history` that could not represent tool
       // calls, so replaying it dropped every tool turn. Rebuild the message
       // list from `turns`, which did record them, and leave `history` in place
       // untouched rather than mutating a blob a rollback would still read.
+      //
+      // v1 → v2 adds `codePanel`. Filled with the empty state rather than left
+      // absent so downstream code reads one shape; every other field is passed
+      // through untouched, so a v1 session loses nothing.
       migrate: (persisted, version) => {
         const state = persisted as { sessions?: CoworkSession[] } | undefined
-        if (version >= 1 || !state?.sessions) return persisted
-        return {
-          ...state,
-          sessions: state.sessions.map((session) =>
+        if (!state?.sessions) return persisted
+        let sessions = state.sessions
+        if (version < 1) {
+          sessions = sessions.map((session) =>
             session.messages
               ? session
               : {
@@ -263,8 +282,16 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
                     session.id
                   ),
                 }
-          ),
+          )
         }
+        if (version < 2) {
+          sessions = sessions.map((session) =>
+            session.codePanel
+              ? session
+              : { ...session, codePanel: emptyCodePanelState() }
+          )
+        }
+        return { ...state, sessions }
       },
     }
   )
