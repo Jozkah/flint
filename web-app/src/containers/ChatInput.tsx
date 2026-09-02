@@ -45,6 +45,15 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useTokensCount } from '@/hooks/useTokensCount'
+import { ReasoningEffortSlider } from '@/containers/ReasoningEffortSlider'
+import {
+  EFFORT_SETTING_KEY,
+  effortLabel as levelLabel,
+  effortOf,
+  supportedEffortLevels,
+} from '@/lib/modelEffort'
+import { isOverridden, resolveModel } from '@/lib/modelOverrides'
+import { useModelOverrides } from '@/hooks/useModelOverrides'
 import {
   THINKING_BUDGET_LEVELS,
   DEFAULT_THINKING_BUDGET_LEVEL,
@@ -198,6 +207,14 @@ const ChatInput = memo(function ChatInput({
   const addToHistory = usePrompt((state) => state.addToHistory)
   const navigateHistory = usePrompt((state) => state.navigateHistory)
   const currentThreadId = useThreads((state) => state.currentThreadId)
+  // Subscribed to the map, not read through getState(), so the control
+  // re-renders when this chat's overrides change.
+  const overridesByThread = useModelOverrides((state) => state.byThread)
+  const chatOverrides = currentThreadId
+    ? overridesByThread[currentThreadId]
+    : undefined
+  const setThreadOverride = useModelOverrides((state) => state.setForThread)
+  const clearThreadOverride = useModelOverrides((state) => state.clearForThread)
   const currentThread = useThreads((state) => state.getCurrentThread())
   const updateCurrentThreadAssistant = useThreads(
     (state) => state.updateCurrentThreadAssistant
@@ -2555,48 +2572,27 @@ const ChatInput = memo(function ChatInput({
                       // chat transport both observe the new value.
                       selectModelProvider(selectedProvider, selectedModel.id)
                     }
-                    const clearModelSetting = (settingKey: string) => {
-                      if (!selectedProvider || !selectedModel) return
-                      const providerObj = getProviderByName(selectedProvider)
-                      if (!providerObj) return
-                      const modelIndex = providerObj.models.findIndex(
-                        (m) => m.id === selectedModel.id
-                      )
-                      if (modelIndex === -1) return
-                      const nextSettings = { ...(selectedModel.settings ?? {}) }
-                      delete nextSettings[settingKey]
-                      const updatedModels = [...providerObj.models]
-                      updatedModels[modelIndex] = {
-                        ...selectedModel,
-                        settings: nextSettings,
-                      } as Model
-                      updateProvider(selectedProvider, { models: updatedModels })
-                      selectModelProvider(selectedProvider, selectedModel.id)
-                    }
 
-                    // OpenAI reasoning models expose a discrete effort (no
-                    // on/off, no token budget). Reuse the thinking_budget_tokens
-                    // level as the effort value; "Default" clears it so the
-                    // model uses its own default effort.
-                    if (selectedProvider === 'openai') {
-                      const rawEffort =
-                        selectedModel?.settings?.thinking_budget_tokens
-                          ?.controller_props?.value
-                      const currentEffort =
-                        isThinkingBudgetLevelKey(rawEffort) &&
-                        rawEffort !== 'unlimited'
-                          ? rawEffort
-                          : undefined
-                      const EFFORTS: ThinkingBudgetLevelKey[] = [
-                        'low',
-                        'medium',
-                        'high',
-                        'xhigh',
-                      ]
-                      const effortLabel = currentEffort
-                        ? THINKING_BUDGET_LEVELS.find(
-                            (l) => l.key === currentEffort
-                          )!.label
+                    // Providers that honour a discrete reasoning effort get the
+                    // stepped bar. Which levels exist is the provider's answer,
+                    // not a guess: see `supportedEffortLevels`. The value is
+                    // stored per chat, over the global model configuration.
+                    const effortLevels = supportedEffortLevels(
+                      selectedProvider,
+                      selectedModel
+                    )
+                    if (effortLevels.length > 0) {
+                      // What this chat will actually send: its own override
+                      // where it has one, the global model setting otherwise.
+                      const currentEffort = effortOf(
+                        resolveModel(selectedModel, chatOverrides)
+                      )
+                      const effortOverridden = isOverridden(
+                        chatOverrides,
+                        EFFORT_SETTING_KEY
+                      )
+                      const effortLabelText = currentEffort
+                        ? levelLabel(currentEffort)
                         : 'Default'
                       return (
                         <DropdownMenu>
@@ -2606,7 +2602,7 @@ const ChatInput = memo(function ChatInput({
                                 <Button
                                   variant="ghost"
                                   size="icon-xs"
-                                  aria-label={`Reasoning effort: ${effortLabel}`}
+                                  aria-label={`Reasoning effort: ${effortLabelText}`}
                                 >
                                   <IconBrain
                                     size={18}
@@ -2619,46 +2615,36 @@ const ChatInput = memo(function ChatInput({
                               </DropdownMenuTrigger>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Reasoning effort: {effortLabel}</p>
+                              <p>Reasoning effort: {effortLabelText}</p>
                             </TooltipContent>
                           </Tooltip>
-                          <DropdownMenuContent align="start">
-                            <DropdownMenuItem
-                              onClick={() =>
-                                clearModelSetting('thinking_budget_tokens')
-                              }
-                            >
-                              Default
-                              {!currentEffort && (
-                                <span className="ml-auto text-xs text-muted-foreground">
-                                  ✓
-                                </span>
-                              )}
-                            </DropdownMenuItem>
-                            {EFFORTS.map((key) => (
-                              <DropdownMenuItem
-                                key={key}
-                                onClick={() =>
-                                  updateModelSetting(
-                                    'thinking_budget_tokens',
-                                    'Reasoning Effort',
-                                    'dropdown',
-                                    key
-                                  )
-                                }
-                              >
-                                {
-                                  THINKING_BUDGET_LEVELS.find(
-                                    (l) => l.key === key
-                                  )!.label
-                                }
-                                {currentEffort === key && (
-                                  <span className="ml-auto text-xs text-muted-foreground">
-                                    ✓
-                                  </span>
-                                )}
-                              </DropdownMenuItem>
-                            ))}
+                          <DropdownMenuContent
+                            align="start"
+                            className="w-64 p-3"
+                          >
+                            <ReasoningEffortSlider
+                              levels={effortLevels}
+                              value={currentEffort}
+                              overridden={effortOverridden}
+                              onChange={(level) => {
+                                // Per chat. The global model configuration is
+                                // left alone, and stays the fallback for every
+                                // chat that has not chosen for itself.
+                                if (!currentThreadId) return
+                                setThreadOverride(
+                                  currentThreadId,
+                                  EFFORT_SETTING_KEY,
+                                  level
+                                )
+                              }}
+                              onReset={() => {
+                                if (!currentThreadId) return
+                                clearThreadOverride(
+                                  currentThreadId,
+                                  EFFORT_SETTING_KEY
+                                )
+                              }}
+                            />
                           </DropdownMenuContent>
                         </DropdownMenu>
                       )

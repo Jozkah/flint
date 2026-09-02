@@ -4,6 +4,7 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 import { Fzf } from 'fzf'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useAgentMode } from '@/hooks/useAgentMode'
+import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { ExtensionManager } from '@/lib/extension'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { useChatSessions } from '@/stores/chat-session-store'
@@ -197,6 +198,9 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       useAgentMode.getState().removeThread(threadId)
       useChatSessions.getState().removeSession(threadId)
       useAppState.getState().clearThreadState(threadId)
+      // The chat's model-setting overrides are keyed by thread id; left
+      // behind they would sit in the record forever.
+      useModelOverrides.getState().dropThread(threadId)
       cleanupThreadArtifacts(threadId)
       getServiceHub().threads().deleteThread(threadId)
 

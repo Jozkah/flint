@@ -22,6 +22,7 @@ import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { useModelOverrides } from '@/hooks/useModelOverrides'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -55,6 +56,7 @@ const secondaryStores = [
   useWebSearchConfig,
   useCoworkSessions,
   useAgentToolsConfig,
+  useModelOverrides,
 ] as const
 
 export async function hydrateBackendStores(): Promise<void> {

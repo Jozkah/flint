@@ -698,5 +698,12 @@
   "askSelectedCount": "{{count}} selected",
   "askSomethingElse": "Something else",
   "askSomethingElsePlaceholder": "Type your own answer",
-  "submit": "Submit"
+  "submit": "Submit",
+  "reasoningEffort": {
+    "label": "Reasoning effort",
+    "modelDefault": "Model default",
+    "reset": "Reset to global",
+    "resetAll": "Reset to global defaults",
+    "overridden": "Set for this chat"
+  }
 }
