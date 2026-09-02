@@ -53,6 +53,18 @@ export interface ProjectFile {
   binary: boolean
 }
 
+/** A shell command still running in the background, as reported by
+ * `bashJobsList`. Listing never consumes a job's output. */
+export interface BashJobStatus {
+  jobId: string
+  command: string
+  elapsedMs: number
+  /** The command has produced its output; the agent has not collected it yet. */
+  finished: boolean
+  /** The tool call that backgrounded it, when known. */
+  callId: string | null
+}
+
 /** One fragment of a tool's live output. */
 export type ToolOutputChunk = {
   /** Monotonic per call, so a receiver can assert ordering. */

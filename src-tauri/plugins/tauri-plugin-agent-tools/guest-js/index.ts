@@ -1,5 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core'
 import {
+  BashJobStatus,
   ProjectFile,
   ProjectListing,
   SkillMeta,
@@ -10,6 +11,7 @@ import {
 } from './types'
 
 export {
+  BashJobStatus,
   ProjectEntry,
   ProjectFile,
   ProjectListing,
@@ -254,6 +256,16 @@ export async function projectReadFile(
     rel,
     allowSensitive,
   })
+}
+
+/**
+ * Shell commands still running in the background, newest first.
+ *
+ * Read-only: polling this never takes the output the agent collects with
+ * `bash {"job_id": ...}`, so a UI can show live jobs without racing the run.
+ */
+export async function bashJobsList(): Promise<BashJobStatus[]> {
+  return await invoke('plugin:agent-tools|bash_jobs_list')
 }
 
 /** Which OS sandbox, if any, can confine a shell on this machine. */

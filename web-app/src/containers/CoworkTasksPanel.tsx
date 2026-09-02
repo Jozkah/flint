@@ -12,10 +12,12 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
 import { formatCompactDuration } from '@/lib/duration'
+import { bashJobsList } from '@janhq/tauri-plugin-agent-tools-api'
 import {
   buildTaskList,
   elapsedMs,
   taskTotals,
+  type LiveJob,
   type TaskRow,
   type TaskStatus,
 } from '@/lib/coworkTasks'
@@ -25,6 +27,11 @@ import type { CoworkTurn, SubagentRun } from '@/types/coworkSession'
  * is the resolution the duration label shows, so anything finer is wasted
  * work. The interval only runs while something is actually running. */
 const TICK_MS = 1000
+
+/** How often the backend's background-job list is re-read while the panel is
+ * open. Slower than the clock tick: a job list changes when a command starts
+ * or ends, not every second. */
+const JOB_POLL_MS = 3000
 
 type Props = {
   /** The run store's live lane for this session. */
@@ -55,9 +62,33 @@ export function CoworkTasksPanel({
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [showFinished, setShowFinished] = useState(true)
 
+  // Background shell jobs, polled only while this panel is open. The list is
+  // read-only on the backend, so polling cannot take output the agent is
+  // waiting to collect.
+  const [liveJobs, setLiveJobs] = useState<LiveJob[]>([])
+  useEffect(() => {
+    let alive = true
+    const poll = () => {
+      void bashJobsList()
+        .then((jobs) => {
+          if (alive) setLiveJobs(jobs)
+        })
+        .catch(() => {
+          // No backend (web build, or the command unavailable): the panel
+          // still lists what the transcript knows.
+        })
+    }
+    poll()
+    const id = setInterval(poll, JOB_POLL_MS)
+    return () => {
+      alive = false
+      clearInterval(id)
+    }
+  }, [])
+
   const rows = useMemo(
-    () => buildTaskList({ liveSubagents, sessionSubagents, turns }),
-    [liveSubagents, sessionSubagents, turns]
+    () => buildTaskList({ liveSubagents, sessionSubagents, turns, liveJobs }),
+    [liveSubagents, sessionSubagents, turns, liveJobs]
   )
   const totals = useMemo(() => taskTotals(rows), [rows])
   const active = totals.running + totals.queued > 0

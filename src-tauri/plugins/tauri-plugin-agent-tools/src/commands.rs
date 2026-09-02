@@ -643,6 +643,16 @@ pub async fn project_read_file(
     .map_err(AgentToolsError::from)
 }
 
+/// Every shell command still running in the background, newest first.
+///
+/// Read-only and non-consuming: a caller polling this can never take the
+/// output the agent is waiting to collect with `bash {"job_id": ...}`. The
+/// jobs are process-global, matching where the shell actually runs them.
+#[tauri::command]
+pub fn bash_jobs_list() -> Vec<crate::tools::handlers::BashJobStatus> {
+    crate::tools::handlers::list_bash_jobs()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -20,6 +20,7 @@ const COMMANDS: &[&str] = &[
     "execute_tool_streaming",
     "project_list_dir",
     "project_read_file",
+    "bash_jobs_list",
 ];
 
 fn main() {

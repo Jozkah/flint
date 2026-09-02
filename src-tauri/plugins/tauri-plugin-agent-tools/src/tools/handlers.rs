@@ -45,14 +45,92 @@ static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 /// Counter for unique bash background job ids.
 static BASH_JOB_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
+/// One command still running past its `bash` call's timeout.
+///
+/// The receiver resolves with the same formatted output a foreground call
+/// would have returned. The rest is metadata a UI needs to describe the job
+/// without collecting it: the command itself, when it started, and which tool
+/// call backgrounded it.
+pub struct BashJob {
+    /// Taken once the output has been received, by a peek or by collection.
+    rx: Option<oneshot::Receiver<String>>,
+    /// The finished output, when a peek got there before the collector did.
+    ///
+    /// `oneshot::Receiver::try_recv` *consumes* the value on success, so a
+    /// status check cannot simply discard what it observes — that would steal
+    /// the result the agent is waiting to collect. It is parked here instead
+    /// and handed over by [`await_bash_job`].
+    output: Option<String>,
+    pub command: String,
+    pub started: std::time::Instant,
+    pub call_id: Option<String>,
+}
+
+impl BashJob {
+    /// Has the command finished? Non-destructive from the caller's point of
+    /// view: anything received is retained for collection.
+    fn poll_finished(&mut self) -> bool {
+        if self.output.is_some() {
+            return true;
+        }
+        let Some(rx) = self.rx.as_mut() else {
+            return true;
+        };
+        match rx.try_recv() {
+            Ok(value) => {
+                self.output = Some(value);
+                self.rx = None;
+                true
+            }
+            Err(oneshot::error::TryRecvError::Empty) => false,
+            Err(oneshot::error::TryRecvError::Closed) => {
+                self.output = Some(
+                    "ERROR: background command ended without producing output".to_string(),
+                );
+                self.rx = None;
+                true
+            }
+        }
+    }
+}
+
+/// A job as reported to a caller that is listing, not collecting.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BashJobStatus {
+    pub job_id: String,
+    pub command: String,
+    pub elapsed_ms: u64,
+    pub finished: bool,
+    pub call_id: Option<String>,
+}
+
 /// Commands still running past their `bash` call's timeout, keyed by job_id.
-/// Each receiver resolves with the same formatted output a foreground call
-/// would have returned. Entries are removed once collected via `job_id`;
-/// uncollected jobs live for the process's lifetime, same tradeoff as the
-/// bash-output temp files this module already leaves on disk.
-fn bash_jobs() -> &'static Mutex<HashMap<String, oneshot::Receiver<String>>> {
-    static JOBS: OnceLock<Mutex<HashMap<String, oneshot::Receiver<String>>>> = OnceLock::new();
+/// Entries are removed once collected via `job_id`; uncollected jobs live for
+/// the process's lifetime, same tradeoff as the bash-output temp files this
+/// module already leaves on disk.
+fn bash_jobs() -> &'static Mutex<HashMap<String, BashJob>> {
+    static JOBS: OnceLock<Mutex<HashMap<String, BashJob>>> = OnceLock::new();
     JOBS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Every backgrounded command, newest first. Listing never consumes a result:
+/// see [`BashJob::poll_finished`].
+pub fn list_bash_jobs() -> Vec<BashJobStatus> {
+    let mut jobs = bash_jobs().lock().unwrap();
+    let mut out: Vec<BashJobStatus> = jobs
+        .iter_mut()
+        .map(|(job_id, job)| BashJobStatus {
+            job_id: job_id.clone(),
+            command: job.command.clone(),
+            elapsed_ms: job.started.elapsed().as_millis() as u64,
+            finished: job.poll_finished(),
+            call_id: job.call_id.clone(),
+        })
+        .collect();
+    // Newest first: job ids are a monotonic `bash-N`.
+    out.sort_by(|a, b| b.job_id.len().cmp(&a.job_id.len()).then(b.job_id.cmp(&a.job_id)));
+    out
 }
 
 fn arg_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str> {
@@ -800,6 +878,9 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         Err(e) => return format!("ERROR: failed to run command: {e}"),
     };
     let pid = child.id();
+    // Captured before the command is moved into its task, so a job's elapsed
+    // time counts from the spawn rather than from the timeout that shelved it.
+    let job_started = std::time::Instant::now();
 
     // The child is handed to a detached task immediately so it keeps running
     // (and its output keeps being collected) no matter what the race below
@@ -844,7 +925,16 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         res = &mut rx => res.unwrap_or_else(|_| "ERROR: background command ended without producing output".to_string()),
         _ = tokio::time::sleep(std::time::Duration::from_secs(timeout_secs)) => {
             let job_id = format!("bash-{}", BASH_JOB_COUNTER.fetch_add(1, Ordering::SeqCst));
-            bash_jobs().lock().unwrap().insert(job_id.clone(), rx);
+            bash_jobs().lock().unwrap().insert(
+                job_id.clone(),
+                BashJob {
+                    rx: Some(rx),
+                    output: None,
+                    command: command.to_string(),
+                    started: job_started,
+                    call_id: ctx.call_id.map(str::to_string),
+                },
+            );
             format!(
                 "Command exceeded {timeout_secs}s and is continuing in the background \
                  (job_id={job_id}). Call bash again with {{\"job_id\": \"{job_id}\"}} (no \
@@ -858,11 +948,19 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
 /// (already-formatted) output, or an error if `job_id` is unknown or was
 /// already collected.
 async fn await_bash_job(job_id: &str) -> String {
-    let rx = bash_jobs().lock().unwrap().remove(job_id);
-    match rx {
-        Some(rx) => rx.await.unwrap_or_else(|_| {
+    let job = bash_jobs().lock().unwrap().remove(job_id);
+    match job {
+        // A status check may already have received the output; hand over what
+        // it parked rather than waiting on a channel that has been drained.
+        Some(BashJob {
+            output: Some(done), ..
+        }) => done,
+        Some(BashJob { rx: Some(rx), .. }) => rx.await.unwrap_or_else(|_| {
             "ERROR: background command ended without producing output".to_string()
         }),
+        Some(BashJob { rx: None, .. }) => {
+            "ERROR: background command ended without producing output".to_string()
+        }
         None => format!("ERROR: unknown or already-collected job_id '{job_id}'"),
     }
 }
@@ -1600,6 +1698,88 @@ fn truncate_line(line: &str) -> String {
         format!("{truncated}...")
     } else {
         line.to_string()
+    }
+}
+
+
+#[cfg(test)]
+mod bash_job_registry_tests {
+    use super::*;
+
+    fn park(job_id: &str, command: &str) -> tokio::sync::oneshot::Sender<String> {
+        let (tx, rx) = oneshot::channel::<String>();
+        bash_jobs().lock().unwrap().insert(
+            job_id.to_string(),
+            BashJob {
+                rx: Some(rx),
+                output: None,
+                command: command.to_string(),
+                started: std::time::Instant::now(),
+                call_id: Some("call-1".to_string()),
+            },
+        );
+        tx
+    }
+
+    #[tokio::test]
+    async fn listing_reports_a_running_job_without_consuming_it() {
+        let tx = park("bash-listing-running", "sleep 5");
+
+        let listed = list_bash_jobs();
+        let job = listed
+            .iter()
+            .find(|j| j.job_id == "bash-listing-running")
+            .expect("the job should be listed");
+        assert_eq!(job.command, "sleep 5");
+        assert!(!job.finished, "a running command is not finished");
+        assert_eq!(job.call_id.as_deref(), Some("call-1"));
+
+        // The output still reaches the collector: listing took nothing.
+        tx.send("done at last".to_string()).unwrap();
+        assert_eq!(await_bash_job("bash-listing-running").await, "done at last");
+    }
+
+    #[tokio::test]
+    async fn a_peek_after_completion_still_hands_the_output_to_the_collector() {
+        // `try_recv` consumes on success, so peeking a *finished* job is where
+        // a naive status check would steal the agent's result.
+        let tx = park("bash-peek-finished", "echo hi");
+        tx.send("hi\n".to_string()).unwrap();
+
+        let listed = list_bash_jobs();
+        let job = listed
+            .iter()
+            .find(|j| j.job_id == "bash-peek-finished")
+            .expect("the job should be listed");
+        assert!(job.finished, "the command has produced its output");
+
+        assert_eq!(await_bash_job("bash-peek-finished").await, "hi\n");
+    }
+
+    #[tokio::test]
+    async fn a_job_outlives_the_call_that_backgrounded_it() {
+        let tx = park("bash-outlives", "long build");
+        // Nothing collects it for now: it stays listed, still running.
+        assert!(list_bash_jobs()
+            .iter()
+            .any(|j| j.job_id == "bash-outlives" && !j.finished));
+
+        tx.send("built".to_string()).unwrap();
+        // Finishing does not remove it either — only collection does.
+        assert!(list_bash_jobs()
+            .iter()
+            .any(|j| j.job_id == "bash-outlives" && j.finished));
+
+        assert_eq!(await_bash_job("bash-outlives").await, "built");
+        assert!(!list_bash_jobs().iter().any(|j| j.job_id == "bash-outlives"));
+    }
+
+    #[tokio::test]
+    async fn collecting_twice_reports_the_second_as_unknown() {
+        let tx = park("bash-twice", "echo x");
+        tx.send("x".to_string()).unwrap();
+        assert_eq!(await_bash_job("bash-twice").await, "x");
+        assert!(await_bash_job("bash-twice").await.contains("already-collected"));
     }
 }
 

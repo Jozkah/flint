@@ -22,4 +22,5 @@ permissions = [
     "allow-execute-tool-streaming",
     "allow-project-list-dir",
     "allow-project-read-file",
+    "allow-bash-jobs-list",
 ]

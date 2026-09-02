@@ -176,6 +176,61 @@ export function mergeTasks(live: TaskRow[], committed: TaskRow[]): TaskRow[] {
   return [...byId.values()]
 }
 
+/** A live background job, as the backend reports it. */
+export type LiveJob = {
+  jobId: string
+  command: string
+  elapsedMs: number
+  finished: boolean
+  callId?: string | null
+}
+
+/**
+ * Fold live backend jobs into rows derived from the transcript.
+ *
+ * The two describe the same commands from different angles: the transcript
+ * knows which tool call started one, the backend knows whether it is still
+ * running. A job matches a row by its job id first — that is exact — and by
+ * the originating call id second, which is what links a job to the row for the
+ * call that backgrounded it. Anything unmatched is a job this session did not
+ * start, and is added rather than dropped: it is still running on the
+ * machine, which is the whole point of listing it.
+ */
+export function mergeLiveJobs(rows: TaskRow[], jobs: LiveJob[]): TaskRow[] {
+  const byJobId = new Map<string, TaskRow>()
+  const byCallId = new Map<string, TaskRow>()
+  for (const row of rows) {
+    if (row.jobId) byJobId.set(row.jobId, row)
+    byCallId.set(row.id, row)
+  }
+
+  const merged = [...rows]
+  for (const job of jobs) {
+    const existing =
+      byJobId.get(job.jobId) ??
+      (job.callId ? byCallId.get(job.callId) : undefined)
+    const status: TaskStatus = job.finished ? 'done' : 'running'
+    if (existing) {
+      const at = merged.indexOf(existing)
+      merged[at] = {
+        ...existing,
+        // The backend is authoritative on whether the shell is still going.
+        status: existing.status === 'error' ? 'error' : status,
+        jobId: job.jobId,
+      }
+      continue
+    }
+    merged.push({
+      id: job.jobId,
+      kind: 'command',
+      title: job.command,
+      status,
+      jobId: job.jobId,
+    })
+  }
+  return merged
+}
+
 export type TaskTotals = {
   running: number
   queued: number
@@ -206,10 +261,16 @@ export function buildTaskList(input: {
   liveSubagents?: SubagentRun[]
   sessionSubagents?: SubagentRun[]
   turns?: CoworkTurn[]
+  /** Background jobs the backend reports as still registered. */
+  liveJobs?: LiveJob[]
 }): TaskRow[] {
   const subagents = mergeTasks(
     subagentTasks(input.liveSubagents),
     subagentTasks(input.sessionSubagents)
   )
-  return sortTasks([...subagents, ...commandTasks(input.turns)])
+  const commands = mergeLiveJobs(
+    commandTasks(input.turns),
+    input.liveJobs ?? []
+  )
+  return sortTasks([...subagents, ...commands])
 }

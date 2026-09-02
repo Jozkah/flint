@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   backgroundJobId,
+  mergeLiveJobs,
   buildTaskList,
   commandTasks,
   countToolCalls,
@@ -335,6 +336,80 @@ describe('mergeTasks', () => {
   })
 })
 
+describe('mergeLiveJobs', () => {
+  const derived = (over: Partial<TaskRow> = {}): TaskRow => ({
+    id: 'call-1',
+    kind: 'command',
+    title: 'cargo build',
+    status: 'done',
+    ...over,
+  })
+
+  it('matches a live job to its derived row by job id, and keeps one row', () => {
+    const rows = mergeLiveJobs(
+      [derived({ jobId: 'bash-2', status: 'running' })],
+      [{ jobId: 'bash-2', command: 'cargo build', elapsedMs: 9000, finished: false }]
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ id: 'call-1', jobId: 'bash-2', status: 'running' })
+  })
+
+  it('matches by originating call id when the row never saw a job id', () => {
+    const rows = mergeLiveJobs(
+      [derived({ status: 'done' })],
+      [
+        {
+          jobId: 'bash-5',
+          command: 'cargo build',
+          elapsedMs: 100,
+          finished: false,
+          callId: 'call-1',
+        },
+      ]
+    )
+    expect(rows).toHaveLength(1)
+    // The backend is authoritative: the shell is still going.
+    expect(rows[0].status).toBe('running')
+    expect(rows[0].jobId).toBe('bash-5')
+  })
+
+  it('lets the backend settle a job the transcript still thinks is running', () => {
+    const rows = mergeLiveJobs(
+      [derived({ jobId: 'bash-1', status: 'running' })],
+      [{ jobId: 'bash-1', command: 'cargo build', elapsedMs: 10, finished: true }]
+    )
+    expect(rows[0].status).toBe('done')
+  })
+
+  it('keeps a failed call failed', () => {
+    const rows = mergeLiveJobs(
+      [derived({ jobId: 'bash-1', status: 'error' })],
+      [{ jobId: 'bash-1', command: 'false', elapsedMs: 10, finished: true }]
+    )
+    expect(rows[0].status).toBe('error')
+  })
+
+  it('adds a job this session never started', () => {
+    const rows = mergeLiveJobs(
+      [],
+      [{ jobId: 'bash-9', command: 'someone elses build', elapsedMs: 1, finished: false }]
+    )
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: 'bash-9',
+        kind: 'command',
+        title: 'someone elses build',
+        status: 'running',
+      }),
+    ])
+  })
+
+  it('is a no-op with no live jobs', () => {
+    const rows = [derived()]
+    expect(mergeLiveJobs(rows, [])).toEqual(rows)
+  })
+})
+
 describe('buildTaskList', () => {
   it('combines both lanes with shell commands, in display order', () => {
     const rows = buildTaskList({
@@ -360,6 +435,24 @@ describe('buildTaskList', () => {
 
   it('survives a session with nothing in it', () => {
     expect(buildTaskList({})).toEqual([])
+  })
+
+  it('renders one row for a command the backend and transcript both know', () => {
+    const rows = buildTaskList({
+      turns: [
+        toolTurn({
+          callId: 'c1',
+          args: { command: 'cargo build' },
+          result:
+            'Command exceeded 30s and is continuing in the background (job_id=bash-4).',
+        }),
+      ],
+      liveJobs: [
+        { jobId: 'bash-4', command: 'cargo build', elapsedMs: 42000, finished: false },
+      ],
+    })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ id: 'c1', jobId: 'bash-4', status: 'running' })
   })
 
   it('keeps finished work after the live lane is reset', () => {

@@ -19,11 +19,19 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
   }),
 }))
 
+vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
+  bashJobsList: vi.fn(async () => []),
+}))
+
 vi.mock('@/components/ui/tooltip', () => ({
   Tooltip: ({ children }: any) => <>{children}</>,
   TooltipTrigger: ({ children }: any) => <>{children}</>,
   TooltipContent: ({ children }: any) => <>{children}</>,
 }))
+
+import { bashJobsList } from '@janhq/tauri-plugin-agent-tools-api'
+
+const jobsList = vi.mocked(bashJobsList)
 
 const run = (over: Partial<SubagentRun> = {}): SubagentRun => ({
   runId: 'r1',
@@ -48,6 +56,7 @@ describe('CoworkTasksPanel', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.setSystemTime(new Date('2026-01-01T00:00:10Z'))
+    jobsList.mockResolvedValue([])
   })
   afterEach(() => {
     vi.useRealTimers()
@@ -198,6 +207,49 @@ describe('CoworkTasksPanel', () => {
     // One row, and it is the running one.
     expect(screen.getAllByText('researcher')).toHaveLength(1)
     expect(screen.getByTestId('task-status-running')).toBeInTheDocument()
+  })
+
+  it('shows one row for a command both the backend and the transcript know', async () => {
+    jobsList.mockResolvedValue([
+      {
+        jobId: 'bash-4',
+        command: 'cargo build',
+        elapsedMs: 42_000,
+        finished: false,
+        callId: null,
+      },
+    ])
+    render(
+      <CoworkTasksPanel
+        turns={[
+          bashTurn({
+            callId: 'c1',
+            args: { command: 'cargo build' },
+            result:
+              'Command exceeded 30s and is continuing in the background (job_id=bash-4).',
+          }),
+        ]}
+        onClose={vi.fn()}
+      />
+    )
+
+    expect(await screen.findAllByText('cargo build')).toHaveLength(1)
+    expect(screen.getByTestId('task-status-running')).toBeInTheDocument()
+  })
+
+  it('lists a background job this session never dispatched', async () => {
+    jobsList.mockResolvedValue([
+      {
+        jobId: 'bash-9',
+        command: 'rustup update',
+        elapsedMs: 1_000,
+        finished: false,
+        callId: null,
+      },
+    ])
+    render(<CoworkTasksPanel onClose={vi.fn()} />)
+
+    expect(await screen.findByText('rustup update')).toBeInTheDocument()
   })
 
   it('closes from the panel chrome', async () => {
