@@ -8,8 +8,11 @@ import {
   expandCodeRefs,
   focusTab,
   isSourcePath,
+  isTabStale,
   lineRangeOfSlice,
   openTab,
+  sandboxTabPath,
+  writeCountsByPath,
   relativeToRoot,
   shouldOpenInCode,
   toggleDir,
@@ -160,6 +163,52 @@ describe('tab state', () => {
     expect(s.expandedDirs).toEqual(['src'])
     s = toggleDir(s, 'src')
     expect(s.expandedDirs).toEqual([])
+  })
+})
+
+describe('staleness', () => {
+  const write = (path: string, over = {}) => ({
+    role: 'tool' as const,
+    content: '',
+    name: 'write',
+    args: { path },
+    status: 'done' as const,
+    ...over,
+  })
+
+  it('counts completed writes and edits per path', () => {
+    const counts = writeCountsByPath([
+      write('a.ts'),
+      write('a.ts', { name: 'edit' }),
+      write('b.ts'),
+      { role: 'assistant', content: 'chatter' },
+    ])
+    expect(counts).toEqual({ 'a.ts': 2, 'b.ts': 1 })
+  })
+
+  it('ignores calls that changed nothing', () => {
+    expect(
+      writeCountsByPath([
+        write('a.ts', { status: 'running' }),
+        write('b.ts', { isError: true }),
+        write('c.ts', { name: 'read' }),
+        write(''),
+      ])
+    ).toEqual({})
+  })
+
+  it('reports a tab stale only once its path is written again', () => {
+    const counts = { 'a.ts': 2 }
+    expect(isTabStale('a.ts', 2, counts)).toBe(false)
+    expect(isTabStale('a.ts', 1, counts)).toBe(true)
+    // Never loaded: nothing to be stale against.
+    expect(isTabStale('a.ts', undefined, counts)).toBe(false)
+    // A different file's writes do not touch this one.
+    expect(isTabStale('b.ts', 0, counts)).toBe(false)
+  })
+
+  it('compares a sandbox tab on its display path', () => {
+    expect(isTabStale(sandboxTabPath('out.ts'), 0, { 'out.ts': 1 })).toBe(true)
   })
 })
 

@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { codeToHtml } from 'shiki'
 import { CodeViewer } from '../CodeViewer'
+import { clearHighlightCache } from '@/lib/highlightCache'
+import { useTheme } from '@/hooks/useTheme'
 
 vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({
@@ -50,6 +52,10 @@ describe('CodeViewer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     highlight.mockReset()
+    // The cache is module-level and would otherwise carry markup between
+    // cases, hiding the very calls these tests count.
+    clearHighlightCache()
+    useTheme.setState({ isDark: false })
     pending()
   })
 
@@ -63,31 +69,62 @@ describe('CodeViewer', () => {
     expect(body.querySelector('.shiki')).toBeNull()
   })
 
-  it('renders the highlighted markup in both theme containers once resolved', async () => {
+  it('renders the highlighted markup for the active theme only', async () => {
     resolves()
     render(<CodeViewer {...defaults} onToggleWrap={vi.fn()} />)
 
     const body = screen.getByTestId('code-viewer-body')
     await waitFor(() => {
-      expect(body.querySelectorAll('.shiki')).toHaveLength(2)
+      expect(body.querySelectorAll('.shiki')).toHaveLength(1)
     })
 
-    const panes = body.querySelectorAll(':scope > div')
-    expect(panes).toHaveLength(2)
-    expect(panes[0].className).toContain('dark:hidden')
-    expect(panes[0].innerHTML).toContain('theme-one-light')
-    expect(panes[1].className).toContain('dark:block')
-    expect(panes[1].innerHTML).toContain('theme-one-dark-pro')
+    // One pane, tokenised once: highlighting both themes and hiding one with
+    // CSS doubled the work for output that was never shown.
+    expect(body.querySelectorAll(':scope > div')).toHaveLength(1)
+    expect(body.innerHTML).toContain('theme-one-light')
+    expect(body.innerHTML).not.toContain('theme-one-dark-pro')
 
-    expect(highlight).toHaveBeenCalledTimes(2)
+    expect(highlight).toHaveBeenCalledTimes(1)
     expect(highlight).toHaveBeenCalledWith(
       SOURCE,
       expect.objectContaining({ lang: 'typescript', theme: 'one-light' })
     )
-    expect(highlight).toHaveBeenCalledWith(
+  })
+
+  it('re-highlights once when the theme changes', async () => {
+    resolves()
+    render(<CodeViewer {...defaults} onToggleWrap={vi.fn()} />)
+    await waitFor(() => expect(highlight).toHaveBeenCalledTimes(1))
+
+    act(() => useTheme.setState({ isDark: true }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('code-viewer-body').innerHTML).toContain(
+        'theme-one-dark-pro'
+      )
+    })
+    expect(highlight).toHaveBeenCalledTimes(2)
+    expect(highlight).toHaveBeenLastCalledWith(
       SOURCE,
-      expect.objectContaining({ lang: 'typescript', theme: 'one-dark-pro' })
+      expect.objectContaining({ theme: 'one-dark-pro' })
     )
+  })
+
+  it('serves a re-opened file from cache instead of tokenising again', async () => {
+    resolves()
+    const { unmount } = render(
+      <CodeViewer {...defaults} onToggleWrap={vi.fn()} />
+    )
+    await waitFor(() => expect(highlight).toHaveBeenCalledTimes(1))
+    unmount()
+
+    render(<CodeViewer {...defaults} onToggleWrap={vi.fn()} />)
+    await waitFor(() => {
+      expect(screen.getByTestId('code-viewer-body').innerHTML).toContain(
+        'shiki'
+      )
+    })
+    expect(highlight).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the source readable when highlighting rejects', async () => {
@@ -95,7 +132,7 @@ describe('CodeViewer', () => {
     render(<CodeViewer {...defaults} onToggleWrap={vi.fn()} />)
 
     await waitFor(() => {
-      expect(highlight).toHaveBeenCalledTimes(2)
+      expect(highlight).toHaveBeenCalledTimes(1)
     })
 
     const body = screen.getByTestId('code-viewer-body')
@@ -216,6 +253,8 @@ describe('CodeViewer selection → line range', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     highlight.mockReset()
+    clearHighlightCache()
+    useTheme.setState({ isDark: false })
     resolvesWithLines()
   })
 

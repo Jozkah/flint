@@ -38,6 +38,7 @@ import {
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { CoworkCodePanel } from '../CoworkCodePanel'
 import { emptyCodePanelState, type CodePanelState } from '@/lib/coworkCode'
+import type { CoworkTurn } from '@/types/coworkSession'
 
 const listDir = vi.mocked(projectListDir)
 const readFile = vi.mocked(projectReadFile)
@@ -68,11 +69,13 @@ const baseFile = () => ({
 function Harness({
   folder = ROOT as string | null,
   initial = emptyCodePanelState(),
+  turns,
   onStateChange,
   onAttach = vi.fn(),
 }: {
   folder?: string | null
   initial?: CodePanelState
+  turns?: CoworkTurn[]
   onStateChange?: (next: CodePanelState) => void
   onAttach?: () => void
 }) {
@@ -82,6 +85,7 @@ function Harness({
       folder={folder}
       workspacePath={null}
       state={state}
+      turns={turns}
       onStateChange={(next) => {
         onStateChange?.(next)
         setState(next)
@@ -328,5 +332,79 @@ describe('CoworkCodePanel', () => {
     const last = onStateChange.mock.lastCall?.[0] as CodePanelState
     expect(last.openPaths).toEqual([])
     expect(screen.queryAllByRole('tab')).toHaveLength(0)
+  })
+})
+
+describe('CoworkCodePanel — an open file the agent rewrites', () => {
+  const wrote = (path: string): CoworkTurn => ({
+    role: 'tool',
+    content: '',
+    name: 'write',
+    callId: `w-${path}`,
+    args: { path },
+    result: `Created ${path} (12 bytes)`,
+    status: 'done',
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    listDir.mockResolvedValue(listing(fileEntry('app.ts')))
+  })
+
+  it('says nothing while the file is untouched', async () => {
+    readFile.mockResolvedValue(projectFile({ content: 'first' }))
+    render(<Harness turns={[]} />)
+    await openFromExplorer('app.ts')
+
+    expect((await screen.findAllByText('first')).length).toBeGreaterThan(0)
+    expect(
+      screen.queryByText('common:codePanel.stale')
+    ).not.toBeInTheDocument()
+  })
+
+  it('marks the tab stale, and reload replaces the content', async () => {
+    readFile.mockResolvedValue(projectFile({ content: 'first' }))
+    const { rerender } = render(<Harness turns={[]} initial={{ ...emptyCodePanelState(), openPaths: ['app.ts'], activePath: 'app.ts' }} />)
+
+    expect((await screen.findAllByText('first')).length).toBeGreaterThan(0)
+
+    // The agent writes the file that is open.
+    readFile.mockResolvedValue(projectFile({ content: 'second' }))
+    rerender(
+      <Harness
+        turns={[wrote('app.ts')]}
+        initial={{ ...emptyCodePanelState(), openPaths: ['app.ts'], activePath: 'app.ts' }}
+      />
+    )
+
+    // Announced, not swapped: the old bytes are still on screen.
+    expect(await screen.findByText('common:codePanel.stale')).toBeInTheDocument()
+    expect(screen.getAllByText('first').length).toBeGreaterThan(0)
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'common:codePanel.reload' })
+    )
+
+    expect((await screen.findAllByText('second')).length).toBeGreaterThan(0)
+    await waitFor(() =>
+      expect(
+        screen.queryByText('common:codePanel.stale')
+      ).not.toBeInTheDocument()
+    )
+  })
+
+  it('ignores writes to other files', async () => {
+    readFile.mockResolvedValue(projectFile({ content: 'first' }))
+    render(
+      <Harness
+        turns={[wrote('elsewhere.ts')]}
+        initial={{ ...emptyCodePanelState(), openPaths: ['app.ts'], activePath: 'app.ts' }}
+      />
+    )
+
+    expect((await screen.findAllByText('first')).length).toBeGreaterThan(0)
+    expect(
+      screen.queryByText('common:codePanel.stale')
+    ).not.toBeInTheDocument()
   })
 })

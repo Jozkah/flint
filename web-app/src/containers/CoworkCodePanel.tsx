@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -26,12 +26,15 @@ import {
   emptyCodePanelState,
   isSandboxTabPath,
   isSourcePath,
+  isTabStale,
   openTab,
   tabDisplayPath,
   toggleDir,
+  writeCountsByPath,
   type CodePanelState,
   type CodeRef,
 } from '@/lib/coworkCode'
+import type { CoworkTurn } from '@/types/coworkSession'
 
 type DirState =
   | { status: 'loading' }
@@ -56,6 +59,10 @@ type Props = {
    * `sandbox:`-prefixed tabs read from here instead of the project. */
   workspacePath: string | null
   state: CodePanelState | undefined
+  /** The session transcript, read only to notice the agent writing an open
+   * file. Absent means staleness is never reported, which is correct for a
+   * session that has run nothing. */
+  turns?: CoworkTurn[]
   onStateChange: (next: CodePanelState) => void
   onAddToChat: (ref: CodeRef) => void
   onAttach: () => void
@@ -74,6 +81,7 @@ export function CoworkCodePanel({
   folder,
   workspacePath,
   state: stateProp,
+  turns,
   onStateChange,
   onAddToChat,
   onAttach,
@@ -86,6 +94,16 @@ export function CoworkCodePanel({
   const [dataFolder, setDataFolder] = useState<string | null>(null)
   const [dirs, setDirs] = useState<Map<string, DirState>>(new Map())
   const [files, setFiles] = useState<Map<string, FileState>>(new Map())
+  // Write count per tab at the moment its content was read. A later write to
+  // the same path pushes the live count past this one, which is what makes the
+  // open copy stale.
+  const [loadedAt, setLoadedAt] = useState<Map<string, number>>(new Map())
+  // Read through a ref inside `loadFile`: the transcript changes on every
+  // streamed token, and depending on it directly would give `loadFile` a new
+  // identity each time, re-firing the effect that loads the active tab.
+  const turnsRef = useRef(turns)
+  turnsRef.current = turns
+  const writeCounts = useMemo(() => writeCountsByPath(turns), [turns])
   const [explorerOpen, setExplorerOpen] = useState(
     () => state.openPaths.length === 0
   )
@@ -138,6 +156,13 @@ export function CoworkCodePanel({
   const loadFile = useCallback(
     async (tabPath: string, allowSensitive = false) => {
       setFile(tabPath, { status: 'loading' })
+      // Snapshot before reading, not after: a write landing during the read
+      // would otherwise be counted as already included and the tab would look
+      // fresh while showing the older bytes.
+      const seen = writeCountsByPath(turnsRef.current)[
+        tabDisplayPath(tabPath).replace(/\\/g, '/')
+      ]
+      setLoadedAt((current) => new Map(current).set(tabPath, seen ?? 0))
       // Sandbox artifacts stream off disk the same way the preview pane reads
       // them; the backend project commands only serve the attached project.
       if (isSandboxTabPath(tabPath)) {
@@ -444,13 +469,39 @@ export function CoworkCodePanel({
           {!activeFile || activeFile.status === 'loading' ? (
             <Notice>{t('common:codePanel.loading')}</Notice>
           ) : activeFile.status === 'ready' ? (
-            <CodeViewer
-              relPath={tabDisplayPath(activePath)}
-              content={activeFile.content}
-              wordWrap={state.wordWrap}
-              onToggleWrap={(wordWrap) => onStateChange({ ...state, wordWrap })}
-              onAddToChat={onAddToChat}
-            />
+            <div className="flex h-full min-h-0 flex-col">
+              {/* Announced, not swapped: replacing the bytes under someone
+                  mid-read is what the preview pane deliberately avoids. */}
+              {isTabStale(activePath, loadedAt.get(activePath), writeCounts) && (
+                <div
+                  role="status"
+                  className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs text-main-view-fg/70"
+                >
+                  <span className="min-w-0 flex-1">
+                    {t('common:codePanel.stale')}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 shrink-0 px-2 text-xs"
+                    onClick={() => void loadFile(activePath)}
+                  >
+                    {t('common:codePanel.reload')}
+                  </Button>
+                </div>
+              )}
+              <div className="min-h-0 flex-1">
+                <CodeViewer
+                  relPath={tabDisplayPath(activePath)}
+                  content={activeFile.content}
+                  wordWrap={state.wordWrap}
+                  onToggleWrap={(wordWrap) =>
+                    onStateChange({ ...state, wordWrap })
+                  }
+                  onAddToChat={onAddToChat}
+                />
+              </div>
+            </div>
           ) : activeFile.status === 'oversized' ? (
             <Notice>
               {t('common:codePanel.tooLarge', {

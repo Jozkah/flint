@@ -720,7 +720,9 @@
     "toggleWrap": "Toggle word wrap",
     "copyPath": "Copy relative path",
     "copyCode": "Copy code",
-    "addToChat": "Add to chat ({{range}})"
+    "addToChat": "Add to chat ({{range}})",
+    "stale": "The agent changed this file since you opened it.",
+    "reload": "Reload"
   },
   "settingsSearch": {
     "label": "Search settings",

@@ -944,6 +944,7 @@ function CoworkPage() {
             folder={folder}
             workspacePath={workspacePath}
             state={session.codePanel}
+            turns={displayedTurns}
             onStateChange={(next) =>
               useCoworkSessions.getState().setCodePanel(session.id, next)
             }

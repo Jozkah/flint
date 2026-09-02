@@ -3,6 +3,7 @@
 // DOM-free, like coworkPreview.ts, so everything here is testable directly.
 
 import { extensionOf, basenameOf, previewKindFor } from '@/lib/coworkPreview'
+import type { CoworkTurn } from '@/types/coworkSession'
 
 /** Matches the Rust backend's `MAX_READ_BYTES`: files above this are shown as
  * an oversized notice, never loaded into the renderer. */
@@ -230,6 +231,53 @@ export function isSandboxTabPath(path: string): boolean {
  * code references should show. */
 export function tabDisplayPath(path: string): string {
   return isSandboxTabPath(path) ? path.slice(SANDBOX_TAB_PREFIX.length) : path
+}
+
+// ---------------------------------------------------------------------------
+// Staleness
+// ---------------------------------------------------------------------------
+
+/**
+ * How many completed `write`/`edit` calls each path has received.
+ *
+ * Counted rather than timestamped because a `CoworkTurn` carries no clock: the
+ * panel snapshots this count when it loads a file, and any later increase means
+ * the bytes on disk have moved on from the ones on screen. A running or failed
+ * call is not counted — neither changed the file.
+ */
+export function writeCountsByPath(
+  turns: CoworkTurn[] | undefined
+): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const turn of turns ?? []) {
+    if (turn.role !== 'tool') continue
+    if (turn.name !== 'write' && turn.name !== 'edit') continue
+    if (turn.isError || turn.status === 'running') continue
+    const args = turn.args
+    if (!args || typeof args !== 'object' || !('path' in args)) continue
+    const path = (args as Record<string, unknown>).path
+    if (typeof path !== 'string' || !path) continue
+    const key = path.replace(/\\/g, '/')
+    counts[key] = (counts[key] ?? 0) + 1
+  }
+  return counts
+}
+
+/**
+ * Has `tabPath` been written since it was loaded, when it carried
+ * `loadedCount` writes at that moment?
+ *
+ * The tab path may carry the sandbox marker; the tools report the plain path,
+ * so the comparison is on the display form.
+ */
+export function isTabStale(
+  tabPath: string,
+  loadedCount: number | undefined,
+  counts: Record<string, number>
+): boolean {
+  if (loadedCount == null) return false
+  const key = tabDisplayPath(tabPath).replace(/\\/g, '/')
+  return (counts[key] ?? 0) > loadedCount
 }
 
 // ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@ import {
   IconWorldSearch,
   IconFolderCode,
   IconPaperclip,
+  IconPuzzle,
 } from '@tabler/icons-react'
 import { useMatches, useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
@@ -34,7 +35,11 @@ import cloneDeep from 'lodash/cloneDeep'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { SettingsSearch } from '@/containers/SettingsSearch'
-import { SETTINGS_PAGES, type SettingsPage } from '@/lib/settingsSearch'
+import {
+  SETTINGS_PAGES,
+  type SettingsPage,
+  type SettingsPageId,
+} from '@/lib/settingsSearch'
 
 const SettingsMenu = () => {
   const { t } = useTranslation()
@@ -171,8 +176,10 @@ const SettingsMenu = () => {
   // Pages come from the shared registry, which also drives settings search —
   // one list, so navigation and search cannot drift apart. Only the icons live
   // here: they are JSX, and the registry stays pure data the index can import.
+  // Keyed by the registry's own id union, so adding or renaming a page is a
+  // compile error here rather than a silent fallback to a default icon.
   const pageIcons: Record<
-    string,
+    SettingsPageId,
     (props: { size?: number; className?: string }) => React.ReactNode
   > = {
     general: IconAdjustmentsHorizontal,
@@ -188,6 +195,7 @@ const SettingsMenu = () => {
     hardware: IconCpu,
     privacy: IconLock,
     'mcp-servers': IconTopologyStar3,
+    extensions: IconPuzzle,
     'claude-code': ({ size, className }) => (
       <img
         src="/images/code-claude.svg"
@@ -201,7 +209,7 @@ const SettingsMenu = () => {
   const withIcon = (page: SettingsPage) => ({
     ...page,
     title: page.titleKey,
-    icon: pageIcons[page.id] ?? IconAdjustmentsHorizontal,
+    icon: pageIcons[page.id as SettingsPageId],
   })
   const coreSettings = SETTINGS_PAGES.filter((p) => p.group === 'core').map(
     withIcon

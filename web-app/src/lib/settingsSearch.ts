@@ -28,10 +28,16 @@ export type SettingsPage = {
   route: string
   titleKey: string
   group: 'core' | 'integrations'
-  keywords?: string[]
+  keywords?: readonly string[]
 }
 
-export const SETTINGS_PAGES: SettingsPage[] = [
+/**
+ * `as const satisfies` so the ids stay literal: {@link SettingsPageId} is
+ * derived from this list, and anything keyed by it — the sidebar's icon map —
+ * then fails to compile when a page is added or renamed, instead of silently
+ * falling back to a default.
+ */
+export const SETTINGS_PAGES = [
   {
     id: 'general',
     route: route.settings.general,
@@ -123,7 +129,17 @@ export const SETTINGS_PAGES: SettingsPage[] = [
     group: 'integrations',
     keywords: ['claude', 'cli', 'code'],
   },
-]
+  {
+    id: 'extensions',
+    route: route.settings.extensions,
+    titleKey: 'common:extensions',
+    group: 'integrations',
+    keywords: ['plugins', 'add-ons'],
+  },
+] as const satisfies readonly SettingsPage[]
+
+/** Every page id in the registry, as a literal union. */
+export type SettingsPageId = (typeof SETTINGS_PAGES)[number]['id']
 
 /**
  * Anchor for the web-search provider configuration group.
@@ -361,7 +377,7 @@ export function buildSettingsIndex(
       route: page.route,
       title: t(page.titleKey),
       section: t(page.titleKey),
-      keywords: page.keywords ?? [],
+      keywords: [...(page.keywords ?? [])],
     })
   }
   for (const setting of SETTINGS_ITEMS) {
@@ -374,7 +390,7 @@ export function buildSettingsIndex(
       description: setting.descriptionKey
         ? t(setting.descriptionKey)
         : undefined,
-      keywords: setting.keywords ?? [],
+      keywords: [...(setting.keywords ?? [])],
       anchor: setting.anchor,
     })
   }

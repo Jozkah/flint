@@ -21,6 +21,12 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { useTheme } from '@/hooks/useTheme'
+import {
+  highlightKey,
+  readHighlight,
+  rememberHighlight,
+} from '@/lib/highlightCache'
 import {
   detectLanguage,
   lineRangeOfSlice,
@@ -82,7 +88,7 @@ function lineOfNode(node: Node | null): number | null {
 }
 
 /**
- * Read-only source viewer: Shiki highlighting in both Jan themes, line numbers,
+ * Read-only source viewer: Shiki highlighting in the active Jan theme, line numbers,
  * horizontal scrolling, optional word wrap, copy actions and selection →
  * “Add to chat”. The content is displayed exactly as read — no formatter runs.
  */
@@ -96,25 +102,33 @@ export function CodeViewer({
 }: CodeViewerProps) {
   const { t } = useTranslation()
   const language = useMemo(() => detectLanguage(relPath), [relPath])
+  const isDark = useTheme((s) => s.isDark)
   const [html, setHtml] = useState<string | null>(null)
-  const [darkHtml, setDarkHtml] = useState<string | null>(null)
   const [copied, setCopied] = useState<'code' | 'path' | null>(null)
   const [selection, setSelection] = useState<CodeRef | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let alive = true
+    const theme = isDark ? 'one-dark-pro' : 'one-light'
+    const cacheKey = highlightKey(content, language.lang, theme)
+    const cached = readHighlight(cacheKey)
+    if (cached) {
+      setHtml(cached)
+      return
+    }
+    // Only the theme actually on screen is tokenised. Highlighting both and
+    // hiding one with CSS doubled the work on every open for output nobody
+    // ever saw.
     setHtml(null)
-    setDarkHtml(null)
-    const opts = { lang: language.lang, transformers: [lineNumbers] }
-    void Promise.all([
-      codeToHtml(content, { ...opts, theme: 'one-light' }),
-      codeToHtml(content, { ...opts, theme: 'one-dark-pro' }),
-    ])
-      .then(([light, dark]) => {
-        if (!alive) return
-        setHtml(light)
-        setDarkHtml(dark)
+    void codeToHtml(content, {
+      lang: language.lang,
+      theme,
+      transformers: [lineNumbers],
+    })
+      .then((markup) => {
+        rememberHighlight(cacheKey, markup)
+        if (alive) setHtml(markup)
       })
       .catch(() => {
         // A grammar failure falls back to the plaintext <pre> below; the file
@@ -123,7 +137,7 @@ export function CodeViewer({
     return () => {
       alive = false
     }
-  }, [content, language.lang])
+  }, [content, language.lang, isDark, relPath])
 
   const copy = useCallback(
     async (what: 'code' | 'path') => {
@@ -273,17 +287,11 @@ export function CodeViewer({
         className="relative min-h-0 flex-1 overflow-auto focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40"
         data-testid="code-viewer-body"
       >
-        {html && darkHtml ? (
-          <>
-            <div
-              className={cn('dark:hidden', preClasses)}
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
-            <div
-              className={cn('hidden dark:block', preClasses)}
-              dangerouslySetInnerHTML={{ __html: darkHtml }}
-            />
-          </>
+        {html ? (
+          <div
+            className={preClasses}
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
         ) : (
           // Highlighting is async; the raw source shows immediately so a big
           // file never presents an empty pane.
