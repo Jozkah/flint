@@ -48,6 +48,7 @@ import {
   type WorkflowView,
 } from '@/lib/coworkActivity'
 import {
+  CANCELLED_BY_USER,
   cancelMessage,
   cancelTask as cancelTaskRequest,
   cancelWorkflow as cancelWorkflowRequest,
@@ -312,9 +313,13 @@ function CoworkPage() {
   // the concise `@path:start-end` token, and the refs wait here until submit,
   // when the model's copy of the message is expanded with the selected text.
   const pendingRefs = useRef<CodeRef[]>([])
+  // Cleared when the session changes *or* when the attached project does: a
+  // reference carries the bytes and the path of the project it was taken
+  // from, and sending it after a switch would label another project's source
+  // as this one's.
   useEffect(() => {
     pendingRefs.current = []
-  }, [session?.id])
+  }, [session?.id, folder])
 
   const addCodeToChat = useCallback((ref: CodeRef) => {
     pendingRefs.current = [
@@ -768,6 +773,28 @@ function CoworkPage() {
                   once: true,
                 })
                 const activity = useCoworkActivity.getState()
+                /**
+                 * Record how this child actually ended.
+                 *
+                 * A child stopped by the run's own Stop is cancelled, not
+                 * failed: the abort is why it ended. Anything already settled
+                 * — the panel's per-task Stop writes `cancelled` first — keeps
+                 * the status it has, because the guard in `updateTask` refuses
+                 * to overwrite a finished one.
+                 */
+                const settleChild = (isError: boolean, output?: string) => {
+                  const aborted = childAbort.signal.aborted
+                  useCoworkActivity.getState().patchTask(childTaskId, {
+                    ...(output != null ? { output } : {}),
+                    status: aborted
+                      ? ('cancelled' as const)
+                      : isError
+                        ? ('error' as const)
+                        : ('done' as const),
+                    endedAt: Date.now(),
+                    ...(aborted ? { detail: CANCELLED_BY_USER } : {}),
+                  })
+                }
                 try {
                   const child = await runSubagent({
                   resolved,
@@ -845,9 +872,13 @@ function CoworkPage() {
                     },
                     onEnd: (usage) => {
                       useCoworkRun.getState().endSubagent(sid, callId, usage)
+                      // Usage only. `onEnd` fires for *every* ending — an
+                      // abort before the child even starts, a failed model
+                      // step, an exhausted step budget — so writing a terminal
+                      // status here would record every one of them as success,
+                      // and the finished-status guard would then refuse the
+                      // real outcome that arrives a moment later.
                       activity.patchTask(childTaskId, {
-                        status: 'done',
-                        endedAt: Date.now(),
                         usage: usage ?? undefined,
                       })
                     },
@@ -856,16 +887,14 @@ function CoworkPage() {
                 useCoworkRun
                   .getState()
                   .attachSubagentOutput(sid, callId, child.output)
-                activity.patchTask(childTaskId, {
-                  output: child.output,
-                  ...(child.isError
-                    ? { status: 'error' as const, endedAt: Date.now() }
-                    : {}),
-                })
+                settleChild(Boolean(child.isError), child.output)
                 return { output: child.output, isError: child.isError }
                 } finally {
                   controller.signal.removeEventListener('abort', stopChild)
                   unregisterSubagent(sid, childTaskId)
+                  // A throw from the dispatch would otherwise leave the record
+                  // running with nothing left to finish it.
+                  settleChild(true)
                 }
               },
             }),

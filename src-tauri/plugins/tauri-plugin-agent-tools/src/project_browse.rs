@@ -252,10 +252,23 @@ pub fn list_dir(root: &str, rel: &str) -> Result<ProjectListing, String> {
             continue;
         }
         let is_dir = resolved.is_dir();
-        if is_dir && IGNORED_DIRS.contains(&name.as_str()) {
+        // Filtered on what the entry actually *is*, not what it is called. A
+        // symlink named `docs` pointing at `.git` stays inside the root, so
+        // containment admits it; testing the link's own name would then list
+        // the whole of `.git` — the very content this filter exists to hide.
+        // Both the link name and the target name are checked, so neither
+        // spelling gets through.
+        let resolved_name = resolved
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if is_dir
+            && (IGNORED_DIRS.contains(&name.as_str())
+                || IGNORED_DIRS.contains(&resolved_name.as_str()))
+        {
             continue;
         }
-        if is_ignored(&ignores, &path, is_dir) {
+        if is_ignored(&ignores, &path, is_dir) || is_ignored(&ignores, &resolved, is_dir) {
             continue;
         }
         let rel_path = match path.strip_prefix(&root_canon) {
@@ -558,5 +571,70 @@ mod tests {
         for name in ["main.rs", "env.ts", "keyboard.tsx", "monkey.md"] {
             assert!(!is_sensitive_name(name), "{name} should not be sensitive");
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod symlink_laundering_tests {
+    use super::*;
+
+    fn temp_root(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("jan-pb-symlink-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A symlink cannot launder a filtered directory into the tree. Git stores
+    /// symlinks in trees, so `docs -> .git` is a thing a real repository can
+    /// contain; resolving it lands back inside the root, so containment admits
+    /// it, and only the name test stands between it and the whole `.git` tree.
+    #[test]
+    fn a_symlink_to_an_ignored_directory_is_not_listed() {
+        let root = temp_root("git");
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::write(root.join(".git").join("config"), "secret").unwrap();
+        std::os::unix::fs::symlink(root.join(".git"), root.join("docs")).unwrap();
+
+        let listing = list_dir(root.to_str().unwrap(), "").unwrap();
+        let names: Vec<&str> = listing.entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(
+            !names.contains(&"docs"),
+            "a link to .git must not be listed: {names:?}"
+        );
+        assert!(!names.contains(&".git"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The same for a directory the project's own .gitignore excludes.
+    #[test]
+    fn a_symlink_to_a_gitignored_directory_is_not_listed() {
+        let root = temp_root("ignored");
+        std::fs::write(root.join(".gitignore"), "build/\n").unwrap();
+        std::fs::create_dir_all(root.join("build")).unwrap();
+        std::os::unix::fs::symlink(root.join("build"), root.join("public")).unwrap();
+
+        let listing = list_dir(root.to_str().unwrap(), "").unwrap();
+        let names: Vec<&str> = listing.entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(
+            !names.contains(&"public"),
+            "a link to an ignored dir must not be listed: {names:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An ordinary in-root symlink still works: the filter is about what the
+    /// target *is*, not about symlinks being suspicious.
+    #[test]
+    fn an_ordinary_symlink_inside_the_root_is_still_listed() {
+        let root = temp_root("ok");
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::os::unix::fs::symlink(root.join("src"), root.join("lib")).unwrap();
+
+        let listing = list_dir(root.to_str().unwrap(), "").unwrap();
+        let names: Vec<&str> = listing.entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"lib"), "expected lib in {names:?}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

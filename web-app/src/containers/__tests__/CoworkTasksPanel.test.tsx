@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { act, render, screen, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { CoworkTasksPanel } from '../CoworkTasksPanel'
@@ -386,6 +386,34 @@ describe('CoworkTasksPanel', () => {
   })
 
   describe('revealing a task the card pointed at', () => {
+    it('scrolls and focuses the revealed row before releasing the request', async () => {
+      // The request used to be released synchronously, batching with the
+      // expansion: the render that first created the target row already had
+      // no focus target, so the ref was never attached and the frame found
+      // nothing to scroll to.
+      const scrollIntoView = vi.fn()
+      Element.prototype.scrollIntoView = scrollIntoView
+      const onFocusHandled = vi.fn()
+      render(
+        <CoworkTasksPanel
+          workflows={sessionWorkflows(
+            stateWith([task({ id: 'call-9', output: 'the answer' })]),
+            SESSION
+          )}
+          totals={progressOf([])}
+          focusTaskId={idOf('call-9')}
+          onFocusHandled={onFocusHandled}
+          onCancelTask={vi.fn()}
+          onCancelWorkflow={vi.fn()}
+          onClearFinished={vi.fn()}
+          onClose={vi.fn()}
+        />
+      )
+      await waitFor(() => expect(onFocusHandled).toHaveBeenCalled())
+      expect(scrollIntoView).toHaveBeenCalled()
+      expect(document.querySelector('[tabindex="-1"]')).not.toBeNull()
+    })
+
     it('opens its workflow and expands it', async () => {
       const onFocusHandled = vi.fn()
       render(
@@ -405,10 +433,11 @@ describe('CoworkTasksPanel', () => {
       )
       // Expanded without a click: the workflow section and the task both open.
       expect(await screen.findByText('the answer')).toBeInTheDocument()
-      expect(onFocusHandled).toHaveBeenCalled()
+      // Released from inside the animation frame, once the row exists.
+      await waitFor(() => expect(onFocusHandled).toHaveBeenCalled())
     })
 
-    it('reports the request handled even when the task is gone', () => {
+    it('reports the request handled even when the task is gone', async () => {
       // Cleared between the click and the render; the panel must not keep
       // asking to focus something that no longer exists.
       const onFocusHandled = vi.fn()
@@ -424,7 +453,7 @@ describe('CoworkTasksPanel', () => {
           onClose={vi.fn()}
         />
       )
-      expect(onFocusHandled).toHaveBeenCalled()
+      await waitFor(() => expect(onFocusHandled).toHaveBeenCalled())
     })
   })
 
@@ -900,7 +929,7 @@ describe('revealing the workflow the card pointed at', () => {
     ])
   })
 
-  it('reports the request handled when the workflow is gone', () => {
+  it('reports the request handled when the workflow is gone', async () => {
     const onFocusHandled = vi.fn()
     render(
       <CoworkTasksPanel
@@ -914,6 +943,6 @@ describe('revealing the workflow the card pointed at', () => {
         onClose={vi.fn()}
       />
     )
-    expect(onFocusHandled).toHaveBeenCalled()
+    await waitFor(() => expect(onFocusHandled).toHaveBeenCalled())
   })
 })

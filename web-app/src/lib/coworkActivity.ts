@@ -176,12 +176,31 @@ export function findTask(
   return state.tasks[taskIdFor(sessionId, workflowId, callId)]
 }
 
-/** The task holding a backend job id, which is unique across the backend. */
+/**
+ * The task holding a backend job id.
+ *
+ * Job ids are unique only within one run of the backend: the counter behind
+ * them restarts at `bash-0` every launch, while this record is persisted. What
+ * keeps a new job from landing on an old row is `settleOnLoad` dropping every
+ * job id it finds — the backend that minted them is gone — so anything still
+ * holding one was minted by the backend running now, whose counter does not
+ * repeat within a run.
+ *
+ * A finished task is still a candidate, because a killed job's remaining
+ * output is exactly what a later collection is for. Live work is preferred,
+ * and among equals the newest, so an in-flight command always wins over a
+ * settled one.
+ */
 export function findTaskByJob(
   state: ActivityState,
   jobId: string
 ): ActivityTask | undefined {
-  return Object.values(state.tasks).find((task) => task.jobId === jobId)
+  return Object.values(state.tasks)
+    .filter((task) => task.jobId === jobId)
+    .sort((a, b) => {
+      const live = Number(isFinished(a.status)) - Number(isFinished(b.status))
+      return live !== 0 ? live : b.startedAt - a.startedAt
+    })[0]
 }
 
 // --- Reducers -------------------------------------------------------------
@@ -215,7 +234,12 @@ export function observePhase(
 ): { state: ActivityState; phaseId: string | undefined } {
   const workflow = state.workflows[workflowId]
   if (!workflow) return { state, phaseId: undefined }
-  const existing = workflow.phases.find((p) => p.index === phase.index)
+  // Matched on name *and* position. The todo list is re-indexed by ordinary
+  // operations — removing a phase shifts every later one down — so position
+  // alone would file new work under whatever used to sit there.
+  const existing = workflow.phases.find(
+    (p) => p.index === phase.index && p.name === phase.name
+  )
   if (existing) return { state, phaseId: existing.id }
   const recorded: ActivityPhase = {
     id: phaseIdFor(workflowId, workflow.phases.length),
@@ -345,7 +369,30 @@ export function settleOnLoad(
   now: number,
   reason: string
 ): ActivityState {
-  return settleMatching(state, (task) => !isFinished(task.status), now, reason)
+  const settled = settleMatching(
+    state,
+    (task) => !isFinished(task.status),
+    now,
+    reason
+  )
+  // Job ids are dropped as well as the statuses. The backend that minted them
+  // died with the app and its counter restarts at zero, so a persisted id will
+  // be handed out again to unrelated work; keeping it would let that work's
+  // output land on this row.
+  let tasks = settled.tasks
+  let changed = false
+  for (const task of Object.values(settled.tasks)) {
+    if (!task.jobId) continue
+    if (!changed) {
+      tasks = { ...tasks }
+      changed = true
+    }
+    const rest = Object.fromEntries(
+      Object.entries(task).filter(([key]) => key !== 'jobId')
+    ) as ActivityTask
+    tasks[task.id] = rest
+  }
+  return changed ? { ...settled, tasks } : settled
 }
 
 /**

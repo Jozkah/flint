@@ -320,3 +320,98 @@ describe('the inline card after a reload', () => {
     ).toBe(run.runId)
   })
 })
+
+describe('how a dispatched subagent is recorded when it ends', () => {
+  beforeEach(() => {
+    useCoworkActivity.setState(emptyActivityState())
+  })
+
+  /**
+   * The route's own sequence. `runSubagent` calls `onEnd` for *every* ending —
+   * an abort before the child starts, a failed model step, an exhausted step
+   * budget — so `onEnd` records usage only, and the terminal status comes from
+   * the outcome once the call returns.
+   */
+  const runChild = (
+    callId: string,
+    outcome: { isError: boolean; output: string; aborted?: boolean }
+  ) => {
+    recordAgentDispatch(run, { callId, agentName: 'explorer' })
+    const id = idOf(callId)
+    store().patchTask(id, { status: 'running' })
+    // onEnd: usage only.
+    store().patchTask(id, { usage: { total_tokens: 120 } })
+    // settleChild: the real outcome.
+    store().patchTask(id, {
+      output: outcome.output,
+      status: outcome.aborted
+        ? 'cancelled'
+        : outcome.isError
+          ? 'error'
+          : 'done',
+      endedAt: 10,
+      ...(outcome.aborted ? { detail: CANCELLED_BY_USER } : {}),
+    })
+    return id
+  }
+
+  it('records a failed subagent as failed, not as done', () => {
+    const id = runChild('call-1', { isError: true, output: 'model step failed' })
+    expect(store().tasks[id]).toMatchObject({
+      status: 'error',
+      output: 'model step failed',
+    })
+    expect(sessionWorkflows(store(), SESSION)[0].status).toBe('error')
+  })
+
+  it('records a stopped subagent as cancelled, not as done', () => {
+    const id = runChild('call-1', {
+      isError: true,
+      output: '(the subagent was cancelled)',
+      aborted: true,
+    })
+    expect(store().tasks[id]).toMatchObject({
+      status: 'cancelled',
+      detail: CANCELLED_BY_USER,
+    })
+    expect(sessionWorkflows(store(), SESSION)[0].status).toBe('cancelled')
+  })
+
+  it('records a successful subagent as done, with its usage', () => {
+    const id = runChild('call-1', { isError: false, output: 'the answer' })
+    expect(store().tasks[id]).toMatchObject({
+      status: 'done',
+      output: 'the answer',
+    })
+    expect(store().tasks[id].usage?.total_tokens).toBe(120)
+  })
+
+  it('counts a failure as a failure in the workflow’s progress', () => {
+    // Recorded as `done`, a failed child made the run look entirely
+    // successful: error 0, cancelled 0, the bar full.
+    runChild('call-1', { isError: true, output: 'boom' })
+    runChild('call-2', { isError: false, output: 'fine' })
+    const progress = sessionWorkflows(store(), SESSION)[0].progress
+    expect(progress).toMatchObject({ done: 1, error: 1, cancelled: 0 })
+  })
+
+  it('keeps a status the panel’s own Stop already recorded', () => {
+    // The per-task Stop settles the row while the child is still unwinding;
+    // the outcome that arrives afterwards must not overwrite it.
+    recordAgentDispatch(run, { callId: 'call-1', agentName: 'explorer' })
+    const id = idOf('call-1')
+    store().patchTask(id, { status: 'running' })
+    store().patchTask(id, {
+      status: 'cancelled',
+      endedAt: 5,
+      detail: CANCELLED_BY_USER,
+    })
+    store().patchTask(id, { status: 'error', endedAt: 10, output: 'late' })
+
+    expect(store().tasks[id]).toMatchObject({
+      status: 'cancelled',
+      endedAt: 5,
+      output: 'late',
+    })
+  })
+})

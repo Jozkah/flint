@@ -135,11 +135,20 @@ export function CoworkTasksPanel({
       // Scrolled and focused after the expansion has painted, so the target is
       // laid out. Focus moves too: a keyboard or screen-reader user has to end
       // up on the thing they asked to see, not back at the top of the panel.
-      requestAnimationFrame(() => {
+      //
+      // The request is reported handled from *inside* the frame, not beside
+      // it. Clearing it synchronously batches with the expansion, so the very
+      // render that first creates the target row already has no focus target —
+      // the ref is never attached, and the frame finds nothing to scroll to.
+      const frame = requestAnimationFrame(() => {
         focusRef.current?.scrollIntoView({ block: 'nearest' })
         focusRef.current?.focus({ preventScroll: true })
+        onFocusHandled?.()
       })
+      return () => cancelAnimationFrame(frame)
     }
+    // Nothing to reveal — the workflow is gone, or was cleared between the
+    // click and this render. Say so, or the request would never be released.
     onFocusHandled?.()
   }, [focusTaskId, focusWorkflowId, workflowOfFocus, onFocusHandled])
 

@@ -287,13 +287,16 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   }),
   // Two names for one conditional slot: both stay separately searchable, and
   // both land on the group. See WEB_SEARCH_PROVIDER_CONFIG_ANCHOR.
-  item('web-search', 'api-key', 'settings:webSearch.apiKey', {
+  // Search-only labels: the page's own strings interpolate the chosen
+  // provider's name, and the index resolves keys with no options, so those
+  // would render a literal "{{provider}}" in the results.
+  item('web-search', 'api-key', 'settings:webSearch.apiKeySearch', {
     anchor: WEB_SEARCH_PROVIDER_CONFIG_ANCHOR,
     keywords: ['api key', 'credentials', 'search provider'],
   }),
-  item('web-search', 'endpoint', 'settings:webSearch.endpoint', {
+  item('web-search', 'endpoint', 'settings:webSearch.endpointSearch', {
     anchor: WEB_SEARCH_PROVIDER_CONFIG_ANCHOR,
-    descriptionKey: 'settings:webSearch.endpointDesc',
+    descriptionKey: 'settings:webSearch.endpointSearchDesc',
     keywords: ['url', 'searxng'],
   }),
   // Agent tools

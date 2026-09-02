@@ -68,6 +68,14 @@ pub struct BashJob {
     /// Held so one job can be reaped on its own; `None` only when the child had
     /// already exited before its id could be read.
     pub pid: Option<u32>,
+    /// A collector is awaiting this job's receiver right now.
+    ///
+    /// The receiver has to leave the entry to be awaited — it cannot be held
+    /// across an await while the registry is locked — but the *entry* stays,
+    /// so a command being collected can still be listed and still be killed.
+    /// Without this the whole of a long collection was invisible: the panel
+    /// dropped the row and its Stop button reported "unknown job".
+    collecting: bool,
 }
 
 impl BashJob {
@@ -76,6 +84,11 @@ impl BashJob {
     fn poll_finished(&mut self) -> bool {
         if self.output.is_some() {
             return true;
+        }
+        // Being collected: the receiver is with the collector, and the command
+        // is still running until that collector says otherwise.
+        if self.collecting {
+            return false;
         }
         let Some(rx) = self.rx.as_mut() else {
             return true;
@@ -1021,6 +1034,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                     started: job_started,
                     call_id: ctx.call_id.map(str::to_string),
                     pid,
+                    collecting: false,
                 },
             );
             format!(
@@ -1036,21 +1050,48 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
 /// (already-formatted) output, or an error if `job_id` is unknown or was
 /// already collected.
 async fn await_bash_job(job_id: &str) -> String {
-    let job = bash_jobs().lock().unwrap().remove(job_id);
-    match job {
-        // A status check may already have received the output; hand over what
-        // it parked rather than waiting on a channel that has been drained.
-        Some(BashJob {
-            output: Some(done), ..
-        }) => done,
-        Some(BashJob { rx: Some(rx), .. }) => rx.await.unwrap_or_else(|_| {
+    // The receiver is taken, but the entry is left behind: for however long
+    // this command still runs, it must stay listable and killable. Removed
+    // only once it has actually produced its output.
+    enum Collect {
+        Parked(String),
+        Awaiting(oneshot::Receiver<String>),
+        Drained,
+        Unknown,
+    }
+
+    let taken = {
+        let mut jobs = bash_jobs().lock().unwrap();
+        match jobs.get_mut(job_id) {
+            None => Collect::Unknown,
+            Some(job) => {
+                if let Some(done) = job.output.take() {
+                    Collect::Parked(done)
+                } else if let Some(rx) = job.rx.take() {
+                    job.collecting = true;
+                    Collect::Awaiting(rx)
+                } else {
+                    Collect::Drained
+                }
+            }
+        }
+    };
+
+    let result = match taken {
+        // A status check already received the output; hand over what it parked.
+        Collect::Parked(done) => done,
+        Collect::Awaiting(rx) => rx.await.unwrap_or_else(|_| {
             "ERROR: background command ended without producing output".to_string()
         }),
-        Some(BashJob { rx: None, .. }) => {
+        Collect::Drained => {
             "ERROR: background command ended without producing output".to_string()
         }
-        None => format!("ERROR: unknown or already-collected job_id '{job_id}'"),
-    }
+        Collect::Unknown => {
+            return format!("ERROR: unknown or already-collected job_id '{job_id}'")
+        }
+    };
+    bash_jobs().lock().unwrap().remove(job_id);
+    result
 }
 
 /// Drain a running child's stdout+stderr into a bounded rolling buffer (so a
@@ -1813,6 +1854,7 @@ mod bash_job_registry_tests {
                 started: std::time::Instant::now(),
                 call_id: Some("call-1".to_string()),
                 pid,
+                collecting: false,
             },
         );
         tx
@@ -1852,6 +1894,41 @@ mod bash_job_registry_tests {
             await_bash_job("bash-kill-gone").await,
             "printed before it died"
         );
+    }
+
+    /// A command being collected is still running, so it must still be listed
+    /// and still be killable. It used to leave the registry the instant the
+    /// agent asked for it, hiding the whole of a long build from the panel.
+    #[tokio::test]
+    async fn a_job_stays_listable_and_killable_while_it_is_collected() {
+        let tx = park_with_pid("bash-collect-live", "npm run build", Some(u32::MAX - 8));
+
+        let collector = tokio::spawn(async { await_bash_job("bash-collect-live").await });
+        // Let the collector take the receiver.
+        for _ in 0..100 {
+            if bash_jobs()
+                .lock()
+                .unwrap()
+                .get("bash-collect-live")
+                .is_some_and(|j| j.rx.is_none())
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+
+        let listed = list_bash_jobs();
+        let job = listed
+            .iter()
+            .find(|j| j.job_id == "bash-collect-live")
+            .expect("a job being collected is still a job");
+        assert!(!job.finished, "it is still running");
+        assert_eq!(kill_bash_job("bash-collect-live").outcome, BashJobKillOutcome::Killed);
+
+        tx.send("built".to_string()).unwrap();
+        assert_eq!(collector.await.unwrap(), "built");
+        // Collected: now it is gone.
+        assert!(!list_bash_jobs().iter().any(|j| j.job_id == "bash-collect-live"));
     }
 
     #[tokio::test]

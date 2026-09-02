@@ -22,6 +22,19 @@ describe('backgroundJobId', () => {
     expect(backgroundJobId('build succeeded in 4.2s')).toBeNull()
   })
 
+  it('is not fooled by a command that prints job_id= itself', () => {
+    // The text handed here is the tool's whole output, the command's own
+    // stdout included. Reading this as "backgrounded" strands a finished
+    // command as running forever and points its Stop button at nothing.
+    expect(
+      backgroundJobId('queue.py:12:    job_id=task.id\nsrc/w.py:3: job_id=x')
+    ).toBeNull()
+    expect(backgroundJobId('job_id=bash-3')).toBeNull()
+    expect(
+      backgroundJobId('Started worker (job_id=abc) and finished')
+    ).toBeNull()
+  })
+
   it('finds nothing in a value that is not text', () => {
     // Tool results arrive untyped; a structured result must not throw here.
     expect(backgroundJobId(undefined)).toBeNull()

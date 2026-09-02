@@ -3,7 +3,6 @@ import { route } from '@/constants/routes'
 import HeaderPage from '@/containers/HeaderPage'
 import SettingsMenu from '@/containers/SettingsMenu'
 import { Card, CardItem } from '@/containers/Card'
-import { SettingTarget } from '@/components/SettingTarget'
 import { WEB_SEARCH_PROVIDER_CONFIG_ANCHOR } from '@/lib/settingsSearch'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -82,12 +81,11 @@ function WebSearchContent() {
                 </div>
               }
             >
-              <SettingTarget anchor="settings-web-search-enable">
-                <CardItem
-                  title={t('settings:webSearch.enable')}
-                  description={t('settings:webSearch.enableDesc')}
-                />
-              </SettingTarget>
+              <CardItem
+                anchor="settings-web-search-enable"
+                title={t('settings:webSearch.enable')}
+                description={t('settings:webSearch.enableDesc')}
+              />
               <CardItem
                 title={t('settings:webSearch.provider')}
                 description={t('settings:webSearch.providerDesc')}

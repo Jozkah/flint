@@ -178,13 +178,24 @@ describe('settling a shell command', () => {
 
   it('settles the original row when the agent collects the job', () => {
     recordShellOutcome(run, 'call-1', {
-      output: 'continuing in the background (job_id=bash-3).',
+      output:
+        'Command exceeded 120s and is continuing in the background (job_id=bash-3).',
     })
     recordJobCollected('bash-3', { output: 'built in 9m' })
     expect(store().tasks[idOf('call-1')]).toMatchObject({
       status: 'done',
       output: 'built in 9m',
     })
+  })
+
+  it('leaves a command that merely printed job_id= alone', () => {
+    // `grep -rn job_id src/` finishes in the foreground; its matches are not
+    // a background sentence.
+    recordShellOutcome(run, 'call-1', {
+      output: 'queue.py:12:    job_id=task.id\nworker.py:3: job_id=other',
+    })
+    expect(store().tasks[idOf('call-1')]).toMatchObject({ status: 'done' })
+    expect(store().tasks[idOf('call-1')].jobId).toBeUndefined()
   })
 
   it('ignores a collection for a job nothing here started', () => {
@@ -277,7 +288,8 @@ describe('two runs reusing one provider call id', () => {
     recordShellDispatch(run, { callId: 'call-1', command: 'pnpm build' })
     recordShellDispatch(other, { callId: 'call-1', command: 'pnpm test' })
     recordShellOutcome(other, 'call-1', {
-      output: 'continuing in the background (job_id=bash-9).',
+      output:
+        'Command exceeded 120s and is continuing in the background (job_id=bash-9).',
     })
 
     recordJobCollected('bash-9', { output: 'tests passed' })

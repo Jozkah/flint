@@ -4,6 +4,7 @@ import {
   currentPhase,
   dismissFinished,
   emptyActivityState,
+  findTaskByJob,
   endWorkflow,
   forgetSession,
   isCancellable,
@@ -704,5 +705,82 @@ describe('reading the phase work is dispatched under', () => {
     expect(currentPhase(undefined)).toBeUndefined()
     expect(currentPhase(null)).toBeUndefined()
     expect(currentPhase({ phases: [] })).toBeUndefined()
+  })
+})
+
+describe('matching a backend job id to its task', () => {
+  const shellJob = (over: Partial<ActivityTask> = {}) =>
+    task({ kind: 'shell', title: 'pnpm build', status: 'running', ...over })
+
+  it('finds the live task holding the job', () => {
+    const state = withTasks(shellJob({ id: 'a', jobId: 'bash-0' }))
+    expect(findTaskByJob(state, 'bash-0')?.callId).toBe('a')
+  })
+
+  it('still matches a killed task, whose output is what a collection is for', () => {
+    const state = withTasks(
+      shellJob({ id: 'killed', jobId: 'bash-0', status: 'cancelled' })
+    )
+    expect(findTaskByJob(state, 'bash-0')?.callId).toBe('killed')
+  })
+
+  it('prefers live work over a settled claim on the same id', () => {
+    const state = withTasks(
+      shellJob({ id: 'settled', jobId: 'bash-0', status: 'cancelled' }),
+      shellJob({ id: 'live', jobId: 'bash-0', status: 'running' })
+    )
+    expect(findTaskByJob(state, 'bash-0')?.callId).toBe('live')
+  })
+
+  it('prefers the newest live claim on a reused id', () => {
+    const state = withTasks(
+      shellJob({ id: 'old', jobId: 'bash-0', startedAt: T0 }),
+      shellJob({ id: 'new', jobId: 'bash-0', startedAt: T0 + 1000 })
+    )
+    expect(findTaskByJob(state, 'bash-0')?.callId).toBe('new')
+  })
+
+  it('drops every job id when the app restarts', () => {
+    // The backend that minted them died with the app, and its counter starts
+    // again at zero; keeping the id would let unrelated work claim this row.
+    const settled = settleOnLoad(
+      withTasks(shellJob({ id: 'a', jobId: 'bash-0' })),
+      T0 + 50,
+      'restart'
+    )
+    expect(settled.tasks[idOf('a')].jobId).toBeUndefined()
+    expect(settled.tasks[idOf('a')].status).toBe('cancelled')
+    expect(findTaskByJob(settled, 'bash-0')).toBeUndefined()
+  })
+})
+
+describe('phase identity when the todo list is re-indexed', () => {
+  it('does not reuse a phase id for a different phase at the same position', () => {
+    // `todo rm` filters a phase out, shifting every later one down. Position
+    // alone would file the new phase's work under the removed phase's heading.
+    const state = startWorkflow(emptyActivityState(), workflow())
+    const research = observePhase(state, WORKFLOW, {
+      name: 'Research',
+      index: 0,
+    })
+    const implement = observePhase(research.state, WORKFLOW, {
+      name: 'Implement',
+      index: 0,
+    })
+    expect(implement.phaseId).not.toBe(research.phaseId)
+    expect(
+      implement.state.workflows[WORKFLOW].phases.map((p) => p.name)
+    ).toEqual(['Research', 'Implement'])
+  })
+
+  it('still reuses the id for the same phase at the same position', () => {
+    const state = startWorkflow(emptyActivityState(), workflow())
+    const first = observePhase(state, WORKFLOW, { name: 'Research', index: 0 })
+    const again = observePhase(first.state, WORKFLOW, {
+      name: 'Research',
+      index: 0,
+    })
+    expect(again.phaseId).toBe(first.phaseId)
+    expect(again.state).toBe(first.state)
   })
 })

@@ -12,14 +12,18 @@ import type { CoworkTurn } from '@/types/coworkSession'
 /**
  * The job id the `bash` tool reports when a command outruns its timeout.
  *
- * Rust prints a fixed sentence ending `(job_id=bash-N)` — see `handlers.rs`'s
- * background branch — and the CLI's TUI recovers the id from the same marker.
- * Matching the literal marker rather than guessing at prose keeps this exactly
- * as reliable as the contract it reads.
+ * Rust prints a fixed sentence — see `handlers.rs`'s background branch — and
+ * the whole sentence is matched, not just the `job_id=` fragment. The text
+ * handed here is the tool's entire output, which includes the command's own
+ * stdout: `grep -rn job_id src/` prints lines containing `job_id=` and would
+ * otherwise be read as having been backgrounded, stranding it as "running"
+ * forever and pointing its Stop button at a job that does not exist.
  */
 export function backgroundJobId(text: unknown): string | null {
   if (typeof text !== 'string') return null
-  const match = text.match(/\bjob_id=([A-Za-z0-9_-]+)/)
+  const match = text.match(
+    /is continuing in the background \(job_id=([A-Za-z0-9_-]+)\)/
+  )
   return match ? match[1] : null
 }
 
