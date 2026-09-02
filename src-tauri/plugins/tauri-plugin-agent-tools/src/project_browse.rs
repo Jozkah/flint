@@ -12,6 +12,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
+use ignore::Match;
 use serde::Serialize;
 
 /// One directory level per request: the tree loads lazily, so a huge repository
@@ -149,26 +150,66 @@ fn resolve_rel(root_canon: &Path, rel: &str) -> Result<PathBuf, String> {
     Ok(canonical)
 }
 
-/// Gitignore matcher for `dir`, built from every `.gitignore` on the chain from
-/// the root down to `dir`. Missing files are fine; a broken pattern just drops
-/// that file's rules rather than failing the listing.
-fn gitignore_for(root_canon: &Path, dir: &Path) -> Gitignore {
-    let mut builder = GitignoreBuilder::new(root_canon);
-    let mut chain = vec![root_canon.to_path_buf()];
+/// Gitignore matchers for `dir`: one per `.gitignore` on the chain from the
+/// project root down to `dir`, ordered deepest first.
+///
+/// Each file gets its own matcher rooted at *its own* directory, because that
+/// is what a leading-slash pattern is relative to: `/build` in `src/.gitignore`
+/// means `src/build`, never `<root>/build`. Merging every file into one matcher
+/// rooted at the project root — the obvious shortcut — keeps unanchored
+/// patterns (`*.log`) working while silently mis-resolving anchored ones, so
+/// nested rules end up half-honoured in a way that is easy to miss.
+///
+/// Deepest first is git's precedence: the nearest `.gitignore` decides, so a
+/// `!keep.md` beside a file overrides an `*.md` at the root. [`is_ignored`]
+/// stops at the first matcher with an opinion.
+///
+/// `.gitignore` files strictly *below* `dir` are deliberately not read. They
+/// cannot affect this listing: git never lets a directory's own `.gitignore`
+/// ignore that directory, only its contents — and those contents are a
+/// separate lazy request, which reads the file then.
+///
+/// Missing files are fine, and one whose patterns fail to compile is dropped
+/// rather than failing the listing.
+fn gitignore_chain(root_canon: &Path, dir: &Path) -> Vec<Gitignore> {
+    let mut owners = vec![root_canon.to_path_buf()];
     if let Ok(rel) = dir.strip_prefix(root_canon) {
         let mut current = root_canon.to_path_buf();
         for component in rel.components() {
             current = current.join(component);
-            chain.push(current.clone());
+            owners.push(current.clone());
         }
     }
-    for ancestor in chain {
-        let file = ancestor.join(".gitignore");
-        if file.is_file() {
-            let _ = builder.add(file);
+    let mut chain = Vec::new();
+    for owner in owners.into_iter().rev() {
+        let file = owner.join(".gitignore");
+        if !file.is_file() {
+            continue;
+        }
+        let mut builder = GitignoreBuilder::new(&owner);
+        let _ = builder.add(&file);
+        if let Ok(matcher) = builder.build() {
+            if !matcher.is_empty() {
+                chain.push(matcher);
+            }
         }
     }
-    builder.build().unwrap_or_else(|_| Gitignore::empty())
+    chain
+}
+
+/// Is `path` ignored by `chain`? The nearest `.gitignore` with an opinion wins.
+///
+/// Each matcher also answers for the path's parents *within its own root*, so a
+/// rule that ignores a directory keeps ignoring everything under it.
+fn is_ignored(chain: &[Gitignore], path: &Path, is_dir: bool) -> bool {
+    for matcher in chain {
+        match matcher.matched_path_or_any_parents(path, is_dir) {
+            Match::Ignore(_) => return true,
+            Match::Whitelist(_) => return false,
+            Match::None => {}
+        }
+    }
+    false
 }
 
 /// List one directory level of an attached project, lazily and filtered.
@@ -178,7 +219,7 @@ pub fn list_dir(root: &str, rel: &str) -> Result<ProjectListing, String> {
     if !dir.is_dir() {
         return Err(format!("{rel} is not a directory"));
     }
-    let matcher = gitignore_for(&root_canon, &dir);
+    let ignores = gitignore_chain(&root_canon, &dir);
 
     let mut entries: Vec<ProjectEntry> = Vec::new();
     let mut truncated = false;
@@ -199,10 +240,7 @@ pub fn list_dir(root: &str, rel: &str) -> Result<ProjectListing, String> {
         if is_dir && IGNORED_DIRS.contains(&name.as_str()) {
             continue;
         }
-        if matcher
-            .matched_path_or_any_parents(&path, is_dir)
-            .is_ignore()
-        {
+        if is_ignored(&ignores, &path, is_dir) {
             continue;
         }
         let rel_path = match path.strip_prefix(&root_canon) {
@@ -353,6 +391,86 @@ mod tests {
         assert!(!names.contains(&"debug.log"));
         assert!(names.contains(&"src"));
         assert!(names.contains(&"main.rs"));
+    }
+
+    /// Names of the entries `list_dir` returns for `rel`, in listing order.
+    fn names_in(root: &Path, rel: &str) -> Vec<String> {
+        list_dir(root.to_str().unwrap(), rel)
+            .unwrap()
+            .entries
+            .into_iter()
+            .map(|e| e.name)
+            .collect()
+    }
+
+    #[test]
+    fn honours_anchored_patterns_in_a_nested_gitignore() {
+        // A leading slash is relative to the .gitignore's own directory, so
+        // `/local.rs` in src/.gitignore hides src/local.rs and says nothing
+        // about the identically named file at the root. Building one matcher
+        // rooted at the project root instead resolved it against the root and
+        // hid neither.
+        let root = temp_project();
+        std::fs::create_dir(root.join("src")).unwrap();
+        std::fs::write(root.join("src/.gitignore"), "/local.rs\n*.tmp\n").unwrap();
+        std::fs::write(root.join("src/local.rs"), "x").unwrap();
+        std::fs::write(root.join("src/keep.rs"), "x").unwrap();
+        std::fs::write(root.join("src/scratch.tmp"), "x").unwrap();
+        std::fs::write(root.join("local.rs"), "x").unwrap();
+
+        let src = names_in(&root, "src");
+        assert!(!src.contains(&"local.rs".to_string()), "{src:?}");
+        // The unanchored pattern worked even before, and must keep working.
+        assert!(!src.contains(&"scratch.tmp".to_string()), "{src:?}");
+        assert!(src.contains(&"keep.rs".to_string()), "{src:?}");
+
+        // …and the rule stays inside src/: the root's own local.rs is listed.
+        let top = names_in(&root, "");
+        assert!(top.contains(&"local.rs".to_string()), "{top:?}");
+    }
+
+    #[test]
+    fn a_nested_rule_overrides_a_broader_one_at_the_root() {
+        // Git resolves the nearest .gitignore last, so a whitelist beside the
+        // file wins over a sweeping rule above it.
+        let root = temp_project();
+        std::fs::create_dir(root.join("docs")).unwrap();
+        std::fs::write(root.join(".gitignore"), "*.md\n").unwrap();
+        std::fs::write(root.join("docs/.gitignore"), "!README.md\n").unwrap();
+        std::fs::write(root.join("docs/README.md"), "x").unwrap();
+        std::fs::write(root.join("docs/notes.md"), "x").unwrap();
+
+        let docs = names_in(&root, "docs");
+        assert!(docs.contains(&"README.md".to_string()), "{docs:?}");
+        assert!(!docs.contains(&"notes.md".to_string()), "{docs:?}");
+    }
+
+    #[test]
+    fn a_rule_ignoring_a_directory_also_hides_what_is_under_it() {
+        let root = temp_project();
+        std::fs::create_dir_all(root.join("generated/inner")).unwrap();
+        std::fs::write(root.join(".gitignore"), "generated/\n").unwrap();
+        std::fs::write(root.join("generated/inner/thing.rs"), "x").unwrap();
+
+        assert!(!names_in(&root, "").contains(&"generated".to_string()));
+        // Reached directly, the root rule still applies to the contents.
+        assert!(names_in(&root, "generated/inner").is_empty());
+    }
+
+    #[test]
+    fn a_gitignore_below_the_listed_directory_is_not_consulted() {
+        // Pins the documented boundary of `gitignore_chain`. This is git's own
+        // behaviour, not a shortcut: a directory's .gitignore governs its
+        // contents, never the directory itself, so `pkg` is listed however
+        // sweeping `pkg/.gitignore` is — and that file is read when `pkg` is
+        // itself listed, which is the request that it applies to.
+        let root = temp_project();
+        std::fs::create_dir(root.join("pkg")).unwrap();
+        std::fs::write(root.join("pkg/.gitignore"), "*\n").unwrap();
+        std::fs::write(root.join("pkg/hidden.rs"), "x").unwrap();
+
+        assert!(names_in(&root, "").contains(&"pkg".to_string()));
+        assert!(!names_in(&root, "pkg").contains(&"hidden.rs".to_string()));
     }
 
     #[test]
