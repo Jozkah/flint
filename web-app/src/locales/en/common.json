@@ -714,6 +714,7 @@
     "sensitive": "This file looks like credentials and was not opened.",
     "openAnyway": "Open anyway",
     "openInCode": "Open in Code",
+    "denied": "You do not have permission to read this.",
     "retry": "Retry",
     "closeMissing": "Close tab",
     "toggleWrap": "Toggle word wrap",

@@ -36,6 +36,8 @@ import {
 type DirState =
   | { status: 'loading' }
   | { status: 'ready'; entries: ProjectEntry[]; truncated: boolean }
+  /** The OS refused: a state of its own, not a failure to report raw. */
+  | { status: 'denied' }
   | { status: 'error'; message: string }
 
 type FileState =
@@ -43,6 +45,7 @@ type FileState =
   | { status: 'ready'; content: string }
   | { status: 'oversized'; size: number }
   | { status: 'binary' }
+  | { status: 'denied' }
   | { status: 'sensitive' }
   | { status: 'error'; message: string }
 
@@ -120,7 +123,13 @@ export function CoworkCodePanel({
           truncated: listing.truncated,
         })
       } catch (e) {
-        setDir(rel, { status: 'error', message: messageOf(e) })
+        const message = messageOf(e)
+        setDir(
+          rel,
+          message.startsWith(DENIED_PREFIX)
+            ? { status: 'denied' }
+            : { status: 'error', message }
+        )
       }
     },
     [folder, dataFolder, setDir]
@@ -181,7 +190,9 @@ export function CoworkCodePanel({
           tabPath,
           message.startsWith('SENSITIVE:')
             ? { status: 'sensitive' }
-            : { status: 'error', message }
+            : message.startsWith(DENIED_PREFIX)
+              ? { status: 'denied' }
+              : { status: 'error', message }
         )
       }
     },
@@ -233,11 +244,28 @@ export function CoworkCodePanel({
         </p>
       )
     }
+    if (dir.status === 'denied') {
+      return (
+        <p
+          className="px-3 py-1 text-xs text-muted-foreground"
+          style={indent(depth)}
+        >
+          {t('common:codePanel.denied')}
+        </p>
+      )
+    }
     if (dir.status === 'error') {
       return (
-        <p className="px-3 py-1 text-xs text-destructive" style={indent(depth)}>
-          {dir.message}
-        </p>
+        <div style={indent(depth)} className="px-3 py-1">
+          <p className="text-xs text-destructive">{dir.message}</p>
+          <button
+            type="button"
+            onClick={() => void loadDir(rel)}
+            className="mt-1 text-xs text-muted-foreground underline hover:text-foreground"
+          >
+            {t('common:codePanel.retry')}
+          </button>
+        </div>
       )
     }
     if (dir.entries.length === 0) {
@@ -431,6 +459,8 @@ export function CoworkCodePanel({
             </Notice>
           ) : activeFile.status === 'binary' ? (
             <Notice>{t('common:codePanel.binary')}</Notice>
+          ) : activeFile.status === 'denied' ? (
+            <Notice>{t('common:codePanel.denied')}</Notice>
           ) : activeFile.status === 'sensitive' ? (
             <Notice>
               <span className="block">{t('common:codePanel.sensitive')}</span>
@@ -485,6 +515,9 @@ function Notice({ children }: { children: React.ReactNode }) {
 }
 
 const indent = (depth: number) => ({ paddingLeft: `${8 + depth * 12}px` })
+
+/** Marker the Rust side puts on an error the OS refused for permissions. */
+const DENIED_PREFIX = 'DENIED: '
 
 const messageOf = (e: unknown): string =>
   e && typeof e === 'object' && 'message' in e

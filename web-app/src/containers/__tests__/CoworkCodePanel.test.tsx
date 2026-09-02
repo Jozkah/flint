@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useState } from 'react'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('@/i18n/react-i18next-compat', () => ({
@@ -155,6 +155,44 @@ describe('CoworkCodePanel', () => {
       await screen.findByText('Permission denied (os error 13)')
     ).toBeInTheDocument()
     expect(screen.queryByText('common:codePanel.emptyDir')).toBeNull()
+  })
+
+  it('shows a permission refusal as its own state, not raw OS text', async () => {
+    // The backend marks a denial with `DENIED:` so the panel can say "you may
+    // not read this" instead of showing platform-specific errno prose, which
+    // reads to a user as a crash.
+    listDir.mockRejectedValue(new Error('DENIED: locked'))
+    render(<Harness />)
+
+    expect(
+      await screen.findByText('common:codePanel.denied')
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/DENIED/)).toBeNull()
+    expect(screen.queryByText('common:codePanel.emptyDir')).toBeNull()
+  })
+
+  it('offers a retry on an ordinary listing failure', async () => {
+    listDir.mockRejectedValueOnce(new Error('I/O error'))
+    render(<Harness />)
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'common:codePanel.retry' })
+    )
+
+    listDir.mockResolvedValue(listing(fileEntry('app.ts')))
+    await waitFor(() => expect(listDir).toHaveBeenCalledTimes(2))
+  })
+
+  it('shows a refused file read as a permission state too', async () => {
+    listDir.mockResolvedValue(listing(fileEntry('locked.ts')))
+    readFile.mockRejectedValue(new Error('DENIED: locked.ts'))
+    render(<Harness />)
+
+    await openFromExplorer('locked.ts')
+
+    expect(
+      await screen.findByText('common:codePanel.denied')
+    ).toBeInTheDocument()
   })
 
   it('opens a source file in a tab and reports the new state', async () => {

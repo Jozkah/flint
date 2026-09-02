@@ -212,6 +212,21 @@ fn is_ignored(chain: &[Gitignore], path: &Path, is_dir: bool) -> bool {
     false
 }
 
+/// Marker prefix on an error the OS refused for permissions.
+///
+/// The panel shows a "no permission to read this" state rather than the raw
+/// OS text, which differs per platform and reads as a crash. Same shape as
+/// the `SENSITIVE:` marker, so the renderer has one convention to follow.
+pub const DENIED_PREFIX: &str = "DENIED: ";
+
+/// Tag a filesystem error so the caller can tell "you may not" from "it broke".
+fn denial_aware(rel: &str, error: std::io::Error, verb: &str) -> String {
+    if error.kind() == std::io::ErrorKind::PermissionDenied {
+        return format!("{DENIED_PREFIX}{rel}");
+    }
+    format!("cannot {verb} {rel}: {error}")
+}
+
 /// List one directory level of an attached project, lazily and filtered.
 pub fn list_dir(root: &str, rel: &str) -> Result<ProjectListing, String> {
     let root_canon = canonical_root(root)?;
@@ -223,7 +238,7 @@ pub fn list_dir(root: &str, rel: &str) -> Result<ProjectListing, String> {
 
     let mut entries: Vec<ProjectEntry> = Vec::new();
     let mut truncated = false;
-    let read = std::fs::read_dir(&dir).map_err(|e| format!("cannot list {rel}: {e}"))?;
+    let read = std::fs::read_dir(&dir).map_err(|e| denial_aware(rel, e, "list"))?;
     for entry in read.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         let path = dir.join(&name);
@@ -285,7 +300,7 @@ pub fn read_file(root: &str, rel: &str, allow_sensitive: bool) -> Result<Project
         return Err(format!("SENSITIVE: {rel} looks like a credentials file"));
     }
     let size = std::fs::metadata(&file)
-        .map_err(|e| format!("cannot stat {rel}: {e}"))?
+        .map_err(|e| denial_aware(rel, e, "stat"))?
         .len();
     if size > MAX_READ_BYTES {
         return Ok(ProjectFile {
@@ -296,7 +311,7 @@ pub fn read_file(root: &str, rel: &str, allow_sensitive: bool) -> Result<Project
             binary: false,
         });
     }
-    let bytes = std::fs::read(&file).map_err(|e| format!("cannot read {rel}: {e}"))?;
+    let bytes = std::fs::read(&file).map_err(|e| denial_aware(rel, e, "read"))?;
     let head = &bytes[..bytes.len().min(8192)];
     if head.contains(&0) {
         return Ok(ProjectFile {
@@ -471,6 +486,42 @@ mod tests {
 
         assert!(names_in(&root, "").contains(&"pkg".to_string()));
         assert!(!names_in(&root, "pkg").contains(&"hidden.rs".to_string()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reports_a_permission_denial_distinctly() {
+        // The panel needs "you may not read this" apart from "it broke": the
+        // raw OS text differs per platform and reads to a user like a crash.
+        use std::os::unix::fs::PermissionsExt;
+        let root = temp_project();
+        let locked = root.join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::write(locked.join("inside.txt"), "x").unwrap();
+        let secret = root.join("secret.txt");
+        std::fs::write(&secret, "x").unwrap();
+
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let dir_err = list_dir(root.to_str().unwrap(), "locked").unwrap_err();
+        let file_err = read_file(root.to_str().unwrap(), "secret.txt", false).unwrap_err();
+
+        // Restore before asserting, so a failure cannot leave the tree unremovable.
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert!(dir_err.starts_with(DENIED_PREFIX), "{dir_err}");
+        assert!(file_err.starts_with(DENIED_PREFIX), "{file_err}");
+        // The refused path is named, and no OS text leaks through.
+        assert!(dir_err.contains("locked"), "{dir_err}");
+    }
+
+    #[test]
+    fn an_ordinary_failure_is_not_reported_as_a_denial() {
+        let root = temp_project();
+        let err = list_dir(root.to_str().unwrap(), "nope").unwrap_err();
+        assert!(!err.starts_with(DENIED_PREFIX), "{err}");
     }
 
     #[test]
