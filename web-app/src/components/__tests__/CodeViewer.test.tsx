@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { codeToHtml } from 'shiki'
 import { CodeViewer } from '../CodeViewer'
@@ -177,5 +177,137 @@ describe('CodeViewer', () => {
     expect(region).toHaveAttribute('tabindex', '0')
     region.focus()
     expect(region).toHaveFocus()
+  })
+})
+
+// Highlighting that stamps each line the way the real transformer does, so a
+// selection can be mapped back to a line by structure rather than by text.
+const REPEATED = 'if (a) {\n  run()\n}\nif (b) {\n  run()\n}\n'
+
+const resolvesWithLines = () =>
+  highlight.mockImplementation((code: string, opts: { theme: string }) =>
+    Promise.resolve(
+      `<pre class="shiki theme-${opts.theme}"><code>` +
+        code
+          .split('\n')
+          .map(
+            (line, i) =>
+              `<span class="line" data-cv-line="${i + 1}">${line}</span>`
+          )
+          .join('\n') +
+        '</code></pre>'
+    )
+  )
+
+/** Select the whole text of the rendered line `n` in the visible pane. */
+const selectLine = (n: number) => {
+  const body = screen.getByTestId('code-viewer-body')
+  // Two panes are rendered (light and dark); either maps to the same lines.
+  const line = body.querySelector(`[data-cv-line="${n}"]`)!
+  const range = document.createRange()
+  range.selectNodeContents(line)
+  const sel = window.getSelection()!
+  sel.removeAllRanges()
+  sel.addRange(range)
+  fireEvent.mouseUp(body)
+}
+
+describe('CodeViewer selection → line range', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    highlight.mockReset()
+    resolvesWithLines()
+  })
+
+  it('reports the line that was selected, not the first identical one', async () => {
+    // The regression: the range came from `content.indexOf(selectedText)`, so
+    // selecting the second `run()` reported line 2 — the first match — and the
+    // reference sent to the model pointed at the wrong place. Both `run()`
+    // lines are byte-identical, so only the DOM knows which one was selected.
+    const onAddToChat = vi.fn()
+    render(
+      <CodeViewer
+        {...defaults}
+        content={REPEATED}
+        onToggleWrap={vi.fn()}
+        onAddToChat={onAddToChat}
+      />
+    )
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('code-viewer-body').querySelector('[data-cv-line]')
+      ).not.toBeNull()
+    )
+
+    selectLine(5)
+    // fireEvent, not userEvent: userEvent emulates a full pointer sequence
+    // that collapses the document selection before the click, which is the
+    // very gesture `onMouseDown`'s preventDefault exists to survive in a real
+    // browser. Driving the click directly keeps this test about line mapping.
+    fireEvent.click(screen.getByText('common:codePanel.addToChat'))
+
+    expect(onAddToChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: 'src/a.ts',
+        startLine: 5,
+        endLine: 5,
+        code: '  run()',
+      })
+    )
+  })
+
+  it('reports the first one when that is the one selected', async () => {
+    const onAddToChat = vi.fn()
+    render(
+      <CodeViewer
+        {...defaults}
+        content={REPEATED}
+        onToggleWrap={vi.fn()}
+        onAddToChat={onAddToChat}
+      />
+    )
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('code-viewer-body').querySelector('[data-cv-line]')
+      ).not.toBeNull()
+    )
+
+    selectLine(2)
+    fireEvent.click(screen.getByText('common:codePanel.addToChat'))
+
+    expect(onAddToChat).toHaveBeenCalledWith(
+      expect.objectContaining({ startLine: 2, endLine: 2 })
+    )
+  })
+
+  it('offers nothing when an ambiguous selection cannot be placed', async () => {
+    // Highlighting has not resolved, so there are no stamped lines to read and
+    // the text alone is ambiguous. Reporting a guess would put a wrong line
+    // range in the prompt, so the action is withheld instead.
+    highlight.mockReset()
+    pending()
+    render(
+      <CodeViewer
+        {...defaults}
+        content={REPEATED}
+        onToggleWrap={vi.fn()}
+        onAddToChat={vi.fn()}
+      />
+    )
+
+    const body = screen.getByTestId('code-viewer-body')
+    const pre = body.querySelector('pre')!
+    const range = document.createRange()
+    // "  run()" occurs twice in the raw text.
+    range.setStart(pre.firstChild!, REPEATED.indexOf('  run()'))
+    range.setEnd(pre.firstChild!, REPEATED.indexOf('  run()') + 7)
+    const sel = window.getSelection()!
+    sel.removeAllRanges()
+    sel.addRange(range)
+    fireEvent.mouseUp(body)
+
+    expect(
+      screen.queryByText('common:codePanel.addToChat')
+    ).not.toBeInTheDocument()
   })
 })

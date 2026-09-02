@@ -44,6 +44,11 @@ type CodeViewerProps = {
 const lineNumbers: ShikiTransformer = {
   name: 'code-viewer-line-numbers',
   line(node, line) {
+    // Stamped on the line itself so a selection can be mapped back to a line
+    // number by structure. Reading it off the DOM beats searching the text
+    // for the selected string, which lands on the wrong line whenever the
+    // selection is not unique — `}` or `return` matches the first one.
+    node.properties = { ...node.properties, 'data-cv-line': String(line) }
     node.children.unshift({
       type: 'element',
       tagName: 'span',
@@ -62,6 +67,18 @@ const lineNumbers: ShikiTransformer = {
       children: [{ type: 'text', value: String(line) }],
     })
   },
+}
+
+/** 1-based line number of the rendered line containing `node`, if any. */
+function lineOfNode(node: Node | null): number | null {
+  let element =
+    node instanceof Element ? node : (node?.parentElement ?? null)
+  while (element && !element.hasAttribute('data-cv-line')) {
+    element = element.parentElement
+  }
+  if (!element) return null
+  const line = Number(element.getAttribute('data-cv-line'))
+  return Number.isFinite(line) && line > 0 ? line : null
 }
 
 /**
@@ -143,18 +160,37 @@ export function CodeViewer({
       setSelection(null)
       return
     }
-    const start = content.indexOf(text)
-    if (start < 0) {
-      // Rendering split the selection in a way we cannot map back; offer
-      // nothing rather than a wrong range.
-      setSelection(null)
-      return
+    const range = sel.getRangeAt(0)
+    const from = lineOfNode(range.startContainer)
+    // A selection dragged past the end of a line stops at offset 0 of the
+    // next one, which contributes no character and must not be counted.
+    const rawTo = lineOfNode(range.endContainer)
+    const to =
+      rawTo !== null && range.endOffset === 0 && rawTo > (from ?? rawTo)
+        ? rawTo - 1
+        : rawTo
+
+    let startLine: number
+    let endLine: number
+    if (from !== null && to !== null) {
+      startLine = Math.min(from, to)
+      endLine = Math.max(from, to)
+    } else {
+      // No highlighted lines to read: Shiki has not resolved yet, so the
+      // plain <pre> is showing. Offsets are only trustworthy when the
+      // selected text appears exactly once — otherwise report nothing rather
+      // than a wrong range.
+      const start = content.indexOf(text)
+      if (start < 0 || content.indexOf(text, start + 1) >= 0) {
+        setSelection(null)
+        return
+      }
+      ;({ startLine, endLine } = lineRangeOfSlice(
+        content,
+        start,
+        start + text.length
+      ))
     }
-    const { startLine, endLine } = lineRangeOfSlice(
-      content,
-      start,
-      start + text.length
-    )
     setSelection({ path: relPath, startLine, endLine, code: text })
   }, [content, onAddToChat, relPath])
 
@@ -269,6 +305,13 @@ export function CodeViewer({
               size="sm"
               variant="secondary"
               className="shadow-md"
+              // The button sits inside the region that watches for selection
+              // changes. Without this, pressing it collapses the selection,
+              // the mouseup that follows clears `selection`, the button
+              // unmounts mid-gesture and the click never lands — the action
+              // is simply unclickable. Suppressing the default mousedown
+              // keeps the selection alive until onClick has run.
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 onAddToChat(selection)
                 setSelection(null)
