@@ -27,6 +27,17 @@ import {
   ensureCurrentSession,
 } from '@/hooks/useCoworkSessions'
 import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
+import { useCoworkActivity } from '@/hooks/useCoworkActivity'
+import {
+  lastUserQuestion,
+  recordAgentDispatch,
+  recordJobCollected,
+  recordShellDispatch,
+  recordShellOutcome,
+  type RunContext,
+} from '@/lib/coworkActivityRecorder'
+import { collectedJobId, commandOf, countToolCalls } from '@/lib/coworkTasks'
+import { INTERRUPTED_BY_RUN_END } from '@/lib/coworkActivity'
 import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -95,6 +106,10 @@ import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
 import {
   abortRun,
+  beginRun,
+  endRun,
+  registerSubagent,
+  unregisterSubagent,
   isAbortLike,
   answerAsk,
   runTurn,
@@ -475,6 +490,17 @@ function CoworkPage() {
 
     const controller = new AbortController()
     abortRef.current = controller
+    // One run, one workflow id. Registering the run is what makes stopping it —
+    // as a whole, or one dispatched child at a time — actually reach anything.
+    const runId = crypto.randomUUID()
+    beginRun(sid, runId, controller)
+    const run: RunContext = {
+      sessionId: sid,
+      runId,
+      // The turn's own question, or the one being taken again.
+      title: text || lastUserQuestion(current?.messages) || t('common:tasks.untitledRun'),
+      model: selectedModel.id,
+    }
 
     const sink: StreamSink = {
       onText: (delta) => {
@@ -499,10 +525,24 @@ function CoworkPage() {
           row.args = call.input
           setLiveTurns([...liveTurnsRef.current])
         }
+        // A shell command is background work the moment it starts, and its
+        // arguments are the only place the command line exists.
+        const command = commandOf(call.input)
+        if (command) {
+          recordShellDispatch(run, {
+            callId: call.toolCallId,
+            command,
+            anchorMessageId,
+          })
+        }
       },
     }
 
     const baseMessages = current?.messages ?? []
+    // The assistant message this run's work is reported under: the same id
+    // `nextMessageId` will hand the first assistant message of this turn.
+    // Recorded once, so the conversation shows exactly one card per workflow.
+    const anchorMessageId = `${sid}-asst-${baseMessages.length}`
     // The transcript shows `text` as typed; the model additionally receives the
     // staged code references expanded under it (exact path, line range and the
     // selected source). Only content the user explicitly selected travels.
@@ -591,7 +631,27 @@ function CoworkPage() {
                     isError: true,
                   }
                 }
-                const child = await runSubagent({
+                // Recorded before the child starts: the dispatch is the only
+                // moment the agent name, description and model are known
+                // together, and the record has to exist for the queue position
+                // that arrives next to land on something.
+                recordAgentDispatch(run, {
+                  callId,
+                  agentName: resolved.name,
+                  description: req.description,
+                  model: selectedModel.id,
+                  anchorMessageId,
+                })
+                // Its own controller, chained to the run's, so this one child
+                // can be stopped without stopping the turn.
+                const childAbort = registerSubagent(sid, callId)
+                const stopChild = () => childAbort.abort('cancelled')
+                controller.signal.addEventListener('abort', stopChild, {
+                  once: true,
+                })
+                const activity = useCoworkActivity.getState()
+                try {
+                  const child = await runSubagent({
                   resolved,
                   description: req.description,
                   // The parent's instance: a second one would mean a second
@@ -603,7 +663,7 @@ function CoworkPage() {
                     readOnlyFolder: current?.folder ?? null,
                     bashAvailable: sandboxEnforces(),
                   },
-                  signal: controller.signal,
+                  signal: childAbort.signal,
                   sessionTokens: 0,
                   // A child never gets `todo`/`ask`/`task`, so these refuse
                   // rather than execute: a model can still emit a call to a
@@ -630,26 +690,62 @@ function CoworkPage() {
                       }),
                     }),
                   events: {
-                    onQueued: (waiting) =>
+                    onQueued: (waiting) => {
                       useCoworkRun
                         .getState()
-                        .queueSubagent(sid, callId, resolved.name, waiting),
-                    onStart: () =>
+                        .queueSubagent(sid, callId, resolved.name, waiting)
+                      activity.patchTask(callId, { status: 'queued', waiting })
+                    },
+                    onStart: () => {
                       useCoworkRun
                         .getState()
-                        .startSubagent(sid, callId, resolved.name),
-                    onInner: (event) =>
+                        .startSubagent(sid, callId, resolved.name)
+                      activity.patchTask(callId, {
+                        status: 'running',
+                        waiting: undefined,
+                        startedAt: Date.now(),
+                      })
+                    },
+                    onInner: (event) => {
                       useCoworkRun
                         .getState()
-                        .routeIntoSubagent(sid, callId, event),
-                    onEnd: (usage) =>
-                      useCoworkRun.getState().endSubagent(sid, callId, usage),
+                        .routeIntoSubagent(sid, callId, event)
+                      // Mirrored onto the record so the panel can show the
+                      // child's own trace without reaching into the run store.
+                      const turns = (
+                        useCoworkRun.getState().subagents[sid] ?? []
+                      ).find((one) => one.runId === callId)?.turns
+                      if (turns) {
+                        activity.patchTask(callId, {
+                          transcript: turns,
+                          toolCount: countToolCalls(turns),
+                        })
+                      }
+                    },
+                    onEnd: (usage) => {
+                      useCoworkRun.getState().endSubagent(sid, callId, usage)
+                      activity.patchTask(callId, {
+                        status: 'done',
+                        endedAt: Date.now(),
+                        usage: usage ?? undefined,
+                      })
+                    },
                   },
                 })
                 useCoworkRun
                   .getState()
                   .attachSubagentOutput(sid, callId, child.output)
+                activity.patchTask(callId, {
+                  output: child.output,
+                  ...(child.isError
+                    ? { status: 'error' as const, endedAt: Date.now() }
+                    : {}),
+                })
                 return { output: child.output, isError: child.isError }
+                } finally {
+                  controller.signal.removeEventListener('abort', stopChild)
+                  unregisterSubagent(sid, callId)
+                }
               },
             }),
           sink,
@@ -667,6 +763,15 @@ function CoworkPage() {
               if (outcome.diff) {
                 useToolCallRuntime.getState().recordDiff(callId, outcome.diff)
               }
+              const turn = turns.find(
+                (one) => one.role === 'tool' && one.callId === callId
+              )
+              if (turn?.name !== 'bash') continue
+              // A collecting call settles the command it collects, which is a
+              // different row; a plain call settles its own.
+              const collecting = collectedJobId(turn.args)
+              if (collecting) recordJobCollected(collecting, outcome)
+              else recordShellOutcome(callId, outcome)
             }
           },
           nextMessageId: (() => {
@@ -687,6 +792,12 @@ function CoworkPage() {
           }
     } finally {
       useAppState.getState().updateLoadingModel(false)
+      endRun(sid, runId)
+      // Nothing can still be running once the turn is over: the streams are
+      // closed and the dispatch loop has stopped awaiting them. Settle before
+      // closing the workflow, so its status is derived from settled children.
+      useCoworkActivity.getState().settleSession(sid, INTERRUPTED_BY_RUN_END)
+      useCoworkActivity.getState().finishWorkflow(runId)
       useCoworkSessions
         .getState()
         .commitTurns(

@@ -37,6 +37,7 @@ import {
   type MessageCircleIconHandle,
 } from '@/components/animated-icon/message-circle'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
+import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { memo, useCallback, useRef, useState } from 'react'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
 
@@ -142,7 +143,12 @@ export function NavCowork() {
   ]
 
   const confirmDelete = () => {
-    if (pendingDelete) useCoworkSessions.getState().deleteSession(pendingDelete.id)
+    if (pendingDelete) {
+      useCoworkSessions.getState().deleteSession(pendingDelete.id)
+      // The activity record is keyed by session; leaving it behind would keep
+      // a deleted session's workflows in the store forever.
+      useCoworkActivity.getState().dropSession(pendingDelete.id)
+    }
     setPendingDelete(null)
   }
 

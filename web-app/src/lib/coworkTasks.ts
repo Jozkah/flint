@@ -77,7 +77,8 @@ export function elapsedMs(row: TaskRow, now: number): number | undefined {
   return Math.max(0, end - row.startedAt)
 }
 
-const commandOf = (args: unknown): string | undefined => {
+/** The command line a `bash` call carries, when its arguments have parsed. */
+export const commandOf = (args: unknown): string | undefined => {
   if (args && typeof args === 'object' && 'command' in args) {
     const value = (args as Record<string, unknown>).command
     return typeof value === 'string' ? value : undefined
@@ -103,7 +104,7 @@ export function subagentTasks(runs: SubagentRun[] | undefined): TaskRow[] {
 }
 
 /** The `job_id` a `bash` call passed to collect a backgrounded command. */
-const collectedJobId = (args: unknown): string | undefined => {
+export const collectedJobId = (args: unknown): string | undefined => {
   if (args && typeof args === 'object' && 'job_id' in args) {
     const value = (args as Record<string, unknown>).job_id
     return typeof value === 'string' && value ? value : undefined

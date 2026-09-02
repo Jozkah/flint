@@ -64,10 +64,22 @@ export function isRunning(sid: string): boolean {
   return handles.has(sid)
 }
 
-function createHandle(sid: string, runId: string): RunHandle {
+/**
+ * Register a run so its children can be cancelled individually.
+ *
+ * The caller owns the outer controller — it is the one the route already
+ * passes to `runTurn` and aborts from the stop button — and hands it over here
+ * so `abortRun` reaches the same stream the route started. Without this the
+ * handle map held nothing and every cancellation path was a no-op.
+ */
+export function beginRun(
+  sid: string,
+  runId: string,
+  outer: AbortController
+): RunHandle {
   const handle: RunHandle = {
     runId,
-    outer: new AbortController(),
+    outer,
     tools: new AbortController(),
     subagents: new Map(),
     pendingAsks: new Map(),
@@ -76,13 +88,72 @@ function createHandle(sid: string, runId: string): RunHandle {
   return handle
 }
 
+/** Forget a run once it is over, without aborting anything. */
+export function endRun(sid: string, runId?: string): void {
+  const handle = handles.get(sid)
+  // Guarded by run id: a turn that finishes after the next one has already
+  // started must not unregister the run now in flight.
+  if (!handle || (runId != null && handle.runId !== runId)) return
+  handles.delete(sid)
+}
+
+/**
+ * Give one dispatched subagent its own cancellation, chained to the run's.
+ *
+ * Returns the controller to pass as that child's signal. Registering it is what
+ * makes a single child cancellable: without it every child shared the run's
+ * controller, so the only way to stop one was to stop the whole run.
+ *
+ * `taskId` is the dispatching tool call id — the same id the activity record
+ * uses — so a cancel request from the UI finds the right controller.
+ */
+export function registerSubagent(sid: string, taskId: string): AbortController {
+  const controller = new AbortController()
+  const handle = handles.get(sid)
+  if (!handle) {
+    // The run is already gone: hand back a controller that is already aborted
+    // rather than one that will never fire, so the caller does not start work
+    // nothing can stop.
+    controller.abort('cancelled')
+    return controller
+  }
+  handle.subagents.set(taskId, controller)
+  return controller
+}
+
+/** Forget a child's controller once it has finished. */
+export function unregisterSubagent(sid: string, taskId: string): void {
+  handles.get(sid)?.subagents.delete(taskId)
+}
+
+/**
+ * Stop one dispatched subagent, leaving the rest of the run going.
+ *
+ * Returns false when there is nothing to stop — the child already finished, or
+ * the run is over — so a caller can report that rather than claim a cancel it
+ * did not perform.
+ */
+export function abortSubagent(
+  sid: string,
+  taskId: string,
+  reason = 'cancelled'
+): boolean {
+  const controller = handles.get(sid)?.subagents.get(taskId)
+  if (!controller) return false
+  controller.abort(reason)
+  handles.get(sid)?.subagents.delete(taskId)
+  return true
+}
+
 /**
  * Stop a session's run: the model stream, the tool dispatch loop, every nested
  * subagent, and any question the user was being asked.
  *
- * An in-flight `bash` cannot be cancelled — `execute_tool` is a plain `invoke`
- * with no cancellation token — so its result is discarded and the process runs
- * to completion.
+ * A `bash` call already in flight is not stopped here — `execute_tool` is a
+ * plain `invoke` with no cancellation token — so its result is discarded and
+ * the process runs to completion. A command that has been *backgrounded* does
+ * have a job id, and is killed through `bash_job_kill` by the activity layer,
+ * which is the only place that knows which job belongs to which task.
  */
 export function abortRun(sid: string, reason = 'cancelled'): void {
   const handle = handles.get(sid)
@@ -436,4 +507,4 @@ export async function runTurn(opts: {
   }
 }
 
-export const __testing = { handles, createHandle }
+export const __testing = { handles }
