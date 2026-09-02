@@ -212,7 +212,10 @@ describe('buildSettingsIndex', () => {
 
 describe('SETTINGS_ITEMS', () => {
   it('anchors each setting to a stable id, never a translated string', () => {
+    // The anchor is optional — a setting whose control has nowhere to scroll
+    // to carries none — but when present it is always a stable id.
     for (const item of SETTINGS_ITEMS) {
+      if (item.anchor === undefined) continue
       expect(item.anchor).toMatch(/^settings-[a-z0-9-]+$/)
     }
   })
@@ -245,6 +248,7 @@ describe('SETTINGS_ITEMS', () => {
     // ids: everywhere else the anchor is still the entry's own stable id.
     for (const item of SETTINGS_ITEMS) {
       if (item.anchor === WEB_SEARCH_PROVIDER_CONFIG_ANCHOR) continue
+      if (item.anchor === undefined) continue
       expect(item.anchor, item.id).toBe(item.id)
     }
   })

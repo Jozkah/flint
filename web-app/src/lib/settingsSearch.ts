@@ -262,12 +262,20 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:agentTools.networkDesc',
     keywords: ['bash network', 'sandbox network'],
   }),
-  // Local API server
+  // Local API server.
+  //
+  // Host and port live inside the page's "Configuration" popover, which is
+  // closed on arrival and unmounts its content. There is nothing on the page
+  // to scroll to, so these carry no anchor: the result still finds them and
+  // opens the page, and the search stops promising a highlight it cannot
+  // deliver. Give them an anchor again if the controls move into the page.
   item('local-api-server', 'host', 'settings:localApiServer.serverHost', {
+    anchor: undefined,
     descriptionKey: 'settings:localApiServer.serverHostDesc',
     keywords: ['host', 'address', 'bind'],
   }),
   item('local-api-server', 'port', 'settings:localApiServer.serverPort', {
+    anchor: undefined,
     descriptionKey: 'settings:localApiServer.serverPortDesc',
     keywords: ['port', 'listen'],
   }),
@@ -293,11 +301,14 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:attachments.maxFileDesc',
     keywords: ['file size', 'limit'],
   }),
-  // Hardware
-  item('hardware', 'vulkan', 'settings:hardware.enableVulkan', {
-    descriptionKey: 'settings:hardware.enableVulkanDesc',
-    keywords: ['gpu', 'acceleration', 'graphics'],
-  }),
+  // Hardware has no individual entries: the page is a read-out of the
+  // detected CPU, RAM and GPUs plus a switch per device, none of which is a
+  // named setting with a stable anchor. It stays findable as a page, with
+  // "gpu"/"cpu"/"ram"/"vram" as its keywords.
+  //
+  // `settings:hardware.enableVulkan` was listed here, but the Vulkan toggle
+  // it named has no UI anywhere — only a persisted store nothing reads. A
+  // result for a control that does not exist is worse than no result.
 ]
 
 // ---------------------------------------------------------------------------
