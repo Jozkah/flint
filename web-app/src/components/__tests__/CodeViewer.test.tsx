@@ -43,6 +43,7 @@ const SOURCE = "export const a = 1\nconsole.log(a)\n"
 
 const defaults = {
   relPath: 'src/a.ts',
+  origin: { kind: 'project' as const, projectKey: '/home/dev/project' },
   content: SOURCE,
   wordWrap: false,
   onToggleWrap: vi.fn(),
@@ -348,5 +349,47 @@ describe('CodeViewer selection → line range', () => {
     expect(
       screen.queryByText('common:codePanel.addToChat')
     ).not.toBeInTheDocument()
+  })
+})
+
+describe('CodeViewer — reference origin', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    highlight.mockReset()
+    clearHighlightCache()
+    useTheme.setState({ isDark: false })
+    resolvesWithLines()
+  })
+
+  it('stamps the viewer’s own origin onto the reference it emits', async () => {
+    // A sandbox file must never reach the model labelled as the user's
+    // project: the origin travels with the reference, it is not inferred.
+    const onAddToChat = vi.fn()
+    render(
+      <CodeViewer
+        {...defaults}
+        origin={{ kind: 'sandbox' }}
+        content={REPEATED}
+        onToggleWrap={vi.fn()}
+        onAddToChat={onAddToChat}
+      />
+    )
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('code-viewer-body').querySelector('[data-cv-line]')
+      ).not.toBeNull()
+    )
+
+    selectLine(5)
+    fireEvent.click(screen.getByText('common:codePanel.addToChat'))
+
+    expect(onAddToChat).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: { kind: 'sandbox' } })
+    )
+  })
+
+  it('says the file is read-only', () => {
+    render(<CodeViewer {...defaults} onToggleWrap={vi.fn()} />)
+    expect(screen.getByText('common:codePanel.readOnly')).toBeInTheDocument()
   })
 })

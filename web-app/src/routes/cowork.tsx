@@ -71,10 +71,13 @@ import {
   emptyCodePanelState,
   expandCodeRefs,
   openTab,
-  sandboxTabPath,
+  projectKeyOf,
+  projectTab,
+  sandboxTab,
   shouldOpenInCode,
   relativeToRoot,
   type CodeRef,
+  type CodeTab,
 } from '@/lib/coworkCode'
 import { CoworkChangesChip } from '@/containers/CoworkChangesChip'
 import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
@@ -161,19 +164,19 @@ function CoworkPage() {
   /** Open a tab in the Code panel. `sandbox` marks paths under the session
    * workspace (agent artifacts) rather than the attached project. */
   const openCode = useCallback(
-    (path: string, opts?: { sandbox?: boolean }) => {
+    (tab: CodeTab) => {
       const sid = ensureCurrentSession()
       const store = useCoworkSessions.getState()
       const current = store.sessions.find((s) => s.id === sid)
-      const tabPath = opts?.sandbox ? sandboxTabPath(path) : path
       store.setCodePanel(
         sid,
-        openTab(current?.codePanel ?? emptyCodePanelState(), tabPath)
+        openTab(current?.codePanel ?? emptyCodePanelState(), tab)
       )
       setRail({ kind: 'code' })
     },
     []
   )
+
   /**
    * Open a path a tool acted on, from its widget in the transcript.
    *
@@ -187,9 +190,14 @@ function CoworkPage() {
   const openToolPath = useCallback(
     (path: string) => {
       if (!shouldOpenInCode(path)) return
+      const projectKey = projectKeyOf(folder)
       const relative = relativeToRoot(folder, path)
-      if (folder && relative !== path) openCode(relative)
-      else openCode(relativeToRoot(workspacePath, path), { sandbox: true })
+      // Only call it a project file when it really resolved inside the project.
+      if (projectKey && relative !== path) {
+        openCode(projectTab(relative, projectKey))
+      } else {
+        openCode(sandboxTab(relativeToRoot(workspacePath, path)))
+      }
     },
     [folder, workspacePath, openCode]
   )
@@ -197,7 +205,9 @@ function CoworkPage() {
   // Source artifacts open as code, not as a plain-text preview dump.
   const showPreview = useCallback(
     (path: string) => {
-      if (shouldOpenInCode(path)) openCode(path, { sandbox: true })
+      // An artifact is something the agent generated: it lives in the session
+      // workspace, never in the user's project.
+      if (shouldOpenInCode(path)) openCode({ path, origin: { kind: 'artifact' } })
       else setRail({ kind: 'preview', path })
     },
     [openCode]

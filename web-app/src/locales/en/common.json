@@ -722,7 +722,15 @@
     "copyCode": "Copy code",
     "addToChat": "Add to chat ({{range}})",
     "stale": "The agent changed this file since you opened it.",
-    "reload": "Reload"
+    "reload": "Reload",
+    "closeOthers": "Close other tabs",
+    "closeAll": "Close all tabs",
+    "detached": "The project this file came from is no longer attached.",
+    "readOnly": "Read-only",
+    "readOnlyHint": "Cowork opens files for reading; it does not edit them.",
+    "originProject": "in the attached project",
+    "originWorkspace": "in this session’s workspace",
+    "originExternal": "outside the project, read-only"
   },
   "settingsSearch": {
     "label": "Search settings",

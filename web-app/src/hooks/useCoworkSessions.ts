@@ -4,7 +4,19 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { coworkTurnsToUIMessages } from '@/lib/coworkTurns'
-import { emptyCodePanelState, type CodePanelState } from '@/lib/coworkCode'
+import {
+  emptyCodePanelState,
+  projectKeyOf,
+  projectTab,
+  pruneTabsForProject,
+  sandboxTab,
+  tabId,
+  type CodePanelState,
+  type CodeTab,
+} from '@/lib/coworkCode'
+
+/** The `sandbox:` marker used by the v2 tab-path scheme. */
+const LEGACY_SANDBOX_PREFIX = 'sandbox:'
 import type {
   CoworkTurn,
   SubagentRun,
@@ -134,10 +146,23 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           return { sessions, currentId }
         }),
 
+      // Attaching, switching and detaching all land here, so the code panel is
+      // pruned in the same update: a tab from the old project must never be
+      // left to re-resolve its relative path inside the new one.
       setFolder: (id, folder) =>
         set((s) => ({
           sessions: s.sessions.map((x) =>
-            x.id === id ? { ...x, folder, updated: now() } : x
+            x.id === id
+              ? {
+                  ...x,
+                  folder,
+                  codePanel: pruneTabsForProject(
+                    x.codePanel ?? emptyCodePanelState(),
+                    projectKeyOf(folder)
+                  ),
+                  updated: now(),
+                }
+              : x
           ),
         })),
 
@@ -258,7 +283,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // hydrateBackendStores() once the ServiceHub is ready.
       storage: createJSONStorage(() => backendStorage),
       skipHydration: true,
-      version: 2,
+      version: 3,
       // v0 persisted an OpenAI-shaped `history` that could not represent tool
       // calls, so replaying it dropped every tool turn. Rebuild the message
       // list from `turns`, which did record them, and leave `history` in place
@@ -290,6 +315,63 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               ? session
               : { ...session, codePanel: emptyCodePanelState() }
           )
+        }
+        // v2 → v3: tabs were bare strings with a `sandbox:` prefix and no idea
+        // which project they came from, so a tab opened against one project
+        // would silently re-resolve inside the next one attached. Each becomes
+        // a CodeTab carrying its origin; a project tab is keyed to the folder
+        // the session has now, and dropped when there is none, because nothing
+        // records which project it was actually read from.
+        if (version < 3) {
+          sessions = sessions.map((session) => {
+            const legacy = session.codePanel as unknown as
+              | { openPaths?: unknown; activePath?: unknown }
+              | undefined
+            if (!legacy || !Array.isArray(legacy.openPaths)) {
+              return session.codePanel
+                ? session
+                : { ...session, codePanel: emptyCodePanelState() }
+            }
+            const projectKey = projectKeyOf(session.folder)
+            const tabs: CodeTab[] = []
+            for (const raw of legacy.openPaths) {
+              if (typeof raw !== 'string' || !raw) continue
+              if (raw.startsWith(LEGACY_SANDBOX_PREFIX)) {
+                tabs.push(sandboxTab(raw.slice(LEGACY_SANDBOX_PREFIX.length)))
+              } else if (projectKey) {
+                tabs.push(projectTab(raw, projectKey))
+              }
+            }
+            const previousActive =
+              typeof legacy.activePath === 'string' ? legacy.activePath : null
+            const active = tabs.find((tab) =>
+              previousActive === null
+                ? false
+                : previousActive.startsWith(LEGACY_SANDBOX_PREFIX)
+                  ? tab.origin.kind !== 'project' &&
+                    tab.path ===
+                      previousActive.slice(LEGACY_SANDBOX_PREFIX.length)
+                  : tab.origin.kind === 'project' && tab.path === previousActive
+            )
+            return {
+              ...session,
+              codePanel: {
+                tabs,
+                activeTabId: active ? tabId(active) : (tabs[0] ? tabId(tabs[0]) : null),
+                expandedDirs: Array.isArray(
+                  (session.codePanel as unknown as { expandedDirs?: unknown })
+                    ?.expandedDirs
+                )
+                  ? ((session.codePanel as unknown as { expandedDirs: string[] })
+                      .expandedDirs)
+                  : [],
+                wordWrap: Boolean(
+                  (session.codePanel as unknown as { wordWrap?: unknown })
+                    ?.wordWrap
+                ),
+              },
+            }
+          })
         }
         return { ...state, sessions }
       },

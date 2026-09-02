@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import {
+  closeAllTabs,
+  closeOtherTabs,
   closeTab,
+  activeTab,
+  neighbourTabId,
+  originLabel,
+  projectKeyOf,
+  projectTab,
+  pruneTabsForProject,
+  sandboxTab,
+  tabBelongsToProject,
+  tabId,
+  isWritableOrigin,
   codeRefBlock,
   codeRefToken,
   detectLanguage,
@@ -11,7 +23,6 @@ import {
   isTabStale,
   lineRangeOfSlice,
   openTab,
-  sandboxTabPath,
   writeCountsByPath,
   relativeToRoot,
   shouldOpenInCode,
@@ -117,45 +128,156 @@ describe('relativeToRoot', () => {
   })
 })
 
+describe('project identity', () => {
+  it('normalises a folder into a stable key across platforms', () => {
+    expect(projectKeyOf('/home/u/Proj')).toBe('/home/u/proj')
+    expect(projectKeyOf('/home/u/proj/')).toBe('/home/u/proj')
+    expect(projectKeyOf('C:\\Users\\me\\Proj')).toBe('c:/users/me/proj')
+    expect(projectKeyOf('\\\\server\\share\\Proj')).toBe(
+      '//server/share/proj'
+    )
+    expect(projectKeyOf(null)).toBeNull()
+    expect(projectKeyOf('')).toBeNull()
+  })
+
+  it('gives the same file in two projects different tab ids', () => {
+    const a = projectTab('src/index.ts', '/a')
+    const b = projectTab('src/index.ts', '/b')
+    expect(tabId(a)).not.toBe(tabId(b))
+  })
+
+  it('distinguishes a project file from a sandbox file of the same path', () => {
+    expect(tabId(projectTab('out.ts', '/a'))).not.toBe(
+      tabId(sandboxTab('out.ts'))
+    )
+  })
+
+  it('treats no origin as writable', () => {
+    // The code surface is read-only; a future writable origin has to change
+    // this deliberately rather than by omission.
+    for (const origin of [
+      { kind: 'project', projectKey: '/a' } as const,
+      { kind: 'sandbox' } as const,
+      { kind: 'artifact' } as const,
+      { kind: 'external' } as const,
+    ]) {
+      expect(isWritableOrigin(origin)).toBe(false)
+    }
+  })
+
+  it('describes each origin to the model without claiming project ownership', () => {
+    expect(originLabel({ kind: 'project', projectKey: '/a' })).toContain(
+      'attached project'
+    )
+    expect(originLabel({ kind: 'sandbox' })).toContain('workspace')
+    expect(originLabel({ kind: 'artifact' })).toContain('generated')
+    expect(originLabel({ kind: 'external' })).toContain('external')
+    // None of the non-project origins may read as the user's project.
+    for (const origin of [
+      { kind: 'sandbox' } as const,
+      { kind: 'artifact' } as const,
+      { kind: 'external' } as const,
+    ]) {
+      expect(originLabel(origin)).not.toContain('attached project')
+    }
+  })
+})
+
 describe('tab state', () => {
+  const A = '/proj-a'
+  const B = '/proj-b'
+
   it('opens a file and focuses it', () => {
-    const s = openTab(emptyCodePanelState(), 'a.ts')
-    expect(s.openPaths).toEqual(['a.ts'])
-    expect(s.activePath).toBe('a.ts')
+    const tab = projectTab('a.ts', A)
+    const s = openTab(emptyCodePanelState(), tab)
+    expect(s.tabs).toEqual([tab])
+    expect(s.activeTabId).toBe(tabId(tab))
   })
 
   it('focuses instead of duplicating an already-open file', () => {
-    let s = openTab(openTab(emptyCodePanelState(), 'a.ts'), 'b.ts')
-    s = openTab(s, 'a.ts')
-    expect(s.openPaths).toEqual(['a.ts', 'b.ts'])
-    expect(s.activePath).toBe('a.ts')
+    const a = projectTab('a.ts', A)
+    const b = projectTab('b.ts', A)
+    let s = openTab(openTab(emptyCodePanelState(), a), b)
+    s = openTab(s, a)
+    expect(s.tabs).toHaveLength(2)
+    expect(s.activeTabId).toBe(tabId(a))
   })
 
   it('closing the active tab focuses the neighbour', () => {
-    let s = emptyCodePanelState()
-    for (const p of ['a.ts', 'b.ts', 'c.ts']) s = openTab(s, p)
-    s = focusTab(s, 'b.ts')
-    s = closeTab(s, 'b.ts')
-    expect(s.openPaths).toEqual(['a.ts', 'c.ts'])
-    expect(s.activePath).toBe('c.ts')
+    const tabs = ['a.ts', 'b.ts', 'c.ts'].map((p) => projectTab(p, A))
+    let s = tabs.reduce(openTab, emptyCodePanelState())
+    s = focusTab(s, tabId(tabs[1]))
+    s = closeTab(s, tabId(tabs[1]))
+    expect(s.tabs.map((t) => t.path)).toEqual(['a.ts', 'c.ts'])
+    expect(s.activeTabId).toBe(tabId(tabs[2]))
   })
 
-  it('closing the last tab clears the active path', () => {
-    let s = openTab(emptyCodePanelState(), 'a.ts')
-    s = closeTab(s, 'a.ts')
-    expect(s.openPaths).toEqual([])
-    expect(s.activePath).toBeNull()
+  it('closing the last tab clears the active id', () => {
+    const tab = projectTab('a.ts', A)
+    const s = closeTab(openTab(emptyCodePanelState(), tab), tabId(tab))
+    expect(s.tabs).toEqual([])
+    expect(s.activeTabId).toBeNull()
   })
 
-  it('closing an inactive tab keeps focus where it was', () => {
-    let s = openTab(openTab(emptyCodePanelState(), 'a.ts'), 'b.ts')
-    s = closeTab(s, 'a.ts')
-    expect(s.activePath).toBe('b.ts')
+  it('closes other tabs and all tabs', () => {
+    const tabs = ['a.ts', 'b.ts', 'c.ts'].map((p) => projectTab(p, A))
+    const s = tabs.reduce(openTab, emptyCodePanelState())
+    const others = closeOtherTabs(s, tabId(tabs[1]))
+    expect(others.tabs).toEqual([tabs[1]])
+    expect(others.activeTabId).toBe(tabId(tabs[1]))
+    expect(closeAllTabs(s).tabs).toEqual([])
+    expect(closeAllTabs(s).activeTabId).toBeNull()
   })
 
-  it('closing an unknown path is a no-op', () => {
-    const s = openTab(emptyCodePanelState(), 'a.ts')
-    expect(closeTab(s, 'zzz.ts')).toBe(s)
+  it('moves between tabs for keyboard switching, wrapping at the ends', () => {
+    const tabs = ['a.ts', 'b.ts'].map((p) => projectTab(p, A))
+    const s = tabs.reduce(openTab, emptyCodePanelState())
+    expect(neighbourTabId(s, 1)).toBe(tabId(tabs[0]))
+    expect(neighbourTabId(s, -1)).toBe(tabId(tabs[0]))
+    expect(neighbourTabId(emptyCodePanelState(), 1)).toBeNull()
+  })
+
+  it('drops the other project’s tabs when the project changes', () => {
+    // The regression: a tab opened against A kept its bare relative path and
+    // was re-resolved inside B, showing B's file of the same name.
+    const fromA = projectTab('src/index.ts', A)
+    const sandbox = sandboxTab('out.ts')
+    let s = openTab(openTab(emptyCodePanelState(), fromA), sandbox)
+    s = toggleDir(s, 'src')
+
+    const switched = pruneTabsForProject(s, B)
+    expect(switched.tabs).toEqual([sandbox])
+    expect(switched.activeTabId).toBe(tabId(sandbox))
+    // The tree belonged to the project that went away.
+    expect(switched.expandedDirs).toEqual([])
+  })
+
+  it('keeps session-owned tabs when the project is detached', () => {
+    const fromA = projectTab('a.ts', A)
+    const sandbox = sandboxTab('out.ts')
+    const s = openTab(openTab(emptyCodePanelState(), fromA), sandbox)
+    const detached = pruneTabsForProject(s, null)
+    expect(detached.tabs).toEqual([sandbox])
+  })
+
+  it('keeps tabs when the same project is re-attached', () => {
+    const tab = projectTab('a.ts', A)
+    const s = openTab(emptyCodePanelState(), tab)
+    expect(pruneTabsForProject(s, A).tabs).toEqual([tab])
+  })
+
+  it('knows which tabs belong to the attached project', () => {
+    expect(tabBelongsToProject(projectTab('a.ts', A), A)).toBe(true)
+    expect(tabBelongsToProject(projectTab('a.ts', A), B)).toBe(false)
+    expect(tabBelongsToProject(sandboxTab('a.ts'), B)).toBe(true)
+    expect(tabBelongsToProject(sandboxTab('a.ts'), null)).toBe(true)
+  })
+
+  it('resolves the active tab, or nothing when it was closed', () => {
+    const tab = projectTab('a.ts', A)
+    const s = openTab(emptyCodePanelState(), tab)
+    expect(activeTab(s)).toEqual(tab)
+    expect(activeTab(closeTab(s, tabId(tab)))).toBeUndefined()
   })
 
   it('toggleDir expands and collapses', () => {
@@ -199,22 +321,25 @@ describe('staleness', () => {
 
   it('reports a tab stale only once its path is written again', () => {
     const counts = { 'a.ts': 2 }
-    expect(isTabStale('a.ts', 2, counts)).toBe(false)
-    expect(isTabStale('a.ts', 1, counts)).toBe(true)
+    const tab = projectTab('a.ts', '/proj')
+    expect(isTabStale(tab, 2, counts)).toBe(false)
+    expect(isTabStale(tab, 1, counts)).toBe(true)
     // Never loaded: nothing to be stale against.
-    expect(isTabStale('a.ts', undefined, counts)).toBe(false)
+    expect(isTabStale(tab, undefined, counts)).toBe(false)
     // A different file's writes do not touch this one.
-    expect(isTabStale('b.ts', 0, counts)).toBe(false)
+    expect(isTabStale(projectTab('b.ts', '/proj'), 0, counts)).toBe(false)
   })
 
-  it('compares a sandbox tab on its display path', () => {
-    expect(isTabStale(sandboxTabPath('out.ts'), 0, { 'out.ts': 1 })).toBe(true)
+  it('compares a sandbox tab on its own path', () => {
+    expect(isTabStale(sandboxTab('out.ts'), 0, { 'out.ts': 1 })).toBe(true)
   })
 })
 
 describe('code references', () => {
   it('formats the visible token', () => {
-    expect(codeRefToken({ path: 'src/example.ts', startLine: 24, endLine: 48 })).toBe(
+    expect(
+      codeRefToken({ path: 'src/example.ts', startLine: 24, endLine: 48 })
+    ).toBe(
       '@src/example.ts:24-48'
     )
     expect(codeRefToken({ path: 'a.py', startLine: 7, endLine: 7 })).toBe('@a.py:7')
@@ -235,11 +360,13 @@ describe('code references', () => {
   it('builds a fenced block with path, range and language', () => {
     const block = codeRefBlock({
       path: 'src/example.ts',
+      origin: { kind: 'project', projectKey: '/proj' },
       startLine: 24,
       endLine: 48,
       code: 'const x = 1\n',
     })
     expect(block).toContain('src/example.ts (lines 24-48)')
+    expect(block).toContain('attached project')
     expect(block).toContain('```typescript')
     expect(block).toContain('const x = 1')
   })
@@ -247,11 +374,18 @@ describe('code references', () => {
   it('expands only references whose token survived editing', () => {
     const kept = {
       path: 'a.ts',
+      origin: { kind: 'project' as const, projectKey: '/proj' },
       startLine: 1,
       endLine: 2,
       code: 'let a\nlet b',
     }
-    const deleted = { path: 'b.ts', startLine: 3, endLine: 4, code: 'x' }
+    const deleted = {
+      path: 'b.ts',
+      origin: { kind: 'sandbox' as const },
+      startLine: 3,
+      endLine: 4,
+      code: 'x',
+    }
     const text = `Explain @a.ts:1-2 please`
     const expanded = expandCodeRefs(text, [kept, deleted])
     expect(expanded).toContain('Explain @a.ts:1-2 please')

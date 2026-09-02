@@ -126,3 +126,48 @@ describe('resolveInRoot', () => {
     expect(resolveInRoot('', 'a.md')).toBeNull()
   })
 })
+
+describe('resolveInRoot — Windows path shapes', () => {
+  // Regression: the leading `\\` of a UNC share was collapsed to one slash
+  // during normalization, so the root never contained anything and every file
+  // under a network-drive project resolved to null.
+  it('resolves inside a UNC share', () => {
+    expect(resolveInRoot('\\\\server\\share\\proj', 'a.txt')).toBe(
+      '//server/share/proj/a.txt'
+    )
+    expect(
+      resolveInRoot('\\\\server\\share\\proj', '\\\\server\\share\\proj\\sub\\b.ts')
+    ).toBe('//server/share/proj/sub/b.ts')
+  })
+
+  it('refuses a different share on the same server', () => {
+    expect(
+      resolveInRoot('\\\\server\\share\\proj', '\\\\server\\other\\x')
+    ).toBeNull()
+  })
+
+  it('refuses a local path against a UNC root, and vice versa', () => {
+    expect(resolveInRoot('\\\\server\\share\\proj', '/etc/passwd')).toBeNull()
+    expect(resolveInRoot('C:\\proj', '\\\\server\\share\\proj\\a.txt')).toBeNull()
+  })
+
+  it('resolves drive-letter roots with mixed separators', () => {
+    expect(resolveInRoot('C:\\proj', 'src/a.ts')).toBe('C:/proj/src/a.ts')
+    expect(resolveInRoot('C:\\proj', 'C:\\proj\\src\\a.ts')).toBe(
+      'C:/proj/src/a.ts'
+    )
+    expect(resolveInRoot('C:\\proj', 'C:/proj/../proj-evil/x')).toBeNull()
+  })
+
+  it('keeps spaces and non-ASCII names intact', () => {
+    expect(
+      resolveInRoot('C:\\My Projects\\ünïcodé', 'süb dir/файл.ts')
+    ).toBe('C:/My Projects/ünïcodé/süb dir/файл.ts')
+  })
+
+  it('still refuses traversal out of a UNC root', () => {
+    expect(
+      resolveInRoot('\\\\server\\share\\proj', '../../other/x')
+    ).toBeNull()
+  })
+})

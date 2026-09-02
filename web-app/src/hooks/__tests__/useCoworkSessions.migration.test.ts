@@ -9,7 +9,13 @@ vi.mock('@/lib/backendStorage', () => ({
 }))
 
 import { useCoworkSessions } from '../useCoworkSessions'
-import { emptyCodePanelState } from '@/lib/coworkCode'
+import {
+  emptyCodePanelState,
+  projectTab,
+  sandboxTab,
+  tabId,
+  type CodePanelState,
+} from '@/lib/coworkCode'
 
 /**
  * The persisted blob is not a `CoworkSession[]` — that is the whole point of a
@@ -84,13 +90,14 @@ describe('useCoworkSessions migrate: v1 -> v2', () => {
   it('gives a session with no code panel the empty code panel state', () => {
     const out = migrate({ sessions: [clone(v1Session)], currentId: 's-v1' }, 1)
 
+    // The chain now ends at v3, so a v1 session arrives in the tab-origin
+    // shape. The store's own constructor is the contract.
     expect(out?.sessions?.[0].codePanel).toEqual({
-      openPaths: [],
-      activePath: null,
+      tabs: [],
+      activeTabId: null,
       expandedDirs: [],
       wordWrap: false,
     })
-    // The store's own constructor is the contract; the literal above pins it.
     expect(out?.sessions?.[0].codePanel).toEqual(emptyCodePanelState())
   })
 
@@ -164,10 +171,11 @@ describe('useCoworkSessions migrate: v0 -> v2', () => {
   })
 })
 
-describe('useCoworkSessions migrate: already at v2', () => {
+describe('useCoworkSessions migrate: a populated v2 panel', () => {
   const populated = {
     ...v1Session,
     id: 's-v2',
+    folder: '/home/dev/project',
     codePanel: {
       openPaths: ['src/main.ts', 'sandbox:notes.md'],
       activePath: 'sandbox:notes.md',
@@ -176,39 +184,40 @@ describe('useCoworkSessions migrate: already at v2', () => {
     },
   }
 
-  it('passes a populated code panel through untouched', () => {
-    const out = migrate({ sessions: [clone(populated)] }, 2)
-    const session = out!.sessions![0]
+  const expectedTabs = [
+    projectTab('src/main.ts', '/home/dev/project'),
+    sandboxTab('notes.md'),
+  ]
 
-    expect(session.codePanel).toEqual(populated.codePanel)
-    expect(
-      (session.codePanel as { openPaths: string[] }).openPaths
-    ).toEqual(['src/main.ts', 'sandbox:notes.md'])
-    expect(
-      (session.codePanel as { activePath: string }).activePath
-    ).toBe('sandbox:notes.md')
-    expect(session).toEqual(populated)
+  it('converts its tabs to explicit origins', () => {
+    const out = migrate({ sessions: [clone(populated)] }, 2)
+    const panel = out!.sessions![0].codePanel as CodePanelState
+
+    expect(panel.tabs).toEqual(expectedTabs)
+    expect(panel.activeTabId).toBe(tabId(sandboxTab('notes.md')))
+    expect(panel.expandedDirs).toEqual(['src', 'src/lib'])
+    expect(panel.wordWrap).toBe(true)
   })
 
   // The v1 -> v2 step is guarded on the field, not only on the version, so a
   // session that already has tabs must not be reset by a re-run.
-  it('does not overwrite an existing code panel when re-run from v1', () => {
+  it('does not discard an existing panel when re-run from v1', () => {
     const out = migrate({ sessions: [clone(populated)] }, 1)
-    expect(out!.sessions![0].codePanel).toEqual(populated.codePanel)
+    const panel = out!.sessions![0].codePanel as CodePanelState
+    expect(panel.tabs).toEqual(expectedTabs)
   })
 
-  it('migrates a mixed list, touching only the session that needs it', () => {
-    const out = migrate(
-      { sessions: [clone(populated), clone(v1Session)] },
-      1
+  it('migrates a mixed list, touching only what needs it', () => {
+    const out = migrate({ sessions: [clone(populated), clone(v1Session)] }, 1)
+    expect((out!.sessions![0].codePanel as CodePanelState).tabs).toEqual(
+      expectedTabs
     )
-    expect(out!.sessions![0].codePanel).toEqual(populated.codePanel)
     expect(out!.sessions![1].codePanel).toEqual(emptyCodePanelState())
     expect(out!.sessions).toHaveLength(2)
   })
 })
 
-describe('useCoworkSessions migrate: nothing to migrate', () => {
+describe('useCoworkSessions migrate: empty and absent input', () => {
   it('handles an empty session list at every version', () => {
     for (const version of [0, 1, 2]) {
       expect(() => migrate({ sessions: [], currentId: null }, version)).not.toThrow()
@@ -227,5 +236,84 @@ describe('useCoworkSessions migrate: nothing to migrate', () => {
   it('survives an undefined persisted blob', () => {
     expect(() => migrate(undefined, 0)).not.toThrow()
     expect(migrate(undefined, 0)).toBeUndefined()
+  })
+})
+
+
+describe('useCoworkSessions migrate: v2 -> v3 (tab origins)', () => {
+  const v2Session = (over: Record<string, unknown> = {}) => ({
+    id: 's-v2',
+    title: 'older session',
+    folder: '/home/dev/project',
+    turns: [],
+    messages: [],
+    codePanel: {
+      openPaths: ['src/app.ts', 'sandbox:out.ts'],
+      activePath: 'sandbox:out.ts',
+      expandedDirs: ['src'],
+      wordWrap: true,
+    },
+    updated: 5,
+    ...over,
+  })
+
+  it('gives every legacy tab an explicit origin', () => {
+    const out = migrate({ sessions: [v2Session()] }, 2) as {
+      sessions: { codePanel: CodePanelState }[]
+    }
+    const panel = out.sessions[0].codePanel
+
+    expect(panel.tabs).toEqual([
+      { path: 'src/app.ts', origin: { kind: 'project', projectKey: '/home/dev/project' } },
+      { path: 'out.ts', origin: { kind: 'sandbox' } },
+    ])
+    // The active tab survives the reshape.
+    expect(panel.activeTabId).toBe(tabId(sandboxTab('out.ts')))
+    expect(panel.expandedDirs).toEqual(['src'])
+    expect(panel.wordWrap).toBe(true)
+  })
+
+  it('drops project tabs when the session has no folder to key them to', () => {
+    // Nothing recorded which project a v2 tab came from. Keeping it would let
+    // its bare relative path resolve inside whatever is attached next — the
+    // exact bug the origin model exists to prevent.
+    const out = migrate({ sessions: [v2Session({ folder: null })] }, 2) as {
+      sessions: { codePanel: CodePanelState }[]
+    }
+    expect(out.sessions[0].codePanel.tabs).toEqual([sandboxTab('out.ts')])
+  })
+
+  it('leaves an already-migrated panel untouched', () => {
+    const panel: CodePanelState = {
+      tabs: [projectTab('a.ts', '/p')],
+      activeTabId: tabId(projectTab('a.ts', '/p')),
+      expandedDirs: [],
+      wordWrap: false,
+    }
+    const out = migrate(
+      { sessions: [{ ...v2Session(), codePanel: panel }] },
+      3
+    ) as { sessions: { codePanel: CodePanelState }[] }
+    expect(out.sessions[0].codePanel).toEqual(panel)
+  })
+
+  it('carries a v0 session all the way to v3 without losing turns', () => {
+    const out = migrate(
+      {
+        sessions: [
+          {
+            id: 's-v0',
+            title: 'ancient',
+            folder: null,
+            turns: [{ role: 'user', content: 'hello' }],
+            updated: 1,
+          },
+        ],
+      },
+      0
+    ) as { sessions: { codePanel: CodePanelState; turns: unknown[] }[] }
+
+    expect(out.sessions[0].turns).toHaveLength(1)
+    expect(out.sessions[0].codePanel).toEqual(emptyCodePanelState())
   })
 })

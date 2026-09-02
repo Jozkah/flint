@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
+  Columns2,
   File as FileIcon,
   Folder,
   FolderOpen,
   FolderTree,
   X,
+  XCircle,
 } from 'lucide-react'
 import {
   projectListDir,
@@ -24,15 +26,22 @@ import {
   MAX_CODE_FILE_BYTES,
   closeTab,
   emptyCodePanelState,
-  isSandboxTabPath,
   isSourcePath,
   isTabStale,
   openTab,
-  tabDisplayPath,
+  closeOtherTabs,
+  closeAllTabs,
+  focusTab,
+  neighbourTabId,
+  activeTab,
+  tabId,
+  projectKeyOf,
+  projectTab,
   toggleDir,
   writeCountsByPath,
   type CodePanelState,
   type CodeRef,
+  type CodeTab,
 } from '@/lib/coworkCode'
 import type { CoworkTurn } from '@/types/coworkSession'
 
@@ -45,6 +54,8 @@ type DirState =
 
 type FileState =
   | { status: 'loading' }
+  /** The project this tab came from is no longer attached. */
+  | { status: 'detached' }
   | { status: 'ready'; content: string }
   | { status: 'oversized'; size: number }
   | { status: 'binary' }
@@ -105,8 +116,27 @@ export function CoworkCodePanel({
   turnsRef.current = turns
   const writeCounts = useMemo(() => writeCountsByPath(turns), [turns])
   const [explorerOpen, setExplorerOpen] = useState(
-    () => state.openPaths.length === 0
+    () => state.tabs.length === 0
   )
+
+  /**
+   * Which project the panel is currently showing, and a counter that moves
+   * whenever that changes.
+   *
+   * The backend reads are plain promises with no cancellation, so a read
+   * started against project A can resolve after A is detached or B attached.
+   * Every write below is gated on the generation captured when the read
+   * started, which is what stops A's bytes appearing under B's tree.
+   */
+  const projectKey = useMemo(() => projectKeyOf(folder), [folder])
+  const generation = useRef(0)
+  const currentGen = useRef(0)
+  const lastProjectKey = useRef<string | null | undefined>(undefined)
+  if (lastProjectKey.current !== projectKey) {
+    lastProjectKey.current = projectKey
+    generation.current += 1
+  }
+  currentGen.current = generation.current
 
   useEffect(() => {
     let alive = true
@@ -122,20 +152,24 @@ export function CoworkCodePanel({
     }
   }, [serviceHub])
 
-  const setDir = useCallback((rel: string, value: DirState) => {
+  /** Apply a result only if the project it was read for is still attached. */
+  const setDir = useCallback((gen: number, rel: string, value: DirState) => {
+    if (gen !== currentGen.current) return
     setDirs((current) => new Map(current).set(rel, value))
   }, [])
-  const setFile = useCallback((rel: string, value: FileState) => {
-    setFiles((current) => new Map(current).set(rel, value))
+  const setFile = useCallback((gen: number, id: string, value: FileState) => {
+    if (gen !== currentGen.current) return
+    setFiles((current) => new Map(current).set(id, value))
   }, [])
 
   const loadDir = useCallback(
     async (rel: string) => {
       if (!folder || !dataFolder) return
-      setDir(rel, { status: 'loading' })
+      const gen = currentGen.current
+      setDir(gen, rel, { status: 'loading' })
       try {
         const listing = await projectListDir(dataFolder, folder, rel)
-        setDir(rel, {
+        setDir(gen, rel, {
           status: 'ready',
           entries: listing.entries,
           truncated: listing.truncated,
@@ -143,6 +177,7 @@ export function CoworkCodePanel({
       } catch (e) {
         const message = messageOf(e)
         setDir(
+          gen,
           rel,
           message.startsWith(DENIED_PREFIX)
             ? { status: 'denied' }
@@ -154,22 +189,44 @@ export function CoworkCodePanel({
   )
 
   const loadFile = useCallback(
-    async (tabPath: string, allowSensitive = false) => {
-      setFile(tabPath, { status: 'loading' })
+    async (tab: CodeTab, allowSensitive = false) => {
+      const id = tabId(tab)
+      const gen = currentGen.current
+
+      // A tab whose project is gone is detached, not loading: say so rather
+      // than leaving a spinner nothing will resolve.
+      if (
+        tab.origin.kind === 'project' &&
+        (!folder || tab.origin.projectKey !== projectKey)
+      ) {
+        setFile(gen, id, { status: 'detached' })
+        return
+      }
+      // The roots resolve asynchronously on mount. Record nothing until they
+      // are known, so the effect retries once they are — writing a state here
+      // would cache a verdict reached before the panel could read anything.
+      const rootPending =
+        tab.origin.kind === 'project' ? !dataFolder : !workspacePath
+      if (rootPending) return
+
+      setFile(gen, id, { status: 'loading' })
       // Snapshot before reading, not after: a write landing during the read
       // would otherwise be counted as already included and the tab would look
       // fresh while showing the older bytes.
       const seen = writeCountsByPath(turnsRef.current)[
-        tabDisplayPath(tabPath).replace(/\\/g, '/')
+        tab.path.replace(/\\/g, '/')
       ]
-      setLoadedAt((current) => new Map(current).set(tabPath, seen ?? 0))
-      // Sandbox artifacts stream off disk the same way the preview pane reads
-      // them; the backend project commands only serve the attached project.
-      if (isSandboxTabPath(tabPath)) {
-        const rel = tabDisplayPath(tabPath)
-        const abs = workspacePath ? resolveInRoot(workspacePath, rel) : null
+      setLoadedAt((current) => new Map(current).set(id, seen ?? 0))
+
+      // Sandbox and generated files stream off disk the way the preview pane
+      // reads them; the backend project commands only serve the attached
+      // project.
+      if (tab.origin.kind !== 'project') {
+        const abs = workspacePath
+          ? resolveInRoot(workspacePath, tab.path)
+          : null
         if (!abs) {
-          setFile(tabPath, {
+          setFile(gen, id, {
             status: 'error',
             message: t('common:preview.outside'),
           })
@@ -180,39 +237,41 @@ export function CoworkCodePanel({
           if (!res.ok) throw new Error(String(res.status))
           const size = Number(res.headers.get('content-length') ?? 0)
           if (size > MAX_CODE_FILE_BYTES) {
-            setFile(tabPath, { status: 'oversized', size })
+            setFile(gen, id, { status: 'oversized', size })
             return
           }
           const content = await res.text()
           if (content.length > MAX_CODE_FILE_BYTES) {
-            setFile(tabPath, { status: 'oversized', size: content.length })
+            setFile(gen, id, { status: 'oversized', size: content.length })
             return
           }
-          setFile(tabPath, { status: 'ready', content })
+          setFile(gen, id, { status: 'ready', content })
         } catch (e) {
-          setFile(tabPath, { status: 'error', message: messageOf(e) })
+          setFile(gen, id, { status: 'error', message: messageOf(e) })
         }
         return
       }
+
       if (!folder || !dataFolder) return
       try {
         const file = await projectReadFile(
           dataFolder,
           folder,
-          tabPath,
+          tab.path,
           allowSensitive
         )
         if (file.oversized) {
-          setFile(tabPath, { status: 'oversized', size: file.size })
+          setFile(gen, id, { status: 'oversized', size: file.size })
         } else if (file.binary) {
-          setFile(tabPath, { status: 'binary' })
+          setFile(gen, id, { status: 'binary' })
         } else {
-          setFile(tabPath, { status: 'ready', content: file.content })
+          setFile(gen, id, { status: 'ready', content: file.content })
         }
       } catch (e) {
         const message = messageOf(e)
         setFile(
-          tabPath,
+          gen,
+          id,
           message.startsWith('SENSITIVE:')
             ? { status: 'sensitive' }
             : message.startsWith(DENIED_PREFIX)
@@ -221,15 +280,17 @@ export function CoworkCodePanel({
         )
       }
     },
-    [folder, workspacePath, dataFolder, setFile, t]
+    [folder, projectKey, workspacePath, dataFolder, setFile, t]
   )
 
-  // Root listing, and re-listing when the attached folder changes.
+  // Root listing, and re-listing when the attached project changes. Everything
+  // cached belonged to the previous project, including the staleness snapshots.
   useEffect(() => {
     setDirs(new Map())
     setFiles(new Map())
+    setLoadedAt(new Map())
     if (folder && dataFolder) void loadDir('')
-  }, [folder, dataFolder, loadDir])
+  }, [projectKey, folder, dataFolder, loadDir])
 
   // Lazily fetch expanded directories that have no cached listing yet
   // (including ones restored from a persisted session).
@@ -241,21 +302,23 @@ export function CoworkCodePanel({
   }, [state.expandedDirs, dirs, folder, dataFolder, loadDir])
 
   // Fetch the active tab's content once per open file.
-  const activePath = state.activePath
+  const active = activeTab(state)
+  const activeId = active ? tabId(active) : null
   useEffect(() => {
-    if (!activePath || files.has(activePath)) return
-    void loadFile(activePath)
-  }, [activePath, files, loadFile])
+    if (!active || !activeId || files.has(activeId)) return
+    void loadFile(active)
+  }, [active, activeId, files, loadFile])
 
   const openPath = useCallback(
     (rel: string) => {
-      onStateChange(openTab(state, rel))
+      if (!projectKey) return
+      onStateChange(openTab(state, projectTab(rel, projectKey)))
       setExplorerOpen(false)
     },
-    [onStateChange, state]
+    [onStateChange, state, projectKey]
   )
 
-  const activeFile = activePath ? files.get(activePath) : undefined
+  const activeFile = activeId ? files.get(activeId) : undefined
 
   const renderTree = (rel: string, depth: number): React.ReactNode => {
     const dir = dirs.get(rel)
@@ -352,11 +415,18 @@ export function CoworkCodePanel({
               type="button"
               disabled={!viewable}
               onClick={() => openPath(entry.relPath)}
-              aria-current={state.activePath === entry.relPath || undefined}
+              aria-current={
+                state.activeTabId ===
+                tabId(projectTab(entry.relPath, projectKey ?? ''))
+                  ? true
+                  : undefined
+              }
               className={cn(
                 'flex w-full items-center gap-1 px-2 py-0.5 text-left text-xs',
                 viewable ? 'hover:bg-muted/50' : 'opacity-50',
-                state.activePath === entry.relPath && 'bg-secondary'
+                state.activeTabId ===
+                  tabId(projectTab(entry.relPath, projectKey ?? '')) &&
+                  'bg-secondary'
               )}
               style={indent(depth)}
             >
@@ -378,7 +448,7 @@ export function CoworkCodePanel({
     )
   }
 
-  const body = !folder && state.openPaths.length === 0 ? (
+  const body = !folder && state.tabs.length === 0 ? (
     <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
       <FolderTree size={24} className="text-muted-foreground" />
       <p className="text-sm text-muted-foreground">
@@ -391,7 +461,7 @@ export function CoworkCodePanel({
   ) : (
     <div className="flex h-full min-h-0 flex-col">
       {/* Tab strip */}
-      {state.openPaths.length > 0 && (
+      {state.tabs.length > 0 && (
         <div
           role="tablist"
           aria-label={t('common:codePanel.openFiles')}
@@ -410,34 +480,59 @@ export function CoworkCodePanel({
           >
             <FolderTree className="size-3.5" />
           </Button>
-          {state.openPaths.map((path) => {
-            const name = tabDisplayPath(path).split('/').pop() ?? path
-            const active = path === state.activePath
+          {state.tabs.map((tab) => {
+            const id = tabId(tab)
+            const name = tab.path.split('/').pop() || tab.path
+            const isActive = id === state.activeTabId
             return (
               <div
-                key={path}
+                key={id}
                 role="tab"
-                aria-selected={active}
+                aria-selected={isActive}
                 className={cn(
                   'group flex shrink-0 cursor-pointer items-center gap-1 rounded-sm px-2 py-0.5 text-xs',
-                  active
+                  isActive
                     ? 'bg-secondary text-main-view-fg'
                     : 'text-main-view-fg/60 hover:bg-muted/50'
                 )}
-                title={path}
-                onClick={() => openPath(path)}
+                title={`${tab.path} — ${originTitle(tab, t)}`}
+                onClick={() => onStateChange(focusTab(state, id))}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') openPath(path)
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onStateChange(focusTab(state, id))
+                  } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                    // Left/right move between tabs, as in a real tablist.
+                    e.preventDefault()
+                    const next = neighbourTabId(
+                      state,
+                      e.key === 'ArrowRight' ? 1 : -1
+                    )
+                    if (next) onStateChange(focusTab(state, next))
+                  } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                    e.preventDefault()
+                    onStateChange(closeTab(state, id))
+                  }
                 }}
-                tabIndex={0}
+                tabIndex={isActive ? 0 : -1}
               >
+                {tab.origin.kind !== 'project' && (
+                  // A sandbox or generated file is not the user's project;
+                  // say so rather than letting the name imply it.
+                  <span
+                    aria-hidden
+                    className="shrink-0 text-[10px] uppercase tracking-wide text-main-view-fg/40"
+                  >
+                    {tab.origin.kind === 'external' ? 'ext' : 'ws'}
+                  </span>
+                )}
                 <span className="max-w-40 truncate">{name}</span>
                 <button
                   type="button"
                   aria-label={t('common:codePanel.closeTab', { name })}
                   onClick={(e) => {
                     e.stopPropagation()
-                    onStateChange(closeTab(state, path))
+                    onStateChange(closeTab(state, id))
                   }}
                   className="rounded-sm text-main-view-fg/40 hover:text-main-view-fg"
                 >
@@ -446,16 +541,41 @@ export function CoworkCodePanel({
               </div>
             )
           })}
+          {state.tabs.length > 1 && (
+            <span className="ml-auto flex shrink-0 items-center gap-0.5 pl-1">
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={t('common:codePanel.closeOthers')}
+                onClick={() =>
+                  state.activeTabId &&
+                  onStateChange(closeOtherTabs(state, state.activeTabId))
+                }
+                className="text-muted-foreground"
+              >
+                <Columns2 className="size-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={t('common:codePanel.closeAll')}
+                onClick={() => onStateChange(closeAllTabs(state))}
+                className="text-muted-foreground"
+              >
+                <XCircle className="size-3.5" />
+              </Button>
+            </span>
+          )}
         </div>
       )}
 
       {/* Explorer, shown when toggled or when nothing is open. Needs an
           attached folder; sandbox tabs can exist without one. */}
-      {folder != null && (explorerOpen || state.openPaths.length === 0) && (
+      {folder != null && (explorerOpen || state.tabs.length === 0) && (
         <div
           className={cn(
             'shrink-0 overflow-y-auto border-b py-1',
-            state.openPaths.length > 0 ? 'max-h-[45%]' : 'flex-1 border-b-0'
+            state.tabs.length > 0 ? 'max-h-[45%]' : 'flex-1 border-b-0'
           )}
           data-testid="code-explorer"
         >
@@ -464,7 +584,7 @@ export function CoworkCodePanel({
       )}
 
       {/* Viewer */}
-      {activePath && (
+      {active && activeId && (
         <div className="min-h-0 flex-1">
           {!activeFile || activeFile.status === 'loading' ? (
             <Notice>{t('common:codePanel.loading')}</Notice>
@@ -472,7 +592,7 @@ export function CoworkCodePanel({
             <div className="flex h-full min-h-0 flex-col">
               {/* Announced, not swapped: replacing the bytes under someone
                   mid-read is what the preview pane deliberately avoids. */}
-              {isTabStale(activePath, loadedAt.get(activePath), writeCounts) && (
+              {isTabStale(active, loadedAt.get(activeId), writeCounts) && (
                 <div
                   role="status"
                   className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs text-main-view-fg/70"
@@ -484,7 +604,7 @@ export function CoworkCodePanel({
                     size="sm"
                     variant="outline"
                     className="h-6 shrink-0 px-2 text-xs"
-                    onClick={() => void loadFile(activePath)}
+                    onClick={() => void loadFile(active)}
                   >
                     {t('common:codePanel.reload')}
                   </Button>
@@ -492,12 +612,13 @@ export function CoworkCodePanel({
               )}
               <div className="min-h-0 flex-1">
                 <CodeViewer
-                  relPath={tabDisplayPath(activePath)}
+                  relPath={active.path}
                   content={activeFile.content}
                   wordWrap={state.wordWrap}
                   onToggleWrap={(wordWrap) =>
                     onStateChange({ ...state, wordWrap })
                   }
+                  origin={active.origin}
                   onAddToChat={onAddToChat}
                 />
               </div>
@@ -512,6 +633,25 @@ export function CoworkCodePanel({
             <Notice>{t('common:codePanel.binary')}</Notice>
           ) : activeFile.status === 'denied' ? (
             <Notice>{t('common:codePanel.denied')}</Notice>
+          ) : activeFile.status === 'detached' ? (
+            // The project went away underneath this tab. Not an error and not
+            // a spinner that will never resolve — say what happened and let
+            // the tab be closed.
+            <Notice>
+              <span className="block">{t('common:codePanel.detached')}</span>
+              <span className="mt-2 flex justify-center gap-2">
+                <Button size="sm" onClick={onAttach}>
+                  {t('common:codePanel.attachProject')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onStateChange(closeTab(state, activeId))}
+                >
+                  {t('common:codePanel.closeMissing')}
+                </Button>
+              </span>
+            </Notice>
           ) : activeFile.status === 'sensitive' ? (
             <Notice>
               <span className="block">{t('common:codePanel.sensitive')}</span>
@@ -519,7 +659,7 @@ export function CoworkCodePanel({
                 size="sm"
                 variant="outline"
                 className="mt-2"
-                onClick={() => void loadFile(activePath, true)}
+                onClick={() => void loadFile(active, true)}
               >
                 {t('common:codePanel.openAnyway')}
               </Button>
@@ -531,14 +671,14 @@ export function CoworkCodePanel({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => void loadFile(activePath)}
+                  onClick={() => void loadFile(active)}
                 >
                   {t('common:codePanel.retry')}
                 </Button>
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => onStateChange(closeTab(state, activePath))}
+                  onClick={() => onStateChange(closeTab(state, activeId))}
                 >
                   {t('common:codePanel.closeMissing')}
                 </Button>
@@ -568,6 +708,22 @@ function Notice({ children }: { children: React.ReactNode }) {
 const indent = (depth: number) => ({ paddingLeft: `${8 + depth * 12}px` })
 
 /** Marker the Rust side puts on an error the OS refused for permissions. */
+/** A human phrase for where a tab's file lives, for its tooltip. */
+function originTitle(
+  tab: CodeTab,
+  t: (key: string) => string
+): string {
+  switch (tab.origin.kind) {
+    case 'project':
+      return t('common:codePanel.originProject')
+    case 'sandbox':
+    case 'artifact':
+      return t('common:codePanel.originWorkspace')
+    case 'external':
+      return t('common:codePanel.originExternal')
+  }
+}
+
 const DENIED_PREFIX = 'DENIED: '
 
 const messageOf = (e: unknown): string =>

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { useState } from 'react'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -37,7 +37,14 @@ import {
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { CoworkCodePanel } from '../CoworkCodePanel'
-import { emptyCodePanelState, type CodePanelState } from '@/lib/coworkCode'
+import {
+  emptyCodePanelState,
+  openTab,
+  projectKeyOf,
+  projectTab,
+  tabId,
+  type CodePanelState,
+} from '@/lib/coworkCode'
 import type { CoworkTurn } from '@/types/coworkSession'
 
 const listDir = vi.mocked(projectListDir)
@@ -209,9 +216,9 @@ describe('CoworkCodePanel', () => {
 
     await openFromExplorer('app.ts')
 
-    expect(onStateChange).toHaveBeenCalledWith(
-      expect.objectContaining({ openPaths: ['app.ts'], activePath: 'app.ts' })
-    )
+    const opened = onStateChange.mock.lastCall?.[0] as CodePanelState
+    expect(opened.tabs.map((t) => t.path)).toEqual(['app.ts'])
+    expect(opened.activeTabId).toBe(tabId(projectTab('app.ts', projectKeyOf(ROOT)!)))
     expect(await screen.findByTestId('code-viewer-body')).toHaveTextContent(
       'export const answer = 42'
     )
@@ -228,7 +235,7 @@ describe('CoworkCodePanel', () => {
 
     expect(screen.getAllByRole('tab')).toHaveLength(1)
     const last = onStateChange.mock.lastCall?.[0] as CodePanelState
-    expect(last.openPaths).toEqual(['app.ts'])
+    expect(last.tabs.map((t) => t.path)).toEqual(['app.ts'])
   })
 
   it('drops a closed tab from the reported state', async () => {
@@ -242,8 +249,8 @@ describe('CoworkCodePanel', () => {
     )
 
     const last = onStateChange.mock.lastCall?.[0] as CodePanelState
-    expect(last.openPaths).toEqual([])
-    expect(last.activePath).toBeNull()
+    expect(last.tabs).toEqual([])
+    expect(last.activeTabId).toBeNull()
     expect(screen.queryAllByRole('tab')).toHaveLength(0)
   })
 
@@ -330,7 +337,7 @@ describe('CoworkCodePanel', () => {
     )
 
     const last = onStateChange.mock.lastCall?.[0] as CodePanelState
-    expect(last.openPaths).toEqual([])
+    expect(last.tabs).toEqual([])
     expect(screen.queryAllByRole('tab')).toHaveLength(0)
   })
 })
@@ -364,7 +371,7 @@ describe('CoworkCodePanel — an open file the agent rewrites', () => {
 
   it('marks the tab stale, and reload replaces the content', async () => {
     readFile.mockResolvedValue(projectFile({ content: 'first' }))
-    const { rerender } = render(<Harness turns={[]} initial={{ ...emptyCodePanelState(), openPaths: ['app.ts'], activePath: 'app.ts' }} />)
+    const { rerender } = render(<Harness turns={[]} initial={openTab(emptyCodePanelState(), projectTab('app.ts', projectKeyOf(ROOT)!))} />)
 
     expect((await screen.findAllByText('first')).length).toBeGreaterThan(0)
 
@@ -373,7 +380,7 @@ describe('CoworkCodePanel — an open file the agent rewrites', () => {
     rerender(
       <Harness
         turns={[wrote('app.ts')]}
-        initial={{ ...emptyCodePanelState(), openPaths: ['app.ts'], activePath: 'app.ts' }}
+        initial={openTab(emptyCodePanelState(), projectTab('app.ts', projectKeyOf(ROOT)!))}
       />
     )
 
@@ -398,7 +405,7 @@ describe('CoworkCodePanel — an open file the agent rewrites', () => {
     render(
       <Harness
         turns={[wrote('elsewhere.ts')]}
-        initial={{ ...emptyCodePanelState(), openPaths: ['app.ts'], activePath: 'app.ts' }}
+        initial={openTab(emptyCodePanelState(), projectTab('app.ts', projectKeyOf(ROOT)!))}
       />
     )
 
@@ -406,5 +413,131 @@ describe('CoworkCodePanel — an open file the agent rewrites', () => {
     expect(
       screen.queryByText('common:codePanel.stale')
     ).not.toBeInTheDocument()
+  })
+})
+
+
+describe('CoworkCodePanel — project detach and switching', () => {
+  const OTHER = '/home/dev/other-project'
+  // `mockReturnValueOnce` queues survive `clearAllMocks`, so a value queued by
+  // one case can be handed to the next. Reset the implementations outright.
+  afterEach(() => {
+    listDir.mockReset()
+    readFile.mockReset()
+  })
+  const tabIn = (root: string, path = 'app.ts') =>
+    projectTab(path, projectKeyOf(root)!)
+  const stateWith = (root: string, path = 'app.ts'): CodePanelState =>
+    openTab(emptyCodePanelState(), tabIn(root, path))
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getJanDataFolder.mockResolvedValue(DATA_FOLDER)
+    listDir.mockResolvedValue(listing(fileEntry('app.ts')))
+    readFile.mockResolvedValue(projectFile({ content: 'from A' }))
+  })
+
+  it('does not leave a tab spinning forever when the project is detached', async () => {
+    // Regression: the reset effect emptied the file cache, the active-tab
+    // effect re-fired, set {status:'loading'} and then returned early on
+    // !folder — so the tab showed a spinner nothing would ever resolve.
+    const { rerender } = render(<Harness initial={stateWith(ROOT)} />)
+    expect((await screen.findAllByText('from A')).length).toBeGreaterThan(0)
+
+    rerender(<Harness folder={null} initial={stateWith(ROOT)} />)
+
+    expect(
+      await screen.findByText('common:codePanel.detached')
+    ).toBeInTheDocument()
+    expect(screen.queryByText('common:codePanel.loading')).toBeNull()
+  })
+
+  it('ignores a read that resolves after the project was detached', async () => {
+    let release!: (v: ReturnType<typeof projectFile>) => void
+    readFile.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve
+      })
+    )
+    const { rerender } = render(<Harness initial={stateWith(ROOT)} />)
+    // The read must actually be in flight before detaching, or the pending
+    // promise is never the one under test.
+    await waitFor(() =>
+      expect(readFile).toHaveBeenCalledWith(DATA_FOLDER, ROOT, 'app.ts', false)
+    )
+
+    rerender(<Harness folder={null} initial={stateWith(ROOT)} />)
+    release(projectFile({ content: 'stale bytes from A' }))
+
+    expect(
+      await screen.findByText('common:codePanel.detached')
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByText('stale bytes from A')).toBeNull()
+    )
+  })
+
+  it('never resolves project A’s path against project B', async () => {
+    const onStateChange = vi.fn()
+    const { rerender } = render(
+      <Harness initial={stateWith(ROOT)} onStateChange={onStateChange} />
+    )
+    expect((await screen.findAllByText('from A')).length).toBeGreaterThan(0)
+
+    // Switching projects: the store prunes A's tabs, so the panel is given a
+    // state that contains none of them.
+    readFile.mockResolvedValue(projectFile({ content: 'from B' }))
+    rerender(<Harness folder={OTHER} initial={emptyCodePanelState()} />)
+
+    await waitFor(() =>
+      expect(listDir).toHaveBeenCalledWith(DATA_FOLDER, OTHER, '')
+    )
+    // A's bytes are gone, and no read was ever issued for A's path against B.
+    await waitFor(() => expect(screen.queryByText('from A')).toBeNull())
+    for (const call of readFile.mock.calls) {
+      if (call[1] === OTHER) expect(call[2]).not.toBe('app.ts')
+    }
+  })
+
+  it('drops a listing that arrives from the previous project', async () => {
+    let releaseA!: (v: ReturnType<typeof listing>) => void
+    listDir.mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseA = resolve
+      })
+    )
+    const { rerender } = render(<Harness initial={emptyCodePanelState()} />)
+    // Wait for A's listing to actually be in flight. The roots resolve
+    // asynchronously, so rerendering before this would hand the pending
+    // promise to B's request instead and prove nothing.
+    await waitFor(() =>
+      expect(listDir).toHaveBeenCalledWith(DATA_FOLDER, ROOT, '')
+    )
+
+    listDir.mockResolvedValue(listing(fileEntry('only-in-b.ts')))
+    rerender(<Harness folder={OTHER} initial={emptyCodePanelState()} />)
+    await waitFor(() =>
+      expect(listDir).toHaveBeenCalledWith(DATA_FOLDER, OTHER, '')
+    )
+    // Only now does A's listing land, naming a file that exists only in A.
+    releaseA(listing(fileEntry('only-in-a.ts')))
+
+    expect(
+      await screen.findByRole('button', { name: 'only-in-b.ts' })
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'only-in-a.ts' })).toBeNull()
+    )
+  })
+
+  it('keeps a workspace tab across a project switch', async () => {
+    // A sandbox file belongs to the session, not the project, so switching
+    // projects must not close it.
+    const sandboxState = openTab(emptyCodePanelState(), {
+      path: 'out.ts',
+      origin: { kind: 'sandbox' },
+    })
+    render(<Harness folder={OTHER} initial={sandboxState} />)
+    expect(await screen.findAllByRole('tab')).toHaveLength(1)
   })
 })
