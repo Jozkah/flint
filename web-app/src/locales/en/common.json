@@ -713,6 +713,7 @@
     "binary": "This file looks binary and cannot be displayed.",
     "sensitive": "This file looks like credentials and was not opened.",
     "openAnyway": "Open anyway",
+    "openInCode": "Open in Code",
     "retry": "Retry",
     "closeMissing": "Close tab",
     "toggleWrap": "Toggle word wrap",

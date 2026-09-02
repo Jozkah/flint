@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute } from '@tanstack/react-router'
 import ChatInput from '@/containers/ChatInput'
+import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
 import HeaderPage from '@/containers/HeaderPage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { route } from '@/constants/routes'
@@ -64,6 +65,7 @@ import {
   openTab,
   sandboxTabPath,
   shouldOpenInCode,
+  relativeToRoot,
   type CodeRef,
 } from '@/lib/coworkCode'
 import { CoworkChangesChip } from '@/containers/CoworkChangesChip'
@@ -155,6 +157,26 @@ function CoworkPage() {
     },
     []
   )
+  /**
+   * Open a path a tool acted on, from its widget in the transcript.
+   *
+   * The path comes from the tool call's own `path` argument — structured
+   * data, never text parsed out of the model's prose. It still has to land in
+   * an allowed root: paths under the attached project open as project paths,
+   * everything else is treated as the session sandbox, which is the only
+   * other place the agent can write. Non-source files are left alone rather
+   * than opened as code.
+   */
+  const openToolPath = useCallback(
+    (path: string) => {
+      if (!shouldOpenInCode(path)) return
+      const relative = relativeToRoot(folder, path)
+      if (folder && relative !== path) openCode(relative)
+      else openCode(relativeToRoot(workspacePath, path), { sandbox: true })
+    },
+    [folder, workspacePath, openCode]
+  )
+
   // Source artifacts open as code, not as a plain-text preview dump.
   const showPreview = useCallback(
     (path: string) => {
@@ -711,6 +733,7 @@ function CoworkPage() {
                 <ConversationContent
                   className={cn('mx-auto w-full md:w-4/5 xl:w-4/6')}
                 >
+                  <CodeOpenProvider open={openToolPath}>
                   {uiMessages.map((message, i) => (
                     <Fragment key={message.id}>
                       <MessageItem
@@ -737,6 +760,7 @@ function CoworkPage() {
                       ))}
                     </Fragment>
                   ))}
+                  </CodeOpenProvider>
                   {running && (
                     // Row wrapper as in the chat route: the transcript is a
                     // column flex, which stretches the indicator's own

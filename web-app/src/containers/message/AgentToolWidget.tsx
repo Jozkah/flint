@@ -20,6 +20,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { Caret, ToolBar } from './ToolBar'
+import { useCodeOpen, toolTargetIsPath } from '@/lib/codeOpen'
 
 const asText = (output: unknown): string =>
   typeof output === 'string'
@@ -211,6 +212,14 @@ export const AgentToolWidget = memo(
     // that reads as though an argument failed to stream.
     const value =
       bar.target || (LISTING_TOOLS.has(bar.tool) ? t('tools:toolCall.workspaceRoot') : '')
+    // The path the tool was called with is structured data, so opening it in
+    // the code panel needs no parsing of the model's prose. Only once the call
+    // has finished streaming: a half-written path opens the wrong file.
+    const openCode = useCodeOpen()
+    const openable =
+      openCode && !running && bar.target && toolTargetIsPath(bar.tool)
+        ? () => openCode(bar.target)
+        : undefined
 
     return (
       <div className="space-y-1.5">
@@ -220,6 +229,8 @@ export const AgentToolWidget = memo(
           placeholder={t('tools:toolCall.pathPlaceholder')}
           typing={running}
           mono
+          onActivate={openable}
+          activateLabel={t('common:codePanel.openInCode')}
           trailing={
             bar.detail ? (
               <span className="shrink-0 font-mono text-xs text-muted-foreground/70">

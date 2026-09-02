@@ -13,6 +13,9 @@ export type ToolBarProps = {
   typing: boolean
   mono?: boolean
   trailing?: React.ReactNode
+  /** When set, the value becomes a button that opens what the bar names. */
+  onActivate?: () => void
+  activateLabel?: string
 }
 
 /**
@@ -27,19 +30,37 @@ export const ToolBar = ({
   typing,
   mono,
   trailing,
-}: ToolBarProps) => (
-  <div className="flex items-center gap-2 rounded-full border bg-card/40 px-3 py-1.5">
-    <span className="shrink-0 text-muted-foreground">{icon}</span>
-    <span
-      className={cn(
-        'min-w-0 flex-1 truncate text-sm',
-        mono && 'font-mono text-xs',
-        !value && 'text-muted-foreground/60'
-      )}
-    >
+  onActivate,
+  activateLabel,
+}: ToolBarProps) => {
+  const label = (
+    <>
       {value || placeholder}
       {typing && <Caret />}
-    </span>
-    {trailing}
-  </div>
-)
+    </>
+  )
+  const className = cn(
+    'min-w-0 flex-1 truncate text-left text-sm',
+    mono && 'font-mono text-xs',
+    !value && 'text-muted-foreground/60'
+  )
+  return (
+    <div className="flex items-center gap-2 rounded-full border bg-card/40 px-3 py-1.5">
+      <span className="shrink-0 text-muted-foreground">{icon}</span>
+      {onActivate ? (
+        <button
+          type="button"
+          onClick={onActivate}
+          title={activateLabel}
+          aria-label={activateLabel ? `${activateLabel}: ${value}` : undefined}
+          className={cn(className, 'cursor-pointer hover:underline')}
+        >
+          {label}
+        </button>
+      ) : (
+        <span className={className}>{label}</span>
+      )}
+      {trailing}
+    </div>
+  )
+}
