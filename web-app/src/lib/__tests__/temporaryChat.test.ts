@@ -160,6 +160,7 @@ describe('TEMPORARY_STATE_OWNERS', () => {
       'messages',
       'appState',
       'modelOverrides',
+      'attachments',
     ])
   })
 })

@@ -146,6 +146,7 @@ export const TEMPORARY_STATE_OWNERS = [
   'messages',
   'appState',
   'modelOverrides',
+  'attachments',
 ] as const
 
 export type TemporaryStateOwner = (typeof TEMPORARY_STATE_OWNERS)[number]

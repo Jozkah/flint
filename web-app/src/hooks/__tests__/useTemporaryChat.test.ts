@@ -3,7 +3,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 // The orchestration under a temporary chat's two exits. Every store and every
 // service it touches is mocked so the durability decisions — read the write
 // back before deleting anything, roll a half-written thread back, never sweep
-// while a stream might still be running — can be driven directly.
+// while a stream might still be running, hold `busy` across the whole keep —
+// can be driven directly.
 
 const mocks = vi.hoisted(() => ({
   fetchThreads: vi.fn(),
@@ -30,6 +31,9 @@ const mocks = vi.hoisted(() => ({
     setForThread: vi.fn(),
     dropThread: vi.fn(),
   },
+  attachmentsState: {
+    clearAttachments: vi.fn(),
+  },
 }))
 
 vi.mock('@/hooks/useServiceHub', () => ({
@@ -52,6 +56,9 @@ vi.mock('@/hooks/useAppState', () => ({
 }))
 vi.mock('@/hooks/useModelOverrides', () => ({
   useModelOverrides: { getState: () => mocks.overridesState },
+}))
+vi.mock('@/hooks/useChatAttachments', () => ({
+  useChatAttachments: { getState: () => mocks.attachmentsState },
 }))
 
 import { useTemporaryChat } from '@/hooks/useTemporaryChat'
@@ -102,7 +109,7 @@ beforeEach(() => {
   mocks.appState.abortControllers = {}
   mocks.appState.cancelToolCalls = {}
   mocks.overridesState.forThread.mockReturnValue({})
-  useTemporaryChat.setState({ epoch: 0, busy: false, leaving: false })
+  useTemporaryChat.setState({ busy: false, leaving: false })
 })
 
 afterEach(() => {
@@ -134,7 +141,7 @@ describe('keep — success', () => {
       KEPT_ID,
       expect.any(Array)
     )
-    // ...but the temporary chat is NOT swept yet, and the epoch has not moved.
+    // ...but the temporary chat is NOT swept yet.
     expect(mocks.messagesState.setMessages).not.toHaveBeenCalledWith(
       TEMPORARY_CHAT_ID,
       []
@@ -142,27 +149,41 @@ describe('keep — success', () => {
     expect(mocks.threadsState.deleteThread).not.toHaveBeenCalledWith(
       TEMPORARY_CHAT_ID
     )
-    expect(useTemporaryChat.getState().epoch).toBe(0)
-    // The keep-driven navigation is allowed through the guard.
+    // Busy is HELD across the caller's navigation window; leaving is exempt for
+    // the keep's own navigation. Neither is released until finalizeKept.
+    expect(useTemporaryChat.getState().busy).toBe(true)
     expect(useTemporaryChat.getState().leaving).toBe(true)
-    expect(useTemporaryChat.getState().busy).toBe(false)
   })
 
-  it('finalizeKept bumps the epoch and sweeps every temporary store, after navigation', async () => {
+  it('a second keep is refused while the first is still finalizing (busy held)', async () => {
+    seedTemporaryChat()
+    seedDurableWrites()
+    await useTemporaryChat.getState().keep()
+
+    const second = await useTemporaryChat.getState().keep()
+    expect(second).toEqual({ ok: false, reason: 'error', detail: 'busy' })
+    // Only one real thread was ever created.
+    expect(mocks.threadsState.createThread).toHaveBeenCalledTimes(1)
+  })
+
+  it('finalizeKept sweeps every temporary store and releases busy, after navigation', async () => {
     seedTemporaryChat()
     seedDurableWrites()
     await useTemporaryChat.getState().keep()
 
     useTemporaryChat.getState().finalizeKept()
 
-    expect(useTemporaryChat.getState().epoch).toBe(1)
     expect(useTemporaryChat.getState().leaving).toBe(false)
+    expect(useTemporaryChat.getState().busy).toBe(false)
     expect(mocks.messagesState.setMessages).toHaveBeenCalledWith(
       TEMPORARY_CHAT_ID,
       []
     )
     expect(mocks.appState.clearThreadState).toHaveBeenCalledWith(TEMPORARY_CHAT_ID)
     expect(mocks.overridesState.dropThread).toHaveBeenCalledWith(TEMPORARY_CHAT_ID)
+    expect(mocks.attachmentsState.clearAttachments).toHaveBeenCalledWith(
+      TEMPORARY_CHAT_ID
+    )
     expect(mocks.threadsState.deleteThread).toHaveBeenCalledWith(TEMPORARY_CHAT_ID)
   })
 
@@ -183,7 +204,6 @@ describe('keep — success', () => {
 
 describe('keep — durable-write failures preserve the temporary chat', () => {
   it('refuses when there is no chat to copy', async () => {
-    // threads is empty: no temporary chat, no model.
     const result = await useTemporaryChat.getState().keep()
     expect(result).toEqual({
       ok: false,
@@ -192,6 +212,18 @@ describe('keep — durable-write failures preserve the temporary chat', () => {
     })
     expect(mocks.threadsState.createThread).not.toHaveBeenCalled()
     expect(useTemporaryChat.getState().leaving).toBe(false)
+    expect(useTemporaryChat.getState().busy).toBe(false)
+  })
+
+  it('refuses an empty chat rather than saving an empty thread', async () => {
+    seedTemporaryChat({ messages: [] })
+    const result = await useTemporaryChat.getState().keep()
+    expect(result).toEqual({
+      ok: false,
+      reason: 'thread-not-created',
+      detail: 'no messages',
+    })
+    expect(mocks.threadsState.createThread).not.toHaveBeenCalled()
   })
 
   it('refuses — and rolls the thread back — when the thread is not durable', async () => {
@@ -207,19 +239,17 @@ describe('keep — durable-write failures preserve the temporary chat', () => {
       reason: 'thread-not-created',
       detail: 'not durable',
     })
-    // No message was ever addressed to a thread we could not confirm.
     expect(mocks.createMessage).not.toHaveBeenCalled()
-    // The half-created thread is rolled back and we are put back on the temp chat.
     expect(mocks.threadsState.deleteThread).toHaveBeenCalledWith(KEPT_ID)
     expect(mocks.threadsState.setCurrentThreadId).toHaveBeenCalledWith(
       TEMPORARY_CHAT_ID
     )
-    // The temporary source is untouched.
     expect(mocks.messagesState.setMessages).not.toHaveBeenCalledWith(
       TEMPORARY_CHAT_ID,
       []
     )
     expect(useTemporaryChat.getState().leaving).toBe(false)
+    expect(useTemporaryChat.getState().busy).toBe(false)
   })
 
   it('handles partial permanent data: thread durable, messages not', async () => {
@@ -239,7 +269,7 @@ describe('keep — durable-write failures preserve the temporary chat', () => {
     expect(mocks.threadsState.deleteThread).not.toHaveBeenCalledWith(
       TEMPORARY_CHAT_ID
     )
-    expect(useTemporaryChat.getState().leaving).toBe(false)
+    expect(useTemporaryChat.getState().busy).toBe(false)
   })
 
   it('rolls back and reports when a write throws', async () => {
@@ -316,58 +346,48 @@ describe('generation settlement', () => {
       TEMPORARY_CHAT_ID,
       []
     )
-    expect(useTemporaryChat.getState().epoch).toBe(0)
   })
 })
 
 describe('discard', () => {
-  it('sweeps every temporary store and bumps the epoch', async () => {
+  it('sweeps every temporary store, including staged attachments', async () => {
     seedTemporaryChat()
 
     const result = await useTemporaryChat.getState().discard()
 
     expect(result).toEqual({ ok: true })
-    expect(useTemporaryChat.getState().epoch).toBe(1)
     expect(mocks.messagesState.setMessages).toHaveBeenCalledWith(
       TEMPORARY_CHAT_ID,
       []
     )
     expect(mocks.appState.clearThreadState).toHaveBeenCalledWith(TEMPORARY_CHAT_ID)
     expect(mocks.overridesState.dropThread).toHaveBeenCalledWith(TEMPORARY_CHAT_ID)
+    expect(mocks.attachmentsState.clearAttachments).toHaveBeenCalledWith(
+      TEMPORARY_CHAT_ID
+    )
     expect(mocks.threadsState.deleteThread).toHaveBeenCalledWith(TEMPORARY_CHAT_ID)
+    expect(useTemporaryChat.getState().busy).toBe(false)
   })
 })
 
-describe('late events and reuse of TEMPORARY_CHAT_ID', () => {
-  it('a captured epoch goes stale once the chat ends', async () => {
-    const epochAtStart = useTemporaryChat.getState().epoch
-    expect(useTemporaryChat.getState().isCurrentEpoch(epochAtStart)).toBe(true)
-
+describe('reuse of TEMPORARY_CHAT_ID', () => {
+  it('a second temporary chat under the same id sweeps cleanly, leaving nothing to inherit', async () => {
     seedTemporaryChat()
     await useTemporaryChat.getState().discard()
-
-    // A late writer that captured the old epoch now knows to drop its write.
-    expect(useTemporaryChat.getState().isCurrentEpoch(epochAtStart)).toBe(false)
-    expect(
-      useTemporaryChat.getState().isCurrentEpoch(useTemporaryChat.getState().epoch)
-    ).toBe(true)
-  })
-
-  it('a second temporary chat under the same id sweeps cleanly and advances the epoch', async () => {
-    seedTemporaryChat()
-    await useTemporaryChat.getState().discard()
-    expect(useTemporaryChat.getState().epoch).toBe(1)
 
     // The id is reused: a brand-new temporary chat, same TEMPORARY_CHAT_ID.
     seedTemporaryChat({ messages: [{ id: 'm2', thread_id: TEMPORARY_CHAT_ID }] })
     await useTemporaryChat.getState().discard()
 
-    expect(useTemporaryChat.getState().epoch).toBe(2)
-    // Swept again — nothing from the first chat is left to inherit.
+    // Swept both times — messages, overrides, and attachments each cleared per
+    // discard, so nothing from the first chat survives into the second.
+    const sweeps = (id: string) => (calls: unknown[][]) =>
+      calls.filter((c) => c[0] === id).length
     expect(
-      mocks.threadsState.deleteThread.mock.calls.filter(
-        (c) => c[0] === TEMPORARY_CHAT_ID
-      ).length
+      sweeps(TEMPORARY_CHAT_ID)(mocks.threadsState.deleteThread.mock.calls)
+    ).toBe(2)
+    expect(
+      sweeps(TEMPORARY_CHAT_ID)(mocks.attachmentsState.clearAttachments.mock.calls)
     ).toBe(2)
   })
 })

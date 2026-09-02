@@ -32,12 +32,22 @@ export function usePromoteTemporaryChat() {
     }
 
     // Navigate onto the persisted thread first, then clear the temporary state,
-    // so the chat is never swept while it is still the one on screen.
-    await navigate({
-      to: route.threadsDetail,
-      params: { threadId: result.threadId },
-    })
-    useTemporaryChat.getState().finalizeKept()
+    // so the chat is never swept while it is still the one on screen. The chat
+    // is already durably saved, so even if the navigation itself throws the
+    // clear must still run — otherwise `busy`/`leaving` stay stuck and the old
+    // messages linger under the reused id for the next temporary chat to
+    // inherit. `finalizeKept` therefore runs in a `finally`.
+    try {
+      await navigate({
+        to: route.threadsDetail,
+        params: { threadId: result.threadId },
+      })
+    } catch {
+      // The keep succeeded regardless of where we ended up; swallow so the
+      // caller still sees success and the guard is reset.
+    } finally {
+      useTemporaryChat.getState().finalizeKept()
+    }
     toast.success(t('chat:temporaryChatLeave.kept'), {
       id: 'keep-temporary-chat',
     })

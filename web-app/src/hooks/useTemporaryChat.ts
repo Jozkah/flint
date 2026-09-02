@@ -5,6 +5,7 @@ import { useThreads } from '@/hooks/useThreads'
 import { useMessages } from '@/hooks/useMessages'
 import { useAppState } from '@/hooks/useAppState'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
+import { useChatAttachments } from '@/hooks/useChatAttachments'
 import {
   overridesToCarry,
   persistedEverything,
@@ -25,6 +26,13 @@ import {
  *
  * Nothing here promotes on its own. A temporary chat becomes permanent only
  * when the user says so.
+ *
+ * On late events and the reused id: the sweep never runs until `stopGeneration`
+ * has confirmed the chat is idle, and the chat is not marked idle
+ * (`busyThreads`) until its send flow has finished writing its final message.
+ * So a late write cannot land *after* the sweep — the sweep waits for it — and
+ * the sweep is exhaustive, so nothing it leaves behind can be inherited by the
+ * next chat under the same id.
  */
 
 /** How long to wait for a cancelled generation to actually stop. */
@@ -33,14 +41,12 @@ const CANCEL_POLL_MS = 50
 
 type TemporaryChatState = {
   /**
-   * Bumped every time a temporary chat ends.
-   *
-   * The id is reused, so a stream that has not noticed its abort could still
-   * write into the *next* chat. Anything that might land late captures this
-   * and drops its write when it no longer matches.
+   * A promotion or discard in flight; the dialog and banner disable while it
+   * runs. For a keep this stays true across the caller's navigation onto the
+   * saved thread and is only released by `finalizeKept`, so a second keep or a
+   * discard cannot fire into the still-intact temporary chat during that
+   * window.
    */
-  epoch: number
-  /** A promotion or discard in flight; the dialog disables while it runs. */
   busy: boolean
   /**
    * True from the moment a keep begins until its state has been swept.
@@ -53,8 +59,6 @@ type TemporaryChatState = {
    */
   leaving: boolean
 
-  /** Is this still the chat the caller started out in? */
-  isCurrentEpoch: (epoch: number) => boolean
   /**
    * Copy the temporary chat into a real thread, and confirm — through a
    * non-optimistic read, not the store the write already touched — that both
@@ -62,14 +66,19 @@ type TemporaryChatState = {
    * temporary chat is left completely intact for the caller to navigate off
    * first. Call `finalizeKept` once that navigation has happened.
    *
-   * On any failure the temporary chat is untouched and any half-written
-   * permanent thread is rolled back, so a retry starts from a clean slate.
+   * `busy` is held true on success until `finalizeKept` releases it, so the
+   * still-intact temporary chat cannot be kept or discarded a second time
+   * during the caller's navigation. On any failure the temporary chat is
+   * untouched and any half-written permanent thread is rolled back, so a retry
+   * starts from a clean slate.
    */
   keep: () => Promise<PromotionResult>
   /**
    * Clear the temporary chat after a successful `keep` and the navigation off
-   * it. Split from `keep` so the order the caller sees is: persist, confirm,
-   * navigate, *then* forget — never forgetting a chat that is still on screen.
+   * it, and release `busy`. Split from `keep` so the order the caller sees is:
+   * persist, confirm, navigate, *then* forget — never forgetting a chat that is
+   * still on screen. The caller must always call it (from a `finally`) so
+   * `busy`/`leaving` are never left stuck if the navigation itself throws.
    */
   finalizeKept: () => void
   /** Throw it away, leaving nothing for the next temporary chat to inherit. */
@@ -106,6 +115,9 @@ function sweepTemporaryState(): void {
   useMessages.getState().setMessages(TEMPORARY_CHAT_ID, [])
   useAppState.getState().clearThreadState(TEMPORARY_CHAT_ID)
   useModelOverrides.getState().dropThread(TEMPORARY_CHAT_ID)
+  // Attachments staged under the chat's id but never sent. Left behind, the
+  // next temporary chat would inherit — and could unknowingly send — them.
+  useChatAttachments.getState().clearAttachments(TEMPORARY_CHAT_ID)
   useThreads.getState().deleteThread(TEMPORARY_CHAT_ID)
 }
 
@@ -125,11 +137,8 @@ function rollbackPartialThread(threadId: string): void {
 }
 
 export const useTemporaryChat = create<TemporaryChatState>()((set, get) => ({
-  epoch: 0,
   busy: false,
   leaving: false,
-
-  isCurrentEpoch: (epoch) => get().epoch === epoch,
 
   keep: async () => {
     if (get().busy) return { ok: false, reason: 'error', detail: 'busy' }
@@ -154,6 +163,11 @@ export const useTemporaryChat = create<TemporaryChatState>()((set, get) => ({
       // conversation never used.
       if (!temporary?.model) {
         return fail('thread-not-created', 'no chat')
+      }
+      // Nothing to keep. `persistedEverything([], …)` is vacuously true, so
+      // without this an empty chat would "succeed" into an empty thread.
+      if (messages.length === 0) {
+        return fail('thread-not-created', 'no messages')
       }
 
       // A half-written answer would be copied mid-sentence and then keep
@@ -211,10 +225,11 @@ export const useTemporaryChat = create<TemporaryChatState>()((set, get) => ({
         }
       }
 
-      // Persisted and confirmed. The temporary chat is left in place: the
-      // caller navigates onto `created.id` and then calls `finalizeKept`, so
-      // the chat is never cleared while it is still the one on screen.
-      set({ busy: false })
+      // Persisted and confirmed. `busy` stays true and the temporary chat is
+      // left in place: the caller navigates onto `created.id` and then calls
+      // `finalizeKept`, which sweeps the chat and releases `busy`. Holding
+      // `busy` closes the window in which the still-intact chat could be kept
+      // or discarded a second time.
       return { ok: true, threadId: created.id }
     } catch (error) {
       return fail('error', error instanceof Error ? error.message : String(error))
@@ -222,10 +237,8 @@ export const useTemporaryChat = create<TemporaryChatState>()((set, get) => ({
   },
 
   finalizeKept: () => {
-    // The id is reused, so bump the epoch before the sweep: anything already in
-    // flight that checks its epoch on the way back finds it stale.
-    set({ epoch: get().epoch + 1, leaving: false })
     sweepTemporaryState()
+    set({ leaving: false, busy: false })
   },
 
   discard: async () => {
@@ -238,13 +251,10 @@ export const useTemporaryChat = create<TemporaryChatState>()((set, get) => ({
       if (!(await stopGeneration(TEMPORARY_CHAT_ID))) {
         return { ok: false, reason: 'generation-not-stopped' }
       }
-      // Bumped before the sweep, so anything already in flight that checks
-      // its epoch on the way back finds it stale.
-      set({ epoch: get().epoch + 1 })
       sweepTemporaryState()
       return { ok: true }
     } finally {
-      set({ busy: false })
+      set({ busy: false, leaving: false })
     }
   },
 }))
