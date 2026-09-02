@@ -469,3 +469,70 @@ describe('CoworkTasksChip', () => {
     expect(sessionWorkflows(state, SESSION)[0].progress.finished).toBe(2)
   })
 })
+
+describe('what a screen reader hears', () => {
+  it('reads every row’s status, which no other text carries', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({
+            id: 'a',
+            title: 'live',
+            status: 'running',
+            endedAt: undefined,
+          }),
+          task({ id: 'b', title: 'over', status: 'done' }),
+          task({ id: 'c', title: 'broke', status: 'error' }),
+          task({ id: 'd', title: 'stopped', status: 'cancelled' }),
+          task({
+            id: 'e',
+            title: 'waiting',
+            status: 'queued',
+            endedAt: undefined,
+          }),
+        ])}
+      />
+    )
+    await openWorkflow()
+    for (const key of [
+      'statusRunning',
+      'statusDone',
+      'statusError',
+      'statusCancelled',
+      'statusQueued',
+    ]) {
+      expect(
+        screen.getAllByLabelText(`common:tasks.${key}`).length
+      ).toBeGreaterThan(0)
+    }
+  })
+
+  it('says whether a section is open', async () => {
+    render(<Panel state={stateWith([task()])} />)
+    const header = screen.getByRole('button', { name: /refactor the parser/ })
+    expect(header).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(header)
+    expect(header).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('gives each stop control a name that says what it stops', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({
+            id: 'a',
+            title: 'explorer',
+            status: 'running',
+            endedAt: undefined,
+          }),
+        ])}
+      />
+    )
+    await openWorkflow()
+    expect(
+      screen.getByRole('button', {
+        name: 'common:tasks.stopTask name=explorer',
+      })
+    ).toBeInTheDocument()
+  })
+})

@@ -327,50 +327,63 @@ function ProgressBar({ progress }: { progress: ActivityProgress }) {
   )
 }
 
+/**
+ * The row's status, as an icon.
+ *
+ * Labelled, not decorative: the status is the one thing a row says that its
+ * text does not, so a screen reader has to be able to read it. The test ids
+ * stay for the tests that assert on shape rather than wording.
+ */
 function StatusIcon({ status }: { status: ActivityStatus }) {
-  if (status === 'running') {
-    return (
-      <Loader2
-        size={13}
-        className="shrink-0 animate-spin text-primary"
-        data-testid="task-status-running"
-      />
-    )
+  const { t } = useTranslation()
+  const shared = 'shrink-0'
+  switch (status) {
+    case 'running':
+      return (
+        <Loader2
+          size={13}
+          aria-label={t('common:tasks.statusRunning')}
+          className={cn(shared, 'animate-spin text-primary')}
+          data-testid="task-status-running"
+        />
+      )
+    case 'queued':
+      return (
+        <Clock
+          size={13}
+          aria-label={t('common:tasks.statusQueued')}
+          className={cn(shared, 'text-main-view-fg/40')}
+          data-testid="task-status-queued"
+        />
+      )
+    case 'error':
+      return (
+        <CircleAlert
+          size={13}
+          aria-label={t('common:tasks.statusError')}
+          className={cn(shared, 'text-destructive')}
+          data-testid="task-status-error"
+        />
+      )
+    case 'cancelled':
+      return (
+        <CircleSlash
+          size={13}
+          aria-label={t('common:tasks.statusCancelled')}
+          className={cn(shared, 'text-main-view-fg/40')}
+          data-testid="task-status-cancelled"
+        />
+      )
+    default:
+      return (
+        <CircleCheck
+          size={13}
+          aria-label={t('common:tasks.statusDone')}
+          className={cn(shared, 'text-main-view-fg/40')}
+          data-testid="task-status-done"
+        />
+      )
   }
-  if (status === 'queued') {
-    return (
-      <Clock
-        size={13}
-        className="shrink-0 text-main-view-fg/40"
-        data-testid="task-status-queued"
-      />
-    )
-  }
-  if (status === 'error') {
-    return (
-      <CircleAlert
-        size={13}
-        className="shrink-0 text-destructive"
-        data-testid="task-status-error"
-      />
-    )
-  }
-  if (status === 'cancelled') {
-    return (
-      <CircleSlash
-        size={13}
-        className="shrink-0 text-main-view-fg/40"
-        data-testid="task-status-cancelled"
-      />
-    )
-  }
-  return (
-    <CircleCheck
-      size={13}
-      className="shrink-0 text-main-view-fg/40"
-      data-testid="task-status-done"
-    />
-  )
 }
 
 function TaskItem({
