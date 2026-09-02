@@ -268,6 +268,34 @@ export async function bashJobsList(): Promise<BashJobStatus[]> {
   return await invoke('plugin:agent-tools|bash_jobs_list')
 }
 
+/** Why a kill request ended the way it did. Mirrors `BashJobKillOutcome`. */
+export type BashJobKillOutcome =
+  /** The process tree was signalled. */
+  | 'killed'
+  /** The command had already finished; its output is still collectable. */
+  | 'alreadyFinished'
+  /** No job by that id: never existed, or already collected. */
+  | 'unknown'
+  /** The job exists but no pid was ever captured, so nothing was signalled. */
+  | 'noPid'
+
+export type BashJobKill = {
+  jobId: string
+  outcome: BashJobKillOutcome
+}
+
+/**
+ * Kill one backgrounded shell command and every process it spawned.
+ *
+ * The job entry survives, so the agent's own collection still returns whatever
+ * the command printed before it died. The outcome is reported rather than
+ * assumed: a UI must not claim to have stopped something that had already
+ * finished, or that it could not signal.
+ */
+export async function bashJobKill(jobId: string): Promise<BashJobKill> {
+  return await invoke('plugin:agent-tools|bash_job_kill', { jobId })
+}
+
 /** Which OS sandbox, if any, can confine a shell on this machine. */
 export type SandboxStatus = {
   /** `bubblewrap`, `seatbelt`, `appcontainer`, or `none`. */

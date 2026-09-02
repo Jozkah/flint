@@ -23,4 +23,5 @@ permissions = [
     "allow-project-list-dir",
     "allow-project-read-file",
     "allow-bash-jobs-list",
+    "allow-bash-job-kill",
 ]

@@ -64,6 +64,10 @@ pub struct BashJob {
     pub command: String,
     pub started: std::time::Instant,
     pub call_id: Option<String>,
+    /// The shell's pid, which is also its process-group id (see `proc::spawn`).
+    /// Held so one job can be reaped on its own; `None` only when the child had
+    /// already exited before its id could be read.
+    pub pid: Option<u32>,
 }
 
 impl BashJob {
@@ -105,6 +109,30 @@ pub struct BashJobStatus {
     pub call_id: Option<String>,
 }
 
+/// Why a kill request ended the way it did. Reported rather than inferred so a
+/// caller can tell "there was nothing left to kill" from "the kill failed".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BashJobKillOutcome {
+    /// The process tree was signalled.
+    Killed,
+    /// The command had already finished; its output is still collectable.
+    AlreadyFinished,
+    /// No job by that id: never existed, or already collected.
+    Unknown,
+    /// The job exists but its pid was never captured, so nothing can be
+    /// signalled. The command is left alone rather than reported as killed.
+    NoPid,
+}
+
+/// The result of asking for one background job to be killed.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BashJobKill {
+    pub job_id: String,
+    pub outcome: BashJobKillOutcome,
+}
+
 /// Commands still running past their `bash` call's timeout, keyed by job_id.
 /// Entries are removed once collected via `job_id`; uncollected jobs live for
 /// the process's lifetime, same tradeoff as the bash-output temp files this
@@ -131,6 +159,40 @@ pub fn list_bash_jobs() -> Vec<BashJobStatus> {
     // Newest first: job ids are a monotonic `bash-N`.
     out.sort_by(|a, b| b.job_id.len().cmp(&a.job_id.len()).then(b.job_id.cmp(&a.job_id)));
     out
+}
+
+/// Kill one backgrounded command and every process it spawned.
+///
+/// The job is kept, not removed: the detached collector still resolves once the
+/// shell dies, so the agent's `bash {"job_id": ...}` collection returns whatever
+/// the command printed before it was killed instead of `unknown job_id`. A job
+/// that has already finished is left alone — killing it would signal a pid the
+/// OS may since have reused.
+pub fn kill_bash_job(job_id: &str) -> BashJobKill {
+    let mut jobs = bash_jobs().lock().unwrap();
+    let outcome = match jobs.get_mut(job_id) {
+        None => BashJobKillOutcome::Unknown,
+        Some(job) => {
+            if job.poll_finished() {
+                BashJobKillOutcome::AlreadyFinished
+            } else {
+                // Taken, not copied: a second kill must not signal the pid
+                // again once the OS is free to hand it to somebody else.
+                match job.pid.take() {
+                    Some(pid) => {
+                        super::proc::kill_tree(pid);
+                        super::proc::unregister(pid);
+                        BashJobKillOutcome::Killed
+                    }
+                    None => BashJobKillOutcome::NoPid,
+                }
+            }
+        }
+    };
+    BashJobKill {
+        job_id: job_id.to_string(),
+        outcome,
+    }
 }
 
 fn arg_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str> {
@@ -933,6 +995,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                     command: command.to_string(),
                     started: job_started,
                     call_id: ctx.call_id.map(str::to_string),
+                    pid,
                 },
             );
             format!(
@@ -1707,6 +1770,14 @@ mod bash_job_registry_tests {
     use super::*;
 
     fn park(job_id: &str, command: &str) -> tokio::sync::oneshot::Sender<String> {
+        park_with_pid(job_id, command, None)
+    }
+
+    fn park_with_pid(
+        job_id: &str,
+        command: &str,
+        pid: Option<u32>,
+    ) -> tokio::sync::oneshot::Sender<String> {
         let (tx, rx) = oneshot::channel::<String>();
         bash_jobs().lock().unwrap().insert(
             job_id.to_string(),
@@ -1716,9 +1787,73 @@ mod bash_job_registry_tests {
                 command: command.to_string(),
                 started: std::time::Instant::now(),
                 call_id: Some("call-1".to_string()),
+                pid,
             },
         );
         tx
+    }
+
+    #[tokio::test]
+    async fn killing_an_unknown_job_reports_it_rather_than_claiming_success() {
+        let killed = kill_bash_job("bash-never-existed");
+        assert_eq!(killed.outcome, BashJobKillOutcome::Unknown);
+        assert_eq!(killed.job_id, "bash-never-existed");
+    }
+
+    #[tokio::test]
+    async fn killing_a_finished_job_leaves_its_output_collectable() {
+        // The pid may already have been reused by the OS, so a finished job is
+        // never signalled — and its output must still reach the agent.
+        let tx = park_with_pid("bash-kill-finished", "true", Some(u32::MAX - 2));
+        tx.send("all done".to_string()).unwrap();
+
+        let killed = kill_bash_job("bash-kill-finished");
+        assert_eq!(killed.outcome, BashJobKillOutcome::AlreadyFinished);
+        assert_eq!(await_bash_job("bash-kill-finished").await, "all done");
+    }
+
+    #[tokio::test]
+    async fn a_job_with_no_pid_is_reported_rather_than_reported_killed() {
+        let _tx = park("bash-kill-nopid", "sleep 5");
+        let killed = kill_bash_job("bash-kill-nopid");
+        assert_eq!(killed.outcome, BashJobKillOutcome::NoPid);
+        // Still listed: nothing was signalled, so nothing has stopped.
+        assert!(list_bash_jobs().iter().any(|j| j.job_id == "bash-kill-nopid"));
+        let _ = bash_jobs().lock().unwrap().remove("bash-kill-nopid");
+    }
+
+    /// The whole point of keeping the entry: a killed command's partial output
+    /// is what the agent needs to see, and `unknown job_id` would hide it.
+    #[tokio::test]
+    async fn a_killed_job_still_hands_over_what_it_printed() {
+        let tx = park_with_pid("bash-kill-partial", "sleep 300", Some(u32::MAX - 3));
+
+        let killed = kill_bash_job("bash-kill-partial");
+        assert_eq!(killed.outcome, BashJobKillOutcome::Killed);
+
+        // The detached collector resolves when the shell dies.
+        tx.send("half a line before the kill".to_string()).unwrap();
+        assert_eq!(
+            await_bash_job("bash-kill-partial").await,
+            "half a line before the kill"
+        );
+    }
+
+    /// A second kill must not signal the pid again: by then the OS is free to
+    /// have handed that number to an unrelated process.
+    #[tokio::test]
+    async fn killing_twice_signals_once() {
+        let _tx = park_with_pid("bash-kill-twice", "sleep 300", Some(u32::MAX - 4));
+
+        assert_eq!(
+            kill_bash_job("bash-kill-twice").outcome,
+            BashJobKillOutcome::Killed
+        );
+        assert_eq!(
+            kill_bash_job("bash-kill-twice").outcome,
+            BashJobKillOutcome::NoPid
+        );
+        let _ = bash_jobs().lock().unwrap().remove("bash-kill-twice");
     }
 
     #[tokio::test]

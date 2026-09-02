@@ -653,6 +653,18 @@ pub fn bash_jobs_list() -> Vec<crate::tools::handlers::BashJobStatus> {
     crate::tools::handlers::list_bash_jobs()
 }
 
+/// Kill one backgrounded shell command and every process it spawned.
+///
+/// The job entry survives the kill, so the agent's own
+/// `bash {"job_id": ...}` collection still returns whatever the command
+/// printed before it died rather than failing with an unknown id. The reported
+/// outcome distinguishes a kill from "already finished" and "no such job", so a
+/// UI never claims to have stopped something it did not.
+#[tauri::command]
+pub fn bash_job_kill(job_id: String) -> crate::tools::handlers::BashJobKill {
+    crate::tools::handlers::kill_bash_job(&job_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
