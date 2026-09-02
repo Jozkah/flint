@@ -55,7 +55,7 @@ import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { MessageItem } from '@/containers/MessageItem'
 import SkillSelector from '@/containers/SkillSelector'
-import { coworkTurnsToUIMessages } from '@/lib/coworkTurns'
+import { assistantAnchorId, coworkTurnsToUIMessages } from '@/lib/coworkTurns'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { PromptProgress } from '@/components/PromptProgress'
 import { useAppState } from '@/hooks/useAppState'
@@ -593,17 +593,27 @@ function CoworkPage() {
           recordShellDispatch(run, {
             callId: call.toolCallId,
             command,
-            anchorMessageId,
+            anchorMessageId: anchorMessageId(),
           })
         }
       },
     }
 
     const baseMessages = current?.messages ?? []
-    // The assistant message this run's work is reported under: the same id
-    // `nextMessageId` will hand the first assistant message of this turn.
-    // Recorded once, so the conversation shows exactly one card per workflow.
-    const anchorMessageId = `${sid}-asst-${baseMessages.length}`
+    // The message this run's work is reported under, named by the same rule the
+    // transcript conversion uses. Read at dispatch rather than guessed up
+    // front: the block's id depends on which turn opened it, and only the
+    // first dispatch's answer is kept, so the conversation shows exactly one
+    // card per workflow.
+    const anchorMessageId = () =>
+      assistantAnchorId(
+        [
+          ...(useCoworkSessions.getState().sessions.find((s) => s.id === sid)
+            ?.turns ?? []),
+          ...liveTurnsRef.current,
+        ],
+        sid
+      )
     // The transcript shows `text` as typed; the model additionally receives the
     // staged code references expanded under it (exact path, line range and the
     // selected source). Only content the user explicitly selected travels.
@@ -701,7 +711,7 @@ function CoworkPage() {
                   agentName: resolved.name,
                   description: req.description,
                   model: selectedModel.id,
-                  anchorMessageId,
+                  anchorMessageId: anchorMessageId(),
                 })
                 // Its own controller, chained to the run's, so this one child
                 // can be stopped without stopping the turn.
