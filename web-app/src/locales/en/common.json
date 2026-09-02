@@ -730,5 +730,22 @@
     "count_other": "{{count}} results",
     "empty": "No matching settings.",
     "clear": "Clear search"
+  },
+  "tasks": {
+    "title": "Activity",
+    "empty": "Subagents and shell commands from this session will appear here.",
+    "running": "Running ({{count}})",
+    "finished": "Finished ({{count}})",
+    "summary_one": "{{count}} task · {{tokens}} tokens",
+    "summary_other": "{{count}} tasks · {{tokens}} tokens",
+    "summaryNoTokens_one": "{{count}} task",
+    "summaryNoTokens_other": "{{count}} tasks",
+    "tokens": "{{tokens}} tokens",
+    "toolCalls_one": "{{count}} tool call",
+    "toolCalls_other": "{{count}} tool calls",
+    "queuePosition": "queued #{{position}}",
+    "background": "background {{jobId}}",
+    "noOutput": "No output recorded.",
+    "a11y": "Activity: {{running}} running, {{queued}} queued, {{finished}} finished"
   }
 }

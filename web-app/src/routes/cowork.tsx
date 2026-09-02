@@ -51,6 +51,9 @@ import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
 import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
+import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
+import { CoworkTasksChip } from '@/containers/CoworkTasksChip'
+import { buildTaskList, taskTotals } from '@/lib/coworkTasks'
 import { Code2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -139,7 +142,11 @@ function CoworkPage() {
   // The rail holds one panel at a time: preview, diff and code all want the
   // width, so showing two together starves the transcript (C7).
   const [rail, setRail] = useState<
-    { kind: 'preview'; path: string } | { kind: 'diff' } | { kind: 'code' } | null
+    | { kind: 'preview'; path: string }
+    | { kind: 'diff' }
+    | { kind: 'code' }
+    | { kind: 'tasks' }
+    | null
   >(null)
   /** Open a tab in the Code panel. `sandbox` marks paths under the session
    * workspace (agent artifacts) rather than the attached project. */
@@ -343,6 +350,20 @@ function CoworkPage() {
       ),
     [displayedTurns, liveSubagents, session?.subagents]
   )
+
+  // The activity list: subagents from both lanes, plus shell commands read off
+  // the transcript. Derived here so the chip can show live counts without the
+  // panel being open.
+  const taskRows = useMemo(
+    () =>
+      buildTaskList({
+        liveSubagents,
+        sessionSubagents: session?.subagents,
+        turns: displayedTurns,
+      }),
+    [liveSubagents, session?.subagents, displayedTurns]
+  )
+  const taskCounts = useMemo(() => taskTotals(taskRows), [taskRows])
 
   const awaitingModel = useMemo(
     () => awaitsModel(running, displayedTurns),
@@ -851,6 +872,15 @@ function CoworkPage() {
                         )
                       }
                     />
+                    <CoworkTasksChip
+                      totals={taskCounts}
+                      open={rail?.kind === 'tasks'}
+                      onToggle={() =>
+                        setRail((r) =>
+                          r?.kind === 'tasks' ? null : { kind: 'tasks' }
+                        )
+                      }
+                    />
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
@@ -900,6 +930,14 @@ function CoworkPage() {
         )}
         {rail?.kind === 'diff' && (
           <CoworkDiffPanel files={fileDiffs} onClose={() => setRail(null)} />
+        )}
+        {rail?.kind === 'tasks' && (
+          <CoworkTasksPanel
+            liveSubagents={liveSubagents}
+            sessionSubagents={session?.subagents}
+            turns={displayedTurns}
+            onClose={() => setRail(null)}
+          />
         )}
         {rail?.kind === 'code' && session?.id && (
           <CoworkCodePanel
