@@ -54,6 +54,38 @@ export type CoworkPromptOptions = {
   subagentNames: string[]
   /** Whether `web_search`/`web_fetch` are advertised this run. */
   webSearch: boolean
+  /**
+   * Verbatim `JAN.md` from the attached project root, when it has one.
+   *
+   * `JAN.md` is the one instructions file Jan reads — `AGENTS.md` and
+   * `CLAUDE.md` are deliberately not ingested, here or in `core::agent`, so
+   * only what a user wrote for Jan is treated as authoritative.
+   */
+  projectInstructions?: string | null
+}
+
+/**
+ * Project instructions, wrapped the way `core::agent::context` wraps them, so
+ * a project reads the same to the model on the desktop as it does on the CLI.
+ *
+ * Unlike the CLI this does not walk up past the attached folder. Cowork's
+ * boundary is the folder the user attached, and reading a parent's `JAN.md`
+ * would pull in a file from outside it — exactly what the rest of this surface
+ * refuses to do. A monorepo therefore needs its instructions at the folder
+ * that was attached.
+ */
+function instructionsBlock(content: string): string {
+  return [
+    '<project_context>',
+    '',
+    'Project-specific instructions and guidelines:',
+    '',
+    '<project_instructions path="JAN.md">',
+    content.trim(),
+    '</project_instructions>',
+    '',
+    '</project_context>',
+  ].join('\n')
 }
 
 /** Marker text matches chat's, so the same renderer turns it into source chips. */
@@ -83,6 +115,12 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
       `The user attached a project folder: \`${opts.readOnlyFolder}\`.`,
       ...(opts.gitBranch
         ? [`Its current git branch is \`${opts.gitBranch}\`.`]
+        : []),
+      ...(opts.projectInstructions?.trim()
+        ? [
+            'It carries a `JAN.md`; its instructions are below and take',
+            'precedence over these general guidelines.',
+          ]
         : []),
       'It is mounted READ-ONLY. You can read, search and list inside it, but every',
       'write, edit or shell command targeting it will be refused. To work on one of',
@@ -120,6 +158,11 @@ export function buildCoworkSystemPrompt(opts: CoworkPromptOptions): string {
     )
   }
   if (opts.planMode) blocks.push(PLAN_ADDENDUM)
+  // Last, so the project's own instructions are the final word the model
+  // reads before the conversation starts.
+  if (opts.projectInstructions?.trim()) {
+    blocks.push(instructionsBlock(opts.projectInstructions))
+  }
   return blocks.join('\n\n')
 }
 

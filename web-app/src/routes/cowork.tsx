@@ -16,7 +16,10 @@ import {
 import { toast } from 'sonner'
 import { invoke } from '@tauri-apps/api/core'
 import { getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
-import { sessionWorkspacePath } from '@janhq/tauri-plugin-agent-tools-api'
+import {
+  projectReadFile,
+  sessionWorkspacePath,
+} from '@janhq/tauri-plugin-agent-tools-api'
 import { cn } from '@/lib/utils'
 import {
   useCoworkSessions,
@@ -123,6 +126,9 @@ function CoworkPage() {
   )
   const [runError, setRunError] = useState<string | undefined>(undefined)
   const [gitBranch, setGitBranch] = useState<string | null>(null)
+  const [projectInstructions, setProjectInstructions] = useState<string | null>(
+    null
+  )
   const [subagentDefs, setSubagentDefs] = useState<SubagentDefinition[]>([])
   const [workspacePath, setWorkspacePath] = useState<string | null>(null)
   // The step just finished, so the counter tracks a run instead of jumping once
@@ -210,6 +216,35 @@ function CoworkPage() {
       .then(setGitBranch)
       .catch(() => setGitBranch(null))
   }, [folder])
+
+  // `JAN.md` at the attached root: the one instructions file Jan reads. Read
+  // through the same root-contained reader the code panel uses, so it cannot
+  // become a way to pull in a file from outside the attached folder. A missing
+  // file is the normal case and simply leaves the prompt without the block.
+  useEffect(() => {
+    if (!folder) {
+      setProjectInstructions(null)
+      return
+    }
+    let alive = true
+    void (async () => {
+      try {
+        const dataFolder = await serviceHub.app().getJanDataFolder()
+        if (!dataFolder || !alive) return
+        const file = await projectReadFile(dataFolder, folder, 'JAN.md', false)
+        if (!alive) return
+        setProjectInstructions(
+          file.oversized || file.binary ? null : file.content
+        )
+      } catch {
+        // No JAN.md is the ordinary case; the prompt simply omits the block.
+        if (alive) setProjectInstructions(null)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [folder, serviceHub])
 
   // Selected-code references staged by “Add to chat”: the visible prompt gets
   // the concise `@path:start-end` token, and the refs wait here until submit,
@@ -360,6 +395,7 @@ function CoworkPage() {
       workspacePath,
       readOnlyFolder: current?.folder ?? null,
       gitBranch,
+      projectInstructions,
     })
     await transport.refreshTools()
 

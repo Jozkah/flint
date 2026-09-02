@@ -14,6 +14,8 @@ export type CoworkRunConfig = CoworkToolOptions & {
   readOnlyFolder: string | null
   /** The attached project's git branch, surfaced in the system prompt. */
   gitBranch?: string | null
+  /** Verbatim `JAN.md` from the attached folder, when it has one. */
+  projectInstructions?: string | null
 }
 
 /**
@@ -81,6 +83,7 @@ export class CoworkChatTransport extends CustomChatTransport {
       workspacePath: this.config.workspacePath,
       readOnlyFolder: this.config.readOnlyFolder,
       gitBranch: this.config.gitBranch,
+      projectInstructions: this.config.projectInstructions,
       planMode: this.config.planMode,
       bashAvailable: sandboxEnforces(),
       subagentNames: this.config.allowSubagents ? this.config.subagentNames : [],
