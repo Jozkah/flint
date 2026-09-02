@@ -28,8 +28,12 @@ export function SettingsSearch() {
   const query = useSettingsSearch((s) => s.query)
   const setQuery = useSettingsSearch((s) => s.setQuery)
   const clear = useSettingsSearch((s) => s.clear)
+  // Dismissal lives in the store, not here: selecting a result navigates, and
+  // the navigation remounts this component. Local state came back false with
+  // the query still set, so the panel reopened over the page just opened.
+  const dismissed = useSettingsSearch((s) => s.dismissed)
+  const setDismissed = useSettingsSearch((s) => s.setDismissed)
   const [active, setActive] = useState(0)
-  const [dismissed, setDismissed] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Rebuilt when the provider list or the language changes; the local index is
@@ -45,10 +49,10 @@ export function SettingsSearch() {
   )
   const results = useMemo(() => searchSettings(index, query), [index, query])
 
-  // A new query re-opens the panel and restarts the selection at the top.
+  // A new query restarts the selection at the top; `setQuery` re-opens the
+  // panel by clearing the dismissal in the same update.
   useEffect(() => {
     setActive(0)
-    setDismissed(false)
   }, [query])
 
   const open = !dismissed && query.trim().length > 0
@@ -66,7 +70,7 @@ export function SettingsSearch() {
             ({ to: entry.route } as any)
       )
     },
-    [navigate]
+    [navigate, setDismissed]
   )
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -110,6 +114,7 @@ export function SettingsSearch() {
           placeholder={t('common:settingsSearch.placeholder')}
           aria-label={t('common:settingsSearch.label')}
           aria-expanded={open}
+          aria-autocomplete="list"
           aria-controls="settings-search-results"
           aria-activedescendant={
             open && results[active]

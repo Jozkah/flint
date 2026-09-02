@@ -4,13 +4,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { SettingsSearch } from '../SettingsSearch'
 import { SettingTarget } from '@/components/SettingTarget'
-import { useSettingsSearch } from '@/hooks/useSettingsSearch'
+import {
+  useClearSettingsSearchOnExit,
+  useSettingsSearch,
+} from '@/hooks/useSettingsSearch'
 import { useNavigate } from '@tanstack/react-router'
 
 Object.defineProperty(global, 'IS_MACOS', { value: false, writable: true })
 
+let pathname = '/settings/general'
+
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: vi.fn(),
+  useLocation: () => ({ pathname }),
 }))
 
 // English titles, so queries can be asserted against real translated text
@@ -79,7 +85,11 @@ describe('SettingsSearch', () => {
     vi.clearAllMocks()
     dictionary = EN
     providers = []
-    useSettingsSearch.setState({ query: '', pendingTarget: null })
+    useSettingsSearch.setState({
+      query: '',
+      pendingTarget: null,
+      dismissed: false,
+    })
     ;(useNavigate as any).mockReturnValue(mockNavigate)
   })
 
@@ -188,7 +198,11 @@ describe('SettingsSearch', () => {
     expect(optionTexts().join(' ').toLowerCase()).toContain('openai')
 
     first.unmount()
-    useSettingsSearch.setState({ query: '', pendingTarget: null })
+    useSettingsSearch.setState({
+      query: '',
+      pendingTarget: null,
+      dismissed: false,
+    })
     providers = []
     render(<SettingsSearch />)
     await type('openai')
@@ -253,7 +267,11 @@ describe('SettingsSearch', () => {
 
 describe('SettingTarget', () => {
   beforeEach(() => {
-    useSettingsSearch.setState({ query: '', pendingTarget: null })
+    useSettingsSearch.setState({
+      query: '',
+      pendingTarget: null,
+      dismissed: false,
+    })
   })
 
   it('scrolls, focuses and highlights the requested setting, once', async () => {
@@ -299,5 +317,92 @@ describe('SettingTarget', () => {
     expect(useSettingsSearch.getState().pendingTarget).toBe(
       'settings-general-language'
     )
+  })
+})
+
+describe('results panel dismissal across navigation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    dictionary = EN
+    providers = []
+    pathname = '/settings/general'
+    useSettingsSearch.setState({
+      query: '',
+      pendingTarget: null,
+      dismissed: false,
+    })
+    ;(useNavigate as any).mockReturnValue(mockNavigate)
+  })
+
+  it('stays closed after a result is chosen and the sidebar remounts', async () => {
+    // Selecting a result navigates, and every settings page renders its own
+    // SettingsMenu — so this component unmounts and a new one mounts. With
+    // dismissal in local state it came back false with the query still set,
+    // and the panel reopened on top of the page just navigated to.
+    const first = render(<SettingsSearch />)
+    const { user } = await type('Theme')
+    await user.click(screen.getAllByRole('option')[0])
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+
+    first.unmount()
+    render(<SettingsSearch />)
+
+    expect(screen.getByLabelText('Search settings')).toHaveValue('Theme')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('reopens as soon as the query changes again', async () => {
+    render(<SettingsSearch />)
+    const { user } = await type('Theme')
+    await user.click(screen.getAllByRole('option')[0])
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Search settings'), 'x')
+    expect(screen.getByRole('listbox')).toBeInTheDocument()
+  })
+})
+
+describe('useClearSettingsSearchOnExit', () => {
+  const Probe = () => {
+    useClearSettingsSearchOnExit()
+    return null
+  }
+
+  beforeEach(() => {
+    useSettingsSearch.setState({
+      query: 'theme',
+      pendingTarget: 'settings-appearance-theme',
+      dismissed: true,
+    })
+  })
+
+  it('keeps the query while the user is still in Settings', () => {
+    pathname = '/settings/interface'
+    const { rerender } = render(<Probe />)
+    pathname = '/settings/hardware'
+    rerender(<Probe />)
+    expect(useSettingsSearch.getState().query).toBe('theme')
+  })
+
+  it('keeps it on the Settings index itself', () => {
+    pathname = '/settings'
+    render(<Probe />)
+    expect(useSettingsSearch.getState().query).toBe('theme')
+  })
+
+  it('clears it once the user leaves Settings', () => {
+    // A query that outlives the section means arriving back at Settings later
+    // to a stale search and its open result list.
+    pathname = '/cowork'
+    render(<Probe />)
+    expect(useSettingsSearch.getState().query).toBe('')
+    expect(useSettingsSearch.getState().pendingTarget).toBeNull()
+    expect(useSettingsSearch.getState().dismissed).toBe(false)
+  })
+
+  it('is not fooled by a route that merely starts with the same letters', () => {
+    pathname = '/settings-something-else'
+    render(<Probe />)
+    expect(useSettingsSearch.getState().query).toBe('')
   })
 })
