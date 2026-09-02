@@ -30,6 +30,7 @@ import ErrorDialog from '@/containers/dialogs/ErrorDialog'
 import LlamacppBusyOnExitDialog from '@/containers/dialogs/LlamacppBusyOnExitDialog'
 import LlamacppOomListener from '@/containers/dialogs/LlamacppOomListener'
 import MissingDependenciesDialog from '@/containers/dialogs/MissingDependenciesDialog'
+import { TemporaryChatGuard } from '@/containers/TemporaryChatGuard'
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -58,6 +59,7 @@ const AppLayout = () => {
       >
         <AnalyticProvider />
         <KeyboardShortcutsProvider />
+        <TemporaryChatGuard />
         {/* Fake absolute panel top to enable window drag */}
         {(IS_WINDOWS || IS_LINUX) && <WindowControls />}
         {IS_LINUX && <WindowResizeGrips />}

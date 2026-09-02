@@ -17,6 +17,15 @@ const h = vi.hoisted(() => ({
 vi.mock('@tanstack/react-router', () => ({
   createRootRoute: (config: any) => ({ ...config, id: '__root' }),
   Outlet: () => <div data-testid="outlet" />,
+  useNavigate: () => vi.fn(),
+  useBlocker: () => ({
+    status: 'idle',
+    proceed: undefined,
+    reset: undefined,
+    current: undefined,
+    next: undefined,
+    action: undefined,
+  }),
 }))
 
 // Tauri API
@@ -126,6 +135,7 @@ vi.mock('@/constants/routes', () => ({
     localApiServerlogs: '/local-api-server/logs',
     systemMonitor: '/system-monitor',
     appLogs: '/logs',
+    threadsDetail: '/threads/$threadId',
   },
 }))
 

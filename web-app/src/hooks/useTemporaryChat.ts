@@ -8,8 +8,10 @@ import { useModelOverrides } from '@/hooks/useModelOverrides'
 import {
   overridesToCarry,
   persistedEverything,
+  persistedThread,
   readdressMessages,
   titleForKeptChat,
+  type PromotionFailure,
   type PromotionResult,
 } from '@/lib/temporaryChat'
 
@@ -40,14 +42,36 @@ type TemporaryChatState = {
   epoch: number
   /** A promotion or discard in flight; the dialog disables while it runs. */
   busy: boolean
+  /**
+   * True from the moment a keep begins until its state has been swept.
+   *
+   * The one navigation a keep performs — onto the thread it just wrote — is a
+   * navigation *away* from the temporary chat, which is exactly what the router
+   * guard is watching for. Without a way to say "this leaving is the one I
+   * asked for," the guard would re-open its own dialog on top of the chat it is
+   * in the middle of keeping. The guard reads this and lets that one through.
+   */
+  leaving: boolean
 
   /** Is this still the chat the caller started out in? */
   isCurrentEpoch: (epoch: number) => boolean
   /**
-   * Copy the temporary chat into a real thread. Nothing is deleted unless
-   * every message is confirmed present on the new one.
+   * Copy the temporary chat into a real thread, and confirm — through a
+   * non-optimistic read, not the store the write already touched — that both
+   * the thread and every message are durably there. Nothing is deleted: the
+   * temporary chat is left completely intact for the caller to navigate off
+   * first. Call `finalizeKept` once that navigation has happened.
+   *
+   * On any failure the temporary chat is untouched and any half-written
+   * permanent thread is rolled back, so a retry starts from a clean slate.
    */
   keep: () => Promise<PromotionResult>
+  /**
+   * Clear the temporary chat after a successful `keep` and the navigation off
+   * it. Split from `keep` so the order the caller sees is: persist, confirm,
+   * navigate, *then* forget — never forgetting a chat that is still on screen.
+   */
+  finalizeKept: () => void
   /** Throw it away, leaving nothing for the next temporary chat to inherit. */
   discard: () => Promise<{ ok: boolean; reason?: string }>
 }
@@ -85,15 +109,42 @@ function sweepTemporaryState(): void {
   useThreads.getState().deleteThread(TEMPORARY_CHAT_ID)
 }
 
+/**
+ * Undo a permanent thread that was created but never confirmed.
+ *
+ * A keep that gets a thread onto disk but then cannot prove its messages
+ * landed has produced *partial permanent data*: a real thread, missing its
+ * conversation. That thread must go — through the same durable delete path a
+ * user would use, which cascades to any messages that did land — and the
+ * caller must be put back where it was, on the temporary chat, which was never
+ * touched.
+ */
+function rollbackPartialThread(threadId: string): void {
+  useThreads.getState().deleteThread(threadId)
+  useThreads.getState().setCurrentThreadId(TEMPORARY_CHAT_ID)
+}
+
 export const useTemporaryChat = create<TemporaryChatState>()((set, get) => ({
   epoch: 0,
   busy: false,
+  leaving: false,
 
   isCurrentEpoch: (epoch) => get().epoch === epoch,
 
   keep: async () => {
     if (get().busy) return { ok: false, reason: 'error', detail: 'busy' }
-    set({ busy: true })
+    set({ busy: true, leaving: true })
+
+    // A thread id we managed to create before something later failed. Kept
+    // outside the try so the failure path can roll it back exactly once.
+    let createdId: string | undefined
+
+    const fail = (reason: PromotionFailure, detail?: string): PromotionResult => {
+      if (createdId) rollbackPartialThread(createdId)
+      set({ busy: false, leaving: false })
+      return { ok: false, reason, detail }
+    }
+
     try {
       const threads = useThreads.getState()
       const temporary = threads.threads[TEMPORARY_CHAT_ID]
@@ -102,13 +153,13 @@ export const useTemporaryChat = create<TemporaryChatState>()((set, get) => ({
       // copy, and inventing a model would put the kept thread on something the
       // conversation never used.
       if (!temporary?.model) {
-        return { ok: false, reason: 'thread-not-created', detail: 'no chat' }
+        return fail('thread-not-created', 'no chat')
       }
 
       // A half-written answer would be copied mid-sentence and then keep
       // streaming into an id the kept thread does not own.
       if (!(await stopGeneration(TEMPORARY_CHAT_ID))) {
-        return { ok: false, reason: 'generation-not-stopped' }
+        return fail('generation-not-stopped')
       }
 
       const overrides = overridesToCarry(
@@ -125,7 +176,17 @@ export const useTemporaryChat = create<TemporaryChatState>()((set, get) => ({
         temporary.assistants?.[0]
       )
       if (!created?.id || created.id === TEMPORARY_CHAT_ID) {
-        return { ok: false, reason: 'thread-not-created' }
+        return fail('thread-not-created')
+      }
+      createdId = created.id
+
+      // `createThread` swallows its own write errors, so the object above
+      // proves nothing about disk. Read the thread list back from the
+      // persistence boundary and confirm the thread is really there before a
+      // single message is addressed to it.
+      const persistedThreads = await getServiceHub().threads().fetchThreads()
+      if (!persistedThread(created.id, persistedThreads)) {
+        return fail('thread-not-created', 'not durable')
       }
 
       const carried = readdressMessages(messages, created.id)
@@ -133,14 +194,14 @@ export const useTemporaryChat = create<TemporaryChatState>()((set, get) => ({
         await getServiceHub().messages().createMessage(message)
       }
 
-      // The services swallow their own write errors, so the return values
-      // above prove nothing. Read the thread back and confirm every message
-      // is really there before anything is deleted.
+      // `createMessage` swallows its errors too. Read the thread back and
+      // confirm every message is really there. Nothing is deleted until this
+      // says yes.
       const persisted = await getServiceHub()
         .messages()
         .fetchMessages(created.id)
       if (!persistedEverything(carried, persisted)) {
-        return { ok: false, reason: 'messages-not-persisted' }
+        return fail('messages-not-persisted')
       }
 
       useMessages.getState().setMessages(created.id, carried)
@@ -150,19 +211,21 @@ export const useTemporaryChat = create<TemporaryChatState>()((set, get) => ({
         }
       }
 
-      // Only now: the conversation exists somewhere else.
-      set({ epoch: get().epoch + 1 })
-      sweepTemporaryState()
+      // Persisted and confirmed. The temporary chat is left in place: the
+      // caller navigates onto `created.id` and then calls `finalizeKept`, so
+      // the chat is never cleared while it is still the one on screen.
+      set({ busy: false })
       return { ok: true, threadId: created.id }
     } catch (error) {
-      return {
-        ok: false,
-        reason: 'error',
-        detail: error instanceof Error ? error.message : String(error),
-      }
-    } finally {
-      set({ busy: false })
+      return fail('error', error instanceof Error ? error.message : String(error))
     }
+  },
+
+  finalizeKept: () => {
+    // The id is reused, so bump the epoch before the sweep: anything already in
+    // flight that checks its epoch on the way back finds it stale.
+    set({ epoch: get().epoch + 1, leaving: false })
+    sweepTemporaryState()
   },
 
   discard: async () => {

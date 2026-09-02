@@ -116,6 +116,26 @@ export function persistedEverything(
 }
 
 /**
+ * Did the thread we just created actually land in durable storage?
+ *
+ * `createThread` swallows its own write errors and hands back the thread it was
+ * given, so a thread that never reached disk is indistinguishable from one that
+ * did by the return value alone. The honest check is to read the thread list
+ * back from the persistence boundary and look for the id. Without this a failed
+ * thread write would look like success, and — because the foreign-key link from
+ * messages to threads is the only thing standing between us and orphan rows —
+ * the messages check alone would be trusting an implementation detail rather
+ * than proving the thread is there.
+ */
+export function persistedThread(
+  threadId: string,
+  threads: { id: string }[] | undefined
+): boolean {
+  if (!threads) return false
+  return threads.some((thread) => thread.id === threadId)
+}
+
+/**
  * Everything a discarded temporary chat leaves behind, by name.
  *
  * Listed in one place because the id is reused: a store forgotten here is one
