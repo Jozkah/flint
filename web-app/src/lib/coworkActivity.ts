@@ -218,7 +218,13 @@ export function updateTask(
   const task = state.tasks[id]
   if (!task) return state
   if (!force && isFinished(task.status) && patch.status !== task.status) {
-    const { status: _status, endedAt: _endedAt, ...rest } = patch
+    // Status and end time are the record of how this stopped; everything else
+    // in the patch is outcome detail, which is still worth taking.
+    const rest = Object.fromEntries(
+      Object.entries(patch).filter(
+        ([key]) => key !== 'status' && key !== 'endedAt'
+      )
+    )
     if (Object.keys(rest).length === 0) return state
     return { ...state, tasks: { ...state.tasks, [id]: { ...task, ...rest } } }
   }

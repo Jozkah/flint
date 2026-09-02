@@ -7,20 +7,25 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import type { TaskTotals } from '@/lib/coworkTasks'
+import type { ActivityProgress } from '@/lib/coworkActivity'
 
 /**
  * Opens the activity rail, and stays out of the way until the session has
  * actually run something — the same rule the changes, plan and folder controls
  * follow. While work is in flight it spins and counts, so a long subagent run
  * is visible without opening the panel.
+ *
+ * The counts come from the canonical activity store, the same one the panel and
+ * the inline workflow cards read, so the chip cannot show a number the panel
+ * disagrees with.
  */
 export function CoworkTasksChip({
   totals,
   open,
   onToggle,
 }: {
-  totals: TaskTotals
+  /** This session's totals, from the same store the panel reads. */
+  totals: ActivityProgress
   open: boolean
   onToggle: () => void
 }) {

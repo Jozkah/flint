@@ -105,3 +105,25 @@ export function patchForOutcome(
   if (result.outcome !== 'cancelled') return null
   return { status: 'cancelled', endedAt: now, detail: CANCELLED_BY_USER }
 }
+
+/**
+ * What to tell the user when a cancel stopped nothing.
+ *
+ * Only called for the outcomes that changed nothing, so each one names its own
+ * reason instead of a single vague "could not cancel".
+ */
+export function cancelMessage(
+  result: CancelResult,
+  t: (key: string, opts?: Record<string, unknown>) => string
+): string {
+  switch (result.outcome) {
+    case 'alreadyFinished':
+      return t('common:tasks.cancelAlreadyFinished')
+    case 'unreachable':
+      return t('common:tasks.cancelUnreachable')
+    case 'failed':
+      return t('common:tasks.cancelFailed', { error: result.error ?? '' })
+    default:
+      return t('common:tasks.cancelNotRunning')
+  }
+}

@@ -4,8 +4,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { CoworkTasksPanel } from '../CoworkTasksPanel'
 import { CoworkTasksChip } from '../CoworkTasksChip'
-import { taskTotals, buildTaskList } from '@/lib/coworkTasks'
-import type { CoworkTurn, SubagentRun } from '@/types/coworkSession'
+import {
+  emptyActivityState,
+  endWorkflow,
+  observePhase,
+  progressOf,
+  sessionTotals,
+  sessionWorkflows,
+  startTask,
+  startWorkflow,
+  type ActivityState,
+  type ActivityTask,
+  type ActivityWorkflow,
+} from '@/lib/coworkActivity'
 
 // Interpolates, so assertions can check the numbers rather than just the key.
 vi.mock('@/i18n/react-i18next-compat', () => ({
@@ -25,319 +36,436 @@ vi.mock('@/components/ui/tooltip', () => ({
   TooltipContent: ({ children }: any) => <>{children}</>,
 }))
 
-const run = (over: Partial<SubagentRun> = {}): SubagentRun => ({
-  runId: 'r1',
-  name: 'researcher',
-  status: 'done',
-  startedAt: 1_000,
-  endedAt: 4_000,
-  turns: [],
+const SESSION = 's-1'
+const WORKFLOW = 'run-1'
+const T0 = 1_700_000_000_000
+
+const workflow = (over: Partial<ActivityWorkflow> = {}): ActivityWorkflow => ({
+  id: WORKFLOW,
+  sessionId: SESSION,
+  title: 'refactor the parser',
+  startedAt: T0,
+  phases: [],
   ...over,
 })
 
-const bashTurn = (over: Partial<CoworkTurn> = {}): CoworkTurn => ({
-  role: 'tool',
-  content: '',
-  name: 'bash',
-  callId: 'cmd-1',
+const task = (over: Partial<ActivityTask> = {}): ActivityTask => ({
+  id: 'call-1',
+  sessionId: SESSION,
+  workflowId: WORKFLOW,
+  kind: 'agent',
+  title: 'researcher',
   status: 'done',
+  startedAt: T0,
+  endedAt: T0 + 4_000,
   ...over,
 })
+
+const stateWith = (
+  tasks: ActivityTask[],
+  over: Partial<ActivityWorkflow> = {}
+): ActivityState =>
+  tasks.reduce(
+    (state, one) => startTask(state, one),
+    startWorkflow(emptyActivityState(), workflow(over))
+  )
+
+function Panel({
+  state,
+  onCancelTask = vi.fn(),
+  onClearFinished = vi.fn(),
+  onClose = vi.fn(),
+  focusTaskId,
+}: {
+  state: ActivityState
+  onCancelTask?: (task: ActivityTask) => void
+  onClearFinished?: () => void
+  onClose?: () => void
+  focusTaskId?: string | null
+}) {
+  return (
+    <CoworkTasksPanel
+      workflows={sessionWorkflows(state, SESSION)}
+      totals={sessionTotals(state, SESSION)}
+      focusTaskId={focusTaskId}
+      onCancelTask={onCancelTask}
+      onClearFinished={onClearFinished}
+      onClose={onClose}
+    />
+  )
+}
+
+/** Open a workflow section so its tasks render. */
+const openWorkflow = async (title = 'refactor the parser') =>
+  userEvent.click(screen.getByRole('button', { name: new RegExp(title) }))
 
 describe('CoworkTasksPanel', () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-    vi.setSystemTime(new Date('2026-01-01T00:00:10Z'))
-  })
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
   it('says so when the session has run nothing', () => {
-    render(<CoworkTasksPanel onClose={vi.fn()} />)
+    render(<Panel state={emptyActivityState()} />)
     expect(screen.getByText('common:tasks.empty')).toBeInTheDocument()
   })
 
-  it('lists a running subagent with its tokens and tool count', () => {
+  it('summarises a workflow before it is opened', () => {
     render(
-      <CoworkTasksPanel
-        liveSubagents={[
-          run({
-            runId: 'live',
-            name: 'reviewer',
-            status: 'running',
-            endedAt: undefined,
-            usage: { total_tokens: 2500 },
-            turns: [bashTurn(), bashTurn({ callId: 'c2' })],
-          }),
-        ]}
-        onClose={vi.fn()}
+      <Panel
+        state={stateWith([
+          task({ id: 'a', status: 'done', usage: { total_tokens: 1200 } }),
+          task({ id: 'b', status: 'running', endedAt: undefined }),
+        ])}
       />
     )
-
-    expect(screen.getByText('reviewer')).toBeInTheDocument()
+    expect(
+      screen.getByText(/common:tasks.progress finished=1 total=2/)
+    ).toBeInTheDocument()
+    // Not finished: a child is still running.
     expect(screen.getByTestId('task-status-running')).toBeInTheDocument()
-    expect(screen.getByText(/toolCalls.*count=2/)).toBeInTheDocument()
-    // Twice on purpose: once on the row, once in the panel header's total.
-    expect(screen.getAllByText(/tokens=2\.5k/)).toHaveLength(2)
   })
 
-  it('shows a queued subagent with its place in the queue', () => {
+  it('reports progress on a bar screen readers can read', () => {
     render(
-      <CoworkTasksPanel
-        liveSubagents={[
-          run({ status: 'queued', waiting: 2, endedAt: undefined }),
-        ]}
-        onClose={vi.fn()}
+      <Panel
+        state={stateWith([
+          task({ id: 'a', status: 'done' }),
+          task({ id: 'b', status: 'error' }),
+          task({ id: 'c', status: 'running', endedAt: undefined }),
+        ])}
       />
     )
-    expect(screen.getByTestId('task-status-queued')).toBeInTheDocument()
+    const bar = screen.getByRole('progressbar')
+    expect(bar).toHaveAttribute('aria-valuenow', '2')
+    expect(bar).toHaveAttribute('aria-valuemax', '3')
+  })
+
+  it('lists a subagent with the metadata captured when it was dispatched', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({
+            model: 'jan-nano-4b',
+            usage: { total_tokens: 1234 },
+            toolCount: 3,
+          }),
+        ])}
+      />
+    )
+    await openWorkflow()
+    // The row, not the workflow header above it, which totals the same tokens.
+    const row = screen.getByRole('button', { name: /researcher/ })
+    expect(within(row).getByText('researcher')).toBeInTheDocument()
+    expect(within(row).getByText(/tokens=1.2k/)).toBeInTheDocument()
+    expect(within(row).getByText(/toolCalls.*count=3/)).toBeInTheDocument()
+    expect(within(row).getByText(/model=jan-nano-4b/)).toBeInTheDocument()
+  })
+
+  it('shows a queued subagent with its place in the queue', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({ status: 'queued', waiting: 2, endedAt: undefined }),
+        ])}
+      />
+    )
+    await openWorkflow()
     expect(screen.getByText(/queuePosition position=2/)).toBeInTheDocument()
   })
 
-  it('separates finished work into its own collapsible section', async () => {
-    const user = userEvent.setup()
-    render(
-      <CoworkTasksPanel
-        sessionSubagents={[run({ runId: 'old', name: 'archivist' })]}
-        onClose={vi.fn()}
-      />
-    )
+  it('groups tasks under the phase they were dispatched in', async () => {
+    let state = startWorkflow(emptyActivityState(), workflow())
+    const scan = observePhase(state, WORKFLOW, { name: 'Scan', index: 0 })
+    state = startTask(scan.state, task({ id: 'a', phaseId: scan.phaseId }))
+    state = startTask(state, task({ id: 'b', title: 'loose' }))
 
-    expect(screen.getByText('archivist')).toBeInTheDocument()
-    const header = screen.getByRole('button', { name: /tasks\.finished/ })
-    expect(header).toHaveAttribute('aria-expanded', 'true')
-
-    await user.click(header)
-    expect(header).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByText('archivist')).not.toBeInTheDocument()
+    render(<Panel state={state} />)
+    await openWorkflow()
+    expect(screen.getByText(/common:tasks.phase name=Scan/)).toBeInTheDocument()
+    expect(screen.getByText('common:tasks.unphased')).toBeInTheDocument()
   })
 
-  it('lists shell commands, and flags one still running in the background', () => {
+  it('flags a command still running in the background with its job', async () => {
     render(
-      <CoworkTasksPanel
-        turns={[
-          bashTurn({
-            callId: 'a',
-            args: { command: 'yarn test' },
-            result: 'ok',
+      <Panel
+        state={stateWith([
+          task({
+            kind: 'shell',
+            title: 'pnpm build',
+            status: 'running',
+            endedAt: undefined,
+            jobId: 'bash-3',
           }),
-          bashTurn({
-            callId: 'b',
-            args: { command: 'cargo build' },
-            result:
-              'Command exceeded 30s and is continuing in the background (job_id=bash-3).',
-          }),
-        ]}
-        onClose={vi.fn()}
+        ])}
       />
     )
-
-    expect(screen.getByText('yarn test')).toBeInTheDocument()
-    expect(screen.getByText('cargo build')).toBeInTheDocument()
-    // The backgrounded one is still running, and names its job.
-    expect(screen.getByTestId('task-status-running')).toBeInTheDocument()
+    await openWorkflow()
     expect(screen.getByText(/background jobId=bash-3/)).toBeInTheDocument()
   })
 
-  it('expands a row to reveal its transcript and output', async () => {
-    const user = userEvent.setup()
+  it('expands a task to reveal its description, transcript and output', async () => {
     render(
-      <CoworkTasksPanel
-        sessionSubagents={[
-          run({
-            name: 'digger',
-            turns: [
-              bashTurn({ args: { command: 'rg TODO' } }),
-              { role: 'assistant', content: 'found three' },
+      <Panel
+        state={stateWith([
+          task({
+            description: 'map the lexer',
+            transcript: [
+              { role: 'assistant', content: 'looking' },
+              {
+                role: 'tool',
+                name: 'grep',
+                content: '',
+                args: { pattern: 'token' },
+              },
             ],
-            finalOutput: 'Three TODOs remain.',
+            output: 'found 3 matches',
           }),
-        ]}
-        onClose={vi.fn()}
+        ])}
       />
     )
-
-    const row = screen.getByRole('button', { name: /digger/ })
-    expect(row).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByText('Three TODOs remain.')).not.toBeInTheDocument()
-
-    await user.click(row)
-    expect(row).toHaveAttribute('aria-expanded', 'true')
-    expect(screen.getByText('Three TODOs remain.')).toBeInTheDocument()
-    // Transcript lines are summarized, not dumped.
-    expect(screen.getByText('rg TODO')).toBeInTheDocument()
-    expect(screen.getByText('found three')).toBeInTheDocument()
-
-    await user.click(row)
-    expect(screen.queryByText('Three TODOs remain.')).not.toBeInTheDocument()
+    await openWorkflow()
+    await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
+    expect(screen.getByText('map the lexer')).toBeInTheDocument()
+    expect(screen.getByText('looking')).toBeInTheDocument()
+    expect(screen.getByText('token')).toBeInTheDocument()
+    expect(screen.getByText('found 3 matches')).toBeInTheDocument()
   })
 
-  it('says when a finished task recorded no output', async () => {
-    const user = userEvent.setup()
-    render(
-      <CoworkTasksPanel
-        sessionSubagents={[run({ name: 'quiet', finalOutput: undefined })]}
-        onClose={vi.fn()}
-      />
-    )
-    await user.click(screen.getByRole('button', { name: /quiet/ }))
-    expect(screen.getByText('common:tasks.noOutput')).toBeInTheDocument()
+  it('shows only the tail of a very long output, and says so', async () => {
+    const output = Array.from({ length: 500 }, (_, i) => `line ${i}`).join('\n')
+    render(<Panel state={stateWith([task({ output })])} />)
+    await openWorkflow()
+    await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
+
+    expect(screen.getByText(/outputTruncated lines=200/)).toBeInTheDocument()
+    const pre = document.querySelector('pre')!
+    expect(pre.textContent).toContain('line 499')
+    expect(pre.textContent).not.toContain('line 0\n')
   })
 
-  it('prefers the live copy of a run that is also committed', () => {
+  it('renders output as text, never as markup', async () => {
+    // Whatever a shell command printed must not become elements on the page.
     render(
-      <CoworkTasksPanel
-        liveSubagents={[
-          run({ runId: 'r1', status: 'running', endedAt: undefined }),
-        ]}
-        sessionSubagents={[run({ runId: 'r1', status: 'done' })]}
-        onClose={vi.fn()}
+      <Panel
+        state={stateWith([
+          task({ kind: 'shell', output: '<img src=x onerror="boom()">' }),
+        ])}
       />
     )
-    // One row, and it is the running one.
-    expect(screen.getAllByText('researcher')).toHaveLength(1)
-    expect(screen.getByTestId('task-status-running')).toBeInTheDocument()
+    await openWorkflow()
+    await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
+    expect(document.querySelector('pre img')).toBeNull()
+    expect(screen.getByText('<img src=x onerror="boom()">')).toBeInTheDocument()
   })
 
-  it('shows one row for a command both the backend and the transcript know', async () => {
-    render(
-      <CoworkTasksPanel
-        liveJobs={[
-          {
-            jobId: 'bash-4',
-            command: 'cargo build',
-            elapsedMs: 42_000,
-            finished: false,
-            callId: null,
-          },
-        ]}
-        turns={[
-          bashTurn({
-            callId: 'c1',
-            args: { command: 'cargo build' },
-            result:
-              'Command exceeded 30s and is continuing in the background (job_id=bash-4).',
-          }),
-        ]}
-        onClose={vi.fn()}
-      />
-    )
-
-    expect(await screen.findAllByText('cargo build')).toHaveLength(1)
-    expect(screen.getByTestId('task-status-running')).toBeInTheDocument()
+  it('says when a finished task kept no details', async () => {
+    render(<Panel state={stateWith([task({ output: undefined })])} />)
+    await openWorkflow()
+    await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
+    expect(
+      screen.getByText('common:tasks.detailsUnavailable')
+    ).toBeInTheDocument()
   })
 
-  it('lists a background job this session never dispatched', async () => {
+  it('explains why a cancelled task stopped', async () => {
     render(
-      <CoworkTasksPanel
-        liveJobs={[
-          {
-            jobId: 'bash-9',
-            command: 'rustup update',
-            elapsedMs: 1_000,
-            finished: false,
-            callId: null,
-          },
-        ]}
-        onClose={vi.fn()}
+      <Panel
+        state={stateWith([
+          task({ status: 'cancelled', detail: 'cancelled:user' }),
+        ])}
       />
     )
+    await openWorkflow()
+    await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
+    expect(screen.getByText('common:tasks.cancelledByUser')).toBeInTheDocument()
+  })
 
-    expect(await screen.findByText('rustup update')).toBeInTheDocument()
+  describe('stopping work', () => {
+    it('offers to stop only what is still going', async () => {
+      render(
+        <Panel
+          state={stateWith([
+            task({
+              id: 'a',
+              title: 'live',
+              status: 'running',
+              endedAt: undefined,
+            }),
+            task({ id: 'b', title: 'over', status: 'done' }),
+          ])}
+        />
+      )
+      await openWorkflow()
+      expect(
+        screen.getByRole('button', { name: /stopTask name=live/ })
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /stopTask name=over/ })
+      ).toBeNull()
+    })
+
+    it('asks to stop the task the button belongs to', async () => {
+      const onCancelTask = vi.fn()
+      render(
+        <Panel
+          state={stateWith([
+            task({
+              id: 'a',
+              title: 'live',
+              status: 'running',
+              endedAt: undefined,
+            }),
+          ])}
+          onCancelTask={onCancelTask}
+        />
+      )
+      await openWorkflow()
+      await userEvent.click(
+        screen.getByRole('button', { name: /stopTask name=live/ })
+      )
+      expect(onCancelTask).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'a' })
+      )
+    })
+  })
+
+  describe('clearing finished work', () => {
+    it('offers to clear once something has finished', () => {
+      render(<Panel state={stateWith([task({ status: 'done' })])} />)
+      expect(
+        screen.getByRole('button', { name: 'common:tasks.clearFinished' })
+      ).toBeInTheDocument()
+    })
+
+    it('does not offer to clear while everything is still going', () => {
+      render(
+        <Panel
+          state={stateWith([task({ status: 'running', endedAt: undefined })])}
+        />
+      )
+      expect(
+        screen.queryByRole('button', { name: 'common:tasks.clearFinished' })
+      ).toBeNull()
+    })
+  })
+
+  describe('revealing a task the card pointed at', () => {
+    it('opens its workflow and expands it', async () => {
+      const onFocusHandled = vi.fn()
+      render(
+        <CoworkTasksPanel
+          workflows={sessionWorkflows(
+            stateWith([task({ id: 'call-9', output: 'the answer' })]),
+            SESSION
+          )}
+          totals={progressOf([])}
+          focusTaskId="call-9"
+          onFocusHandled={onFocusHandled}
+          onCancelTask={vi.fn()}
+          onClearFinished={vi.fn()}
+          onClose={vi.fn()}
+        />
+      )
+      // Expanded without a click: the workflow section and the task both open.
+      expect(await screen.findByText('the answer')).toBeInTheDocument()
+      expect(onFocusHandled).toHaveBeenCalled()
+    })
+
+    it('reports the request handled even when the task is gone', () => {
+      // Cleared between the click and the render; the panel must not keep
+      // asking to focus something that no longer exists.
+      const onFocusHandled = vi.fn()
+      render(
+        <CoworkTasksPanel
+          workflows={[]}
+          totals={progressOf([])}
+          focusTaskId="call-missing"
+          onFocusHandled={onFocusHandled}
+          onCancelTask={vi.fn()}
+          onClearFinished={vi.fn()}
+          onClose={vi.fn()}
+        />
+      )
+      expect(onFocusHandled).toHaveBeenCalled()
+    })
   })
 
   it('closes from the panel chrome', async () => {
-    const user = userEvent.setup()
     const onClose = vi.fn()
-    render(<CoworkTasksPanel onClose={onClose} />)
-    await user.click(screen.getByRole('button', { name: 'common:close' }))
+    render(<Panel state={stateWith([task()])} onClose={onClose} />)
+    await userEvent.click(screen.getByRole('button', { name: /close/i }))
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('advances the elapsed time of a running task', () => {
-    render(
-      <CoworkTasksPanel
-        liveSubagents={[
-          run({
-            status: 'running',
-            startedAt: Date.now() - 5_000,
-            endedAt: undefined,
-          }),
-        ]}
-        onClose={vi.fn()}
-      />
-    )
-    expect(screen.getByText(/duration\.seconds count=5/)).toBeInTheDocument()
-
-    // The tick is a state update, so it has to be flushed inside act().
-    act(() => {
-      vi.advanceTimersByTime(3_000)
+  describe('elapsed time', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
     })
-    expect(screen.getByText(/duration\.seconds count=8/)).toBeInTheDocument()
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('advances while a task is running', async () => {
+      const startedAt = Date.now()
+      render(
+        <Panel
+          state={stateWith([
+            task({ status: 'running', startedAt, endedAt: undefined }),
+          ])}
+        />
+      )
+      await userEvent.click(
+        screen.getByRole('button', { name: /refactor the parser/ })
+      )
+      await act(async () => {
+        vi.advanceTimersByTime(3_000)
+      })
+      expect(screen.getByText(/count=3/)).toBeInTheDocument()
+    })
   })
 })
 
 describe('CoworkTasksChip', () => {
-  const totalsFor = (input: Parameters<typeof buildTaskList>[0]) =>
-    taskTotals(buildTaskList(input))
-
   it('stays hidden until the session has run something', () => {
     const { container } = render(
-      <CoworkTasksChip totals={totalsFor({})} open={false} onToggle={vi.fn()} />
+      <CoworkTasksChip totals={progressOf([])} open={false} onToggle={vi.fn()} />
     )
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('counts work in flight and announces the breakdown', () => {
+  it('counts what is in flight, and announces the split', () => {
     render(
       <CoworkTasksChip
-        totals={totalsFor({
-          liveSubagents: [
-            run({ runId: 'a', status: 'running', endedAt: undefined }),
-            run({
-              runId: 'b',
-              status: 'queued',
-              waiting: 1,
-              endedAt: undefined,
-            }),
-          ],
-          sessionSubagents: [run({ runId: 'c', status: 'done' })],
-        })}
+        totals={sessionTotals(
+          stateWith([
+            task({ id: 'a', status: 'running', endedAt: undefined }),
+            task({ id: 'b', status: 'queued', endedAt: undefined }),
+            task({ id: 'c', status: 'done' }),
+          ]),
+          SESSION
+        )}
         open={false}
         onToggle={vi.fn()}
       />
     )
-    const chip = screen.getByRole('button')
-    expect(within(chip).getByText('2')).toBeInTheDocument()
-    expect(chip.getAttribute('aria-label')).toContain('running=1')
-    expect(chip.getAttribute('aria-label')).toContain('finished=1')
+    const button = screen.getByRole('button')
+    expect(within(button).getByText('2')).toBeInTheDocument()
+    expect(button.getAttribute('aria-label')).toContain(
+      'running=1 queued=1 finished=1'
+    )
   })
 
-  it('falls back to the finished count once everything is done', () => {
-    render(
-      <CoworkTasksChip
-        totals={totalsFor({ sessionSubagents: [run(), run({ runId: 'r2' })] })}
-        open={false}
-        onToggle={vi.fn()}
-      />
+  it('shows the same numbers the panel does', () => {
+    // The whole point of the shared store: one count, two surfaces.
+    const state = endWorkflow(
+      stateWith([
+        task({ id: 'a', status: 'done' }),
+        task({ id: 'b', status: 'error' }),
+      ]),
+      WORKFLOW,
+      T0 + 9
     )
-    expect(within(screen.getByRole('button')).getByText('2')).toBeInTheDocument()
-  })
-
-  it('toggles the rail', async () => {
-    const user = userEvent.setup()
-    const onToggle = vi.fn()
-    render(
-      <CoworkTasksChip
-        totals={totalsFor({ sessionSubagents: [run()] })}
-        open
-        onToggle={onToggle}
-      />
+    const totals = sessionTotals(state, SESSION)
+    render(<CoworkTasksChip totals={totals} open onToggle={vi.fn()} />)
+    expect(screen.getByRole('button').getAttribute('aria-label')).toContain(
+      'finished=2'
     )
-    const chip = screen.getByRole('button')
-    expect(chip).toHaveAttribute('aria-pressed', 'true')
-    await user.click(chip)
-    expect(onToggle).toHaveBeenCalled()
+    expect(sessionWorkflows(state, SESSION)[0].progress.finished).toBe(2)
   })
 })

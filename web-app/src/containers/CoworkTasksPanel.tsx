@@ -1,75 +1,84 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bot,
   ChevronDown,
   CircleAlert,
   CircleCheck,
+  CircleSlash,
   Clock,
   Loader2,
+  Square,
   Terminal,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { Button } from '@/components/ui/button'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
 import { formatCompactDuration } from '@/lib/duration'
 import {
-  buildTaskList,
-  elapsedMs,
-  taskTotals,
-  type LiveJob,
-  type TaskRow,
-  type TaskStatus,
-} from '@/lib/coworkTasks'
-import type { CoworkTurn, SubagentRun } from '@/types/coworkSession'
+  INTERRUPTED_BY_RUN_END,
+  isCancellable,
+  taskElapsedMs,
+  type ActivityProgress,
+  type ActivityStatus,
+  type ActivityTask,
+  type WorkflowView,
+} from '@/lib/coworkActivity'
+import { CANCELLED_BY_USER } from '@/lib/coworkCancel'
+import { INTERRUPTED_BY_RESTART } from '@/lib/hydrateStores'
+import type { CoworkTurn } from '@/types/coworkSession'
 
 /** How often running rows re-render so their elapsed time advances. A second
  * is the resolution the duration label shows, so anything finer is wasted
  * work. The interval only runs while something is actually running. */
 const TICK_MS = 1000
 
+/** Output lines kept in view. A build log can be megabytes; the tail is the
+ * part that says what happened, and the rest would freeze the panel. */
+const MAX_OUTPUT_LINES = 200
+
 type Props = {
-  /** The run store's live lane for this session. */
-  liveSubagents?: SubagentRun[]
-  /** Finished subagents committed onto the session. */
-  sessionSubagents?: SubagentRun[]
-  /** The session transcript, which is where shell commands are recovered from. */
-  turns?: CoworkTurn[]
-  /** Background jobs from the backend, polled by the route so the chip and this
-   * panel always agree. */
-  liveJobs?: LiveJob[]
+  /** This session's workflows, newest first, from the canonical store. */
+  workflows: WorkflowView[]
+  /** The same store's totals for this session. */
+  totals: ActivityProgress
+  /** A task to reveal and expand — the inline card's "show this" target. */
+  focusTaskId?: string | null
+  onFocusHandled?: () => void
+  onCancelTask: (task: ActivityTask) => void
+  onClearFinished: () => void
   onClose: () => void
 }
 
 /**
- * Everything the current session has running or has run: subagents dispatched
- * by the `task` tool, and shell commands, each with its status, elapsed time,
- * tokens, tool count and — expanded — its own transcript.
+ * Everything this session has running or has run: the workflows its runs
+ * started, the phases they moved through, and each dispatched subagent or shell
+ * command with its own metadata and output.
  *
- * The rows are derived, not stored: `coworkTasks` reads them off the run store
- * and the committed session, so this panel adds no state of its own beyond
- * which rows are expanded.
+ * Every row comes from the canonical activity store, which is also what the
+ * inline conversation card and the activity chip read — so the three can never
+ * disagree about the same work. This component adds no state of its own beyond
+ * what is expanded.
  */
 export function CoworkTasksPanel({
-  liveSubagents,
-  sessionSubagents,
-  turns,
-  liveJobs,
+  workflows,
+  totals,
+  focusTaskId,
+  onFocusHandled,
+  onCancelTask,
+  onClearFinished,
   onClose,
 }: Props): React.ReactElement {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
-  const [showFinished, setShowFinished] = useState(true)
+  const [expandedWorkflows, setExpandedWorkflows] = useState<Set<string>>(
+    () => new Set()
+  )
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(
+    () => new Set()
+  )
+  const focusRef = useRef<HTMLDivElement | null>(null)
 
   const [now, setNow] = useState(() => Date.now())
-  const rows = useMemo(
-    () => buildTaskList({ liveSubagents, sessionSubagents, turns, liveJobs, now }),
-    // `now` ticks every second while work is live; rebuilding the list on each
-    // tick is what keeps a running row's duration moving. Deliberately not a
-    // dependency: it would rebuild on every tick even when nothing is running.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [liveSubagents, sessionSubagents, turns, liveJobs]
-  )
-  const totals = useMemo(() => taskTotals(rows), [rows])
   const active = totals.running + totals.queued > 0
 
   // A running row's elapsed time derives from `Date.now()`, which React has no
@@ -81,101 +90,244 @@ export function CoworkTasksPanel({
     return () => clearInterval(id)
   }, [active])
 
-  const live = rows.filter(
-    (r) => r.status === 'running' || r.status === 'queued'
+  // Reveal what the inline card asked for: open its workflow, open the task,
+  // and scroll it into view. Done here rather than by the caller so the panel
+  // stays the only thing that knows how its own rows are laid out.
+  const workflowOfFocus = useMemo(
+    () =>
+      focusTaskId
+        ? workflows.find((view) =>
+            view.tasks.some((task) => task.id === focusTaskId)
+          )
+        : undefined,
+    [focusTaskId, workflows]
   )
-  const finished = rows.filter(
-    (r) => r.status === 'done' || r.status === 'error'
-  )
+  useEffect(() => {
+    if (!focusTaskId) return
+    if (workflowOfFocus) {
+      setExpandedWorkflows((current) =>
+        current.has(workflowOfFocus.workflow.id)
+          ? current
+          : new Set(current).add(workflowOfFocus.workflow.id)
+      )
+      setExpandedTasks((current) =>
+        current.has(focusTaskId) ? current : new Set(current).add(focusTaskId)
+      )
+      focusRef.current?.scrollIntoView({ block: 'nearest' })
+    }
+    onFocusHandled?.()
+  }, [focusTaskId, workflowOfFocus, onFocusHandled])
 
-  const toggle = (id: string) =>
-    setExpanded((current) => {
+  const toggleWorkflow = useCallback((id: string) => {
+    setExpandedWorkflows((current) => {
       const next = new Set(current)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
+  }, [])
+  const toggleTask = useCallback((id: string) => {
+    setExpandedTasks((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const hasFinished = workflows.some(
+    (view) => view.status !== 'running' && view.status !== 'queued'
+  )
 
   return (
     <CoworkSidePanel
       title={t('common:tasks.title')}
       summary={
-        rows.length > 0 ? (
+        totals.total > 0 ? (
           <span className="shrink-0 font-mono text-xs tabular-nums text-main-view-fg/60">
             {totals.tokens > 0
               ? t('common:tasks.summary', {
-                  count: rows.length,
+                  count: totals.total,
                   tokens: formatTokens(totals.tokens),
                 })
-              : t('common:tasks.summaryNoTokens', { count: rows.length })}
+              : t('common:tasks.summaryNoTokens', { count: totals.total })}
           </span>
         ) : null
       }
       onClose={onClose}
     >
       <div className="flex h-full min-h-0 flex-col">
-        {rows.length === 0 ? (
+        {workflows.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-main-view-fg/50">
             {t('common:tasks.empty')}
           </p>
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {live.length > 0 && (
-              <>
-                <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
-                  {t('common:tasks.running', { count: live.length })}
-                </p>
-                {live.map((row) => (
-                  <TaskItem
-                    key={row.id}
-                    row={row}
-                    now={now}
-                    expanded={expanded.has(row.id)}
-                    onToggle={() => toggle(row.id)}
-                  />
-                ))}
-              </>
+          <>
+            {hasFinished && (
+              <div className="flex justify-end border-b px-2 py-1">
+                <Button variant="ghost" size="xs" onClick={onClearFinished}>
+                  {t('common:tasks.clearFinished')}
+                </Button>
+              </div>
             )}
-
-            {finished.length > 0 && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setShowFinished((v) => !v)}
-                  aria-expanded={showFinished}
-                  className="flex w-full items-center gap-1 px-3 pb-1 pt-3 text-left"
-                >
-                  <ChevronDown
-                    size={12}
-                    className={cn(
-                      'shrink-0 text-main-view-fg/40 transition-transform',
-                      !showFinished && '-rotate-90'
-                    )}
-                  />
-                  <span className="text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
-                    {t('common:tasks.finished', { count: finished.length })}
-                  </span>
-                </button>
-                {showFinished &&
-                  finished.map((row) => (
-                    <TaskItem
-                      key={row.id}
-                      row={row}
-                      now={now}
-                      expanded={expanded.has(row.id)}
-                      onToggle={() => toggle(row.id)}
-                    />
-                  ))}
-              </>
-            )}
-          </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {workflows.map((view) => (
+                <WorkflowSection
+                  key={view.workflow.id}
+                  view={view}
+                  now={now}
+                  expanded={expandedWorkflows.has(view.workflow.id)}
+                  onToggle={() => toggleWorkflow(view.workflow.id)}
+                  expandedTasks={expandedTasks}
+                  onToggleTask={toggleTask}
+                  onCancelTask={onCancelTask}
+                  focusTaskId={focusTaskId ?? null}
+                  focusRef={focusRef}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
     </CoworkSidePanel>
   )
 }
 
-function StatusIcon({ status }: { status: TaskStatus }) {
+function WorkflowSection({
+  view,
+  now,
+  expanded,
+  onToggle,
+  expandedTasks,
+  onToggleTask,
+  onCancelTask,
+  focusTaskId,
+  focusRef,
+}: {
+  view: WorkflowView
+  now: number
+  expanded: boolean
+  onToggle: () => void
+  expandedTasks: Set<string>
+  onToggleTask: (id: string) => void
+  onCancelTask: (task: ActivityTask) => void
+  focusTaskId: string | null
+  focusRef: React.MutableRefObject<HTMLDivElement | null>
+}) {
+  const { t } = useTranslation()
+  const { workflow, progress } = view
+
+  const taskRow = (task: ActivityTask) => (
+    <TaskItem
+      key={task.id}
+      task={task}
+      now={now}
+      expanded={expandedTasks.has(task.id)}
+      onToggle={() => onToggleTask(task.id)}
+      onCancel={() => onCancelTask(task)}
+      containerRef={focusTaskId === task.id ? focusRef : undefined}
+    />
+  )
+
+  return (
+    <section className="border-b last:border-b-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-muted/50"
+      >
+        <span className="pt-0.5">
+          <StatusIcon status={view.status} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span
+            className="block truncate text-xs font-medium"
+            title={workflow.title}
+          >
+            {workflow.title}
+          </span>
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-main-view-fg/50">
+            <span className="tabular-nums">
+              {t('common:tasks.progress', {
+                finished: progress.finished,
+                total: progress.total,
+              })}
+            </span>
+            {progress.tokens > 0 && (
+              <span className="font-mono tabular-nums">
+                {t('common:tasks.tokens', {
+                  tokens: formatTokens(progress.tokens),
+                })}
+              </span>
+            )}
+            {workflow.model && (
+              <span className="truncate">
+                {t('common:tasks.model', { model: workflow.model })}
+              </span>
+            )}
+          </span>
+          <ProgressBar progress={progress} />
+        </span>
+        <ChevronDown
+          size={12}
+          className={cn(
+            'mt-1 shrink-0 text-main-view-fg/40 transition-transform',
+            !expanded && '-rotate-90'
+          )}
+        />
+      </button>
+
+      {expanded && (
+        <div className="pb-1">
+          {view.phases.map(({ phase, tasks }) => (
+            <div key={phase.id}>
+              <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+                {t('common:tasks.phase', { name: phase.name })}
+              </p>
+              {tasks.map(taskRow)}
+            </div>
+          ))}
+          {view.unphased.length > 0 && (
+            <div>
+              {view.phases.length > 0 && (
+                <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+                  {t('common:tasks.unphased')}
+                </p>
+              )}
+              {view.unphased.map(taskRow)}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** How far along a workflow is. Hidden with nothing to measure, rather than
+ * shown empty as though no progress had been made. */
+function ProgressBar({ progress }: { progress: ActivityProgress }) {
+  if (progress.fraction == null) return null
+  return (
+    <span
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={progress.total}
+      aria-valuenow={progress.finished}
+      className="mt-1 block h-1 w-full overflow-hidden rounded-full bg-muted"
+    >
+      <span
+        className={cn(
+          'block h-full rounded-full transition-[width]',
+          progress.error > 0 ? 'bg-destructive' : 'bg-primary'
+        )}
+        style={{ width: `${Math.round(progress.fraction * 100)}%` }}
+      />
+    </span>
+  )
+}
+
+function StatusIcon({ status }: { status: ActivityStatus }) {
   if (status === 'running') {
     return (
       <Loader2
@@ -203,6 +355,15 @@ function StatusIcon({ status }: { status: TaskStatus }) {
       />
     )
   }
+  if (status === 'cancelled') {
+    return (
+      <CircleSlash
+        size={13}
+        className="shrink-0 text-main-view-fg/40"
+        data-testid="task-status-cancelled"
+      />
+    )
+  }
   return (
     <CircleCheck
       size={13}
@@ -213,122 +374,199 @@ function StatusIcon({ status }: { status: TaskStatus }) {
 }
 
 function TaskItem({
-  row,
+  task,
   now,
   expanded,
   onToggle,
+  onCancel,
+  containerRef,
 }: {
-  row: TaskRow
+  task: ActivityTask
   now: number
   expanded: boolean
   onToggle: () => void
+  onCancel: () => void
+  containerRef?: React.MutableRefObject<HTMLDivElement | null>
 }) {
   const { t } = useTranslation()
-  const ms = elapsedMs(row, now)
-  const tokens = row.usage?.total_tokens ?? 0
+  const ms = taskElapsedMs(task, now)
+  const tokens = task.usage?.total_tokens ?? 0
 
   return (
-    <div className="border-b last:border-b-0">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-muted/50"
-      >
-        <span className="pt-0.5">
-          <StatusIcon status={row.status} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5">
-            {row.kind === 'command' ? (
-              <Terminal size={12} className="shrink-0 text-main-view-fg/40" />
-            ) : (
-              <Bot size={12} className="shrink-0 text-main-view-fg/40" />
-            )}
-            <span
-              className={cn(
-                'min-w-0 flex-1 truncate text-xs',
-                row.kind === 'command' && 'font-mono'
-              )}
-              title={row.title}
-            >
-              {row.title}
-            </span>
+    <div ref={containerRef} className="border-t">
+      <div className="flex items-start">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 items-start gap-2 py-2 pl-5 pr-2 text-left hover:bg-muted/50"
+        >
+          <span className="pt-0.5">
+            <StatusIcon status={task.status} />
           </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-main-view-fg/50">
-            {row.status === 'queued' && row.waiting != null && (
-              <span>
-                {t('common:tasks.queuePosition', { position: row.waiting })}
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5">
+              {task.kind === 'shell' ? (
+                <Terminal size={12} className="shrink-0 text-main-view-fg/40" />
+              ) : (
+                <Bot size={12} className="shrink-0 text-main-view-fg/40" />
+              )}
+              <span
+                className={cn(
+                  'min-w-0 flex-1 truncate text-xs',
+                  task.kind === 'shell' && 'font-mono'
+                )}
+                title={task.title}
+              >
+                {task.title}
               </span>
-            )}
-            {ms != null && (
+            </span>
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-main-view-fg/50">
+              {task.status === 'queued' && task.waiting != null && (
+                <span>
+                  {t('common:tasks.queuePosition', { position: task.waiting })}
+                </span>
+              )}
               <span className="font-mono tabular-nums">
                 {formatCompactDuration(Math.round(ms / 1000), t)}
               </span>
-            )}
-            {tokens > 0 && (
-              <span className="font-mono tabular-nums">
-                {t('common:tasks.tokens', { tokens: formatTokens(tokens) })}
-              </span>
-            )}
-            {row.toolCount != null && row.toolCount > 0 && (
-              <span>
-                {t('common:tasks.toolCalls', { count: row.toolCount })}
-              </span>
-            )}
-            {row.jobId && (
-              <span className="rounded-sm bg-secondary px-1 font-mono">
-                {t('common:tasks.background', { jobId: row.jobId })}
-              </span>
-            )}
+              {tokens > 0 && (
+                <span className="font-mono tabular-nums">
+                  {t('common:tasks.tokens', { tokens: formatTokens(tokens) })}
+                </span>
+              )}
+              {task.toolCount != null && task.toolCount > 0 && (
+                <span>
+                  {t('common:tasks.toolCalls', { count: task.toolCount })}
+                </span>
+              )}
+              {task.model && (
+                <span className="truncate">
+                  {t('common:tasks.model', { model: task.model })}
+                </span>
+              )}
+              {task.jobId && (
+                <span className="rounded-sm bg-secondary px-1 font-mono">
+                  {t('common:tasks.background', { jobId: task.jobId })}
+                </span>
+              )}
+            </span>
           </span>
-        </span>
-        <ChevronDown
-          size={12}
-          className={cn(
-            'mt-1 shrink-0 text-main-view-fg/40 transition-transform',
-            !expanded && '-rotate-90'
-          )}
-        />
-      </button>
+          <ChevronDown
+            size={12}
+            className={cn(
+              'mt-1 shrink-0 text-main-view-fg/40 transition-transform',
+              !expanded && '-rotate-90'
+            )}
+          />
+        </button>
+        {isCancellable(task) && (
+          <Button
+            variant="ghost"
+            size="xs"
+            className="mr-2 mt-2 shrink-0"
+            aria-label={t('common:tasks.stopTask', { name: task.title })}
+            onClick={onCancel}
+          >
+            <Square size={11} className="shrink-0" />
+          </Button>
+        )}
+      </div>
 
       {expanded && (
-        <div className="border-t bg-background px-3 py-2">
-          {row.transcript && row.transcript.length > 0 && (
-            <ol className="mb-2 space-y-1">
-              {row.transcript.map((turn, i) => (
-                <li
-                  key={`${row.id}-${i}`}
-                  className="flex items-baseline gap-2 text-[11px]"
-                >
-                  <span className="w-14 shrink-0 text-main-view-fg/40">
-                    {turn.role === 'tool' ? turn.name : turn.role}
-                  </span>
-                  <span
-                    className={cn(
-                      'min-w-0 flex-1 truncate font-mono',
-                      turn.isError && 'text-destructive'
-                    )}
-                  >
-                    {turnSummary(turn)}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
-          {row.output ? (
-            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-muted/40 p-2 font-mono text-[11px]">
-              {row.output}
-            </pre>
-          ) : (
-            <p className="text-[11px] text-main-view-fg/40">
-              {t('common:tasks.noOutput')}
+        <div className="border-t bg-background px-3 py-2 pl-5">
+          {task.description && (
+            <p className="mb-2 text-[11px] text-main-view-fg/70">
+              {task.description}
             </p>
           )}
+          {task.detail && (
+            <p className="mb-2 text-[11px] text-main-view-fg/50">
+              {reasonLabel(task.detail, t)}
+            </p>
+          )}
+          {task.transcript && task.transcript.length > 0 && (
+            <>
+              <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+                {t('common:tasks.transcript')}
+              </p>
+              <ol className="mb-2 space-y-1">
+                {task.transcript.map((turn, i) => (
+                  <li
+                    key={`${task.id}-${i}`}
+                    className="flex items-baseline gap-2 text-[11px]"
+                  >
+                    <span className="w-14 shrink-0 text-main-view-fg/40">
+                      {turn.role === 'tool' ? turn.name : turn.role}
+                    </span>
+                    <span
+                      className={cn(
+                        'min-w-0 flex-1 truncate font-mono',
+                        turn.isError && 'text-destructive'
+                      )}
+                    >
+                      {turnSummary(turn)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
+          <TaskOutput task={task} />
         </div>
       )}
     </div>
   )
+}
+
+/**
+ * A task's output, as text.
+ *
+ * Rendered into a `<pre>` and never as markup: this is whatever a shell command
+ * or a model produced, and nothing here may be allowed to become elements on
+ * the page. Only the tail is shown — a build log can be megabytes.
+ */
+function TaskOutput({ task }: { task: ActivityTask }) {
+  const { t } = useTranslation()
+  const output = task.output
+  if (!output) {
+    return (
+      <p className="text-[11px] text-main-view-fg/40">
+        {task.status === 'queued' || task.status === 'running'
+          ? t('common:tasks.noOutput')
+          : t('common:tasks.detailsUnavailable')}
+      </p>
+    )
+  }
+  const lines = output.split('\n')
+  const truncated = lines.length > MAX_OUTPUT_LINES
+  const shown = truncated ? lines.slice(-MAX_OUTPUT_LINES) : lines
+  return (
+    <>
+      {truncated && (
+        <p className="mb-1 text-[11px] text-main-view-fg/40">
+          {t('common:tasks.outputTruncated', { lines: MAX_OUTPUT_LINES })}
+        </p>
+      )}
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-muted/40 p-2 font-mono text-[11px]">
+        {shown.join('\n')}
+      </pre>
+    </>
+  )
+}
+
+/** Why a task stopped, in words, for the reasons the app records itself. */
+function reasonLabel(detail: string, t: (key: string) => string): string {
+  switch (detail) {
+    case CANCELLED_BY_USER:
+      return t('common:tasks.cancelledByUser')
+    case INTERRUPTED_BY_RESTART:
+      return t('common:tasks.interruptedByRestart')
+    case INTERRUPTED_BY_RUN_END:
+      return t('common:tasks.interruptedByRunEnd')
+    default:
+      return detail
+  }
 }
 
 /** One transcript line, condensed: what the step was, not its full payload. */

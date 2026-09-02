@@ -37,7 +37,19 @@ import {
   type RunContext,
 } from '@/lib/coworkActivityRecorder'
 import { collectedJobId, commandOf, countToolCalls } from '@/lib/coworkTasks'
-import { INTERRUPTED_BY_RUN_END } from '@/lib/coworkActivity'
+import {
+  INTERRUPTED_BY_RUN_END,
+  sessionTotals,
+  sessionWorkflows,
+  workflowAnchoredAt,
+  type ActivityTask,
+} from '@/lib/coworkActivity'
+import {
+  cancelMessage,
+  cancelTask as cancelTaskRequest,
+  patchForOutcome,
+} from '@/lib/coworkCancel'
+import { CoworkWorkflowCard } from '@/containers/CoworkWorkflowCard'
 import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -66,8 +78,6 @@ import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
 import { CoworkTasksChip } from '@/containers/CoworkTasksChip'
 import {
-  buildTaskList,
-  taskTotals,
   type LiveJob,
 } from '@/lib/coworkTasks'
 import { Code2 } from 'lucide-react'
@@ -396,20 +406,73 @@ function CoworkPage() {
     }
   }, [])
 
-  // The activity list: subagents from both lanes, plus shell commands read off
-  // the transcript and merged with the live job list. Derived here so the chip
-  // shows the same counts the panel does.
-  const taskRows = useMemo(
-    () =>
-      buildTaskList({
-        liveSubagents,
-        sessionSubagents: session?.subagents,
-        turns: displayedTurns,
-        liveJobs,
-      }),
-    [liveSubagents, session?.subagents, displayedTurns, liveJobs]
+  // The one activity record. The panel, the chip and every inline workflow
+  // card select from this, so none of them can disagree about the same work.
+  const activityWorkflows = useCoworkActivity((s) => s.workflows)
+  const activityTasks = useCoworkActivity((s) => s.tasks)
+  const activity = useMemo(
+    () => ({ workflows: activityWorkflows, tasks: activityTasks }),
+    [activityWorkflows, activityTasks]
   )
-  const taskCounts = useMemo(() => taskTotals(taskRows), [taskRows])
+  const workflowViews = useMemo(
+    () => sessionWorkflows(activity, session?.id),
+    [activity, session?.id]
+  )
+  const taskCounts = useMemo(
+    () => sessionTotals(activity, session?.id),
+    [activity, session?.id]
+  )
+
+  // The backend is the authority on whether a backgrounded shell is still
+  // running: the agent may not collect a job for many turns, and until it does
+  // nothing else would ever settle that row.
+  useEffect(() => {
+    const { tasks, patchTask } = useCoworkActivity.getState()
+    for (const job of liveJobs) {
+      if (!job.finished) continue
+      const task = Object.values(tasks).find((one) => one.jobId === job.jobId)
+      if (task && task.status === 'running') {
+        patchTask(task.id, { status: 'done', endedAt: Date.now() })
+      }
+    }
+  }, [liveJobs])
+
+  // Advances the cards' elapsed labels. Only while work is live: an idle
+  // conversation must not re-render every second.
+  const [activityNow, setActivityNow] = useState(() => Date.now())
+  const activityActive = taskCounts.running + taskCounts.queued > 0
+  useEffect(() => {
+    if (!activityActive) return
+    const id = setInterval(() => setActivityNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [activityActive])
+
+  // A task the inline card asked the panel to reveal.
+  const [focusTaskId, setFocusTaskId] = useState<string | null>(null)
+  const showTaskInPanel = useCallback((task: ActivityTask) => {
+    setRail({ kind: 'tasks' })
+    setFocusTaskId(task.id)
+  }, [])
+  const showWorkflowInPanel = useCallback(() => {
+    setRail({ kind: 'tasks' })
+  }, [])
+
+  const cancelTask = useCallback(
+    (task: ActivityTask) => {
+      if (!session?.id) return
+      void cancelTaskRequest(session.id, task).then((result) => {
+        const patch = patchForOutcome(result, Date.now())
+        if (patch) {
+          useCoworkActivity.getState().patchTask(task.id, patch)
+          return
+        }
+        // Nothing was stopped. Say which of the reasons it was rather than
+        // leaving the row looking as though the click did nothing.
+        toast.info(cancelMessage(result, t))
+      })
+    },
+    [session?.id, t]
+  )
 
   const awaitingModel = useMemo(
     () => awaitsModel(running, displayedTurns),
@@ -921,6 +984,24 @@ function CoworkPage() {
                         onReasoningScroll={handleReasoningScroll}
                         onReasoningScrollToBottom={forceScrollReasoningToBottom}
                       />
+                      {/* One card per workflow, at the message its first
+                        dispatch landed under. Same store as the panel, so it
+                        is live without a copy of anything. */}
+                      {(() => {
+                        const view = workflowAnchoredAt(
+                          activity,
+                          session?.id,
+                          message.id
+                        )
+                        return view ? (
+                          <CoworkWorkflowCard
+                            view={view}
+                            now={activityNow}
+                            onOpenTask={showTaskInPanel}
+                            onOpenPanel={showWorkflowInPanel}
+                          />
+                        ) : null
+                      })()}
                       {/* Derived from the message's own write parts, so nothing
                         shared with the chat surface needs to know artifacts
                         exist. */}
@@ -1086,10 +1167,16 @@ function CoworkPage() {
         )}
         {rail?.kind === 'tasks' && (
           <CoworkTasksPanel
-            liveSubagents={liveSubagents}
-            sessionSubagents={session?.subagents}
-            turns={displayedTurns}
-            liveJobs={liveJobs}
+            workflows={workflowViews}
+            totals={taskCounts}
+            focusTaskId={focusTaskId}
+            onFocusHandled={() => setFocusTaskId(null)}
+            onCancelTask={cancelTask}
+            onClearFinished={() => {
+              if (session?.id) {
+                useCoworkActivity.getState().clearFinished(session.id)
+              }
+            }}
             onClose={() => setRail(null)}
           />
         )}
