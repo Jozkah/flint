@@ -295,6 +295,18 @@
       "type": "string",
       "oneOf": [
         {
+          "description": "Enables the bash_jobs_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-bash-jobs-list",
+          "markdownDescription": "Enables the bash_jobs_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the bash_jobs_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-bash-jobs-list",
+          "markdownDescription": "Denies the bash_jobs_list command without any pre-configured scope."
+        },
+        {
           "description": "Enables the execute_tool command without any pre-configured scope.",
           "type": "string",
           "const": "allow-execute-tool",
@@ -365,6 +377,30 @@
           "type": "string",
           "const": "deny-memory-write",
           "markdownDescription": "Denies the memory_write command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the project_list_dir command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-project-list-dir",
+          "markdownDescription": "Enables the project_list_dir command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the project_list_dir command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-project-list-dir",
+          "markdownDescription": "Denies the project_list_dir command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the project_read_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-project-read-file",
+          "markdownDescription": "Enables the project_read_file command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the project_read_file command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-project-read-file",
+          "markdownDescription": "Denies the project_read_file command without any pre-configured scope."
         },
         {
           "description": "Enables the sandbox_status command without any pre-configured scope.",
@@ -523,10 +559,10 @@
           "markdownDescription": "Denies the workspace_path command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`",
+          "description": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`"
+          "markdownDescription": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`"
         }
       ]
     }
