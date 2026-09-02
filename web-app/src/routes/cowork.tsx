@@ -858,11 +858,17 @@ function CoworkPage() {
                           size="xs"
                           aria-pressed={rail?.kind === 'code'}
                           aria-label={t('common:codePanel.title')}
-                          onClick={() =>
+                          onClick={() => {
+                            // The panel is per-session and renders nothing
+                            // without one, so opening it before the first
+                            // message used to press the button and show
+                            // nothing at all. Same session guarantee the
+                            // artifact route into Code already makes.
+                            if (rail?.kind !== 'code') ensureCurrentSession()
                             setRail((r) =>
                               r?.kind === 'code' ? null : { kind: 'code' }
                             )
-                          }
+                          }}
                           className={cn(
                             'shrink-0',
                             rail?.kind === 'code' && 'text-primary'
