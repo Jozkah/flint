@@ -372,5 +372,13 @@
     }
   },
   "backendInstallSuccess": "Backend installed successfully!",
-  "backendInstallError": "Failed to install backend"
+  "backendInstallError": "Failed to install backend",
+  "claudeCode": {
+    "largeModel": "Large Model",
+    "largeModelDesc": "Opus",
+    "mediumModel": "Medium Model",
+    "mediumModelDesc": "Sonnet",
+    "smallModel": "Small Model",
+    "smallModelDesc": "Haiku"
+  }
 }

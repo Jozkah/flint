@@ -257,8 +257,9 @@ function ClaudeCodeIntegration() {
               }
             >
               <CardItem
-                title="Large Model"
-                description="Opus"
+                anchor="settings-claude-code-large-model"
+                title={t('settings:claudeCode.largeModel')}
+                description={t('settings:claudeCode.largeModelDesc')}
                 actions={
                   <HelperModelSelector
                     providers={providers}
@@ -269,8 +270,9 @@ function ClaudeCodeIntegration() {
                 }
               />
               <CardItem
-                title="Medium Model"
-                description="Sonnet"
+                anchor="settings-claude-code-medium-model"
+                title={t('settings:claudeCode.mediumModel')}
+                description={t('settings:claudeCode.mediumModelDesc')}
                 actions={
                   <HelperModelSelector
                     providers={providers}
@@ -281,8 +283,9 @@ function ClaudeCodeIntegration() {
                 }
               />
               <CardItem
-                title="Small Model"
-                description="Haiku"
+                anchor="settings-claude-code-small-model"
+                title={t('settings:claudeCode.smallModel')}
+                description={t('settings:claudeCode.smallModelDesc')}
                 actions={
                   <HelperModelSelector
                     providers={providers}

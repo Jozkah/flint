@@ -245,6 +245,92 @@ describe('SettingsSearch', () => {
     expect(useSettingsSearch.getState().pendingTarget).toBeNull()
   })
 
+  it('takes the last of several results chosen in quick succession', async () => {
+    // The target is a single slot. Choosing again before the first has been
+    // claimed must leave the newest request standing, not the stale one.
+    render(<SettingsSearch />)
+    const { user } = await type('Theme')
+    await user.click(screen.getAllByRole('option')[0])
+    expect(useSettingsSearch.getState().pendingTarget).toBe(
+      'settings-appearance-theme'
+    )
+
+    await user.clear(screen.getByLabelText('Search settings'))
+    await user.type(screen.getByLabelText('Search settings'), 'Font size')
+    await user.click(screen.getAllByRole('option')[0])
+
+    expect(useSettingsSearch.getState().pendingTarget).toBe(
+      'settings-appearance-font-size'
+    )
+  })
+
+  it('navigates to whichever result was chosen last', async () => {
+    render(<SettingsSearch />)
+    const { user } = await type('Theme')
+    await user.click(screen.getAllByRole('option')[0])
+    await user.clear(screen.getByLabelText('Search settings'))
+    await user.type(screen.getByLabelText('Search settings'), 'Proxy')
+    await user.click(screen.getAllByRole('option')[0])
+
+    const calls = mockNavigate.mock.calls
+    expect(calls.length).toBeGreaterThan(1)
+    expect(calls[calls.length - 1][0].to).not.toBe(calls[0][0].to)
+  })
+
+  describe('what a screen reader is told', () => {
+    it('names the field, and says whether results are open', async () => {
+      render(<SettingsSearch />)
+      const field = screen.getByLabelText('Search settings')
+      expect(field).toHaveAttribute('aria-expanded', 'false')
+
+      const { user } = await type('Theme')
+      expect(screen.getByLabelText('Search settings')).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      )
+      expect(field).toHaveAttribute('aria-controls', 'settings-search-results')
+      await user.keyboard('{Escape}')
+    })
+
+    it('points at the highlighted option as the arrows move', async () => {
+      // `aria-activedescendant` is how a listbox reports the active choice
+      // without moving focus off the field.
+      render(<SettingsSearch />)
+      const { user } = await type('Theme')
+      const field = screen.getByLabelText('Search settings')
+      const options = screen.getAllByRole('option')
+
+      await user.keyboard('{ArrowDown}')
+      expect(field.getAttribute('aria-activedescendant')).toBe(options[1].id)
+      await user.keyboard('{ArrowUp}')
+      expect(field.getAttribute('aria-activedescendant')).toBe(options[0].id)
+    })
+
+    it('announces the result count politely', async () => {
+      render(<SettingsSearch />)
+      await type('Theme')
+      const live = document.querySelector('[aria-live="polite"]')
+      expect(live).not.toBeNull()
+      expect(live!.textContent?.trim()).not.toBe('')
+    })
+
+    it('announces that nothing matched', async () => {
+      render(<SettingsSearch />)
+      await type('zzzzz no such setting')
+      const live = document.querySelector('[aria-live="polite"]')
+      expect(live!.textContent?.trim()).not.toBe('')
+    })
+
+    it('gives the results list and the clear control names of their own', async () => {
+      render(<SettingsSearch />)
+      await type('Theme')
+      expect(screen.getByRole('listbox')).toHaveAccessibleName()
+      expect(
+        screen.getByRole('button', { name: /clear/i })
+      ).toBeInTheDocument()
+    })
+  })
+
   it('never puts provider secrets or values in the index', async () => {
     providers = [
       {
