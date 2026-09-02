@@ -48,7 +48,6 @@ import { useTokensCount } from '@/hooks/useTokensCount'
 import { ReasoningEffortSlider } from '@/containers/ReasoningEffortSlider'
 import {
   EFFORT_SETTING_KEY,
-  effortLabel as levelLabel,
   effortOf,
   supportedEffortLevels,
 } from '@/lib/modelEffort'
@@ -2577,76 +2576,45 @@ const ChatInput = memo(function ChatInput({
                     // stepped bar. Which levels exist is the provider's answer,
                     // not a guess: see `supportedEffortLevels`. The value is
                     // stored per chat, over the global model configuration.
+                    // Which discrete effort levels this provider will act
+                    // on. Empty for providers that size their own thinking, in
+                    // which case the bar is not shown at all — see
+                    // `supportedEffortLevels`.
                     const effortLevels = supportedEffortLevels(
                       selectedProvider,
                       selectedModel
                     )
-                    if (effortLevels.length > 0) {
-                      // What this chat will actually send: its own override
-                      // where it has one, the global model setting otherwise.
-                      const currentEffort = effortOf(
-                        resolveModel(selectedModel, chatOverrides)
-                      )
-                      const effortOverridden = isOverridden(
-                        chatOverrides,
-                        EFFORT_SETTING_KEY
-                      )
-                      const effortLabelText = currentEffort
-                        ? levelLabel(currentEffort)
-                        : 'Default'
-                      return (
-                        <DropdownMenu>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-xs"
-                                  aria-label={`Reasoning effort: ${effortLabelText}`}
-                                >
-                                  <IconBrain
-                                    size={18}
-                                    className={cn(
-                                      'text-muted-foreground',
-                                      currentEffort && 'text-primary'
-                                    )}
-                                  />
-                                </Button>
-                              </DropdownMenuTrigger>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Reasoning effort: {effortLabelText}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                          <DropdownMenuContent
-                            align="start"
-                            className="w-64 p-3"
-                          >
-                            <ReasoningEffortSlider
-                              levels={effortLevels}
-                              value={currentEffort}
-                              overridden={effortOverridden}
-                              onChange={(level) => {
-                                // Per chat. The global model configuration is
-                                // left alone, and stays the fallback for every
-                                // chat that has not chosen for itself.
-                                if (!currentThreadId) return
-                                setThreadOverride(
-                                  currentThreadId,
-                                  EFFORT_SETTING_KEY,
-                                  level
-                                )
-                              }}
-                              onReset={() => {
-                                if (!currentThreadId) return
-                                clearThreadOverride(
-                                  currentThreadId,
-                                  EFFORT_SETTING_KEY
-                                )
-                              }}
-                            />
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                    // What this chat will actually send: its own override
+                    // where it has one, the global model setting otherwise.
+                    const currentEffort = effortOf(
+                      resolveModel(selectedModel, chatOverrides)
+                    )
+                    const effortOverridden = isOverridden(
+                      chatOverrides,
+                      EFFORT_SETTING_KEY
+                    )
+                    /**
+                     * Store the chosen level.
+                     *
+                     * Per chat once a chat exists. On the new-chat screen there
+                     * is no thread yet, and the control still has to work — so
+                     * it writes the global model setting there, which is what
+                     * the menu it replaced always did.
+                     */
+                    const setEffort = (level: string) => {
+                      if (currentThreadId) {
+                        setThreadOverride(
+                          currentThreadId,
+                          EFFORT_SETTING_KEY,
+                          level
+                        )
+                        return
+                      }
+                      updateModelSetting(
+                        EFFORT_SETTING_KEY,
+                        'Reasoning Effort',
+                        'dropdown',
+                        level
                       )
                     }
                     const setReasoning = (value: 'auto' | 'on' | 'off') =>
@@ -2722,7 +2690,29 @@ const ChatInput = memo(function ChatInput({
                             <p>{tooltipText}</p>
                           </TooltipContent>
                         </Tooltip>
-                        <DropdownMenuContent align="start">
+                        <DropdownMenuContent align="start" className="w-64">
+                          {effortLevels.length > 0 && (
+                            <>
+                              <div className="px-2 py-1.5">
+                                <ReasoningEffortSlider
+                                  levels={effortLevels}
+                                  value={currentEffort}
+                                  overridden={effortOverridden}
+                                  onChange={setEffort}
+                                  onReset={
+                                    currentThreadId && effortOverridden
+                                      ? () =>
+                                          clearThreadOverride(
+                                            currentThreadId,
+                                            EFFORT_SETTING_KEY
+                                          )
+                                      : undefined
+                                  }
+                                />
+                              </div>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
                           <DropdownMenuItem onClick={() => setReasoning('auto')}>
                             Auto
                             {reasoningValue === 'auto' && (

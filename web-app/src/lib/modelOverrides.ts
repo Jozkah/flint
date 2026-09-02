@@ -101,12 +101,18 @@ export function effectiveValue(
  * Returns the same model reference when the chat has overridden nothing, so
  * the common case allocates nothing and callers can compare by identity.
  *
- * Only the `value` inside each setting is replaced. Everything else about a
- * setting — its title, its controller type, its bounds — belongs to the model's
- * own definition, and a chat has no business carrying a stale copy of it. An
- * override naming a setting this model does not define is ignored rather than
- * invented: the model changed, and a control that no longer exists cannot be
- * set.
+ * Only the `value` inside each setting is replaced when the model already
+ * defines the setting: its title, controller type and bounds belong to the
+ * model's own definition, and a chat has no business carrying a stale copy.
+ *
+ * A setting the model does not define yet is *created*, carrying just the
+ * value. Absent does not mean unsupported — a model that has never had a
+ * setting touched simply has no entry for it, and the global settings path
+ * creates one the same way when a user first changes it. Skipping those would
+ * make an override silently do nothing on every model out of the box.
+ *
+ * Overrides that no longer apply are removed deliberately, when the chat's
+ * model changes, by `pruneOverrides` — not by being quietly ignored here.
  */
 export function resolveModel<T extends Model>(
   model: T,
@@ -128,34 +134,47 @@ export function resolveModel<T extends Model>(
   let next: typeof settings | null = null
   for (const [key, value] of Object.entries(overrides!)) {
     const existing = settings[key]
-    // The model no longer defines this setting; there is nothing to override.
-    if (!existing) continue
-    if (existing.controller_props?.value === value) continue
+    if (existing && existing.controller_props?.value === value) continue
     if (!next) next = { ...settings }
-    next[key] = {
-      ...existing,
-      controller_props: { ...(existing.controller_props ?? {}), value },
-    }
+    next[key] = existing
+      ? {
+          ...existing,
+          controller_props: { ...(existing.controller_props ?? {}), value },
+        }
+      : // Created from scratch, exactly as the global settings path does when
+        // a setting is first changed: the key and the value are what matter,
+        // and the model's own definition supplies nothing else to preserve.
+        {
+          key,
+          title: key,
+          description: '',
+          controller_type: 'dropdown',
+          controller_props: { value },
+        }
   }
   return next ? ({ ...model, settings: next } as T) : model
 }
 
 /**
- * Drop overrides the model no longer defines.
+ * Drop overrides the chat's new model cannot act on.
  *
- * Called when a chat's model changes: an override for a setting the new model
- * does not have would sit in the record forever, invisible and inert, and
- * would spring back to life if the old model ever returned.
+ * Deliberately *not* "drop what the model has no entry for". A model that has
+ * never had a setting touched simply has no entry for it — that is every model
+ * out of the box — so presence says nothing about support, and using it as the
+ * test would throw away a perfectly good override on almost every model
+ * change.
+ *
+ * The caller supplies the real test, because only it knows what each setting
+ * means: `unsupported(key)` answers whether the new model would ignore that
+ * setting. Anything it does not object to is kept, because the user chose it.
  */
 export function pruneOverrides(
-  model: Model | null | undefined,
-  overrides: ModelOverrides | undefined
+  overrides: ModelOverrides | undefined,
+  unsupported: (key: string) => boolean
 ): ModelOverrides {
   if (!hasOverrides(overrides)) return overrides ?? NO_OVERRIDES
-  const settings = model?.settings
-  if (!settings) return overrides!
   const kept = Object.fromEntries(
-    Object.entries(overrides!).filter(([key]) => key in settings)
+    Object.entries(overrides!).filter(([key]) => !unsupported(key))
   )
   return Object.keys(kept).length === Object.keys(overrides!).length
     ? overrides!

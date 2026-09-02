@@ -11,6 +11,7 @@ import {
   type ModelOverrides,
   type ModelSettingValue,
 } from '@/lib/modelOverrides'
+import { EFFORT_SETTING_KEY, supportsEffort } from '@/lib/modelEffort'
 
 /**
  * Each chat's model-setting overrides, keyed by thread id.
@@ -41,8 +42,19 @@ type ModelOverridesState = {
   clearForThread: (threadId: string, key: string) => void
   /** Give every setting back to the global defaults. */
   resetThread: (threadId: string) => void
-  /** Drop overrides naming settings the chat's model no longer defines. */
-  pruneForThread: (threadId: string, model: Model | null | undefined) => void
+  /**
+   * Drop this chat's overrides that its new model cannot act on.
+   *
+   * Called when a chat's model changes. The effort level is the one setting
+   * whose support is knowable — `supportsEffort` answers it — so a switch to a
+   * model that sizes its own thinking clears that override rather than leaving
+   * an invisible value to spring back later.
+   */
+  pruneForThread: (
+    threadId: string,
+    providerId: string | null | undefined,
+    model: Model | null | undefined
+  ) => void
   /** Forget a chat that no longer exists. */
   dropThread: (threadId: string) => void
 }
@@ -93,11 +105,15 @@ export const useModelOverrides = create<ModelOverridesState>()(
             : { byThread: s.byThread }
         ),
 
-      pruneForThread: (threadId, model) =>
+      pruneForThread: (threadId, providerId, model) =>
         set((s) => {
           const current = s.byThread[threadId]
           if (!hasOverrides(current)) return { byThread: s.byThread }
-          const pruned = pruneOverrides(model, current)
+          const pruned = pruneOverrides(
+            current,
+            (key) =>
+              key === EFFORT_SETTING_KEY && !supportsEffort(providerId, model)
+          )
           if (pruned === current) return { byThread: s.byThread }
           return {
             byThread: hasOverrides(pruned)

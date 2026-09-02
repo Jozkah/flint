@@ -5,6 +5,7 @@ import { Fzf } from 'fzf'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
+import { useModelProvider } from '@/hooks/useModelProvider'
 import { ExtensionManager } from '@/lib/extension'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { useChatSessions } from '@/stores/chat-session-store'
@@ -424,6 +425,17 @@ export const useThreads = create<ThreadState>()((set, get) => ({
   updateCurrentThreadModel: (model) => {
     set((state) => {
       if (!state.currentThreadId) return { ...state }
+      // The new model may not define every setting this chat had overridden.
+      // Such an override is already inert — `resolveModel` ignores a key the
+      // model does not have — but leaving it in the record would let it come
+      // back to life if the old model were ever selected again.
+      useModelOverrides
+        .getState()
+        .pruneForThread(
+          state.currentThreadId,
+          model.provider,
+          useModelProvider.getState().getModelBy(model.id)
+        )
       const currentThread = state.getCurrentThread()
       if (currentThread)
         getServiceHub()

@@ -133,19 +133,37 @@ describe('resolving the model a chat actually sends', () => {
     ).toBe('low')
   })
 
-  it('ignores an override for a setting this model does not define', () => {
-    // The model changed underneath the chat; a control that no longer exists
-    // cannot be set, and inventing it would fabricate a setting.
+  it('creates a setting the model has no entry for yet', () => {
+    // Absent does not mean unsupported: a model that has never had a setting
+    // touched simply has no entry for it, which is every model out of the box.
+    // Skipping those made the override silently do nothing.
     const global = model({ temperature: 0.7 })
     const resolved = resolveModel(
       global,
       setOverride(undefined, 'thinking_budget_tokens', 'high')
     )
-    expect(resolved.settings?.thinking_budget_tokens).toBeUndefined()
-    expect(resolved).toBe(global)
+    expect(
+      resolved.settings?.thinking_budget_tokens?.controller_props?.value
+    ).toBe('high')
+    expect(resolved).not.toBe(global)
+    // The global configuration is untouched.
+    expect(global.settings?.thinking_budget_tokens).toBeUndefined()
   })
 
-  it('copes with a model that defines no settings at all', () => {
+  it('reaches the request for a model that defined no settings at all', () => {
+    // The end the previous behaviour broke: a cloud model out of the box.
+    const bare = { id: 'gpt-5', settings: {} } as unknown as Model
+    const resolved = resolveModel(
+      bare,
+      setOverride(undefined, 'thinking_budget_tokens', 'xhigh')
+    )
+    expect(
+      resolved.settings?.thinking_budget_tokens?.controller_props?.value
+    ).toBe('xhigh')
+  })
+
+  it('leaves a model with no settings object alone', () => {
+    // Nothing to merge into; the model shape itself says it takes no settings.
     const bare = { id: 'x' } as unknown as Model
     expect(resolveModel(bare, setOverride(undefined, 'anything', 'v'))).toBe(
       bare
@@ -197,32 +215,35 @@ describe('resetting to the global defaults', () => {
   })
 })
 
-describe('pruning overrides the model no longer defines', () => {
-  it('drops what the new model does not have', () => {
+describe('pruning overrides the new model cannot act on', () => {
+  it('drops what the caller says is unsupported', () => {
     const overrides: ModelOverrides = {
       thinking_budget_tokens: 'high',
       temperature: 0.1,
     }
-    const pruned = pruneOverrides(model({ temperature: 0.7 }), overrides)
+    const pruned = pruneOverrides(
+      overrides,
+      (key) => key === 'thinking_budget_tokens'
+    )
     expect(overriddenKeys(pruned)).toEqual(['temperature'])
   })
 
   it('returns the same set when everything still applies', () => {
     const overrides = setOverride(undefined, 'temperature', 0.1)
-    expect(pruneOverrides(model({ temperature: 0.7 }), overrides)).toBe(
-      overrides
-    )
+    expect(pruneOverrides(overrides, () => false)).toBe(overrides)
   })
 
-  it('leaves the set alone when the model is unknown', () => {
-    // Nothing is known about what it defines, so nothing can be said to be
-    // stale; dropping the overrides here would lose the user's choices.
-    const overrides = setOverride(undefined, 'temperature', 0.1)
-    expect(pruneOverrides(null, overrides)).toBe(overrides)
+  it('does not use "the model has no entry" as the test', () => {
+    // A model that has never had a setting touched has no entry for it —
+    // which is every model out of the box — so presence says nothing about
+    // support. Pruning on it would discard a good override on almost every
+    // model change.
+    const overrides = setOverride(undefined, 'thinking_budget_tokens', 'high')
+    expect(pruneOverrides(overrides, () => false)).toBe(overrides)
   })
 
   it('has nothing to do for a chat that overrides nothing', () => {
-    expect(hasOverrides(pruneOverrides(model(), undefined))).toBe(false)
+    expect(hasOverrides(pruneOverrides(undefined, () => true))).toBe(false)
   })
 })
 

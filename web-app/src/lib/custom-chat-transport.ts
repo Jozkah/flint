@@ -1241,7 +1241,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
       const inferenceParams = this.getActiveInferenceParams()
 
-      const selectedModel = useModelProvider.getState().selectedModel
+      // Resolved for this chat, not the bare global model: everything derived
+      // below — the reasoning mode, the sampling defaults, the llama.cpp
+      // thinking budget — has to see the chat's own overrides, or a control
+      // the composer shows as set would never reach the request.
+      const selectedModel = resolveModel(
+        useModelProvider.getState().selectedModel,
+        useModelOverrides.getState().forThread(threadId)
+      )
       const reasoningParams = buildLlamacppReasoningParams(
         effectiveProviderName,
         selectedModel?.settings?.reasoning?.controller_props?.value as

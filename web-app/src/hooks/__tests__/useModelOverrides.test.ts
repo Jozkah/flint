@@ -117,25 +117,25 @@ describe('useModelOverrides', () => {
   })
 
   describe('when the model changes underneath a chat', () => {
-    it('drops overrides the new model does not define', () => {
+    it('drops the effort override when the new model cannot act on it', () => {
       store().setForThread(CHAT_A, KEY, 'low')
       store().setForThread(CHAT_A, 'temperature', 0.1)
 
-      store().pruneForThread(CHAT_A, model({ temperature: 0.7 }))
+      store().pruneForThread(CHAT_A, 'mistral', model({ temperature: 0.7 }))
 
       expect(store().forThread(CHAT_A)).toEqual({ temperature: 0.1 })
     })
 
     it('removes the entry when nothing survives', () => {
       store().setForThread(CHAT_A, KEY, 'low')
-      store().pruneForThread(CHAT_A, model({ temperature: 0.7 }))
+      store().pruneForThread(CHAT_A, 'mistral', model({ temperature: 0.7 }))
       expect(CHAT_A in store().byThread).toBe(false)
     })
 
-    it('keeps everything when the model still defines it all', () => {
+    it('keeps everything when the new model still supports it', () => {
       store().setForThread(CHAT_A, KEY, 'low')
       const before = store().forThread(CHAT_A)
-      store().pruneForThread(CHAT_A, model({ [KEY]: 'medium' }))
+      store().pruneForThread(CHAT_A, 'openai', model({ [KEY]: 'medium' }))
       expect(store().forThread(CHAT_A)).toBe(before)
     })
   })
@@ -166,6 +166,68 @@ describe('useModelOverrides', () => {
 
     it('waits to be hydrated explicitly, like the other backend stores', () => {
       expect(useModelOverrides.persist.getOptions().skipHydration).toBe(true)
+    })
+  })
+
+  describe('surviving a restart', () => {
+    /** What comes back off disk: the record, with the actions rebuilt. */
+    const restart = () => {
+      const options = useModelOverrides.persist.getOptions()
+      const partialize = options.partialize as (s: unknown) => { byThread: unknown }
+      const onDisk = JSON.parse(JSON.stringify(partialize(store())))
+      useModelOverrides.setState({ byThread: {} })
+      useModelOverrides.setState(onDisk)
+    }
+
+    it('brings each chat’s overrides back, still separate', () => {
+      store().setForThread(CHAT_A, KEY, 'low')
+      store().setForThread(CHAT_B, KEY, 'xhigh')
+
+      restart()
+
+      expect(store().forThread(CHAT_A)[KEY]).toBe('low')
+      expect(store().forThread(CHAT_B)[KEY]).toBe('xhigh')
+    })
+
+    it('brings back nothing for a chat that had chosen nothing', () => {
+      store().setForThread(CHAT_A, KEY, 'low')
+      restart()
+      expect(store().forThread(CHAT_B)).toEqual({})
+      expect(CHAT_B in store().byThread).toBe(false)
+    })
+
+    it('still resolves against whatever the global default has become', () => {
+      // The point of persisting values rather than resolved settings: after a
+      // restart the untouched settings follow the *current* global config.
+      store().setForThread(CHAT_A, KEY, 'low')
+      restart()
+
+      const moved = model({ [KEY]: 'xhigh', temperature: 0.2 })
+      expect(effectiveValue(moved, store().forThread(CHAT_A), KEY)).toBe('low')
+      expect(effectiveValue(moved, store().forThread(CHAT_A), 'temperature')).toBe(
+        0.2
+      )
+    })
+  })
+
+  describe('a chat that predates this feature', () => {
+    it('has no entry, and simply uses the global configuration', () => {
+      // Nothing to migrate: an absent entry *is* "inherits everything", so an
+      // existing thread needs no record written for it.
+      const global = model({ [KEY]: 'medium', temperature: 0.7 })
+      const existing = 'thread-from-before'
+
+      expect(existing in store().byThread).toBe(false)
+      expect(resolveModel(global, store().forThread(existing))).toBe(global)
+      expect(effectiveValue(global, store().forThread(existing), KEY)).toBe(
+        'medium'
+      )
+    })
+
+    it('starts overriding only once the user chooses something', () => {
+      const existing = 'thread-from-before'
+      store().setForThread(existing, KEY, 'high')
+      expect(store().byThread[existing]).toEqual({ [KEY]: 'high' })
     })
   })
 })
