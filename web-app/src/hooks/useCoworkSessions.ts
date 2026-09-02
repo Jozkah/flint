@@ -13,6 +13,7 @@ import {
   tabId,
   type CodePanelState,
   type CodeTab,
+  type FileOrigin,
 } from '@/lib/coworkCode'
 
 /** The `sandbox:` marker used by the v2 tab-path scheme. */
@@ -283,7 +284,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // hydrateBackendStores() once the ServiceHub is ready.
       storage: createJSONStorage(() => backendStorage),
       skipHydration: true,
-      version: 3,
+      version: 4,
       // v0 persisted an OpenAI-shaped `history` that could not represent tool
       // calls, so replaying it dropped every tool turn. Rebuild the message
       // list from `turns`, which did record them, and leave `history` in place
@@ -337,7 +338,10 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
             for (const raw of legacy.openPaths) {
               if (typeof raw !== 'string' || !raw) continue
               if (raw.startsWith(LEGACY_SANDBOX_PREFIX)) {
-                tabs.push(sandboxTab(raw.slice(LEGACY_SANDBOX_PREFIX.length)))
+                // The tab is stored on its own session, so that session owns it.
+                tabs.push(
+                  sandboxTab(raw.slice(LEGACY_SANDBOX_PREFIX.length), session.id)
+                )
               } else if (projectKey) {
                 tabs.push(projectTab(raw, projectKey))
               }
@@ -369,6 +373,49 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
                   (session.codePanel as unknown as { wordWrap?: unknown })
                     ?.wordWrap
                 ),
+              },
+            }
+          })
+        }
+        // v3 → v4: sandbox and artifact origins gained a `sessionKey`. Without
+        // one a tab has no owner, so it would be read against whichever
+        // session happened to be open. Each is stamped with the session it is
+        // stored on, which is the session that opened it.
+        if (version < 4) {
+          sessions = sessions.map((session) => {
+            const panel = session.codePanel
+            if (!panel?.tabs?.length) return session
+            let changed = false
+            const tabs = panel.tabs.map((tab) => {
+              const origin = tab.origin as FileOrigin & { sessionKey?: string }
+              if (
+                (origin?.kind !== 'sandbox' && origin?.kind !== 'artifact') ||
+                origin.sessionKey
+              ) {
+                return tab
+              }
+              changed = true
+              return {
+                ...tab,
+                origin: { kind: origin.kind, sessionKey: session.id },
+              }
+            })
+            if (!changed) return session
+            // Tab ids embed the origin, so every id just changed. Re-derive
+            // the active one from the tab it pointed at rather than leaving a
+            // dangling id that would blank the viewer.
+            const activeIndex = panel.tabs.findIndex(
+              (tab) => tabId(tab) === panel.activeTabId
+            )
+            return {
+              ...session,
+              codePanel: {
+                ...panel,
+                tabs,
+                activeTabId:
+                  activeIndex >= 0
+                    ? tabId(tabs[activeIndex])
+                    : panel.activeTabId,
               },
             }
           })

@@ -223,12 +223,36 @@ export function relativeToRoot(root: string | null, path: string): string {
 export type FileOrigin =
   /** Inside the attached project. Read-only in Cowork today. */
   | { kind: 'project'; projectKey: string }
-  /** Inside this session's writable sandbox. */
-  | { kind: 'sandbox' }
-  /** A file the agent generated, which lives in the sandbox. */
-  | { kind: 'artifact' }
-  /** Readable, but outside both roots. Always read-only. */
+  /** Inside one session's writable sandbox. */
+  | { kind: 'sandbox'; sessionKey: string }
+  /** A file the agent generated, which lives in that session's sandbox. */
+  | { kind: 'artifact'; sessionKey: string }
+  /** Readable, but outside every root. Always read-only. */
   | { kind: 'external' }
+
+/**
+ * The identity a tab is scoped to: the project for a project file, the session
+ * for anything in a sandbox.
+ *
+ * Sandbox paths are relative to a per-session directory, so the same
+ * `out.ts` exists in every session. Without the session in the identity, two
+ * sessions' tabs share a cache key and one session's bytes can be shown under
+ * the other.
+ */
+export function originScope(origin: FileOrigin): string {
+  switch (origin.kind) {
+    case 'project':
+      // Persisted tabs predate these fields, and a migration has to be able to
+      // identify a tab it has not stamped yet. The `?? ''` covers that case;
+      // the types hold everywhere else.
+      return origin.projectKey ?? ''
+    case 'sandbox':
+    case 'artifact':
+      return origin.sessionKey ?? ''
+    case 'external':
+      return ''
+  }
+}
 
 /** Nothing in Cowork may write through the code surface; the project itself is
  * mounted read-only and the other origins are not ours to edit. Kept as a
@@ -276,8 +300,7 @@ export type CodeTab = {
  * file of the same name.
  */
 export function tabId(tab: CodeTab): string {
-  const scope = tab.origin.kind === 'project' ? tab.origin.projectKey : ''
-  return `${tab.origin.kind}:${scope}:${tab.path}`
+  return `${tab.origin.kind}:${originScope(tab.origin)}:${tab.path}`
 }
 
 export const projectTab = (path: string, projectKey: string): CodeTab => ({
@@ -285,10 +308,31 @@ export const projectTab = (path: string, projectKey: string): CodeTab => ({
   origin: { kind: 'project', projectKey },
 })
 
-export const sandboxTab = (path: string): CodeTab => ({
+export const sandboxTab = (path: string, sessionKey: string): CodeTab => ({
   path,
-  origin: { kind: 'sandbox' },
+  origin: { kind: 'sandbox', sessionKey },
 })
+
+export const artifactTab = (path: string, sessionKey: string): CodeTab => ({
+  path,
+  origin: { kind: 'artifact', sessionKey },
+})
+
+/**
+ * Does this tab belong to `sessionKey`?
+ *
+ * Project and external tabs are not session-scoped; a sandbox or artifact tab
+ * is, and must never be rendered or read under another session.
+ */
+export function tabBelongsToSession(
+  tab: CodeTab,
+  sessionKey: string | null
+): boolean {
+  return (
+    (tab.origin.kind !== 'sandbox' && tab.origin.kind !== 'artifact') ||
+    tab.origin.sessionKey === sessionKey
+  )
+}
 
 /** Does this tab belong to the project currently attached? */
 export function tabBelongsToProject(

@@ -20,13 +20,13 @@ import { getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import {
   bashJobsList,
   projectReadFile,
-  sessionWorkspacePath,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { cn } from '@/lib/utils'
 import {
   useCoworkSessions,
   ensureCurrentSession,
 } from '@/hooks/useCoworkSessions'
+import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
 import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -70,6 +70,7 @@ import {
   codeRefToken,
   emptyCodePanelState,
   expandCodeRefs,
+  artifactTab,
   openTab,
   projectKeyOf,
   projectTab,
@@ -148,7 +149,7 @@ function CoworkPage() {
     null
   )
   const [subagentDefs, setSubagentDefs] = useState<SubagentDefinition[]>([])
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null)
+  const workspacePath = useSessionWorkspacePath(session?.id)
   // The step just finished, so the counter tracks a run instead of jumping once
   // at the end. Falls back to the committed usage between runs.
   const [liveUsage, setLiveUsage] = useState<Usage | null>(null)
@@ -195,11 +196,11 @@ function CoworkPage() {
       // Only call it a project file when it really resolved inside the project.
       if (projectKey && relative !== path) {
         openCode(projectTab(relative, projectKey))
-      } else {
-        openCode(sandboxTab(relativeToRoot(workspacePath, path)))
+      } else if (session?.id) {
+        openCode(sandboxTab(relativeToRoot(workspacePath, path), session.id))
       }
     },
-    [folder, workspacePath, openCode]
+    [folder, workspacePath, openCode, session?.id]
   )
 
   // Source artifacts open as code, not as a plain-text preview dump.
@@ -207,10 +208,13 @@ function CoworkPage() {
     (path: string) => {
       // An artifact is something the agent generated: it lives in the session
       // workspace, never in the user's project.
-      if (shouldOpenInCode(path)) openCode({ path, origin: { kind: 'artifact' } })
-      else setRail({ kind: 'preview', path })
+      // An artifact is something the agent generated: it lives in this
+      // session's workspace, never in the user's project.
+      if (shouldOpenInCode(path) && session?.id) {
+        openCode(artifactTab(path, session.id))
+      } else setRail({ kind: 'preview', path })
     },
-    [openCode]
+    [openCode, session?.id]
   )
   const [ask, setAsk] = useState<{
     requestId: string
@@ -224,25 +228,6 @@ function CoworkPage() {
     forceScrollToBottom: forceScrollReasoningToBottom,
   } = useAutoScroll()
 
-  // The session's sandbox, resolved once so the workspace pill can name the
-  // directory writes actually land in.
-  useEffect(() => {
-    let alive = true
-    if (!session?.id) return
-    void (async () => {
-      try {
-        const dataFolder = await serviceHub.app().getJanDataFolder()
-        if (!dataFolder) return
-        const path = await sessionWorkspacePath(dataFolder, session.id)
-        if (alive) setWorkspacePath(path)
-      } catch {
-        // A missing path only costs the pill a subtitle.
-      }
-    })()
-    return () => {
-      alive = false
-    }
-  }, [session?.id, serviceHub])
 
   // Saved definitions name the `task` tool's options. Loaded once: the list is
   // only advertised, so a definition added mid-session applies at the next run.
@@ -1001,6 +986,7 @@ function CoworkPage() {
           <CoworkCodePanel
             folder={folder}
             workspacePath={workspacePath}
+            sessionKey={session.id}
             state={session.codePanel}
             turns={displayedTurns}
             onStateChange={(next) =>

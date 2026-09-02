@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { useState } from 'react'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { useRef, useState } from 'react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('@/i18n/react-i18next-compat', () => ({
@@ -42,6 +42,7 @@ import {
   openTab,
   projectKeyOf,
   projectTab,
+  sandboxTab,
   tabId,
   type CodePanelState,
 } from '@/lib/coworkCode'
@@ -49,6 +50,17 @@ import type { CoworkTurn } from '@/types/coworkSession'
 
 const listDir = vi.mocked(projectListDir)
 const readFile = vi.mocked(projectReadFile)
+
+// Sandbox and artifact tabs stream off disk through the asset protocol, the
+// way the preview pane reads them, so those reads go through `fetch`.
+const fetchMock = vi.fn()
+vi.stubGlobal('fetch', fetchMock)
+const textResponse = (content: string) =>
+  ({
+    ok: true,
+    headers: { get: () => String(content.length) },
+    text: async () => content,
+  }) as unknown as Response
 
 const DATA_FOLDER = '/mock/jan/data'
 const ROOT = '/home/dev/project'
@@ -77,20 +89,33 @@ function Harness({
   folder = ROOT as string | null,
   initial = emptyCodePanelState(),
   turns,
+  workspacePath = null,
+  sessionKey = 'session-a',
   onStateChange,
   onAttach = vi.fn(),
 }: {
   folder?: string | null
   initial?: CodePanelState
   turns?: CoworkTurn[]
+  workspacePath?: string | null
+  sessionKey?: string | null
   onStateChange?: (next: CodePanelState) => void
   onAttach?: () => void
 }) {
   const [state, setState] = useState(initial)
+  // The route keeps one panel mounted and hands it the new session's stored
+  // state, so a session switch re-seeds rather than remounts. Reproduce that:
+  // remounting would hide the very races these tests exist to catch.
+  const lastSession = useRef(sessionKey)
+  if (lastSession.current !== sessionKey) {
+    lastSession.current = sessionKey
+    setState(initial)
+  }
   return (
     <CoworkCodePanel
       folder={folder}
-      workspacePath={null}
+      workspacePath={workspacePath}
+      sessionKey={sessionKey}
       state={state}
       turns={turns}
       onStateChange={(next) => {
@@ -539,5 +564,143 @@ describe('CoworkCodePanel — project detach and switching', () => {
     })
     render(<Harness folder={OTHER} initial={sandboxState} />)
     expect(await screen.findAllByRole('tab')).toHaveLength(1)
+  })
+})
+
+
+describe('CoworkCodePanel — session isolation', () => {
+  const WS_A = '/data/agent-workspace/sessions/session-a'
+  const WS_B = '/data/agent-workspace/sessions/session-b'
+  const SAME_PATH = 'notes.ts'
+
+  /** A promise whose resolution this test controls. */
+  const deferred = <T,>() => {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((r) => {
+      resolve = r
+    })
+    return { promise, resolve }
+  }
+
+  const sandboxState = (sessionKey: string) =>
+    openTab(emptyCodePanelState(), sandboxTab(SAME_PATH, sessionKey))
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getJanDataFolder.mockResolvedValue(DATA_FOLDER)
+    listDir.mockResolvedValue(listing())
+  })
+  afterEach(() => {
+    listDir.mockReset()
+    readFile.mockReset()
+    fetchMock.mockReset()
+  })
+
+  it('drops a sandbox read from session A that resolves after switching to B', async () => {
+    // Sandbox files are read through the asset protocol, not the project
+    // commands, so this path had no generation guard at all.
+    const a = deferred<Response>()
+    fetchMock.mockReturnValueOnce(a.promise as unknown as Promise<Response>)
+
+    const { rerender } = render(
+      <Harness
+        folder={null}
+        workspacePath={WS_A}
+        sessionKey="session-a"
+        initial={sandboxState('session-a')}
+      />
+    )
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    // Switch to session B, whose own sandbox read resolves first.
+    fetchMock.mockResolvedValue(textResponse('bytes from B'))
+    rerender(
+      <Harness
+        folder={null}
+        workspacePath={WS_B}
+        sessionKey="session-b"
+        initial={sandboxState('session-b')}
+      />
+    )
+    expect((await screen.findAllByText('bytes from B')).length).toBeGreaterThan(0)
+
+    // A's read lands late and must be discarded. Drain it first: asserting
+    // before the response has been read through would pass on any build.
+    a.resolve(textResponse('bytes from A'))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.queryByText('bytes from A')).toBeNull()
+    expect((await screen.findAllByText('bytes from B')).length).toBeGreaterThan(
+      0
+    )
+  })
+
+  it('keeps the same relative sandbox path distinct between sessions', () => {
+    // Both sessions have `notes.ts` in their own workspace; sharing a cache
+    // key would show one session's bytes in the other.
+    expect(tabId(sandboxTab(SAME_PATH, 'session-a'))).not.toBe(
+      tabId(sandboxTab(SAME_PATH, 'session-b'))
+    )
+  })
+
+  it('does not read a sandbox tab against another session’s workspace', async () => {
+    // Session B is active, but a tab belonging to A is somehow present: it must
+    // not be read, because its path is relative to A's directory.
+    render(
+      <Harness
+        folder={null}
+        workspacePath={WS_B}
+        sessionKey="session-b"
+        initial={sandboxState('session-a')}
+      />
+    )
+    await waitFor(() =>
+      expect(screen.getByText('common:codePanel.detached')).toBeInTheDocument()
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('reads nothing while the workspace lookup for this session is pending', async () => {
+    // The route clears workspacePath on a session change; until the new one
+    // resolves there is no root, and nothing may be read against the old one.
+    render(
+      <Harness
+        folder={null}
+        workspacePath={null}
+        sessionKey="session-b"
+        initial={sandboxState('session-b')}
+      />
+    )
+    await waitFor(() => expect(fetchMock).not.toHaveBeenCalled())
+    expect(screen.queryByText('common:codePanel.detached')).toBeNull()
+  })
+
+  it('keeps this session’s sandbox tabs when the project changes', async () => {
+    // A project switch inside one session must not disturb session-owned tabs.
+    fetchMock.mockResolvedValue(textResponse('workspace bytes'))
+    const { rerender } = render(
+      <Harness
+        workspacePath={WS_A}
+        sessionKey="session-a"
+        initial={sandboxState('session-a')}
+      />
+    )
+    expect(
+      (await screen.findAllByText('workspace bytes')).length
+    ).toBeGreaterThan(0)
+
+    rerender(
+      <Harness
+        folder="/home/dev/other-project"
+        workspacePath={WS_A}
+        sessionKey="session-a"
+        initial={sandboxState('session-a')}
+      />
+    )
+    expect(await screen.findAllByRole('tab')).toHaveLength(1)
+    expect(
+      (await screen.findAllByText('workspace bytes')).length
+    ).toBeGreaterThan(0)
   })
 })

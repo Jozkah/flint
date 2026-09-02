@@ -29,6 +29,7 @@ import {
   isSourcePath,
   isTabStale,
   openTab,
+  tabBelongsToSession,
   closeOtherTabs,
   closeAllTabs,
   focusTab,
@@ -67,8 +68,12 @@ type Props = {
   /** The attached project root; null shows the attach empty state. */
   folder: string | null
   /** The session's writable sandbox, where agent-written artifacts live.
-   * `sandbox:`-prefixed tabs read from here instead of the project. */
+   * Sandbox and artifact tabs read from here instead of the project. `null`
+   * while the lookup for the current session is still running. */
   workspacePath: string | null
+  /** The session these tabs belong to. Part of the root identity, so a read
+   * started for one session can never be applied to another. */
+  sessionKey: string | null
   state: CodePanelState | undefined
   /** The session transcript, read only to notice the agent writing an open
    * file. Absent means staleness is never reported, which is correct for a
@@ -91,6 +96,7 @@ type Props = {
 export function CoworkCodePanel({
   folder,
   workspacePath,
+  sessionKey,
   state: stateProp,
   turns,
   onStateChange,
@@ -129,11 +135,18 @@ export function CoworkCodePanel({
    * started, which is what stops A's bytes appearing under B's tree.
    */
   const projectKey = useMemo(() => projectKeyOf(folder), [folder])
+  /**
+   * Every root a read can be issued against. The project is one of them; the
+   * session and its workspace are the others, and a change to any of them
+   * invalidates work in flight. Keying only on the project let a sandbox read
+   * from session A land in session B.
+   */
+  const rootIdentity = `${projectKey ?? ''}\u0000${sessionKey ?? ''}\u0000${workspacePath ?? ''}`
   const generation = useRef(0)
   const currentGen = useRef(0)
-  const lastProjectKey = useRef<string | null | undefined>(undefined)
-  if (lastProjectKey.current !== projectKey) {
-    lastProjectKey.current = projectKey
+  const lastRootIdentity = useRef<string | undefined>(undefined)
+  if (lastRootIdentity.current !== rootIdentity) {
+    lastRootIdentity.current = rootIdentity
     generation.current += 1
   }
   currentGen.current = generation.current
@@ -199,6 +212,13 @@ export function CoworkCodePanel({
         tab.origin.kind === 'project' &&
         (!folder || tab.origin.projectKey !== projectKey)
       ) {
+        setFile(gen, id, { status: 'detached' })
+        return
+      }
+      // A sandbox tab belonging to another session is never read here: its
+      // path is relative to that session's directory, so reading it against
+      // this one would silently open a different file.
+      if (!tabBelongsToSession(tab, sessionKey)) {
         setFile(gen, id, { status: 'detached' })
         return
       }
@@ -280,17 +300,17 @@ export function CoworkCodePanel({
         )
       }
     },
-    [folder, projectKey, workspacePath, dataFolder, setFile, t]
+    [folder, projectKey, sessionKey, workspacePath, dataFolder, setFile, t]
   )
 
-  // Root listing, and re-listing when the attached project changes. Everything
-  // cached belonged to the previous project, including the staleness snapshots.
+  // Root listing, and re-listing whenever a root identity changes. Everything
+  // cached belonged to the previous roots, including the staleness snapshots.
   useEffect(() => {
     setDirs(new Map())
     setFiles(new Map())
     setLoadedAt(new Map())
     if (folder && dataFolder) void loadDir('')
-  }, [projectKey, folder, dataFolder, loadDir])
+  }, [rootIdentity, folder, dataFolder, loadDir])
 
   // Lazily fetch expanded directories that have no cached listing yet
   // (including ones restored from a persisted session).
