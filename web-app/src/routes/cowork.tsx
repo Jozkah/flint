@@ -77,9 +77,7 @@ import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
 import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
 import { CoworkTasksChip } from '@/containers/CoworkTasksChip'
-import {
-  type LiveJob,
-} from '@/lib/coworkTasks'
+import type { LiveJob } from '@/lib/coworkTasks'
 import { Code2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
