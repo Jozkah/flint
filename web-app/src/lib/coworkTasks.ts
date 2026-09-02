@@ -7,12 +7,12 @@
 // 1. **Subagents** — `SubagentRun` rows from the run store (live) and from the
 //    committed session (finished). These already carry status, queue position,
 //    timestamps, usage and their own transcript.
-// 2. **Shell commands** — recovered from the parent run's own `bash` tool
-//    turns. There is no job registry to ask: `bash_jobs()` in the Rust plugin
-//    is a private map holding only a one-shot receiver, with no command text,
-//    no start time and no listing accessor. What a backgrounded command *does*
-//    leave behind is a marker in its tool result, which is a stable part of the
-//    tool's contract, so that is what is parsed here.
+// 2. **Shell commands** — from two sources that describe the same commands.
+//    The transcript knows which tool call started one and what it printed; the
+//    backend's `bash_jobs_list` knows which are still running right now. The
+//    transcript alone cannot say whether a backgrounded command has finished,
+//    and the backend alone forgets a job the moment it is collected — so the
+//    two are merged, keyed on job id.
 
 import type { CoworkTurn, SubagentRun, Usage } from '@/types/coworkSession'
 
@@ -102,6 +102,15 @@ export function subagentTasks(runs: SubagentRun[] | undefined): TaskRow[] {
   }))
 }
 
+/** The `job_id` a `bash` call passed to collect a backgrounded command. */
+const collectedJobId = (args: unknown): string | undefined => {
+  if (args && typeof args === 'object' && 'job_id' in args) {
+    const value = (args as Record<string, unknown>).job_id
+    return typeof value === 'string' && value ? value : undefined
+  }
+  return undefined
+}
+
 /**
  * Shell commands as task rows, read off the parent run's `bash` tool turns.
  *
@@ -109,19 +118,41 @@ export function subagentTasks(runs: SubagentRun[] | undefined): TaskRow[] {
  * result carries a `job_id=` marker did not actually finish — the tool returned
  * early and the command is still going in the background — so it is reported as
  * running rather than done, which is what is actually true of the shell.
+ *
+ * That marker is permanent in the transcript, so the collection has to be read
+ * too: the agent collects with a second `bash` call carrying `job_id`, and once
+ * that call completes the command really has finished. Without this a
+ * backgrounded command spins in the UI forever, because the backend drops the
+ * job the moment it is collected and can no longer report it either.
  */
 export function commandTasks(turns: CoworkTurn[] | undefined): TaskRow[] {
+  const collected = new Map<string, CoworkTurn>()
+  for (const turn of turns ?? []) {
+    if (turn.role !== 'tool' || turn.name !== 'bash') continue
+    if (turn.status === 'running') continue
+    const jobId = collectedJobId(turn.args)
+    if (jobId) collected.set(jobId, turn)
+  }
+
   const rows: TaskRow[] = []
   for (const turn of turns ?? []) {
     if (turn.role !== 'tool' || turn.name !== 'bash') continue
+    // The collecting call is not a command of its own; it settles the row for
+    // the command it collects, which is already listed.
+    if (collectedJobId(turn.args)) continue
     const command = commandOf(turn.args)
     const result = turn.result ?? turn.content
     const jobId = backgroundJobId(result)
+    const collection = jobId ? collected.get(jobId) : undefined
     const status: TaskStatus = turn.isError
       ? 'error'
-      : turn.status === 'running' || jobId
-        ? 'running'
-        : 'done'
+      : collection
+        ? collection.isError
+          ? 'error'
+          : 'done'
+        : turn.status === 'running' || jobId
+          ? 'running'
+          : 'done'
     rows.push({
       id: turn.callId ?? `bash-${rows.length}`,
       kind: 'command',
@@ -129,7 +160,9 @@ export function commandTasks(turns: CoworkTurn[] | undefined): TaskRow[] {
       // listing; the partial JSON is not shown, because it is not a command.
       title: command ?? '…',
       status,
-      output: result,
+      // The collected output is the command's real output; the early return
+      // only said it had been backgrounded.
+      output: (collection && (collection.result ?? collection.content)) || result,
       ...(jobId ? { jobId } : {}),
     })
   }
@@ -196,7 +229,11 @@ export type LiveJob = {
  * start, and is added rather than dropped: it is still running on the
  * machine, which is the whole point of listing it.
  */
-export function mergeLiveJobs(rows: TaskRow[], jobs: LiveJob[]): TaskRow[] {
+export function mergeLiveJobs(
+  rows: TaskRow[],
+  jobs: LiveJob[],
+  now?: number
+): TaskRow[] {
   const byJobId = new Map<string, TaskRow>()
   const byCallId = new Map<string, TaskRow>()
   for (const row of rows) {
@@ -210,22 +247,27 @@ export function mergeLiveJobs(rows: TaskRow[], jobs: LiveJob[]): TaskRow[] {
       byJobId.get(job.jobId) ??
       (job.callId ? byCallId.get(job.callId) : undefined)
     const status: TaskStatus = job.finished ? 'done' : 'running'
+    const startedAt = now == null ? undefined : now - job.elapsedMs
     if (existing) {
       const at = merged.indexOf(existing)
       merged[at] = {
         ...existing,
-        // The backend is authoritative on whether the shell is still going.
+        // The backend is authoritative on whether the shell is still going,
+        // except for a call that already failed.
         status: existing.status === 'error' ? 'error' : status,
         jobId: job.jobId,
+        startedAt: existing.startedAt ?? startedAt,
       }
       continue
     }
+    if (job.finished) continue
     merged.push({
       id: job.jobId,
       kind: 'command',
       title: job.command,
       status,
       jobId: job.jobId,
+      startedAt,
     })
   }
   return merged
@@ -263,6 +305,8 @@ export function buildTaskList(input: {
   turns?: CoworkTurn[]
   /** Background jobs the backend reports as still registered. */
   liveJobs?: LiveJob[]
+  /** Clock for turning a live job's elapsed time into a start instant. */
+  now?: number
 }): TaskRow[] {
   const subagents = mergeTasks(
     subagentTasks(input.liveSubagents),
@@ -270,7 +314,8 @@ export function buildTaskList(input: {
   )
   const commands = mergeLiveJobs(
     commandTasks(input.turns),
-    input.liveJobs ?? []
+    input.liveJobs ?? [],
+    input.now
   )
   return sortTasks([...subagents, ...commands])
 }

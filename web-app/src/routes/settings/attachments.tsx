@@ -2,7 +2,6 @@ import { createFileRoute } from '@tanstack/react-router'
 import SettingsMenu from '@/containers/SettingsMenu'
 import HeaderPage from '@/containers/HeaderPage'
 import { Card, CardItem } from '@/containers/Card'
-import { SettingTarget } from '@/components/SettingTarget'
 import { useAttachments } from '@/hooks/useAttachments'
 import type { SettingComponentProps } from '@janhq/core'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -273,6 +272,7 @@ function AttachmentsSettings() {
                 const card = (
                   <CardItem
                     key={d.key}
+                    anchor={SETTING_ANCHORS[d.key]}
                     title={title}
                     description={description}
                     actions={
@@ -285,14 +285,7 @@ function AttachmentsSettings() {
                   />
                 )
 
-                const anchor = SETTING_ANCHORS[d.key]
-                if (!anchor) return card
-
-                return (
-                  <SettingTarget key={d.key} anchor={anchor}>
-                    {card}
-                  </SettingTarget>
-                )
+                return card
               })}
             </Card>
           </div>

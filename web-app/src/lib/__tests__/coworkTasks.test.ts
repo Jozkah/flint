@@ -336,6 +336,58 @@ describe('mergeTasks', () => {
   })
 })
 
+describe('a backgrounded command that the agent later collects', () => {
+  // Regression: the job_id marker is permanent in the transcript and the
+  // backend drops the job on collection, so the row span 'running' forever and
+  // the Activity chip spun indefinitely.
+  const backgrounded = toolTurn({
+    callId: 'c1',
+    args: { command: 'cargo build' },
+    result:
+      'Command exceeded 30s and is continuing in the background (job_id=bash-2).',
+  })
+
+  it('is still running before it is collected', () => {
+    const [row] = commandTasks([backgrounded])
+    expect(row).toMatchObject({ status: 'running', jobId: 'bash-2' })
+  })
+
+  it('settles to done once the collecting call returns', () => {
+    const rows = commandTasks([
+      backgrounded,
+      toolTurn({ callId: 'c2', args: { job_id: 'bash-2' }, result: 'built ok' }),
+    ])
+    // One row, not two: the collecting call is not a command of its own.
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ id: 'c1', status: 'done' })
+    // and it shows the real output, not the "still running" notice
+    expect(rows[0].output).toBe('built ok')
+  })
+
+  it('settles to error when the collected command failed', () => {
+    const rows = commandTasks([
+      backgrounded,
+      toolTurn({
+        callId: 'c2',
+        args: { job_id: 'bash-2' },
+        result: 'exit 1',
+        isError: true,
+      }),
+    ])
+    expect(rows).toHaveLength(1)
+    expect(rows[0].status).toBe('error')
+  })
+
+  it('stays running while the collecting call is still in flight', () => {
+    const rows = commandTasks([
+      backgrounded,
+      toolTurn({ callId: 'c2', args: { job_id: 'bash-2' }, status: 'running' }),
+    ])
+    expect(rows).toHaveLength(1)
+    expect(rows[0].status).toBe('running')
+  })
+})
+
 describe('mergeLiveJobs', () => {
   const derived = (over: Partial<TaskRow> = {}): TaskRow => ({
     id: 'call-1',
@@ -389,7 +441,7 @@ describe('mergeLiveJobs', () => {
     expect(rows[0].status).toBe('error')
   })
 
-  it('adds a job this session never started', () => {
+  it('adds a still-running job this session never started', () => {
     const rows = mergeLiveJobs(
       [],
       [{ jobId: 'bash-9', command: 'someone elses build', elapsedMs: 1, finished: false }]
@@ -402,6 +454,27 @@ describe('mergeLiveJobs', () => {
         status: 'running',
       }),
     ])
+  })
+
+  it('does not add a finished job this session never started', () => {
+    // Nobody is waiting on it and there is no transcript for it here, so it
+    // would be a permanent output-less "done" row in every session's panel.
+    const rows = mergeLiveJobs(
+      [],
+      [{ jobId: 'bash-9', command: 'old build', elapsedMs: 50, finished: true }]
+    )
+    expect(rows).toEqual([])
+  })
+
+  it('turns the backend elapsed time into a renderable start instant', () => {
+    const now = 10_000
+    const [row] = mergeLiveJobs(
+      [],
+      [{ jobId: 'bash-3', command: 'sleep 9', elapsedMs: 4_000, finished: false }],
+      now
+    )
+    expect(row.startedAt).toBe(6_000)
+    expect(elapsedMs(row, now)).toBe(4_000)
   })
 
   it('is a no-op with no live jobs', () => {

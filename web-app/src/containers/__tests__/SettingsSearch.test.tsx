@@ -303,6 +303,35 @@ describe('SettingTarget', () => {
     expect(useSettingsSearch.getState().pendingTarget).toBeNull()
   })
 
+  it('clears the highlight after its window, instead of leaving it up forever', async () => {
+    // Regression: consumeTarget nulls pendingTarget, which re-renders this
+    // subscriber and changed the effect's own dependency — so the cleanup
+    // cancelled the timer it had just set and the row stayed highlighted for
+    // the life of the page.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      Element.prototype.scrollIntoView = vi.fn()
+      render(
+        <SettingTarget anchor="settings-appearance-theme">
+          <button>Theme control</button>
+        </SettingTarget>
+      )
+      act(() =>
+        useSettingsSearch.getState().requestTarget('settings-appearance-theme')
+      )
+
+      const group = document.getElementById('settings-appearance-theme')!
+      expect(group).toHaveAttribute('data-setting-highlight', 'true')
+
+      act(() => {
+        vi.advanceTimersByTime(2500)
+      })
+      expect(group).not.toHaveAttribute('data-setting-highlight')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('ignores a request aimed at a different anchor', async () => {
     const scrollIntoView = vi.fn()
     Element.prototype.scrollIntoView = scrollIntoView

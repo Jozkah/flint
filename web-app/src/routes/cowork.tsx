@@ -18,6 +18,7 @@ import { toast } from 'sonner'
 import { invoke } from '@tauri-apps/api/core'
 import { getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import {
+  bashJobsList,
   projectReadFile,
   sessionWorkspacePath,
 } from '@janhq/tauri-plugin-agent-tools-api'
@@ -53,7 +54,11 @@ import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
 import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
 import { CoworkTasksChip } from '@/containers/CoworkTasksChip'
-import { buildTaskList, taskTotals } from '@/lib/coworkTasks'
+import {
+  buildTaskList,
+  taskTotals,
+  type LiveJob,
+} from '@/lib/coworkTasks'
 import { Code2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -104,6 +109,11 @@ import {
   parentToolNames,
   runSubagent,
 } from '@/lib/coworkSubagent'
+
+/** How often the backend's background-job list is re-read. Slower than the
+ * activity panel's clock tick: the list changes when a command starts or ends,
+ * not every second. */
+const JOB_POLL_MS = 3000
 
 export const Route = createFileRoute(route.cowork as any)({
   component: CoworkPage,
@@ -351,17 +361,43 @@ function CoworkPage() {
     [displayedTurns, liveSubagents, session?.subagents]
   )
 
+  // Background shell jobs, polled here rather than inside the Activity panel:
+  // the chip derives its counts from the same list, and polling only while the
+  // panel was open let the two disagree — a collected job still spinning in the
+  // chip while the panel showed it finished.
+  const [liveJobs, setLiveJobs] = useState<LiveJob[]>([])
+  useEffect(() => {
+    let alive = true
+    const poll = () => {
+      void bashJobsList()
+        .then((jobs) => {
+          if (alive) setLiveJobs(jobs)
+        })
+        .catch(() => {
+          // No backend (web build, or the command unavailable): the list still
+          // shows what the transcript knows.
+        })
+    }
+    poll()
+    const id = setInterval(poll, JOB_POLL_MS)
+    return () => {
+      alive = false
+      clearInterval(id)
+    }
+  }, [])
+
   // The activity list: subagents from both lanes, plus shell commands read off
-  // the transcript. Derived here so the chip can show live counts without the
-  // panel being open.
+  // the transcript and merged with the live job list. Derived here so the chip
+  // shows the same counts the panel does.
   const taskRows = useMemo(
     () =>
       buildTaskList({
         liveSubagents,
         sessionSubagents: session?.subagents,
         turns: displayedTurns,
+        liveJobs,
       }),
-    [liveSubagents, session?.subagents, displayedTurns]
+    [liveSubagents, session?.subagents, displayedTurns, liveJobs]
   )
   const taskCounts = useMemo(() => taskTotals(taskRows), [taskRows])
 
@@ -729,9 +765,20 @@ function CoworkPage() {
     useCoworkRun.getState().clearPendingPreview()
   }, [pendingPreview, session?.id])
 
-  // Nothing to show once the session changes: both panels describe the session
-  // they were opened from.
-  useEffect(() => setRail(null), [session?.id])
+  // Nothing to show once the session changes: every panel describes the session
+  // it was opened from.
+  //
+  // Only a real switch closes the rail. Opening the Code or Activity rail with
+  // no session yet *creates* one (ensureCurrentSession), which moved
+  // `session?.id` from null to a fresh id in the same commit — and this effect
+  // then closed the rail the click had just opened, so the first click did
+  // nothing and only a second one worked.
+  const lastSessionId = useRef(session?.id)
+  useEffect(() => {
+    const previous = lastSessionId.current
+    lastSessionId.current = session?.id
+    if (previous != null && previous !== session?.id) setRail(null)
+  }, [session?.id])
 
   return (
     <div className="flex flex-col h-[calc(100dvh-(env(safe-area-inset-bottom)+env(safe-area-inset-top)))]">
@@ -936,6 +983,7 @@ function CoworkPage() {
             liveSubagents={liveSubagents}
             sessionSubagents={session?.subagents}
             turns={displayedTurns}
+            liveJobs={liveJobs}
             onClose={() => setRail(null)}
           />
         )}

@@ -12,7 +12,6 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
 import { formatCompactDuration } from '@/lib/duration'
-import { bashJobsList } from '@janhq/tauri-plugin-agent-tools-api'
 import {
   buildTaskList,
   elapsedMs,
@@ -28,11 +27,6 @@ import type { CoworkTurn, SubagentRun } from '@/types/coworkSession'
  * work. The interval only runs while something is actually running. */
 const TICK_MS = 1000
 
-/** How often the backend's background-job list is re-read while the panel is
- * open. Slower than the clock tick: a job list changes when a command starts
- * or ends, not every second. */
-const JOB_POLL_MS = 3000
-
 type Props = {
   /** The run store's live lane for this session. */
   liveSubagents?: SubagentRun[]
@@ -40,6 +34,9 @@ type Props = {
   sessionSubagents?: SubagentRun[]
   /** The session transcript, which is where shell commands are recovered from. */
   turns?: CoworkTurn[]
+  /** Background jobs from the backend, polled by the route so the chip and this
+   * panel always agree. */
+  liveJobs?: LiveJob[]
   onClose: () => void
 }
 
@@ -56,38 +53,20 @@ export function CoworkTasksPanel({
   liveSubagents,
   sessionSubagents,
   turns,
+  liveJobs,
   onClose,
 }: Props): React.ReactElement {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [showFinished, setShowFinished] = useState(true)
 
-  // Background shell jobs, polled only while this panel is open. The list is
-  // read-only on the backend, so polling cannot take output the agent is
-  // waiting to collect.
-  const [liveJobs, setLiveJobs] = useState<LiveJob[]>([])
-  useEffect(() => {
-    let alive = true
-    const poll = () => {
-      void bashJobsList()
-        .then((jobs) => {
-          if (alive) setLiveJobs(jobs)
-        })
-        .catch(() => {
-          // No backend (web build, or the command unavailable): the panel
-          // still lists what the transcript knows.
-        })
-    }
-    poll()
-    const id = setInterval(poll, JOB_POLL_MS)
-    return () => {
-      alive = false
-      clearInterval(id)
-    }
-  }, [])
-
+  const [now, setNow] = useState(() => Date.now())
   const rows = useMemo(
-    () => buildTaskList({ liveSubagents, sessionSubagents, turns, liveJobs }),
+    () => buildTaskList({ liveSubagents, sessionSubagents, turns, liveJobs, now }),
+    // `now` ticks every second while work is live; rebuilding the list on each
+    // tick is what keeps a running row's duration moving. Deliberately not a
+    // dependency: it would rebuild on every tick even when nothing is running.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [liveSubagents, sessionSubagents, turns, liveJobs]
   )
   const totals = useMemo(() => taskTotals(rows), [rows])
@@ -96,7 +75,6 @@ export function CoworkTasksPanel({
   // A running row's elapsed time derives from `Date.now()`, which React has no
   // reason to re-read on its own; tick only while something is running, so an
   // idle panel costs nothing.
-  const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (!active) return
     const id = setInterval(() => setNow(Date.now()), TICK_MS)

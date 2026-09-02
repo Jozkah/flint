@@ -19,19 +19,11 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
   }),
 }))
 
-vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
-  bashJobsList: vi.fn(async () => []),
-}))
-
 vi.mock('@/components/ui/tooltip', () => ({
   Tooltip: ({ children }: any) => <>{children}</>,
   TooltipTrigger: ({ children }: any) => <>{children}</>,
   TooltipContent: ({ children }: any) => <>{children}</>,
 }))
-
-import { bashJobsList } from '@janhq/tauri-plugin-agent-tools-api'
-
-const jobsList = vi.mocked(bashJobsList)
 
 const run = (over: Partial<SubagentRun> = {}): SubagentRun => ({
   runId: 'r1',
@@ -56,7 +48,6 @@ describe('CoworkTasksPanel', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.setSystemTime(new Date('2026-01-01T00:00:10Z'))
-    jobsList.mockResolvedValue([])
   })
   afterEach(() => {
     vi.useRealTimers()
@@ -210,17 +201,17 @@ describe('CoworkTasksPanel', () => {
   })
 
   it('shows one row for a command both the backend and the transcript know', async () => {
-    jobsList.mockResolvedValue([
-      {
-        jobId: 'bash-4',
-        command: 'cargo build',
-        elapsedMs: 42_000,
-        finished: false,
-        callId: null,
-      },
-    ])
     render(
       <CoworkTasksPanel
+        liveJobs={[
+          {
+            jobId: 'bash-4',
+            command: 'cargo build',
+            elapsedMs: 42_000,
+            finished: false,
+            callId: null,
+          },
+        ]}
         turns={[
           bashTurn({
             callId: 'c1',
@@ -238,16 +229,20 @@ describe('CoworkTasksPanel', () => {
   })
 
   it('lists a background job this session never dispatched', async () => {
-    jobsList.mockResolvedValue([
-      {
-        jobId: 'bash-9',
-        command: 'rustup update',
-        elapsedMs: 1_000,
-        finished: false,
-        callId: null,
-      },
-    ])
-    render(<CoworkTasksPanel onClose={vi.fn()} />)
+    render(
+      <CoworkTasksPanel
+        liveJobs={[
+          {
+            jobId: 'bash-9',
+            command: 'rustup update',
+            elapsedMs: 1_000,
+            finished: false,
+            callId: null,
+          },
+        ]}
+        onClose={vi.fn()}
+      />
+    )
 
     expect(await screen.findByText('rustup update')).toBeInTheDocument()
   })

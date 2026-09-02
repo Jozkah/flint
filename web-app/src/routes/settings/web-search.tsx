@@ -122,85 +122,86 @@ function WebSearchContent() {
                   </DropdownMenu>
                 }
               />
-              {/* One anchor around both branches, not one inside each: the
-                  provider decides which control exists, so a per-control
-                  anchor would be unmounted — and silently unreachable from
-                  search — for every provider that renders the other one. */}
-              <SettingTarget anchor={WEB_SEARCH_PROVIDER_CONFIG_ANCHOR}>
-                {provider.requiresEndpoint ? (
-                  <CardItem
-                    title={t('settings:webSearch.endpoint', {
-                      provider: provider.label,
-                    })}
-                    className="block"
-                    description={
-                      <div className="space-y-2">
-                        <p>
-                          {t('settings:webSearch.endpointDesc', {
-                            provider: provider.label,
-                          })}
-                        </p>
+              {/* The same anchor id on both branches, never a wrapper around
+                  them: the provider decides which control exists, so exactly
+                  one branch is ever mounted and the id stays unique — while a
+                  wrapper would make the row both first and last child and
+                  strip the card's dividers. */}
+              {provider.requiresEndpoint ? (
+                <CardItem
+                  anchor={WEB_SEARCH_PROVIDER_CONFIG_ANCHOR}
+                  title={t('settings:webSearch.endpoint', {
+                    provider: provider.label,
+                  })}
+                  className="block"
+                  description={
+                    <div className="space-y-2">
+                      <p>
+                        {t('settings:webSearch.endpointDesc', {
+                          provider: provider.label,
+                        })}
+                      </p>
+                      <Input
+                        type="text"
+                        className="w-full"
+                        placeholder={t(
+                          'settings:webSearch.endpointPlaceholder'
+                        )}
+                        value={endpoint}
+                        onChange={(e) =>
+                          setEndpoint(provider.id, e.target.value)
+                        }
+                      />
+                    </div>
+                  }
+                />
+              ) : (
+                <CardItem
+                  anchor={WEB_SEARCH_PROVIDER_CONFIG_ANCHOR}
+                  title={t('settings:webSearch.apiKey', {
+                    provider: provider.label,
+                  })}
+                  className="block"
+                  description={
+                    <div className="space-y-2">
+                      <p>
+                        {t(
+                          provider.keyless
+                            ? 'settings:webSearch.apiKeyOptional'
+                            : 'settings:webSearch.apiKeyRequired',
+                          { provider: provider.label }
+                        )}
+                      </p>
+                      <div className="relative">
                         <Input
-                          type="text"
-                          className="w-full"
+                          type={showKey ? 'text' : 'password'}
+                          className="w-full pr-16"
                           placeholder={t(
-                            'settings:webSearch.endpointPlaceholder'
-                          )}
-                          value={endpoint}
-                          onChange={(e) =>
-                            setEndpoint(provider.id, e.target.value)
-                          }
-                        />
-                      </div>
-                    }
-                  />
-                ) : (
-                  <CardItem
-                    title={t('settings:webSearch.apiKey', {
-                      provider: provider.label,
-                    })}
-                    className="block"
-                    description={
-                      <div className="space-y-2">
-                        <p>
-                          {t(
-                            provider.keyless
-                              ? 'settings:webSearch.apiKeyOptional'
-                              : 'settings:webSearch.apiKeyRequired',
+                            'settings:webSearch.apiKeyPlaceholder',
                             { provider: provider.label }
                           )}
-                        </p>
-                        <div className="relative">
-                          <Input
-                            type={showKey ? 'text' : 'password'}
-                            className="w-full pr-16"
-                            placeholder={t(
-                              'settings:webSearch.apiKeyPlaceholder',
-                              { provider: provider.label }
+                          value={apiKey}
+                          onChange={(e) =>
+                            setApiKey(provider.id, e.target.value)
+                          }
+                        />
+                        <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+                          <button
+                            onClick={() => setShowKey(!showKey)}
+                            className="p-1 rounded hover:bg-foreground/5 text-foreground/70"
+                          >
+                            {showKey ? (
+                              <EyeOff size={16} />
+                            ) : (
+                              <Eye size={16} />
                             )}
-                            value={apiKey}
-                            onChange={(e) =>
-                              setApiKey(provider.id, e.target.value)
-                            }
-                          />
-                          <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
-                            <button
-                              onClick={() => setShowKey(!showKey)}
-                              className="p-1 rounded hover:bg-foreground/5 text-foreground/70"
-                            >
-                              {showKey ? (
-                                <EyeOff size={16} />
-                              ) : (
-                                <Eye size={16} />
-                              )}
-                            </button>
-                          </div>
+                          </button>
                         </div>
                       </div>
-                    }
-                  />
-                )}
-              </SettingTarget>
+                    </div>
+                  }
+                />
+              )}
             </Card>
           </div>
         </div>
