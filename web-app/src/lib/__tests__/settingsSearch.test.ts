@@ -395,14 +395,18 @@ describe('structural coverage of the settings surface', () => {
     // The anchor has to exist in the source of the route it points at, or the
     // result would open the page and then fail to scroll anywhere.
     const { readFileSync } = await import('node:fs')
-    const { join } = await import('node:path')
+    const { dirname, resolve } = await import('node:path')
+    const { fileURLToPath } = await import('node:url')
+    // Resolved against this file, not the working directory: the suite runs
+    // from the repo root in CI and from `web-app` locally, and a cwd-relative
+    // path only works in one of them.
+    const srcDir = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
     const sources = new Map<string, string>()
-    const sourceFor = (pageId: string) => {
-      if (!sources.has(pageId)) {
-        const file = ROUTE_FILES[pageId]
-        sources.set(pageId, readFileSync(join(process.cwd(), file), 'utf8'))
+    const sourceFor = (file: string) => {
+      if (!sources.has(file)) {
+        sources.set(file, readFileSync(resolve(srcDir, file), 'utf8'))
       }
-      return sources.get(pageId)!
+      return sources.get(file)!
     }
 
     for (const entry of SETTINGS_ITEMS) {
@@ -412,8 +416,9 @@ describe('structural coverage of the settings surface', () => {
       const pageId = SETTINGS_PAGES.map((page) => page.id).find((id) =>
         entry.id.startsWith(`settings-${id}-`)
       )!
-      if (!ROUTE_FILES[pageId]) continue
-      const source = sourceFor(pageId)
+      const file = ROUTE_FILES[pageId]
+      if (!file) continue
+      const source = sourceFor(file)
       // Written literally in either quoting style — a page that renders its
       // rows from a schema maps the anchors in a plain object — or referenced
       // through the exported constant that keeps the two ends in step.
@@ -424,25 +429,25 @@ describe('structural coverage of the settings surface', () => {
           source.includes('WEB_SEARCH_PROVIDER_CONFIG_ANCHOR'))
       expect(
         anchored,
-        `${entry.anchor} is not anchored in ${ROUTE_FILES[pageId]}`
+        `${entry.anchor} is not anchored in ${file}`
       ).toBe(true)
     }
   })
 })
 
-/** Where each page's source lives, for the anchor-existence check. */
+/** Where each page's source lives, relative to `web-app/src`. */
 const ROUTE_FILES: Record<string, string> = {
-  general: 'src/routes/settings/general.tsx',
-  appearance: 'src/routes/settings/interface.tsx',
-  assistants: 'src/routes/settings/assistant.tsx',
-  attachments: 'src/routes/settings/attachments.tsx',
-  'local-api-server': 'src/routes/settings/local-api-server.tsx',
-  'https-proxy': 'src/routes/settings/https-proxy.tsx',
-  'web-search': 'src/routes/settings/web-search.tsx',
-  'agent-tools': 'src/routes/settings/agent-tools.tsx',
-  shortcuts: 'src/routes/settings/shortcuts.tsx',
-  hardware: 'src/routes/settings/hardware.tsx',
-  privacy: 'src/routes/settings/privacy.tsx',
-  'mcp-servers': 'src/routes/settings/mcp-servers.tsx',
-  'claude-code': 'src/routes/settings/claude-code.tsx',
+  general: 'routes/settings/general.tsx',
+  appearance: 'routes/settings/interface.tsx',
+  assistants: 'routes/settings/assistant.tsx',
+  attachments: 'routes/settings/attachments.tsx',
+  'local-api-server': 'routes/settings/local-api-server.tsx',
+  'https-proxy': 'routes/settings/https-proxy.tsx',
+  'web-search': 'routes/settings/web-search.tsx',
+  'agent-tools': 'routes/settings/agent-tools.tsx',
+  shortcuts: 'routes/settings/shortcuts.tsx',
+  hardware: 'routes/settings/hardware.tsx',
+  privacy: 'routes/settings/privacy.tsx',
+  'mcp-servers': 'routes/settings/mcp-servers.tsx',
+  'claude-code': 'routes/settings/claude-code.tsx',
 }
