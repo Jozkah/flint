@@ -23,6 +23,7 @@ import {
   findTaskByJob,
   sessionWorkflows,
   taskIdFor,
+  workflowAnchoredAt,
 } from '@/lib/coworkActivity'
 import { CANCELLED_BY_USER } from '@/lib/coworkCancel'
 
@@ -227,5 +228,95 @@ describe('what a run ending does settle', () => {
     endRun(run)
 
     expect(store().tasks[idOf('call-2', second.runId)].status).toBe('running')
+  })
+})
+
+describe('the inline card after a reload', () => {
+  beforeEach(() => {
+    useCoworkActivity.setState(emptyActivityState())
+  })
+
+  /** What comes back off disk: the record, with the actions rebuilt. */
+  const reload = () => {
+    const { workflows, tasks } = store()
+    const persisted = JSON.parse(JSON.stringify({ workflows, tasks }))
+    useCoworkActivity.setState(persisted)
+    // Hydration settles whatever the previous app run left in flight.
+    store().recoverOnLoad('interrupted:restart')
+  }
+
+  it('still anchors its workflow to the same message', () => {
+    recordAgentDispatch(run, {
+      callId: 'call-1',
+      agentName: 'explorer',
+      anchorMessageId: 's-1-asst-3',
+    })
+    store().patchTask(idOf('call-1'), { status: 'done', endedAt: 1 })
+
+    reload()
+
+    const view = workflowAnchoredAt(store(), SESSION, 's-1-asst-3')
+    expect(view?.workflow.id).toBe(run.runId)
+  })
+
+  it('still points at a workflow the panel can focus by id', () => {
+    recordAgentDispatch(run, {
+      callId: 'call-1',
+      agentName: 'explorer',
+      anchorMessageId: 's-1-asst-3',
+    })
+    store().patchTask(idOf('call-1'), { status: 'done', endedAt: 1 })
+    reload()
+
+    const view = workflowAnchoredAt(store(), SESSION, 's-1-asst-3')!
+    // The id the card hands the panel names a workflow the panel still has.
+    expect(
+      sessionWorkflows(store(), SESSION).some(
+        (one) => one.workflow.id === view.workflow.id
+      )
+    ).toBe(true)
+  })
+
+  it('keeps two runs of the same question apart across a reload', () => {
+    // Identical titles; only the ids and anchors tell them apart.
+    recordAgentDispatch(run, {
+      callId: 'call-1',
+      agentName: 'explorer',
+      anchorMessageId: 's-1-asst-3',
+    })
+    recordAgentDispatch(
+      { ...run, runId: 'run-3' },
+      { callId: 'call-1', agentName: 'explorer', anchorMessageId: 's-1-asst-9' }
+    )
+    store().patchTask(idOf('call-1'), { status: 'done', endedAt: 1 })
+    store().patchTask(idOf('call-1', 'run-3'), { status: 'done', endedAt: 1 })
+
+    reload()
+
+    expect(
+      workflowAnchoredAt(store(), SESSION, 's-1-asst-3')?.workflow.id
+    ).toBe(run.runId)
+    expect(
+      workflowAnchoredAt(store(), SESSION, 's-1-asst-9')?.workflow.id
+    ).toBe('run-3')
+  })
+
+  it('survives even after the workflow was cleared from the panel', () => {
+    // Clearing hides a finished workflow from the panel's lists; the card is a
+    // record of the conversation and stays.
+    recordAgentDispatch(run, {
+      callId: 'call-1',
+      agentName: 'explorer',
+      anchorMessageId: 's-1-asst-3',
+    })
+    store().patchTask(idOf('call-1'), { status: 'done', endedAt: 1 })
+    store().finishWorkflow(run.runId)
+    store().clearFinished(SESSION)
+    reload()
+
+    expect(sessionWorkflows(store(), SESSION)).toEqual([])
+    expect(
+      workflowAnchoredAt(store(), SESSION, 's-1-asst-3')?.workflow.id
+    ).toBe(run.runId)
   })
 })
