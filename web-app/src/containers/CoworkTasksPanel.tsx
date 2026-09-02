@@ -17,8 +17,11 @@ import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
 import { formatCompactDuration } from '@/lib/duration'
 import {
   INTERRUPTED_BY_RUN_END,
-  isCancellable,
+  cancellabilityOf,
+  cancellableTasks,
+  isLive,
   taskElapsedMs,
+  type Cancellability,
   type ActivityProgress,
   type ActivityStatus,
   type ActivityTask,
@@ -42,10 +45,16 @@ type Props = {
   workflows: WorkflowView[]
   /** The same store's totals for this session. */
   totals: ActivityProgress
-  /** A task to reveal and expand — the inline card's "show this" target. */
+  /** A workflow to reveal and expand — the inline card's header target. */
+  focusWorkflowId?: string | null
+  /** A task to reveal and expand — the inline card's row target. */
   focusTaskId?: string | null
   onFocusHandled?: () => void
-  onCancelTask: (task: ActivityTask) => void
+  /** Whether the run can still reach an agent task, so the Stop control is
+   * offered only where pressing it would do something. */
+  agentReachable?: (task: ActivityTask) => boolean
+  onCancelTask: (task: ActivityTask) => Promise<void> | void
+  onCancelWorkflow: (view: WorkflowView) => Promise<void> | void
   onClearFinished: () => void
   onClose: () => void
 }
@@ -63,9 +72,12 @@ type Props = {
 export function CoworkTasksPanel({
   workflows,
   totals,
+  focusWorkflowId,
   focusTaskId,
   onFocusHandled,
+  agentReachable,
   onCancelTask,
+  onCancelWorkflow,
   onClearFinished,
   onClose,
 }: Props): React.ReactElement {
@@ -93,30 +105,64 @@ export function CoworkTasksPanel({
   // Reveal what the inline card asked for: open its workflow, open the task,
   // and scroll it into view. Done here rather than by the caller so the panel
   // stays the only thing that knows how its own rows are laid out.
-  const workflowOfFocus = useMemo(
-    () =>
-      focusTaskId
-        ? workflows.find((view) =>
-            view.tasks.some((task) => task.id === focusTaskId)
-          )
-        : undefined,
-    [focusTaskId, workflows]
-  )
+  const workflowOfFocus = useMemo(() => {
+    if (focusTaskId) {
+      const owner = workflows.find((view) =>
+        view.tasks.some((task) => task.id === focusTaskId)
+      )
+      if (owner) return owner
+    }
+    // Chosen by id, never by the title shown on screen: two runs of the same
+    // question have the same title and are different workflows.
+    return focusWorkflowId
+      ? workflows.find((view) => view.workflow.id === focusWorkflowId)
+      : undefined
+  }, [focusTaskId, focusWorkflowId, workflows])
+
   useEffect(() => {
-    if (!focusTaskId) return
+    if (!focusTaskId && !focusWorkflowId) return
     if (workflowOfFocus) {
       setExpandedWorkflows((current) =>
         current.has(workflowOfFocus.workflow.id)
           ? current
           : new Set(current).add(workflowOfFocus.workflow.id)
       )
-      setExpandedTasks((current) =>
-        current.has(focusTaskId) ? current : new Set(current).add(focusTaskId)
-      )
-      focusRef.current?.scrollIntoView({ block: 'nearest' })
+      if (focusTaskId) {
+        setExpandedTasks((current) =>
+          current.has(focusTaskId) ? current : new Set(current).add(focusTaskId)
+        )
+      }
+      // Scrolled and focused after the expansion has painted, so the target is
+      // laid out. Focus moves too: a keyboard or screen-reader user has to end
+      // up on the thing they asked to see, not back at the top of the panel.
+      requestAnimationFrame(() => {
+        focusRef.current?.scrollIntoView({ block: 'nearest' })
+        focusRef.current?.focus({ preventScroll: true })
+      })
     }
     onFocusHandled?.()
-  }, [focusTaskId, workflowOfFocus, onFocusHandled])
+  }, [focusTaskId, focusWorkflowId, workflowOfFocus, onFocusHandled])
+
+  // Which stop requests are in flight. A second click while one is running
+  // would signal a pid the first may already have reaped, so the control is
+  // disabled until the attempt settles — and re-enabled if it failed, because
+  // the work is then still there to stop.
+  const [cancelling, setCancelling] = useState<Set<string>>(() => new Set())
+  const runCancel = useCallback(
+    async (key: string, attempt: () => Promise<void> | void) => {
+      setCancelling((current) => new Set(current).add(key))
+      try {
+        await attempt()
+      } finally {
+        setCancelling((current) => {
+          const next = new Set(current)
+          next.delete(key)
+          return next
+        })
+      }
+    },
+    []
+  )
 
   const toggleWorkflow = useCallback((id: string) => {
     setExpandedWorkflows((current) => {
@@ -135,8 +181,32 @@ export function CoworkTasksPanel({
     })
   }, [])
 
-  const hasFinished = workflows.some(
-    (view) => view.status !== 'running' && view.status !== 'queued'
+  // Two sections, split on the same derived status everything else uses. A
+  // workflow whose backgrounded command is still running stays under Running
+  // even though its model turn is over, because the process is.
+  const [showFinished, setShowFinished] = useState(true)
+  const running = workflows.filter((view) => isLive(view.status))
+  const finished = workflows.filter((view) => !isLive(view.status))
+
+  const section = (view: WorkflowView) => (
+    <WorkflowSection
+      key={view.workflow.id}
+      view={view}
+      now={now}
+      expanded={expandedWorkflows.has(view.workflow.id)}
+      onToggle={() => toggleWorkflow(view.workflow.id)}
+      expandedTasks={expandedTasks}
+      onToggleTask={toggleTask}
+      agentReachable={agentReachable}
+      cancelling={cancelling}
+      onCancelTask={(task) => runCancel(task.id, () => onCancelTask(task))}
+      onCancelWorkflow={() =>
+        runCancel(view.workflow.id, () => onCancelWorkflow(view))
+      }
+      focusWorkflowId={focusTaskId ? null : (focusWorkflowId ?? null)}
+      focusTaskId={focusTaskId ?? null}
+      focusRef={focusRef}
+    />
   )
 
   return (
@@ -162,31 +232,46 @@ export function CoworkTasksPanel({
             {t('common:tasks.empty')}
           </p>
         ) : (
-          <>
-            {hasFinished && (
-              <div className="flex justify-end border-b px-2 py-1">
-                <Button variant="ghost" size="xs" onClick={onClearFinished}>
-                  {t('common:tasks.clearFinished')}
-                </Button>
-              </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {running.length > 0 && (
+              <>
+                <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+                  {t('common:tasks.running', { count: running.length })}
+                </p>
+                {running.map(section)}
+              </>
             )}
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {workflows.map((view) => (
-                <WorkflowSection
-                  key={view.workflow.id}
-                  view={view}
-                  now={now}
-                  expanded={expandedWorkflows.has(view.workflow.id)}
-                  onToggle={() => toggleWorkflow(view.workflow.id)}
-                  expandedTasks={expandedTasks}
-                  onToggleTask={toggleTask}
-                  onCancelTask={onCancelTask}
-                  focusTaskId={focusTaskId ?? null}
-                  focusRef={focusRef}
-                />
-              ))}
-            </div>
-          </>
+
+            {finished.length > 0 && (
+              <>
+                <div className="flex items-center justify-between pl-1 pr-2 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowFinished((v) => !v)}
+                    aria-expanded={showFinished}
+                    className="flex items-center gap-1 px-2 pb-1 text-left"
+                  >
+                    <ChevronDown
+                      size={12}
+                      className={cn(
+                        'shrink-0 text-main-view-fg/40 transition-transform',
+                        !showFinished && '-rotate-90'
+                      )}
+                    />
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+                      {t('common:tasks.finished', { count: finished.length })}
+                    </span>
+                  </button>
+                  {/* Scoped to what is finished: clearing must never touch
+                    work that is still going. */}
+                  <Button variant="ghost" size="xs" onClick={onClearFinished}>
+                    {t('common:tasks.clearFinished')}
+                  </Button>
+                </div>
+                {showFinished && finished.map(section)}
+              </>
+            )}
+          </div>
         )}
       </div>
     </CoworkSidePanel>
@@ -200,7 +285,11 @@ function WorkflowSection({
   onToggle,
   expandedTasks,
   onToggleTask,
+  agentReachable,
+  cancelling,
   onCancelTask,
+  onCancelWorkflow,
+  focusWorkflowId,
   focusTaskId,
   focusRef,
 }: {
@@ -210,12 +299,22 @@ function WorkflowSection({
   onToggle: () => void
   expandedTasks: Set<string>
   onToggleTask: (id: string) => void
+  agentReachable?: (task: ActivityTask) => boolean
+  cancelling: Set<string>
   onCancelTask: (task: ActivityTask) => void
+  onCancelWorkflow: () => void
+  focusWorkflowId: string | null
   focusTaskId: string | null
   focusRef: React.MutableRefObject<HTMLDivElement | null>
 }) {
   const { t } = useTranslation()
   const { workflow, progress } = view
+  // Offered only when there is something it would actually reach. A workflow
+  // whose remaining children are all unreachable gets no control rather than
+  // one that can only report that it did nothing.
+  const stoppable = cancellableTasks(view.tasks, { agentReachable })
+  const stopping = cancelling.has(workflow.id)
+  const isFocus = focusWorkflowId === workflow.id
 
   const taskRow = (task: ActivityTask) => (
     <TaskItem
@@ -224,18 +323,25 @@ function WorkflowSection({
       now={now}
       expanded={expandedTasks.has(task.id)}
       onToggle={() => onToggleTask(task.id)}
+      cancellability={cancellabilityOf(task, { agentReachable })}
+      cancelling={cancelling.has(task.id)}
       onCancel={() => onCancelTask(task)}
       containerRef={focusTaskId === task.id ? focusRef : undefined}
     />
   )
 
   return (
-    <section className="border-b last:border-b-0">
+    <section
+      className="border-b last:border-b-0"
+      ref={isFocus ? focusRef : undefined}
+      tabIndex={isFocus ? -1 : undefined}
+    >
+      <div className="flex items-start">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-muted/50"
+        className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-left hover:bg-muted/50"
       >
         <span className="pt-0.5">
           <StatusIcon status={view.status} />
@@ -277,6 +383,23 @@ function WorkflowSection({
           )}
         />
       </button>
+      {stoppable.length > 0 && (
+        <Button
+          variant="ghost"
+          size="xs"
+          disabled={stopping}
+          className="mr-2 mt-2 shrink-0"
+          aria-label={t('common:tasks.stopWorkflow', { name: workflow.title })}
+          onClick={onCancelWorkflow}
+        >
+          {stopping ? (
+            <Loader2 size={11} className="shrink-0 animate-spin" />
+          ) : (
+            <Square size={11} className="shrink-0" />
+          )}
+        </Button>
+      )}
+      </div>
 
       {expanded && (
         <div className="pb-1">
@@ -391,6 +514,8 @@ function TaskItem({
   now,
   expanded,
   onToggle,
+  cancellability,
+  cancelling,
   onCancel,
   containerRef,
 }: {
@@ -398,6 +523,8 @@ function TaskItem({
   now: number
   expanded: boolean
   onToggle: () => void
+  cancellability: Cancellability
+  cancelling: boolean
   onCancel: () => void
   containerRef?: React.MutableRefObject<HTMLDivElement | null>
 }) {
@@ -406,7 +533,11 @@ function TaskItem({
   const tokens = task.usage?.total_tokens ?? 0
 
   return (
-    <div ref={containerRef} className="border-t">
+    <div
+      ref={containerRef}
+      tabIndex={containerRef ? -1 : undefined}
+      className="border-t"
+    >
       <div className="flex items-start">
         <button
           type="button"
@@ -473,15 +604,23 @@ function TaskItem({
             )}
           />
         </button>
-        {isCancellable(task) && (
+        {/* Offered only where pressing it would reach something. A command
+          still inside its tool call has no job to kill, so it gets no control
+          rather than one that can only report failure. */}
+        {cancellability.can && (
           <Button
             variant="ghost"
             size="xs"
+            disabled={cancelling}
             className="mr-2 mt-2 shrink-0"
             aria-label={t('common:tasks.stopTask', { name: task.title })}
             onClick={onCancel}
           >
-            <Square size={11} className="shrink-0" />
+            {cancelling ? (
+              <Loader2 size={11} className="shrink-0 animate-spin" />
+            ) : (
+              <Square size={11} className="shrink-0" />
+            )}
           </Button>
         )}
       </div>

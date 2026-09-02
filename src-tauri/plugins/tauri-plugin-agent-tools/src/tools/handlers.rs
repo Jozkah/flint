@@ -123,6 +123,9 @@ pub enum BashJobKillOutcome {
     /// The job exists but its pid was never captured, so nothing can be
     /// signalled. The command is left alone rather than reported as killed.
     NoPid,
+    /// The OS refused to stop it. The command is still running, and the pid is
+    /// kept so the request can be made again.
+    Failed,
 }
 
 /// The result of asking for one background job to be killed.
@@ -131,6 +134,9 @@ pub enum BashJobKillOutcome {
 pub struct BashJobKill {
     pub job_id: String,
     pub outcome: BashJobKillOutcome,
+    /// Why it failed, when it did. Safe to show: it names the OS refusal,
+    /// never a path or an environment value.
+    pub error: Option<String>,
 }
 
 /// Commands still running past their `bash` call's timeout, keyed by job_id.
@@ -170,21 +176,39 @@ pub fn list_bash_jobs() -> Vec<BashJobStatus> {
 /// OS may since have reused.
 pub fn kill_bash_job(job_id: &str) -> BashJobKill {
     let mut jobs = bash_jobs().lock().unwrap();
-    let outcome = match jobs.get_mut(job_id) {
-        None => BashJobKillOutcome::Unknown,
+    let (outcome, error) = match jobs.get_mut(job_id) {
+        None => (BashJobKillOutcome::Unknown, None),
         Some(job) => {
             if job.poll_finished() {
-                BashJobKillOutcome::AlreadyFinished
+                (BashJobKillOutcome::AlreadyFinished, None)
             } else {
-                // Taken, not copied: a second kill must not signal the pid
-                // again once the OS is free to hand it to somebody else.
-                match job.pid.take() {
-                    Some(pid) => {
-                        super::proc::kill_tree(pid);
-                        super::proc::unregister(pid);
-                        BashJobKillOutcome::Killed
-                    }
-                    None => BashJobKillOutcome::NoPid,
+                match job.pid {
+                    None => (BashJobKillOutcome::NoPid, None),
+                    // Borrowed, not taken. The pid is surrendered only once the
+                    // process is known to be gone, so a refused kill can be
+                    // asked again — and a *successful* one is never repeated
+                    // against a number the OS may since have reused.
+                    Some(pid) => match super::proc::kill_tree(pid) {
+                        // Signalled, or already gone: either way it is stopped,
+                        // which also covers the command exiting between the
+                        // poll above and the signal. Its output stays
+                        // collectable because the entry is kept.
+                        outcome if outcome.stopped() => {
+                            job.pid = None;
+                            super::proc::unregister(pid);
+                            (BashJobKillOutcome::Killed, None)
+                        }
+                        super::proc::KillOutcome::Failed(reason) => {
+                            (BashJobKillOutcome::Failed, Some(reason))
+                        }
+                        // `stopped()` covers every other variant; saying so
+                        // beats a fallthrough that would report a kill that
+                        // did not happen.
+                        other => (
+                            BashJobKillOutcome::Failed,
+                            Some(format!("unexpected kill outcome: {other:?}")),
+                        ),
+                    },
                 }
             }
         }
@@ -192,6 +216,7 @@ pub fn kill_bash_job(job_id: &str) -> BashJobKill {
     BashJobKill {
         job_id: job_id.to_string(),
         outcome,
+        error,
     }
 }
 
@@ -1793,6 +1818,42 @@ mod bash_job_registry_tests {
         tx
     }
 
+    /// A kill the OS refuses must not be reported as a kill, and must leave the
+    /// pid in place so the request can be made again.
+    #[tokio::test]
+    async fn a_refused_kill_is_reported_and_the_job_stays_killable() {
+        // pid 1 is init/launchd: it exists, and an unprivileged process may not
+        // signal it. That is the refusal path, exercised against the real OS
+        // rather than a stub.
+        let _tx = park_with_pid("bash-kill-refused", "sleep 300", Some(1));
+
+        let first = kill_bash_job("bash-kill-refused");
+        assert_eq!(first.outcome, BashJobKillOutcome::Failed);
+        assert!(first.error.is_some(), "a refusal must say why");
+
+        // Still killable: the pid was not surrendered.
+        let second = kill_bash_job("bash-kill-refused");
+        assert_eq!(second.outcome, BashJobKillOutcome::Failed);
+        let _ = bash_jobs().lock().unwrap().remove("bash-kill-refused");
+    }
+
+    /// A pid that no longer exists is not a failure: there is nothing to kill,
+    /// and the job is stopped either way.
+    #[tokio::test]
+    async fn killing_a_process_that_has_already_exited_counts_as_stopped() {
+        let tx = park_with_pid("bash-kill-gone", "true", Some(u32::MAX - 5));
+        let killed = kill_bash_job("bash-kill-gone");
+        assert_eq!(killed.outcome, BashJobKillOutcome::Killed);
+        assert!(killed.error.is_none());
+
+        // And its output still reaches the agent.
+        tx.send("printed before it died".to_string()).unwrap();
+        assert_eq!(
+            await_bash_job("bash-kill-gone").await,
+            "printed before it died"
+        );
+    }
+
     #[tokio::test]
     async fn killing_an_unknown_job_reports_it_rather_than_claiming_success() {
         let killed = kill_bash_job("bash-never-existed");
@@ -1840,7 +1901,8 @@ mod bash_job_registry_tests {
     }
 
     /// A second kill must not signal the pid again: by then the OS is free to
-    /// have handed that number to an unrelated process.
+    /// have handed that number to an unrelated process. The pid is surrendered
+    /// on success, so the repeat has nothing to signal.
     #[tokio::test]
     async fn killing_twice_signals_once() {
         let _tx = park_with_pid("bash-kill-twice", "sleep 300", Some(u32::MAX - 4));

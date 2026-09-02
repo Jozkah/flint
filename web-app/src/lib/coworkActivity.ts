@@ -55,8 +55,19 @@ export type ActivityPhase = {
 
 /** One unit of background work. */
 export type ActivityTask = {
-  /** The tool call id that started this work. Stable across reloads. */
+  /**
+   * This task's identity: session, workflow and provider call id together (see
+   * `taskIdFor`). The provider's call id alone is not enough — nothing
+   * guarantees it is unique across providers, sessions, restored conversations
+   * or two runs of the same session, and a collision would merge two unrelated
+   * pieces of work into one row.
+   */
   id: string
+  /**
+   * The provider's own tool call id, kept for correlation: the transcript
+   * addresses tool turns by it, and so does the backend's job list.
+   */
+  callId: string
   sessionId: string
   workflowId: string
   /** The phase in progress when this was dispatched, when there was one. */
@@ -140,6 +151,38 @@ export const isLive = (status: ActivityStatus): boolean => !FINISHED.has(status)
 /** A phase id that is stable for the life of its workflow. */
 export const phaseIdFor = (workflowId: string, ordinal: number): string =>
   `${workflowId}:p${ordinal}`
+
+/**
+ * A task's canonical identity.
+ *
+ * Session and workflow ids are UUIDs the app mints, so neither contains the
+ * separator; the provider's call id goes last, where any content is
+ * unambiguous. Two sessions — or two runs of one session — that reuse a call
+ * id therefore stay two independent tasks.
+ */
+export const taskIdFor = (
+  sessionId: string,
+  workflowId: string,
+  callId: string
+): string => `${sessionId}|${workflowId}|${callId}`
+
+/** The task a provider call id names within one run, if it is recorded. */
+export function findTask(
+  state: ActivityState,
+  sessionId: string,
+  workflowId: string,
+  callId: string
+): ActivityTask | undefined {
+  return state.tasks[taskIdFor(sessionId, workflowId, callId)]
+}
+
+/** The task holding a backend job id, which is unique across the backend. */
+export function findTaskByJob(
+  state: ActivityState,
+  jobId: string
+): ActivityTask | undefined {
+  return Object.values(state.tasks).find((task) => task.jobId === jobId)
+}
 
 // --- Reducers -------------------------------------------------------------
 //
@@ -246,23 +289,94 @@ export function endWorkflow(
 }
 
 /**
- * Settle everything a torn-down run left running.
+ * Does this task outlive the agent turn that started it?
  *
- * Called when a run ends for any reason, and on load. Without it a task whose
- * end event never arrived — the app was closed, the stream failed — would spin
- * forever in the panel across every future session.
+ * Exactly one kind does: a shell command that outran its tool call's timeout
+ * and was handed a backend job id. The tool returned, the model turn moved on,
+ * and the process is still running — the job id is the proof, and the thing
+ * that makes it findable and killable later.
+ *
+ * Everything else dies with the run. A subagent's stream is torn down with the
+ * dispatch loop awaiting it; a queued child will never get its slot; a shell
+ * command still inside its tool call loses the invoke that was carrying it.
  */
-export function settleOrphans(
+export function survivesRunEnd(task: ActivityTask): boolean {
+  return task.kind === 'shell' && Boolean(task.jobId)
+}
+
+/**
+ * Settle the work one run left behind when it ended.
+ *
+ * Scoped to that run's workflow, never to the session: a second run in the
+ * same session may have live work of its own, and ending this turn says
+ * nothing about it.
+ *
+ * Work that outlives the run (see `survivesRunEnd`) is left alone. Marking a
+ * running background command "cancelled" would be false at the moment it was
+ * written, and — because a finished task's status is protected from later
+ * change — no amount of polling could ever repair it.
+ */
+export function settleRunOrphans(
   state: ActivityState,
-  sessionId: string | null,
+  workflowId: string,
+  now: number,
+  reason: string
+): ActivityState {
+  return settleMatching(
+    state,
+    (task) =>
+      task.workflowId === workflowId &&
+      !isFinished(task.status) &&
+      !survivesRunEnd(task),
+    now,
+    reason
+  )
+}
+
+/**
+ * Settle work the previous app run left in flight.
+ *
+ * Everything, this time, including backgrounded shell jobs: the backend that
+ * held them died with the app, and its shutdown reaps every process tree it
+ * spawned. Nothing that was running is running now.
+ */
+export function settleOnLoad(
+  state: ActivityState,
+  now: number,
+  reason: string
+): ActivityState {
+  return settleMatching(state, (task) => !isFinished(task.status), now, reason)
+}
+
+/**
+ * Settle a session's live work regardless of which run started it.
+ *
+ * For deleting or clearing a session, where nothing is expected to survive.
+ */
+export function settleSessionWork(
+  state: ActivityState,
+  sessionId: string,
+  now: number,
+  reason: string
+): ActivityState {
+  return settleMatching(
+    state,
+    (task) => task.sessionId === sessionId && !isFinished(task.status),
+    now,
+    reason
+  )
+}
+
+function settleMatching(
+  state: ActivityState,
+  matches: (task: ActivityTask) => boolean,
   now: number,
   reason: string
 ): ActivityState {
   let tasks = state.tasks
   let changed = false
   for (const task of Object.values(state.tasks)) {
-    if (sessionId != null && task.sessionId !== sessionId) continue
-    if (isFinished(task.status)) continue
+    if (!matches(task)) continue
     if (!changed) {
       tasks = { ...tasks }
       changed = true
@@ -408,10 +522,19 @@ export function progressOf(tasks: ActivityTask[]): ActivityProgress {
 /**
  * A workflow's status, derived from its children rather than stored.
  *
- * Anything still live makes the workflow live, so it can never report itself
- * finished while a child is still running. Among finished children, a failure
- * outranks a cancellation, which outranks success: the most serious real
- * outcome is the one worth surfacing.
+ * The precedence, in order:
+ *
+ * 1. **running** — any child is running. A workflow can never report itself
+ *    finished while a child is still going, so this outranks everything. A
+ *    backgrounded shell command keeps its workflow running after the model
+ *    turn ends, because the process really is still running.
+ * 2. **queued** — nothing running, but a child is waiting for a slot.
+ * 3. **error** — a failure is the most serious finished outcome.
+ * 4. **cancelled** — *any* cancelled child. Part of this workflow was stopped,
+ *    so it did not complete, and reporting "done" would hide that. This is the
+ *    documented rule; an earlier implementation required every child to be
+ *    cancelled and so reported success for a mixture.
+ * 5. **done** — everything finished, nothing failed, nothing stopped.
  */
 export function workflowStatus(
   workflow: ActivityWorkflow,
@@ -424,9 +547,7 @@ export function workflowStatus(
     return workflow.endedAt == null ? 'queued' : 'cancelled'
   }
   if (tasks.some((task) => task.status === 'error')) return 'error'
-  if (tasks.length > 0 && tasks.every((task) => task.status === 'cancelled')) {
-    return 'cancelled'
-  }
+  if (tasks.some((task) => task.status === 'cancelled')) return 'cancelled'
   // No children yet and the run is still going: the dispatch that created this
   // workflow is itself the work in flight.
   if (workflow.endedAt == null && tasks.length === 0) return 'running'
@@ -557,7 +678,52 @@ export function taskElapsedMs(task: ActivityTask, now: number): number {
   return Math.max(0, (task.endedAt ?? now) - task.startedAt)
 }
 
-/** Can this task actually be cancelled, or is there nothing left to stop? */
-export function isCancellable(task: ActivityTask): boolean {
-  return isLive(task.status)
+/** Why a task can, or cannot, be stopped right now. */
+export type Cancellability =
+  | { can: true }
+  /** It is over; there is nothing to stop. */
+  | { can: false; reason: 'finished' }
+  /** Still going, but nothing the app holds can reach it. */
+  | { can: false; reason: 'unreachable' }
+
+/**
+ * Whether stopping this task would actually do anything.
+ *
+ * Deliberately not "the status is live". A shell command still inside its tool
+ * call is live and cannot be stopped: `execute_tool` is a plain invoke with no
+ * cancellation token, and the backend has registered no job, so there is no
+ * pid to signal. Offering a control that can only report failure is worse than
+ * offering none.
+ *
+ * An agent task is reachable while the run still holds a controller for it,
+ * which only the runner knows — pass `agentReachable` to consult it. Without
+ * one this assumes reachable, which is the common case and which
+ * `cancelTask` reports honestly if it turns out to be wrong.
+ */
+export function cancellabilityOf(
+  task: ActivityTask,
+  opts: { agentReachable?: (task: ActivityTask) => boolean } = {}
+): Cancellability {
+  if (isFinished(task.status)) return { can: false, reason: 'finished' }
+  if (task.kind === 'shell') {
+    return task.jobId ? { can: true } : { can: false, reason: 'unreachable' }
+  }
+  const reachable = opts.agentReachable?.(task) ?? true
+  return reachable ? { can: true } : { can: false, reason: 'unreachable' }
+}
+
+/** Shorthand for the common check. */
+export function isCancellable(
+  task: ActivityTask,
+  opts: { agentReachable?: (task: ActivityTask) => boolean } = {}
+): boolean {
+  return cancellabilityOf(task, opts).can
+}
+
+/** Everything in a workflow that stopping it would actually reach. */
+export function cancellableTasks(
+  tasks: ActivityTask[],
+  opts: { agentReachable?: (task: ActivityTask) => boolean } = {}
+): ActivityTask[] {
+  return tasks.filter((task) => isCancellable(task, opts))
 }

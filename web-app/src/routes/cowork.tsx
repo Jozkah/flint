@@ -39,14 +39,18 @@ import {
 import { collectedJobId, commandOf, countToolCalls } from '@/lib/coworkTasks'
 import {
   INTERRUPTED_BY_RUN_END,
+  findTaskByJob,
   sessionTotals,
   sessionWorkflows,
+  taskIdFor,
   workflowAnchoredAt,
   type ActivityTask,
+  type WorkflowView,
 } from '@/lib/coworkActivity'
 import {
   cancelMessage,
   cancelTask as cancelTaskRequest,
+  cancelWorkflow as cancelWorkflowRequest,
   patchForOutcome,
 } from '@/lib/coworkCancel'
 import { CoworkWorkflowCard } from '@/containers/CoworkWorkflowCard'
@@ -116,6 +120,7 @@ import {
   abortRun,
   beginRun,
   endRun,
+  hasSubagent,
   registerSubagent,
   unregisterSubagent,
   isAbortLike,
@@ -425,12 +430,12 @@ function CoworkPage() {
   // running: the agent may not collect a job for many turns, and until it does
   // nothing else would ever settle that row.
   useEffect(() => {
-    const { tasks, patchTask } = useCoworkActivity.getState()
+    const state = useCoworkActivity.getState()
     for (const job of liveJobs) {
       if (!job.finished) continue
-      const task = Object.values(tasks).find((one) => one.jobId === job.jobId)
+      const task = findTaskByJob(state, job.jobId)
       if (task && task.status === 'running') {
-        patchTask(task.id, { status: 'done', endedAt: Date.now() })
+        state.patchTask(task.id, { status: 'done', endedAt: Date.now() })
       }
     }
   }, [liveJobs])
@@ -447,29 +452,70 @@ function CoworkPage() {
 
   // A task the inline card asked the panel to reveal.
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null)
+  const [focusWorkflowId, setFocusWorkflowId] = useState<string | null>(null)
   const showTaskInPanel = useCallback((task: ActivityTask) => {
     setRail({ kind: 'tasks' })
+    setFocusWorkflowId(task.workflowId)
     setFocusTaskId(task.id)
   }, [])
-  const showWorkflowInPanel = useCallback(() => {
+  const showWorkflowInPanel = useCallback((workflowId: string) => {
     setRail({ kind: 'tasks' })
+    setFocusTaskId(null)
+    setFocusWorkflowId(workflowId)
   }, [])
 
-  const cancelTask = useCallback(
-    (task: ActivityTask) => {
-      if (!session?.id) return
-      void cancelTaskRequest(session.id, task).then((result) => {
-        const patch = patchForOutcome(result, Date.now())
-        if (patch) {
-          useCoworkActivity.getState().patchTask(task.id, patch)
-          return
-        }
-        // Nothing was stopped. Say which of the reasons it was rather than
-        // leaving the row looking as though the click did nothing.
-        toast.info(cancelMessage(result, t))
-      })
+  // Whether the run still holds a controller for an agent task. Consulted
+  // rather than assumed, so a Stop control is only offered where pressing it
+  // would reach something.
+  const sessionId = session?.id
+  const agentReachable = useCallback(
+    (task: ActivityTask) =>
+      sessionId != null && hasSubagent(sessionId, task.id),
+    [sessionId]
+  )
+
+  const applyCancel = useCallback(
+    (task: ActivityTask, result: Awaited<ReturnType<typeof cancelTaskRequest>>) => {
+      const patch = patchForOutcome(result, Date.now())
+      if (patch) useCoworkActivity.getState().patchTask(task.id, patch)
+      return patch != null
     },
-    [session?.id, t]
+    []
+  )
+
+  const cancelTask = useCallback(
+    async (task: ActivityTask) => {
+      if (!session?.id) return
+      const result = await cancelTaskRequest(session.id, task)
+      // Nothing was stopped. Say which of the reasons it was rather than
+      // leaving the row looking as though the click did nothing.
+      if (!applyCancel(task, result)) toast.info(cancelMessage(result, t))
+    },
+    [session?.id, applyCancel, t]
+  )
+
+  const cancelWorkflowTasks = useCallback(
+    async (view: WorkflowView) => {
+      if (!session?.id) return
+      const outcome = await cancelWorkflowRequest(session.id, view, {
+        agentReachable,
+      })
+      const byId = new Map(view.tasks.map((task) => [task.id, task]))
+      for (const result of outcome.results) {
+        const task = byId.get(result.taskId)
+        if (task) applyCancel(task, result)
+      }
+      // Honest about a partial result: some children stopped, some did not.
+      if (outcome.failed > 0) {
+        toast.info(
+          t('common:tasks.stopWorkflowPartial', {
+            cancelled: outcome.cancelled,
+            failed: outcome.failed,
+          })
+        )
+      }
+    },
+    [session?.id, agentReachable, applyCancel, t]
   )
 
   const awaitingModel = useMemo(
@@ -715,7 +761,8 @@ function CoworkPage() {
                 })
                 // Its own controller, chained to the run's, so this one child
                 // can be stopped without stopping the turn.
-                const childAbort = registerSubagent(sid, callId)
+                const childTaskId = taskIdFor(sid, runId, callId)
+                const childAbort = registerSubagent(sid, childTaskId)
                 const stopChild = () => childAbort.abort('cancelled')
                 controller.signal.addEventListener('abort', stopChild, {
                   once: true,
@@ -765,13 +812,16 @@ function CoworkPage() {
                       useCoworkRun
                         .getState()
                         .queueSubagent(sid, callId, resolved.name, waiting)
-                      activity.patchTask(callId, { status: 'queued', waiting })
+                      activity.patchTask(childTaskId, {
+                        status: 'queued',
+                        waiting,
+                      })
                     },
                     onStart: () => {
                       useCoworkRun
                         .getState()
                         .startSubagent(sid, callId, resolved.name)
-                      activity.patchTask(callId, {
+                      activity.patchTask(childTaskId, {
                         status: 'running',
                         waiting: undefined,
                         startedAt: Date.now(),
@@ -787,7 +837,7 @@ function CoworkPage() {
                         useCoworkRun.getState().subagents[sid] ?? []
                       ).find((one) => one.runId === callId)?.turns
                       if (turns) {
-                        activity.patchTask(callId, {
+                        activity.patchTask(childTaskId, {
                           transcript: turns,
                           toolCount: countToolCalls(turns),
                         })
@@ -795,7 +845,7 @@ function CoworkPage() {
                     },
                     onEnd: (usage) => {
                       useCoworkRun.getState().endSubagent(sid, callId, usage)
-                      activity.patchTask(callId, {
+                      activity.patchTask(childTaskId, {
                         status: 'done',
                         endedAt: Date.now(),
                         usage: usage ?? undefined,
@@ -806,7 +856,7 @@ function CoworkPage() {
                 useCoworkRun
                   .getState()
                   .attachSubagentOutput(sid, callId, child.output)
-                activity.patchTask(callId, {
+                activity.patchTask(childTaskId, {
                   output: child.output,
                   ...(child.isError
                     ? { status: 'error' as const, endedAt: Date.now() }
@@ -815,7 +865,7 @@ function CoworkPage() {
                 return { output: child.output, isError: child.isError }
                 } finally {
                   controller.signal.removeEventListener('abort', stopChild)
-                  unregisterSubagent(sid, callId)
+                  unregisterSubagent(sid, childTaskId)
                 }
               },
             }),
@@ -842,7 +892,7 @@ function CoworkPage() {
               // different row; a plain call settles its own.
               const collecting = collectedJobId(turn.args)
               if (collecting) recordJobCollected(collecting, outcome)
-              else recordShellOutcome(callId, outcome)
+              else recordShellOutcome(run, callId, outcome)
             }
           },
           nextMessageId: (() => {
@@ -867,7 +917,11 @@ function CoworkPage() {
       // Nothing can still be running once the turn is over: the streams are
       // closed and the dispatch loop has stopped awaiting them. Settle before
       // closing the workflow, so its status is derived from settled children.
-      useCoworkActivity.getState().settleSession(sid, INTERRUPTED_BY_RUN_END)
+      // This run's orphans only — scoped to its own workflow, and leaving a
+      // backgrounded shell job alone: the process is still running, and
+      // marking it cancelled would be false at the moment it was written and
+      // unrepairable afterwards.
+      useCoworkActivity.getState().settleRun(runId, INTERRUPTED_BY_RUN_END)
       useCoworkActivity.getState().finishWorkflow(runId)
       useCoworkSessions
         .getState()
@@ -1177,9 +1231,15 @@ function CoworkPage() {
           <CoworkTasksPanel
             workflows={workflowViews}
             totals={taskCounts}
+            focusWorkflowId={focusWorkflowId}
             focusTaskId={focusTaskId}
-            onFocusHandled={() => setFocusTaskId(null)}
+            onFocusHandled={() => {
+              setFocusTaskId(null)
+              setFocusWorkflowId(null)
+            }}
+            agentReachable={agentReachable}
             onCancelTask={cancelTask}
+            onCancelWorkflow={cancelWorkflowTasks}
             onClearFinished={() => {
               if (session?.id) {
                 useCoworkActivity.getState().clearFinished(session.id)

@@ -12,7 +12,12 @@
 
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
-import { currentPhase, type ActivityTask } from '@/lib/coworkActivity'
+import {
+  currentPhase,
+  findTaskByJob,
+  taskIdFor,
+  type ActivityTask,
+} from '@/lib/coworkActivity'
 import { backgroundJobId } from '@/lib/coworkTasks'
 import type { UIMessage } from 'ai'
 
@@ -93,7 +98,8 @@ export function recordAgentDispatch(
 ): void {
   const phaseId = openWorkflow(run, task.anchorMessageId)
   const record: ActivityTask = {
-    id: task.callId,
+    id: taskIdFor(run.sessionId, run.runId, task.callId),
+    callId: task.callId,
     sessionId: run.sessionId,
     workflowId: run.runId,
     phaseId,
@@ -118,7 +124,8 @@ export function recordShellDispatch(
 ): void {
   const phaseId = openWorkflow(run, task.anchorMessageId)
   useCoworkActivity.getState().beginTask({
-    id: task.callId,
+    id: taskIdFor(run.sessionId, run.runId, task.callId),
+    callId: task.callId,
     sessionId: run.sessionId,
     workflowId: run.runId,
     phaseId,
@@ -138,12 +145,13 @@ export function recordShellDispatch(
  * job id that makes it killable, rather than as a command that completed.
  */
 export function recordShellOutcome(
+  run: RunContext,
   callId: string,
   outcome: { output: string; isError?: boolean }
 ): void {
   const jobId = backgroundJobId(outcome.output)
   useCoworkActivity.getState().patchTask(
-    callId,
+    taskIdFor(run.sessionId, run.runId, callId),
     jobId
       ? { jobId, status: 'running' }
       : {
@@ -159,10 +167,12 @@ export function recordJobCollected(
   jobId: string,
   outcome: { output: string; isError?: boolean }
 ): void {
-  const { tasks, patchTask } = useCoworkActivity.getState()
-  const task = Object.values(tasks).find((one) => one.jobId === jobId)
+  const state = useCoworkActivity.getState()
+  // Found by job id, which the backend mints and which is unique across it —
+  // the collecting call may not even be in the run that started the command.
+  const task = findTaskByJob(state, jobId)
   if (!task) return
-  patchTask(task.id, {
+  state.patchTask(task.id, {
     status: outcome.isError ? 'error' : 'done',
     endedAt: Date.now(),
     output: outcome.output,

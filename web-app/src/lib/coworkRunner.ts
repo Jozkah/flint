@@ -127,6 +127,17 @@ export function unregisterSubagent(sid: string, taskId: string): void {
 }
 
 /**
+ * Is there still a controller for this child?
+ *
+ * What makes an agent task genuinely cancellable. A surface that offers to
+ * stop work the run can no longer reach can only report failure, so it asks
+ * this first rather than assuming.
+ */
+export function hasSubagent(sid: string, taskId: string): boolean {
+  return handles.get(sid)?.subagents.has(taskId) ?? false
+}
+
+/**
  * Stop one dispatched subagent, leaving the rest of the run going.
  *
  * Returns false when there is nothing to stop — the child already finished, or

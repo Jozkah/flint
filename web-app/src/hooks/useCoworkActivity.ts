@@ -8,10 +8,13 @@ import {
   endWorkflow,
   forgetSession,
   observePhase,
-  settleOrphans,
+  settleOnLoad,
+  settleRunOrphans,
+  settleSessionWork,
   startTask,
   startWorkflow,
   updateTask,
+  taskIdFor,
   type ActivityState,
   type ActivityTask,
   type ActivityWorkflow,
@@ -46,7 +49,15 @@ type CoworkActivityState = ActivityState & {
   patchTask: (id: string, patch: Partial<ActivityTask>) => void
   /** Close a workflow once its run is over. */
   finishWorkflow: (id: string) => void
-  /** Settle everything a torn-down run left running. */
+  /**
+   * Settle what one run left behind when it ended.
+   *
+   * Scoped to that run's workflow, and leaving alone the one kind of work that
+   * outlives a run — a shell command already handed a backend job id, whose
+   * process is still running.
+   */
+  settleRun: (workflowId: string, reason: string) => void
+  /** Settle a session's live work outright, for clearing or deleting it. */
   settleSession: (sessionId: string, reason: string) => void
   /** Hide every finished workflow of a session, keeping the records. */
   clearFinished: (sessionId: string) => void
@@ -81,16 +92,18 @@ export const useCoworkActivity = create<CoworkActivityState>()(
 
       finishWorkflow: (id) => set((s) => endWorkflow(s, id, now())),
 
+      settleRun: (workflowId, reason) =>
+        set((s) => settleRunOrphans(s, workflowId, now(), reason)),
+
       settleSession: (sessionId, reason) =>
-        set((s) => settleOrphans(s, sessionId, now(), reason)),
+        set((s) => settleSessionWork(s, sessionId, now(), reason)),
 
       clearFinished: (sessionId) =>
         set((s) => dismissFinished(s, sessionId, now())),
 
       dropSession: (sessionId) => set((s) => forgetSession(s, sessionId)),
 
-      recoverOnLoad: (reason) =>
-        set((s) => settleOrphans(s, null, now(), reason)),
+      recoverOnLoad: (reason) => set((s) => settleOnLoad(s, now(), reason)),
     }),
     {
       name: localStorageKey.coworkActivity,
@@ -100,7 +113,32 @@ export const useCoworkActivity = create<CoworkActivityState>()(
       // rehydrate in hydrateBackendStores().
       storage: createJSONStorage(() => backendStorage),
       skipHydration: true,
-      version: 1,
+      version: 2,
+      // v1 keyed tasks by the provider's raw call id, which nothing guarantees
+      // is unique across sessions, runs or providers. v2 keys them by session,
+      // workflow and call id together, and keeps the raw id as `callId` for
+      // correlating with the transcript and the backend's job list.
+      migrate: (persisted, version) => {
+        const state = persisted as ActivityState | undefined
+        if (!state?.tasks || version >= 2) return persisted
+        const tasks: Record<string, ActivityTask> = {}
+        for (const [key, task] of Object.entries(state.tasks)) {
+          const callId = task.callId ?? key
+          const id = taskIdFor(task.sessionId, task.workflowId, callId)
+          tasks[id] = { ...task, id, callId }
+        }
+        // Parent links named the old keys, so re-point them the same way.
+        for (const task of Object.values(tasks)) {
+          if (!task.parentTaskId) continue
+          const parent = Object.values(tasks).find(
+            (one) =>
+              one.callId === task.parentTaskId &&
+              one.workflowId === task.workflowId
+          )
+          task.parentTaskId = parent?.id
+        }
+        return { ...state, tasks }
+      },
       // Only the record is persisted; the actions are rebuilt on load.
       partialize: (state) => ({
         workflows: state.workflows,

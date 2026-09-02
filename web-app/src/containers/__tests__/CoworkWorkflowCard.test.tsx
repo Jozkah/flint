@@ -6,6 +6,7 @@ import {
   emptyActivityState,
   startTask,
   startWorkflow,
+  taskIdFor,
   updateTask,
   workflowView,
   type ActivityState,
@@ -27,16 +28,38 @@ const SESSION = 's-1'
 const WORKFLOW = 'run-1'
 const T0 = 1_700_000_000_000
 
-const task = (over: Partial<ActivityTask> = {}): ActivityTask => ({
-  id: 'call-1',
-  sessionId: SESSION,
-  workflowId: WORKFLOW,
+const task = (over: Partial<ActivityTask> = {}): ActivityTask => {
+  const callId = over.callId ?? over.id ?? 'call-1'
+  const sessionId = over.sessionId ?? SESSION
+  const workflowId = over.workflowId ?? WORKFLOW
+  return {
+    ...shape(callId, sessionId, workflowId),
+    ...over,
+    callId,
+    sessionId,
+    workflowId,
+    id: taskIdFor(sessionId, workflowId, callId),
+  }
+}
+
+const shape = (
+  callId: string,
+  sessionId: string,
+  workflowId: string
+): ActivityTask => ({
+  id: taskIdFor(sessionId, workflowId, callId),
+  callId,
+  sessionId,
+  workflowId,
   kind: 'agent',
   title: 'researcher',
   status: 'running',
   startedAt: T0,
-  ...over,
 })
+
+/** The canonical id a call gets inside the default workflow. */
+const idOf = (callId: string, sessionId = SESSION, workflowId = WORKFLOW) =>
+  taskIdFor(sessionId, workflowId, callId)
 
 const stateWith = (...tasks: ActivityTask[]): ActivityState =>
   tasks.reduce(
@@ -116,7 +139,10 @@ describe('CoworkWorkflowCard', () => {
       screen.getByText(/common:tasks.progress finished=0 total=1/)
     ).toBeInTheDocument()
 
-    const after = updateTask(before, 'a', { status: 'done', endedAt: T0 + 2 })
+    const after = updateTask(before, idOf('a'), {
+      status: 'done',
+      endedAt: T0 + 2,
+    })
     rerender(<Card state={after} />)
     expect(
       screen.getByText(/common:tasks.progress finished=1 total=1/)
@@ -147,7 +173,7 @@ describe('CoworkWorkflowCard', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: /explorer/ }))
     expect(onOpenTask).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'call-9' })
+      expect.objectContaining({ id: idOf('call-9'), callId: 'call-9' })
     )
   })
 

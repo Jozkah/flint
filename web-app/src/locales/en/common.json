@@ -786,6 +786,9 @@
     "agentCount_one": "{{count}} agent",
     "agentCount_other": "{{count}} agents",
     "shellCount_one": "{{count}} command",
-    "shellCount_other": "{{count}} commands"
+    "shellCount_other": "{{count}} commands",
+    "stopWorkflow": "Stop {{name}}",
+    "stopWorkflowPartial": "Stopped {{cancelled}}; {{failed}} could not be stopped.",
+    "cancelKillFailed": "The system refused to stop it: {{error}}"
   }
 }

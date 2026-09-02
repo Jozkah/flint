@@ -14,7 +14,11 @@ import {
   sessionIsActive,
   sessionTotals,
   sessionWorkflows,
-  settleOrphans,
+  settleOnLoad,
+  settleRunOrphans,
+  settleSessionWork,
+  survivesRunEnd,
+  taskIdFor,
   startTask,
   startWorkflow,
   taskElapsedMs,
@@ -43,16 +47,39 @@ const workflow = (over: Partial<ActivityWorkflow> = {}): ActivityWorkflow => ({
   ...over,
 })
 
-const task = (over: Partial<ActivityTask> = {}): ActivityTask => ({
-  id: 'call-1',
-  sessionId: SESSION,
-  workflowId: WORKFLOW,
+/** Built through `taskIdFor`, the way the recorder builds them. */
+const task = (over: Partial<ActivityTask> = {}): ActivityTask => {
+  const callId = over.callId ?? over.id ?? 'call-1'
+  const sessionId = over.sessionId ?? SESSION
+  const workflowId = over.workflowId ?? WORKFLOW
+  return {
+    ...base(callId, sessionId, workflowId),
+    ...over,
+    callId,
+    sessionId,
+    workflowId,
+    id: taskIdFor(sessionId, workflowId, callId),
+  }
+}
+
+const base = (
+  callId: string,
+  sessionId: string,
+  workflowId: string
+): ActivityTask => ({
+  id: taskIdFor(sessionId, workflowId, callId),
+  callId,
+  sessionId,
+  workflowId,
   kind: 'agent',
   title: 'explorer',
   status: 'running',
   startedAt: T0,
-  ...over,
 })
+
+/** The canonical id for a call within the default workflow. */
+const idOf = (callId: string, sessionId = SESSION, workflowId = WORKFLOW) =>
+  taskIdFor(sessionId, workflowId, callId)
 
 /** A state with one workflow and the given tasks. */
 const withTasks = (...tasks: ActivityTask[]): ActivityState =>
@@ -73,7 +100,7 @@ describe('recording work', () => {
     const first = withTasks(task())
     const again = startTask(first, task({ title: 'renamed' }))
     expect(again).toBe(first)
-    expect(again.tasks['call-1'].title).toBe('explorer')
+    expect(again.tasks[idOf('call-1')].title).toBe('explorer')
   })
 
   it('keeps the metadata captured at dispatch', () => {
@@ -86,7 +113,7 @@ describe('recording work', () => {
         description: 'map the lexer',
       })
     )
-    expect(state.tasks['call-1']).toMatchObject({
+    expect(state.tasks[idOf('call-1')]).toMatchObject({
       model: 'jan-nano-4b',
       agentName: 'explorer',
       description: 'map the lexer',
@@ -148,48 +175,50 @@ describe('phases', () => {
       task({ id: 'c', phaseId: 'run-1:p0' })
     )
     const tasks = Object.values(state.tasks)
-    expect(tasksOfPhase(tasks, 'run-1:p0').map((t) => t.id)).toEqual(['a', 'c'])
+    expect(tasksOfPhase(tasks, 'run-1:p0').map((t) => t.callId)).toEqual(['a', 'c'])
   })
 })
 
 describe('updating a task', () => {
   it('merges an update onto a live task', () => {
-    const state = updateTask(withTasks(task()), 'call-1', {
+    const state = updateTask(withTasks(task()), idOf('call-1'), {
       status: 'done',
       endedAt: T0 + 5,
     })
-    expect(state.tasks['call-1'].status).toBe('done')
+    expect(state.tasks[idOf('call-1')].status).toBe('done')
   })
 
   it('will not resurrect a task that has already finished', () => {
     // A stream torn down mid-cancel still emits its end event. Taking it would
     // erase the fact that the user stopped this.
-    const cancelled = updateTask(withTasks(task()), 'call-1', {
+    const cancelled = updateTask(withTasks(task()), idOf('call-1'), {
       status: 'cancelled',
       endedAt: T0 + 1,
       detail: 'cancelled by you',
     })
-    const late = updateTask(cancelled, 'call-1', {
+    const late = updateTask(cancelled, idOf('call-1'), {
       status: 'running',
       endedAt: undefined,
     })
-    expect(late.tasks['call-1'].status).toBe('cancelled')
-    expect(late.tasks['call-1'].detail).toBe('cancelled by you')
-    expect(late.tasks['call-1'].endedAt).toBe(T0 + 1)
+    expect(late.tasks[idOf('call-1')].status).toBe('cancelled')
+    expect(late.tasks[idOf('call-1')].detail).toBe('cancelled by you')
+    expect(late.tasks[idOf('call-1')].endedAt).toBe(T0 + 1)
   })
 
   it('still takes the output a killed task produced before it died', () => {
     // The reason to keep the record at all: a killed command's partial output
     // is the useful part.
-    const cancelled = updateTask(withTasks(task({ kind: 'shell' })), 'call-1', {
-      status: 'cancelled',
-    })
-    const settled = updateTask(cancelled, 'call-1', {
+    const cancelled = updateTask(
+      withTasks(task({ kind: 'shell' })),
+      idOf('call-1'),
+      { status: 'cancelled' }
+    )
+    const settled = updateTask(cancelled, idOf('call-1'), {
       status: 'done',
       output: 'half a line',
     })
-    expect(settled.tasks['call-1'].status).toBe('cancelled')
-    expect(settled.tasks['call-1'].output).toBe('half a line')
+    expect(settled.tasks[idOf('call-1')].status).toBe('cancelled')
+    expect(settled.tasks[idOf('call-1')].output).toBe('half a line')
   })
 
   it('ignores an update to a task it does not know', () => {
@@ -241,7 +270,10 @@ describe('workflow status, derived from its children', () => {
     ).toBe('error')
   })
 
-  it('reports cancelled only when everything was cancelled', () => {
+  it('reports cancelled when any child was stopped', () => {
+    // Part of the workflow was stopped, so it did not complete. Reporting
+    // "done" for a mixture would hide that — the documented precedence is
+    // error, then cancelled, then done.
     expect(
       statusOf(
         task({ id: 'a', status: 'cancelled' }),
@@ -253,7 +285,16 @@ describe('workflow status, derived from its children', () => {
         task({ id: 'a', status: 'cancelled' }),
         task({ id: 'b', status: 'done' })
       )
-    ).toBe('done')
+    ).toBe('cancelled')
+  })
+
+  it('reports a failure ahead of a cancellation', () => {
+    expect(
+      statusOf(
+        task({ id: 'a', status: 'cancelled' }),
+        task({ id: 'b', status: 'error' })
+      )
+    ).toBe('error')
   })
 
   it('is running while a live run has dispatched nothing yet', () => {
@@ -312,17 +353,15 @@ describe('the shape a surface renders', () => {
 
     const view = workflowView(state, WORKFLOW)!
     expect(view.phases.map((p) => p.phase.name)).toEqual(['Scan', 'Fix'])
-    expect(view.phases[0].tasks.map((t) => t.id)).toEqual(['a'])
-    expect(view.unphased.map((t) => t.id)).toEqual(['loose'])
+    expect(view.phases[0].tasks.map((t) => t.callId)).toEqual(['a'])
+    expect(view.unphased.map((t) => t.callId)).toEqual(['loose'])
   })
 
   it('separates top-level work from work a task dispatched itself', () => {
-    const tasks = [
-      task({ id: 'parent' }),
-      task({ id: 'child', parentTaskId: 'parent' }),
-    ]
-    expect(rootTasks(tasks).map((t) => t.id)).toEqual(['parent'])
-    expect(childrenOf(tasks, 'parent').map((t) => t.id)).toEqual(['child'])
+    const parent = task({ id: 'parent' })
+    const tasks = [parent, task({ id: 'child', parentTaskId: parent.id })]
+    expect(rootTasks(tasks).map((t) => t.callId)).toEqual(['parent'])
+    expect(childrenOf(tasks, parent.id).map((t) => t.callId)).toEqual(['child'])
   })
 
   it('orders a workflow’s tasks by when they were dispatched', () => {
@@ -330,7 +369,7 @@ describe('the shape a surface renders', () => {
       task({ id: 'late', startedAt: T0 + 100 }),
       task({ id: 'early', startedAt: T0 })
     )
-    expect(workflowView(state, WORKFLOW)!.tasks.map((t) => t.id)).toEqual([
+    expect(workflowView(state, WORKFLOW)!.tasks.map((t) => t.callId)).toEqual([
       'early',
       'late',
     ])
@@ -388,7 +427,7 @@ describe('per-session scoping', () => {
   it('forgets everything belonging to a deleted session', () => {
     const state = forgetSession(twoSessions(), SESSION)
     expect(Object.keys(state.workflows)).toEqual(['run-2'])
-    expect(Object.keys(state.tasks)).toEqual(['call-2'])
+    expect(Object.values(state.tasks).map((t) => t.callId)).toEqual(['call-2'])
   })
 
   it('leaves the record alone when the session owns nothing', () => {
@@ -397,28 +436,118 @@ describe('per-session scoping', () => {
   })
 })
 
-describe('settling work nothing will finish', () => {
-  it('cancels a session’s live work and says why', () => {
-    const state = settleOrphans(
+describe('settling work a run left behind', () => {
+  const shellJob = (over: Partial<ActivityTask> = {}) =>
+    task({ kind: 'shell', title: 'pnpm build', status: 'running', ...over })
+
+  it('cancels the run’s live work and says why', () => {
+    const state = settleRunOrphans(
       withTasks(task({ status: 'running' })),
-      SESSION,
+      WORKFLOW,
       T0 + 50,
-      'interrupted:restart'
+      'interrupted:runEnd'
     )
-    expect(state.tasks['call-1']).toMatchObject({
+    expect(state.tasks[idOf('call-1')]).toMatchObject({
       status: 'cancelled',
       endedAt: T0 + 50,
-      detail: 'interrupted:restart',
+      detail: 'interrupted:runEnd',
     })
+  })
+
+  it('leaves a backgrounded shell job running', () => {
+    // The tool call returned a job id and moved on; the process is still
+    // running. Marking it cancelled would be false when written, and a
+    // finished task's status is protected from later change, so no amount of
+    // polling could repair it.
+    const state = settleRunOrphans(
+      withTasks(shellJob({ jobId: 'bash-3' })),
+      WORKFLOW,
+      T0 + 50,
+      'interrupted:runEnd'
+    )
+    expect(state.tasks[idOf('call-1')].status).toBe('running')
+  })
+
+  it('settles a shell command that never got a job id', () => {
+    // Still inside its tool call when the run died: the invoke carrying it is
+    // gone, and nothing will ever report on it.
+    const state = settleRunOrphans(
+      withTasks(shellJob()),
+      WORKFLOW,
+      T0 + 50,
+      'interrupted:runEnd'
+    )
+    expect(state.tasks[idOf('call-1')].status).toBe('cancelled')
+  })
+
+  it('leaves another run’s work alone', () => {
+    // One turn ending says nothing about a second run in the same session.
+    let state = withTasks(task({ status: 'running' }))
+    state = startWorkflow(state, workflow({ id: 'run-2' }))
+    state = startTask(
+      state,
+      task({ id: 'call-2', workflowId: 'run-2', status: 'running' })
+    )
+    const settled = settleRunOrphans(state, WORKFLOW, T0 + 50, 'runEnd')
+    expect(settled.tasks[idOf('call-2', SESSION, 'run-2')].status).toBe(
+      'running'
+    )
   })
 
   it('leaves finished work exactly as it was', () => {
     const done = withTasks(task({ status: 'done', endedAt: T0 + 1 }))
-    expect(settleOrphans(done, SESSION, T0 + 50, 'restart')).toBe(done)
+    expect(settleRunOrphans(done, WORKFLOW, T0 + 50, 'runEnd')).toBe(done)
   })
 
-  it('settles every session at once on load', () => {
-    // A restart kills every stream and every shell, not just the visible one.
+  it('keeps a workflow running while its background command is', () => {
+    // The model turn is over; the process is not, so neither is the workflow.
+    const state = endWorkflow(
+      settleRunOrphans(
+        withTasks(shellJob({ jobId: 'bash-3' })),
+        WORKFLOW,
+        T0 + 50,
+        'runEnd'
+      ),
+      WORKFLOW,
+      T0 + 51
+    )
+    expect(sessionWorkflows(state, SESSION)[0].status).toBe('running')
+  })
+
+  it('knows which work outlives its run', () => {
+    expect(survivesRunEnd(shellJob({ jobId: 'bash-3' }))).toBe(true)
+    expect(survivesRunEnd(shellJob())).toBe(false)
+    expect(survivesRunEnd(task({ status: 'running' }))).toBe(false)
+  })
+})
+
+describe('settling on load', () => {
+  it('settles every session, including background jobs', () => {
+    // A restart kills the backend that held them; its shutdown reaps every
+    // process tree it spawned. Nothing that was running is running now.
+    let state = withTasks(
+      task({ status: 'running' }),
+      task({ id: 'job', kind: 'shell', status: 'running', jobId: 'bash-3' })
+    )
+    state = startWorkflow(
+      state,
+      workflow({ id: 'run-2', sessionId: OTHER_SESSION })
+    )
+    state = startTask(
+      state,
+      task({ id: 'call-2', sessionId: OTHER_SESSION, workflowId: 'run-2' })
+    )
+    const settled = settleOnLoad(state, T0 + 50, 'restart')
+    expect(settled.tasks[idOf('call-1')].status).toBe('cancelled')
+    expect(settled.tasks[idOf('job')].status).toBe('cancelled')
+    expect(
+      settled.tasks[idOf('call-2', OTHER_SESSION, 'run-2')].status
+    ).toBe('cancelled')
+  })
+})
+
+describe('settling a whole session', () => {
+  it('settles that session’s live work and no other', () => {
     let state = withTasks(task({ status: 'running' }))
     state = startWorkflow(
       state,
@@ -428,23 +557,11 @@ describe('settling work nothing will finish', () => {
       state,
       task({ id: 'call-2', sessionId: OTHER_SESSION, workflowId: 'run-2' })
     )
-    const settled = settleOrphans(state, null, T0 + 50, 'restart')
-    expect(settled.tasks['call-1'].status).toBe('cancelled')
-    expect(settled.tasks['call-2'].status).toBe('cancelled')
-  })
-
-  it('leaves another session’s work alone when settling one', () => {
-    let state = withTasks(task({ status: 'running' }))
-    state = startWorkflow(
-      state,
-      workflow({ id: 'run-2', sessionId: OTHER_SESSION })
+    const settled = settleSessionWork(state, SESSION, T0 + 50, 'cleared')
+    expect(settled.tasks[idOf('call-1')].status).toBe('cancelled')
+    expect(settled.tasks[idOf('call-2', OTHER_SESSION, 'run-2')].status).toBe(
+      'running'
     )
-    state = startTask(
-      state,
-      task({ id: 'call-2', sessionId: OTHER_SESSION, workflowId: 'run-2' })
-    )
-    const settled = settleOrphans(state, SESSION, T0 + 50, 'restart')
-    expect(settled.tasks['call-2'].status).toBe('running')
   })
 })
 
@@ -476,7 +593,7 @@ describe('clearing finished work', () => {
       T0 + 2
     )
     const cleared = dismissFinished(finished, SESSION, T0 + 3)
-    const relive = updateTask(cleared, 'call-1', { status: 'running' }, true)
+    const relive = updateTask(cleared, idOf('call-1'), { status: 'running' }, true)
     expect(sessionWorkflows(relive, SESSION)).toHaveLength(1)
   })
 

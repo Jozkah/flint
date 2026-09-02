@@ -13,9 +13,11 @@ import {
   sessionWorkflows,
   startTask,
   startWorkflow,
+  taskIdFor,
   type ActivityState,
   type ActivityTask,
   type ActivityWorkflow,
+  type WorkflowView,
 } from '@/lib/coworkActivity'
 
 // Interpolates, so assertions can check the numbers rather than just the key.
@@ -49,17 +51,39 @@ const workflow = (over: Partial<ActivityWorkflow> = {}): ActivityWorkflow => ({
   ...over,
 })
 
-const task = (over: Partial<ActivityTask> = {}): ActivityTask => ({
-  id: 'call-1',
-  sessionId: SESSION,
-  workflowId: WORKFLOW,
+const task = (over: Partial<ActivityTask> = {}): ActivityTask => {
+  const callId = over.callId ?? over.id ?? 'call-1'
+  const sessionId = over.sessionId ?? SESSION
+  const workflowId = over.workflowId ?? WORKFLOW
+  return {
+    ...shape(callId, sessionId, workflowId),
+    ...over,
+    callId,
+    sessionId,
+    workflowId,
+    id: taskIdFor(sessionId, workflowId, callId),
+  }
+}
+
+const shape = (
+  callId: string,
+  sessionId: string,
+  workflowId: string
+): ActivityTask => ({
+  id: taskIdFor(sessionId, workflowId, callId),
+  callId,
+  sessionId,
+  workflowId,
   kind: 'agent',
   title: 'researcher',
   status: 'done',
   startedAt: T0,
   endedAt: T0 + 4_000,
-  ...over,
 })
+
+/** The canonical id a call gets inside the default workflow. */
+const idOf = (callId: string, sessionId = SESSION, workflowId = WORKFLOW) =>
+  taskIdFor(sessionId, workflowId, callId)
 
 const stateWith = (
   tasks: ActivityTask[],
@@ -73,31 +97,47 @@ const stateWith = (
 function Panel({
   state,
   onCancelTask = vi.fn(),
+  onCancelWorkflow = vi.fn(),
   onClearFinished = vi.fn(),
   onClose = vi.fn(),
+  agentReachable,
   focusTaskId,
+  focusWorkflowId,
 }: {
   state: ActivityState
-  onCancelTask?: (task: ActivityTask) => void
+  onCancelTask?: (task: ActivityTask) => Promise<void> | void
+  onCancelWorkflow?: (view: WorkflowView) => Promise<void> | void
   onClearFinished?: () => void
   onClose?: () => void
+  agentReachable?: (task: ActivityTask) => boolean
   focusTaskId?: string | null
+  focusWorkflowId?: string | null
 }) {
   return (
     <CoworkTasksPanel
       workflows={sessionWorkflows(state, SESSION)}
       totals={sessionTotals(state, SESSION)}
       focusTaskId={focusTaskId}
+      focusWorkflowId={focusWorkflowId}
+      agentReachable={agentReachable}
       onCancelTask={onCancelTask}
+      onCancelWorkflow={onCancelWorkflow}
       onClearFinished={onClearFinished}
       onClose={onClose}
     />
   )
 }
 
+/** The header button of a workflow section — the one that expands it, not the
+ * stop control beside it, which carries the same title. */
+const workflowHeader = (title = 'refactor the parser') =>
+  screen
+    .getAllByRole('button', { name: new RegExp(title) })
+    .find((button) => button.hasAttribute('aria-expanded'))!
+
 /** Open a workflow section so its tasks render. */
 const openWorkflow = async (title = 'refactor the parser') =>
-  userEvent.click(screen.getByRole('button', { name: new RegExp(title) }))
+  userEvent.click(workflowHeader(title))
 
 describe('CoworkTasksPanel', () => {
   it('says so when the session has run nothing', () => {
@@ -320,7 +360,7 @@ describe('CoworkTasksPanel', () => {
         screen.getByRole('button', { name: /stopTask name=live/ })
       )
       expect(onCancelTask).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'a' })
+        expect.objectContaining({ callId: 'a' })
       )
     })
   })
@@ -355,9 +395,10 @@ describe('CoworkTasksPanel', () => {
             SESSION
           )}
           totals={progressOf([])}
-          focusTaskId="call-9"
+          focusTaskId={idOf('call-9')}
           onFocusHandled={onFocusHandled}
           onCancelTask={vi.fn()}
+          onCancelWorkflow={vi.fn()}
           onClearFinished={vi.fn()}
           onClose={vi.fn()}
         />
@@ -378,6 +419,7 @@ describe('CoworkTasksPanel', () => {
           focusTaskId="call-missing"
           onFocusHandled={onFocusHandled}
           onCancelTask={vi.fn()}
+          onCancelWorkflow={vi.fn()}
           onClearFinished={vi.fn()}
           onClose={vi.fn()}
         />
@@ -410,9 +452,7 @@ describe('CoworkTasksPanel', () => {
           ])}
         />
       )
-      await userEvent.click(
-        screen.getByRole('button', { name: /refactor the parser/ })
-      )
+      await openWorkflow()
       await act(async () => {
         vi.advanceTimersByTime(3_000)
       })
@@ -509,10 +549,10 @@ describe('what a screen reader hears', () => {
 
   it('says whether a section is open', async () => {
     render(<Panel state={stateWith([task()])} />)
-    const header = screen.getByRole('button', { name: /refactor the parser/ })
+    const header = workflowHeader()
     expect(header).toHaveAttribute('aria-expanded', 'false')
     await userEvent.click(header)
-    expect(header).toHaveAttribute('aria-expanded', 'true')
+    expect(workflowHeader()).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('gives each stop control a name that says what it stops', async () => {
@@ -534,5 +574,346 @@ describe('what a screen reader hears', () => {
         name: 'common:tasks.stopTask name=explorer',
       })
     ).toBeInTheDocument()
+  })
+})
+
+describe('offering to stop only what can be stopped', () => {
+  it('offers no control for a command still inside its tool call', () => {
+    // No job id means the backend registered nothing to signal, and
+    // `execute_tool` takes no cancellation token. A button here could only
+    // ever report that it did nothing.
+    render(
+      <Panel
+        state={stateWith([
+          task({
+            id: 'a',
+            kind: 'shell',
+            title: 'pnpm build',
+            status: 'running',
+            endedAt: undefined,
+          }),
+        ])}
+      />
+    )
+    expect(
+      screen.queryByRole('button', { name: /stopTask/ })
+    ).toBeNull()
+  })
+
+  it('offers one once the command has a backend job', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({
+            id: 'a',
+            kind: 'shell',
+            title: 'pnpm build',
+            status: 'running',
+            endedAt: undefined,
+            jobId: 'bash-3',
+          }),
+        ])}
+      />
+    )
+    await openWorkflow()
+    expect(
+      screen.getByRole('button', { name: /stopTask name=pnpm build/ })
+    ).toBeInTheDocument()
+  })
+
+  it('offers none for an agent the run can no longer reach', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({ id: 'a', title: 'explorer', status: 'running', endedAt: undefined }),
+        ])}
+        agentReachable={() => false}
+      />
+    )
+    await openWorkflow()
+    expect(screen.queryByRole('button', { name: /stopTask/ })).toBeNull()
+  })
+
+  it('disables the control while a stop is in flight, and restores it if it failed', async () => {
+    // A second click would signal a pid the first may already have reaped.
+    let settle: () => void = () => {}
+    const onCancelTask = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          settle = resolve
+        })
+    )
+    render(
+      <Panel
+        state={stateWith([
+          task({
+            id: 'a',
+            kind: 'shell',
+            title: 'pnpm build',
+            status: 'running',
+            endedAt: undefined,
+            jobId: 'bash-3',
+          }),
+        ])}
+        onCancelTask={onCancelTask}
+      />
+    )
+    await openWorkflow()
+    const stop = screen.getByRole('button', { name: /stopTask/ })
+    await userEvent.click(stop)
+    expect(screen.getByRole('button', { name: /stopTask/ })).toBeDisabled()
+
+    // The attempt failed, so the task is still there to stop.
+    await act(async () => {
+      settle()
+    })
+    expect(screen.getByRole('button', { name: /stopTask/ })).toBeEnabled()
+    expect(onCancelTask).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('stopping a whole workflow', () => {
+  const live = (over: Partial<ActivityTask> = {}) =>
+    task({ status: 'running', endedAt: undefined, ...over })
+
+  it('offers a control while it has children that can be stopped', () => {
+    render(<Panel state={stateWith([live({ id: 'a' })])} />)
+    expect(
+      screen.getByRole('button', {
+        name: 'common:tasks.stopWorkflow name=refactor the parser',
+      })
+    ).toBeInTheDocument()
+  })
+
+  it('offers none once nothing is left to stop', () => {
+    render(<Panel state={stateWith([task({ id: 'a', status: 'done' })])} />)
+    expect(
+      screen.queryByRole('button', { name: /stopWorkflow/ })
+    ).toBeNull()
+  })
+
+  it('offers none when every remaining child is unreachable', () => {
+    // A foreground command has nothing to signal; a control here would only
+    // report that it did nothing.
+    render(
+      <Panel
+        state={stateWith([live({ id: 'a', kind: 'shell', title: 'pnpm build' })])}
+      />
+    )
+    expect(screen.queryByRole('button', { name: /stopWorkflow/ })).toBeNull()
+  })
+
+  it('asks to stop that workflow, and no other', async () => {
+    const onCancelWorkflow = vi.fn()
+    render(
+      <Panel state={stateWith([live({ id: 'a' })])} onCancelWorkflow={onCancelWorkflow} />
+    )
+    await userEvent.click(
+      screen.getByRole('button', { name: /stopWorkflow/ })
+    )
+    expect(onCancelWorkflow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflow: expect.objectContaining({ id: WORKFLOW }),
+      })
+    )
+  })
+
+  it('disables the control while the stop is in flight', async () => {
+    let settle: () => void = () => {}
+    const onCancelWorkflow = vi.fn(
+      () => new Promise<void>((resolve) => { settle = resolve })
+    )
+    render(
+      <Panel state={stateWith([live({ id: 'a' })])} onCancelWorkflow={onCancelWorkflow} />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /stopWorkflow/ }))
+    expect(screen.getByRole('button', { name: /stopWorkflow/ })).toBeDisabled()
+    await act(async () => { settle() })
+    expect(screen.getByRole('button', { name: /stopWorkflow/ })).toBeEnabled()
+    expect(onCancelWorkflow).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Running and Finished sections', () => {
+  /** A second workflow in the same session, with its own tasks. */
+  const twoWorkflows = () => {
+    let state = stateWith([
+      task({ id: 'a', status: 'running', endedAt: undefined }),
+    ])
+    state = startWorkflow(
+      state,
+      workflow({ id: 'run-2', title: 'a finished run', startedAt: T0 - 10 })
+    )
+    state = startTask(
+      state,
+      task({ id: 'b', workflowId: 'run-2', status: 'done' })
+    )
+    return endWorkflow(state, 'run-2', T0 + 1)
+  }
+
+  it('puts live work under Running and the rest under Finished', () => {
+    render(<Panel state={twoWorkflows()} />)
+    expect(screen.getByText(/tasks.running count=1/)).toBeInTheDocument()
+    expect(screen.getByText(/tasks.finished count=1/)).toBeInTheDocument()
+  })
+
+  it('keeps a workflow whose background command is still running under Running', () => {
+    // Its model turn is over; the process is not.
+    const state = endWorkflow(
+      stateWith([
+        task({
+          id: 'a',
+          kind: 'shell',
+          status: 'running',
+          endedAt: undefined,
+          jobId: 'bash-3',
+        }),
+      ]),
+      WORKFLOW,
+      T0 + 1
+    )
+    render(<Panel state={state} />)
+    expect(screen.getByText(/tasks.running count=1/)).toBeInTheDocument()
+    expect(screen.queryByText(/tasks.finished count=/)).toBeNull()
+  })
+
+  it('shows a failed workflow under Finished, with its status', () => {
+    const state = endWorkflow(
+      stateWith([task({ id: 'a', status: 'error' })]),
+      WORKFLOW,
+      T0 + 1
+    )
+    render(<Panel state={state} />)
+    expect(screen.getByText(/tasks.finished count=1/)).toBeInTheDocument()
+    expect(
+      screen.getAllByLabelText('common:tasks.statusError').length
+    ).toBeGreaterThan(0)
+  })
+
+  it('shows a cancelled workflow under Finished, with its status', () => {
+    const state = endWorkflow(
+      stateWith([task({ id: 'a', status: 'cancelled' })]),
+      WORKFLOW,
+      T0 + 1
+    )
+    render(<Panel state={state} />)
+    expect(screen.getByText(/tasks.finished count=1/)).toBeInTheDocument()
+    expect(
+      screen.getAllByLabelText('common:tasks.statusCancelled').length
+    ).toBeGreaterThan(0)
+  })
+
+  it('collapses the Finished section without touching Running', async () => {
+    render(<Panel state={twoWorkflows()} />)
+    const toggle = screen
+      .getAllByRole('button')
+      .find((b) => b.textContent?.includes('tasks.finished'))!
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+    await userEvent.click(toggle)
+    expect(screen.queryByText('a finished run')).toBeNull()
+    // The running workflow is untouched.
+    expect(screen.getByText('refactor the parser')).toBeInTheDocument()
+  })
+
+  it('orders each section newest first', () => {
+    let state = stateWith([task({ id: 'a', status: 'running', endedAt: undefined })])
+    state = startWorkflow(
+      state,
+      workflow({ id: 'run-3', title: 'a later run', startedAt: T0 + 500 })
+    )
+    state = startTask(
+      state,
+      task({ id: 'c', workflowId: 'run-3', status: 'running', endedAt: undefined })
+    )
+    render(<Panel state={state} />)
+    const titles = screen
+      .getAllByRole('button')
+      .filter((b) => b.hasAttribute('aria-expanded') && b.textContent)
+      .map((b) => b.textContent)
+    expect(titles[0]).toContain('a later run')
+  })
+
+  it('offers Clear only alongside the Finished section', () => {
+    render(
+      <Panel
+        state={stateWith([task({ id: 'a', status: 'running', endedAt: undefined })])}
+      />
+    )
+    expect(
+      screen.queryByRole('button', { name: 'common:tasks.clearFinished' })
+    ).toBeNull()
+  })
+})
+
+describe('revealing the workflow the card pointed at', () => {
+  const twoLive = () => {
+    let state = stateWith([
+      task({ id: 'a', status: 'running', endedAt: undefined, output: 'from one' }),
+    ])
+    state = startWorkflow(
+      state,
+      workflow({ id: 'run-2', title: 'the other run', startedAt: T0 + 5 })
+    )
+    return startTask(
+      state,
+      task({
+        id: 'b',
+        workflowId: 'run-2',
+        status: 'running',
+        endedAt: undefined,
+      })
+    )
+  }
+
+  it('expands the workflow asked for, and not the other', async () => {
+    render(<Panel state={twoLive()} focusWorkflowId="run-2" />)
+    // Its child is visible because the section opened; the other's is not.
+    expect(await screen.findByText('researcher')).toBeInTheDocument()
+    expect(
+      workflowHeader('the other run').getAttribute('aria-expanded')
+    ).toBe('true')
+    expect(
+      workflowHeader('refactor the parser').getAttribute('aria-expanded')
+    ).toBe('false')
+  })
+
+  it('chooses by id, never by the title on screen', async () => {
+    // Two runs of the same question carry the same title.
+    let state = stateWith([task({ id: 'a', status: 'running', endedAt: undefined })])
+    state = startWorkflow(
+      state,
+      workflow({ id: 'run-2', startedAt: T0 + 5 })
+    )
+    state = startTask(
+      state,
+      task({ id: 'b', workflowId: 'run-2', status: 'running', endedAt: undefined })
+    )
+    render(<Panel state={state} focusWorkflowId="run-2" />)
+
+    const headers = screen
+      .getAllByRole('button', { name: /refactor the parser/ })
+      .filter((b) => b.hasAttribute('aria-expanded'))
+    expect(headers.map((b) => b.getAttribute('aria-expanded'))).toEqual([
+      'true',
+      'false',
+    ])
+  })
+
+  it('reports the request handled when the workflow is gone', () => {
+    const onFocusHandled = vi.fn()
+    render(
+      <CoworkTasksPanel
+        workflows={[]}
+        totals={progressOf([])}
+        focusWorkflowId="run-missing"
+        onFocusHandled={onFocusHandled}
+        onCancelTask={vi.fn()}
+        onCancelWorkflow={vi.fn()}
+        onClearFinished={vi.fn()}
+        onClose={vi.fn()}
+      />
+    )
+    expect(onFocusHandled).toHaveBeenCalled()
   })
 })

@@ -18,7 +18,12 @@
 
 import { bashJobKill } from '@janhq/tauri-plugin-agent-tools-api'
 import { abortSubagent } from '@/lib/coworkRunner'
-import { isFinished, type ActivityTask } from '@/lib/coworkActivity'
+import {
+  cancellableTasks,
+  isFinished,
+  type ActivityTask,
+  type WorkflowView,
+} from '@/lib/coworkActivity'
 
 export type CancelOutcome =
   /** The work was signalled to stop. */
@@ -74,6 +79,15 @@ export async function cancelTask(
         return { taskId: task.id, outcome: 'cancelled' }
       case 'alreadyFinished':
         return { taskId: task.id, outcome: 'alreadyFinished' }
+      // The OS refused. The command is still running and the backend kept its
+      // pid, so this can be asked again — which is why it is a failure rather
+      // than "nothing to stop".
+      case 'failed':
+        return {
+          taskId: task.id,
+          outcome: 'failed',
+          error: killed.error ?? undefined,
+        }
       // `noPid` means the backend holds the job but never captured a process to
       // signal; `unknown` means it no longer holds it at all. Neither stopped
       // anything, and neither is a failure of this call.
@@ -125,5 +139,49 @@ export function cancelMessage(
       return t('common:tasks.cancelFailed', { error: result.error ?? '' })
     default:
       return t('common:tasks.cancelNotRunning')
+  }
+}
+
+/** What stopping a whole workflow achieved. */
+export type WorkflowCancelResult = {
+  workflowId: string
+  /** One entry per child the attempt reached. */
+  results: CancelResult[]
+  /** Children actually stopped. */
+  cancelled: number
+  /** Children the attempt could not stop, for whatever reason. */
+  failed: number
+}
+
+/**
+ * Stop every child of one workflow that can still be reached.
+ *
+ * Scoped to that workflow's own tasks, so a second run in the same session —
+ * and every other session — is untouched. Children already finished are left
+ * exactly as they are: their transcript, output and usage are the record of
+ * what happened, and stopping something that is over would rewrite it.
+ *
+ * Partial failure is reported rather than smoothed over: with three children
+ * of which one refuses to die, the caller needs to be able to say so.
+ */
+export async function cancelWorkflow(
+  sessionId: string,
+  view: WorkflowView,
+  opts: {
+    agentReachable?: (task: ActivityTask) => boolean
+    deps?: Deps
+  } = {}
+): Promise<WorkflowCancelResult> {
+  const targets = cancellableTasks(view.tasks, {
+    agentReachable: opts.agentReachable,
+  })
+  const results = await Promise.all(
+    targets.map((task) => cancelTask(sessionId, task, opts.deps ?? defaultDeps))
+  )
+  return {
+    workflowId: view.workflow.id,
+    results,
+    cancelled: results.filter((r) => r.outcome === 'cancelled').length,
+    failed: results.filter((r) => r.outcome !== 'cancelled').length,
   }
 }

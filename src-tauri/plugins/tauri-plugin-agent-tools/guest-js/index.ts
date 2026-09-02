@@ -278,10 +278,14 @@ export type BashJobKillOutcome =
   | 'unknown'
   /** The job exists but no pid was ever captured, so nothing was signalled. */
   | 'noPid'
+  /** The OS refused. The command is still running and can be asked again. */
+  | 'failed'
 
 export type BashJobKill = {
   jobId: string
   outcome: BashJobKillOutcome
+  /** Why it failed, when it did. Safe to show: it names the OS refusal. */
+  error?: string | null
 }
 
 /**
