@@ -185,11 +185,9 @@ export function CodeViewer({
         setSelection(null)
         return
       }
-      ;({ startLine, endLine } = lineRangeOfSlice(
-        content,
-        start,
-        start + text.length
-      ))
+      const fallback = lineRangeOfSlice(content, start, start + text.length)
+      startLine = fallback.startLine
+      endLine = fallback.endLine
     }
     setSelection({ path: relPath, startLine, endLine, code: text })
   }, [content, onAddToChat, relPath])
