@@ -157,8 +157,8 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:dataFolder.appDataDesc',
     keywords: ['storage', 'location', 'move data', 'disk'],
   }),
-  item('general', 'auto-update', 'settings:autoUpdateCheck', {
-    descriptionKey: 'settings:autoUpdateCheckDesc',
+  item('general', 'auto-update', 'settings:general.autoUpdateCheck', {
+    descriptionKey: 'settings:general.autoUpdateCheckDesc',
     keywords: ['updates', 'version', 'upgrade'],
   }),
   item('general', 'spell-check', 'settings:others.spellCheck', {

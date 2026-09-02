@@ -282,16 +282,22 @@ pub fn read_file(root: &str, rel: &str, allow_sensitive: bool) -> Result<Project
 mod tests {
     use super::*;
 
+    /// A directory no other test can be handed.
+    ///
+    /// Keyed by an atomic counter rather than the clock: tests run in parallel
+    /// threads of one process, and two calls landing in the same nanosecond
+    /// would share a directory, so one test would see the other's files and
+    /// fail an exact-listing assertion. That is a flake that only appears
+    /// under load, which is exactly where it is hardest to diagnose.
     fn temp_project() -> PathBuf {
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let dir = std::env::temp_dir()
             .join(format!("jan-pb-test-{}", std::process::id()))
-            .join(format!(
-                "{:x}",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            ));
+            .join(format!("case-{n}"));
+        // Start from a clean slate: an earlier run that reused this pid would
+        // otherwise leave entries behind that the listing assertions count.
+        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }

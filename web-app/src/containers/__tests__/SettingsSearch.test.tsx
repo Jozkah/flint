@@ -217,6 +217,20 @@ describe('SettingsSearch', () => {
     )
   })
 
+  it('drops an unclaimed target when a new query is typed', async () => {
+    // Some anchors belong to conditionally rendered controls, so a request can
+    // go unclaimed. It must not survive to fire on a later, unrelated visit.
+    render(<SettingsSearch />)
+    const { user } = await type('Theme')
+    await user.click(screen.getAllByRole('option')[0])
+    expect(useSettingsSearch.getState().pendingTarget).toBe(
+      'settings-appearance-theme'
+    )
+
+    await user.type(screen.getByLabelText('Search settings'), 'x')
+    expect(useSettingsSearch.getState().pendingTarget).toBeNull()
+  })
+
   it('never puts provider secrets or values in the index', async () => {
     providers = [
       {

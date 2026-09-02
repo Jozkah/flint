@@ -22,7 +22,12 @@ type SettingsSearchState = {
 
 export const useSettingsSearch = create<SettingsSearchState>((set, get) => ({
   query: '',
-  setQuery: (query) => set({ query }),
+  // A new query drops any unclaimed target. Some anchors belong to controls
+  // that only render under a condition (web search shows either an endpoint or
+  // an API key, never both), so a request can go unclaimed; without this it
+  // would sit there and fire the next time that page happened to mount the
+  // matching control, scrolling somewhere the user never asked to go.
+  setQuery: (query) => set({ query, pendingTarget: null }),
   clear: () => set({ query: '', pendingTarget: null }),
   pendingTarget: null,
   requestTarget: (anchor) => set({ pendingTarget: anchor }),

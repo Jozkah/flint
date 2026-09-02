@@ -29,6 +29,11 @@ function Privacy() {
         <SettingsMenu />
         <div className="p-4 pt-0 w-full overflow-y-auto">
           <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+            {/* Anchored around the whole card, not the description row: the
+                analytics switch lives in the card's header, so anchoring the
+                row would scroll to an explanation while the control it
+                describes sat outside the highlight. */}
+            <SettingTarget anchor="settings-privacy-analytics">
             <Card
               header={
                 <div className="flex items-center justify-between mb-4">
@@ -51,13 +56,11 @@ function Privacy() {
                 </div>
               }
             >
-              <SettingTarget anchor="settings-privacy-analytics">
-                <CardItem
-                  title={t('settings:privacy.helpUsImprove')}
-                  description={<p>{t('settings:privacy.helpUsImproveDesc')}</p>}
-                  align="start"
-                />
-              </SettingTarget>
+              <CardItem
+                title={t('settings:privacy.helpUsImprove')}
+                description={<p>{t('settings:privacy.helpUsImproveDesc')}</p>}
+                align="start"
+              />
               <CardItem
                 description={
                   <div className="text-foreground">
@@ -87,6 +90,7 @@ function Privacy() {
                 }
               />
             </Card>
+            </SettingTarget>
           </div>
         </div>
       </div>
