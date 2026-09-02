@@ -4,6 +4,7 @@ import HeaderPage from '@/containers/HeaderPage'
 import SettingsMenu from '@/containers/SettingsMenu'
 import { Card, CardItem } from '@/containers/Card'
 import { SettingTarget } from '@/components/SettingTarget'
+import { WEB_SEARCH_PROVIDER_CONFIG_ANCHOR } from '@/lib/settingsSearch'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import {
@@ -121,8 +122,12 @@ function WebSearchContent() {
                   </DropdownMenu>
                 }
               />
-              {provider.requiresEndpoint ? (
-                <SettingTarget anchor="settings-web-search-endpoint">
+              {/* One anchor around both branches, not one inside each: the
+                  provider decides which control exists, so a per-control
+                  anchor would be unmounted — and silently unreachable from
+                  search — for every provider that renders the other one. */}
+              <SettingTarget anchor={WEB_SEARCH_PROVIDER_CONFIG_ANCHOR}>
+                {provider.requiresEndpoint ? (
                   <CardItem
                     title={t('settings:webSearch.endpoint', {
                       provider: provider.label,
@@ -149,9 +154,7 @@ function WebSearchContent() {
                       </div>
                     }
                   />
-                </SettingTarget>
-              ) : (
-                <SettingTarget anchor="settings-web-search-api-key">
+                ) : (
                   <CardItem
                     title={t('settings:webSearch.apiKey', {
                       provider: provider.label,
@@ -196,8 +199,8 @@ function WebSearchContent() {
                       </div>
                     }
                   />
-                </SettingTarget>
-              )}
+                )}
+              </SettingTarget>
             </Card>
           </div>
         </div>

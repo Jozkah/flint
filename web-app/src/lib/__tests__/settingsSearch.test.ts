@@ -4,6 +4,7 @@ import {
   SETTINGS_ITEMS,
   buildSettingsIndex,
   searchSettings,
+  WEB_SEARCH_PROVIDER_CONFIG_ANCHOR,
   type ProviderForIndex,
   type SettingsIndexEntry,
 } from '@/lib/settingsSearch'
@@ -213,13 +214,39 @@ describe('SETTINGS_ITEMS', () => {
   it('anchors each setting to a stable id, never a translated string', () => {
     for (const item of SETTINGS_ITEMS) {
       expect(item.anchor).toMatch(/^settings-[a-z0-9-]+$/)
-      expect(item.anchor).toBe(item.id)
     }
   })
 
   it('has no duplicate ids', () => {
     const all = SETTINGS_ITEMS.map((i) => i.id)
     expect(new Set(all).size).toBe(all.length)
+  })
+
+  it('points the two web-search credential entries at one shared group', () => {
+    // They are the branches of a single conditional — a provider takes an
+    // instance URL or a key, never both — so at most one control is mounted.
+    // Anchoring each to its own control left the other's result navigating to
+    // a page where nothing scrolled or highlighted; both now address the
+    // group around the conditional, which is always rendered.
+    // web-search.test.tsx checks the page really renders it, for every shape.
+    const credentials = SETTINGS_ITEMS.filter(
+      (i) =>
+        i.id === 'settings-web-search-api-key' ||
+        i.id === 'settings-web-search-endpoint'
+    )
+    expect(credentials).toHaveLength(2)
+    for (const item of credentials) {
+      expect(item.anchor).toBe(WEB_SEARCH_PROVIDER_CONFIG_ANCHOR)
+    }
+  })
+
+  it('gives every other setting an anchor of its own, equal to its id', () => {
+    // Sharing an anchor is the documented exception, not licence to reuse
+    // ids: everywhere else the anchor is still the entry's own stable id.
+    for (const item of SETTINGS_ITEMS) {
+      if (item.anchor === WEB_SEARCH_PROVIDER_CONFIG_ANCHOR) continue
+      expect(item.anchor, item.id).toBe(item.id)
+    }
   })
 })
 
@@ -255,44 +282,6 @@ describe('registry i18n keys', () => {
         expect(resolve(item.descriptionKey), item.descriptionKey).toBeTypeOf(
           'string'
         )
-      }
-    }
-  })
-})
-
-describe('registry i18n keys', () => {
-  // An unresolvable key does not fail loudly: i18next echoes the key, so the
-  // result row would read "settings:autoUpdateCheck" instead of a label. Only
-  // the real locale files can catch that.
-  const bundles: Record<string, unknown> = {
-    common: enCommon,
-    settings: enSettings,
-  }
-
-  const resolve = (key: string): string | undefined => {
-    const [namespace, path] = key.split(':')
-    let node: unknown = bundles[namespace]
-    for (const part of (path ?? '').split('.')) {
-      if (typeof node !== 'object' || node === null) return undefined
-      node = (node as Record<string, unknown>)[part]
-    }
-    return typeof node === 'string' ? node : undefined
-  }
-
-  it('resolves every page title against the English locale', () => {
-    for (const page of SETTINGS_PAGES) {
-      expect(resolve(page.titleKey), page.titleKey).toBeTypeOf('string')
-    }
-  })
-
-  it('resolves every setting title and description', () => {
-    for (const item of SETTINGS_ITEMS) {
-      expect(resolve(item.titleKey), item.titleKey).toBeTypeOf('string')
-      if (item.descriptionKey) {
-        expect(
-          resolve(item.descriptionKey),
-          item.descriptionKey
-        ).toBeTypeOf('string')
       }
     }
   })

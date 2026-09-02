@@ -125,6 +125,21 @@ export const SETTINGS_PAGES: SettingsPage[] = [
   },
 ]
 
+/**
+ * Anchor for the web-search provider configuration group.
+ *
+ * A provider takes an instance URL (SearXNG) or an API key (Exa, Tavily),
+ * never both, so the page renders one control or the other. Anchoring each
+ * entry to its own control would leave whichever is unmounted navigating to a
+ * page where nothing scrolls or highlights, so both point here instead — at
+ * the group that wraps the conditional and is therefore always rendered.
+ *
+ * Exported so `routes/settings/web-search.tsx` renders this exact id and the
+ * two cannot drift apart under a rename.
+ */
+export const WEB_SEARCH_PROVIDER_CONFIG_ANCHOR =
+  'settings-web-search-provider-config'
+
 const sectionOf = (pageId: string): string =>
   SETTINGS_PAGES.find((p) => p.id === pageId)?.titleKey ?? 'common:settings'
 
@@ -227,10 +242,14 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:webSearch.enableDesc',
     keywords: ['web search', 'internet access'],
   }),
+  // Two names for one conditional slot: both stay separately searchable, and
+  // both land on the group. See WEB_SEARCH_PROVIDER_CONFIG_ANCHOR.
   item('web-search', 'api-key', 'settings:webSearch.apiKey', {
+    anchor: WEB_SEARCH_PROVIDER_CONFIG_ANCHOR,
     keywords: ['api key', 'credentials', 'search provider'],
   }),
   item('web-search', 'endpoint', 'settings:webSearch.endpoint', {
+    anchor: WEB_SEARCH_PROVIDER_CONFIG_ANCHOR,
     descriptionKey: 'settings:webSearch.endpointDesc',
     keywords: ['url', 'searxng'],
   }),
