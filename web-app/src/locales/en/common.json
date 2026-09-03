@@ -888,5 +888,20 @@
       "artifact": "artifact",
       "external": "external"
     }
+  },
+  "attachFiles": {
+    "reject": {
+      "unsupported": "This file type is not supported",
+      "too-large": "Too large to attach",
+      "duplicate": "Already attached",
+      "too-many": "Too many attachments on this message",
+      "needs-vision": "The selected model cannot read images",
+      "needs-audio": "The selected model cannot read audio",
+      "needs-video": "The selected model cannot read video",
+      "parser-unavailable": "The local document reader is unavailable",
+      "empty": "This file is empty"
+    },
+    "addFiles": "Add files",
+    "addFilesOrImages": "Add files or images"
   }
 }

@@ -102,6 +102,14 @@ import {
 } from '@/hooks/useChatAttachments'
 
 import {
+  acceptAttribute,
+  DEFAULT_ATTACHMENT_LIMITS,
+  isTextual,
+  reasonMessageKey,
+  validateAttachment,
+  type RejectionReason,
+} from '@/lib/attachmentSupport'
+import {
   Attachment,
   createImageAttachment,
   createDocumentAttachment,
@@ -410,6 +418,17 @@ const ChatInput = memo(function ChatInput({
   const ATTACHMENT_AUTO_INLINE_FALLBACK_BYTES = 512 * 1024
 
   const selectedModel = useModelProvider((state) => state.selectedModel)
+
+  /** What the picker offers, which follows the model's actual capabilities. */
+  const attachmentAccept = useMemo(
+    () =>
+      acceptAttribute({
+        vision: Boolean(selectedModel?.capabilities?.includes('vision')),
+        audio: Boolean(selectedModel?.capabilities?.includes('audio')),
+        video: Boolean(selectedModel?.capabilities?.includes('video')),
+      }),
+    [selectedModel?.capabilities]
+  )
   const selectedProvider = useModelProvider((state) => state.selectedProvider)
   const selectModelProvider = useModelProvider(
     (state) => state.selectModelProvider
@@ -1174,35 +1193,56 @@ const ChatInput = memo(function ChatInput({
 
   const processImageFiles = useCallback(async (files: File[]) => {
     const maxSize = 10 * 1024 * 1024 // 10MB in bytes
-    const oversizedFiles: string[] = []
-    const invalidTypeFiles: string[] = []
 
-    const allowedTypes = ['image/jpg', 'image/jpeg', 'image/png']
     const validFiles: File[] = []
+    const textFiles: File[] = []
+    // Each rejection keeps its own reason, so the message can say which of
+    // several possible problems this file actually had.
+    const rejected: { name: string; reason: RejectionReason }[] = []
 
-    // First pass: validate file size and type (no duplicate check yet)
+    const capabilities = {
+      vision: Boolean(selectedModel?.capabilities?.includes('vision')),
+      audio: Boolean(selectedModel?.capabilities?.includes('audio')),
+      video: Boolean(selectedModel?.capabilities?.includes('video')),
+    }
+    const limits = {
+      maxBytes: maxSize,
+      maxCount: DEFAULT_ATTACHMENT_LIMITS.maxCount,
+    }
+
     Array.from(files).forEach((file) => {
-      // Check file size
-      if (file.size > maxSize) {
-        oversizedFiles.push(file.name)
+      const decision = validateAttachment(file, { capabilities, limits })
+      if (!decision.ok) {
+        rejected.push({ name: file.name, reason: decision.reason })
         return
       }
-
-      // Get file type - use extension as fallback if MIME type is incorrect
-      const detectedType = file.type || getFileTypeFromExtension(file.name)
-      const actualType = getFileTypeFromExtension(file.name) || detectedType
-
-      // Check file type - images only
-      if (!allowedTypes.includes(actualType)) {
-        invalidTypeFiles.push(file.name)
-        return
-      }
-
-      validFiles.push(file)
+      // Text and code are read as text and travel through the document
+      // pipeline; raw bytes are never handed to a model.
+      if (isTextual(decision.kind)) textFiles.push(file)
+      else if (decision.kind === 'image') validFiles.push(file)
+      else rejected.push({ name: file.name, reason: 'unsupported' })
     })
 
     // Process valid files into attachments
     const preparedFiles: Attachment[] = []
+
+    // Text and code arrive as text, not bytes. They become inline document
+    // attachments, which is the path the model already understands, and which
+    // is why they need nothing of its media capabilities.
+    for (const file of textFiles) {
+      const text = await file.text()
+      preparedFiles.push({
+        ...createDocumentAttachment({
+          name: file.name,
+          path: file.name,
+          fileType: file.name.split('.').pop(),
+          size: file.size,
+          parseMode: 'inline',
+        }),
+        inlineContent: text,
+        processed: true,
+      })
+    }
     for (const file of validFiles) {
       const detectedType = file.type || getFileTypeFromExtension(file.name)
       const actualType = getFileTypeFromExtension(file.name) || detectedType
@@ -1345,16 +1385,18 @@ const ChatInput = memo(function ChatInput({
     }
 
     const errors: string[] = []
-    if (oversizedFiles.length > 0) {
-      errors.push(
-        `File${oversizedFiles.length > 1 ? 's' : ''} too large (max 10MB): ${oversizedFiles.join(', ')}`
-      )
+    // One line per reason, naming the files it applies to. The old message
+    // asserted an image-only rule that is no longer true, and never said
+    // which of several problems a given file actually had.
+    const byReason = new Map<RejectionReason, string[]>()
+    for (const item of rejected) {
+      byReason.set(item.reason, [
+        ...(byReason.get(item.reason) ?? []),
+        item.name,
+      ])
     }
-
-    if (invalidTypeFiles.length > 0) {
-      errors.push(
-        `Invalid file type${invalidTypeFiles.length > 1 ? 's' : ''} (only JPEG, JPG, PNG allowed): ${invalidTypeFiles.join(', ')}`
-      )
+    for (const [reason, names] of byReason) {
+      errors.push(`${t(reasonMessageKey(reason))}: ${names.join(', ')}`)
     }
 
     if (errors.length > 0) {
@@ -1366,7 +1408,15 @@ const ChatInput = memo(function ChatInput({
     } else {
       setMessage('')
     }
-  }, [attachmentsKey, currentThreadId, setAttachmentsForThread, serviceHub, setFileIngestProgress])
+  }, [
+    attachmentsKey,
+    currentThreadId,
+    setAttachmentsForThread,
+    serviceHub,
+    setFileIngestProgress,
+    selectedModel?.capabilities,
+    t,
+  ])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -2239,19 +2289,26 @@ const ChatInput = memo(function ChatInput({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
-                    {hasMmproj && (
-                      <DropdownMenuItem onClick={() => void openImagePicker()}>
-                        <IconPhoto size={18} className="text-muted-foreground" />
-                        <span>Add Images</span>
-                        <input
-                          type="file"
-                          ref={fileInputRef}
-                          className="hidden"
-                          multiple
-                          onChange={handleFileChange}
-                        />
-                      </DropdownMenuItem>
-                    )}
+                    {/* Not gated on vision: text and code are attachable to
+                        any model, and hiding the only entry point behind an
+                        image capability left text-only models with no way to
+                        attach anything at all. */}
+                    <DropdownMenuItem onClick={() => void openImagePicker()}>
+                      <IconPhoto size={18} className="text-muted-foreground" />
+                      <span>
+                        {hasMmproj
+                          ? t('common:attachFiles.addFilesOrImages')
+                          : t('common:attachFiles.addFiles')}
+                      </span>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        className="hidden"
+                        multiple
+                        accept={attachmentAccept}
+                        onChange={handleFileChange}
+                      />
+                    </DropdownMenuItem>
                     {audioSupported && (
                       <DropdownMenuItem onClick={() => void openAudioPicker()}>
                         <IconMusic size={18} className="text-muted-foreground" />
