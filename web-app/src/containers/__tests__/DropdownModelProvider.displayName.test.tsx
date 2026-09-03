@@ -268,8 +268,11 @@ describe('DropdownModelProvider - Display Name Integration', () => {
     // Render with model2 selected
     render(<DropdownModelProvider />)
 
-    // Check trigger shows Short Name
-    expect(screen.getByRole('button')).toHaveTextContent('Short Name')
+    // Check trigger shows Short Name. Addressed by the trigger itself rather
+    // than "the only button on screen", which the sort control is now also.
+    expect(screen.getByTestId('popover-trigger')).toHaveTextContent(
+      'Short Name'
+    )
     // Short Name appears in dropdown (at least 1 occurrence)
     expect(screen.getAllByText('Short Name').length).toBeGreaterThanOrEqual(1)
     // Custom Model 1 is also in the dropdown

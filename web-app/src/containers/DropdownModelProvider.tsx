@@ -9,7 +9,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { cn, getProviderTitle, getModelDisplayName } from '@/lib/utils'
 import { highlightFzfMatch } from '@/utils/highlight'
 import Capabilities from './Capabilities'
-import { IconSettings, IconX } from '@tabler/icons-react'
+import { IconArrowsSort, IconSettings, IconX } from '@tabler/icons-react'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { useThreads } from '@/hooks/useThreads'
@@ -20,6 +20,20 @@ import { Fzf } from 'fzf'
 import { localStorageKey } from '@/constants/localStorage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
+import { useModelOrder } from '@/hooks/useModelOrder'
+import {
+  MODEL_SORT_OPTIONS,
+  sortModels,
+  type ModelSortOption,
+} from '@/lib/modelSort'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { predefinedProviders } from '@/constants/providers'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -39,6 +53,27 @@ interface SearchableModel {
   value: string
   highlightedId?: string
 }
+
+/** The menu entry for each order. */
+const SORT_LABEL_KEYS: Record<ModelSortOption, string> = {
+  'name-asc': 'common:sortNameAsc',
+  'name-desc': 'common:sortNameDesc',
+  recent: 'common:sortRecent',
+  provider: 'common:sortProvider',
+}
+
+/**
+ * The identifier a renamed model is still addressed by.
+ *
+ * Shown only when it differs from the name on the row: under an unrenamed
+ * model it would just repeat the line above it, on every entry in the list.
+ */
+const OriginalModelId = ({ model }: { model: Model }) =>
+  model.displayName && model.displayName !== model.id ? (
+    <span className="block truncate text-xs text-muted-foreground">
+      {model.id}
+    </span>
+  ) : null
 
 // Helper functions for localStorage
 const setLastUsedModel = (provider: string, model: string) => {
@@ -70,6 +105,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { favoriteModels } = useFavoriteModel()
+  const { sort, setSort, lastUsed, markUsed } = useModelOrder()
   const serviceHub = useServiceHub()
 
   // Search state
@@ -336,6 +372,25 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     })
   }, [searchableItems, searchValue, fzfInstance])
 
+  /**
+   * Provider sections are one of the orders, and a search has an order of its
+   * own — relevance — that an alphabet would bury the best match under.
+   */
+  const wantsFlatList = !searchValue && sort !== 'provider'
+
+  // The browsable list in the order the user chose. Favorites are pinned above
+  // it, so they are not repeated here.
+  const flatItems = useMemo(() => {
+    if (!wantsFlatList) return []
+    return sortModels(filteredItems, sort, lastUsed).filter(
+      (item) => !favoriteModels.some((fav) => fav.id === item.model.id)
+    )
+  }, [filteredItems, wantsFlatList, sort, lastUsed, favoriteModels])
+
+  // With nothing to list, the provider sections are still worth showing: their
+  // headers are how a user reaches a provider's settings to add a model.
+  const isGrouped = !wantsFlatList || flatItems.length === 0
+
   // Group filtered items by provider, excluding favorites when not searching
   const groupedItems = useMemo(() => {
     const groups: Record<string, SearchableModel[]> = {}
@@ -392,6 +447,14 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       groups[providerKey].push(item)
     })
 
+    // Within a section the order is alphabetical by the name on screen, except
+    // while searching, where the ranking is the quality of the match.
+    if (!searchValue) {
+      for (const key of Object.keys(groups)) {
+        groups[key] = sortModels(groups[key], 'name-asc')
+      }
+    }
+
     return groups
   }, [filteredItems, providers, searchValue, favoriteModels])
 
@@ -416,6 +479,9 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
         searchableModel.provider.provider,
         searchableModel.model.id
       )
+      // …and in the history the "recently used" order reads, which keeps one
+      // entry per model rather than only the single most recent one.
+      markUsed(searchableModel.provider.provider, searchableModel.model.id)
 
 
       // Check mmproj existence for llamacpp models (async, don't block UI)
@@ -454,6 +520,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       getProviderByName,
       checkAndUpdateModelVisionCapability,
       serviceHub,
+      markUsed,
     ]
   )
 
@@ -527,23 +594,50 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       >
         <div className="flex flex-col size-full">
           {/* Search input */}
-          <div className="relative p-2 border-b">
+          <div className="flex items-center gap-1 p-2 border-b">
             <input
               ref={searchInputRef}
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               placeholder={t('common:searchModels')}
-              className="text-sm font-normal outline-0"
+              className="min-w-0 flex-1 bg-transparent text-sm font-normal outline-0"
             />
             {searchValue.length > 0 && (
-              <div className="absolute right-2 top-0 bottom-0 flex items-center justify-center">
-                <IconX
-                  size={16}
-                  className="text-muted-foreground cursor-pointer"
-                  onClick={onClearSearch}
-                />
-              </div>
+              <IconX
+                size={16}
+                className="shrink-0 text-muted-foreground cursor-pointer"
+                onClick={onClearSearch}
+              />
             )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={t('common:sortModels')}
+                  title={t('common:sortModels')}
+                  className="size-6 shrink-0 cursor-pointer flex items-center justify-center rounded-sm bg-secondary-foreground/8 transition-all duration-200 ease-in-out"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <IconArrowsSort
+                    size={14}
+                    className="text-muted-foreground"
+                  />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuLabel>{t('common:sortModels')}</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={sort}
+                  onValueChange={(value) => setSort(value as ModelSortOption)}
+                >
+                  {MODEL_SORT_OPTIONS.map((option) => (
+                    <DropdownMenuRadioItem key={option} value={option}>
+                      {t(SORT_LABEL_KEYS[option])}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* Model list */}
@@ -592,15 +686,19 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                             </div>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="text-sm truncate">
-                                  {getModelDisplayName(searchableModel.model)}
-                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <span className="block text-sm truncate">
+                                    {getModelDisplayName(searchableModel.model)}
+                                  </span>
+                                  <OriginalModelId
+                                    model={searchableModel.model}
+                                  />
+                                </div>
                               </TooltipTrigger>
                               <TooltipContent>
                                 {searchableModel.model.id}
                               </TooltipContent>
                             </Tooltip>
-                            <div className="flex-1"></div>
                             {capabilities.length > 0 && (
                               <div className="shrink-0 -mr-1.5">
                                 <Capabilities capabilities={capabilities} />
@@ -618,8 +716,71 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                   <div className="border-b mx-2"></div>
                 )}
 
-                {/* Regular provider sections */}
-                {Object.entries(groupedItems).map(([providerKey, models]) => {
+                {/* One ordered list, or a section per provider */}
+                {!isGrouped ? (
+                  <div className="bg-secondary/30 rounded-sm my-1.5 mx-1.5 py-1">
+                    {flatItems.map((searchableModel) => {
+                      const isSelected =
+                        selectedModel?.id === searchableModel.model.id &&
+                        selectedProvider === searchableModel.provider.provider
+                      const capabilities =
+                        searchableModel.model.capabilities || []
+                      const modelName = getModelDisplayName(
+                        searchableModel.model
+                      )
+
+                      return (
+                        <div
+                          key={searchableModel.value}
+                          onClick={() => handleSelect(searchableModel)}
+                          className={cn(
+                            'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
+                            'hover:bg-secondary/40',
+                            isSelected &&
+                              'bg-primary/15 hover:bg-primary/15 ring-1 ring-primary/40'
+                          )}
+                        >
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <div className="shrink-0 -ml-1">
+                              <ProvidersAvatar
+                                provider={searchableModel.provider}
+                              />
+                            </div>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="min-w-0 flex-1">
+                                  <span className="block text-sm truncate">
+                                    {modelName}
+                                  </span>
+                                  {/* A single list has no provider header, so
+                                      the row carries it — with the original
+                                      identifier when the name hides it. */}
+                                  <span className="block truncate text-xs text-muted-foreground">
+                                    {getProviderTitle(
+                                      searchableModel.provider.provider
+                                    )}
+                                    {modelName !== searchableModel.model.id
+                                      ? ` · ${searchableModel.model.id}`
+                                      : ''}
+                                  </span>
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {searchableModel.model.id}
+                              </TooltipContent>
+                            </Tooltip>
+                            {capabilities.length > 0 && (
+                              <div className="shrink-0 -mr-1.5">
+                                <Capabilities capabilities={capabilities} />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  Object.entries(groupedItems).map(([providerKey, models]) => {
                   const providerInfo = providers.find(
                     (p) => p.provider === providerKey
                   )
@@ -685,17 +846,21 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                               <div className="flex items-center gap-2 flex-1 min-w-0">
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <span className="text-sm truncate">
-                                      {getModelDisplayName(
-                                        searchableModel.model
-                                      )}
-                                    </span>
+                                    <div className="min-w-0 flex-1">
+                                      <span className="block text-sm truncate">
+                                        {getModelDisplayName(
+                                          searchableModel.model
+                                        )}
+                                      </span>
+                                      <OriginalModelId
+                                        model={searchableModel.model}
+                                      />
+                                    </div>
                                   </TooltipTrigger>
                                   <TooltipContent>
                                     {searchableModel.model.id}
                                   </TooltipContent>
                                 </Tooltip>
-                                <div className="flex-1"></div>
                                 {capabilities.length > 0 && (
                                   <div className="shrink-0 -mr-1.5">
                                     <Capabilities capabilities={capabilities} />
@@ -708,7 +873,8 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                       )}
                     </div>
                   )
-                })}
+                  })
+                )}
               </div>
             )}
           </div>

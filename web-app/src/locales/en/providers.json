@@ -81,6 +81,11 @@
   "editModel": {
     "title": "Edit Model: {{modelId}}",
     "description": "Configure model capabilities by toggling the options below.",
+    "displayName": "Display Name",
+    "displayNamePlaceholder": "Enter a display name",
+    "displayNameHelp": "Shown wherever this model is listed. Requests still use the original identifier, {{modelId}}.",
+    "displayNameEmpty": "Enter a name, or type the model identifier to go back to it.",
+    "displayNameDuplicate": "Another model from this provider already uses that name.",
     "capabilities": "Capabilities",
     "tools": "Tools",
     "vision": "Vision",

@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { validateDisplayName } from '@/lib/modelDisplayName'
+import { getModelDisplayName } from '@/lib/utils'
 import {
   IconPencil,
   IconEye,
@@ -67,6 +69,14 @@ export const DialogEditModel = ({
     (m: Model) => m.id === selectedModelId
   )
 
+  // A name has to be usable before it can be saved: not blank, and not one
+  // another model in this provider already answers to.
+  const validation = validateDisplayName({
+    raw: displayName,
+    modelId: selectedModelId,
+    models: provider.models,
+  })
+
   // Helper function to convert capabilities array to object
   const capabilitiesToObject = (capabilitiesList: string[]) => ({
     vision: capabilitiesList.includes('vision'),
@@ -84,8 +94,8 @@ export const DialogEditModel = ({
       setCapabilities(capsObject)
       setOriginalCapabilities(capsObject)
 
-      // Use existing displayName if available, otherwise fall back to model ID
-      const displayNameValue = (selectedModel as Model & { displayName?: string }).displayName || selectedModel.id
+      // The custom name if there is one, otherwise the model's own identifier.
+      const displayNameValue = getModelDisplayName(selectedModel)
       setDisplayName(displayNameValue)
       setOriginalDisplayName(displayNameValue)
     }
@@ -114,7 +124,7 @@ export const DialogEditModel = ({
 
   // Handle save changes
   const handleSaveChanges = async () => {
-    if (!selectedModel?.id || isLoading) return
+    if (!selectedModel?.id || isLoading || !validation.ok) return
 
     setIsLoading(true)
     try {
@@ -125,7 +135,9 @@ export const DialogEditModel = ({
       const modelUpdate: Partial<Model> & { _userConfiguredCapabilities?: boolean } = {}
 
       if (nameChanged) {
-        modelUpdate.displayName = displayName
+        // `undefined` when the user typed the identifier back in: the override
+        // is dropped rather than set to the model's own name.
+        modelUpdate.displayName = validation.displayName
       }
 
       if (capabilitiesChanged) {
@@ -177,7 +189,7 @@ export const DialogEditModel = ({
 
   // Handle keyboard events for Enter key
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && hasUnsavedChanges() && !isLoading) {
+    if (e.key === 'Enter' && hasUnsavedChanges() && validation.ok && !isLoading) {
       e.preventDefault()
       handleSaveChanges()
     }
@@ -206,18 +218,32 @@ export const DialogEditModel = ({
             htmlFor="display-name"
             className="text-sm font-medium mb-3 block"
           >
-            Display Name
+            {t('providers:editModel.displayName')}
           </label>
           <Input
             id="display-name"
             value={displayName}
             onChange={(e) => handleDisplayNameChange(e.target.value)}
-            placeholder="Enter display name"
+            placeholder={t('providers:editModel.displayNamePlaceholder')}
             className="w-full"
             disabled={isLoading}
+            aria-invalid={!validation.ok}
+            aria-describedby="display-name-help"
           />
-          <p className="text-xs text-muted-foreground mt-1">
-            This is the name that will be shown in the interface. The original model file remains unchanged.
+          <p id="display-name-help" className="text-xs mt-1">
+            {validation.ok ? (
+              <span className="text-muted-foreground">
+                {t('providers:editModel.displayNameHelp', {
+                  modelId: selectedModel.id,
+                })}
+              </span>
+            ) : (
+              <span className="text-destructive">
+                {validation.error === 'empty'
+                  ? t('providers:editModel.displayNameEmpty')
+                  : t('providers:editModel.displayNameDuplicate')}
+              </span>
+            )}
           </p>
         </div>
 
@@ -315,7 +341,7 @@ export const DialogEditModel = ({
         <div className="flex justify-end pt-4">
           <Button
             onClick={handleSaveChanges}
-            disabled={!hasUnsavedChanges() || isLoading}
+            disabled={!hasUnsavedChanges() || !validation.ok || isLoading}
             size="sm"
           >
             {isLoading ? (

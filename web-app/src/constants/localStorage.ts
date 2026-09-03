@@ -23,6 +23,7 @@ export const localStorageKey = {
   lastUsedAssistant: 'last-used-assistant',
   defaultAssistantId: 'default-assistant-id',
   favoriteModels: 'favorite-models',
+  modelOrder: 'model-order',
   setupCompleted: 'setup-completed',
   threadManagement: 'thread-management',
   modelSupportCache: 'jan_model_support_cache',
