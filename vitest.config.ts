@@ -12,7 +12,6 @@ export default defineConfig({
       // Extensions - each ships its own vitest config
       './extensions/assistant-extension',
       './extensions/conversational-extension',
-      './extensions/download-extension',
       './extensions/llamacpp-extension',
       // mlx depends on @janhq/tauri-plugin-mlx-api, which only resolves on
       // macOS; skip its project elsewhere to avoid a resolve failure.

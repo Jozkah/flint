@@ -14,15 +14,11 @@ use url::Url;
 
 // ===== CONSTANTS =====
 
-
-
 // ===== UTILITY FUNCTIONS =====
 
 pub fn err_to_string<E: std::fmt::Display>(e: E) -> String {
     format!("Error: {e}")
 }
-
-
 
 // ===== VALIDATION FUNCTIONS =====
 
@@ -576,7 +572,6 @@ async fn download_single_file(
         _get_maybe_resume_with_fallback(&client, &item.url, 0).await?
     };
 
-
     // If HEAD gave us no size, refine the running total from the GET response
     // so the UI can progress past "Initializing" and show a real percentage.
     if file_size == 0 {
@@ -684,7 +679,6 @@ pub async fn _get_maybe_resume_with_fallback(
     let resp = _get_maybe_resume_internal(client, url, start_bytes).await?;
     Ok((resp, url.to_string()))
 }
-
 
 /// Internal function to attempt download from a single URL (without HMAC)
 async fn _get_maybe_resume_internal(

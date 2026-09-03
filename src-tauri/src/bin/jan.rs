@@ -562,7 +562,6 @@ async fn main() {
     }
 }
 
-
 async fn handle_plugin(cmd: PluginCommands) {
     let result =
         match cmd {

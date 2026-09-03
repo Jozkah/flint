@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -86,6 +86,103 @@ describe('no update checking', () => {
 
   it('asks no release feed what the latest version is', () => {
     expect(filesMatching(/api\.github\.com|releases\/latest/)).toEqual([])
+  })
+})
+
+/**
+ * The repository outside the web app: Rust, extensions and packaging. Scanned
+ * as text so a reintroduced host or downloader is caught wherever it lands.
+ */
+function repoFiles(dir: string, found: string[] = []): string[] {
+  const skip = new Set([
+    'node_modules',
+    'target',
+    'dist',
+    'dist-js',
+    '.git',
+    'build',
+  ])
+  for (const entry of readdirSync(dir)) {
+    if (skip.has(entry)) continue
+    const path = join(dir, entry)
+    if (statSync(path).isDirectory()) {
+      repoFiles(path, found)
+    } else if (/\.(rs|ts|tsx|json|toml|ya?ml)$/.test(entry)) {
+      found.push(path)
+    }
+  }
+  return found
+}
+
+const RUST = sourceFilesUnder(resolve(REPO, 'src-tauri/src'))
+const EXTENSIONS = repoFiles(resolve(REPO, 'extensions'))
+
+function sourceFilesUnder(dir: string): string[] {
+  return repoFiles(dir)
+}
+
+/** Repo-relative paths of files matching, excluding this guard itself. */
+function repoMatches(files: string[], pattern: RegExp): string[] {
+  return files
+    .filter((path) => pattern.test(read(path)))
+    .map((path) => relative(REPO, path))
+    .filter((rel) => !rel.endsWith('localOnly.test.ts'))
+}
+
+describe('the Rust core reaches no vendor service', () => {
+  it('has no updater module left', () => {
+    expect(existsSync(resolve(REPO, 'src-tauri/src/core/updater'))).toBe(false)
+    expect(existsSync(resolve(REPO, 'src-tauri/src/core/cli/updater.rs'))).toBe(
+      false
+    )
+  })
+
+  it('collects no usage identity', () => {
+    expect(
+      existsSync(resolve(REPO, 'src-tauri/src/core/cli/telemetry.rs'))
+    ).toBe(false)
+    expect(repoMatches(RUST, /install_id|nonce_seed/i)).toEqual([])
+  })
+
+  it('names no vendor host', () => {
+    expect(repoMatches(RUST, /https?:\/\/[a-z0-9.-]*jan\.ai/i)).toEqual([])
+  })
+
+  it('routes downloads through no mirror', () => {
+    expect(repoMatches(RUST, /convert_to_mirror_url|MIRROR_DOMAINS/)).toEqual([])
+  })
+
+  it('ships no updater plugin or capability', () => {
+    const cargo = read(resolve(REPO, 'src-tauri/Cargo.toml'))
+    expect(cargo).not.toMatch(/tauri-plugin-updater/)
+    const caps = read(resolve(REPO, 'src-tauri/capabilities/default.json'))
+    expect(caps).not.toMatch(/updater/)
+  })
+})
+
+describe('the extensions fetch no models', () => {
+  it('has no download extension', () => {
+    // Its source, not its build output: a stale `dist/` from an earlier build
+    // is not a dependency, and leaving one lying about must not fail this.
+    expect(
+      existsSync(resolve(REPO, 'extensions/download-extension/package.json'))
+    ).toBe(false)
+    expect(
+      existsSync(resolve(REPO, 'extensions/download-extension/src'))
+    ).toBe(false)
+    expect(repoMatches(EXTENSIONS, /@janhq\/download-extension/)).toEqual([])
+  })
+
+  it('leaves the web app with no reference to one either', () => {
+    expect(filesMatching(/@janhq\/download-extension/)).toEqual([])
+  })
+})
+
+describe('packaging pulls from no vendor catalogue', () => {
+  it('builds the Flatpak from a local artifact', () => {
+    const manifest = read(resolve(REPO, 'flatpak/ai.jan.Jan.yml'))
+    expect(manifest).not.toMatch(/catalog\.jan\.ai/)
+    expect(manifest).not.toMatch(/https?:\/\/[a-z0-9.-]*jan\.ai/i)
   })
 })
 

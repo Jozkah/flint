@@ -3,7 +3,6 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { getServiceHub } from '@/hooks/useServiceHub'
-import { ExtensionManager } from '@/lib/extension'
 
 export const HUGGINGFACE_TOKEN_SECRET_KEY = 'huggingface'
 type GeneralSettingState = {
@@ -44,25 +43,6 @@ export const useGeneralSetting = create<GeneralSettingState>()(
           .catch((err) =>
             console.warn('Failed to persist huggingface token to keyring:', err)
           )
-        ExtensionManager.getInstance()
-          .getByName('@janhq/download-extension')
-          ?.getSettings()
-          .then((settings) => {
-            if (settings) {
-              const newSettings = settings.map((e) => {
-                if (e.key === 'hf-token') {
-                  e.controllerProps.value = token
-                }
-                return e
-              })
-              ExtensionManager.getInstance()
-                .getByName('@janhq/download-extension')
-                ?.updateSettings(newSettings)
-            }
-          })
-          .catch((err) => {
-            console.warn('Failed to persist huggingface token:', err)
-          })
       },
     }),
     {
