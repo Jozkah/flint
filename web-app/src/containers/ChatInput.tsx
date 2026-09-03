@@ -2,7 +2,7 @@ import TextareaAutosize from 'react-textarea-autosize'
 import { cn, formatBytes } from '@/lib/utils'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useThreads } from '@/hooks/useThreads'
-import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
+import { useCallback, useEffect, useRef, useState, memo } from 'react'
 import type { ReactNode } from 'react'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
@@ -34,7 +34,6 @@ import {
   IconPaperclip,
   IconLoader2,
   IconWorldSearch,
-  IconBrandChrome,
 } from '@tabler/icons-react'
 import { generateId } from 'ai'
 import { useMessageQueue } from '@/stores/message-queue-store'
@@ -116,8 +115,6 @@ import {
   createAudioAttachment,
   createVideoAttachment,
 } from '@/types/attachment'
-import JanBrowserExtensionDialog from '@/containers/dialogs/JanBrowserExtensionDialog'
-import { useJanBrowserExtension } from '@/hooks/useJanBrowserExtension'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import {
@@ -467,34 +464,6 @@ const ChatInput = memo(function ChatInput({
     setSelectedAssistantId(projectAssistantId || currentAssistant?.id || '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, projectAssistantId])
-
-  // Jan Browser Extension hook
-  const {
-    hasConfig: hasJanBrowserMCPConfig,
-    isActive: janBrowserMCPActive,
-    isLoading: isJanBrowserMCPLoading,
-    dialogOpen: extensionDialogOpen,
-    dialogState: extensionDialogState,
-    toggleBrowser: handleBrowseClick,
-    disableDueToIncompatibleModel,
-    handleCancel: handleExtensionDialogCancel,
-    setDialogOpen: setExtensionDialogOpen,
-  } = useJanBrowserExtension()
-
-  // Check if model supports browser feature (requires both vision and tools)
-  const modelSupportsBrowser = useMemo(() => {
-    const capabilities = selectedModel?.capabilities || []
-    return capabilities.includes('vision') && capabilities.includes('tools')
-  }, [selectedModel?.capabilities])
-
-  // Auto-disable browser feature when model doesn't support it
-  useEffect(() => {
-    if (janBrowserMCPActive && !modelSupportsBrowser) {
-      disableDueToIncompatibleModel()
-    }
-    // disableDueToIncompatibleModel omitted: its !isActive guard makes stale closures safe.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [janBrowserMCPActive, modelSupportsBrowser])
 
   const attachmentsEnabled = useAttachments((s) => s.enabled)
   const parsePreference = useAttachments((s) => s.parseMode)
@@ -2396,48 +2365,6 @@ const ChatInput = memo(function ChatInput({
                     updateCurrentThreadAssistant,
                   }}
                 />
-                {showToolControls && hasJanBrowserMCPConfig && modelSupportsBrowser && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        disabled={isJanBrowserMCPLoading}
-                        className={cn(janBrowserMCPActive && "text-primary")}
-                        onClick={
-                          isJanBrowserMCPLoading
-                            ? undefined
-                            : handleBrowseClick
-                        }
-                      >
-                        {isJanBrowserMCPLoading ? (
-                          <IconLoader2
-                            size={18}
-                            className="text-primary animate-spin"
-                          />
-                        ) : (
-                          <IconBrandChrome
-                            size={18}
-                            className={cn(
-                              'text-muted-foreground',
-                              janBrowserMCPActive && 'text-primary'
-                            )}
-                          />
-                        )}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>
-                        {isJanBrowserMCPLoading
-                          ? t('common:starting')
-                          : janBrowserMCPActive
-                            ? t('common:browse') + t('common:activeSuffix')
-                            : t('common:browse')}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-
                 {showToolControls && selectedModel?.capabilities?.includes('embeddings') && (
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -2948,12 +2875,6 @@ const ChatInput = memo(function ChatInput({
         </div>
       )}
 
-      <JanBrowserExtensionDialog
-        open={extensionDialogOpen}
-        onOpenChange={setExtensionDialogOpen}
-        state={extensionDialogState}
-        onCancel={handleExtensionDialogCancel}
-      />
     </div>
   )
 })

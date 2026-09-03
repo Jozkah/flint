@@ -616,7 +616,11 @@ describe('ProviderDetail route', () => {
     })
 
     it('refresh toasts error on fetch failure', async () => {
-      h.providersSvc.fetch = vi.fn(() => vi.fn().mockRejectedValue(new Error('nope')))
+      // Refresh now asks the provider itself for its model list; there is
+      // no catalogue fetch behind it any more.
+      h.providersSvc.fetchModelsFromProvider = vi
+        .fn()
+        .mockRejectedValue(new Error('nope'))
       renderComponent()
       const addModel = screen.getByTestId('add-model')
       const refreshBtn = addModel.parentElement?.querySelector('button') as HTMLButtonElement

@@ -2,39 +2,29 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { localStorageKey, CACHE_EXPIRY_MS } from '@/constants/localStorage'
-import { useDownloadStore } from '@/hooks/useDownloadStore'
+import { localStorageKey } from '@/constants/localStorage'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useEffect, useMemo, useCallback, useState, useRef } from 'react'
 import { AppEvent, events } from '@janhq/core'
-import { SETUP_SCREEN_QUANTIZATIONS } from '@/constants/models'
-import { useLatestJanModel } from '@/hooks/useLatestJanModel'
-import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import {
   IconAlertTriangle,
   IconArrowRight,
   IconCheck,
   IconCpu,
-  IconEye,
   IconLoader2,
-  IconSquareCheck,
 } from '@tabler/icons-react'
-import { cn } from '@/lib/utils'
-import { useGeneralSetting } from '@/hooks/useGeneralSetting'
+import { cn, getModelDisplayName } from '@/lib/utils'
 import {
   useSetupChecklist,
   type SetupStageState,
 } from '@/hooks/useSetupChecklist'
-import { pickMmproj, type SetupModelOption } from '@/lib/setupModelOptions'
 import { DependencyAdvice } from './dialogs/DependencyAdvice'
 import HeaderPage from './HeaderPage'
 
 /**
- * One page of the setup flow. The model page is derived from download state
- * rather than from a readiness probe, so it does not come from
- * `useSetupChecklist` with the others.
+ * One page of the setup flow. The last page is not a readiness probe, so it
+ * does not come from `useSetupChecklist` with the others.
  */
 type WizardStep = {
   id: string
@@ -45,176 +35,16 @@ type WizardStep = {
   detail?: string
 }
 
-/**
- * Renders before the model metadata lands, so the name and size are optional and
- * the card does not pop into existence once the fetch resolves.
- */
-function ModelCard({
-  option,
-  fallbackName,
-  progress,
-  isDownloading,
-  isDownloaded,
-  onDownload,
-}: {
-  option: SetupModelOption | null
-  fallbackName?: string
-  /** Completed fraction, 0 to 1. */
-  progress: number
-  isDownloading: boolean
-  isDownloaded: boolean
-  onDownload: () => void
-}) {
-  const { t } = useTranslation()
-  const name =
-    option?.displayName || fallbackName || t('setup:fallbackModelName')
-
-  return (
-    <div
-      data-testid="setup-model-card"
-      className="bg-secondary/50 p-3 rounded-lg border flex items-center gap-3"
-    >
-      <div className="shrink-0 size-12 bg-background rounded-xl flex items-center justify-center">
-        <img src="/images/jan-logo.png" alt="Jan Logo" className="size-6" />
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <h2 className="font-semibold text-sm truncate">
-          <span>{name}</span>
-          {option?.fileSize && (
-            <>
-              &nbsp;
-              <span className="text-xs text-muted-foreground font-normal">
-                · {option.fileSize}
-              </span>
-            </>
-          )}
-        </h2>
-        <div className="text-muted-foreground text-sm mt-1.5 flex items-center gap-1">
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-secondary text-xs rounded-full">
-            <IconSquareCheck size={12} />
-            {t('setup:capabilityGeneral')}
-          </span>
-          {option?.multimodal && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-secondary text-xs rounded-full">
-              <IconEye size={12} />
-              {t('setup:capabilityMultimodal')}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* The action sits with the thing it acts on rather than anchoring the
-          screen, since downloading this model is not a precondition for the
-          checks above it. */}
-      <div className="shrink-0">
-        {isDownloaded ? (
-          <span className="inline-flex items-center gap-1 text-xs text-green-500">
-            <IconCheck size={14} />
-            {t('setup:modelInstalled')}
-          </span>
-        ) : isDownloading ? (
-          <div className="flex w-20 items-center gap-2">
-            <Progress className="border" value={progress * 100} />
-            <span className="text-xs text-muted-foreground">
-              {Math.round(progress * 100)}%
-            </span>
-          </div>
-        ) : (
-          <Button variant="outline" size="sm" onClick={onDownload}>
-            {t('setup:download')}
-          </Button>
-        )}
-      </div>
-    </div>
-  )
-}
-
-type CacheEntry = {
-  status: 'RED' | 'YELLOW' | 'GREEN' | 'GREY'
-  timestamp: number
-}
-
-const modelSupportCache = new Map<string, CacheEntry>()
-
-function loadCacheFromStorage() {
-  try {
-    const stored = localStorage.getItem(localStorageKey.modelSupportCache)
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      Object.entries(parsed).forEach(([key, value]) => {
-        modelSupportCache.set(key, value as CacheEntry)
-      })
-    }
-  } catch (error) {
-    console.error('Failed to load model support cache:', error)
-  }
-}
-
-function saveCacheToStorage() {
-  try {
-    const cacheObj = Object.fromEntries(modelSupportCache.entries())
-    localStorage.setItem(
-      localStorageKey.modelSupportCache,
-      JSON.stringify(cacheObj)
-    )
-  } catch (error) {
-    console.error('Failed to save model support cache:', error)
-  }
-}
-
-function getCachedSupport(
-  modelId: string
-): 'RED' | 'YELLOW' | 'GREEN' | 'GREY' | null {
-  const entry = modelSupportCache.get(modelId)
-  if (!entry) return null
-
-  const now = Date.now()
-  if (now - entry.timestamp > CACHE_EXPIRY_MS) {
-    modelSupportCache.delete(modelId)
-    return null
-  }
-
-  return entry.status
-}
-
-function setCachedSupport(
-  modelId: string,
-  status: 'RED' | 'YELLOW' | 'GREEN' | 'GREY'
-) {
-  modelSupportCache.set(modelId, {
-    status,
-    timestamp: Date.now(),
-  })
-  saveCacheToStorage()
-}
-
-loadCacheFromStorage()
-
 function SetupScreen() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { getProviderByName, selectModelProvider, setProviders } =
     useModelProvider()
 
-  const { downloads, localDownloadingModels, addLocalDownloadingModel } =
-    useDownloadStore()
   const serviceHub = useServiceHub()
   const llamaProvider = getProviderByName('llamacpp')
-  const [quickStartInitiated, setQuickStartInitiated] = useState(false)
-  const [quickStartQueued, setQuickStartQueued] = useState(false)
-  const {
-    model: janNewModel,
-    error: metadataFetchFailed,
-    fetchLatestJanModel,
-  } = useLatestJanModel()
-  const [supportedVariants, setSupportedVariants] = useState<
-    Map<string, 'RED' | 'YELLOW' | 'GREEN' | 'GREY'>
-  >(new Map())
-  const supportCheckInProgress = useRef(false)
-  const checkedModelId = useRef<string | null>(null)
-  const [isSupportCheckComplete, setIsSupportCheckComplete] = useState(false)
-  const huggingfaceToken = useGeneralSetting((state) => state.huggingfaceToken)
+  /** Whichever local model the user picks on the last page, if any. */
+  const [chosenModel, setChosenModel] = useState<string | null>(null)
   // Nothing is probed until the user starts: the first page is an invitation,
   // not a progress report.
   const [hasStarted, setHasStarted] = useState(false)
@@ -229,262 +59,59 @@ function SetupScreen() {
   const [showDetails, setShowDetails] = useState(false)
 
 
-  // Check model support for variants when janNewModel is available
-  useEffect(() => {
-    const checkModelSupport = async () => {
-      if (!janNewModel) return
-
-      if (
-        supportCheckInProgress.current ||
-        checkedModelId.current === janNewModel.model_name
-      ) {
-        return
-      }
-
-      supportCheckInProgress.current = true
-      checkedModelId.current = janNewModel.model_name
-      setIsSupportCheckComplete(false)
-
-      const variantSupportMap = new Map<
-        string,
-        'RED' | 'YELLOW' | 'GREEN' | 'GREY'
-      >()
-
-      for (const quantization of SETUP_SCREEN_QUANTIZATIONS) {
-        const variant = janNewModel.quants?.find((quant) =>
-          quant.model_id.toLowerCase().includes(quantization)
-        )
-
-        if (variant) {
-          const cached = getCachedSupport(variant.model_id)
-          if (cached) {
-            console.log(`[SetupScreen] ${variant.model_id}: ${cached} (cached)`)
-            variantSupportMap.set(variant.model_id, cached)
-            continue
-          }
-
-          try {
-            console.log(
-              `[SetupScreen] Checking support for ${variant.model_id}...`
-            )
-            const supportStatus = await serviceHub
-              .models()
-              .isModelSupported(variant.path)
-
-            console.log(`[SetupScreen] ${variant.model_id}: ${supportStatus}`)
-            setCachedSupport(variant.model_id, supportStatus)
-            variantSupportMap.set(variant.model_id, supportStatus)
-          } catch (error) {
-            console.error(
-              `[SetupScreen] Error checking support for ${variant.model_id}:`,
-              error
-            )
-            variantSupportMap.set(variant.model_id, 'GREY')
-            setCachedSupport(variant.model_id, 'GREY')
-          }
-        }
-      }
-
-      setSupportedVariants(variantSupportMap)
-      supportCheckInProgress.current = false
-      setIsSupportCheckComplete(true)
-    }
-
-    checkModelSupport()
-  }, [janNewModel, serviceHub])
-
-  useEffect(() => {
-    fetchLatestJanModel(true)
-  }, [fetchLatestJanModel])
-
-
-  const defaultVariant = useMemo(() => {
-    if (!janNewModel) return null
-
-    const priorityOrder: Array<'GREEN' | 'YELLOW' | 'GREY'> = [
-      'GREEN',
-      'YELLOW',
-      'GREY',
-    ]
-
-    for (const status of priorityOrder) {
-      for (const quantization of SETUP_SCREEN_QUANTIZATIONS) {
-        const variant = janNewModel.quants?.find((quant) =>
-          quant.model_id.toLowerCase().includes(quantization)
-        )
-
-        if (variant && supportedVariants.get(variant.model_id) === status) {
-          return variant
-        }
-      }
-    }
-
-    for (const quantization of SETUP_SCREEN_QUANTIZATIONS) {
-      const variant = janNewModel.quants?.find((quant) =>
-        quant.model_id.toLowerCase().includes(quantization)
-      )
-
-      if (variant && supportedVariants.get(variant.model_id) === 'RED') {
-        return variant
-      }
-    }
-
-    for (const quantization of SETUP_SCREEN_QUANTIZATIONS) {
-      const variant = janNewModel.quants?.find((quant) =>
-        quant.model_id.toLowerCase().includes(quantization)
-      )
-      if (variant) return variant
-    }
-
-    return janNewModel.quants?.[0]
-  }, [janNewModel, supportedVariants])
-
-  // The recommended model as a uniform option, so the download path stays
-  // independent of how the quant was chosen.
-  const selected = useMemo<SetupModelOption | null>(() => {
-    if (!janNewModel || !defaultVariant) return null
-    return {
-      modelName: janNewModel.model_name,
-      displayName:
-        janNewModel.display_name?.trim() || janNewModel.model_name || '',
-      modelId: defaultVariant.model_id,
-      path: defaultVariant.path,
-      fileSize: defaultVariant.file_size,
-      multimodal: (janNewModel.mmproj_models?.length ?? 0) > 0,
-      mmprojPath: pickMmproj(janNewModel),
-    }
-  }, [janNewModel, defaultVariant])
-
-  // The quant depends on the per-variant fit check, so a click before it lands
-  // has to be queued rather than acted on.
-  const isSelectionReady = Boolean(selected && isSupportCheckComplete)
-
-  const downloadProcesses = useMemo(
-    () =>
-      Object.values(downloads).map((download) => ({
-        id: download.name,
-        name: download.name,
-        progress: download.progress,
-        current: download.current,
-        total: download.total,
-      })),
-    [downloads]
-  )
-
-  const isDownloading = useMemo(() => {
-    if (!selected) return false
-    return (
-      localDownloadingModels.has(selected.modelId) ||
-      downloadProcesses.some((e) => e.id === selected.modelId)
-    )
-  }, [selected, localDownloadingModels, downloadProcesses])
-
-  // Fraction rather than byte counts, matching how the Hub reports a download.
-  const downloadProgress = useMemo(() => {
-    if (!selected) return 0
-    return (
-      downloadProcesses.find((e) => e.id === selected.modelId)?.progress || 0
-    )
-  }, [selected, downloadProcesses])
-
-  const isDownloaded = useMemo(() => {
-    if (!selected) return false
-    return llamaProvider?.models.some(
-      (m: { id: string }) => m.id === selected.modelId
-    )
-  }, [selected, llamaProvider])
-
-  // Single download entry point for both the immediate and the queued path, so
-  // the HF token and the skip-verification flag cannot drift between them.
-  const startDownload = useCallback(
-    (option: SetupModelOption) => {
-      addLocalDownloadingModel(option.modelId)
-      serviceHub
-        .models()
-        .pullModelWithMetadata(
-          option.modelId,
-          option.path,
-          option.mmprojPath,
-          huggingfaceToken,
-          true
-        )
-    },
-    [addLocalDownloadingModel, serviceHub, huggingfaceToken]
-  )
-
-  const handleQuickStart = useCallback(() => {
-    setQuickStartInitiated(true)
-    // Metadata still loading: remember the intent and download once it lands.
-    if (!selected || !isSelectionReady) {
-      setQuickStartQueued(true)
-      return
-    }
-    startDownload(selected)
-  }, [selected, isSelectionReady, startDownload])
 
   // Use ref to track if we've already navigated
   const hasNavigatedRef = useRef(false)
   /** Pages the user has passed despite a warning; they must not reappear. */
   const [acknowledged, setAcknowledged] = useState<string[]>([])
 
-  const completeSetup = useCallback(async () => {
-    if (!selected || hasNavigatedRef.current) return
-    hasNavigatedRef.current = true
+  /**
+   * Finish onboarding.
+   *
+   * Nothing is fetched here. A model is offered only if one is already on
+   * disk, and finishing without one is a supported ending — the user can add a
+   * model whenever they like from Settings.
+   */
+  const completeSetup = useCallback(
+    async (modelId?: string) => {
+      if (hasNavigatedRef.current) return
+      hasNavigatedRef.current = true
 
-    // Refresh providers so the model is available in the store before selecting
-    const providers = await serviceHub.providers().getProviders()
-    setProviders(providers)
+      localStorage.setItem(localStorageKey.setupCompleted, 'true')
 
-    // On Windows the provider may list model IDs with backslashes (from filesystem paths)
-    // while the catalog uses forward slashes, so try both formats
-    const catalogId = selected.modelId
-    const backslashId = catalogId.replace(/\//g, '\\')
-    const found =
-      selectModelProvider('llamacpp', catalogId) ||
-      selectModelProvider('llamacpp', backslashId)
-    const modelId = found ? found.id : catalogId
+      if (!modelId) {
+        navigate({ to: route.home, replace: true, search: {} })
+        return
+      }
 
-    toast.dismiss(`model-validation-started-${catalogId}`)
-    localStorage.setItem(localStorageKey.setupCompleted, 'true')
-    localStorage.setItem(
-      localStorageKey.lastUsedModel,
-      JSON.stringify({ provider: 'llamacpp', model: modelId })
-    )
-    navigate({
-      to: route.home,
-      replace: true,
-      search: {
-        threadModel: { id: modelId, provider: 'llamacpp' },
-      },
-    })
-  }, [selected, navigate, selectModelProvider, serviceHub, setProviders])
+      selectModelProvider('llamacpp', modelId)
+      localStorage.setItem(
+        localStorageKey.lastUsedModel,
+        JSON.stringify({ provider: 'llamacpp', model: modelId })
+      )
+      navigate({
+        to: route.home,
+        replace: true,
+        search: { threadModel: { id: modelId, provider: 'llamacpp' } },
+      })
+    },
+    [navigate, selectModelProvider]
+  )
 
-  // Leaving setup is driven by the import event rather than by provider state,
-  // which only refreshes afterwards. Warnings no longer gate this: each was its
-  // own page and was passed deliberately before the model page was reached.
+  // A model imported while this page is open should appear in the list without
+  // the user having to leave and come back.
   useEffect(() => {
-    const onModelImported = async (payload: { modelId: string }) => {
-      if (!selected || hasNavigatedRef.current) return
-      if (payload.modelId !== selected.modelId) return
-      await completeSetup()
+    const onModelImported = async () => {
+      const providers = await serviceHub.providers().getProviders()
+      setProviders(providers)
     }
-
     events.on(AppEvent.onModelImported, onModelImported)
-
     return () => {
       events.off(AppEvent.onModelImported, onModelImported)
     }
-  }, [selected, completeSetup])
+  }, [serviceHub, setProviders])
 
-  useEffect(() => {
-    if (quickStartQueued && selected && isSelectionReady) {
-      setQuickStartQueued(false)
-      startDownload(selected)
-    }
-  }, [quickStartQueued, selected, isSelectionReady, startDownload])
 
-  // The model step reports the download the user starts here, so it is derived
-  // from download state rather than from a readiness probe.
   // Named dependencies come from the same warning the standalone dialog would
   // have raised; the advice is rendered inline here instead.
   const dependencyWarning = warnings.find(
@@ -493,28 +120,23 @@ function SetupScreen() {
   const missingLibraries = dependencyWarning?.missingLibraries ?? []
   const dependencyBackend = dependencyWarning?.backend ?? ''
 
-  const modelStep = useMemo<WizardStep>(() => {
-    const model = selected?.displayName ?? ''
-    const step = (
-      status: SetupStageState['status'],
-      messageKey: string,
-      values?: Record<string, string | number>
-    ): WizardStep => ({
-      id: 'model',
-      labelKey: 'setup:stageModel',
-      status,
-      messageKey,
-      values,
-    })
+  /** Local models already on disk. There is nowhere else they could come from. */
+  const localModels = useMemo(
+    () => llamaProvider?.models ?? [],
+    [llamaProvider]
+  )
 
-    if (isDownloaded) return step('ok', 'checkModelReady', { model })
-    if (isDownloading) return step('running', 'checkModelDownloading', { model })
-    if (!selected) return step('running', 'checkModelResolving')
-    return step('pending', 'checkModelWaiting', {
-      model,
-      size: selected.fileSize || '',
-    })
-  }, [selected, isDownloaded, isDownloading])
+  // The last page reports nothing and waits for nothing: it is where the user
+  // decides how to start, so its status is fixed.
+  const finishStep = useMemo<WizardStep>(
+    () => ({
+      id: 'finish',
+      labelKey: 'setup:stageFinish',
+      status: 'pending',
+      messageKey: '',
+    }),
+    []
+  )
 
   // One page at a time, each transient: it gives way as soon as its own
   // condition is met, and the model download is always last.
@@ -564,8 +186,8 @@ function SetupScreen() {
       status: 'pending',
       messageKey: '',
     }
-    return [welcome, setupPage, modelStep]
-  }, [setupPage, modelStep])
+    return [welcome, setupPage, finishStep]
+  }, [setupPage, finishStep])
 
   const isPageSettled = useCallback(
     (page: WizardStep) => {
@@ -575,48 +197,20 @@ function SetupScreen() {
         case 'setup':
           return isSetupSettled
         default:
-          return Boolean(isDownloaded)
+          // The last page ends the flow itself, so it never settles on its own.
+          return false
       }
     },
-    [hasStarted, isSetupSettled, isDownloaded]
+    [hasStarted, isSetupSettled]
   )
 
   const currentIndex = pages.findIndex((page) => !isPageSettled(page))
   const currentPage = currentIndex === -1 ? undefined : pages[currentIndex]
 
-  // A model already on disk (a repeat visit, or one fetched from the Hub) leaves
-  // no import event to wait for.
-  useEffect(() => {
-    if (currentIndex === -1 && !hasNavigatedRef.current) void completeSetup()
-  }, [currentIndex, completeSetup])
 
   const acknowledge = useCallback((id: string) => {
     setAcknowledged((prev) => (prev.includes(id) ? prev : [...prev, id]))
   }, [])
-
-  // Handle error when quick start is queued but metadata fetch fails
-  useEffect(() => {
-    if (quickStartQueued && metadataFetchFailed) {
-      setQuickStartQueued(false)
-      setQuickStartInitiated(false)
-      toast.error(
-        t('setup:quickStartFailed', {
-          defaultValue: 'Something went wrong. Please try again.',
-        })
-      )
-    }
-  }, [quickStartQueued, metadataFetchFailed, t])
-
-  useEffect(() => {
-    if (
-      quickStartInitiated &&
-      !quickStartQueued &&
-      isDownloading &&
-      !isDownloaded
-    ) {
-      setQuickStartInitiated(false)
-    }
-  }, [quickStartInitiated, quickStartQueued, isDownloading, isDownloaded])
 
 
   const isWarning = currentPage?.status === 'warning'
@@ -634,8 +228,8 @@ function SetupScreen() {
     switch (currentPage?.id) {
       case 'welcome':
         return t('setup:welcomeBody')
-      case 'model':
-        return t('setup:description')
+      case 'finish':
+        return t('setup:finishBody')
       default:
         return setupBody
     }
@@ -844,26 +438,72 @@ function SetupScreen() {
                   </>
                 )}
 
-                {currentPage.id === 'model' && (
-                  <div className="mt-5">
-                    <ModelCard
-                      option={selected}
-                      fallbackName={
-                        janNewModel?.display_name ?? janNewModel?.model_name
-                      }
-                      progress={downloadProgress}
-                      isDownloading={isDownloading}
-                      isDownloaded={Boolean(isDownloaded)}
-                      onDownload={handleQuickStart}
-                    />
-                    <button
-                      type="button"
-                      className="mt-3 inline-flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                      onClick={() => navigate({ to: route.hub.index })}
-                    >
-                      {t('setup:exploreHub')}
-                      <IconArrowRight size={12} />
-                    </button>
+                {currentPage.id === 'finish' && (
+                  <div className="mt-5" data-testid="setup-finish">
+                    {localModels.length > 0 ? (
+                      <div
+                        role="radiogroup"
+                        aria-label={t('setup:finishChooseModel')}
+                        className="flex flex-col gap-1.5"
+                      >
+                        {localModels.map((model) => {
+                          const isChosen = chosenModel === model.id
+                          return (
+                            <button
+                              key={model.id}
+                              type="button"
+                              role="radio"
+                              aria-checked={isChosen}
+                              data-testid="setup-local-model"
+                              onClick={() => setChosenModel(model.id)}
+                              className={cn(
+                                'flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+                                isChosen
+                                  ? 'border-primary/40 bg-primary/10'
+                                  : 'hover:bg-secondary/40'
+                              )}
+                            >
+                              <span className="truncate">
+                                {getModelDisplayName(model)}
+                              </span>
+                              {isChosen && (
+                                <IconCheck size={16} className="shrink-0" />
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        {t('setup:finishNoModels')}
+                      </p>
+                    )}
+
+                    <div className="mt-5 flex items-center gap-2">
+                      <Button
+                        data-testid="setup-finish-start"
+                        onClick={() =>
+                          void completeSetup(chosenModel ?? undefined)
+                        }
+                      >
+                        {chosenModel
+                          ? t('setup:finishStartChat')
+                          : t('setup:finishWithoutModel')}
+                        <IconArrowRight size={16} />
+                      </Button>
+                      <Button
+                        variant="link"
+                        data-testid="setup-finish-import"
+                        onClick={() =>
+                          navigate({
+                            to: route.settings.providers,
+                            params: { providerName: 'llamacpp' },
+                          })
+                        }
+                      >
+                        {t('setup:finishImport')}
+                      </Button>
+                    </div>
                   </div>
                 )}
               </>
