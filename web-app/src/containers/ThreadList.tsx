@@ -1,4 +1,12 @@
-import { Folder, Loader2, MoreHorizontal, Pencil, Trash2, X } from 'lucide-react'
+import {
+  Copy,
+  Folder,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { useThreads } from '@/hooks/useThreads'
 import { useIsThreadActive } from '@/hooks/useAppState'
 import { useChatSessions } from '@/stores/chat-session-store'
@@ -47,6 +55,7 @@ const ThreadItem = memo(
     const getFolderById = useThreadManagement().getFolderById
     const { folders } = useThreadManagement()
     const { t } = useTranslation()
+    const [menuOpen, setMenuOpen] = useState(false)
     const [renameOpen, setRenameOpen] = useState(false)
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
@@ -151,8 +160,31 @@ const ThreadItem = memo(
     })
     const isSelected = currentThreadId === thread.id
 
+    /**
+     * Open the row's menu from somewhere other than its button.
+     *
+     * Deliberately the same `DropdownMenu` instance rather than a parallel
+     * context-menu tree: one definition, so an action added to the button is
+     * an action you get on right-click for free.
+     */
+    const openRowMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setMenuOpen(true)
+    }
+
+    const onRowKeyDown = (e: React.KeyboardEvent) => {
+      // The two conventional ways to ask for a context menu from the keyboard.
+      if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+        openRowMenu(e)
+      }
+    }
+
     return (
-      <SidebarMenuItem>
+      <SidebarMenuItem
+        onContextMenu={openRowMenu}
+        onKeyDown={onRowKeyDown}
+      >
         {currentProjectId ?
           <Link to="/threads/$threadId" params={{ threadId: thread.id }} className={cn("bg-card dark:bg-secondary/20 mb-2 px-4 py-4 border hover:dark:bg-secondary/30 rounded-lg block max-w-full overflow-hidden", isSelected && "border-primary")}>
               <div className="flex items-center gap-1.5 min-w-0">
@@ -177,7 +209,7 @@ const ThreadItem = memo(
             </Link>
           </SidebarMenuButton>
         }
-        <DropdownMenu>
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
             <SidebarMenuAction
               showOnHover
@@ -249,6 +281,16 @@ const ThreadItem = memo(
                 </DropdownMenuItem>
               </>
             )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => {
+                void navigator.clipboard?.writeText(thread.id)
+                toast.success(t('common:copiedConversationId'))
+              }}
+            >
+              <Copy className="size-4" />
+              <span>{t('common:copyConversationId')}</span>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"

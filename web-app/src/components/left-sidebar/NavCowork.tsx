@@ -11,6 +11,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -28,6 +29,7 @@ import { route } from '@/constants/routes'
 import {
   Box,
   SlidersHorizontal,
+  Copy,
   MoreHorizontal,
   Trash2,
   type LucideIcon,
@@ -41,6 +43,7 @@ import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { memo, useCallback, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
 
 type CoworkNavItem = {
@@ -66,15 +69,33 @@ const SessionItem = memo(function SessionItem({
   onRequestDelete: (pending: { id: string; title: string }) => void
 }) {
   const { t } = useTranslation()
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  /**
+   * Open this row's own menu from right-click or the keyboard — the same
+   * `DropdownMenu` the button opens, so the two cannot drift apart.
+   */
+  const openRowMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setMenuOpen(true)
+  }
+
+  const onRowKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+      openRowMenu(e)
+    }
+  }
+
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem onContextMenu={openRowMenu} onKeyDown={onRowKeyDown}>
       <SidebarMenuButton
         isActive={isCurrent}
         onClick={() => onSelect(session.id)}
       >
         <span className="truncate">{session.title}</span>
       </SidebarMenuButton>
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <SidebarMenuAction
             showOnHover
@@ -89,6 +110,16 @@ const SessionItem = memo(function SessionItem({
           side={isMobile ? 'bottom' : 'right'}
           align={isMobile ? 'end' : 'start'}
         >
+          <DropdownMenuItem
+            onSelect={() => {
+              void navigator.clipboard?.writeText(session.id)
+              toast.success(t('common:copiedConversationId'))
+            }}
+          >
+            <Copy />
+            <span>{t('common:copyConversationId')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
             onSelect={() =>
