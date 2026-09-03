@@ -8,8 +8,6 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { useEffect, useRef } from 'react'
 import { useMCPServers, DEFAULT_MCP_SETTINGS } from '@/hooks/useMCPServers'
 import { useAssistant } from '@/hooks/useAssistant'
-import { useNavigate } from '@tanstack/react-router'
-import { route } from '@/constants/routes'
 import { useThreads } from '@/hooks/useThreads'
 import { ExtensionManager } from '@/lib/extension'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
@@ -186,7 +184,6 @@ export function DataProvider() {
   // The thread fetch re-runs on extension re-registration; the sandbox sweep
   // should not.
   const sweptWorkspaces = useRef(false)
-  const navigate = useNavigate()
   const serviceHub = useServiceHub()
 
   // Local API Server hooks
@@ -452,26 +449,14 @@ export function DataProvider() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceHub])
 
+  /**
+   * Deep links used to open a model's page in the Hub so it could be
+   * downloaded. With no Hub and no downloader there is nothing to open, so a
+   * link is noted and otherwise ignored rather than silently navigating.
+   */
   const handleDeepLink = (urls: string[] | null) => {
-    if (!urls) return
-    console.log('Received deeplink:', urls)
-    const deeplink = urls[0]
-    if (deeplink) {
-      const url = new URL(deeplink)
-      const params = url.pathname.split('/').filter((str) => str.length > 0)
-
-      if (params.length < 3) return undefined
-      // const action = params[0]
-      // const provider = params[1]
-      const resource = params.slice(1).join('/')
-      // return { action, provider, resource }
-      navigate({
-        to: route.hub.model,
-        search: {
-          repo: resource,
-        },
-      })
-    }
+    if (!urls?.length) return
+    console.log('Ignoring deeplink; this build has no model hub:', urls)
   }
 
   return null

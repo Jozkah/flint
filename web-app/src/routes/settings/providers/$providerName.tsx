@@ -5,7 +5,7 @@ import SettingsMenu from '@/containers/SettingsMenu'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { cn, getProviderTitle, getModelDisplayName, isLocalProvider } from '@/lib/utils'
 import { sortModels } from '@/lib/modelSort'
-import { createFileRoute, Link, useParams } from '@tanstack/react-router'
+import { createFileRoute, useParams } from '@tanstack/react-router'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import Capabilities from '@/containers/Capabilities'
 import { DynamicControllerSetting } from '@/containers/dynamicControllerSetting'
@@ -17,7 +17,6 @@ import { ModelSetting } from '@/containers/ModelSetting'
 import { DialogDeleteModel } from '@/containers/dialogs/DeleteModel'
 import { DialogDeleteAllModels } from '@/containers/dialogs/DeleteAllModels'
 import { FavoriteModelAction } from '@/containers/FavoriteModelAction'
-import { route } from '@/constants/routes'
 import DeleteProvider from '@/containers/dialogs/DeleteProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { Button } from '@/components/ui/button'
@@ -1140,15 +1139,9 @@ function ProviderDetail() {
                       </h6>
                     </div>
                     <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
-                      {provider && !isLocalProvider(provider.provider) ? (
-                        t('providers:noModelFoundRemoteDesc')
-                      ) : (
-                        <>
-                          {t('providers:noModelFoundDesc')}
-                          &nbsp;
-                          <Link to={route.hub.index}>{t('common:hub')}</Link>
-                        </>
-                      )}
+                      {provider && !isLocalProvider(provider.provider)
+                        ? t('providers:noModelFoundRemoteDesc')
+                        : t('providers:noModelFoundDesc')}
                     </p>
                   </div>
                 )}

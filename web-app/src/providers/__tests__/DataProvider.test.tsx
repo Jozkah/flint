@@ -512,16 +512,16 @@ describe('DataProvider', () => {
     err.mockRestore()
   })
 
-  it('navigates to hub model route when handling a valid deep link', async () => {
+  it('ignores a deep link, having no hub to open', async () => {
+    // The link's only destination was a model's Hub page, which offered a
+    // download. Nothing navigates now.
     const deeplinkUrl = 'jan://host/action/owner/repo'
     hubState.deeplinkGetCurrent.mockResolvedValue([deeplinkUrl])
     render(<DataProvider />)
-    await waitFor(() => {
-      expect(h.navigate).toHaveBeenCalledWith({
-        to: '/hub/model',
-        search: { repo: 'owner/repo' },
-      })
+    await act(async () => {
+      await Promise.resolve()
     })
+    expect(h.navigate).not.toHaveBeenCalled()
   })
 
   it('ignores deep links with insufficient path segments', async () => {

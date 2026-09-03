@@ -22,7 +22,6 @@ import { DefaultModelsService } from './models/default'
 import { DefaultAssistantsService } from './assistants/default'
 import { DefaultDialogService } from './dialog/default'
 import { DefaultOpenerService } from './opener/default'
-import { DefaultUpdaterService } from './updater/default'
 import { DefaultPathService } from './path/default'
 import { DefaultCoreService } from './core/default'
 import { DefaultDeepLinkService } from './deeplink/default'
@@ -47,7 +46,6 @@ import type { ModelsService } from './models/types'
 import type { AssistantsService } from './assistants/types'
 import type { DialogService } from './dialog/types'
 import type { OpenerService } from './opener/types'
-import type { UpdaterService } from './updater/types'
 import type { PathService } from './path/types'
 import type { CoreService } from './core/types'
 import type { DeepLinkService } from './deeplink/types'
@@ -69,7 +67,6 @@ export interface ServiceHub {
   assistants(): AssistantsService
   dialog(): DialogService
   opener(): OpenerService
-  updater(): UpdaterService
   path(): PathService
   core(): CoreService
   deeplink(): DeepLinkService
@@ -93,7 +90,6 @@ class PlatformServiceHub implements ServiceHub {
   private assistantsService: AssistantsService = new DefaultAssistantsService()
   private dialogService: DialogService = new DefaultDialogService()
   private openerService: OpenerService = new DefaultOpenerService()
-  private updaterService: UpdaterService = new DefaultUpdaterService()
   private pathService: PathService = new DefaultPathService()
   private coreService: CoreService = new DefaultCoreService()
   private deepLinkService: DeepLinkService = new DefaultDeepLinkService()
@@ -284,11 +280,6 @@ class PlatformServiceHub implements ServiceHub {
   opener(): OpenerService {
     this.ensureInitialized()
     return this.openerService
-  }
-
-  updater(): UpdaterService {
-    this.ensureInitialized()
-    return this.updaterService
   }
 
   path(): PathService {
