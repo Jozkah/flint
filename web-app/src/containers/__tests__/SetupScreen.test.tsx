@@ -10,7 +10,6 @@ const hoisted = vi.hoisted(() => ({
     selectModelProvider: vi.fn(),
     setProviders: vi.fn(),
   },
-  pullModelWithMetadataMock: vi.fn(),
   startEngineSetupMock: vi.fn().mockResolvedValue(undefined),
   verifyGpuOffloadMock: vi.fn(),
   verifyEmbeddingModelMock: vi.fn(),
@@ -36,7 +35,6 @@ vi.mock('@/hooks/useServiceHub', () => {
   const stub = () => ({
     models: () => ({
       isModelSupported: vi.fn().mockResolvedValue('GREEN'),
-      pullModelWithMetadata: hoisted.pullModelWithMetadataMock,
       startEngineSetup: hoisted.startEngineSetupMock,
       verifyGpuOffload: hoisted.verifyGpuOffloadMock,
       verifyEmbeddingModel: hoisted.verifyEmbeddingModelMock,
@@ -170,9 +168,10 @@ describe('SetupScreen', () => {
     expect(screen.getByTestId('header-page')).toBeInTheDocument()
   })
 
-  it('asks no catalogue for a model on mount', async () => {
+  it('starts no engine download on mount', async () => {
     await renderStarted()
-    expect(hoisted.pullModelWithMetadataMock).not.toHaveBeenCalled()
+    expect(hoisted.startEngineSetupMock).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('setup-model-card')).not.toBeInTheDocument()
   })
 
   it('runs the engine and embedding probes on mount', async () => {
@@ -560,9 +559,10 @@ describe('SetupScreen', () => {
       })
     })
 
-    it('never pulls a model', async () => {
+    it('offers nothing that fetches', async () => {
       await renderPastSetup()
-      expect(hoisted.pullModelWithMetadataMock).not.toHaveBeenCalled()
+      expect(screen.queryByTestId('setup-model-card')).not.toBeInTheDocument()
+      expect(screen.getByTestId('setup-finish-start')).toBeInTheDocument()
     })
   })
 

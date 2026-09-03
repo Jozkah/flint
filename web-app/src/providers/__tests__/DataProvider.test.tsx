@@ -142,7 +142,7 @@ vi.mock('@/types/events', () => ({
 }))
 
 vi.mock('@/constants/routes', () => ({
-  route: { hub: { model: '/hub/model' } },
+  route: {},
 }))
 
 // Override serviceHub per-test needs. We extend the global setup's mock.
