@@ -25,6 +25,8 @@ import 'katex/dist/katex.min.css'
 import { MermaidError } from '@/components/MermaidError'
 import { CitationLink } from '@/components/CitationLink'
 import { WebCitationChip } from '@/components/WebCitationChip'
+import { CoworkFileRef } from '@/containers/message/CoworkFileRef'
+import { remarkFileRefs, FILE_REF_HREF_PREFIX } from '@/lib/coworkFileRefs'
 import { MarkdownTable } from '@/components/MarkdownTable'
 
 const WEB_CITE_MARKER = /\[\[cite:\s*([^\]\s]+?)\s*\]\]/g
@@ -58,7 +60,14 @@ interface MarkdownProps {
 // Hoisted so their identity is stable across renders — Streamdown is memoized
 // with a shallow prop compare, and fresh literals here would defeat it, forcing
 // a full re-parse + re-highlight on every streamed token.
-const REMARK_PLUGINS = [remarkGfm, remarkMath, disableIndentedCodeBlockPlugin]
+const REMARK_PLUGINS = [
+  remarkGfm,
+  remarkMath,
+  disableIndentedCodeBlockPlugin,
+  // Turn explicit `@path` references into fragment links; inert (rendered as
+  // plain text) wherever no code-panel opener is provided, e.g. the chat route.
+  remarkFileRefs,
+]
 const REHYPE_PLUGINS = [rehypeKatex, defaultRehypePlugins.harden]
 const STREAMDOWN_PLUGINS = { code, mermaid, cjk }
 const STREAMDOWN_CONTROLS = { mermaid: { fullscreen: false } }
@@ -235,6 +244,13 @@ function RenderMarkdownComponent({
       props: React.AnchorHTMLAttributes<HTMLAnchorElement>
     ) => {
       const { href, children, className: aClass } = props
+      if (typeof href === 'string' && href.startsWith(FILE_REF_HREF_PREFIX)) {
+        return (
+          <CoworkFileRef href={href} className={aClass}>
+            {children}
+          </CoworkFileRef>
+        )
+      }
       if (typeof href === 'string' && href.startsWith('#cite-')) {
         return (
           <CitationLink href={href} className={aClass}>
