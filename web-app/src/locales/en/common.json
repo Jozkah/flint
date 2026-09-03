@@ -171,7 +171,9 @@
       "working": "Working tree",
       "staged": "Staged changes",
       "all": "All uncommitted"
-    }
+    },
+    "truncated": "{{count}} more line not shown",
+    "truncated_other": "{{count}} more lines not shown"
   },
   "compactWidth": "Compact Width",
   "fullWidth": "Full Width",
