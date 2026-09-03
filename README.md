@@ -40,16 +40,21 @@ It does not phone home, and it will not fetch anything you did not ask it for.
   asks whether a newer version exists — update it the way you installed it.
 - **Vendor services.** No `jan.ai` URLs, no documentation, release, repository,
   community or issue-tracker links, and no vendor identification headers on
-  outbound provider requests.
+  outbound provider requests. Downloads no longer pass through the
+  `apps.jan.ai` Hugging Face mirror, and the Flatpak manifest builds from a
+  local artifact instead of a hosted catalogue.
+- **The CLI's self-updater and its install id.** `jan update` and the TUI's
+  `/update` are gone, along with the anonymous identity the update check
+  carried. `jan --version` still reports a version — that is not a check.
 
-**You bring your own models.** Point the app at models already on your
-machine: add a local GGUF through **Settings → Model Providers → llama.cpp →
-Import**, or an MLX model through the MLX provider.
+**You bring your own models.** There is no model catalogue and no
+downloader. Point the app at models already on your machine: add a local GGUF
+through **Settings → Model Providers → llama.cpp → Import**, or an MLX model
+through the MLX provider. Handing an import a URL is refused rather than
+fetched.
 
-> **In progress.** The built-in model catalogue and downloader have not been
-> removed yet. Until they are, the Hub can still fetch model listings and
-> download weights when you use it. Tracked on the
-> `wip/local-only-model-downloads` branch.
+First run ends on a page that says so: it lists whatever local models it can
+see and lets you start on one, or finish without any and add one later.
 
 **What can still reach the network, only if you set it up.** Nothing below is
 configured out of the box, and nothing happens until you enter a credential:
@@ -63,8 +68,10 @@ configured out of the box, and nothing happens until you enter a credential:
 Leave them alone and the app makes no outbound request at all — not at
 startup, not while you use it.
 
-Guards live in `web-app/src/__tests__/localOnly.test.ts`: the suite fails if an
-analytics SDK, an update check, or a `jan.ai` URL is reintroduced.
+Guards live in `web-app/src/__tests__/localOnly.test.ts`, and cover the whole
+repository rather than just the web app: the suite fails if an analytics SDK,
+an update check, a usage identity, a `jan.ai` URL, a download mirror, a
+download extension, or a hosted packaging source is reintroduced.
 
 
 ## Installation

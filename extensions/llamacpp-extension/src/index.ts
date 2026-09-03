@@ -84,7 +84,6 @@ import {
   ensureSessionReady as pluginEnsureSessionReady,
   getLoadedModels as pluginGetLoadedModels,
   LlamacppConfig,
-  DownloadItem,
   ModelConfig,
   TemplateKwarg,
   EmbeddingResponse,
@@ -1812,126 +1811,36 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     // opts.modelPath: URL to the model file
     // opts.mmprojPath: URL to the mmproj file
 
-    let downloadItems: DownloadItem[] = []
-
-    const maybeDownload = async (path: string, saveName: string) => {
-      // if URL, add to downloadItems, and return local path
-      if (path.startsWith('https://')) {
-        const localPath = `${modelDir}/${saveName}`
-        downloadItems.push({
-          url: path,
-          save_path: localPath,
-          proxy: await getProxyConfig(),
-          sha256:
-            saveName === 'model.gguf'
-              ? opts.modelSha256
-              : saveName === 'mmproj.gguf'
-                ? opts.mmprojSha256
-                : undefined,
-          size:
-            saveName === 'model.gguf'
-              ? opts.modelSize
-              : saveName === 'mmproj.gguf'
-                ? opts.mmprojSize
-                : undefined,
-          model_id: modelId,
-        })
-        return localPath
+    /**
+     * Resolve a model file that must already exist.
+     *
+     * This build does not fetch models, so a URL is refused rather than
+     * downloaded: the file has to be on disk before it can be imported.
+     */
+    const requireLocalFile = async (path: string) => {
+      if (/^https?:\/\//i.test(path)) {
+        throw new Error(
+          `Refusing to fetch ${path}: this build does not download models. ` +
+            'Point the import at a file already on this machine.'
+        )
       }
-
-      // if local file (absolute path), check if it exists
-      // and return the path
       if (!(await fs.existsSync(path)))
         throw new Error(`File not found: ${path}`)
       return path
     }
 
-    let modelPath = await maybeDownload(opts.modelPath, 'model.gguf')
+    let modelPath = await requireLocalFile(opts.modelPath)
     let mmprojPath = opts.mmprojPath
-      ? await maybeDownload(opts.mmprojPath, 'mmproj.gguf')
+      ? await requireLocalFile(opts.mmprojPath)
       : undefined
     // Speculative-decoding draft companion; paired with the main model. The
     // file name stays `mtp.gguf` for every flavour: it is the local name of
     // the paired draft, and changing it would orphan existing installs.
     let draftModelPath = opts.specDraftPath
-      ? await maybeDownload(opts.specDraftPath, 'mtp.gguf')
+      ? await requireLocalFile(opts.specDraftPath)
       : undefined
 
-    if (downloadItems.length > 0) {
-      try {
-        // emit download update event on progress
-        const onProgress = (transferred: number, total: number) => {
-          events.emit(DownloadEvent.onFileDownloadUpdate, {
-            modelId,
-            percent: transferred / total,
-            size: { transferred, total },
-            downloadType: 'Model',
-          })
-        }
-        const downloadManager = window.core.extensionManager.getByName(
-          '@janhq/download-extension'
-        )
-        await downloadManager.downloadFiles(
-          downloadItems,
-          this.createDownloadTaskId(modelId),
-          onProgress
-        )
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error)
 
-        // Check if this is a cancellation
-        const isCancellationError =
-          errorMessage.includes('Download cancelled') ||
-          errorMessage.includes('Validation cancelled') ||
-          errorMessage.includes('Hash computation cancelled') ||
-          errorMessage.includes('cancelled') ||
-          errorMessage.includes('aborted')
-
-        // Check if this is a validation failure
-        const isValidationError =
-          errorMessage.includes('Hash verification failed') ||
-          errorMessage.includes('Size verification failed') ||
-          errorMessage.includes('Failed to verify file')
-
-        // Pause and cancel both surface here as a cancellation; treat as a
-        // stop (emit stopped, return) so it never becomes an error toast.
-        if (isCancellationError) {
-          logger.info('Download stopped for model:', modelId)
-          events.emit(DownloadEvent.onFileDownloadStopped, {
-            modelId,
-            downloadType: 'Model',
-          })
-          return
-        }
-
-        logger.error('Error downloading model:', modelId, opts, error)
-        if (isValidationError) {
-          // Cancel any other download tasks for this model
-          try {
-            this.abortImport(modelId)
-          } catch (cancelError) {
-            logger.warn('Failed to cancel download task:', cancelError)
-          }
-
-          // Emit validation failure event
-          events.emit(DownloadEvent.onModelValidationFailed, {
-            modelId,
-            downloadType: 'Model',
-            error: errorMessage,
-            reason: 'validation_failed',
-          })
-        } else {
-          // Regular download error
-          events.emit(DownloadEvent.onFileDownloadError, {
-            modelId,
-            downloadType: 'Model',
-            error: errorMessage,
-          })
-        }
-        throw error
-      }
-    }
 
     // Validate GGUF files
     const janDataFolderPath = await getJanDataFolderPath()
@@ -2068,13 +1977,6 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       embedding: isEmbedding,
     })
 
-    if (downloadItems.length > 0) {
-      events.emit(DownloadEvent.onFileDownloadAndVerificationSuccess, {
-        modelId,
-        downloadType: 'Model',
-      })
-    }
-
     try {
       await this.refreshEnginePreset()
     } catch (e) {
@@ -2104,30 +2006,12 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   }
 
   override async abortImport(modelId: string): Promise<void> {
-    // Cancel any active download task
-    // prepend provider name to avoid name collision
-    const taskId = this.createDownloadTaskId(modelId)
-    const downloadManager = window.core.extensionManager.getByName(
-      '@janhq/download-extension'
-    )
-
-    try {
-      await downloadManager.cancelDownload(taskId)
-    } catch (cancelError) {
-      logger.warn('Failed to cancel download task:', cancelError)
-    }
-
-    // Delete the entire model folder if it exists (for validation failures)
+    // No download to cancel; a failed import leaves only its folder behind.
     await this.deleteModelFolder(modelId)
   }
 
-  override async pauseImport(modelId: string): Promise<void> {
-    const taskId = this.createDownloadTaskId(modelId)
-    const downloadManager = window.core.extensionManager.getByName(
-      '@janhq/download-extension'
-    )
-    // Pause keeps the partial .tmp for resume; the model folder is preserved.
-    await downloadManager.pauseDownload(taskId)
+  override async pauseImport(_modelId: string): Promise<void> {
+    // Nothing is ever in flight: models are read from disk, not fetched.
   }
 
   private async getRandomPort(): Promise<number> {
