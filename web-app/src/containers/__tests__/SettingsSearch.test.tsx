@@ -140,6 +140,35 @@ describe('SettingsSearch', () => {
     )
   })
 
+  it('groups results under their Settings section', async () => {
+    render(<SettingsSearch />)
+    // A broad query matches settings in more than one section.
+    await type('e')
+    const groups = screen.getAllByRole('group')
+    expect(groups.length).toBeGreaterThan(0)
+    // Every group carries a section label, and every option lives in a group.
+    for (const g of groups) {
+      expect(g.getAttribute('aria-label')?.length).toBeTruthy()
+    }
+    const options = screen.getAllByRole('option')
+    expect(options.length).toBeGreaterThan(0)
+    for (const opt of options) {
+      expect(opt.closest('[role="group"]')).not.toBeNull()
+    }
+  })
+
+  it('arrow navigation crosses section group boundaries in visual order', async () => {
+    render(<SettingsSearch />)
+    const { user } = await type('e')
+    const count = screen.getAllByRole('option').length
+    expect(count).toBeGreaterThan(1)
+    // Walk down through options, including across group headers, in order.
+    for (let n = 1; n < Math.min(count, 5); n++) {
+      await user.keyboard('{ArrowDown}')
+      expect(selectedIndex()).toBe(n)
+    }
+  })
+
   it('supports arrow-key navigation and Enter to open', async () => {
     render(<SettingsSearch />)
     const { user } = await type('proxy')

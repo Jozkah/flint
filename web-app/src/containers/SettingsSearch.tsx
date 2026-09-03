@@ -49,6 +49,33 @@ export function SettingsSearch() {
   )
   const results = useMemo(() => searchSettings(index, query), [index, query])
 
+  // Group the ranked results under their Settings section, preserving relevance
+  // order: sections appear in the order their first (best-ranked) result did,
+  // and results keep their rank within a section. `flat` is the same list in
+  // that grouped visual order, so keyboard navigation (which indexes into it)
+  // and the rendered order can never disagree across group boundaries.
+  const grouped = useMemo(() => {
+    const order: string[] = []
+    const bySection = new Map<string, SettingsIndexEntry[]>()
+    for (const entry of results) {
+      const list = bySection.get(entry.section)
+      if (list) list.push(entry)
+      else {
+        bySection.set(entry.section, [entry])
+        order.push(entry.section)
+      }
+    }
+    const flat: SettingsIndexEntry[] = []
+    const sections = order.map((section) => {
+      const items = bySection.get(section) ?? []
+      const start = flat.length
+      flat.push(...items)
+      return { section, start, items }
+    })
+    return { flat, sections }
+  }, [results])
+  const flatResults = grouped.flat
+
   // A new query restarts the selection at the top; `setQuery` re-opens the
   // panel by clearing the dismissal in the same update.
   useEffect(() => {
@@ -82,16 +109,16 @@ export function SettingsSearch() {
       else clear()
       return
     }
-    if (!open || results.length === 0) return
+    if (!open || flatResults.length === 0) return
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setActive((i) => (i + 1) % results.length)
+      setActive((i) => (i + 1) % flatResults.length)
     } else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setActive((i) => (i - 1 + results.length) % results.length)
+      setActive((i) => (i - 1 + flatResults.length) % flatResults.length)
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      const entry = results[active]
+      const entry = flatResults[active]
       if (entry) select(entry)
     }
   }
@@ -117,8 +144,8 @@ export function SettingsSearch() {
           aria-autocomplete="list"
           aria-controls="settings-search-results"
           aria-activedescendant={
-            open && results[active]
-              ? `settings-search-${results[active].id}`
+            open && flatResults[active]
+              ? `settings-search-${flatResults[active].id}`
               : undefined
           }
           autoComplete="off"
@@ -150,40 +177,50 @@ export function SettingsSearch() {
             className="px-2 py-1 text-[11px] text-muted-foreground"
             aria-live="polite"
           >
-            {t('common:settingsSearch.count', { count: results.length })}
+            {t('common:settingsSearch.count', { count: flatResults.length })}
           </p>
-          {results.length === 0 ? (
+          {flatResults.length === 0 ? (
             <p className="px-2 pb-2 text-xs text-muted-foreground">
               {t('common:settingsSearch.empty')}
             </p>
           ) : (
-            results.map((entry, i) => (
+            grouped.sections.map(({ section, start, items }) => (
               <div
-                key={entry.id}
-                id={`settings-search-${entry.id}`}
-                role="option"
-                aria-selected={i === active}
-                tabIndex={-1}
-                onMouseEnter={() => setActive(i)}
-                onClick={() => select(entry)}
-                className={cn(
-                  'cursor-pointer px-2 py-1.5',
-                  i === active && 'bg-secondary'
-                )}
+                key={section}
+                role="group"
+                aria-label={section}
+                className="border-t first:border-t-0"
               >
-                <div className="flex items-baseline gap-2">
-                  <span className="min-w-0 flex-1 truncate text-sm">
-                    {entry.title}
-                  </span>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">
-                    {entry.section}
-                  </span>
-                </div>
-                {entry.description && (
-                  <p className="truncate text-[11px] text-muted-foreground">
-                    {entry.description}
-                  </p>
-                )}
+                <p className="sticky top-0 bg-main-view px-2 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {section}
+                </p>
+                {items.map((entry, j) => {
+                  const i = start + j
+                  return (
+                    <div
+                      key={entry.id}
+                      id={`settings-search-${entry.id}`}
+                      role="option"
+                      aria-selected={i === active}
+                      tabIndex={-1}
+                      onMouseEnter={() => setActive(i)}
+                      onClick={() => select(entry)}
+                      className={cn(
+                        'cursor-pointer px-2 py-1.5',
+                        i === active && 'bg-secondary'
+                      )}
+                    >
+                      <span className="block truncate text-sm">
+                        {entry.title}
+                      </span>
+                      {entry.description && (
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {entry.description}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             ))
           )}
