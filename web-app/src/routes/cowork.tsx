@@ -74,6 +74,8 @@ import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
 import { CoworkPlanToggle } from '@/containers/CoworkPlanToggle'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
 import { usePrompt } from '@/hooks/usePrompt'
+import { useFileActivity } from '@/hooks/useFileActivity'
+import { deriveFromTurns, type FileOrigin } from '@/lib/fileActivity'
 import { awaitsModel } from '@/lib/agentActivity'
 import { artifactsFromParts } from '@/lib/coworkArtifacts'
 import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
@@ -231,6 +233,20 @@ function CoworkPage() {
       }
     },
     [folder, workspacePath, openCode, session?.id]
+  )
+
+  /**
+   * Which root a path belongs to. The activity record needs this to separate
+   * the read-only project from the sandbox the agent writes into.
+   */
+  const originOfPath = useCallback(
+    (path: string): FileOrigin => {
+      if (folder && relativeToRoot(folder, path) !== path) return 'project'
+      if (workspacePath && relativeToRoot(workspacePath, path) !== path)
+        return 'sandbox'
+      return 'external'
+    },
+    [folder, workspacePath]
   )
 
   // Source artifacts open as code, not as a plain-text preview dump.
@@ -1005,6 +1021,14 @@ function CoworkPage() {
           outcome?.messages ?? messages,
           useCoworkRun.getState().subagents[sid] ?? [],
           outcome?.usage ?? undefined
+        )
+      // The transcript's tool rows are structured: name, arguments, error
+      // flag, diff. That is the only thing the file record is built from.
+      useFileActivity
+        .getState()
+        .record(
+          sid,
+          deriveFromTurns(liveTurnsRef.current, originOfPath, Date.now())
         )
       liveTurnsRef.current = []
       setLiveTurns([])

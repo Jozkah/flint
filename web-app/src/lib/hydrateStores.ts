@@ -19,6 +19,7 @@ import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
+import { useFileActivity } from '@/hooks/useFileActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 
@@ -53,6 +54,7 @@ const secondaryStores = [
   useWebSearchConfig,
   useCoworkSessions,
   useCoworkActivity,
+  useFileActivity,
   useAgentToolsConfig,
   useModelOverrides,
 ] as const

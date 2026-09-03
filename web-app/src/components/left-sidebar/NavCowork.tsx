@@ -30,6 +30,7 @@ import {
   Box,
   SlidersHorizontal,
   Copy,
+  FileClock,
   MoreHorizontal,
   Trash2,
   type LucideIcon,
@@ -44,6 +45,8 @@ import { usePrompt } from '@/hooks/usePrompt'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { memo, useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useFileActivity } from '@/hooks/useFileActivity'
+import { FileActivityDialog } from '@/containers/dialogs/FileActivityDialog'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
 
 type CoworkNavItem = {
@@ -70,6 +73,8 @@ const SessionItem = memo(function SessionItem({
 }) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [activityOpen, setActivityOpen] = useState(false)
+  const activity = useFileActivity((s) => s.byConversation[session.id])
 
   /**
    * Open this row's own menu from right-click or the keyboard — the same
@@ -110,6 +115,11 @@ const SessionItem = memo(function SessionItem({
           side={isMobile ? 'bottom' : 'right'}
           align={isMobile ? 'end' : 'start'}
         >
+          <DropdownMenuItem onSelect={() => setActivityOpen(true)}>
+            <FileClock />
+            <span>{t('common:fileActivity.menuItem')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={() => {
               void navigator.clipboard?.writeText(session.id)
@@ -131,6 +141,12 @@ const SessionItem = memo(function SessionItem({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <FileActivityDialog
+        open={activityOpen}
+        onOpenChange={setActivityOpen}
+        events={activity ?? []}
+        title={session.title}
+      />
     </SidebarMenuItem>
   )
 })
@@ -191,6 +207,9 @@ export function NavCowork() {
       // The activity record is keyed by session; leaving it behind would keep
       // a deleted session's workflows in the store forever.
       useCoworkActivity.getState().dropSession(pendingDelete.id)
+      // The file record is keyed by session too; leaving it behind would keep
+      // a deleted session's paths in storage indefinitely.
+      useFileActivity.getState().forget(pendingDelete.id)
     }
     setPendingDelete(null)
   }

@@ -33,6 +33,7 @@ export const localStorageKey = {
   pausedDownloads: 'paused-downloads',
   modelOverrides: 'model-overrides',
   // Value predates the Cowork rename; changing it would orphan saved sessions.
+  fileActivity: 'file-activity',
   coworkSessions: 'code-sessions',
   coworkActivity: 'cowork-activity',
 }

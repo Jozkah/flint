@@ -850,5 +850,43 @@
     "a11y": "offline: the provider did not answer the last request"
   },
   "copyConversationId": "Copy ID",
-  "copiedConversationId": "ID copied"
+  "copiedConversationId": "ID copied",
+  "fileActivity": {
+    "menuItem": "File activity…",
+    "title": "File activity",
+    "description": "Files this conversation read or changed, newest first.",
+    "searchPlaceholder": "Search by path",
+    "filtersLabel": "Filter file activity",
+    "empty": "Nothing has touched a file in this conversation yet.",
+    "noMatches": "No files match this filter.",
+    "failed": "failed",
+    "eventCount": "{{count}} event",
+    "eventCount_other": "{{count}} events",
+    "filter": {
+      "all": "All",
+      "read": "Read",
+      "changed": "Changed",
+      "created": "Created",
+      "deleted": "Deleted",
+      "failed": "Failed",
+      "project": "Project",
+      "sandbox": "Sandbox"
+    },
+    "operation": {
+      "read": "Read",
+      "list": "Listed",
+      "search": "Searched",
+      "create": "Created",
+      "write": "Written",
+      "edit": "Edited",
+      "delete": "Deleted",
+      "rename": "Renamed"
+    },
+    "origin": {
+      "project": "project",
+      "sandbox": "sandbox",
+      "artifact": "artifact",
+      "external": "external"
+    }
+  }
 }
