@@ -10,28 +10,29 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
 }))
 
 import { CoworkChangesChip } from '../CoworkChangesChip'
-import type { CoworkFileDiff } from '@/lib/coworkDiffs'
-
-const file = (
-  path: string,
-  additions: number,
-  deletions: number
-): CoworkFileDiff => ({ path, additions, deletions, operations: [] })
 
 describe('CoworkChangesChip', () => {
-  // Same rule as the plan and folder controls: nothing written yet is nothing
-  // to say, so the dock row stays quiet.
-  it('renders nothing before the agent has written anything', () => {
+  // Same rule as the plan and folder controls: nothing changed anywhere is
+  // nothing to say, so the dock row stays quiet.
+  it('renders nothing when neither source has changes', () => {
     const { container } = render(
-      <CoworkChangesChip files={[]} open={false} onToggle={vi.fn()} />
+      <CoworkChangesChip
+        fileCount={0}
+        additions={0}
+        deletions={0}
+        open={false}
+        onToggle={vi.fn()}
+      />
     )
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('totals the counts across every changed file', () => {
+  it('shows the combined counts across both change sources', () => {
     render(
       <CoworkChangesChip
-        files={[file('a.ts', 3, 1), file('b.ts', 4, 6)]}
+        fileCount={3}
+        additions={7}
+        deletions={7}
         open={false}
         onToggle={vi.fn()}
       />
@@ -44,7 +45,9 @@ describe('CoworkChangesChip', () => {
     const onToggle = vi.fn()
     render(
       <CoworkChangesChip
-        files={[file('a.ts', 1, 0)]}
+        fileCount={1}
+        additions={1}
+        deletions={0}
         open={true}
         onToggle={onToggle}
       />

@@ -137,9 +137,32 @@
     "unresolvedRefs_other": "{{count}} files this page links to can't load in the preview. Open it to see it in a browser."
   },
   "changes": {
-    "title": "Agent changes",
+    "title": "Changes",
     "empty": "Files the agent writes or edits will show up here.",
-    "a11y": "Agent changes: {{files}} files, {{additions}} added, {{deletions}} removed"
+    "a11y": "Changes: {{files}} files, {{additions}} added, {{deletions}} removed",
+    "projectWorkingTree": "Project · Working tree",
+    "sandboxOutput": "Cowork output · Session sandbox",
+    "noRepo": "The attached folder isn't a Git repository.",
+    "cleanWorkingTree": "No uncommitted changes in the working tree.",
+    "loadError": "Couldn't read the repository status.",
+    "refresh": "Refresh",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "loadingStatus": "Reading repository…",
+    "loadingDiff": "Loading diff…",
+    "diffError": "Couldn't load this file's diff.",
+    "binary": "Binary file — no text diff to show.",
+    "noDiff": "No diff to show.",
+    "staged": "staged",
+    "unstaged": "unstaged",
+    "partiallyStaged": "partially staged",
+    "renamedFrom": "from {{path}}",
+    "scopeLabel": "Comparison",
+    "scope": {
+      "working": "Working tree",
+      "staged": "Staged changes",
+      "all": "All uncommitted"
+    }
   },
   "compactWidth": "Compact Width",
   "fullWidth": "Full Width",

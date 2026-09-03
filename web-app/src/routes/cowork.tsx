@@ -47,6 +47,7 @@ import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
 import { CoworkChangesChip } from '@/containers/CoworkChangesChip'
+import { useCoworkGitStatus } from '@/hooks/useCoworkGitStatus'
 import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
 import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
@@ -227,6 +228,21 @@ function CoworkPage() {
       ),
     [displayedTurns, liveSubagents, session?.subagents]
   )
+
+  // Read-only working-tree status for the attached repo, loaded lazily and kept
+  // strictly separate from the sandbox diffs above. The chip's counts combine
+  // both sources so it appears whenever either has changes.
+  const git = useCoworkGitStatus(folder)
+  const changeCounts = useMemo(() => {
+    const sandboxAdds = fileDiffs.reduce((s, f) => s + f.additions, 0)
+    const sandboxDels = fileDiffs.reduce((s, f) => s + f.deletions, 0)
+    const gitFiles = git.status?.files.length ?? 0
+    return {
+      fileCount: fileDiffs.length + gitFiles,
+      additions: sandboxAdds + (git.status?.additions ?? 0),
+      deletions: sandboxDels + (git.status?.deletions ?? 0),
+    }
+  }, [fileDiffs, git.status])
 
   const awaitingModel = useMemo(
     () => awaitsModel(running, displayedTurns),
@@ -718,7 +734,9 @@ function CoworkPage() {
                     />
                     <CoworkSandboxChip />
                     <CoworkChangesChip
-                      files={fileDiffs}
+                      fileCount={changeCounts.fileCount}
+                      additions={changeCounts.additions}
+                      deletions={changeCounts.deletions}
                       open={rail?.kind === 'diff'}
                       onToggle={() =>
                         setRail((r) =>
@@ -744,7 +762,12 @@ function CoworkPage() {
           />
         )}
         {rail?.kind === 'diff' && (
-          <CoworkDiffPanel files={fileDiffs} onClose={() => setRail(null)} />
+          <CoworkDiffPanel
+            sandboxFiles={fileDiffs}
+            folder={folder}
+            git={git}
+            onClose={() => setRail(null)}
+          />
         )}
       </div>
     </div>

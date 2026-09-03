@@ -155,6 +155,51 @@ pub fn agent_git_branch(project: String) -> Option<String> {
     git::current_branch(std::path::Path::new(&project))
 }
 
+/// The cap, in bytes, for a single lazily-loaded file diff. Larger diffs come
+/// back truncated with a friendly marker rather than flooding the webview.
+const MAX_FILE_DIFF_BYTES: usize = 512 * 1024;
+
+/// Read-only working-tree status for the attached project under `scope`
+/// (`working` | `staged` | `all`). Returns branch, repo root, and the changed
+/// files with their status, staged/unstaged flags and addition/deletion counts.
+///
+/// Strictly read-only: it never stages, unstages, commits, or otherwise mutates
+/// the repository. `Ok(None)` means the folder is not inside a git work tree
+/// (or git is unavailable), which the UI shows as "no repository" rather than an
+/// error.
+#[tauri::command]
+pub async fn agent_git_status(
+    project: String,
+    scope: String,
+) -> Result<Option<git::GitStatus>, String> {
+    let path = std::path::Path::new(&project);
+    // A non-repo folder is a normal state, not a failure to surface.
+    if git::repo_root(path).is_none() {
+        return Ok(None);
+    }
+    git::status(path, git::DiffScope::parse(&scope))
+        .map(Some)
+        .map_err(ui_error)
+}
+
+/// Read-only unified diff for a single file under `scope`, loaded lazily when a
+/// review row is expanded. Untracked files are synthesized as new-file diffs;
+/// binary files and oversized diffs come back flagged. Never mutates the repo.
+#[tauri::command]
+pub async fn agent_git_file_diff(
+    project: String,
+    path: String,
+    scope: String,
+) -> Result<git::GitFileDiff, String> {
+    git::file_diff(
+        std::path::Path::new(&project),
+        &path,
+        git::DiffScope::parse(&scope),
+        MAX_FILE_DIFF_BYTES,
+    )
+    .map_err(ui_error)
+}
+
 /// A saved subagent definition, for the `task` tool's advertised name list and
 /// the Cowork subagents panel.
 #[derive(serde::Serialize)]
