@@ -1323,6 +1323,7 @@ function CoworkPage() {
         )}
         {rail?.kind === 'code' && session?.id && (
           <CoworkCodePanel
+                onOfferFolder={() => void attachFolder()}
             folder={folder}
             workspacePath={workspacePath}
             sessionKey={session.id}

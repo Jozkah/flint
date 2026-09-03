@@ -778,7 +778,9 @@
     "readOnlyHint": "Cowork opens files for reading; it does not edit them.",
     "originProject": "in the attached project",
     "originWorkspace": "in this session’s workspace",
-    "originExternal": "outside the project, read-only"
+    "originExternal": "outside the project, read-only",
+    "tooLargeToOpen": "{{name}} is too large to open here",
+    "unreadable": "{{name}} could not be read"
   },
   "settingsSearch": {
     "label": "Search settings",
@@ -905,5 +907,9 @@
     },
     "addFiles": "Add files",
     "addFilesOrImages": "Add files or images"
+  },
+  "drop": {
+    "openInCode": "Drop to open — read-only",
+    "attachToMessage": "Drop to attach to your message"
   }
 }

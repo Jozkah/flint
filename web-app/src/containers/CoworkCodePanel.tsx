@@ -22,9 +22,17 @@ import { getServiceHub, useServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { resolveInRoot } from '@/lib/coworkPreview'
+import { toast } from 'sonner'
+import {
+  decideDrop,
+  dragHasFiles,
+  DROP_ZONE_CLASS,
+  dropLabelKey,
+} from '@/lib/fileDrop'
 import {
   MAX_CODE_FILE_BYTES,
   closeTab,
+  externalTab,
   emptyCodePanelState,
   isSourcePath,
   isTabStale,
@@ -83,6 +91,8 @@ type Props = {
   onAddToChat: (ref: CodeRef) => void
   onAttach: () => void
   onClose: () => void
+  /** A folder was dropped; offer to attach it as the project. */
+  onOfferFolder?: (name: string) => void
 }
 
 /**
@@ -103,10 +113,18 @@ export function CoworkCodePanel({
   onAddToChat,
   onAttach,
   onClose,
+  onOfferFolder,
 }: Props): React.ReactElement {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const state = stateProp ?? emptyCodePanelState()
+
+  const [dragOver, setDragOver] = useState(false)
+  const pickerRef = useRef<HTMLInputElement>(null)
+  /** Contents of external files, held for this panel's lifetime only. */
+  const [externalContent, setExternalContent] = useState<
+    Record<string, string>
+  >({})
 
   const [dataFolder, setDataFolder] = useState<string | null>(null)
   const [dirs, setDirs] = useState<Map<string, DirState>>(new Map())
@@ -121,6 +139,60 @@ export function CoworkCodePanel({
   const turnsRef = useRef(turns)
   turnsRef.current = turns
   const writeCounts = useMemo(() => writeCountsByPath(turns), [turns])
+
+  /**
+   * Open dropped or picked files as read-only External tabs.
+   *
+   * Scoped to this session: a file opened here belongs to the session it was
+   * opened in and must not surface under the next one. Oversized and
+   * unreadable files are reported rather than silently skipped.
+   */
+  const openExternalFiles = useCallback(
+    async (picked: File[]) => {
+      if (!sessionKey) return
+      for (const file of picked) {
+        if (file.size > MAX_CODE_FILE_BYTES) {
+          toast.error(t('common:codePanel.tooLargeToOpen', { name: file.name }))
+          continue
+        }
+        try {
+          const content = await file.text()
+          const tab = externalTab(file.name, sessionKey)
+          setExternalContent((prev) => ({ ...prev, [tabId(tab)]: content }))
+          // An already-open file is focused rather than opened twice.
+          onStateChange(openTab(state, tab))
+        } catch {
+          toast.error(t('common:codePanel.unreadable', { name: file.name }))
+        }
+      }
+    },
+    [sessionKey, state, onStateChange, t]
+  )
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      if (!dragHasFiles(e.dataTransfer)) return
+      e.preventDefault()
+      e.stopPropagation()
+      setDragOver(false)
+      const intent = decideDrop('code', Array.from(e.dataTransfer.files))
+      if (intent.action === 'open') void openExternalFiles(intent.files)
+      else if (intent.action === 'offer-folder') onOfferFolder?.(intent.name)
+    },
+    [openExternalFiles, onOfferFolder]
+  )
+
+  // Cmd+O / Ctrl+O while this panel is mounted, which is while Cowork's code
+  // rail is open.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'o' || !(e.metaKey || e.ctrlKey)) return
+      e.preventDefault()
+      pickerRef.current?.click()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const [explorerOpen, setExplorerOpen] = useState(
     () => state.tabs.length === 0
   )
@@ -338,7 +410,14 @@ export function CoworkCodePanel({
     [onStateChange, state, projectKey]
   )
 
-  const activeFile = activeId ? files.get(activeId) : undefined
+  // External files were read into memory when they were opened; there is no
+  // path on disk to re-read them from, and they are read-only regardless.
+  const activeFile: FileState | undefined =
+    activeId && activeId in externalContent
+      ? { status: 'ready', content: externalContent[activeId] }
+      : activeId
+        ? files.get(activeId)
+        : undefined
 
   const renderTree = (rel: string, depth: number): React.ReactNode => {
     const dir = dirs.get(rel)
@@ -712,7 +791,49 @@ export function CoworkCodePanel({
 
   return (
     <CoworkSidePanel title={t('common:codePanel.title')} onClose={onClose}>
-      {body}
+      <div
+        data-testid="code-drop-zone"
+        className={cn(
+          'relative flex h-full flex-col',
+          dragOver && DROP_ZONE_CLASS.code
+        )}
+        onDragOver={(e) => {
+          if (!dragHasFiles(e.dataTransfer)) return
+          // Claim the drop here. The document-level handler only stops the
+          // browser navigating to the file; it does not stop propagation, so
+          // this runs first on the way up.
+          e.preventDefault()
+          e.stopPropagation()
+          setDragOver(true)
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+          setDragOver(false)
+        }}
+        onDrop={onDrop}
+      >
+        {dragOver && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center p-2">
+            <span className="rounded-full border bg-background/95 px-3 py-1 text-xs shadow-sm">
+              {t(dropLabelKey('code'))}
+            </span>
+          </div>
+        )}
+        <input
+          ref={pickerRef}
+          type="file"
+          multiple
+          className="hidden"
+          data-testid="code-file-picker"
+          onChange={(e) => {
+            const picked = Array.from(e.target.files ?? [])
+            if (picked.length) void openExternalFiles(picked)
+            // Reset, so choosing the same file again still fires a change.
+            e.target.value = ''
+          }}
+        />
+        {body}
+      </div>
     </CoworkSidePanel>
   )
 }
