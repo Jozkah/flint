@@ -33,7 +33,7 @@ import {
 } from '@tabler/icons-react'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { toast } from 'sonner'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { predefinedProviders } from '@/constants/providers'
 import { useModelLoad } from '@/hooks/useModelLoad'
 import { useAppState } from '@/hooks/useAppState'
@@ -45,10 +45,6 @@ import {
   API_KEY_FALLBACKS_SETTING_KEY,
   serializeApiKeyFallbacks,
 } from '@/lib/provider-api-keys'
-import {
-  supportsRemoteCatalog,
-  fetchTopRemoteModels,
-} from '@/lib/remoteModelCatalog'
 
 // as route.threadsDetail
 export const Route = createFileRoute('/settings/providers/$providerName')({
@@ -79,7 +75,7 @@ function ProviderDetail() {
     { index: number; masked: string; status: string; detail: string }[]
   >([])
   const { providerName } = useParams({ from: Route.id })
-  const { getProviderByName, setProviders, updateProvider, addDeletedModels } =
+  const { getProviderByName, setProviders, updateProvider } =
     useModelProvider()
   const provider = getProviderByName(providerName)
   const isLlamacpp = provider?.provider === 'llamacpp'
@@ -262,20 +258,6 @@ function ProviderDetail() {
     setBaseUrlDraft(provider.base_url ?? '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerName, provider?.base_url])
-
-  const autoCatalogAttempted = useRef<Set<string>>(new Set())
-  useEffect(() => {
-    if (!provider) return
-    if (!supportsRemoteCatalog(provider)) return
-    if (provider.models.length > 0) return
-    if (!providerHasRemoteApiKeys(provider)) return
-    if (autoCatalogAttempted.current.has(provider.provider)) return
-    autoCatalogAttempted.current.add(provider.provider)
-    handleRefreshModels()
-    // handleRefreshModels closes over the latest provider; only watch the
-    // signals that decide whether auto-fetch should fire.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider?.provider, provider?.api_key, provider?.models.length])
 
   const commitApiKeysDraft = useCallback(() => {
     if (!provider) return
@@ -493,57 +475,17 @@ function ProviderDetail() {
 
     setRefreshingModels(true)
     try {
-      let newModels: Model[]
-      if (supportsRemoteCatalog(provider)) {
-        const catalog = await fetchTopRemoteModels(provider, serviceHub.providers().fetch())
-        newModels = catalog.map((m) => ({
-          id: m.id,
-          model: m.id,
-          name: m.id,
-          capabilities: m.capabilities,
-          version: '1.0',
-        }))
-      } else {
-        const modelIds = await serviceHub
-          .providers()
-          .fetchModelsFromProvider(provider)
-        newModels = modelIds.map((id) => ({
-          id,
-          model: id,
-          name: id,
-          capabilities: ['completion'],
-          version: '1.0',
-        }))
-      }
+      const modelIds = await serviceHub
+        .providers()
+        .fetchModelsFromProvider(provider)
+      const newModels: Model[] = modelIds.map((id) => ({
+        id,
+        model: id,
+        name: id,
+        capabilities: ['completion'],
+        version: '1.0',
+      }))
 
-      if (supportsRemoteCatalog(provider)) {
-        const importedModels = provider.models.filter((m) => m.imported)
-        const importedIds = new Set(importedModels.map((m) => m.id))
-        const fresh = newModels.filter((m) => !importedIds.has(m.id))
-        if (fresh.length === 0) {
-          toast.success(t('providers:models'), {
-            description: t('providers:noNewModels'),
-          })
-          return
-        }
-        const updatedModels = [...importedModels, ...fresh]
-        const keepIds = new Set(updatedModels.map((m) => m.id))
-        const removedIds = provider.models
-          .filter((m) => !m.imported && !keepIds.has(m.id))
-          .map((m) => m.id)
-        addDeletedModels(removedIds)
-        updateProvider(providerName, {
-          ...provider,
-          models: updatedModels,
-        })
-        toast.success(t('providers:models'), {
-          description: t('providers:refreshModelsSuccess', {
-            count: fresh.length,
-            provider: provider.provider,
-          }),
-        })
-        return
-      }
 
       const existingModelIds = provider.models.map((m) => m.id)
       const modelsToAdd = newModels.filter(
@@ -646,8 +588,7 @@ function ProviderDetail() {
             </div>
 
             {provider &&
-              !isLocalProvider(provider.provider) &&
-              !supportsRemoteCatalog(provider) && (
+              !isLocalProvider(provider.provider) && (
                 <div className="flex items-start gap-2 rounded-md border border-main-view-fg/10 bg-main-view-fg/5 px-3 py-2 text-xs text-muted-foreground">
                   <IconInfoCircle size={16} className="mt-0.5 shrink-0" />
                   <span>

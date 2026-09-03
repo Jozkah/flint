@@ -16,7 +16,7 @@ import {
   API_KEY_FALLBACKS_SETTING_KEY,
   providerRemoteApiKeyChain,
 } from '@/lib/provider-api-keys'
-import { ensureAnthropicHeaders } from '@/lib/remoteModelCatalog'
+import { ensureAnthropicHeaders } from '@/lib/anthropicHeaders'
 
 export class TauriProvidersService extends DefaultProvidersService {
   fetch(): typeof fetch {
