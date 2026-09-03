@@ -83,7 +83,7 @@ import { engineFailure } from '@/lib/engineError'
 import { i18n } from '@/i18n/react-i18next-compat'
 import { useAppState } from '@/hooks/useAppState'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
-import { ensureAnthropicHeaders } from '@/lib/remoteModelCatalog'
+import { ensureAnthropicHeaders } from '@/lib/anthropicHeaders'
 
 /**
  * Llama.cpp timings structure from the response
