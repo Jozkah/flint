@@ -37,6 +37,8 @@ import {
   type MessageCircleIconHandle,
 } from '@/components/animated-icon/message-circle'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
+import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { usePrompt } from '@/hooks/usePrompt'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { memo, useCallback, useRef, useState } from 'react'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
@@ -118,7 +120,17 @@ export function NavCowork() {
   const goCowork = useCallback(() => navigate({ to: route.cowork }), [navigate])
   const newSessionIconRef = useRef<MessageCircleIconHandle>(null)
   const newSession = () => {
-    useCoworkSessions.getState().createSession()
+    // Idempotent: on a blank session this returns the same one, so a second
+    // press cannot leave a trail of empty sessions behind. An unsent draft
+    // keeps the user where they are rather than stranding it.
+    const store = useCoworkSessions.getState()
+    const id = store.startSession({
+      running: Boolean(
+        store.currentId && useCoworkRun.getState().liveTurns[store.currentId]?.length
+      ),
+      hasDraft: usePrompt.getState().prompt.trim().length > 0,
+    })
+    store.selectSession(id)
     goCowork()
   }
   const selectSession = useCallback(

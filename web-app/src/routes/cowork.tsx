@@ -1185,9 +1185,17 @@ function CoworkPage() {
                     <CoworkBudgetNotice
                       kind="tokens"
                       onCompact={() => toast.info(t('common:budget.compact'))}
-                      onNewSession={() =>
-                        useCoworkSessions.getState().createSession()
-                      }
+                      onNewSession={() => {
+                        // Same rule as the sidebar's entry point: one press,
+                        // at most one session.
+                        const store = useCoworkSessions.getState()
+                        const id = store.startSession({
+                          running,
+                          hasDraft:
+                            usePrompt.getState().prompt.trim().length > 0,
+                        })
+                        store.selectSession(id)
+                      }}
                     />
                   )}
                 </ConversationContent>

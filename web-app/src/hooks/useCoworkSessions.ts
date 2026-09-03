@@ -82,6 +82,11 @@ type CoworkSessionsState = {
   sessions: CoworkSession[]
   currentId: string | null
   createSession: () => string
+  /**
+   * What "New session" does: create one, or stay put when this session is
+   * already blank or holds an unsent draft. Returns the session to show.
+   */
+  startSession: (input: { running: boolean; hasDraft: boolean }) => string
   selectSession: (id: string) => void
   deleteSession: (id: string) => void
   setFolder: (id: string, folder: string | null) => void
@@ -115,11 +120,13 @@ type CoworkSessionsState = {
   clearSession: (id: string) => void
 }
 
+import { decideSessionStart } from '@/lib/coworkSessionStart'
+
 const now = () => Date.now()
 
 export const useCoworkSessions = create<CoworkSessionsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       sessions: [],
       currentId: null,
 
@@ -135,6 +142,18 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         }
         set((s) => ({ sessions: [session, ...s.sessions], currentId: id }))
         return id
+      },
+
+      startSession: ({ running, hasDraft }) => {
+        const state = get()
+        const current = state.sessions.find((s) => s.id === state.currentId)
+        if (
+          decideSessionStart({ current, running, hasDraft }) === 'reuse' &&
+          current
+        ) {
+          return current.id
+        }
+        return get().createSession()
       },
 
       selectSession: (id) => set({ currentId: id }),
