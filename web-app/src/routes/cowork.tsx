@@ -1237,6 +1237,7 @@ function CoworkPage() {
                     />
                     <CoworkWorkspacePill
                       folder={folder}
+                      workspacePath={workspacePath}
                       gitBranch={gitBranch}
                       onAttach={() => void attachFolder()}
                       onDetach={detachFolder}

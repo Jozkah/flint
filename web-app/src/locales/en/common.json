@@ -679,7 +679,16 @@
     "reveal": "Reveal",
     "missing": "This folder isn't there anymore. Attach a different one.",
     "a11yWithFolder": "Project folder {{folder}}, attached read-only. Change or detach it.",
-    "a11yNoFolder": "No project folder attached. Attach one."
+    "a11yNoFolder": "No project folder attached. Attach one.",
+    "writesTo": "Changes go to",
+    "sandbox": "Session sandbox",
+    "sandboxNote": "Anything the agent writes lands here, not in your project.",
+    "sandboxPending": "Created when the agent first writes something.",
+    "pathLabel": "Full path",
+    "branchLabel": "Branch",
+    "actionsLabel": "Folder actions",
+    "copyPath": "Copy path",
+    "copied": "Path copied"
   },
   "coworkEmpty": {
     "title": "What are we working on?",
