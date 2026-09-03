@@ -14,11 +14,10 @@ mod path_refs;
 pub mod run_report;
 pub mod providers;
 mod secret_input;
-pub mod telemetry;
 pub mod terminal_setup;
 pub mod tokamak;
+pub mod version;
 mod tui;
-pub mod updater;
 
 use std::path::PathBuf;
 use std::sync::Arc;

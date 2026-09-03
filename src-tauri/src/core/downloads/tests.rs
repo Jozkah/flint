@@ -386,51 +386,6 @@ fn test_download_item_deserialization() {
     assert_eq!(item.save_path, "downloads/file.zip");
 }
 
-// ===== convert_to_mirror_url =====
-
-#[test]
-fn test_convert_to_mirror_url_huggingface() {
-    let url = "https://huggingface.co/some/repo/resolve/main/model.gguf";
-    let mirror = convert_to_mirror_url(url).expect("should produce a mirror url");
-    assert!(mirror.starts_with("https://apps") && mirror.contains(".jan.ai/"));
-    assert!(mirror.ends_with("huggingface.co/some/repo/resolve/main/model.gguf"));
-}
-
-#[test]
-fn test_convert_to_mirror_url_huggingface_subdomain() {
-    // Subdomains of mirror domains should also be mirrored
-    let url = "https://cdn.huggingface.co/file.bin";
-    let mirror = convert_to_mirror_url(url).expect("subdomain should mirror");
-    assert!(mirror.ends_with("cdn.huggingface.co/file.bin"));
-}
-
-#[test]
-fn test_convert_to_mirror_url_http_scheme() {
-    let url = "http://huggingface.co/file";
-    let mirror = convert_to_mirror_url(url).expect("http should be stripped too");
-    assert!(mirror.ends_with("huggingface.co/file"));
-    assert!(!mirror.contains("http://huggingface.co"));
-}
-
-#[test]
-fn test_convert_to_mirror_url_non_mirror_domain() {
-    assert!(convert_to_mirror_url("https://example.com/file.bin").is_none());
-    assert!(convert_to_mirror_url("https://github.com/x/y").is_none());
-}
-
-#[test]
-fn test_convert_to_mirror_url_invalid_url() {
-    assert!(convert_to_mirror_url("not a url").is_none());
-    assert!(convert_to_mirror_url("").is_none());
-}
-
-#[test]
-fn test_convert_to_mirror_url_not_substring_match() {
-    // A domain that merely contains "huggingface.co" as substring (not as suffix) must NOT match
-    let url = "https://huggingface.co.evil.com/file";
-    assert!(convert_to_mirror_url(url).is_none());
-}
-
 // ===== err_to_string =====
 
 #[test]
