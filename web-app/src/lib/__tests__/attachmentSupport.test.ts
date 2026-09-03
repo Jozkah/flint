@@ -109,9 +109,20 @@ describe('capability gating', () => {
   })
 
   it('says when the document parser is the thing that is missing', () => {
+    // Only reachable on the path intake: the browser intake refuses documents
+    // earlier, because a dropped File has no path for the parser to open.
     expect(
-      validateAttachment(file('a.pdf'), ctx({ parserAvailable: false }))
+      validateAttachment(
+        file('a.pdf'),
+        ctx({ parserAvailable: false, intake: 'path' })
+      )
     ).toEqual({ ok: false, reason: 'parser-unavailable', kind: 'document' })
+  })
+
+  it('sends a dropped document to the file dialog instead', () => {
+    expect(validateAttachment(file('a.pdf'), ctx()).reason).toBe(
+      'needs-file-dialog'
+    )
   })
 })
 
@@ -154,11 +165,15 @@ describe('limits and duplicates', () => {
 })
 
 describe('what the picker offers', () => {
-  it('always offers text, code and documents', () => {
+  it('always offers text and code', () => {
     const accept = acceptAttribute({})
     expect(accept).toContain('.json')
     expect(accept).toContain('.ts')
-    expect(accept).toContain('.pdf')
+  })
+
+  it('offers documents only to the intake that can read them', () => {
+    expect(acceptAttribute({}, 'browser')).not.toContain('.pdf')
+    expect(acceptAttribute({}, 'path')).toContain('.pdf')
   })
 
   it('offers images only to a model that can see them', () => {

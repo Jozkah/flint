@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { Fragment, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import {
   gutterWidth,
@@ -50,9 +50,9 @@ export function DiffView({
       <table className="w-full border-collapse">
         <tbody>
           {parsed.hunks.map((hunk, hunkIndex) => (
-            <>
+            <Fragment key={`hunk-${hunkIndex}`}>
               {hunk.header && (
-                <tr key={`h-${hunkIndex}`} className="bg-muted/60">
+                <tr className="bg-muted/60">
                   <td
                     colSpan={3}
                     className="select-none px-2 py-0.5 text-muted-foreground"
@@ -71,7 +71,7 @@ export function DiffView({
                   gutter={gutter}
                 />
               ))}
-            </>
+            </Fragment>
           ))}
           {omitted > 0 && (
             <tr>

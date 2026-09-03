@@ -54,8 +54,13 @@ describe('what happened outranks what it was', () => {
     }
   })
 
-  it('a completed call is green', () => {
-    expect(tone({ name: 'bash', state: 'output-available' })).toBe('success')
+  it('a completed write settles out of its urgent amber', () => {
+    // Success is carried by the row's status text, not by recolouring every
+    // finished tool: doing that made a settled transcript a wall of green and
+    // erased the difference between a file read and a file rewritten.
+    expect(tone({ name: 'write', state: 'output-available' })).toBe('success')
+    expect(tone({ name: 'bash', state: 'output-available' })).toBe('tool')
+    expect(tone({ name: 'read', state: 'output-available' })).toBe('read')
   })
 
   it('a failed write is red, not amber', () => {

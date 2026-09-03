@@ -141,9 +141,12 @@ export type ToolToneInput = {
 /**
  * The tone for one tool row.
  *
- * Failure and success are states and outrank the tool's kind: what happened
- * matters more than which tool it was. Everything else is categorical, so a
- * row reads the same while it runs as it does once it is done.
+ * Failure outranks the tool's kind: what went wrong matters more than which
+ * tool it was. Success does not — every finished tool taking green would make
+ * a settled transcript a wall of it, and would erase the distinction between
+ * a file that was read and a file that was rewritten. Success is carried by
+ * the row's existing status text; colour keeps saying what kind of work it
+ * was. The single exception is a write, which stops being urgent once done.
  */
 export function toneForTool(input: ToolToneInput): SemanticTone {
   const state = input.state ?? ''
@@ -152,10 +155,10 @@ export function toneForTool(input: ToolToneInput): SemanticTone {
   const running = state === 'input-streaming' || state === 'input-available'
 
   // A write in flight is the one case worth flagging while it happens: it is
-  // changing the user's files right now.
+  // changing the user's files right now. Once it settles it is no longer
+  // urgent, but it is still a write — colouring it green would lose that.
   if (WRITING.has(input.name)) return running ? 'write' : 'success'
 
-  if (state === 'output-available') return 'success'
   if (input.isSubagent) return 'subagent'
   if (input.isMcp || (input.origin && !READING.has(input.name)))
     return isBuiltIn(input.name) ? 'tool' : 'mcp'

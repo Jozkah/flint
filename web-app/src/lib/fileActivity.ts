@@ -126,6 +126,7 @@ export function pathFromArgs(args: unknown): string | null {
 
 export type ToolRecord = {
   callId?: string
+  /** The subagent that ran it, when it was not the main agent. */
   name?: string
   args?: unknown
   result?: string
@@ -156,7 +157,11 @@ export function eventFromTool(
 
   const path = normalizePath(raw)
   return {
-    id: record.callId ? `${record.callId}:${seq}` : `${path}:${seq}`,
+    // Keyed on the tool call, not on where it fell in a batch. A call settles
+    // once but is seen twice — as the step lands, and again when the turn is
+    // committed — and a batch-relative id would make those two different
+    // events. The call id is the thing that is actually unique.
+    id: record.callId ? `call:${record.callId}` : `${path}:${seq}`,
     path,
     operation,
     seq,
@@ -167,6 +172,25 @@ export function eventFromTool(
     origin: originOf(path),
     hasDiff: Boolean(record.diff),
   }
+}
+
+/**
+ * Events for one subagent's turns, tagged with its name.
+ *
+ * A subagent's file work is the conversation's file work; without the name the
+ * activity view cannot say who touched what.
+ */
+export function deriveFromSubagent(
+  name: string,
+  turns: readonly ToolRecord[],
+  originOf: (path: string) => FileOrigin,
+  startedAt = 0
+): FileActivityEvent[] {
+  return deriveFromTurns(
+    turns.map((turn) => ({ ...turn, agent: turn.agent ?? name })),
+    originOf,
+    startedAt
+  )
 }
 
 /**

@@ -75,7 +75,11 @@ import { CoworkPlanToggle } from '@/containers/CoworkPlanToggle'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useFileActivity } from '@/hooks/useFileActivity'
-import { deriveFromTurns, type FileOrigin } from '@/lib/fileActivity'
+import {
+  deriveFromSubagent,
+  deriveFromTurns,
+  type FileOrigin,
+} from '@/lib/fileActivity'
 import { awaitsModel } from '@/lib/agentActivity'
 import { artifactsFromParts } from '@/lib/coworkArtifacts'
 import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
@@ -970,6 +974,12 @@ function CoworkPage() {
                 !(turn.role === 'assistant' && turn.content === result.text)
             )
             pushLive(turns)
+            // Record this step's file work now. Ids are keyed on the tool
+            // call, so the commit below re-recording the same rows is a
+            // no-op rather than a duplicate.
+            useFileActivity
+              .getState()
+              .record(sid, deriveFromTurns(turns, originOfPath, Date.now()))
             for (const [callId, outcome] of outcomes) {
               if (outcome.diff) {
                 useToolCallRuntime.getState().recordDiff(callId, outcome.diff)
@@ -1024,12 +1034,18 @@ function CoworkPage() {
         )
       // The transcript's tool rows are structured: name, arguments, error
       // flag, diff. That is the only thing the file record is built from.
+      // A final sweep: anything the steps missed, plus every subagent's own
+      // file work, which only exists on the runs themselves.
+      const settledAt = Date.now()
+      const subagentRuns = useCoworkRun.getState().subagents[sid] ?? []
       useFileActivity
         .getState()
-        .record(
-          sid,
-          deriveFromTurns(liveTurnsRef.current, originOfPath, Date.now())
-        )
+        .record(sid, [
+          ...deriveFromTurns(liveTurnsRef.current, originOfPath, settledAt),
+          ...subagentRuns.flatMap((run) =>
+            deriveFromSubagent(run.name, run.turns, originOfPath, settledAt)
+          ),
+        ])
       liveTurnsRef.current = []
       setLiveTurns([])
       setRunning(false)
@@ -1094,6 +1110,21 @@ function CoworkPage() {
     setRail({ kind: 'preview', path: pendingPreview.path })
     useCoworkRun.getState().clearPendingPreview()
   }, [pendingPreview, session?.id])
+
+  // The file-activity view parks a request the same way, for a path it wants
+  // shown but cannot open itself. Consumed once.
+  const pendingCodeOpen = useCoworkRun((s) => s.pendingCodeOpen)
+  useEffect(() => {
+    if (!pendingCodeOpen || !session?.id) return
+    if (pendingCodeOpen.sessionId !== session.id) return
+    if (pendingCodeOpen.as === 'diff') {
+      setRail({ kind: 'diff' })
+    } else {
+      setRail({ kind: 'code' })
+      openToolPath(pendingCodeOpen.path)
+    }
+    useCoworkRun.getState().clearPendingCodeOpen()
+  }, [pendingCodeOpen, session?.id, openToolPath])
 
   // Nothing to show once the session changes: every panel describes the session
   // it was opened from.
@@ -1295,6 +1326,7 @@ function CoworkPage() {
         {rail?.kind === 'diff' && (
           <CoworkDiffPanel
             sandboxFiles={fileDiffs}
+            onOpenFile={openToolPath}
             folder={folder}
             git={git}
             onClose={() => setRail(null)}

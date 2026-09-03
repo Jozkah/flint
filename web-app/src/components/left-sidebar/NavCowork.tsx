@@ -146,6 +146,19 @@ const SessionItem = memo(function SessionItem({
         onOpenChange={setActivityOpen}
         events={activity ?? []}
         title={session.title}
+        // The rows were inert without these: the dialog disables a row it
+        // cannot act on, so every row was disabled. Selecting the session
+        // first means the request lands on the session it came from.
+        onOpenFile={(path) => {
+          setActivityOpen(false)
+          onSelect(session.id)
+          useCoworkRun.getState().requestCodeOpen(session.id, path, 'code')
+        }}
+        onOpenDiff={(path) => {
+          setActivityOpen(false)
+          onSelect(session.id)
+          useCoworkRun.getState().requestCodeOpen(session.id, path, 'diff')
+        }}
       />
     </SidebarMenuItem>
   )

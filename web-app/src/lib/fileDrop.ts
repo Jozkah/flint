@@ -79,3 +79,21 @@ export const DROP_ZONE_CLASS: Record<DropTarget, string> = {
 /** The i18n key for what this zone will do with the drop. */
 export const dropLabelKey = (target: DropTarget): string =>
   target === 'code' ? 'common:drop.openInCode' : 'common:drop.attachToMessage'
+
+/**
+ * Is the user typing right now?
+ *
+ * A global shortcut that fires while someone is mid-sentence in the composer
+ * is a bug, not a feature — and an open dialog owns the keyboard until it is
+ * dismissed. Checked against the real focused element rather than a flag, so
+ * it stays true for anything focusable that takes text.
+ */
+export function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el || typeof el.closest !== 'function') return false
+  if (el.isContentEditable) return true
+  const tag = el.tagName?.toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
+  // Inside an open dialog or a menu, the shortcut is not ours to take.
+  return Boolean(el.closest('[role="dialog"], [role="menu"], [contenteditable="true"]'))
+}

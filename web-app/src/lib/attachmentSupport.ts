@@ -110,6 +110,18 @@ export function classifyAttachment(input: {
 export const isTextual = (kind: AttachmentKind): boolean =>
   kind === 'text' || kind === 'code'
 
+/**
+ * How the file reached us.
+ *
+ * `browser` is a drop or an `<input type=file>`: a `File` object with bytes
+ * and no path. `path` is the OS dialog, which returns a real filesystem path.
+ *
+ * The distinction is not cosmetic. The local document parser reads PDFs and
+ * Office files *by path*; a `File` has none, so those formats are genuinely
+ * unattachable on the browser path and must not be advertised there.
+ */
+export type AttachmentIntake = 'browser' | 'path'
+
 export type RejectionReason =
   | 'unsupported'
   | 'too-large'
@@ -119,6 +131,8 @@ export type RejectionReason =
   | 'needs-audio'
   | 'needs-video'
   | 'parser-unavailable'
+  /** Real format, wrong door: it needs the file dialog, not a drop. */
+  | 'needs-file-dialog'
   | 'empty'
 
 export type AttachmentDecision =
@@ -132,6 +146,8 @@ export type ValidationContext = {
   existingNames?: readonly string[]
   /** The local document parser is available. */
   parserAvailable?: boolean
+  /** Which intake this file came through. Defaults to the browser path. */
+  intake?: AttachmentIntake
 }
 
 /**
@@ -163,6 +179,11 @@ export function validateAttachment(
   if (isTextual(kind)) return { ok: true, kind }
 
   if (kind === 'document') {
+    // The parser reads by path. A dropped `File` has none, so this is a real
+    // format that arrived through the wrong door — say that, rather than
+    // calling a PDF unsupported when the app parses PDFs perfectly well.
+    if ((context.intake ?? 'browser') === 'browser')
+      return { ok: false, reason: 'needs-file-dialog', kind }
     return context.parserAvailable === false
       ? { ok: false, reason: 'parser-unavailable', kind }
       : { ok: true, kind }
@@ -183,8 +204,14 @@ export const reasonMessageKey = (reason: RejectionReason): string =>
   `common:attachFiles.reject.${reason}`
 
 /** Everything the picker should offer, as an `accept` attribute. */
-export function acceptAttribute(capabilities: ModelCapabilities): string {
-  const kinds: AttachmentKind[] = ['text', 'code', 'document']
+export function acceptAttribute(
+  capabilities: ModelCapabilities,
+  intake: AttachmentIntake = 'browser'
+): string {
+  // Documents are offered only where they can actually be read: the file
+  // dialog, which yields a path the parser can open.
+  const kinds: AttachmentKind[] =
+    intake === 'path' ? ['text', 'code', 'document'] : ['text', 'code']
   if (capabilities.vision) kinds.push('image')
   if (capabilities.audio) kinds.push('audio')
   if (capabilities.video) kinds.push('video')

@@ -28,6 +28,7 @@ import {
   dragHasFiles,
   DROP_ZONE_CLASS,
   dropLabelKey,
+  isTypingTarget,
 } from '@/lib/fileDrop'
 import {
   MAX_CODE_FILE_BYTES,
@@ -121,9 +122,17 @@ export function CoworkCodePanel({
 
   const [dragOver, setDragOver] = useState(false)
   const pickerRef = useRef<HTMLInputElement>(null)
-  /** Contents of external files, held for this panel's lifetime only. */
-  const [externalContent, setExternalContent] = useState<
-    Record<string, string>
+  /**
+   * External files, held for this panel's lifetime only.
+   *
+   * The `File` is kept beside the text so Reload can re-read the same handle
+   * the user already granted. It is memory, not storage: nothing about an
+   * external file is persisted, so no filesystem access survives a restart,
+   * and a handle opened in one session is never visible to another because
+   * the map dies with the panel and the tab id carries the session.
+   */
+  const [externalFiles, setExternalFiles] = useState<
+    Record<string, { file: File; content: string }>
   >({})
 
   const [dataFolder, setDataFolder] = useState<string | null>(null)
@@ -158,7 +167,10 @@ export function CoworkCodePanel({
         try {
           const content = await file.text()
           const tab = externalTab(file.name, sessionKey)
-          setExternalContent((prev) => ({ ...prev, [tabId(tab)]: content }))
+          setExternalFiles((prev) => ({
+            ...prev,
+            [tabId(tab)]: { file, content },
+          }))
           // An already-open file is focused rather than opened twice.
           onStateChange(openTab(state, tab))
         } catch {
@@ -187,6 +199,10 @@ export function CoworkCodePanel({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== 'o' || !(e.metaKey || e.ctrlKey)) return
+      // Not while the user is typing, and not over an open dialog or menu:
+      // a global shortcut that interrupts a sentence is a bug.
+      if (isTypingTarget(e.target)) return
+      if (e.altKey || e.shiftKey) return
       e.preventDefault()
       pickerRef.current?.click()
     }
@@ -413,11 +429,34 @@ export function CoworkCodePanel({
   // External files were read into memory when they were opened; there is no
   // path on disk to re-read them from, and they are read-only regardless.
   const activeFile: FileState | undefined =
-    activeId && activeId in externalContent
-      ? { status: 'ready', content: externalContent[activeId] }
+    activeId && activeId in externalFiles
+      ? { status: 'ready', content: externalFiles[activeId].content }
       : activeId
         ? files.get(activeId)
         : undefined
+
+  /**
+   * Re-read an external file from the handle already granted.
+   *
+   * A file that moved or was deleted comes back as a read error rather than
+   * silently keeping the old bytes, and the user is told to choose it again —
+   * there is no path retained to go looking with.
+   */
+  const reloadExternal = useCallback(
+    async (id: string) => {
+      const held = externalFiles[id]
+      if (!held) return
+      try {
+        const content = await held.file.text()
+        setExternalFiles((prev) =>
+          prev[id] ? { ...prev, [id]: { ...prev[id], content } } : prev
+        )
+      } catch {
+        toast.error(t('common:codePanel.chooseAgain', { name: held.file.name }))
+      }
+    },
+    [externalFiles, t]
+  )
 
   const renderTree = (rel: string, depth: number): React.ReactNode => {
     const dir = dirs.get(rel)
@@ -691,6 +730,27 @@ export function CoworkCodePanel({
             <div className="flex h-full min-h-0 flex-col">
               {/* Announced, not swapped: replacing the bytes under someone
                   mid-read is what the preview pane deliberately avoids. */}
+              {/* An external file has no path to watch, so staleness cannot
+                  be detected for it. Reload is offered unconditionally
+                  instead: the handle is still good, and re-reading is cheap. */}
+              {active.origin.kind === 'external' && (
+                <div
+                  role="status"
+                  className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs text-main-view-fg/70"
+                >
+                  <span className="min-w-0 flex-1">
+                    {t('common:codePanel.externalNote')}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 shrink-0 px-2 text-xs"
+                    onClick={() => void reloadExternal(activeId)}
+                  >
+                    {t('common:codePanel.reload')}
+                  </Button>
+                </div>
+              )}
               {isTabStale(active, loadedAt.get(activeId), writeCounts) && (
                 <div
                   role="status"

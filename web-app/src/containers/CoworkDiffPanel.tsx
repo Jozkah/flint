@@ -128,6 +128,7 @@ function FileRow({
   indicator,
   isExpanded,
   onToggle,
+  onOpen,
   children,
 }: {
   path: string
@@ -139,10 +140,15 @@ function FileRow({
   indicator?: string
   isExpanded: boolean
   onToggle: () => void
+  /** Show this file in the Code panel. Absent where it cannot be opened. */
+  onOpen?: () => void
   children: React.ReactNode
 }) {
+  const { t } = useTranslation()
+  const openLabel = t('common:changes.openFile')
+
   return (
-    <div>
+    <div className="group/row relative">
       <button
         type="button"
         onClick={onToggle}
@@ -187,6 +193,15 @@ function FileRow({
           -{deletions}
         </span>
       </button>
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="absolute right-2 top-1.5 rounded px-1.5 py-0.5 text-[10px] text-main-view-fg/60 opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover/row:opacity-100"
+        >
+          {openLabel}
+        </button>
+      ) : null}
       {isExpanded ? (
         <div className="border-t bg-background">{children}</div>
       ) : null}
@@ -214,8 +229,11 @@ export function CoworkDiffPanel({
   folder,
   git,
   onClose,
+  onOpenFile,
 }: {
   sandboxFiles: CoworkFileDiff[]
+  /** Show a changed file in the Code panel. */
+  onOpenFile?: (path: string) => void
   folder: string | null
   git: CoworkGitState
   onClose: () => void
@@ -377,6 +395,7 @@ export function CoworkDiffPanel({
                       <FileRow
                         key={id}
                         path={file.path}
+                        onOpen={onOpenFile ? () => onOpenFile(file.path) : undefined}
                         subtitle={
                           file.origPath
                             ? t('common:changes.renamedFrom', {
@@ -425,6 +444,7 @@ export function CoworkDiffPanel({
                     <FileRow
                       key={id}
                       path={file.path}
+                      onOpen={onOpenFile ? () => onOpenFile(file.path) : undefined}
                       additions={file.additions}
                       deletions={file.deletions}
                       isExpanded={isExpanded}

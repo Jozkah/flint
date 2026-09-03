@@ -132,6 +132,11 @@ type CoworkRunState = {
   usage: Record<string, Usage>
   /** Set by the artifacts library so Cowork opens that file on mount. */
   pendingPreview: { sessionId: string; path: string } | null
+  /**
+   * Set by the file-activity view so Cowork shows a path it does not own:
+   * `code` opens a read-only tab, `diff` focuses the Changes rail.
+   */
+  pendingCodeOpen: { sessionId: string; path: string; as: 'code' | 'diff' } | null
   // Session ids currently talking to the llamacpp provider, mapped to the
   // model id in flight. Cowork sessions aren't chat threads, so they're
   // invisible to the chat-only signals the global OOM/backend-error listener
@@ -174,6 +179,12 @@ type CoworkRunState = {
   attachSubagentOutput: (sid: string, runId: string, content: string) => void
   setUsage: (sid: string, usage: Usage | null) => void
   requestPreview: (sessionId: string, path: string) => void
+  requestCodeOpen: (
+    sessionId: string,
+    path: string,
+    as: 'code' | 'diff'
+  ) => void
+  clearPendingCodeOpen: () => void
   clearPendingPreview: () => void
   setLlamacppRun: (sid: string, modelId: string) => void
   clearLlamacppRun: (sid: string) => void
@@ -202,6 +213,7 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
   pendingAsks: {},
   usage: {},
   pendingPreview: null,
+  pendingCodeOpen: null,
   llamacppRuns: {},
   pendingLlamacppError: {},
   loadingModels: {},
@@ -349,6 +361,9 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
 
   requestPreview: (sessionId, path) => set({ pendingPreview: { sessionId, path } }),
   clearPendingPreview: () => set({ pendingPreview: null }),
+  requestCodeOpen: (sessionId, path, as) =>
+    set({ pendingCodeOpen: { sessionId, path, as } }),
+  clearPendingCodeOpen: () => set({ pendingCodeOpen: null }),
 
   setLlamacppRun: (sid, modelId) =>
     set((s) => ({ llamacppRuns: { ...s.llamacppRuns, [sid]: modelId } })),
