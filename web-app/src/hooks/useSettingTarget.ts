@@ -57,4 +57,3 @@ export function useSettingTarget(
 export const settingTargetClasses =
   'scroll-mt-4 rounded-md outline-none transition-colors duration-500 ' +
   'data-[setting-highlight=true]:bg-accent/60 data-[setting-highlight=true]:ring-1 data-[setting-highlight=true]:ring-primary/40'
-
