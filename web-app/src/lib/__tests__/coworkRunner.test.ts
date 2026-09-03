@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import {
   runTurn,
@@ -10,6 +10,11 @@ import {
   isAbortLike,
   isRunning,
   __testing,
+  beginRun,
+  endRun,
+  registerSubagent,
+  unregisterSubagent,
+  abortSubagent,
   type PendingToolCall,
   type StepResult,
   type ToolOutcome,
@@ -264,7 +269,7 @@ describe('diff sidecar', () => {
 
 describe('run handles', () => {
   it('aborts the stream, tools, children and pending asks together', () => {
-    const h = __testing.createHandle('s1', 'r1')
+    const h = beginRun('s1', 'r1', new AbortController())
     const child = new AbortController()
     h.subagents.set('sub1', child)
     const ask = vi.fn()
@@ -282,7 +287,7 @@ describe('run handles', () => {
   })
 
   it('answers a pending ask once and reports an unknown one', () => {
-    const h = __testing.createHandle('s2', 'r2')
+    const h = beginRun('s2', 'r2', new AbortController())
     const resolve = vi.fn()
     h.pendingAsks.set('q1', resolve)
     expect(answerAsk('s2', 'q1', [{ id: 'q1', selected: ['a'] }])).toBe(true)
@@ -362,5 +367,66 @@ describe('runTurn failure paths', () => {
     })
     expect(out.stoppedBy).toBe('error')
     expect(out.messages).toHaveLength(1)
+  })
+})
+
+describe('cancelling one child without stopping the run', () => {
+  afterEach(() => {
+    __testing.handles.clear()
+  })
+
+  it('aborts only the child asked for', () => {
+    // Every child used to share the run's controller, so the only way to stop
+    // one was to stop the whole run.
+    const outer = new AbortController()
+    beginRun('s-one', 'r1', outer)
+    const a = registerSubagent('s-one', 'task-a')
+    const b = registerSubagent('s-one', 'task-b')
+
+    expect(abortSubagent('s-one', 'task-a')).toBe(true)
+    expect(a.signal.aborted).toBe(true)
+    expect(b.signal.aborted).toBe(false)
+    expect(outer.signal.aborted).toBe(false)
+  })
+
+  it('reports that there was nothing to stop', () => {
+    beginRun('s-two', 'r1', new AbortController())
+    expect(abortSubagent('s-two', 'never-dispatched')).toBe(false)
+    // Already stopped once: the controller is gone, so the second call is
+    // honest about having done nothing.
+    registerSubagent('s-two', 'task-a')
+    expect(abortSubagent('s-two', 'task-a')).toBe(true)
+    expect(abortSubagent('s-two', 'task-a')).toBe(false)
+  })
+
+  it('hands back an already-aborted controller when the run is gone', () => {
+    // Dispatching into a run that has ended must not start work that nothing
+    // can stop.
+    const controller = registerSubagent('s-missing', 'task-a')
+    expect(controller.signal.aborted).toBe(true)
+  })
+
+  it('stops every child when the run itself is aborted', () => {
+    beginRun('s-three', 'r1', new AbortController())
+    const child = registerSubagent('s-three', 'task-a')
+    abortRun('s-three')
+    expect(child.signal.aborted).toBe(true)
+  })
+
+  it('forgets a finished child so a later cancel reports nothing to stop', () => {
+    beginRun('s-four', 'r1', new AbortController())
+    registerSubagent('s-four', 'task-a')
+    unregisterSubagent('s-four', 'task-a')
+    expect(abortSubagent('s-four', 'task-a')).toBe(false)
+  })
+
+  it('will not let a finished turn unregister the run that replaced it', () => {
+    const outer = new AbortController()
+    beginRun('s-five', 'r1', new AbortController())
+    beginRun('s-five', 'r2', outer)
+    endRun('s-five', 'r1')
+    expect(isRunning('s-five')).toBe(true)
+    endRun('s-five', 'r2')
+    expect(isRunning('s-five')).toBe(false)
   })
 })

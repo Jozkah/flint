@@ -46,11 +46,13 @@ function InterfaceSettings() {
             {/* Interface */}
             <Card title={t('settings:interface.title')}>
               <CardItem
+                anchor="settings-appearance-theme"
                 title={t('settings:interface.theme')}
                 description={t('settings:interface.themeDesc')}
                 actions={<ThemeSwitcher />}
               />
               <CardItem
+                anchor="settings-appearance-font-size"
                 title={t('settings:interface.fontSize')}
                 description={t('settings:interface.fontSizeDesc')}
                 actions={<FontSizeSwitcher />}
@@ -62,11 +64,13 @@ function InterfaceSettings() {
                 actions={<AccentColorPicker />}
               />
               <CardItem
+                anchor="settings-appearance-notification-position"
                 title={t('settings:interface.notificationPosition')}
                 description={t('settings:interface.notificationPositionDesc')}
                 actions={<NotificationPositionSwitcher />}
               />
               <CardItem
+                anchor="settings-appearance-token-speed"
                 title={t('settings:interface.showTokenSpeed')}
                 description={t('settings:interface.showTokenSpeedDesc')}
                 actions={
@@ -87,6 +91,7 @@ function InterfaceSettings() {
                 }
               />
               <CardItem
+                anchor="settings-appearance-html-artifacts"
                 title={
                   <span className="inline-flex items-center gap-2">
                     <span>{t('settings:interface.renderHtmlArtifacts')}</span>
@@ -104,6 +109,7 @@ function InterfaceSettings() {
                 }
               />
               <CardItem
+                anchor="settings-appearance-auto-title"
                 title={t('settings:interface.autoGenerateTitle')}
                 description={t('settings:interface.autoGenerateTitleDesc')}
                 actions={

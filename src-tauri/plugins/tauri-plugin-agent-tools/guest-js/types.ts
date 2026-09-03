@@ -28,6 +28,43 @@ export interface ToolSchema {
 /** Which sandbox namespace an id belongs to. */
 export type WorkspaceScope = 'thread' | 'session'
 
+/** One entry of a project directory listing (Cowork code panel). */
+export interface ProjectEntry {
+  name: string
+  /** Path relative to the project root, `/`-separated. */
+  relPath: string
+  isDir: boolean
+}
+
+/** One lazily-loaded directory level of an attached project. */
+export interface ProjectListing {
+  entries: ProjectEntry[]
+  /** True when the directory held more entries than the backend cap. */
+  truncated: boolean
+}
+
+/** One project file read for display in the code viewer. */
+export interface ProjectFile {
+  relPath: string
+  size: number
+  /** Verbatim UTF-8 text. Empty when `oversized` or `binary`. */
+  content: string
+  oversized: boolean
+  binary: boolean
+}
+
+/** A shell command still running in the background, as reported by
+ * `bashJobsList`. Listing never consumes a job's output. */
+export interface BashJobStatus {
+  jobId: string
+  command: string
+  elapsedMs: number
+  /** The command has produced its output; the agent has not collected it yet. */
+  finished: boolean
+  /** The tool call that backgrounded it, when known. */
+  callId: string | null
+}
+
 /** One fragment of a tool's live output. */
 export type ToolOutputChunk = {
   /** Monotonic per call, so a receiver can assert ordering. */

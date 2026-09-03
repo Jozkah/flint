@@ -254,6 +254,9 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/lib/utils', () => ({
   isDev: vi.fn().mockReturnValue(false),
+  // The page renders SettingTarget, which merges classes with `cn`. Mocking
+  // the module without it makes the whole page fail to render.
+  cn: (...args: unknown[]) => args.filter(Boolean).join(' '),
 }))
 
 vi.mock('@/constants/routes', () => ({

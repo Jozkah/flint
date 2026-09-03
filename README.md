@@ -96,6 +96,36 @@ Download from [jan.ai](https://jan.ai/) or [GitHub Releases](https://github.com/
 - **Model Context Protocol**: MCP integration for agentic capabilities
 - **Privacy First**: Everything runs locally when you want it to
 
+### Workspace edition highlights
+
+This fork extends Jan with a more complete desktop workspace for coding and
+long-running agent tasks:
+
+- **Unified workspace rail**: Open Files, Code, Changes, and Activity from one
+  discoverable toolbar without leaving the conversation.
+- **Read-only code workspace**: Browse project files, open referenced files from
+  tool output or assistant messages, inspect syntax-highlighted source, and send
+  only the selected code back into the conversation.
+- **Git working-tree review**: Review modified and untracked files as real diffs
+  in the Changes panel, including safe handling for symlinks and inaccessible
+  paths.
+- **Background activity tracking**: Follow running shell jobs from the Activity
+  panel, status chip, or conversation; inspect their state and cancel individual
+  jobs when needed.
+- **Search across Settings**: Find settings globally, see results grouped by
+  section, and jump directly to the relevant control with keyboard focus.
+- **Temporary chats**: Start conversations that are not saved automatically,
+  then explicitly keep or discard them, with protection against accidentally
+  leaving an unfinished temporary chat.
+- **Per-chat model controls**: Override the model and reasoning effort for an
+  individual conversation and see the selected reasoning level at a glance.
+- **Project-aware instructions**: Agent sessions automatically use the active
+  project's `JAN.md` guidance while keeping project file access isolated.
+- **Clickable local file references**: Open safe `@path` references from
+  assistant messages directly in the Code panel.
+- **macOS window polish**: Keeps the Jan header and navigation clear of the
+  native close, minimize, and zoom controls.
+
 ## Build from Source
 
 For those who enjoy the scenic route:

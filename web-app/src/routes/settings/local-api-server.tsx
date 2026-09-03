@@ -447,6 +447,7 @@ function LocalAPIServerContent() {
                 }
               >
                 <CardItem
+                  anchor="settings-local-api-server-run-on-startup"
                   title={t('settings:localApiServer.runOnStartup')}
                   description={t('settings:localApiServer.runOnStartupDesc')}
                   actions={

@@ -15,6 +15,7 @@ import { useIsOnboarding } from '@/hooks/useIsOnboarding'
 import { PromptAnalytic } from '@/containers/analytics/PromptAnalytic'
 import { AnalyticProvider } from '@/providers/AnalyticProvider'
 import { useLeftPanel } from '@/hooks/useLeftPanel'
+import { useClearSettingsSearchOnExit } from '@/hooks/useSettingsSearch'
 import { TranslationProvider } from '@/i18n/TranslationContext'
 import OutOfContextPromiseModal from '@/containers/dialogs/OutOfContextDialog'
 import AttachmentIngestionDialog from '@/containers/dialogs/AttachmentIngestionDialog'
@@ -30,6 +31,7 @@ import ErrorDialog from '@/containers/dialogs/ErrorDialog'
 import LlamacppBusyOnExitDialog from '@/containers/dialogs/LlamacppBusyOnExitDialog'
 import LlamacppOomListener from '@/containers/dialogs/LlamacppOomListener'
 import MissingDependenciesDialog from '@/containers/dialogs/MissingDependenciesDialog'
+import { TemporaryChatGuard } from '@/containers/TemporaryChatGuard'
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -38,6 +40,9 @@ export const Route = createRootRoute({
 
 const AppLayout = () => {
   const { productAnalyticPrompt } = useAnalytic()
+  // The settings-search query outlives each settings page on purpose; it must
+  // not outlive the section. Mounted here because this layout stays put.
+  useClearSettingsSearchOnExit()
   // The setup screen is the only onboarding surface: everything below that would
   // otherwise stack on top of it is deferred until it is done.
   const isOnboarding = useIsOnboarding()
@@ -58,6 +63,7 @@ const AppLayout = () => {
       >
         <AnalyticProvider />
         <KeyboardShortcutsProvider />
+        <TemporaryChatGuard />
         {/* Fake absolute panel top to enable window drag */}
         {(IS_WINDOWS || IS_LINUX) && <WindowControls />}
         {IS_LINUX && <WindowResizeGrips />}

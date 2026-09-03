@@ -29,7 +29,10 @@ const TOO_LARGE = 'common:preview.tooLarge'
 type Props = {
   /** The session sandbox. Every previewed path must resolve inside it. */
   root: string | null
-  path: string
+  /** The artifact to show. Empty/absent when the rail was opened from the
+   * toolbar before anything has been generated — the panel then shows a
+   * discoverable empty state rather than nothing. */
+  path?: string
   onClose: () => void
 }
 
@@ -51,13 +54,15 @@ export function CoworkPreviewPanel({ root, path, onClose }: Props) {
   const [allowNetwork, setAllowNetwork] = useState(false)
 
   const abs = useMemo(
-    () => (root ? resolveInRoot(root, path) : null),
+    () => (root && path ? resolveInRoot(root, path) : null),
     [root, path]
   )
-  const kind = useMemo(() => previewKindFor(path), [path])
+  const kind = useMemo(() => (path ? previewKindFor(path) : 'file'), [path])
 
   useEffect(() => {
     let alive = true
+    // No artifact selected yet: the empty state renders below, nothing to load.
+    if (!path) return
     if (!abs) {
       setState({ status: 'failed', path, reason: 'common:preview.outside' })
       return
@@ -133,6 +138,16 @@ export function CoworkPreviewPanel({ root, path, onClose }: Props) {
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   )
+
+  if (!path) {
+    return (
+      <CoworkSidePanel title={t('common:preview.title')} onClose={onClose}>
+        <p className="px-4 py-8 text-center text-sm text-main-view-fg/50">
+          {t('common:preview.empty')}
+        </p>
+      </CoworkSidePanel>
+    )
+  }
 
   return (
     <CoworkSidePanel

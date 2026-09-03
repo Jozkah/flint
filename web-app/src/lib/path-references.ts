@@ -20,7 +20,35 @@ export type { FilePickerEntry }
  * preceding word char, so `user@host` and `foo@bar.com` are not references;
  * `isReferenceToken` applies the remaining rules (URL, IPv4) on top.
  */
-export const REFERENCE_PATTERN = /(?<![A-Za-z0-9_])@([^\s,;:!?'"`)\]}>]+)/g
+export const REFERENCE_PATTERN =
+  /(?<![A-Za-z0-9_])@([^\s,;:!?'"`)\]}>]+(?::\d+(?:-\d+)?)?)/g
+
+/**
+ * The `:line` or `:start-end` suffix of a reference token, if it has one.
+ *
+ * A ranged reference names an exact excerpt rather than a file, and is
+ * produced by a surface that already carries the excerpt — today the Cowork
+ * code viewer, whose "Add to chat" emits `@src/example.ts:24-48` alongside
+ * the lines the user selected. `parsePromptForReferences` and
+ * `stripPromptReferences` therefore recognise the form and leave it alone,
+ * rather than owning it.
+ *
+ * Recognising it is the whole point. The token class above used to stop at
+ * the `:`, so `@src/example.ts:24-48` matched the bare path: the reference
+ * was stripped down to a dangling `:24-48`, the selected lines were dropped
+ * on the floor, and the resolver went looking for `src/example.ts` under the
+ * *home directory* — reading a whole unrelated file into the prompt in place
+ * of the handful of lines the user actually chose.
+ */
+export function lineRangeOf(
+  raw: string
+): { path: string; startLine: number; endLine: number } | null {
+  const match = /^(.+):(\d+)(?:-(\d+))?$/.exec(raw)
+  if (!match) return null
+  const startLine = Number(match[2])
+  const endLine = match[3] === undefined ? startLine : Number(match[3])
+  return { path: match[1], startLine, endLine }
+}
 
 /** Maximum bytes we'll read from a single file. */
 const MAX_FILE_BYTES = 1 * 1024 * 1024
@@ -74,6 +102,8 @@ export function parsePromptForReferences(text: string): string[] {
   let match: RegExpExecArray | null
   while ((match = REFERENCE_PATTERN.exec(text)) !== null) {
     const raw = match[1]
+    // Excerpt references belong to whoever produced them; see `lineRangeOf`.
+    if (lineRangeOf(raw)) continue
     if (!isReferenceToken(raw)) continue
     if (!seen.has(raw)) {
       seen.add(raw)
@@ -89,7 +119,9 @@ export function parsePromptForReferences(text: string): string[] {
  */
 export function stripPromptReferences(text: string): string {
   const cleaned = text.replace(REFERENCE_PATTERN, (match, raw: string) =>
-    isReferenceToken(raw) ? '' : match
+    // An excerpt reference stays in the text: the surface that emitted it
+    // expands it downstream, and it is the only trace of what was selected.
+    !lineRangeOf(raw) && isReferenceToken(raw) ? '' : match
   )
   return cleaned.replace(/\s+/g, ' ').trim()
 }

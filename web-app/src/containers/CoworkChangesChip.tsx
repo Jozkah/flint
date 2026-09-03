@@ -7,26 +7,32 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import type { CoworkFileDiff } from '@/lib/coworkDiffs'
 
 /**
- * Opens the diff rail, and stays out of the way until the agent has written
- * something — the same rule the plan, folder and skills controls follow.
+ * Opens the Changes review rail, and stays out of the way until there is
+ * something to review — the same rule the plan, folder and skills controls
+ * follow.
+ *
+ * The counts are combined across both change sources the rail distinguishes:
+ * the attached project's uncommitted Git working tree and the files this
+ * session wrote into its sandbox. So the chip appears whenever either the repo
+ * or the agent has changes, not only after a write.
  */
 export function CoworkChangesChip({
-  files,
+  fileCount,
+  additions,
+  deletions,
   open,
   onToggle,
 }: {
-  files: CoworkFileDiff[]
+  fileCount: number
+  additions: number
+  deletions: number
   open: boolean
   onToggle: () => void
 }) {
   const { t } = useTranslation()
-  if (files.length === 0) return null
-
-  const additions = files.reduce((sum, file) => sum + file.additions, 0)
-  const deletions = files.reduce((sum, file) => sum + file.deletions, 0)
+  if (fileCount === 0) return null
 
   return (
     <Tooltip>
@@ -36,7 +42,7 @@ export function CoworkChangesChip({
           size="xs"
           aria-pressed={open}
           aria-label={t('common:changes.a11y', {
-            files: files.length,
+            files: fileCount,
             additions,
             deletions,
           })}

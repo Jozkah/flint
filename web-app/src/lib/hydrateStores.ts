@@ -22,7 +22,9 @@ import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { useModelOverrides } from '@/hooks/useModelOverrides'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -56,7 +58,9 @@ const secondaryStores = [
   useAgentMode,
   useWebSearchConfig,
   useCoworkSessions,
+  useCoworkActivity,
   useAgentToolsConfig,
+  useModelOverrides,
 ] as const
 
 export async function hydrateBackendStores(): Promise<void> {
@@ -64,4 +68,12 @@ export async function hydrateBackendStores(): Promise<void> {
   await Promise.all(
     secondaryStores.map((store) => Promise.resolve(store.persist.rehydrate()))
   )
+  // Nothing survives a restart: a subagent's stream and a shell's process both
+  // died with the process that owned them. Settle whatever the previous app
+  // run left in flight, or the panel would show work still running that
+  // nothing can ever finish.
+  useCoworkActivity.getState().recoverOnLoad(INTERRUPTED_BY_RESTART)
 }
+
+/** Recorded as the reason on work the previous app run left unfinished. */
+export const INTERRUPTED_BY_RESTART = 'interrupted:restart'

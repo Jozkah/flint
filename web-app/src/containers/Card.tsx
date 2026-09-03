@@ -1,5 +1,9 @@
 import { cn } from '@/lib/utils'
 import { ReactNode } from 'react'
+import {
+  settingTargetClasses,
+  useSettingTarget,
+} from '@/hooks/useSettingTarget'
 
 type CardProps = {
   title?: string
@@ -16,6 +20,15 @@ type CardItemProps = {
   column?: boolean
   className?: string
   classNameWrapperAction?: string
+  /**
+   * Stable settings-search id for this row, e.g. `settings-appearance-theme`.
+   *
+   * Applied to the row's own element rather than a wrapper: the row is styled
+   * with `first:mt-0` and `last:border-none`, which are relative to its parent,
+   * so wrapping it would make every row both first and last and strip the
+   * dividers from the whole card.
+   */
+  anchor?: string
 }
 
 export function CardItem({
@@ -27,10 +40,16 @@ export function CardItem({
   align = 'center',
   column,
   actions,
+  anchor,
 }: CardItemProps) {
+  const targetRef = useSettingTarget(anchor ?? '')
   return (
     <>
       <div
+        ref={anchor ? targetRef : undefined}
+        id={anchor}
+        data-setting-anchor={anchor}
+        tabIndex={anchor ? -1 : undefined}
         className={cn(
           'flex justify-between mt-2 first:mt-0 border-b border-border/40 pb-3 last:border-none last:pb-0 gap-8',
           descriptionOutside && 'border-0',
@@ -38,6 +57,7 @@ export function CardItem({
           align === 'center' && 'items-center',
           align === 'end' && 'items-end',
           column && 'flex-col gap-y-0 items-start',
+          anchor && settingTargetClasses,
           className
         )}
       >

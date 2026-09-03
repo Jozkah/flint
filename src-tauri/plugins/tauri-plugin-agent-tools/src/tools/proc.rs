@@ -297,22 +297,96 @@ fn set_process_group(cmd: &mut Command) {
     cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
 }
 
-/// Kill the process `pid` and every descendant it spawned.
-#[cfg(unix)]
-pub fn kill_tree(pid: u32) {
-    use nix::sys::signal::{killpg, Signal};
-    use nix::unistd::Pid;
-    let group = Pid::from_raw(pid as i32);
-    if killpg(group, Signal::SIGKILL).is_err() {
-        let _ = nix::sys::signal::kill(Pid::from_raw(pid as i32), Signal::SIGKILL);
+/// What happened when a process tree was signalled.
+///
+/// Reported rather than swallowed: a caller that tells the user "stopped"
+/// because it *asked* the OS to stop something has told the user nothing. The
+/// distinction that matters most is [`Gone`](KillOutcome::Gone) — the process
+/// had already exited, so there was nothing to kill and nothing went wrong.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KillOutcome {
+    /// The signal reached the process tree.
+    Signalled,
+    /// No such process: it had already exited. Not a failure.
+    Gone,
+    /// The OS refused. The string is safe to show: it names the failure, never
+    /// a path or an environment value.
+    Failed(String),
+}
+
+impl KillOutcome {
+    /// Did this leave the process stopped, one way or another?
+    pub fn stopped(&self) -> bool {
+        matches!(self, KillOutcome::Signalled | KillOutcome::Gone)
     }
 }
 
+/// Kill the process `pid` and every descendant it spawned.
+///
+/// Unix: the pid is also its process-group id (see [`spawn`]), so the group is
+/// signalled first and the lone process only as a fallback — a group that has
+/// already gone reports `Gone` rather than being retried pointlessly.
+#[cfg(unix)]
+pub fn kill_tree(pid: u32) -> KillOutcome {
+    use nix::errno::Errno;
+    use nix::sys::signal::{kill, killpg, Signal};
+    use nix::unistd::Pid;
+
+    let target = Pid::from_raw(pid as i32);
+    match killpg(target, Signal::SIGKILL) {
+        Ok(()) => KillOutcome::Signalled,
+        // No such process group. The leader may still exist without one (it
+        // was never made a group leader, or the group has already gone while
+        // the leader lingers as a zombie), so try the process itself.
+        Err(Errno::ESRCH) => match kill(target, Signal::SIGKILL) {
+            Ok(()) => KillOutcome::Signalled,
+            Err(Errno::ESRCH) => KillOutcome::Gone,
+            Err(Errno::EPERM) => {
+                KillOutcome::Failed("not permitted to signal this process".into())
+            }
+            Err(e) => KillOutcome::Failed(e.desc().to_string()),
+        },
+        Err(Errno::EPERM) => {
+            KillOutcome::Failed("not permitted to signal this process group".into())
+        }
+        Err(e) => KillOutcome::Failed(e.desc().to_string()),
+    }
+}
+
+/// Kill the process `pid` and every descendant it spawned.
+///
+/// Windows has no process groups a signal can reach across, so this shells out
+/// to `taskkill /T`, which walks the tree itself. Two things can go wrong and
+/// both are reported: `taskkill` may fail to launch at all (absent from PATH in
+/// a stripped image), and it may run and refuse — exit code 128 is "no such
+/// process", which means the command had already finished.
 #[cfg(windows)]
-pub fn kill_tree(pid: u32) {
-    let _ = std::process::Command::new("taskkill")
+pub fn kill_tree(pid: u32) -> KillOutcome {
+    /// `taskkill` exit code for "the process is not running".
+    const ERROR_NOT_FOUND: i32 = 128;
+
+    let output = match std::process::Command::new("taskkill")
         .args(["/F", "/T", "/PID", &pid.to_string()])
-        .output();
+        .output()
+    {
+        Ok(output) => output,
+        Err(e) => return KillOutcome::Failed(format!("could not run taskkill: {e}")),
+    };
+    if output.status.success() {
+        return KillOutcome::Signalled;
+    }
+    if output.status.code() == Some(ERROR_NOT_FOUND) {
+        return KillOutcome::Gone;
+    }
+    // taskkill explains itself on stderr; its first line is the useful part
+    // and names no path of ours.
+    let reason = String::from_utf8_lossy(&output.stderr);
+    let first = reason.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
+    KillOutcome::Failed(if first.is_empty() {
+        format!("taskkill exited with {}", output.status)
+    } else {
+        first.trim().to_string()
+    })
 }
 
 fn running() -> &'static Mutex<HashSet<u32>> {
@@ -333,7 +407,8 @@ pub fn unregister(pid: u32) {
 pub fn kill_all() {
     let pids: Vec<u32> = running().lock().unwrap().drain().collect();
     for pid in pids {
-        kill_tree(pid);
+        // Shutdown is best effort: there is nobody left to tell.
+        let _ = kill_tree(pid);
     }
 }
 
@@ -352,6 +427,56 @@ mod env_allowlist_tests {
                 SANDBOX_ENV_ALLOW.contains(&key),
                 "missing {key} in SANDBOX_ENV_ALLOW"
             );
+        }
+    }
+}
+
+/// Windows-only behaviour of `kill_tree`, which shells out to `taskkill`
+/// rather than signalling a process group. Compiled and run only on Windows —
+/// a unix test asserting these would prove nothing about them.
+#[cfg(all(test, windows))]
+mod windows_tests {
+    use super::*;
+
+    fn tmp() -> PathBuf {
+        std::env::temp_dir()
+    }
+
+    /// `taskkill /T` walks the tree and reports success.
+    #[tokio::test]
+    async fn kills_a_running_command_and_reports_it() {
+        // `timeout` is a stock Windows command that simply waits.
+        let mut child = spawn(shell(), "timeout /t 300 /nobreak", &tmp(), None)
+            .await
+            .unwrap();
+        let pid = child.id().unwrap();
+
+        assert_eq!(kill_tree(pid), KillOutcome::Signalled);
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(10), child.wait()).await;
+        unregister(pid);
+    }
+
+    /// taskkill exits 128 for "the process is not running", which is not a
+    /// failure — there was nothing left to kill.
+    #[test]
+    fn a_pid_that_does_not_exist_reports_gone() {
+        assert_eq!(kill_tree(u32::MAX - 7), KillOutcome::Gone);
+    }
+
+    /// A nonzero exit that is *not* 128 is a refusal, and must be reported as
+    /// a failure carrying taskkill's own explanation. pid 0 is the System Idle
+    /// Process, which cannot be terminated.
+    #[test]
+    fn a_refusal_is_reported_with_the_reason_taskkill_gave() {
+        match kill_tree(0) {
+            KillOutcome::Failed(reason) => {
+                assert!(!reason.is_empty(), "a refusal must say why");
+                assert!(
+                    !reason.contains('\\'),
+                    "the reason is shown to the user and must name no path: {reason}"
+                );
+            }
+            other => panic!("terminating the idle process must fail, got {other:?}"),
         }
     }
 }
@@ -445,7 +570,7 @@ mod tests {
         let grandchild: i32 = first.trim().parse().unwrap();
         assert!(alive(grandchild), "grandchild should be running");
 
-        kill_tree(leader);
+        assert_eq!(kill_tree(leader), KillOutcome::Signalled);
         let _ = tokio::time::timeout(std::time::Duration::from_secs(5), child.wait()).await;
         unregister(leader);
 
@@ -457,6 +582,38 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
         assert!(!alive(grandchild), "grandchild must be reaped by group kill");
+    }
+
+    /// A pid nothing owns is not a failure: there is nothing left to kill.
+    #[test]
+    fn killing_a_pid_that_does_not_exist_reports_gone() {
+        // Above the default pid_max on Linux and outside the range macOS
+        // hands out, so nothing can be occupying it.
+        assert_eq!(kill_tree(u32::MAX - 7), KillOutcome::Gone);
+    }
+
+    /// The OS refusing is a failure, and must be reported as one rather than
+    /// reported as a kill. pid 1 exists on every unix and an unprivileged
+    /// process may not signal it.
+    #[test]
+    fn killing_a_process_group_we_may_not_signal_reports_why() {
+        match kill_tree(1) {
+            KillOutcome::Failed(reason) => {
+                assert!(!reason.is_empty(), "a refusal must say why");
+                assert!(
+                    !reason.contains('/'),
+                    "the reason is shown to the user and must name no path: {reason}"
+                );
+            }
+            // Running as root, where signalling init is permitted. Accept
+            // rather than assert a refusal the OS did not make.
+            other => assert!(
+                // SAFETY: geteuid is always safe; it reads the calling
+                // process's own effective uid and cannot fail.
+                unsafe { nix::libc::geteuid() } == 0,
+                "expected a refusal as an unprivileged user, got {other:?}"
+            ),
+        }
     }
 
     #[test]

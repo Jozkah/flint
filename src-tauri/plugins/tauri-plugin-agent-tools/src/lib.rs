@@ -11,6 +11,7 @@
 
 pub mod memory;
 pub mod permissions;
+pub mod project_browse;
 pub mod skills;
 pub mod tools;
 pub mod workspace;
@@ -51,7 +52,11 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::tool_schemas,
             commands::sandbox_status,
             commands::execute_tool,
-            commands::execute_tool_streaming
+            commands::execute_tool_streaming,
+            commands::project_list_dir,
+            commands::project_read_file,
+            commands::bash_jobs_list,
+            commands::bash_job_kill
         ])
         .build()
 }
