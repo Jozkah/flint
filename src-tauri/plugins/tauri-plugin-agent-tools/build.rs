@@ -18,6 +18,10 @@ const COMMANDS: &[&str] = &[
     "sandbox_status",
     "execute_tool",
     "execute_tool_streaming",
+    "project_list_dir",
+    "project_read_file",
+    "bash_jobs_list",
+    "bash_job_kill",
 ];
 
 fn main() {

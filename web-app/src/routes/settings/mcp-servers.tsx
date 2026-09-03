@@ -559,6 +559,7 @@ function MCPServersDesktop() {
                 }
               >
                 <CardItem
+                  anchor="settings-mcp-servers-allow-permissions"
                   title={t('mcp-servers:allowPermissions')}
                   description={t('mcp-servers:allowPermissionsDesc')}
                   actions={
@@ -571,6 +572,7 @@ function MCPServersDesktop() {
                   }
                 />
                 <CardItem
+                  anchor="settings-mcp-servers-tool-call-timeout"
                   title={t('mcp-servers:runtimeSettings.toolCallTimeout')}
                   description={t(
                     'mcp-servers:runtimeSettings.toolCallTimeoutDesc'
@@ -592,6 +594,7 @@ function MCPServersDesktop() {
                   }
                 />
                 <CardItem
+                  anchor="settings-mcp-servers-max-tool-output"
                   title={t('mcp-servers:runtimeSettings.maxToolOutputChars')}
                   description={t(
                     'mcp-servers:runtimeSettings.maxToolOutputCharsDesc'
@@ -613,6 +616,7 @@ function MCPServersDesktop() {
                   }
                 />
                 <CardItem
+                  anchor="settings-mcp-servers-smart-tool-routing"
                   title={t('mcp-servers:runtimeSettings.smartToolRouting')}
                   description={t(
                     'mcp-servers:runtimeSettings.smartToolRoutingDesc'
@@ -639,6 +643,7 @@ function MCPServersDesktop() {
                   }
                 />
                 <CardItem
+                  anchor="settings-mcp-servers-lightweight-router"
                   title={t('mcp-servers:runtimeSettings.useLightweightRouterModel')}
                   description={t(
                     'mcp-servers:runtimeSettings.useLightweightRouterModelDesc'
@@ -665,6 +670,7 @@ function MCPServersDesktop() {
                   }
                 />
                 <CardItem
+                  anchor="settings-mcp-servers-router-model"
                   title={t('mcp-servers:runtimeSettings.routerModel')}
                   description={t('mcp-servers:runtimeSettings.routerModelDesc')}
                   actions={

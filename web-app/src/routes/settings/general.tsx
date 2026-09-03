@@ -233,6 +233,7 @@ function General() {
               {!AUTO_UPDATER_DISABLED && (
                 <>
                   <CardItem
+                    anchor="settings-general-auto-update"
                     title={t('settings:general.autoUpdateCheck')}
                     description={t('settings:general.autoUpdateCheckDesc')}
                     className="items-center flex-row gap-y-2"
@@ -263,6 +264,7 @@ function General() {
                 </>
               )}
               <CardItem
+                anchor="settings-general-language"
                 title={t('common:language')}
                 actions={<LanguageSwitcher />}
               />
@@ -271,6 +273,7 @@ function General() {
             {/* Data folder - Desktop only */}
             <Card title={t('common:dataFolder')}>
               <CardItem
+                anchor="settings-general-data-folder"
                 title={t('settings:dataFolder.appData', {
                   ns: 'settings',
                 })}
@@ -438,6 +441,7 @@ function General() {
                 />
               )}
               <CardItem
+                anchor="settings-general-factory-reset"
                 title={t('settings:others.resetFactory', {
                   ns: 'settings',
                 })}
@@ -457,6 +461,7 @@ function General() {
             {/* Other */}
             <Card title={t('common:others')}>
               <CardItem
+                anchor="settings-general-spell-check"
                 title={t('settings:others.spellCheck', {
                   ns: 'settings',
                 })}

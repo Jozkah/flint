@@ -15,6 +15,7 @@ import { useIsOnboarding } from '@/hooks/useIsOnboarding'
 import { PromptAnalytic } from '@/containers/analytics/PromptAnalytic'
 import { AnalyticProvider } from '@/providers/AnalyticProvider'
 import { useLeftPanel } from '@/hooks/useLeftPanel'
+import { useClearSettingsSearchOnExit } from '@/hooks/useSettingsSearch'
 import { TranslationProvider } from '@/i18n/TranslationContext'
 import OutOfContextPromiseModal from '@/containers/dialogs/OutOfContextDialog'
 import AttachmentIngestionDialog from '@/containers/dialogs/AttachmentIngestionDialog'
@@ -38,6 +39,9 @@ export const Route = createRootRoute({
 
 const AppLayout = () => {
   const { productAnalyticPrompt } = useAnalytic()
+  // The settings-search query outlives each settings page on purpose; it must
+  // not outlive the section. Mounted here because this layout stays put.
+  useClearSettingsSearchOnExit()
   // The setup screen is the only onboarding surface: everything below that would
   // otherwise stack on top of it is deferred until it is done.
   const isOnboarding = useIsOnboarding()

@@ -191,7 +191,10 @@
     "apiKeyPlaceholder": "Enter your {{provider}} API key",
     "endpoint": "{{provider}} Instance URL",
     "endpointDesc": "Required. The base URL of your {{provider}} instance, with the JSON API enabled.",
-    "endpointPlaceholder": "https://searx.example.com"
+    "endpointPlaceholder": "https://searx.example.com",
+    "apiKeySearch": "Web search API key",
+    "endpointSearch": "Web search instance URL",
+    "endpointSearchDesc": "The base URL of your self-hosted search instance."
   },
   "agentTools": {
     "title": "Agent Tools",
@@ -372,5 +375,13 @@
     }
   },
   "backendInstallSuccess": "Backend installed successfully!",
-  "backendInstallError": "Failed to install backend"
+  "backendInstallError": "Failed to install backend",
+  "claudeCode": {
+    "largeModel": "Large Model",
+    "largeModelDesc": "Opus",
+    "mediumModel": "Medium Model",
+    "mediumModelDesc": "Sonnet",
+    "smallModel": "Small Model",
+    "smallModelDesc": "Haiku"
+  }
 }

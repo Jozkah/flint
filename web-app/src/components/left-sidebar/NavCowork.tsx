@@ -30,7 +30,6 @@ import {
   SlidersHorizontal,
   MoreHorizontal,
   Trash2,
-  Loader2,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -38,7 +37,7 @@ import {
   type MessageCircleIconHandle,
 } from '@/components/animated-icon/message-circle'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
-import { useIsSessionActive } from '@/hooks/useCoworkRun'
+import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { memo, useCallback, useRef, useState } from 'react'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
 
@@ -48,11 +47,9 @@ type CoworkNavItem = {
   onClick: () => void
 }
 
-// Own component (not inlined in a .map()) so it can be memoized: each row's
-// running/needs-input state now comes from its own per-session selector
-// (useIsSessionActive/useSessionHasPendingPerms), so a session starting or
-// stopping a run only re-renders its own row, not the whole session list —
-// mirroring ThreadList.tsx's memoized ThreadItem + useIsThreadActive.
+// Own component (not inlined in a .map()) so it can be memoized: a change to
+// one session re-renders its own row rather than the whole session list,
+// mirroring ThreadList.tsx's memoized ThreadItem.
 const SessionItem = memo(function SessionItem({
   session,
   isCurrent,
@@ -67,17 +64,12 @@ const SessionItem = memo(function SessionItem({
   onRequestDelete: (pending: { id: string; title: string }) => void
 }) {
   const { t } = useTranslation()
-  const isRunning = useIsSessionActive(session.id)
-
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={isCurrent}
         onClick={() => onSelect(session.id)}
       >
-        {isRunning && (
-          <Loader2 className="size-3 shrink-0 animate-spin text-muted-foreground" />
-        )}
         <span className="truncate">{session.title}</span>
       </SidebarMenuButton>
       <DropdownMenu>
@@ -151,7 +143,12 @@ export function NavCowork() {
   ]
 
   const confirmDelete = () => {
-    if (pendingDelete) useCoworkSessions.getState().deleteSession(pendingDelete.id)
+    if (pendingDelete) {
+      useCoworkSessions.getState().deleteSession(pendingDelete.id)
+      // The activity record is keyed by session; leaving it behind would keep
+      // a deleted session's workflows in the store forever.
+      useCoworkActivity.getState().dropSession(pendingDelete.id)
+    }
     setPendingDelete(null)
   }
 

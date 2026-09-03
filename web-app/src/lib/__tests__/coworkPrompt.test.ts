@@ -115,3 +115,57 @@ describe('web block', () => {
     expect(p).toContain('[[cite:URL]]')
   })
 })
+
+describe('project instructions (JAN.md)', () => {
+  // Spec: the run context must name any project instruction file Jan already
+  // supports. Jan's is `JAN.md` — `core::agent::context` reads that one and
+  // deliberately ignores AGENTS.md and CLAUDE.md — but the desktop's prompt is
+  // built here, in TypeScript, and never included it. Only the CLI honoured a
+  // project's own instructions.
+
+  it('carries JAN.md verbatim, wrapped as authoritative project context', () => {
+    const p = buildCoworkSystemPrompt(
+      opts({
+        readOnlyFolder: '/home/u/proj',
+        projectInstructions: '# House rules\n\nAlways run `make check`.',
+      })
+    )
+    expect(p).toContain('<project_context>')
+    expect(p).toContain('<project_instructions path="JAN.md">')
+    expect(p).toContain('Always run `make check`.')
+    expect(p).toContain('</project_context>')
+  })
+
+  it('tells the model the file exists and outranks the general guidelines', () => {
+    const p = buildCoworkSystemPrompt(
+      opts({ readOnlyFolder: '/home/u/proj', projectInstructions: 'rules' })
+    )
+    expect(p).toContain('It carries a `JAN.md`')
+    expect(p).toContain('take')
+    // Last block, so it is the final word before the conversation.
+    expect(p.trimEnd().endsWith('</project_context>')).toBe(true)
+  })
+
+  it('says nothing when the project has no JAN.md', () => {
+    for (const value of [undefined, null, '', '   \n  ']) {
+      const p = buildCoworkSystemPrompt(
+        opts({ readOnlyFolder: '/home/u/proj', projectInstructions: value })
+      )
+      expect(p).not.toContain('project_context')
+      expect(p).not.toContain('JAN.md')
+    }
+  })
+
+  it('keeps the sandbox and the project distinct alongside it', () => {
+    // The instructions must not blur the boundary the rest of the block sets.
+    const p = buildCoworkSystemPrompt(
+      opts({
+        workspacePath: '/data/sessions/s1',
+        readOnlyFolder: '/home/u/proj',
+        projectInstructions: 'rules',
+      })
+    )
+    expect(p).toContain('`/data/sessions/s1`')
+    expect(p).toContain('It is mounted READ-ONLY.')
+  })
+})

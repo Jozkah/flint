@@ -66,6 +66,7 @@ function HTTPSProxyContent() {
               }
             >
               <CardItem
+                anchor="settings-https-proxy-proxy-url"
                 title={t('settings:httpsProxy.proxyUrl')}
                 className="block"
                 description={
@@ -73,7 +74,9 @@ function HTTPSProxyContent() {
                     <p>{t('settings:httpsProxy.proxyUrlDesc')}</p>
                     <Input
                       className="w-full"
-                      placeholder={t('settings:httpsProxy.proxyUrlPlaceholder')}
+                      placeholder={t(
+                        'settings:httpsProxy.proxyUrlPlaceholder'
+                      )}
                       value={proxyUrl}
                       onChange={(e) => setProxyUrl(e.target.value)}
                     />
@@ -118,13 +121,16 @@ function HTTPSProxyContent() {
                 }
               />
               <CardItem
+                anchor="settings-https-proxy-no-proxy"
                 title={t('settings:httpsProxy.noProxy')}
                 className="block"
                 description={
                   <div className="space-y-2">
                     <p>{t('settings:httpsProxy.noProxyDesc')}</p>
                     <Input
-                      placeholder={t('settings:httpsProxy.noProxyPlaceholder')}
+                      placeholder={t(
+                        'settings:httpsProxy.noProxyPlaceholder'
+                      )}
                       value={noProxy}
                       onChange={(e) => setNoProxy(e.target.value)}
                     />
@@ -132,6 +138,7 @@ function HTTPSProxyContent() {
                 }
               />
               <CardItem
+                anchor="settings-https-proxy-ignore-ssl"
                 title={t('settings:httpsProxy.ignoreSsl')}
                 description={t('settings:httpsProxy.ignoreSslDesc')}
                 actions={

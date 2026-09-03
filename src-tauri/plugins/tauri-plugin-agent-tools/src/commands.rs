@@ -587,6 +587,84 @@ fn output_sink(
     })
 }
 
+/// List one directory level of the attached read-only project, for the Cowork
+/// code panel's lazy file tree.
+///
+/// `root` passes the same validation as a read-only tool mount
+/// (`validate_read_root`): the workspace, the Jan data folder and the
+/// filesystem root are all refused, so the browse surface cannot reach
+/// anything the tool surface could not. Containment of `rel` inside `root` is
+/// enforced again in `project_browse`.
+#[tauri::command]
+pub async fn project_list_dir(
+    data_folder: String,
+    root: String,
+    rel: String,
+) -> Result<crate::project_browse::ProjectListing, AgentToolsError> {
+    let workspace_root = workspace::permanent_store(Path::new(&data_folder));
+    let canonical = workspace::validate_read_root(
+        Path::new(&root),
+        &workspace_root,
+        Some(Path::new(&data_folder)),
+    )?;
+    tokio::task::spawn_blocking(move || {
+        crate::project_browse::list_dir(&canonical.to_string_lossy(), &rel)
+    })
+    .await
+    .map_err(|e| AgentToolsError::from(e.to_string()))?
+    .map_err(AgentToolsError::from)
+}
+
+/// Read one file of the attached read-only project for display in the code
+/// viewer. Verbatim content, no model-facing truncation footer; size caps and
+/// binary/sensitive refusal happen in `project_browse`.
+#[tauri::command]
+pub async fn project_read_file(
+    data_folder: String,
+    root: String,
+    rel: String,
+    allow_sensitive: Option<bool>,
+) -> Result<crate::project_browse::ProjectFile, AgentToolsError> {
+    let workspace_root = workspace::permanent_store(Path::new(&data_folder));
+    let canonical = workspace::validate_read_root(
+        Path::new(&root),
+        &workspace_root,
+        Some(Path::new(&data_folder)),
+    )?;
+    tokio::task::spawn_blocking(move || {
+        crate::project_browse::read_file(
+            &canonical.to_string_lossy(),
+            &rel,
+            allow_sensitive.unwrap_or(false),
+        )
+    })
+    .await
+    .map_err(|e| AgentToolsError::from(e.to_string()))?
+    .map_err(AgentToolsError::from)
+}
+
+/// Every shell command still running in the background, newest first.
+///
+/// Read-only and non-consuming: a caller polling this can never take the
+/// output the agent is waiting to collect with `bash {"job_id": ...}`. The
+/// jobs are process-global, matching where the shell actually runs them.
+#[tauri::command]
+pub fn bash_jobs_list() -> Vec<crate::tools::handlers::BashJobStatus> {
+    crate::tools::handlers::list_bash_jobs()
+}
+
+/// Kill one backgrounded shell command and every process it spawned.
+///
+/// The job entry survives the kill, so the agent's own
+/// `bash {"job_id": ...}` collection still returns whatever the command
+/// printed before it died rather than failing with an unknown id. The reported
+/// outcome distinguishes a kill from "already finished" and "no such job", so a
+/// UI never claims to have stopped something it did not.
+#[tauri::command]
+pub fn bash_job_kill(job_id: String) -> crate::tools::handlers::BashJobKill {
+    crate::tools::handlers::kill_bash_job(&job_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

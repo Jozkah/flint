@@ -1,0 +1,752 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  ChevronDown,
+  ChevronRight,
+  Columns2,
+  File as FileIcon,
+  Folder,
+  FolderOpen,
+  FolderTree,
+  X,
+  XCircle,
+} from 'lucide-react'
+import {
+  projectListDir,
+  projectReadFile,
+  type ProjectEntry,
+} from '@janhq/tauri-plugin-agent-tools-api'
+import { Button } from '@/components/ui/button'
+import { CodeViewer } from '@/components/CodeViewer'
+import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
+import { getServiceHub, useServiceHub } from '@/hooks/useServiceHub'
+import { useTranslation } from '@/i18n/react-i18next-compat'
+import { cn } from '@/lib/utils'
+import { resolveInRoot } from '@/lib/coworkPreview'
+import {
+  MAX_CODE_FILE_BYTES,
+  closeTab,
+  emptyCodePanelState,
+  isSourcePath,
+  isTabStale,
+  openTab,
+  tabBelongsToSession,
+  closeOtherTabs,
+  closeAllTabs,
+  focusTab,
+  neighbourTabId,
+  activeTab,
+  tabId,
+  projectKeyOf,
+  projectTab,
+  toggleDir,
+  writeCountsByPath,
+  type CodePanelState,
+  type CodeRef,
+  type CodeTab,
+} from '@/lib/coworkCode'
+import type { CoworkTurn } from '@/types/coworkSession'
+
+type DirState =
+  | { status: 'loading' }
+  | { status: 'ready'; entries: ProjectEntry[]; truncated: boolean }
+  /** The OS refused: a state of its own, not a failure to report raw. */
+  | { status: 'denied' }
+  | { status: 'error'; message: string }
+
+type FileState =
+  | { status: 'loading' }
+  /** The project this tab came from is no longer attached. */
+  | { status: 'detached' }
+  | { status: 'ready'; content: string }
+  | { status: 'oversized'; size: number }
+  | { status: 'binary' }
+  | { status: 'denied' }
+  | { status: 'sensitive' }
+  | { status: 'error'; message: string }
+
+type Props = {
+  /** The attached project root; null shows the attach empty state. */
+  folder: string | null
+  /** The session's writable sandbox, where agent-written artifacts live.
+   * Sandbox and artifact tabs read from here instead of the project. `null`
+   * while the lookup for the current session is still running. */
+  workspacePath: string | null
+  /** The session these tabs belong to. Part of the root identity, so a read
+   * started for one session can never be applied to another. */
+  sessionKey: string | null
+  state: CodePanelState | undefined
+  /** The session transcript, read only to notice the agent writing an open
+   * file. Absent means staleness is never reported, which is correct for a
+   * session that has run nothing. */
+  turns?: CoworkTurn[]
+  onStateChange: (next: CodePanelState) => void
+  onAddToChat: (ref: CodeRef) => void
+  onAttach: () => void
+  onClose: () => void
+}
+
+/**
+ * The Code rail: project explorer, source tabs and the read-only viewer,
+ * inside the same CoworkSidePanel chrome as preview and diff.
+ *
+ * Everything is read through the backend's `project_*` commands, which enforce
+ * root containment and refuse sensitive files; this component only renders
+ * what it is given.
+ */
+export function CoworkCodePanel({
+  folder,
+  workspacePath,
+  sessionKey,
+  state: stateProp,
+  turns,
+  onStateChange,
+  onAddToChat,
+  onAttach,
+  onClose,
+}: Props): React.ReactElement {
+  const { t } = useTranslation()
+  const serviceHub = useServiceHub()
+  const state = stateProp ?? emptyCodePanelState()
+
+  const [dataFolder, setDataFolder] = useState<string | null>(null)
+  const [dirs, setDirs] = useState<Map<string, DirState>>(new Map())
+  const [files, setFiles] = useState<Map<string, FileState>>(new Map())
+  // Write count per tab at the moment its content was read. A later write to
+  // the same path pushes the live count past this one, which is what makes the
+  // open copy stale.
+  const [loadedAt, setLoadedAt] = useState<Map<string, number>>(new Map())
+  // Read through a ref inside `loadFile`: the transcript changes on every
+  // streamed token, and depending on it directly would give `loadFile` a new
+  // identity each time, re-firing the effect that loads the active tab.
+  const turnsRef = useRef(turns)
+  turnsRef.current = turns
+  const writeCounts = useMemo(() => writeCountsByPath(turns), [turns])
+  const [explorerOpen, setExplorerOpen] = useState(
+    () => state.tabs.length === 0
+  )
+
+  /**
+   * Which project the panel is currently showing, and a counter that moves
+   * whenever that changes.
+   *
+   * The backend reads are plain promises with no cancellation, so a read
+   * started against project A can resolve after A is detached or B attached.
+   * Every write below is gated on the generation captured when the read
+   * started, which is what stops A's bytes appearing under B's tree.
+   */
+  const projectKey = useMemo(() => projectKeyOf(folder), [folder])
+  /**
+   * Every root a read can be issued against. The project is one of them; the
+   * session and its workspace are the others, and a change to any of them
+   * invalidates work in flight. Keying only on the project let a sandbox read
+   * from session A land in session B.
+   */
+  const rootIdentity = `${projectKey ?? ''}\u0000${sessionKey ?? ''}\u0000${workspacePath ?? ''}`
+  const generation = useRef(0)
+  const currentGen = useRef(0)
+  const lastRootIdentity = useRef<string | undefined>(undefined)
+  if (lastRootIdentity.current !== rootIdentity) {
+    lastRootIdentity.current = rootIdentity
+    generation.current += 1
+  }
+  currentGen.current = generation.current
+
+  useEffect(() => {
+    let alive = true
+    void serviceHub
+      .app()
+      .getJanDataFolder()
+      .then((path) => {
+        if (alive) setDataFolder(path ?? null)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [serviceHub])
+
+  /** Apply a result only if the project it was read for is still attached. */
+  const setDir = useCallback((gen: number, rel: string, value: DirState) => {
+    if (gen !== currentGen.current) return
+    setDirs((current) => new Map(current).set(rel, value))
+  }, [])
+  const setFile = useCallback((gen: number, id: string, value: FileState) => {
+    if (gen !== currentGen.current) return
+    setFiles((current) => new Map(current).set(id, value))
+  }, [])
+
+  const loadDir = useCallback(
+    async (rel: string) => {
+      if (!folder || !dataFolder) return
+      const gen = currentGen.current
+      setDir(gen, rel, { status: 'loading' })
+      try {
+        const listing = await projectListDir(dataFolder, folder, rel)
+        setDir(gen, rel, {
+          status: 'ready',
+          entries: listing.entries,
+          truncated: listing.truncated,
+        })
+      } catch (e) {
+        const message = messageOf(e)
+        setDir(
+          gen,
+          rel,
+          message.startsWith(DENIED_PREFIX)
+            ? { status: 'denied' }
+            : { status: 'error', message }
+        )
+      }
+    },
+    [folder, dataFolder, setDir]
+  )
+
+  const loadFile = useCallback(
+    async (tab: CodeTab, allowSensitive = false) => {
+      const id = tabId(tab)
+      const gen = currentGen.current
+
+      // A tab whose project is gone is detached, not loading: say so rather
+      // than leaving a spinner nothing will resolve.
+      if (
+        tab.origin.kind === 'project' &&
+        (!folder || tab.origin.projectKey !== projectKey)
+      ) {
+        setFile(gen, id, { status: 'detached' })
+        return
+      }
+      // A sandbox tab belonging to another session is never read here: its
+      // path is relative to that session's directory, so reading it against
+      // this one would silently open a different file.
+      if (!tabBelongsToSession(tab, sessionKey)) {
+        setFile(gen, id, { status: 'detached' })
+        return
+      }
+      // The roots resolve asynchronously on mount. Record nothing until they
+      // are known, so the effect retries once they are — writing a state here
+      // would cache a verdict reached before the panel could read anything.
+      const rootPending =
+        tab.origin.kind === 'project' ? !dataFolder : !workspacePath
+      if (rootPending) return
+
+      setFile(gen, id, { status: 'loading' })
+      // Snapshot before reading, not after: a write landing during the read
+      // would otherwise be counted as already included and the tab would look
+      // fresh while showing the older bytes.
+      const seen = writeCountsByPath(turnsRef.current)[
+        tab.path.replace(/\\/g, '/')
+      ]
+      setLoadedAt((current) => new Map(current).set(id, seen ?? 0))
+
+      // Sandbox and generated files stream off disk the way the preview pane
+      // reads them; the backend project commands only serve the attached
+      // project.
+      if (tab.origin.kind !== 'project') {
+        const abs = workspacePath
+          ? resolveInRoot(workspacePath, tab.path)
+          : null
+        if (!abs) {
+          setFile(gen, id, {
+            status: 'error',
+            message: t('common:preview.outside'),
+          })
+          return
+        }
+        try {
+          const res = await fetch(getServiceHub().core().convertFileSrc(abs))
+          if (!res.ok) throw new Error(String(res.status))
+          const size = Number(res.headers.get('content-length') ?? 0)
+          if (size > MAX_CODE_FILE_BYTES) {
+            setFile(gen, id, { status: 'oversized', size })
+            return
+          }
+          const content = await res.text()
+          if (content.length > MAX_CODE_FILE_BYTES) {
+            setFile(gen, id, { status: 'oversized', size: content.length })
+            return
+          }
+          setFile(gen, id, { status: 'ready', content })
+        } catch (e) {
+          setFile(gen, id, { status: 'error', message: messageOf(e) })
+        }
+        return
+      }
+
+      if (!folder || !dataFolder) return
+      try {
+        const file = await projectReadFile(
+          dataFolder,
+          folder,
+          tab.path,
+          allowSensitive
+        )
+        if (file.oversized) {
+          setFile(gen, id, { status: 'oversized', size: file.size })
+        } else if (file.binary) {
+          setFile(gen, id, { status: 'binary' })
+        } else {
+          setFile(gen, id, { status: 'ready', content: file.content })
+        }
+      } catch (e) {
+        const message = messageOf(e)
+        setFile(
+          gen,
+          id,
+          message.startsWith('SENSITIVE:')
+            ? { status: 'sensitive' }
+            : message.startsWith(DENIED_PREFIX)
+              ? { status: 'denied' }
+              : { status: 'error', message }
+        )
+      }
+    },
+    [folder, projectKey, sessionKey, workspacePath, dataFolder, setFile, t]
+  )
+
+  // Root listing, and re-listing whenever a root identity changes. Everything
+  // cached belonged to the previous roots, including the staleness snapshots.
+  useEffect(() => {
+    setDirs(new Map())
+    setFiles(new Map())
+    setLoadedAt(new Map())
+    if (folder && dataFolder) void loadDir('')
+  }, [rootIdentity, folder, dataFolder, loadDir])
+
+  // Lazily fetch expanded directories that have no cached listing yet
+  // (including ones restored from a persisted session).
+  useEffect(() => {
+    if (!folder || !dataFolder) return
+    for (const rel of state.expandedDirs) {
+      if (!dirs.has(rel)) void loadDir(rel)
+    }
+  }, [state.expandedDirs, dirs, folder, dataFolder, loadDir])
+
+  // Fetch the active tab's content once per open file.
+  const active = activeTab(state)
+  const activeId = active ? tabId(active) : null
+  useEffect(() => {
+    if (!active || !activeId || files.has(activeId)) return
+    void loadFile(active)
+  }, [active, activeId, files, loadFile])
+
+  const openPath = useCallback(
+    (rel: string) => {
+      if (!projectKey) return
+      onStateChange(openTab(state, projectTab(rel, projectKey)))
+      setExplorerOpen(false)
+    },
+    [onStateChange, state, projectKey]
+  )
+
+  const activeFile = activeId ? files.get(activeId) : undefined
+
+  const renderTree = (rel: string, depth: number): React.ReactNode => {
+    const dir = dirs.get(rel)
+    if (!dir || dir.status === 'loading') {
+      return (
+        <p
+          className="px-3 py-1 text-xs text-muted-foreground"
+          style={indent(depth)}
+        >
+          {t('common:codePanel.loading')}
+        </p>
+      )
+    }
+    if (dir.status === 'denied') {
+      return (
+        <p
+          className="px-3 py-1 text-xs text-muted-foreground"
+          style={indent(depth)}
+        >
+          {t('common:codePanel.denied')}
+        </p>
+      )
+    }
+    if (dir.status === 'error') {
+      return (
+        <div style={indent(depth)} className="px-3 py-1">
+          <p className="text-xs text-destructive">{dir.message}</p>
+          <button
+            type="button"
+            onClick={() => void loadDir(rel)}
+            className="mt-1 text-xs text-muted-foreground underline hover:text-foreground"
+          >
+            {t('common:codePanel.retry')}
+          </button>
+        </div>
+      )
+    }
+    if (dir.entries.length === 0) {
+      return (
+        <p
+          className="px-3 py-1 text-xs text-muted-foreground"
+          style={indent(depth)}
+        >
+          {t('common:codePanel.emptyDir')}
+        </p>
+      )
+    }
+    return (
+      <>
+        {dir.entries.map((entry) => {
+          if (entry.isDir) {
+            const expanded = state.expandedDirs.includes(entry.relPath)
+            return (
+              <div key={entry.relPath}>
+                <button
+                  type="button"
+                  onClick={() => onStateChange(toggleDir(state, entry.relPath))}
+                  aria-expanded={expanded}
+                  className="flex w-full items-center gap-1 px-2 py-0.5 text-left text-xs hover:bg-muted/50"
+                  style={indent(depth)}
+                >
+                  {expanded ? (
+                    <ChevronDown
+                      size={12}
+                      className="shrink-0 text-main-view-fg/50"
+                    />
+                  ) : (
+                    <ChevronRight
+                      size={12}
+                      className="shrink-0 text-main-view-fg/50"
+                    />
+                  )}
+                  {expanded ? (
+                    <FolderOpen
+                      size={13}
+                      className="shrink-0 text-main-view-fg/60"
+                    />
+                  ) : (
+                    <Folder
+                      size={13}
+                      className="shrink-0 text-main-view-fg/60"
+                    />
+                  )}
+                  <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                </button>
+                {expanded && renderTree(entry.relPath, depth + 1)}
+              </div>
+            )
+          }
+          const viewable = isSourcePath(entry.relPath)
+          return (
+            <button
+              key={entry.relPath}
+              type="button"
+              disabled={!viewable}
+              onClick={() => openPath(entry.relPath)}
+              aria-current={
+                state.activeTabId ===
+                tabId(projectTab(entry.relPath, projectKey ?? ''))
+                  ? true
+                  : undefined
+              }
+              className={cn(
+                'flex w-full items-center gap-1 px-2 py-0.5 text-left text-xs',
+                viewable ? 'hover:bg-muted/50' : 'opacity-50',
+                state.activeTabId ===
+                  tabId(projectTab(entry.relPath, projectKey ?? '')) &&
+                  'bg-secondary'
+              )}
+              style={indent(depth)}
+            >
+              <span className="w-3 shrink-0" />
+              <FileIcon size={13} className="shrink-0 text-main-view-fg/50" />
+              <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+            </button>
+          )
+        })}
+        {dir.truncated && (
+          <p
+            className="px-3 py-1 text-xs text-muted-foreground"
+            style={indent(depth)}
+          >
+            {t('common:codePanel.truncated')}
+          </p>
+        )}
+      </>
+    )
+  }
+
+  const body = !folder && state.tabs.length === 0 ? (
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+      <FolderTree size={24} className="text-muted-foreground" />
+      <p className="text-sm text-muted-foreground">
+        {t('common:codePanel.noProject')}
+      </p>
+      <Button size="sm" onClick={onAttach}>
+        {t('common:codePanel.attachProject')}
+      </Button>
+    </div>
+  ) : (
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Tab strip */}
+      {state.tabs.length > 0 && (
+        <div
+          role="tablist"
+          aria-label={t('common:codePanel.openFiles')}
+          className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto border-b px-1"
+        >
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={t('common:codePanel.explorer')}
+            aria-pressed={explorerOpen}
+            onClick={() => setExplorerOpen((v) => !v)}
+            className={cn(
+              'shrink-0',
+              explorerOpen ? 'text-primary' : 'text-muted-foreground'
+            )}
+          >
+            <FolderTree className="size-3.5" />
+          </Button>
+          {state.tabs.map((tab) => {
+            const id = tabId(tab)
+            const name = tab.path.split('/').pop() || tab.path
+            const isActive = id === state.activeTabId
+            return (
+              <div
+                key={id}
+                role="tab"
+                aria-selected={isActive}
+                className={cn(
+                  'group flex shrink-0 cursor-pointer items-center gap-1 rounded-sm px-2 py-0.5 text-xs',
+                  isActive
+                    ? 'bg-secondary text-main-view-fg'
+                    : 'text-main-view-fg/60 hover:bg-muted/50'
+                )}
+                title={`${tab.path} — ${originTitle(tab, t)}`}
+                onClick={() => onStateChange(focusTab(state, id))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onStateChange(focusTab(state, id))
+                  } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                    // Left/right move between tabs, as in a real tablist.
+                    e.preventDefault()
+                    const next = neighbourTabId(
+                      state,
+                      e.key === 'ArrowRight' ? 1 : -1
+                    )
+                    if (next) onStateChange(focusTab(state, next))
+                  } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                    e.preventDefault()
+                    onStateChange(closeTab(state, id))
+                  }
+                }}
+                tabIndex={isActive ? 0 : -1}
+              >
+                {tab.origin.kind !== 'project' && (
+                  // A sandbox or generated file is not the user's project;
+                  // say so rather than letting the name imply it.
+                  <span
+                    aria-hidden
+                    className="shrink-0 text-[10px] uppercase tracking-wide text-main-view-fg/40"
+                  >
+                    {tab.origin.kind === 'external' ? 'ext' : 'ws'}
+                  </span>
+                )}
+                <span className="max-w-40 truncate">{name}</span>
+                <button
+                  type="button"
+                  aria-label={t('common:codePanel.closeTab', { name })}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onStateChange(closeTab(state, id))
+                  }}
+                  className="rounded-sm text-main-view-fg/40 hover:text-main-view-fg"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )
+          })}
+          {state.tabs.length > 1 && (
+            <span className="ml-auto flex shrink-0 items-center gap-0.5 pl-1">
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={t('common:codePanel.closeOthers')}
+                onClick={() =>
+                  state.activeTabId &&
+                  onStateChange(closeOtherTabs(state, state.activeTabId))
+                }
+                className="text-muted-foreground"
+              >
+                <Columns2 className="size-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={t('common:codePanel.closeAll')}
+                onClick={() => onStateChange(closeAllTabs(state))}
+                className="text-muted-foreground"
+              >
+                <XCircle className="size-3.5" />
+              </Button>
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Explorer, shown when toggled or when nothing is open. Needs an
+          attached folder; sandbox tabs can exist without one. */}
+      {folder != null && (explorerOpen || state.tabs.length === 0) && (
+        <div
+          className={cn(
+            'shrink-0 overflow-y-auto border-b py-1',
+            state.tabs.length > 0 ? 'max-h-[45%]' : 'flex-1 border-b-0'
+          )}
+          data-testid="code-explorer"
+        >
+          {renderTree('', 0)}
+        </div>
+      )}
+
+      {/* Viewer */}
+      {active && activeId && (
+        <div className="min-h-0 flex-1">
+          {!activeFile || activeFile.status === 'loading' ? (
+            <Notice>{t('common:codePanel.loading')}</Notice>
+          ) : activeFile.status === 'ready' ? (
+            <div className="flex h-full min-h-0 flex-col">
+              {/* Announced, not swapped: replacing the bytes under someone
+                  mid-read is what the preview pane deliberately avoids. */}
+              {isTabStale(active, loadedAt.get(activeId), writeCounts) && (
+                <div
+                  role="status"
+                  className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs text-main-view-fg/70"
+                >
+                  <span className="min-w-0 flex-1">
+                    {t('common:codePanel.stale')}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 shrink-0 px-2 text-xs"
+                    onClick={() => void loadFile(active)}
+                  >
+                    {t('common:codePanel.reload')}
+                  </Button>
+                </div>
+              )}
+              <div className="min-h-0 flex-1">
+                <CodeViewer
+                  relPath={active.path}
+                  content={activeFile.content}
+                  wordWrap={state.wordWrap}
+                  onToggleWrap={(wordWrap) =>
+                    onStateChange({ ...state, wordWrap })
+                  }
+                  origin={active.origin}
+                  onAddToChat={onAddToChat}
+                />
+              </div>
+            </div>
+          ) : activeFile.status === 'oversized' ? (
+            <Notice>
+              {t('common:codePanel.tooLarge', {
+                size: `${(activeFile.size / (1024 * 1024)).toFixed(1)} MB`,
+              })}
+            </Notice>
+          ) : activeFile.status === 'binary' ? (
+            <Notice>{t('common:codePanel.binary')}</Notice>
+          ) : activeFile.status === 'denied' ? (
+            <Notice>{t('common:codePanel.denied')}</Notice>
+          ) : activeFile.status === 'detached' ? (
+            // The project went away underneath this tab. Not an error and not
+            // a spinner that will never resolve — say what happened and let
+            // the tab be closed.
+            <Notice>
+              <span className="block">{t('common:codePanel.detached')}</span>
+              <span className="mt-2 flex justify-center gap-2">
+                <Button size="sm" onClick={onAttach}>
+                  {t('common:codePanel.attachProject')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onStateChange(closeTab(state, activeId))}
+                >
+                  {t('common:codePanel.closeMissing')}
+                </Button>
+              </span>
+            </Notice>
+          ) : activeFile.status === 'sensitive' ? (
+            <Notice>
+              <span className="block">{t('common:codePanel.sensitive')}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-2"
+                onClick={() => void loadFile(active, true)}
+              >
+                {t('common:codePanel.openAnyway')}
+              </Button>
+            </Notice>
+          ) : (
+            <Notice>
+              <span className="block">{activeFile.message}</span>
+              <span className="mt-2 flex justify-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void loadFile(active)}
+                >
+                  {t('common:codePanel.retry')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onStateChange(closeTab(state, activeId))}
+                >
+                  {t('common:codePanel.closeMissing')}
+                </Button>
+              </span>
+            </Notice>
+          )}
+        </div>
+      )}
+    </div>
+  )
+
+  return (
+    <CoworkSidePanel title={t('common:codePanel.title')} onClose={onClose}>
+      {body}
+    </CoworkSidePanel>
+  )
+}
+
+function Notice({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+      <div>{children}</div>
+    </div>
+  )
+}
+
+const indent = (depth: number) => ({ paddingLeft: `${8 + depth * 12}px` })
+
+/** Marker the Rust side puts on an error the OS refused for permissions. */
+/** A human phrase for where a tab's file lives, for its tooltip. */
+function originTitle(
+  tab: CodeTab,
+  t: (key: string) => string
+): string {
+  switch (tab.origin.kind) {
+    case 'project':
+      return t('common:codePanel.originProject')
+    case 'sandbox':
+    case 'artifact':
+      return t('common:codePanel.originWorkspace')
+    case 'external':
+      return t('common:codePanel.originExternal')
+  }
+}
+
+const DENIED_PREFIX = 'DENIED: '
+
+const messageOf = (e: unknown): string =>
+  e && typeof e === 'object' && 'message' in e
+    ? String((e as { message: unknown }).message)
+    : String(e)

@@ -3,6 +3,7 @@ import { route } from '@/constants/routes'
 import SettingsMenu from '@/containers/SettingsMenu'
 import HeaderPage from '@/containers/HeaderPage'
 import { Card, CardItem } from '@/containers/Card'
+import { SettingTarget } from '@/components/SettingTarget'
 import { Switch } from '@/components/ui/switch'
 import { Progress } from '@/components/ui/progress'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -164,6 +165,7 @@ function HardwareContent() {
           ) : (
             <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
               {/* OS Information */}
+              <SettingTarget anchor="settings-hardware-os">
               <Card title={t('settings:hardware.os')}>
                 <CardItem
                   title={t('settings:hardware.name')}
@@ -182,8 +184,10 @@ function HardwareContent() {
                   }
                 />
               </Card>
+              </SettingTarget>
 
               {/* CPU Information */}
+              <SettingTarget anchor="settings-hardware-cpu">
               <Card title={t('settings:hardware.cpu')}>
                 <CardItem
                   title={t('settings:hardware.model')}
@@ -239,8 +243,10 @@ function HardwareContent() {
                   }
                 />
               </Card>
+              </SettingTarget>
 
               {/* RAM Information */}
+              <SettingTarget anchor="settings-hardware-memory">
               <Card title={t('settings:hardware.memory')}>
                 <CardItem
                   title={t('settings:hardware.totalRam')}
@@ -290,6 +296,7 @@ function HardwareContent() {
                   }
                 />
               </Card>
+              </SettingTarget>
 
               {/* Llamacpp Devices Information */}
               {!IS_MACOS && llamacpp && (

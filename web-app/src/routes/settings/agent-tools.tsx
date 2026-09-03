@@ -255,6 +255,7 @@ function AgentToolsContent() {
               }
             >
               <CardItem
+                anchor="settings-agent-tools-enable"
                 title={t('settings:agentTools.enable')}
                 description={t('settings:agentTools.enableDesc')}
                 align="start"
@@ -294,6 +295,7 @@ function AgentToolsContent() {
                   no shell to give network access to in the first place. */}
               {sandbox?.enforces && (
                 <CardItem
+                  anchor="settings-agent-tools-network"
                   title={t('settings:agentTools.network')}
                   description={t('settings:agentTools.networkDesc')}
                   align="start"

@@ -4,6 +4,7 @@ import SettingsMenu from '@/containers/SettingsMenu'
 import HeaderPage from '@/containers/HeaderPage'
 import { Switch } from '@/components/ui/switch'
 import { Card, CardItem } from '@/containers/Card'
+import { SettingTarget } from '@/components/SettingTarget'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useAnalytic } from '@/hooks/useAnalytic'
 import posthog from 'posthog-js'
@@ -28,6 +29,11 @@ function Privacy() {
         <SettingsMenu />
         <div className="p-4 pt-0 w-full overflow-y-auto">
           <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+            {/* Anchored around the whole card, not the description row: the
+                analytics switch lives in the card's header, so anchoring the
+                row would scroll to an explanation while the control it
+                describes sat outside the highlight. */}
+            <SettingTarget anchor="settings-privacy-analytics">
             <Card
               header={
                 <div className="flex items-center justify-between mb-4">
@@ -84,6 +90,7 @@ function Privacy() {
                 }
               />
             </Card>
+            </SettingTarget>
           </div>
         </div>
       </div>

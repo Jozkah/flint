@@ -18,6 +18,7 @@ import {
   IconWorldSearch,
   IconFolderCode,
   IconPaperclip,
+  IconPuzzle,
 } from '@tabler/icons-react'
 import { useMatches, useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
@@ -33,6 +34,12 @@ import {
 import cloneDeep from 'lodash/cloneDeep'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { SettingsSearch } from '@/containers/SettingsSearch'
+import {
+  SETTINGS_PAGES,
+  type SettingsPage,
+  type SettingsPageId,
+} from '@/lib/settingsSearch'
 
 const SettingsMenu = () => {
   const { t } = useTranslation()
@@ -166,78 +173,56 @@ const SettingsMenu = () => {
       match.search.step === 'setup_remote_provider'
   )
 
-  const coreSettings = [
-    {
-      title: 'common:general',
-      route: route.settings.general,
-      icon: IconAdjustmentsHorizontal,
-    },
+  // Pages come from the shared registry, which also drives settings search —
+  // one list, so navigation and search cannot drift apart. Only the icons live
+  // here: they are JSX, and the registry stays pure data the index can import.
+  // Keyed by the registry's own id union, so adding or renaming a page is a
+  // compile error here rather than a silent fallback to a default icon.
+  const pageIcons: Record<
+    SettingsPageId,
+    (props: { size?: number; className?: string }) => React.ReactNode
+  > = {
+    general: IconAdjustmentsHorizontal,
     // "Appearance" is implemented by the existing Interface settings route.
-    {
-      title: 'common:appearance',
-      route: route.settings.interface,
-      icon: IconPalette,
-    },
-    { title: 'common:assistants', route: route.settings.assistant, icon: IconFeather },
-    {
-      title: 'common:attachments',
-      route: route.settings.attachments,
-      icon: IconPaperclip,
-    },
-    {
-      title: 'common:local_api_server',
-      route: route.settings.local_api_server,
-      icon: IconCircles,
-    },
-    {
-      title: 'common:https_proxy',
-      route: route.settings.https_proxy,
-      icon: IconWorld,
-    },
-    {
-      title: 'common:web_search',
-      route: route.settings.web_search,
-      icon: IconWorldSearch,
-    },
-    {
-      title: 'common:agent_tools',
-      route: route.settings.agent_tools,
-      icon: IconFolderCode,
-    },
-    {
-      title: 'common:keyboardShortcuts',
-      route: route.settings.shortcuts,
-      icon: IconCommand,
-    },
-    {
-      title: 'common:hardware',
-      route: route.settings.hardware,
-      hasSubMenu: false,
-      isEnabled: true,
-      icon: IconCpu,
-    },
-    { title: 'common:privacy', route: route.settings.privacy, icon: IconLock },
-  ]
+    appearance: IconPalette,
+    assistants: IconFeather,
+    attachments: IconPaperclip,
+    'local-api-server': IconCircles,
+    'https-proxy': IconWorld,
+    'web-search': IconWorldSearch,
+    'agent-tools': IconFolderCode,
+    shortcuts: IconCommand,
+    hardware: IconCpu,
+    privacy: IconLock,
+    'mcp-servers': IconTopologyStar3,
+    extensions: IconPuzzle,
+    'claude-code': ({ size, className }) => (
+      <img
+        src="/images/code-claude.svg"
+        width={size}
+        height={size}
+        className={cn(className, 'dark:invert opacity-60')}
+      />
+    ),
+  }
 
-  const integrationSettings = [
-    {
-      title: 'common:mcp-servers',
-      route: route.settings.mcp_servers,
-      icon: IconTopologyStar3,
-    },
-    {
-      title: 'common:claude_code',
-      route: route.settings.claude_code,
-      icon: ({ size, className }: { size?: number; className?: string }) => (
-        <img src="/images/code-claude.svg" width={size} height={size} className={cn(className, 'dark:invert opacity-60')} />
-      ),
-    },
-  ]
+  const withIcon = (page: SettingsPage) => ({
+    ...page,
+    title: page.titleKey,
+    icon: pageIcons[page.id as SettingsPageId],
+  })
+  const coreSettings = SETTINGS_PAGES.filter((p) => p.group === 'core').map(
+    withIcon
+  )
+  const integrationSettings = SETTINGS_PAGES.filter(
+    (p) => p.group === 'integrations'
+  ).map(withIcon)
 
   return (
     <>
-      <div className="h-full w-58 shrink-0 px-1.5 flex overflow-auto">
-        <div className="flex flex-col gap-1 w-full font-medium">
+      <div className="h-full w-58 shrink-0 flex flex-col overflow-auto">
+        <SettingsSearch />
+        <div className="flex flex-col gap-1 w-full px-1.5 font-medium">
           {/* Core settings */}
           {coreSettings.map((menu) => (
             <div key={menu.title}>

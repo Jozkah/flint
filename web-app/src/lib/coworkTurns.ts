@@ -17,6 +17,39 @@ import { reasoningPartsFromText } from '@/lib/messages'
  * real coloured diff by `AgentToolWidget`, keyed on `toolCallId`. Folding it into
  * the output text would also corrupt the output the widget parses.
  */
+/**
+ * The id `coworkTurnsToUIMessages` will give the assistant message currently
+ * being built — the one a tool call happening now will render inside.
+ *
+ * Anything that needs to attach to that message (the inline workflow card) has
+ * to name it by the same rule the conversion uses, so the rule lives here
+ * beside it: a block starts after the last user turn, and its id comes from the
+ * first turn in that block that actually produces a part. An assistant turn
+ * with no content produces none, so it does not open the message.
+ *
+ * Returns undefined when the block has produced nothing yet, because there is
+ * no message to attach to.
+ */
+export function assistantAnchorId(
+  turns: CoworkTurn[],
+  idPrefix = 'code'
+): string | undefined {
+  let start = 0
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].role === 'user') {
+      start = i + 1
+      break
+    }
+  }
+  for (let i = start; i < turns.length; i++) {
+    const turn = turns[i]
+    if (turn.role === 'tool' || (turn.role === 'assistant' && turn.content)) {
+      return `${idPrefix}-asst-${i}`
+    }
+  }
+  return undefined
+}
+
 export function coworkTurnsToUIMessages(
   turns: CoworkTurn[],
   idPrefix = 'code'

@@ -3,6 +3,7 @@ import { route } from '@/constants/routes'
 import HeaderPage from '@/containers/HeaderPage'
 import SettingsMenu from '@/containers/SettingsMenu'
 import { Card, CardItem } from '@/containers/Card'
+import { WEB_SEARCH_PROVIDER_CONFIG_ANCHOR } from '@/lib/settingsSearch'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import {
@@ -81,6 +82,7 @@ function WebSearchContent() {
               }
             >
               <CardItem
+                anchor="settings-web-search-enable"
                 title={t('settings:webSearch.enable')}
                 description={t('settings:webSearch.enableDesc')}
               />
@@ -118,8 +120,14 @@ function WebSearchContent() {
                   </DropdownMenu>
                 }
               />
+              {/* The same anchor id on both branches, never a wrapper around
+                  them: the provider decides which control exists, so exactly
+                  one branch is ever mounted and the id stays unique — while a
+                  wrapper would make the row both first and last child and
+                  strip the card's dividers. */}
               {provider.requiresEndpoint ? (
                 <CardItem
+                  anchor={WEB_SEARCH_PROVIDER_CONFIG_ANCHOR}
                   title={t('settings:webSearch.endpoint', {
                     provider: provider.label,
                   })}
@@ -134,7 +142,9 @@ function WebSearchContent() {
                       <Input
                         type="text"
                         className="w-full"
-                        placeholder={t('settings:webSearch.endpointPlaceholder')}
+                        placeholder={t(
+                          'settings:webSearch.endpointPlaceholder'
+                        )}
                         value={endpoint}
                         onChange={(e) =>
                           setEndpoint(provider.id, e.target.value)
@@ -145,6 +155,7 @@ function WebSearchContent() {
                 />
               ) : (
                 <CardItem
+                  anchor={WEB_SEARCH_PROVIDER_CONFIG_ANCHOR}
                   title={t('settings:webSearch.apiKey', {
                     provider: provider.label,
                   })}

@@ -87,26 +87,31 @@ function Shortcuts() {
             {/* Application */}
             <Card title={t('settings:shortcuts.application')}>
               <CardItem
+                anchor="settings-shortcuts-new-chat"
                 title={t('settings:shortcuts.newChat')}
                 description={t('settings:shortcuts.newChatDesc')}
                 actions={<ShortcutLabel action={ShortcutAction.NEW_CHAT} />}
               />
               <CardItem
+                anchor="settings-shortcuts-new-project"
                 title={t('settings:shortcuts.newProject')}
                 description={t('settings:shortcuts.newProjectDesc')}
                 actions={<ShortcutLabel action={ShortcutAction.NEW_PROJECT} />}
               />
               <CardItem
+                anchor="settings-shortcuts-toggle-sidebar"
                 title={t('settings:shortcuts.toggleSidebar')}
                 description={t('settings:shortcuts.toggleSidebarDesc')}
                 actions={<ShortcutLabel action={ShortcutAction.TOGGLE_SIDEBAR} />}
               />
               <CardItem
+                anchor="settings-shortcuts-zoom-in"
                 title={t('settings:shortcuts.zoomIn')}
                 description={t('settings:shortcuts.zoomInDesc')}
                 actions={<ShortcutLabel action={ShortcutAction.ZOOM_IN} />}
               />
               <CardItem
+                anchor="settings-shortcuts-zoom-out"
                 title={t('settings:shortcuts.zoomOut')}
                 description={t('settings:shortcuts.zoomOutDesc')}
                 actions={<ShortcutLabel action={ShortcutAction.ZOOM_OUT} />}
@@ -116,6 +121,7 @@ function Shortcuts() {
             {/* Chat */}
             <Card title={t('settings:shortcuts.chat')}>
               <CardItem
+                anchor="settings-shortcuts-send-message"
                 title={t('settings:shortcuts.sendMessage')}
                 description={t('settings:shortcuts.sendMessageDesc')}
                 actions={
@@ -125,6 +131,7 @@ function Shortcuts() {
                 }
               />
               <CardItem
+                anchor="settings-shortcuts-new-line"
                 title={t('settings:shortcuts.newLine')}
                 description={t('settings:shortcuts.newLineDesc')}
                 actions={
@@ -135,6 +142,7 @@ function Shortcuts() {
                 }
               />
               <CardItem
+                anchor="settings-shortcuts-switch-assistant"
                 title={t('settings:shortcuts.switchAssistant')}
                 description={t('settings:shortcuts.switchAssistantDesc')}
                 actions={
@@ -146,11 +154,13 @@ function Shortcuts() {
             {/* Navigation */}
             <Card title={t('settings:shortcuts.navigation')}>
               <CardItem
+                anchor="settings-shortcuts-search"
                 title={t('settings:shortcuts.search')}
                 description={t('settings:shortcuts.searchDesc')}
                 actions={<ShortcutLabel action={ShortcutAction.SEARCH} />}
               />
               <CardItem
+                anchor="settings-shortcuts-go-to-settings"
                 title={t('settings:shortcuts.goToSettings')}
                 description={t('settings:shortcuts.goToSettingsDesc')}
                 actions={<ShortcutLabel action={ShortcutAction.GO_TO_SETTINGS} />}

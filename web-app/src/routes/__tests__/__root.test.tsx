@@ -17,6 +17,9 @@ const h = vi.hoisted(() => ({
 vi.mock('@tanstack/react-router', () => ({
   createRootRoute: (config: any) => ({ ...config, id: '__root' }),
   Outlet: () => <div data-testid="outlet" />,
+  // AppLayout ends the settings search when the route leaves Settings, so it
+  // reads the current path.
+  useLocation: () => ({ pathname: '/' }),
 }))
 
 // Tauri API

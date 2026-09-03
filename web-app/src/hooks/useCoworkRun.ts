@@ -120,14 +120,9 @@ function omitKey<T>(map: Record<string, T>, key: string): Record<string, T> {
 // mirroring useAppState's per-thread Record<id, T> maps. This is what lets a run
 // keep updating a background session while another is viewed: every stream write
 // targets the session id captured at submit, and rendering reads the viewed id.
-//
-// No separate `running` flag: a session is running iff it has a runId, so
-// that's read directly (runId[sid] != null) instead of a second map that
-// would need to be kept in sync with it.
 type CoworkRunState = {
   liveTurns: Record<string, CoworkTurn[]>
   subagents: Record<string, SubagentRun[]>
-  runId: Record<string, string>
   // In-flight `ask` tool questions per session. A subagent's wrapped ask is
   // attributed to the parent session the same way.
   pendingAsks: Record<string, { requestId: string; request: AskRequestPayload }[]>
@@ -160,7 +155,6 @@ type CoworkRunState = {
   loadingModels: Record<string, boolean>
   modelLoadProgress: Record<string, ModelLoadProgress>
 
-  beginRun: (sid: string, runId: string, userText: string, images?: string[]) => void
   appendToken: (sid: string, text: string) => void
   pushToolTurn: (sid: string, turn: CoworkTurn) => void
   updateToolTurn: (sid: string, callId: string, patch: Partial<CoworkTurn>) => void
@@ -205,7 +199,6 @@ type CoworkRunState = {
 export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
   liveTurns: {},
   subagents: {},
-  runId: {},
   pendingAsks: {},
   usage: {},
   pendingPreview: null,
@@ -213,17 +206,6 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
   pendingLlamacppError: {},
   loadingModels: {},
   modelLoadProgress: {},
-
-  beginRun: (sid, runId, userText, images) =>
-    set((s) => ({
-      runId: { ...s.runId, [sid]: runId },
-      liveTurns: {
-        ...s.liveTurns,
-        [sid]: [{ role: 'user', content: userText, images }],
-      },
-      subagents: { ...s.subagents, [sid]: [] },
-      pendingAsks: { ...s.pendingAsks, [sid]: [] },
-    })),
 
   appendToken: (sid, text) =>
     set((s) => ({
@@ -437,7 +419,6 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
     set((s) => ({
       liveTurns: omitKey(s.liveTurns, sid),
       subagents: omitKey(s.subagents, sid),
-      runId: omitKey(s.runId, sid),
       pendingAsks: omitKey(s.pendingAsks, sid),
       usage: omitKey(s.usage, sid),
       llamacppRuns: omitKey(s.llamacppRuns, sid),
@@ -446,10 +427,4 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
       modelLoadProgress: omitKey(s.modelLoadProgress, sid),
     })),
 }))
-
-// Per-session selectors, mirroring useAppState's useIsThreadActive — a
-// component reading only one session's slice re-renders on that session's
-// changes, not on every other session's.
-export const useIsSessionActive = (sid: string | undefined) =>
-  useCoworkRun((s) => (sid ? s.runId[sid] != null : false))
 

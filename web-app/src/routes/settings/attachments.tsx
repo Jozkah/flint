@@ -13,6 +13,19 @@ export const Route = createFileRoute('/settings/attachments')({
   component: AttachmentsSettings,
 })
 
+// Search anchors for the settings this page exposes to settings search.
+//
+// The rows here are rendered from the extension's schema rather than written
+// out one by one, so the anchor cannot be attached to a literal CardItem the
+// way the other settings pages do it. This maps the schema key
+// (extensions/rag-extension/settings.json) to the registry's stable anchor id
+// (SETTINGS_ITEMS in @/lib/settingsSearch). Keys absent here render unwrapped.
+const SETTING_ANCHORS: Record<string, string> = {
+  enabled: 'settings-attachments-enable',
+  parse_mode: 'settings-attachments-parse-mode',
+  max_file_size_mb: 'settings-attachments-max-file',
+}
+
 // Helper to extract constraints from settingsDefs
 function getConstraints(def: SettingComponentProps) {
   const props = def.controllerProps as Partial<{
@@ -256,9 +269,10 @@ function AttachmentsSettings() {
                   ? t(d.descriptionKey)
                   : d.description
 
-                return (
+                const card = (
                   <CardItem
                     key={d.key}
+                    anchor={SETTING_ANCHORS[d.key]}
                     title={title}
                     description={description}
                     actions={
@@ -270,6 +284,8 @@ function AttachmentsSettings() {
                     }
                   />
                 )
+
+                return card
               })}
             </Card>
           </div>

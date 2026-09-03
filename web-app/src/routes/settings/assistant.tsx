@@ -97,6 +97,7 @@ function AssistantContent() {
             {/* Default Assistant */}
             <Card>
               <CardItem
+                anchor="settings-assistants-default"
                 title={t('assistants:defaultAssistantSection')}
                 description={t('assistants:defaultAssistantDesc')}
                 actions={
