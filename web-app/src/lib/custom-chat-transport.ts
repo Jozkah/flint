@@ -39,6 +39,8 @@ import {
   isThinkingBudgetLevelKey,
 } from '@/lib/thinkingBudget'
 import { buildReasoningProviderOptions } from '@/lib/reasoningProviderOptions'
+import { resolveModel } from '@/lib/modelOverrides'
+import { useModelOverrides } from '@/hooks/useModelOverrides'
 import {
   ExtensionTypeEnum,
   VectorDBExtension,
@@ -1239,7 +1241,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
       const inferenceParams = this.getActiveInferenceParams()
 
-      const selectedModel = useModelProvider.getState().selectedModel
+      // Resolved for this chat, not the bare global model: everything derived
+      // below — the reasoning mode, the sampling defaults, the llama.cpp
+      // thinking budget — has to see the chat's own overrides, or a control
+      // the composer shows as set would never reach the request.
+      const selectedModel = resolveModel(
+        useModelProvider.getState().selectedModel,
+        useModelOverrides.getState().forThread(threadId)
+      )
       const reasoningParams = buildLlamacppReasoningParams(
         effectiveProviderName,
         selectedModel?.settings?.reasoning?.controller_props?.value as
@@ -1470,9 +1479,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     // Cloud providers take reasoning via the AI SDK's per-request
     // providerOptions (native thinking config), not the raw body.
+    // The chat's own view of the model: global configuration with whatever
+    // this chat has overridden layered on top. Resolved here rather than
+    // stored, so a setting the chat never touched still follows the global
+    // default as that default changes.
     const reasoningProviderOptions = buildReasoningProviderOptions(
       providerId,
-      useModelProvider.getState().selectedModel
+      resolveModel(
+        useModelProvider.getState().selectedModel,
+        useModelOverrides.getState().forThread(threadId)
+      )
     )
 
     let streamStartTime: number | undefined

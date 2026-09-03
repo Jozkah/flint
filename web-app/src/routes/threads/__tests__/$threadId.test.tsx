@@ -179,6 +179,7 @@ vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => (config: any) => ({ ...config, id: '/threads/$threadId' }),
   useParams: () => ({ threadId: 'thread-1' }),
   useSearch: () => ({ threadModel: undefined }),
+  useNavigate: () => vi.fn(),
 }))
 
 vi.mock('@/containers/HeaderPage', () => ({
@@ -402,6 +403,8 @@ vi.mock('@janhq/core', () => ({
 
 vi.mock('@/constants/chat', () => ({
   SESSION_STORAGE_PREFIX: { INITIAL_MESSAGE: 'initial-message-' },
+  TEMPORARY_CHAT_ID: 'temporary-chat',
+  TEMPORARY_CHAT_QUERY_ID: 'temporary-chat',
 }))
 
 vi.mock('@/utils/error', () => ({

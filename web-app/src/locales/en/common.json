@@ -813,5 +813,12 @@
     "stopWorkflow": "Stop {{name}}",
     "stopWorkflowPartial": "Stopped {{cancelled}}; {{failed}} could not be stopped.",
     "cancelKillFailed": "The system refused to stop it: {{error}}"
+  },
+  "reasoningEffort": {
+    "label": "Reasoning effort",
+    "modelDefault": "Model default",
+    "reset": "Reset to global",
+    "resetAll": "Reset to global defaults",
+    "overridden": "Set for this chat"
   }
 }

@@ -32,6 +32,7 @@ export const localStorageKey = {
   latestJanModel: 'latest-jan-model',
   defaultEmbeddingModel: 'default-embedding-model',
   pausedDownloads: 'paused-downloads',
+  modelOverrides: 'model-overrides',
   // Value predates the Cowork rename; changing it would orphan saved sessions.
   coworkSessions: 'code-sessions',
   coworkActivity: 'cowork-activity',

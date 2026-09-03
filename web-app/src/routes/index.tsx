@@ -22,6 +22,7 @@ type SearchParams = {
 import { useEffect } from 'react'
 import { useThreads } from '@/hooks/useThreads'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
+import { NewTemporaryChatButton } from '@/containers/NewTemporaryChatButton'
 
 export const Route = createFileRoute(route.home as any)({
   component: Index,
@@ -57,6 +58,7 @@ function Index() {
       <HeaderPage>
         <div className="flex items-center gap-2 w-full">
           <DropdownModelProvider model={threadModel} />
+          <NewTemporaryChatButton />
         </div>
       </HeaderPage>
       <div

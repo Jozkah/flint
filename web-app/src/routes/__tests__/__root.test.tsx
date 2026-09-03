@@ -20,6 +20,15 @@ vi.mock('@tanstack/react-router', () => ({
   // AppLayout ends the settings search when the route leaves Settings, so it
   // reads the current path.
   useLocation: () => ({ pathname: '/' }),
+  useNavigate: () => vi.fn(),
+  useBlocker: () => ({
+    status: 'idle',
+    proceed: undefined,
+    reset: undefined,
+    current: undefined,
+    next: undefined,
+    action: undefined,
+  }),
 }))
 
 // Tauri API
@@ -129,6 +138,7 @@ vi.mock('@/constants/routes', () => ({
     localApiServerlogs: '/local-api-server/logs',
     systemMonitor: '/system-monitor',
     appLogs: '/logs',
+    threadsDetail: '/threads/$threadId',
   },
 }))
 
