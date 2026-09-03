@@ -127,6 +127,8 @@
   "start": "Start",
   "stop": "Stop",
   "preview": {
+    "title": "Preview",
+    "empty": "Open a generated artifact to preview it here.",
     "loading": "Opening…",
     "unsupported": "Jan can't show this kind of file. Open it to see it in another app.",
     "outside": "This file is no longer in the session workspace.",
@@ -136,9 +138,16 @@
     "unresolvedRefs_one": "1 file this page links to can't load in the preview. Open it to see it in a browser.",
     "unresolvedRefs_other": "{{count}} files this page links to can't load in the preview. Open it to see it in a browser."
   },
+  "rail": {
+    "label": "Cowork panels",
+    "code": "Code",
+    "preview": "Preview",
+    "changes": "Changes",
+    "activity": "Activity"
+  },
   "changes": {
     "title": "Changes",
-    "empty": "Files the agent writes or edits will show up here.",
+    "empty": "No changes yet. Files the agent writes, and uncommitted changes in an attached Git project, show up here.",
     "a11y": "Changes: {{files}} files, {{additions}} added, {{deletions}} removed",
     "projectWorkingTree": "Project · Working tree",
     "sandboxOutput": "Cowork output · Session sandbox",

@@ -81,15 +81,7 @@ import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
 import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
-import { CoworkTasksChip } from '@/containers/CoworkTasksChip'
 import type { LiveJob } from '@/lib/coworkTasks'
-import { Code2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import {
   codeRefToken,
   emptyCodePanelState,
@@ -104,7 +96,10 @@ import {
   type CodeRef,
   type CodeTab,
 } from '@/lib/coworkCode'
-import { CoworkChangesChip } from '@/containers/CoworkChangesChip'
+import {
+  CoworkRailToolbar,
+  type RailMode,
+} from '@/containers/CoworkRailToolbar'
 import { useCoworkGitStatus } from '@/hooks/useCoworkGitStatus'
 import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
@@ -186,12 +181,17 @@ function CoworkPage() {
   // The rail holds one panel at a time: preview, diff and code all want the
   // width, so showing two together starves the transcript (C7).
   const [rail, setRail] = useState<
-    | { kind: 'preview'; path: string }
+    | { kind: 'preview'; path?: string }
     | { kind: 'diff' }
     | { kind: 'code' }
     | { kind: 'tasks' }
     | null
   >(null)
+  // The last artifact previewed this session, so re-opening Preview from the
+  // rail toolbar returns to it instead of an empty pane.
+  const [lastPreviewPath, setLastPreviewPath] = useState<string | undefined>(
+    undefined
+  )
   /** Open a tab in the Code panel. `sandbox` marks paths under the session
    * workspace (agent artifacts) rather than the attached project. */
   const openCode = useCallback(
@@ -242,10 +242,39 @@ function CoworkPage() {
       // session's workspace, never in the user's project.
       if (shouldOpenInCode(path) && session?.id) {
         openCode(artifactTab(path, session.id))
-      } else setRail({ kind: 'preview', path })
+      } else {
+        setLastPreviewPath(path)
+        setRail({ kind: 'preview', path })
+      }
     },
     [openCode, session?.id]
   )
+
+  // The rail toolbar's four mutually-exclusive modes map onto the rail state
+  // (Changes is the diff panel, Activity the tasks panel). Selecting the active
+  // mode again closes it, so the toolbar toggles. Code and Preview open into
+  // their own empty states, so neither is ever disabled.
+  const selectRail = useCallback(
+    (mode: RailMode) => {
+      if (mode === 'code') ensureCurrentSession()
+      setRail((current) => {
+        const kind =
+          mode === 'changes' ? 'diff' : mode === 'activity' ? 'tasks' : mode
+        if (current?.kind === kind) return null
+        if (kind === 'preview') return { kind, path: lastPreviewPath }
+        return { kind }
+      })
+    },
+    [lastPreviewPath]
+  )
+  /** The toolbar's semantic mode for the currently open rail, or null. */
+  const activeRail: RailMode | null =
+    rail?.kind === 'diff'
+      ? 'changes'
+      : rail?.kind === 'tasks'
+        ? 'activity'
+        : (rail?.kind ?? null)
+
   const [ask, setAsk] = useState<{
     requestId: string
     request: ReturnType<typeof parseAskRequest>
@@ -1037,6 +1066,7 @@ function CoworkPage() {
   useEffect(() => {
     if (!pendingPreview || !session?.id) return
     if (pendingPreview.sessionId !== session.id) return
+    setLastPreviewPath(pendingPreview.path)
     setRail({ kind: 'preview', path: pendingPreview.path })
     useCoworkRun.getState().clearPendingPreview()
   }, [pendingPreview, session?.id])
@@ -1204,56 +1234,14 @@ function CoworkPage() {
                       onDetach={detachFolder}
                     />
                     <CoworkSandboxChip />
-                    <CoworkChangesChip
-                      fileCount={changeCounts.fileCount}
+                    <CoworkRailToolbar
+                      active={activeRail}
+                      onSelect={selectRail}
+                      changeCount={changeCounts.fileCount}
                       additions={changeCounts.additions}
                       deletions={changeCounts.deletions}
-                      open={rail?.kind === 'diff'}
-                      onToggle={() =>
-                        setRail((r) =>
-                          r?.kind === 'diff' ? null : { kind: 'diff' }
-                        )
-                      }
+                      activity={taskCounts}
                     />
-                    <CoworkTasksChip
-                      totals={taskCounts}
-                      open={rail?.kind === 'tasks'}
-                      onToggle={() =>
-                        setRail((r) =>
-                          r?.kind === 'tasks' ? null : { kind: 'tasks' }
-                        )
-                      }
-                    />
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="xs"
-                          aria-pressed={rail?.kind === 'code'}
-                          aria-label={t('common:codePanel.title')}
-                          onClick={() => {
-                            // The panel is per-session and renders nothing
-                            // without one, so opening it before the first
-                            // message used to press the button and show
-                            // nothing at all. Same session guarantee the
-                            // artifact route into Code already makes.
-                            if (rail?.kind !== 'code') ensureCurrentSession()
-                            setRail((r) =>
-                              r?.kind === 'code' ? null : { kind: 'code' }
-                            )
-                          }}
-                          className={cn(
-                            'shrink-0',
-                            rail?.kind === 'code' && 'text-primary'
-                          )}
-                        >
-                          <Code2 className="size-3.5 shrink-0" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {t('common:codePanel.title')}
-                      </TooltipContent>
-                    </Tooltip>
                     <div className="ml-auto flex items-center">
                       <SkillSelector folder={folder} />
                     </div>
