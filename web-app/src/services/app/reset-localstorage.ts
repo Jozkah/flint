@@ -25,16 +25,11 @@ export function pruneLocalStorageByFlags(flags: WebdataResetFlags): void {
   if (!flags.keepModelsAndConfigs) {
     remove([
       k.modelProvider,
-      k.modelSources,
       k.lastUsedModel,
       k.lastUsedAssistant,
       k.defaultAssistantId,
       k.favoriteModels,
-      k.latestJanModel,
       k.defaultEmbeddingModel,
-      k.modelSupportCache,
-      k.janModelPromptDismissed,
-      k.pausedDownloads,
     ])
   }
 

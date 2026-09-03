@@ -125,10 +125,6 @@ vi.mock('../opener/tauri', () => ({
   TauriOpenerService: vi.fn().mockImplementation(() => ({}))
 }))
 
-vi.mock('../updater/tauri', () => ({
-  TauriUpdaterService: vi.fn().mockImplementation(() => ({}))
-}))
-
 vi.mock('../path/tauri', () => ({
   TauriPathService: vi.fn().mockImplementation(() => ({}))
 }))
@@ -184,7 +180,7 @@ describe('ServiceHub Integration Tests', () => {
       const services = [
         'theme', 'window', 'events', 'hardware', 'app', 'analytic',
         'messages', 'mcp', 'threads', 'providers', 'models', 'assistants',
-        'dialog', 'opener', 'updater', 'path', 'core', 'deeplink'
+        'dialog', 'opener', 'path', 'core', 'deeplink'
       ]
 
       services.forEach(serviceName => {
