@@ -461,11 +461,33 @@ fn looks_binary(bytes: &[u8]) -> bool {
     bytes.iter().take(8000).any(|&b| b == 0)
 }
 
-/// Count additions in a freshly-added (untracked) text file: every line is an
-/// addition. Returns `None` for binary or oversized files.
+/// A symlink's target as a display string, or `None` when `abs` is not a
+/// symlink. Read without following, so an untracked symlink is shown by its
+/// target text (git's own representation, mode 120000) rather than by
+/// dereferencing to whatever it points at — a symlink to a file outside the
+/// repository must never have that file's contents surfaced in the diff.
+fn symlink_target(abs: &Path) -> Option<String> {
+    let meta = std::fs::symlink_metadata(abs).ok()?;
+    if !meta.file_type().is_symlink() {
+        return None;
+    }
+    Some(std::fs::read_link(abs).ok()?.to_string_lossy().to_string())
+}
+
+/// Count additions in a freshly-added (untracked) file. A symlink counts as its
+/// single target line, never the pointed-at file. Returns `None` when the path
+/// cannot be stat'd; binary and oversized regular files report zero additions.
 fn untracked_counts(root: &str, rel: &str) -> Option<(u32, bool)> {
     let abs = Path::new(root).join(rel);
-    let meta = std::fs::metadata(&abs).ok()?;
+    let meta = std::fs::symlink_metadata(&abs).ok()?;
+    if meta.file_type().is_symlink() {
+        // One line: the link target. Never dereferenced.
+        return Some((1, false));
+    }
+    if !meta.is_file() {
+        // Untracked directories/fifos/etc: nothing textual to count.
+        return Some((0, false));
+    }
     if meta.len() > MAX_INLINE_FILE_BYTES {
         return Some((0, false));
     }
@@ -597,6 +619,14 @@ fn safe_rel(path: &str) -> Result<(), String> {
 /// renders like any other addition. Binary/oversized files get a placeholder.
 fn untracked_diff(root: &str, rel: &str, max_bytes: usize) -> GitFileDiff {
     let abs = Path::new(root).join(rel);
+    // A symlink is shown by its target text, never by dereferencing it — a link
+    // pointing outside the repo must not surface that file's contents here.
+    if let Some(target) = symlink_target(&abs) {
+        let out = format!(
+            "diff --git a/{rel} b/{rel}\nnew file mode 120000\n--- /dev/null\n+++ b/{rel}\n@@ -0,0 +1 @@\n+{target}\n\\ No newline at end of file\n"
+        );
+        return cap_diff(out, max_bytes, false);
+    }
     let meta = std::fs::metadata(&abs).ok();
     if meta.as_ref().map(|m| m.len()).unwrap_or(0) > MAX_INLINE_FILE_BYTES {
         return GitFileDiff {
@@ -708,7 +738,10 @@ pub fn file_diff(
         let tracked = git(&["-C", &root_s, "ls-files", "--error-unmatch", "--", path])
             .map(|s| !s.is_empty())
             .unwrap_or(false);
-        if !tracked && Path::new(&root_s).join(path).exists() {
+        // `symlink_metadata` (not `exists`) so a broken symlink still counts as
+        // present and is rendered by its target rather than dereferenced.
+        let present = Path::new(&root_s).join(path).symlink_metadata().is_ok();
+        if !tracked && present {
             return Ok(untracked_diff(&root_s, path, max_bytes));
         }
     }
@@ -815,6 +848,42 @@ mod review_tests {
         assert_eq!(DiffScope::parse("working"), DiffScope::Working);
         assert_eq!(DiffScope::parse("nonsense"), DiffScope::Working);
     }
+
+    // An untracked symlink must be shown by its target text, never by
+    // dereferencing to the pointed-at file — otherwise a link to a file outside
+    // the attached repo would surface that file's contents in the panel.
+    #[cfg(unix)]
+    #[test]
+    fn untracked_symlink_is_not_dereferenced() {
+        use std::os::unix::fs::symlink;
+        let dir = std::env::temp_dir().join(format!(
+            "jan_symlink_review_{}_{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let secret = dir.join("secret.txt");
+        std::fs::write(&secret, "TOP SECRET CONTENTS\n").unwrap();
+        symlink(&secret, dir.join("link")).unwrap();
+        let root = dir.to_string_lossy().to_string();
+
+        let d = untracked_diff(&root, "link", 512 * 1024);
+        assert!(!d.binary);
+        assert!(d.diff.contains("mode 120000"), "rendered as a symlink");
+        assert!(d.diff.contains("secret.txt"), "shows the target path");
+        assert!(
+            !d.diff.contains("TOP SECRET"),
+            "must not dereference the symlink target"
+        );
+
+        assert_eq!(untracked_counts(&root, "link"), Some((1, false)));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    use std::sync::atomic::Ordering;
 }
 
 #[cfg(all(test, feature = "cli"))]
