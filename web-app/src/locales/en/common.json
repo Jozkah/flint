@@ -843,5 +843,10 @@
     "reset": "Reset to global",
     "resetAll": "Reset to global defaults",
     "overridden": "Set for this chat"
+  },
+  "modelOffline": {
+    "badge": "Offline",
+    "tooltip": "This provider did not answer the last request. Selecting it is still allowed — it may just be temporary.",
+    "a11y": "offline: the provider did not answer the last request"
   }
 }

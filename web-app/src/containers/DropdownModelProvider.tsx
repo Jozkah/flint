@@ -6,7 +6,12 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { useModelProvider } from '@/hooks/useModelProvider'
-import { cn, getProviderTitle, getModelDisplayName } from '@/lib/utils'
+import {
+  cn,
+  getProviderTitle,
+  getModelDisplayName,
+  isLocalProvider,
+} from '@/lib/utils'
 import { highlightFzfMatch } from '@/utils/highlight'
 import Capabilities from './Capabilities'
 import { IconArrowsSort, IconSettings, IconX } from '@tabler/icons-react'
@@ -20,6 +25,14 @@ import { Fzf } from 'fzf'
 import { localStorageKey } from '@/constants/localStorage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
+import { useProviderReachability } from '@/hooks/useProviderReachability'
+import {
+  isOffline,
+  modelAvailability,
+  OFFLINE_DOT_CLASS,
+  OFFLINE_ROW_CLASS,
+} from '@/lib/modelAvailability'
+import { providerHasRemoteApiKeys as hasRemoteKeys } from '@/lib/provider-api-keys'
 import { useModelOrder } from '@/hooks/useModelOrder'
 import {
   MODEL_SORT_OPTIONS,
@@ -61,6 +74,23 @@ const SORT_LABEL_KEYS: Record<ModelSortOption, string> = {
   recent: 'common:sortRecent',
   provider: 'common:sortProvider',
 }
+
+/**
+ * "This provider just failed to answer."
+ *
+ * Not a probe result: it appears only after a real request to the endpoint
+ * failed at the transport layer, and it goes as soon as one succeeds. An
+ * installed local model that is merely unloaded never lands here.
+ */
+const OfflineBadge = ({ label, tooltip }: { label: string; tooltip: string }) => (
+  <span
+    className="ml-1 inline-flex shrink-0 items-center gap-1 rounded-full border border-destructive/30 px-1.5 py-0.5 text-[10px] font-medium text-destructive"
+    title={tooltip}
+  >
+    <span className={cn('size-1.5 rounded-full', OFFLINE_DOT_CLASS)} aria-hidden />
+    {label}
+  </span>
+)
 
 /**
  * The identifier a renamed model is still addressed by.
@@ -106,6 +136,22 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   const { t } = useTranslation()
   const { favoriteModels } = useFavoriteModel()
   const { sort, setSort, lastUsed, markUsed } = useModelOrder()
+  const unreachableOrigins = useProviderReachability((s) => s.unreachable)
+
+  /** Has a real request to this model's endpoint just failed? */
+  const modelIsOffline = useCallback(
+    (item: SearchableModel) =>
+      isOffline(
+        modelAvailability({
+          isLocal: Boolean(isLocalProvider(item.provider.provider)),
+          providerActive: item.provider.active !== false,
+          hasApiKey: Boolean(hasRemoteKeys(item.provider)),
+          baseUrl: item.provider.base_url,
+          unreachableOrigins,
+        })
+      ),
+    [unreachableOrigins]
+  )
   const serviceHub = useServiceHub()
 
   // Search state
@@ -673,6 +719,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                           className={cn(
                             'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
                             'hover:bg-secondary/40',
+                            modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                             // Selected state needs stronger contrast than the surrounding secondary tint.
                             isSelected &&
                               'bg-primary/15 hover:bg-primary/15 ring-1 ring-primary/40'
@@ -687,8 +734,16 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <div className="min-w-0 flex-1">
-                                  <span className="block text-sm truncate">
-                                    {getModelDisplayName(searchableModel.model)}
+                                  <span className="flex items-center text-sm">
+                                    <span className="truncate">
+                                      {getModelDisplayName(searchableModel.model)}
+                                    </span>
+                                    {modelIsOffline(searchableModel) && (
+                                      <OfflineBadge
+                                        label={t('common:modelOffline.badge')}
+                                        tooltip={t('common:modelOffline.tooltip')}
+                                      />
+                                    )}
                                   </span>
                                   <OriginalModelId
                                     model={searchableModel.model}
@@ -736,6 +791,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                           className={cn(
                             'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
                             'hover:bg-secondary/40',
+                            modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                             isSelected &&
                               'bg-primary/15 hover:bg-primary/15 ring-1 ring-primary/40'
                           )}
@@ -749,8 +805,14 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <div className="min-w-0 flex-1">
-                                  <span className="block text-sm truncate">
-                                    {modelName}
+                                  <span className="flex items-center text-sm">
+                                    <span className="truncate">{modelName}</span>
+                                    {modelIsOffline(searchableModel) && (
+                                      <OfflineBadge
+                                        label={t('common:modelOffline.badge')}
+                                        tooltip={t('common:modelOffline.tooltip')}
+                                      />
+                                    )}
                                   </span>
                                   {/* A single list has no provider header, so
                                       the row carries it — with the original
@@ -839,6 +901,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                               className={cn(
                                 'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
                                 'hover:bg-secondary/40',
+                                modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                                 isSelected &&
                                   'bg-primary/15 hover:bg-primary/15 ring-1 ring-primary/40'
                               )}
@@ -847,9 +910,19 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <div className="min-w-0 flex-1">
-                                      <span className="block text-sm truncate">
-                                        {getModelDisplayName(
-                                          searchableModel.model
+                                      <span className="flex items-center text-sm">
+                                        <span className="truncate">
+                                          {getModelDisplayName(
+                                            searchableModel.model
+                                          )}
+                                        </span>
+                                        {modelIsOffline(searchableModel) && (
+                                          <OfflineBadge
+                                            label={t('common:modelOffline.badge')}
+                                            tooltip={t(
+                                              'common:modelOffline.tooltip'
+                                            )}
+                                          />
                                         )}
                                       </span>
                                       <OriginalModelId
