@@ -14,8 +14,6 @@ export const localStorageKey = {
   settingAgentTools: 'setting-agent-tools',
   settingHardware: 'setting-hardware',
   settingVulkan: 'setting-vulkan',
-  productAnalyticPrompt: 'productAnalyticPrompt',
-  productAnalytic: 'productAnalytic',
   toolApproval: 'tool-approval',
   toolAvailability: 'tool-availability',
   mcpGlobalPermissions: 'mcp-global-permissions',

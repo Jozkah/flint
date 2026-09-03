@@ -3,10 +3,6 @@ import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useLeftPanel } from '@/hooks/useLeftPanel'
 import { useModelProvider } from '@/hooks/useModelProvider'
-import {
-  useProductAnalytic,
-  useProductAnalyticPrompt,
-} from '@/hooks/useAnalytic'
 import { useHardware } from '@/hooks/useHardware'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { useToolApproval } from '@/hooks/useToolApproval'
@@ -41,8 +37,6 @@ const secondaryStores = [
   useGeneralSetting,
   useLeftPanel,
   useModelProvider,
-  useProductAnalytic,
-  useProductAnalyticPrompt,
   useHardware,
   useLocalApiServer,
   useToolApproval,

@@ -8,23 +8,18 @@ import { Button } from '@/components/ui/button'
 import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
-import { useAppUpdater } from '@/hooks/useAppUpdater'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import ChangeDataFolderLocation from '@/containers/dialogs/ChangeDataFolderLocation'
 import { FactoryResetDialog } from '@/containers/dialogs'
 import type { FactoryResetOptions } from '@/services/app/types'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import {
-  IconBrandDiscord,
-  IconBrandGithub,
-  IconExternalLink,
   IconFolder,
   IconLogs,
   IconCopy,
   IconCopyCheck,
 } from '@tabler/icons-react'
 import { toast } from 'sonner'
-import { isDev } from '@/lib/utils'
 import { SystemEvent } from '@/types/events'
 import { Input } from '@/components/ui/input'
 import { useHardware } from '@/hooks/useHardware'
@@ -42,8 +37,6 @@ function General() {
   const {
     spellCheckChatInput,
     setSpellCheckChatInput,
-    autoUpdateCheck,
-    setAutoUpdateCheck,
     huggingfaceToken,
     setHuggingfaceToken,
   } = useGeneralSetting()
@@ -58,13 +51,11 @@ function General() {
       return t('settings:general.openContainingFolder')
     }
   }
-  const { checkForUpdate } = useAppUpdater()
   const { pausePolling } = useHardware()
   const [janDataFolder, setJanDataFolder] = useState<string | undefined>()
   const [isCopied, setIsCopied] = useState(false)
   const [selectedNewPath, setSelectedNewPath] = useState<string | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [isValidatingToken, setIsValidatingToken] = useState(false)
   const [cliInstalled, setCliInstalled] = useState<boolean | null>(null)
   const [cliPath, setCliPath] = useState<string | null>(null)
@@ -191,23 +182,6 @@ function General() {
     }
   }
 
-  const handleCheckForUpdate = useCallback(async () => {
-    setIsCheckingUpdate(true)
-    try {
-      if (isDev()) return toast.info(t('settings:general.devVersion'))
-      const update = await checkForUpdate(true)
-      if (!update) {
-        toast.info(t('settings:general.noUpdateAvailable'))
-      }
-      // If update is available, the AppUpdater dialog will automatically show
-    } catch (error) {
-      console.error('Failed to check for updates:', error)
-      toast.error(t('settings:general.updateError'))
-    } finally {
-      setIsCheckingUpdate(false)
-    }
-  }, [t, checkForUpdate])
-
   return (
     <div className="flex flex-col h-svh w-full">
       <HeaderPage>
@@ -232,35 +206,6 @@ function General() {
               />
               {!AUTO_UPDATER_DISABLED && (
                 <>
-                  <CardItem
-                    anchor="settings-general-auto-update"
-                    title={t('settings:general.autoUpdateCheck')}
-                    description={t('settings:general.autoUpdateCheckDesc')}
-                    className="items-center flex-row gap-y-2"
-                    actions={
-                      <Switch
-                        checked={autoUpdateCheck}
-                        onCheckedChange={(e) => setAutoUpdateCheck(e)}
-                      />
-                    }
-                  />
-                  <CardItem
-                    title={t('settings:general.checkForUpdates')}
-                    description={t('settings:general.checkForUpdatesDesc')}
-                    className="items-center flex-row gap-y-2"
-                    actions={
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleCheckForUpdate}
-                        disabled={isCheckingUpdate}
-                      >
-                        {isCheckingUpdate
-                          ? t('settings:general.checkingForUpdates')
-                          : t('settings:general.checkForUpdates')}
-                      </Button>
-                    }
-                  />
                 </>
               )}
               <CardItem
@@ -556,96 +501,6 @@ function General() {
               />
             </Card>
 
-            {/* Resources */}
-            <Card title={t('settings:general.resources')}>
-              <CardItem
-                title={t('settings:general.documentation')}
-                description={t('settings:general.documentationDesc')}
-                actions={
-                  <a
-                    href="https://jan.ai/docs"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>{t('settings:general.viewDocs')}</span>
-                      <IconExternalLink size={14} />
-                    </div>
-                  </a>
-                }
-              />
-              <CardItem
-                title={t('settings:general.releaseNotes')}
-                description={t('settings:general.releaseNotesDesc')}
-                actions={
-                  <a
-                    href="https://github.com/janhq/jan/releases"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>{t('settings:general.viewReleases')}</span>
-                      <IconExternalLink size={14} />
-                    </div>
-                  </a>
-                }
-              />
-            </Card>
-
-            {/* Community */}
-            <Card title={t('settings:general.community')}>
-              <CardItem
-                title={t('settings:general.github')}
-                description={t('settings:general.githubDesc')}
-                actions={
-                  <a
-                    href="https://github.com/janhq/jan"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                      <IconBrandGithub
-                        size={18}
-                        className="text-muted-foreground"
-                      />
-                  </a>
-                }
-              />
-              <CardItem
-                title={t('settings:general.discord')}
-                description={t('settings:general.discordDesc')}
-                actions={
-                  <a
-                    href="https://discord.com/invite/FTk2MvZwJH"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <IconBrandDiscord
-                      size={18}
-                      className="text-muted-foreground"
-                    />
-                  </a>
-                }
-              />
-            </Card>
-
-            {/* Support */}
-            <Card title={t('settings:general.support')}>
-              <CardItem
-                title={t('settings:general.reportAnIssue')}
-                description={t('settings:general.reportAnIssueDesc')}
-                actions={
-                  <a
-                    href="https://github.com/janhq/jan/issues/new"
-                    target="_blank"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>{t('settings:general.reportIssue')}</span>
-                      <IconExternalLink size={14} />
-                    </div>
-                  </a>
-                }
-              />
-            </Card>
 
             {/* Credits */}
             <Card title={t('settings:general.credits')}>

@@ -132,13 +132,6 @@ export const SETTINGS_PAGES = [
     keywords: ['gpu', 'cpu', 'ram', 'vram'],
   },
   {
-    id: 'privacy',
-    route: route.settings.privacy,
-    titleKey: 'common:privacy',
-    group: 'core',
-    keywords: ['analytics', 'telemetry', 'data'],
-  },
-  {
     id: 'mcp-servers',
     route: route.settings.mcp_servers,
     titleKey: 'common:mcp-servers',
@@ -215,10 +208,6 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:dataFolder.appDataDesc',
     keywords: ['storage', 'location', 'move data', 'disk'],
   }),
-  item('general', 'auto-update', 'settings:general.autoUpdateCheck', {
-    descriptionKey: 'settings:general.autoUpdateCheckDesc',
-    keywords: ['updates', 'version', 'upgrade'],
-  }),
   item('general', 'spell-check', 'settings:others.spellCheck', {
     descriptionKey: 'settings:others.spellCheckDesc',
     keywords: ['spelling', 'typo'],
@@ -261,11 +250,6 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   item('appearance', 'auto-title', 'settings:interface.autoGenerateTitle', {
     descriptionKey: 'settings:interface.autoGenerateTitleDesc',
     keywords: ['thread title', 'naming'],
-  }),
-  // Privacy
-  item('privacy', 'analytics', 'settings:privacy.helpUsImprove', {
-    descriptionKey: 'settings:privacy.helpUsImproveDesc',
-    keywords: ['analytics', 'telemetry', 'tracking', 'usage data'],
   }),
   // HTTPS proxy
   item('https-proxy', 'proxy-url', 'settings:httpsProxy.proxyUrl', {

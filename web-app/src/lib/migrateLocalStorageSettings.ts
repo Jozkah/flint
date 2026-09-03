@@ -21,8 +21,6 @@ const MIGRATED_KEYS: string[] = [
   localStorageKey.settingGeneral,
   localStorageKey.LeftPanel,
   localStorageKey.modelProvider,
-  localStorageKey.productAnalyticPrompt,
-  localStorageKey.productAnalytic,
   localStorageKey.settingHardware,
   localStorageKey.settingLocalApiServer,
   localStorageKey.toolApproval,

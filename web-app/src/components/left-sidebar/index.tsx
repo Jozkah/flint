@@ -1,10 +1,8 @@
-import { DownloadManagement } from '@/containers/DownloadManegement'
 import { NavChats } from './NavChats'
 import { NavCowork } from './NavCowork'
 import { NavMain } from './NavMain'
 import { NavProjects } from './NavProjects'
 import { NavTabs } from './NavTabs'
-import { useLeftPanel } from '@/hooks/useLeftPanel'
 
 import {
   Sidebar,
@@ -21,7 +19,6 @@ import { useLocation } from '@tanstack/react-router'
 import { isCoworkRoute } from '@/constants/routes'
 
 export function LeftSidebar() {
-  const { open: isLeftPanelOpen } = useLeftPanel()
   const { pathname } = useLocation()
   const isCowork = isCoworkRoute(pathname)
   // Right-align the header when native controls own the top-left (macOS, or a Linux
@@ -40,7 +37,6 @@ export function LeftSidebar() {
               {showWordmarkRight && (
                 <span className="mr-2 font-medium font-studio">Jan</span>
               )}
-              {isLeftPanelOpen && <DownloadManagement />}
               <SidebarTrigger className="text-muted-foreground rounded-full hover:bg-sidebar-foreground/8! -mt-0.5 relative z-50 ml-0.5" />
             </div>
           </div>

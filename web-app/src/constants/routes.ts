@@ -13,7 +13,6 @@ export const route = {
     general: '/settings/general',
     attachments: '/settings/attachments',
     interface: '/settings/interface',
-    privacy: '/settings/privacy',
     shortcuts: '/settings/shortcuts',
     extensions: '/settings/extensions',
     local_api_server: '/settings/local-api-server',

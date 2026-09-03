@@ -1,7 +1,6 @@
 import { createRootRoute, Outlet } from '@tanstack/react-router'
 // import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 
-import DialogAppUpdater from '@/containers/dialogs/AppUpdater'
 import { Fragment } from 'react/jsx-runtime'
 import { ThemeProvider } from '@/providers/ThemeProvider'
 import { InterfaceProvider } from '@/providers/InterfaceProvider'
@@ -10,10 +9,6 @@ import { DataProvider } from '@/providers/DataProvider'
 import { route } from '@/constants/routes'
 import { ExtensionProvider } from '@/providers/ExtensionProvider'
 import { ToasterProvider } from '@/providers/ToasterProvider'
-import { useAnalytic } from '@/hooks/useAnalytic'
-import { useIsOnboarding } from '@/hooks/useIsOnboarding'
-import { PromptAnalytic } from '@/containers/analytics/PromptAnalytic'
-import { AnalyticProvider } from '@/providers/AnalyticProvider'
 import { useLeftPanel } from '@/hooks/useLeftPanel'
 import { useClearSettingsSearchOnExit } from '@/hooks/useSettingsSearch'
 import { TranslationProvider } from '@/i18n/TranslationContext'
@@ -39,13 +34,9 @@ export const Route = createRootRoute({
 })
 
 const AppLayout = () => {
-  const { productAnalyticPrompt } = useAnalytic()
   // The settings-search query outlives each settings page on purpose; it must
   // not outlive the section. Mounted here because this layout stays put.
   useClearSettingsSearchOnExit()
-  // The setup screen is the only onboarding surface: everything below that would
-  // otherwise stack on top of it is deferred until it is done.
-  const isOnboarding = useIsOnboarding()
   const {
     open: isLeftPanelOpen,
     setLeftPanel,
@@ -61,7 +52,6 @@ const AppLayout = () => {
         defaultWidth={sidebarWidth}
         onWidthChange={setLeftPanelWidth}
       >
-        <AnalyticProvider />
         <KeyboardShortcutsProvider />
         <TemporaryChatGuard />
         {/* Fake absolute panel top to enable window drag */}
@@ -75,15 +65,12 @@ const AppLayout = () => {
             data-tauri-drag-region
           />
         )}
-        <DialogAppUpdater />
         <LeftSidebar />
         <SidebarInset>
           <div className="bg-neutral-50 dark:bg-background size-full">
             <Outlet />
           </div>
         </SidebarInset>
-
-        {productAnalyticPrompt && !isOnboarding && <PromptAnalytic />}
       </SidebarProvider>
     </div>
   )
