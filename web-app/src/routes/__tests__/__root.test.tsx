@@ -5,7 +5,6 @@ import '@testing-library/jest-dom'
 import React from 'react'
 
 const h = vi.hoisted(() => ({
-  productAnalyticPrompt: false,
   isOnboarding: false,
   leftPanelOpen: true,
   sidebarWidth: 260,
@@ -82,9 +81,6 @@ vi.mock('@/i18n/TranslationContext', () => ({
 }))
 
 // Dialogs / containers
-vi.mock('@/containers/dialogs/AppUpdater', () => ({
-  default: () => <div data-testid="app-updater" />,
-}))
 vi.mock('@/containers/dialogs/OutOfContextDialog', () => ({
   default: () => <div data-testid="oocp" />,
 }))
@@ -93,9 +89,6 @@ vi.mock('@/containers/dialogs/AttachmentIngestionDialog', () => ({
 }))
 vi.mock('@/containers/dialogs/ErrorDialog', () => ({
   default: () => <div data-testid="error-dialog" />,
-}))
-vi.mock('@/containers/analytics/PromptAnalytic', () => ({
-  PromptAnalytic: () => <div data-testid="prompt-analytic" />,
 }))
 vi.mock('@/containers/GlobalError', () => ({
   default: ({ error }: any) => <div data-testid="global-error">{error?.message}</div>,
@@ -118,9 +111,6 @@ vi.mock('@/components/ui/sidebar', () => ({
 }))
 
 // Hooks
-vi.mock('@/hooks/useAnalytic', () => ({
-  useAnalytic: () => ({ productAnalyticPrompt: h.productAnalyticPrompt }),
-}))
 vi.mock('@/hooks/useIsOnboarding', () => ({
   useIsOnboarding: () => h.isOnboarding,
 }))
@@ -182,7 +172,6 @@ describe('__root route', () => {
     expect(screen.getByTestId('attach-ingest')).toBeInTheDocument()
     expect(screen.getByTestId('error-dialog')).toBeInTheDocument()
     expect(screen.getByTestId('oocp')).toBeInTheDocument()
-    expect(screen.getByTestId('app-updater')).toBeInTheDocument()
   })
 
   // Mounted here rather than beside the download popover, which is absent on
@@ -190,27 +179,6 @@ describe('__root route', () => {
   it('listens for download events for the whole app lifetime', () => {
     renderComponent()
     expect(screen.getByTestId('download-events')).toBeInTheDocument()
-  })
-
-  it('renders PromptAnalytic when productAnalyticPrompt is true', () => {
-    h.productAnalyticPrompt = true
-    renderComponent()
-    expect(screen.getByTestId('prompt-analytic')).toBeInTheDocument()
-  })
-
-  // The setup screen is the single onboarding surface; this would otherwise
-  // stack on top of it asking for something the wizard already covers.
-  it('defers the analytics prompt while onboarding', () => {
-    h.isOnboarding = true
-    h.productAnalyticPrompt = true
-    renderComponent()
-    expect(screen.queryByTestId('prompt-analytic')).not.toBeInTheDocument()
-  })
-
-  it('does not render PromptAnalytic when productAnalyticPrompt is false', () => {
-    h.productAnalyticPrompt = false
-    renderComponent()
-    expect(screen.queryByTestId('prompt-analytic')).not.toBeInTheDocument()
   })
 
 

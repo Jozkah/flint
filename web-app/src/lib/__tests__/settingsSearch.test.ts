@@ -27,7 +27,6 @@ const EN: Record<string, string> = {
   'common:agent_tools': 'Agent Tools',
   'common:keyboardShortcuts': 'Keyboard Shortcuts',
   'common:hardware': 'Hardware',
-  'common:privacy': 'Privacy',
   'common:mcp-servers': 'MCP Servers',
   'common:claude_code': 'Claude Code',
   'common:modelProviders': 'Model Providers',
@@ -36,8 +35,6 @@ const EN: Record<string, string> = {
   'settings:interface.theme': 'Theme',
   'settings:interface.themeDesc': 'Choose a light or dark look.',
   'settings:interface.fontSize': 'Font Size',
-  'settings:privacy.helpUsImprove': 'Help us improve',
-  'settings:privacy.helpUsImproveDesc': 'Send anonymous usage data.',
   'settings:httpsProxy.proxyUrl': 'Proxy URL',
   'settings:httpsProxy.proxyUrlDesc': 'Route traffic through a proxy.',
   'settings:webSearch.apiKey': 'API Key',
@@ -61,15 +58,13 @@ describe('searchSettings', () => {
   })
 
   it('finds a setting by a keyword synonym rather than its label', () => {
-    // "dark mode" and "telemetry" appear in no title; only the synonym lists
-    // carry them, which is what makes the search usable in any language.
+    // "dark mode" appears in no title; only the synonym lists carry it, which
+    // is what makes the search usable in any language.
     expect(ids(find('dark mode'))).toContain('settings-appearance-theme')
-    expect(ids(find('telemetry'))).toContain('settings-privacy-analytics')
   })
 
   it('tolerates typos in the query', () => {
     expect(ids(find('langauge'))).toContain('settings-general-language')
-    expect(ids(find('telemtry'))).toContain('settings-privacy-analytics')
     expect(ids(find('proxi'))).toContain('settings-https-proxy-proxy-url')
     expect(ids(find('prxoy url'))).toContain('settings-https-proxy-proxy-url')
   })
@@ -447,7 +442,6 @@ const ROUTE_FILES: Record<string, string> = {
   'agent-tools': 'routes/settings/agent-tools.tsx',
   shortcuts: 'routes/settings/shortcuts.tsx',
   hardware: 'routes/settings/hardware.tsx',
-  privacy: 'routes/settings/privacy.tsx',
   'mcp-servers': 'routes/settings/mcp-servers.tsx',
   'claude-code': 'routes/settings/claude-code.tsx',
 }

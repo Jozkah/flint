@@ -26,6 +26,47 @@
 
 Jan is bringing the best of open-source AI in an easy-to-use product. Download and run LLMs with **full control** and **privacy**.
 
+## This build is local-only
+
+This fork has had every service that reaches the network on its own removed.
+It does not phone home, and it will not fetch anything you did not ask it for.
+
+**Removed**
+
+- **Telemetry and analytics.** No PostHog, no product analytics, no consent
+  prompt, no analytics settings, and no `POSTHOG_KEY` / `POSTHOG_HOST` build
+  variables. Nothing counts what you do.
+- **Update checking.** No updater plugin and no update endpoint. The app never
+  asks whether a newer version exists — update it the way you installed it.
+- **Vendor services.** No `jan.ai` URLs, no documentation, release, repository,
+  community or issue-tracker links, and no vendor identification headers on
+  outbound provider requests.
+
+**You bring your own models.** Point the app at models already on your
+machine: add a local GGUF through **Settings → Model Providers → llama.cpp →
+Import**, or an MLX model through the MLX provider.
+
+> **In progress.** The built-in model catalogue and downloader have not been
+> removed yet. Until they are, the Hub can still fetch model listings and
+> download weights when you use it. Tracked on the
+> `wip/local-only-model-downloads` branch.
+
+**What can still reach the network, only if you set it up.** Nothing below is
+configured out of the box, and nothing happens until you enter a credential:
+
+| Capability | Reaches the network when |
+|---|---|
+| Cloud model providers | You enter your own API key for one |
+| MCP servers | You add a server that is not on localhost |
+| Web search | You enable it and supply a key |
+
+Leave them alone and the app makes no outbound request at all — not at
+startup, not while you use it.
+
+Guards live in `web-app/src/__tests__/localOnly.test.ts`: the suite fails if an
+analytics SDK, an update check, or a `jan.ai` URL is reintroduced.
+
+
 ## Installation
 
 <p align="center">
