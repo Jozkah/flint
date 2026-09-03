@@ -99,7 +99,6 @@ describe('SettingsMenu', () => {
 
     expect(screen.getByText('common:general')).toBeInTheDocument()
     expect(screen.getByText('common:appearance')).toBeInTheDocument()
-    expect(screen.getByText('common:privacy')).toBeInTheDocument()
   })
 
   it('renders core settings links', () => {
@@ -107,7 +106,6 @@ describe('SettingsMenu', () => {
     expect(screen.getByText('common:keyboardShortcuts')).toBeInTheDocument()
     expect(screen.getByText('common:assistants')).toBeInTheDocument()
     expect(screen.getByText('common:local_api_server')).toBeInTheDocument()
-    expect(screen.getByText('common:privacy')).toBeInTheDocument()
   })
 
   it('renders integrations links', () => {

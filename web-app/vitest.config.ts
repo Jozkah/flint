@@ -53,8 +53,6 @@ export default defineConfig({
     IS_ANDROID: JSON.stringify(false),
     PLATFORM: JSON.stringify('web'),
     VERSION: JSON.stringify('test'),
-    POSTHOG_KEY: JSON.stringify(''),
-    POSTHOG_HOST: JSON.stringify(''),
     AUTO_UPDATER_DISABLED: JSON.stringify('false'),
   },
 })

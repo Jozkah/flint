@@ -24,7 +24,6 @@ const hoisted = vi.hoisted(() => ({
   verifyEmbeddingModelMock: vi.fn(),
   getHardwareInfoMock: vi.fn(),
   navigateMock: vi.fn(),
-  productAnalyticPrompt: false,
   eventHandlers: {} as Record<string, any>,
   huggingfaceToken: 'hf-token',
   toastMock: {
@@ -73,7 +72,6 @@ vi.mock('@/hooks/useLatestJanModel', () => ({
 
 vi.mock('@/hooks/useAnalytic', () => ({
   useAnalytic: () => ({
-    productAnalyticPrompt: hoisted.productAnalyticPrompt,
     setProductAnalytic: vi.fn(),
     setProductAnalyticPrompt: vi.fn(),
   }),
@@ -193,7 +191,6 @@ describe('SetupScreen', () => {
     vi.clearAllMocks()
     hoisted.janModel = sampleModel
     hoisted.metadataError = null
-    hoisted.productAnalyticPrompt = false
     hoisted.downloadStore.downloads = {}
     hoisted.downloadStore.localDownloadingModels = new Set()
     hoisted.providersMock.getProviderByName.mockReturnValue({ models: [] })
@@ -534,36 +531,6 @@ describe('SetupScreen', () => {
     })
   })
 
-  describe('consent page', () => {
-    it('asks for consent as its own page when pending', async () => {
-      hoisted.productAnalyticPrompt = true
-
-      await renderPastSetup()
-
-      expect(currentPage()).toBe('consent')
-      expect(screen.getByTestId('analytic-consent')).toBeInTheDocument()
-    })
-
-    it('is skipped once consent has been answered', async () => {
-      hoisted.productAnalyticPrompt = false
-
-      await renderPastSetup()
-
-      expect(currentPage()).toBe('model')
-      expect(screen.queryByTestId('analytic-consent')).not.toBeInTheDocument()
-    })
-
-    // The model download is always last.
-    it('precedes the model page', async () => {
-      hoisted.productAnalyticPrompt = true
-
-      await renderPastSetup()
-
-      expect(currentPage()).not.toBe('model')
-      expect(screen.queryByTestId('setup-model-card')).not.toBeInTheDocument()
-    })
-  })
-
   describe('model page', () => {
     it('offers exactly one model card', async () => {
       await renderPastSetup()
@@ -669,38 +636,8 @@ describe('SetupScreen', () => {
     })
   })
 
-  // Answering consent used to remove its page from the flow, renumbering the
-  // remaining steps under the user.
   describe('step numbering', () => {
-    it('keeps the total fixed after consent is answered', async () => {
-      hoisted.productAnalyticPrompt = true
-      const { rerender } = await renderStarted()
-      await continueSetup()
-      expect(currentPage()).toBe('consent')
-      const before = screen.getByTestId('setup-step-counter').textContent
-
-      hoisted.productAnalyticPrompt = false
-      await act(async () => {
-        rerender(<SetupScreen />)
-      })
-
-      expect(currentPage()).toBe('model')
-      expect(screen.getByTestId('setup-step-counter').textContent).toBe(before)
-    })
-
-    it('counts four pages when consent is pending', async () => {
-      hoisted.productAnalyticPrompt = true
-
-      await renderSetup()
-
-      expect(
-        screen.getByTestId('setup-wizard').querySelectorAll('span.h-1').length
-      ).toBe(4)
-    })
-
-    it('counts three pages when consent is already answered', async () => {
-      hoisted.productAnalyticPrompt = false
-
+    it('counts the three pages the wizard has', async () => {
       await renderSetup()
 
       expect(
