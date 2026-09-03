@@ -14,11 +14,6 @@ Extensions add specific features to Jan as self-contained modules.
 - Message handling, conversation state
 - `src/index.ts` - Chat logic
 
-### `/download-extension`
-- Model downloads with progress tracking
-- `src/index.ts` - Download logic
-- `settings.json` - Download settings
-
 ### `/llamacpp-extension`
 - Local model inference via llama.cpp
 - `src/index.ts` - Entry point
