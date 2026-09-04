@@ -22,6 +22,10 @@ import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ChevronDown, Plus } from 'lucide-react'
 import AddEditAssistant from './AddEditAssistant'
+import { useNavigate } from '@tanstack/react-router'
+import { route } from '@/constants/routes'
+import { looksLikeFilesystemPath } from '@/lib/collectionName'
+import { useCoworkRun } from '@/hooks/useCoworkRun'
 
 interface AddProjectDialogProps {
   open: boolean
@@ -44,6 +48,7 @@ export default function AddProjectDialog({
   onSave,
 }: AddProjectDialogProps) {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [name, setName] = useState(initialData?.name || '')
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | undefined>(initialData?.assistantId)
   const { folders } = useThreadManagement()
@@ -88,6 +93,19 @@ export default function AddProjectDialog({
     setSelectedAssistantId(undefined)
   }
 
+  /**
+   * Take the user to the thing they were actually trying to do.
+   *
+   * The name they typed is not carried across: a collection name is a label,
+   * and treating it as a path is the confusion this notice exists to end. The
+   * picker asks for the folder properly.
+   */
+  const openCodeFolder = () => {
+    useCoworkRun.getState().requestAttachFolder()
+    onOpenChange(false)
+    void navigate({ to: route.cowork })
+  }
+
   const handleCancel = () => {
     onOpenChange(false)
     setName('')
@@ -123,6 +141,26 @@ export default function AddProjectDialog({
                 }
               }}
             />
+            {/* Said where the misunderstanding happens, next to the field that
+                causes it, rather than after a collection has been made. */}
+            {looksLikeFilesystemPath(name) && (
+              <div
+                role="status"
+                className="mt-2 rounded-md border border-border bg-main-view-fg/4 p-2"
+              >
+                <p className="text-xs text-main-view-fg/80">
+                  {t('projects.pathNameNotice')}
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2 h-7 text-xs"
+                  onClick={openCodeFolder}
+                >
+                  {t('projects.openCodeFolderInCowork')}
+                </Button>
+              </div>
+            )}
           </div>
           <div>
             <label className="text-sm font-medium mb-1.5 block">

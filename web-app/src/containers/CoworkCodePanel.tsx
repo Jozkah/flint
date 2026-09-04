@@ -339,10 +339,7 @@ export function CoworkCodePanel({
       // from persisted state — so there is nothing to read. Falling through
       // would resolve its bare name against the session workspace and open a
       // different file that happens to share the name.
-      if (tab.origin.kind === 'external') {
-        setFile(gen, id, { status: 'external-gone' })
-        return
-      }
+      if (tab.origin.kind === 'external') return
 
       // The roots resolve asynchronously on mount. Record nothing until they
       // are known, so the effect retries once they are — writing a state here
@@ -480,7 +477,13 @@ export function CoworkCodePanel({
     activeId && active && tabBelongsToSession(active, sessionKey)
       && activeId in externalFiles
       ? { status: 'ready', content: externalFiles[activeId].content }
-      : activeId
+      : // Held in no map on purpose. Whether an external tab still has its
+        // handle is known right here, synchronously, and the `files` map is
+        // emptied whenever the roots change — which would blink this state
+        // out and back as the data folder resolves on mount.
+        activeId && active?.origin.kind === 'external'
+        ? { status: 'external-gone' }
+        : activeId
         ? files.get(activeId)
         : undefined
 

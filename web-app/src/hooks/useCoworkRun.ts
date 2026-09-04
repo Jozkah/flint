@@ -137,6 +137,15 @@ type CoworkRunState = {
    * `code` opens a read-only tab, `diff` focuses the Changes rail.
    */
   pendingCodeOpen: { sessionId: string; path: string; as: 'code' | 'diff' } | null
+  /**
+   * Somewhere outside Cowork asked for a folder to be opened in it.
+   *
+   * The native directory picker is the only way a session gets a folder, and
+   * it lives in the Cowork route. Entry points elsewhere — the sidebar, the
+   * collection dialog — raise this flag and navigate; the route opens the
+   * picker and binds whatever the user chooses.
+   */
+  attachFolderRequested: boolean
   // Session ids currently talking to the llamacpp provider, mapped to the
   // model id in flight. Cowork sessions aren't chat threads, so they're
   // invisible to the chat-only signals the global OOM/backend-error listener
@@ -185,6 +194,9 @@ type CoworkRunState = {
     as: 'code' | 'diff'
   ) => void
   clearPendingCodeOpen: () => void
+  /** Ask the Cowork route to open the native directory picker. */
+  requestAttachFolder: () => void
+  clearAttachFolderRequest: () => void
   clearPendingPreview: () => void
   setLlamacppRun: (sid: string, modelId: string) => void
   clearLlamacppRun: (sid: string) => void
@@ -214,6 +226,7 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
   usage: {},
   pendingPreview: null,
   pendingCodeOpen: null,
+  attachFolderRequested: false,
   llamacppRuns: {},
   pendingLlamacppError: {},
   loadingModels: {},
@@ -364,6 +377,8 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
   requestCodeOpen: (sessionId, path, as) =>
     set({ pendingCodeOpen: { sessionId, path, as } }),
   clearPendingCodeOpen: () => set({ pendingCodeOpen: null }),
+  requestAttachFolder: () => set({ attachFolderRequested: true }),
+  clearAttachFolderRequest: () => set({ attachFolderRequested: false }),
 
   setLlamacppRun: (sid, modelId) =>
     set((s) => ({ llamacppRuns: { ...s.llamacppRuns, [sid]: modelId } })),

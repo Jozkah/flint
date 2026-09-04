@@ -776,6 +776,14 @@ function CoworkPage() {
               sessionId: sid,
               readOnlyFolder: current?.folder ?? null,
               mode: runMode,
+              // The root this run is bound to, re-checked before every
+              // filesystem call: detaching or switching folders mid-run must
+              // not leave the run reading the folder that was taken away.
+              bindingIntact: () =>
+                (useCoworkSessions
+                  .getState()
+                  .sessions.find((one) => one.id === sid)?.folder ?? null) ===
+                (current?.folder ?? null),
               webSearch,
               // The prompt the chat surface already uses for tool approval,
               // not a second one: it honours grants the user has already made
@@ -895,6 +903,14 @@ function CoworkPage() {
                       sessionId: sid,
                       readOnlyFolder: current?.folder ?? null,
                       mode: runMode,
+              // The root this run is bound to, re-checked before every
+              // filesystem call: detaching or switching folders mid-run must
+              // not leave the run reading the folder that was taken away.
+              bindingIntact: () =>
+                (useCoworkSessions
+                  .getState()
+                  .sessions.find((one) => one.id === sid)?.folder ?? null) ===
+                (current?.folder ?? null),
                       webSearch,
                       // A subagent's mutations are the session's mutations, so
                       // they go through the same prompt rather than around it.
@@ -1131,6 +1147,17 @@ function CoworkPage() {
 
   // The file-activity view parks a request the same way, for a path it wants
   // shown but cannot open itself. Consumed once.
+  // An entry point outside Cowork asked for a folder. The picker lives here
+  // because this is where a session can be bound to what it returns.
+  const attachFolderRequested = useCoworkRun((s) => s.attachFolderRequested)
+  useEffect(() => {
+    if (!attachFolderRequested) return
+    // Cleared before the picker opens, not after: the dialog is awaited, and a
+    // request left standing would reopen it on the next render.
+    useCoworkRun.getState().clearAttachFolderRequest()
+    void attachFolder()
+  }, [attachFolderRequested, attachFolder])
+
   const pendingCodeOpen = useCoworkRun((s) => s.pendingCodeOpen)
   useEffect(() => {
     if (!pendingCodeOpen || !session?.id) return

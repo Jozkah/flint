@@ -36,6 +36,16 @@ export type DispatchContext = {
     toolName: string,
     input: unknown
   ) => Promise<boolean>
+  /**
+   * Is the folder this run was bound to still the session's folder?
+   *
+   * A run captures its root once, at the start. If the user detaches that
+   * folder or picks a different one while the run is in flight, every later
+   * tool call would still read the old root — the run would go on reading a
+   * repository the user has already taken away. Asked per call, immediately
+   * before the filesystem is touched, so the answer cannot be stale.
+   */
+  bindingIntact?: () => boolean
   /** Runs a nested subagent to completion. */
   onTask: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
 }
@@ -120,6 +130,18 @@ export async function dispatchCoworkTool(
           typeof web.content === 'string'
             ? web.content
             : JSON.stringify(web.content ?? ''),
+      }
+    }
+
+    // Checked here rather than at run start: this is the last moment before a
+    // path is resolved, and the binding can change at any point before it.
+    if (ctx.bindingIntact && !ctx.bindingIntact()) {
+      return {
+        output:
+          `The folder this session was working in is no longer attached, so ` +
+          `\`${toolName}\` was not run. Stop, say what was done so far, and ` +
+          'wait for the user to choose a folder again.',
+        isError: true,
       }
     }
 
