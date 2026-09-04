@@ -72,6 +72,11 @@ type FileState =
   | { status: 'binary' }
   | { status: 'denied' }
   | { status: 'sensitive' }
+  /**
+   * An external tab whose handle did not survive. Tab metadata persists;
+   * the capability to read the file does not.
+   */
+  | { status: 'external-gone' }
   | { status: 'error'; message: string }
 
 type Props = {
@@ -135,6 +140,8 @@ export function CoworkCodePanel({
   const [externalFiles, setExternalFiles] = useState<
     Record<string, { file: File; content: string }>
   >({})
+  /** Latest selection number per external tab; see `openExternalFiles`. */
+  const externalReadSeq = useRef(new Map<string, number>())
 
   const [dataFolder, setDataFolder] = useState<string | null>(null)
   const [dirs, setDirs] = useState<Map<string, DirState>>(new Map())
@@ -161,6 +168,11 @@ export function CoworkCodePanel({
     async (picked: File[]) => {
       if (!sessionKey) return
       for (const file of picked) {
+        // Selections for the same tab are numbered, so a read that resolves
+        // late cannot overwrite the bytes of a newer one.
+        const target = tabId(externalTab(file.name, sessionKey))
+        const seq = (externalReadSeq.current.get(target) ?? 0) + 1
+        externalReadSeq.current.set(target, seq)
         if (file.size > MAX_CODE_FILE_BYTES) {
           toast.error(t('common:codePanel.tooLargeToOpen', { name: file.name }))
           continue
@@ -175,6 +187,7 @@ export function CoworkCodePanel({
             )
             continue
           }
+          if (externalReadSeq.current.get(target) !== seq) continue
           const content = read.text
           const tab = externalTab(file.name, sessionKey)
           setExternalFiles((prev) => ({
@@ -320,6 +333,17 @@ export function CoworkCodePanel({
         setFile(gen, id, { status: 'detached' })
         return
       }
+      // An external file lives outside every root this panel can resolve
+      // against, and the handle that made it readable is held in memory only.
+      // Reaching here means that handle is gone — a restart, or a tab restored
+      // from persisted state — so there is nothing to read. Falling through
+      // would resolve its bare name against the session workspace and open a
+      // different file that happens to share the name.
+      if (tab.origin.kind === 'external') {
+        setFile(gen, id, { status: 'external-gone' })
+        return
+      }
+
       // The roots resolve asynchronously on mount. Record nothing until they
       // are known, so the effect retries once they are — writing a state here
       // would cache a verdict reached before the panel could read anything.
@@ -427,6 +451,15 @@ export function CoworkCodePanel({
     void loadFile(active)
   }, [active, activeId, files, loadFile])
 
+  // Handles are granted to a session, so they end with it. Keyed ids alone
+  // would leave the previous session's bytes reachable from the next one's
+  // restored tabs.
+  const lastHandleSession = useRef(sessionKey)
+  if (lastHandleSession.current !== sessionKey) {
+    lastHandleSession.current = sessionKey
+    if (Object.keys(externalFiles).length > 0) setExternalFiles({})
+  }
+
   const openPath = useCallback(
     (rel: string) => {
       if (!projectKey) return
@@ -438,45 +471,32 @@ export function CoworkCodePanel({
 
   // External files were read into memory when they were opened; there is no
   // path on disk to re-read them from, and they are read-only regardless.
+  //
+  // The session check is not redundant with the map's keys: a tab stamped to
+  // another session can arrive in this session's restored state, and its id
+  // would find that session's handle. Without this, one session's bytes
+  // render under another.
   const activeFile: FileState | undefined =
-    activeId && activeId in externalFiles
+    activeId && active && tabBelongsToSession(active, sessionKey)
+      && activeId in externalFiles
       ? { status: 'ready', content: externalFiles[activeId].content }
       : activeId
         ? files.get(activeId)
         : undefined
 
   /**
-   * Re-read an external file from the handle already granted.
+   * Offer the file again, because re-reading it is not possible.
    *
-   * A file that moved or was deleted comes back as a read error rather than
-   * silently keeping the old bytes, and the user is told to choose it again —
-   * there is no path retained to go looking with.
+   * A `File` from a drop or the picker carries a snapshot of the file as it
+   * was when it was handed over. Reading it later cannot return newer bytes:
+   * if the file on disk has changed the read fails outright, and if it has
+   * not, the bytes are the ones already shown. So there is no "reload" to
+   * offer here — only re-selection, which is what this does. The picker's
+   * own handler runs the same size and content gates as any other open.
    */
-  const reloadExternal = useCallback(
-    async (id: string) => {
-      const held = externalFiles[id]
-      if (!held) return
-      try {
-        const read = await readFileAsText(held.file)
-        if (!read.ok) {
-          const name = held.file.name
-          toast.error(
-            read.reason === 'sensitive'
-              ? t('common:codePanel.sensitiveRefused', { name })
-              : t('common:codePanel.binaryRefused', { name })
-          )
-          return
-        }
-        const content = read.text
-        setExternalFiles((prev) =>
-          prev[id] ? { ...prev, [id]: { ...prev[id], content } } : prev
-        )
-      } catch {
-        toast.error(t('common:codePanel.chooseAgain', { name: held.file.name }))
-      }
-    },
-    [externalFiles, t]
-  )
+  const chooseExternalAgain = useCallback(() => {
+    pickerRef.current?.click()
+  }, [])
 
   const renderTree = (rel: string, depth: number): React.ReactNode => {
     const dir = dirs.get(rel)
@@ -751,8 +771,9 @@ export function CoworkCodePanel({
               {/* Announced, not swapped: replacing the bytes under someone
                   mid-read is what the preview pane deliberately avoids. */}
               {/* An external file has no path to watch, so staleness cannot
-                  be detected for it. Reload is offered unconditionally
-                  instead: the handle is still good, and re-reading is cheap. */}
+                  be detected for it — and the handle cannot be re-read for
+                  newer bytes either. The honest offer is to choose the file
+                  again, which goes through the same gates as a fresh open. */}
               {active.origin.kind === 'external' && (
                 <div
                   role="status"
@@ -765,9 +786,9 @@ export function CoworkCodePanel({
                     size="sm"
                     variant="outline"
                     className="h-6 shrink-0 px-2 text-xs"
-                    onClick={() => void reloadExternal(activeId)}
+                    onClick={chooseExternalAgain}
                   >
-                    {t('common:codePanel.reload')}
+                    {t('common:codePanel.chooseAgainAction')}
                   </Button>
                 </div>
               )}
@@ -821,6 +842,24 @@ export function CoworkCodePanel({
               <span className="mt-2 flex justify-center gap-2">
                 <Button size="sm" onClick={onAttach}>
                   {t('common:codePanel.attachProject')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onStateChange(closeTab(state, activeId))}
+                >
+                  {t('common:codePanel.closeMissing')}
+                </Button>
+              </span>
+            </Notice>
+          ) : activeFile.status === 'external-gone' ? (
+            // Nothing to reload from: say so, and offer the only thing that
+            // can actually produce the file again.
+            <Notice>
+              <span className="block">{t('common:codePanel.externalGone')}</span>
+              <span className="mt-2 flex justify-center gap-2">
+                <Button size="sm" onClick={chooseExternalAgain}>
+                  {t('common:codePanel.chooseAgainAction')}
                 </Button>
                 <Button
                   size="sm"

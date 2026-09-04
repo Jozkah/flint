@@ -782,10 +782,12 @@
     "originExternal": "outside the project, read-only",
     "tooLargeToOpen": "{{name}} is too large to open here",
     "unreadable": "{{name}} could not be read",
-    "externalNote": "Opened from outside the project — read-only, and not watched for changes.",
+    "externalNote": "Opened from outside the project — read-only, and a snapshot: changes made on disk since it was opened are not shown.",
     "chooseAgain": "{{name}} could not be re-read. Open it again to pick up changes.",
     "sensitiveRefused": "{{name}} looks like credentials or a key, so it was not opened",
-    "binaryRefused": "{{name}} is not a text file, whatever its extension says"
+    "binaryRefused": "{{name}} is not a text file, whatever its extension says",
+    "chooseAgainAction": "Choose again",
+    "externalGone": "This file was opened from outside the project, and that access did not survive. Choose it again to reopen it."
   },
   "settingsSearch": {
     "label": "Search settings",
