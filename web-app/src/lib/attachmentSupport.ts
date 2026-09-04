@@ -134,6 +134,14 @@ export type RejectionReason =
   /** Real format, wrong door: it needs the file dialog, not a drop. */
   | 'needs-file-dialog'
   | 'empty'
+  /** Credentials or keys by name; never read, whatever the extension says. */
+  | 'sensitive'
+  /**
+   * Decoded as text and came back as bytes. Extension beats MIME when
+   * classifying, so this is the check that stops a renamed binary reaching a
+   * model through the text path.
+   */
+  | 'binary'
 
 export type AttachmentDecision =
   | { ok: true; kind: AttachmentKind }

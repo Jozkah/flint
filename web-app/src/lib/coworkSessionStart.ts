@@ -39,6 +39,16 @@ export type SessionStartInput = {
   running: boolean
   /** Unsent composer text, or attachments waiting to be sent. */
   hasDraft: boolean
+  /**
+   * The session already has recorded file activity.
+   *
+   * Activity is recorded per settled operation, as a run proceeds, while turns
+   * only reach the session when the run commits. So a run that was cancelled,
+   * failed, or was cut short by a restart leaves a session whose transcript is
+   * empty but which has already touched files. Reusing that as the "new"
+   * session would carry the old work's history into it.
+   */
+  hasFileActivity: boolean
 }
 
 /**
@@ -53,5 +63,6 @@ export function decideSessionStart(input: SessionStartInput): SessionStartDecisi
   if (!input.current) return 'create'
   if (input.hasDraft) return 'reuse'
   if (input.running) return 'create'
+  if (input.hasFileActivity) return 'create'
   return isSessionEmpty(input.current) ? 'reuse' : 'create'
 }

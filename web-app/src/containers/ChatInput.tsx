@@ -128,6 +128,7 @@ import {
   type FilePickerEntry as FileEntry,
 } from '@/lib/path-references'
 import { FilePickerPopover } from '@/components/FilePickerPopover'
+import { readFileAsText } from '@/lib/fileSafety'
 
 type ChatInputProps = {
   className?: string
@@ -1230,7 +1231,14 @@ const ChatInput = memo(function ChatInput({
     // attachments, which is the path the model already understands, and which
     // is why they need nothing of its media capabilities.
     for (const file of textFiles) {
-      const text = await file.text()
+      // Classification is by extension, so the bytes get the deciding vote:
+      // a renamed binary or a credentials file is refused here, not sent.
+      const read = await readFileAsText(file)
+      if (!read.ok) {
+        rejected.push({ name: file.name, reason: read.reason })
+        continue
+      }
+      const text = read.text
       preparedFiles.push({
         ...createDocumentAttachment({
           name: file.name,

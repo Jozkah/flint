@@ -783,7 +783,9 @@
     "tooLargeToOpen": "{{name}} is too large to open here",
     "unreadable": "{{name}} could not be read",
     "externalNote": "Opened from outside the project — read-only, and not watched for changes.",
-    "chooseAgain": "{{name}} could not be re-read. Open it again to pick up changes."
+    "chooseAgain": "{{name}} could not be re-read. Open it again to pick up changes.",
+    "sensitiveRefused": "{{name}} looks like credentials or a key, so it was not opened",
+    "binaryRefused": "{{name}} is not a text file, whatever its extension says"
   },
   "settingsSearch": {
     "label": "Search settings",
@@ -907,7 +909,9 @@
       "needs-video": "The selected model cannot read video",
       "parser-unavailable": "The local document reader is unavailable",
       "empty": "This file is empty",
-      "needs-file-dialog": "Use “Attach file” for documents — a dropped copy has no path for the reader"
+      "needs-file-dialog": "Use “Attach file” for documents — a dropped copy has no path for the reader",
+      "sensitive": "Looks like credentials or a key, so it was not read",
+      "binary": "This is not a text file, whatever its extension says"
     },
     "addFiles": "Add files",
     "addFilesOrImages": "Add files or images"

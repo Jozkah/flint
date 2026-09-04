@@ -54,6 +54,7 @@ import {
   type CodeTab,
 } from '@/lib/coworkCode'
 import type { CoworkTurn } from '@/types/coworkSession'
+import { readFileAsText } from '@/lib/fileSafety'
 
 type DirState =
   | { status: 'loading' }
@@ -165,7 +166,16 @@ export function CoworkCodePanel({
           continue
         }
         try {
-          const content = await file.text()
+          const read = await readFileAsText(file)
+          if (!read.ok) {
+            toast.error(
+              read.reason === 'sensitive'
+                ? t('common:codePanel.sensitiveRefused', { name: file.name })
+                : t('common:codePanel.binaryRefused', { name: file.name })
+            )
+            continue
+          }
+          const content = read.text
           const tab = externalTab(file.name, sessionKey)
           setExternalFiles((prev) => ({
             ...prev,
@@ -447,7 +457,17 @@ export function CoworkCodePanel({
       const held = externalFiles[id]
       if (!held) return
       try {
-        const content = await held.file.text()
+        const read = await readFileAsText(held.file)
+        if (!read.ok) {
+          const name = held.file.name
+          toast.error(
+            read.reason === 'sensitive'
+              ? t('common:codePanel.sensitiveRefused', { name })
+              : t('common:codePanel.binaryRefused', { name })
+          )
+          return
+        }
+        const content = read.text
         setExternalFiles((prev) =>
           prev[id] ? { ...prev, [id]: { ...prev[id], content } } : prev
         )

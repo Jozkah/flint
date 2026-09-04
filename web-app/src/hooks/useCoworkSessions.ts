@@ -121,6 +121,7 @@ type CoworkSessionsState = {
 }
 
 import { decideSessionStart } from '@/lib/coworkSessionStart'
+import { useFileActivity } from '@/hooks/useFileActivity'
 
 const now = () => Date.now()
 
@@ -147,8 +148,18 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       startSession: ({ running, hasDraft }) => {
         const state = get()
         const current = state.sessions.find((s) => s.id === state.currentId)
+        // Asked here rather than at each call site so every entry point to
+        // "New session" judges emptiness the same way.
+        const hasFileActivity = current
+          ? useFileActivity.getState().eventsFor(current.id).length > 0
+          : false
         if (
-          decideSessionStart({ current, running, hasDraft }) === 'reuse' &&
+          decideSessionStart({
+            current,
+            running,
+            hasDraft,
+            hasFileActivity,
+          }) === 'reuse' &&
           current
         ) {
           return current.id

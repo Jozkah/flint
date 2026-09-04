@@ -9,6 +9,7 @@ vi.mock('@/lib/backendStorage', () => ({
 }))
 
 import { useCoworkSessions } from '../useCoworkSessions'
+import { useFileActivity } from '../useFileActivity'
 
 /**
  * The store side of "New session": one press, at most one session, and the
@@ -20,6 +21,7 @@ const idle = { running: false, hasDraft: false }
 
 beforeEach(() => {
   useCoworkSessions.setState({ sessions: [], currentId: null })
+  useFileActivity.setState({ byConversation: {} })
 })
 
 describe('starting a session', () => {
@@ -89,5 +91,54 @@ describe('starting a session', () => {
     const second = store().startSession({ running: true, hasDraft: false })
 
     expect(second).not.toBe(first)
+  })
+})
+
+describe('a session that only touched files', () => {
+  /**
+   * File activity is recorded as each operation settles, but turns only reach
+   * the session when the run commits. A cancelled run — or one cut short by a
+   * restart — therefore leaves a session with an empty transcript that has
+   * already written to disk. Judged on the transcript alone it looks blank,
+   * and "New session" would hand the user that same session back with someone
+   * else's file history in it.
+   */
+  it('is not reused, even with no turns, messages or tabs', () => {
+    const first = store().startSession(idle)
+    expect(store().sessions[0].turns).toHaveLength(0)
+
+    useFileActivity.getState().record(first, [
+      {
+        id: 'call:abc',
+        path: 'src/index.ts',
+        operation: 'write',
+        seq: 1,
+        at: 1,
+        ok: true,
+        origin: 'project',
+      },
+    ])
+
+    const again = store().startSession(idle)
+    expect(again).not.toBe(first)
+    expect(store().sessions).toHaveLength(2)
+  })
+
+  it('still reuses a session whose activity belongs to a different one', () => {
+    const first = store().startSession(idle)
+    useFileActivity.getState().record('some-other-session', [
+      {
+        id: 'call:xyz',
+        path: 'src/other.ts',
+        operation: 'write',
+        seq: 1,
+        at: 1,
+        ok: true,
+        origin: 'project',
+      },
+    ])
+
+    expect(store().startSession(idle)).toBe(first)
+    expect(store().sessions).toHaveLength(1)
   })
 })
