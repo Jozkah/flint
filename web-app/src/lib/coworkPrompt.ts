@@ -44,8 +44,23 @@ export const EXIT_PLAN_LABEL = 'Exit plan mode'
 export type CoworkPromptOptions = {
   /** The sandbox directory: the only writable location. */
   workspacePath: string | null
-  /** An attached project folder, readable but never writable. */
+  /**
+   * The attached project folder.
+   *
+   * Named for what it is in every case but one; whether it is writable is
+   * [`folderAccess`], which the run's effective access decides.
+   */
   readOnlyFolder: string | null
+  /**
+   * Whether this run may write to the attached folder.
+   *
+   * Defaults to read-only, and every caller that has not been taught about
+   * direct editing keeps the behaviour it had. It follows the *effective*
+   * access, never the stored preference: a session that remembers editing but
+   * holds no live grant is told the folder is read-only, because that is what
+   * the tool gate will actually do.
+   */
+  folderAccess?: 'read-only' | 'editable'
   /** The attached project's current git branch, when one could be read. */
   gitBranch?: string | null
   planMode: boolean
@@ -122,12 +137,26 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
             'precedence over these general guidelines.',
           ]
         : []),
-      'It is mounted READ-ONLY. You can read, search and list inside it, but every',
-      'write, edit or shell command targeting it will be refused. To work on one of',
-      'its files, copy it into your workspace first and edit the copy there. Do not',
-      'retry a refused write against the original path.',
-      'Everything you create or edit lands in your workspace, never in the attached',
-      'project — never describe a workspace write as a change to the user’s repository.'
+      ...(opts.folderAccess === 'editable'
+        ? [
+            'The user has authorized you to edit it. Reads, writes, edits and shell',
+            'commands targeting it are permitted, and shell commands run with it as',
+            'their working directory. Changes you make there are changes to the',
+            'user’s own checkout, so say so plainly when you report them.',
+            'Your workspace is still yours for scratch work; anything you leave',
+            'there is not a change to their repository, and must not be described',
+            'as one.',
+            'Do not commit, stash, reset or discard anything. Files that were',
+            'already modified when you started are not yours to claim.',
+          ]
+        : [
+            'It is mounted READ-ONLY. You can read, search and list inside it, but every',
+            'write, edit or shell command targeting it will be refused. To work on one of',
+            'its files, copy it into your workspace first and edit the copy there. Do not',
+            'retry a refused write against the original path.',
+            'Everything you create or edit lands in your workspace, never in the attached',
+            'project — never describe a workspace write as a change to the user’s repository.',
+          ])
     )
   } else {
     lines.push('', 'No project folder is attached, so there is nothing outside the workspace to read.')

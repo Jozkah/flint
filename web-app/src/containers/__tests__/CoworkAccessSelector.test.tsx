@@ -150,6 +150,27 @@ describe('when editing a folder cannot be offered', () => {
     expect(onRequestDirectEdit).not.toHaveBeenCalled()
   })
 
+  // A background shell job outlives the run that started it and can still
+  // write, so it holds authority in place just as a live turn does.
+  it('is disabled while a background job is still running', async () => {
+    const { onRequestDirectEdit } = await open({ busyReason: 'jobs' })
+    const edit = await option('common:coworkAccess.edit-folder.label')
+
+    expect(edit).toHaveTextContent('common:coworkAccess.busy.jobs')
+    await user.click(edit)
+    expect(onRequestDirectEdit).not.toHaveBeenCalled()
+  })
+
+  it.each(['authorizing', 'revoking'] as const)(
+    'is disabled while %s is in flight',
+    async (busyReason) => {
+      await open({ busyReason })
+      const edit = await option('common:coworkAccess.edit-folder.label')
+
+      expect(edit).toHaveTextContent(`common:coworkAccess.busy.${busyReason}`)
+    }
+  )
+
   it('keeps the managed worktree visible but unavailable', async () => {
     await open()
     const worktree = await option('common:coworkAccess.managed-worktree.label')

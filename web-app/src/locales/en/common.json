@@ -1010,7 +1010,8 @@
     "busy": {
       "running": "Stop the current run first",
       "authorizing": "Finishing an authorization…",
-      "revoking": "Withdrawing access…"
+      "revoking": "Withdrawing access…",
+      "jobs": "Wait for background commands to finish"
     },
     "downgrade": {
       "no-capability": "Editing this folder isn’t available here, so Jan is reading only.",

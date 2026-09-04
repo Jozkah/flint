@@ -12,6 +12,13 @@ import { buildCoworkSystemPrompt } from '@/lib/coworkPrompt'
 export type CoworkRunConfig = CoworkToolOptions & {
   workspacePath: string | null
   readOnlyFolder: string | null
+  /**
+   * Whether this run may write to the attached folder.
+   *
+   * Frozen with the run, from its effective access — so the prompt describes
+   * the destination the dispatcher will actually use.
+   */
+  folderAccess?: 'read-only' | 'editable'
   /** The attached project's git branch, surfaced in the system prompt. */
   gitBranch?: string | null
   /** Verbatim `JAN.md` from the attached folder, when it has one. */
@@ -82,6 +89,7 @@ export class CoworkChatTransport extends CustomChatTransport {
     const base = buildCoworkSystemPrompt({
       workspacePath: this.config.workspacePath,
       readOnlyFolder: this.config.readOnlyFolder,
+      folderAccess: this.config.folderAccess,
       gitBranch: this.config.gitBranch,
       projectInstructions: this.config.projectInstructions,
       planMode: this.config.planMode,

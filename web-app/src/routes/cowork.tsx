@@ -209,6 +209,23 @@ function CoworkPage() {
     'authorizing' | 'revoking' | null
   >(null)
   const [confirmDirectEdit, setConfirmDirectEdit] = useState(false)
+  /**
+   * The binding as it stands right now.
+   *
+   * A ref rather than the closure's copy: an authorization started before a
+   * folder switch has to compare against where the user *is*, not where they
+   * were when they pressed the button.
+   */
+  const bindingRef = useRef<{ sessionId: string | null; folder: string | null }>(
+    { sessionId: null, folder: null }
+  )
+  bindingRef.current = { sessionId: session?.id ?? null, folder }
+
+  // A confirmation is about one folder in one session. If either changes while
+  // it is open, the question no longer means what it said.
+  useEffect(() => {
+    setConfirmDirectEdit(false)
+  }, [session?.id, folder])
 
   const [running, setRunning] = useState(false)
   const [liveTurns, setLiveTurns] = useState<CoworkTurn[]>([])
@@ -646,6 +663,17 @@ function CoworkPage() {
         .getState()
         .authorize(sid, folder, dataFolder)
       if (!outcome.ok) return false
+
+      // The question was about a session and a folder, and both can change
+      // while the backend is answering. A grant for the binding the user has
+      // already left is authority nobody asked for, so it goes back rather
+      // than sitting live behind a screen that has moved on.
+      const live = bindingRef.current
+      if (live.sessionId !== sid || live.folder !== folder) {
+        await useDirectEditGrants.getState().revokeSession(sid)
+        return false
+      }
+
       // The grant exists, so the preference is now backed by something.
       useCoworkSessions.getState().setAccess(sid, 'edit-folder')
       setConfirmDirectEdit(false)
@@ -947,6 +975,10 @@ function CoworkPage() {
       webSearch,
       workspacePath,
       readOnlyFolder: current?.folder ?? null,
+      // The run's own answer, not the stored preference: a session that
+      // remembers editing but holds no live grant is told read-only, which is
+      // what the gate will do.
+      folderAccess: effective.access === 'edit-folder' ? 'editable' : 'read-only',
       gitBranch,
       projectInstructions,
     })
@@ -1640,7 +1672,16 @@ function CoworkPage() {
                       capability={capabilityState}
                       hasFolder={Boolean(folder)}
                       // Authority must not move under work already running.
-                      busyReason={running ? 'running' : accessBusy}
+                      // A background shell job outlives its run and can still
+                      // write, so it holds authority in place just as a live
+                      // turn does.
+                      busyReason={
+                        running
+                          ? 'running'
+                          : liveJobs.some((job) => !job.finished)
+                            ? 'jobs'
+                            : accessBusy
+                      }
                       onRequestDirectEdit={() => setConfirmDirectEdit(true)}
                       onReviewOnly={() => void returnToReviewOnly()}
                     />
