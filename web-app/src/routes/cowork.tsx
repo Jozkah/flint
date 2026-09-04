@@ -116,12 +116,8 @@ import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskCard } from '@/containers/CoworkAskCard'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { effectiveEnabled, useSkills } from '@/hooks/useSkills'
-import {
-  BACKEND_ACCESS_CAPABILITY,
-  accessOf,
-  rootsFor,
-  supports,
-} from '@/lib/coworkAccess'
+import { accessOf, effectiveAccess } from '@/lib/coworkAccess'
+import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
 import {
   COMPATIBILITY_INSTRUCTION_FILES,
   MAX_INSTRUCTION_BYTES,
@@ -206,6 +202,33 @@ function CoworkPage() {
    * merely stale-looking.
    */
   const access = accessOf(session ?? {})
+  // Asked of the backend rather than assumed here: whether a folder can be
+  // edited depends on what the sandbox can confine, which only it knows.
+  const capabilityState = useDirectEditGrants((s) => s.capability)
+  const liveGrant = useDirectEditGrants((s) =>
+    session?.id ? s.bySession[session.id] : undefined
+  )
+  useEffect(() => {
+    void useDirectEditGrants.getState().refreshCapability()
+  }, [])
+
+  /**
+   * What this session may actually do — the stored preference reconciled with
+   * the backend's capability and the grant it is really holding.
+   *
+   * One derivation, read by the readiness card and the prompt, so the screen
+   * cannot describe a destination the dispatcher would not use.
+   */
+  const effective = effectiveAccess({
+    persisted: access,
+    capability: {
+      managedWorktree: false,
+      directEdit: capabilityState.known && capabilityState.directEdit,
+    },
+    capabilityKnown: capabilityState.known,
+    grant: liveGrant ?? null,
+    binding: { sessionId: session?.id ?? null, folder },
+  })
   const readiness = useMemo<ReadinessManifest>(() => {
     const names = availableSkills.map((skill) => skill.name)
     const requested = parseSkillRequests(composerPrompt, names)
@@ -214,13 +237,10 @@ function CoworkPage() {
       folder,
       branch: gitBranch,
       mode,
-      // Taken from the policy rather than asserted here, so the card cannot
-      // name a destination the dispatcher would not actually use. An access
-      // mode the backend cannot enforce resolves to the sandbox, which is
-      // where the writes really go.
-      writeDestination: supports(BACKEND_ACCESS_CAPABILITY, access)
-        ? rootsFor(access, { folder }).destination
-        : 'sandbox',
+      // From the effective access, not the stored preference: a session that
+      // remembers "edit this folder" but holds no live grant writes to its
+      // sandbox, and the card has to say so.
+      writeDestination: effective.destination,
       instructions: instructionFiles,
       skills: resolveSkills(requested, {
         available: availableSkills.map((skill) => ({ name: skill.name })),
@@ -256,7 +276,7 @@ function CoworkPage() {
     gitBranch,
     mode,
     instructionFiles,
-    access,
+    effective.destination,
     availableSkills,
     enabledSkills,
     composerPrompt,

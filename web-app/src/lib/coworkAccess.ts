@@ -223,3 +223,106 @@ export function decideMutation(input: MutationInput): MutationDecision {
 /** i18n key for why a mutation was refused. */
 export const refusalMessageKey = (reason: MutationRefusal): string =>
   `common:coworkAccess.refusal.${reason}`
+
+// ---------------------------------------------------------------------------
+// Effective access
+
+/**
+ * A grant the backend actually holds, as the renderer knows it.
+ *
+ * The id is authority-bearing even though it is opaque, so it lives only in
+ * memory and never reaches a prompt, a message, an activity row or a log.
+ */
+export type LiveGrant = {
+  sessionId: string
+  /** Canonical folder the grant was issued for. */
+  folder: string
+  grantId: string
+}
+
+export type AccessDowngrade =
+  /** The platform cannot confine a shell to a folder. */
+  | 'no-capability'
+  /** Nothing has been authorized, or the authorization is gone. */
+  | 'no-grant'
+  /** Authorized, but for a different session or folder than this one. */
+  | 'binding-changed'
+  /** The capability query has not answered, or failed. */
+  | 'capability-unknown'
+
+export type EffectiveAccess = {
+  /** What this session is operating under right now. */
+  access: AccessMode
+  /** The stored preference, when it is not what is in force. */
+  downgradedFrom?: AccessMode
+  reason?: AccessDowngrade
+  readRoot: string | null
+  writeRoot: string | null
+  destination: WriteDestination
+}
+
+/**
+ * What this session may actually do, as opposed to what it last asked for.
+ *
+ * The stored access mode is a preference. Authority is the backend's grant,
+ * which lives in that process and dies with it — so a session restored from
+ * disk with `edit-folder` remembered has a preference and no authority, and
+ * saying "editable" on the strength of the preference alone would be the
+ * screen inventing a permission nobody holds.
+ *
+ * Everything that needs to know — the readiness card, the system prompt, tool
+ * dispatch — asks this one function, so they cannot answer it differently.
+ */
+export function effectiveAccess(input: {
+  /** The session's stored preference. */
+  persisted: AccessMode
+  capability: AccessCapability
+  /** Absent when nothing is authorized; `undefined` while unknown. */
+  grant?: LiveGrant | null
+  binding: Binding
+  /** False while the capability query is in flight or after it failed. */
+  capabilityKnown?: boolean
+}): EffectiveAccess {
+  const sandbox = (
+    downgradedFrom?: AccessMode,
+    reason?: AccessDowngrade
+  ): EffectiveAccess => ({
+    access: 'review-only',
+    ...(downgradedFrom ? { downgradedFrom, reason } : {}),
+    readRoot: input.binding.folder,
+    writeRoot: null,
+    destination: 'sandbox',
+  })
+
+  if (input.persisted === 'review-only') return sandbox()
+  // Not built yet, and saying so is the whole of its behaviour.
+  if (input.persisted === 'managed-worktree') {
+    return sandbox('managed-worktree', 'no-capability')
+  }
+
+  // An unanswered or failed capability query is not permission.
+  if (input.capabilityKnown === false) {
+    return sandbox('edit-folder', 'capability-unknown')
+  }
+  if (!input.capability.directEdit) return sandbox('edit-folder', 'no-capability')
+  if (!input.grant) return sandbox('edit-folder', 'no-grant')
+  // A grant belongs to one session and one folder. Anything else is a grant
+  // for a run that is not this one.
+  if (
+    input.grant.sessionId !== input.binding.sessionId ||
+    input.grant.folder !== input.binding.folder
+  ) {
+    return sandbox('edit-folder', 'binding-changed')
+  }
+
+  return {
+    access: 'edit-folder',
+    readRoot: input.binding.folder,
+    writeRoot: input.binding.folder,
+    destination: 'repository',
+  }
+}
+
+/** i18n key for why the stored preference is not in force. */
+export const downgradeMessageKey = (reason: AccessDowngrade): string =>
+  `common:coworkAccess.downgrade.${reason}`
