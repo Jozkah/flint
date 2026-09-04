@@ -117,6 +117,12 @@ import { CoworkAskCard } from '@/containers/CoworkAskCard'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { effectiveEnabled, useSkills } from '@/hooks/useSkills'
 import {
+  BACKEND_ACCESS_CAPABILITY,
+  accessOf,
+  rootsFor,
+  supports,
+} from '@/lib/coworkAccess'
+import {
   COMPATIBILITY_INSTRUCTION_FILES,
   MAX_INSTRUCTION_BYTES,
   NATIVE_INSTRUCTION_FILE,
@@ -199,6 +205,7 @@ function CoworkPage() {
    * left over from another folder or session is recognisable rather than
    * merely stale-looking.
    */
+  const access = accessOf(session ?? {})
   const readiness = useMemo<ReadinessManifest>(() => {
     const names = availableSkills.map((skill) => skill.name)
     const requested = parseSkillRequests(composerPrompt, names)
@@ -207,10 +214,13 @@ function CoworkPage() {
       folder,
       branch: gitBranch,
       mode,
-      // The only destination Cowork has: the agent writes to its own
-      // workspace and reads the repository. Worktrees and direct editing are
-      // not built, and naming them here before they exist would be a lie.
-      writeDestination: 'sandbox',
+      // Taken from the policy rather than asserted here, so the card cannot
+      // name a destination the dispatcher would not actually use. An access
+      // mode the backend cannot enforce resolves to the sandbox, which is
+      // where the writes really go.
+      writeDestination: supports(BACKEND_ACCESS_CAPABILITY, access)
+        ? rootsFor(access, { folder }).destination
+        : 'sandbox',
       instructions: instructionFiles,
       skills: resolveSkills(requested, {
         available: availableSkills.map((skill) => ({ name: skill.name })),
@@ -246,6 +256,7 @@ function CoworkPage() {
     gitBranch,
     mode,
     instructionFiles,
+    access,
     availableSkills,
     enabledSkills,
     composerPrompt,
@@ -269,6 +280,8 @@ function CoworkPage() {
   // Read inside the instruction effect without making the session a dependency:
   // the effect keys on the folder, and the ref is only used to notice that the
   // session changed underneath a read that was already in flight.
+  /** The last run's resolved skills, so a retake does not lose them. */
+  const runSkillsRef = useRef<ReturnType<typeof resolveSkills>>([])
   const sessionIdRef = useRef<string | null>(null)
   sessionIdRef.current = session?.id ?? null
   const [subagentDefs, setSubagentDefs] = useState<SubagentDefinition[]>([])
@@ -740,6 +753,25 @@ function CoworkPage() {
     const sid = ensureCurrentSession()
     const store = useCoworkSessions.getState()
     const current = store.sessions.find((s) => s.id === sid)
+    /**
+     * Skills asked for by *this* turn, frozen for the whole run.
+     *
+     * Resolved from the text actually submitted rather than from whatever is
+     * in the composer when something happens to re-render: a follow-up like
+     * "use the superpowers skill for this change" arrives on turn five, and
+     * the composer is empty by the time the run reads it. A retake (`text` is
+     * null) keeps the previous turn's answer rather than deciding that the
+     * request was withdrawn because there is no new message to find it in.
+     */
+    const skillNames = availableSkills.map((skill) => skill.name)
+    const runSkills =
+      text == null
+        ? runSkillsRef.current
+        : resolveSkills(parseSkillRequests(text, skillNames), {
+            available: availableSkills.map((skill) => ({ name: skill.name })),
+            enabled: new Set(effectiveEnabled(enabledSkills, skillNames)),
+          })
+    runSkillsRef.current = runSkills
     if (!text && !(current?.messages?.length ?? 0)) return
     if (!selectedModel?.id) {
       toast.error(t('common:selectModel'))
@@ -908,7 +940,7 @@ function CoworkPage() {
               mode: runMode,
               // Snapshotted with the run: a skill the user asked for and did
               // not get stops changes. Inspection still proceeds.
-              unresolvedSkills: unresolvedSkills(readiness.skills),
+              unresolvedSkills: unresolvedSkills(runSkills),
               // The root this run is bound to, re-checked before every
               // filesystem call: detaching or switching folders mid-run must
               // not leave the run reading the folder that was taken away.
@@ -1038,7 +1070,7 @@ function CoworkPage() {
                       mode: runMode,
                       // Snapshotted with the run: a skill the user asked for and did
                       // not get stops changes. Inspection still proceeds.
-                      unresolvedSkills: unresolvedSkills(readiness.skills),
+                      unresolvedSkills: unresolvedSkills(runSkills),
               // The root this run is bound to, re-checked before every
               // filesystem call: detaching or switching folders mid-run must
               // not leave the run reading the folder that was taken away.

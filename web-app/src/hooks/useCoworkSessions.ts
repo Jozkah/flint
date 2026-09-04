@@ -80,6 +80,16 @@ export type CoworkSession = {
    * existed, which `modeOf` reads from `planMode` instead.
    */
   mode?: CoworkMode
+  /**
+   * Where this session may write. Absent means Review only — silence from a
+   * session saved before access modes existed is not permission.
+   */
+  access?: AccessMode
+  /**
+   * Confirmation to edit the attached folder, naming the session and folder it
+   * was given for so it cannot follow the user to another repository.
+   */
+  editConsent?: EditConsent
   /** Code panel state: open tabs, active tab, explorer expansion, word wrap.
    * Absent on sessions from before the code workspace existed. */
   codePanel?: CodePanelState
@@ -99,6 +109,9 @@ type CoworkSessionsState = {
   deleteSession: (id: string) => void
   setFolder: (id: string, folder: string | null) => void
   setMode: (id: string, mode: CoworkMode) => void
+  setAccess: (id: string, access: AccessMode) => void
+  /** Record the user's confirmation to edit `folder` in this session. */
+  grantEditConsent: (id: string, folder: string) => void
   /** Replace the session's code-panel state (tabs, expansion, word wrap). */
   setCodePanel: (id: string, codePanel: CodePanelState) => void
   setTitle: (id: string, title: string) => void
@@ -130,6 +143,7 @@ type CoworkSessionsState = {
 
 import { decideSessionStart } from '@/lib/coworkSessionStart'
 import { defaultModeFor, type CoworkMode } from '@/lib/coworkMode'
+import type { AccessMode, EditConsent } from '@/lib/coworkAccess'
 import { useFileActivity } from '@/hooks/useFileActivity'
 
 const now = () => Date.now()
@@ -210,6 +224,15 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
                         ? defaultModeFor(folder)
                         : undefined))
                     : x.mode,
+                  // Changing the repository withdraws everything that was
+                  // agreed about the previous one. Consent named that folder,
+                  // and an access mode chosen for it says nothing about this
+                  // one, so both return to the safe default.
+                  access: folder === x.folder ? x.access : 'review-only',
+                  editConsent:
+                    folder === x.folder && x.editConsent?.folder === folder
+                      ? x.editConsent
+                      : undefined,
                   codePanel: pruneTabsForProject(
                     x.codePanel ?? emptyCodePanelState(),
                     projectKeyOf(folder)
@@ -237,6 +260,22 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       setTodos: (id, todos) =>
         set((s) => ({
           sessions: s.sessions.map((x) => (x.id === id ? { ...x, todos } : x)),
+        })),
+
+      setAccess: (id, access) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id ? { ...x, access, updated: now() } : x
+          ),
+        })),
+
+      grantEditConsent: (id, folder) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id
+              ? { ...x, editConsent: { sessionId: id, folder }, updated: now() }
+              : x
+          ),
         })),
 
       setMode: (id, mode) =>

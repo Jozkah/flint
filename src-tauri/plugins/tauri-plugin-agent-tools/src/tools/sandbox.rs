@@ -802,9 +802,8 @@ mod tests {
         let ws = unique_root_outside_tmp();
         let (parent, selected, sibling) = sibling_repos();
         let roots = vec![selected.clone()];
-        let read = |raw: &Path| {
-            escapes_read_roots(&ws, None, &roots, &raw.to_string_lossy()).unwrap()
-        };
+        let read =
+            |raw: &Path| escapes_read_roots(&ws, None, &roots, &raw.to_string_lossy()).unwrap();
 
         // The sibling, addressed absolutely -- what the model would emit after
         // being told the wrong repository's name.
@@ -864,8 +863,12 @@ mod tests {
         // Windows paths are case-insensitive, so a differently-cased spelling of
         // the selected root is the same root -- not a way around it, and not a
         // way in either.
-        assert!(!read(selected.join("README.md").to_string_lossy().to_uppercase()));
-        assert!(read(sibling.join("main.py").to_string_lossy().to_uppercase()));
+        assert!(!read(
+            selected.join("README.md").to_string_lossy().to_uppercase()
+        ));
+        assert!(read(
+            sibling.join("main.py").to_string_lossy().to_uppercase()
+        ));
 
         let _ = std::fs::remove_dir_all(&ws);
         let _ = std::fs::remove_dir_all(&parent);

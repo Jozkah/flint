@@ -5,11 +5,14 @@ import {
   TASK_TOOL_NAME,
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
+import { type CoworkMode } from '@/lib/coworkMode'
 import {
-  deniedTools,
-  needsApproval,
-  type CoworkMode,
-} from '@/lib/coworkMode'
+  BACKEND_ACCESS_CAPABILITY,
+  decideMutation,
+  type AccessCapability,
+  type AccessMode,
+  type EditConsent,
+} from '@/lib/coworkAccess'
 import type { PendingToolCall, ToolOutcome } from '@/lib/coworkRunner'
 import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
 
@@ -55,6 +58,14 @@ export type DispatchContext = {
    * is not. Empty when everything resolved, which is the ordinary case.
    */
   unresolvedSkills?: readonly { requested: string; state: string }[]
+  /** Where this session may write. Absent is Review only. */
+  access?: AccessMode
+  /** The user's confirmation to edit the attached folder, when given. */
+  editConsent?: EditConsent
+  /** What the backend can enforce. Absent is what it enforces today. */
+  accessCapability?: AccessCapability
+  /** A managed worktree's path, once one exists. */
+  worktreePath?: string | null
   /** Runs a nested subagent to completion. */
   onTask: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
 }
@@ -73,6 +84,34 @@ function planRefusal(toolName: string): ToolOutcome {
       `The \`${toolName}\` tool is disabled in review mode, which is ` +
       'read-only. Finish investigating, stage the plan with the `todo` tool, ' +
       'then call `ask` for review.',
+    isError: true,
+  }
+}
+
+/** The folder the run was bound to is no longer the session's folder. */
+function detachedRefusal(toolName: string): ToolOutcome {
+  return {
+    output:
+      `The folder this session was working in is no longer attached, so ` +
+      `\`${toolName}\` was not run. Stop, say what was done so far, and ` +
+      'wait for the user to choose a folder again.',
+    isError: true,
+  }
+}
+
+/** A skill the user asked for is not in play, so nothing may change. */
+function skillRefusal(
+  toolName: string,
+  unresolved: readonly { requested: string; state: string }[]
+): ToolOutcome {
+  const named = unresolved
+    .map((skill) => `${skill.requested} (${skill.state})`)
+    .join(', ')
+  return {
+    output:
+      `\`${toolName}\` was not run: you were asked to use ${named}, and ` +
+      'that is not in effect. Do not work around it. Say which skill is ' +
+      'unavailable and what the user can do about it, then stop.',
     isError: true,
   }
 }
@@ -97,37 +136,62 @@ export async function dispatchCoworkTool(
 ): Promise<ToolOutcome> {
   const { toolName } = call
 
-  if (deniedTools(ctx.mode).has(toolName)) return planRefusal(toolName)
+  // Every mutating call goes through the one policy, so the run mode and the
+  // access mode cannot be answered differently in different places.
+  if (PLAN_DENIED_TOOLS.has(toolName)) {
+    const unresolved = ctx.unresolvedSkills ?? []
+    const decision = decideMutation({
+      runMode: ctx.mode,
+      access: ctx.access ?? 'review-only',
+      binding: { sessionId: ctx.sessionId, folder: ctx.readOnlyFolder },
+      consent: ctx.editConsent,
+      bindingIntact: ctx.bindingIntact ? ctx.bindingIntact() : true,
+      unresolvedSkillCount: unresolved.length,
+      capability: ctx.accessCapability ?? BACKEND_ACCESS_CAPABILITY,
+      worktreePath: ctx.worktreePath,
+    })
 
-  // Ahead of the approval prompt: there is no point asking the user to allow a
-  // change that would be made without the instructions they asked for.
-  const unresolved = ctx.unresolvedSkills ?? []
-  if (unresolved.length > 0 && PLAN_DENIED_TOOLS.has(toolName)) {
-    const named = unresolved
-      .map((skill) => `${skill.requested} (${skill.state})`)
-      .join(', ')
-    return {
-      output:
-        `\`${toolName}\` was not run: you were asked to use ${named}, and ` +
-        'that is not in effect. Do not work around it. Say which skill is ' +
-        'unavailable and what the user can do about it, then stop.',
-      isError: true,
+    if (!decision.allowed) {
+      switch (decision.reason) {
+        case 'review-mode':
+          return planRefusal(toolName)
+        case 'stale-binding':
+          return detachedRefusal(toolName)
+        case 'unresolved-skill':
+          return skillRefusal(toolName, unresolved)
+        case 'no-consent':
+          return {
+            output:
+              `\`${toolName}\` was not run: editing this folder has not been ` +
+              'confirmed for this session. Ask the user to confirm it, or ' +
+              'work in the session workspace instead.',
+            isError: true,
+          }
+        case 'unsupported-access':
+          return {
+            output:
+              `\`${toolName}\` was not run: the selected access mode is not ` +
+              'available in this build, so nothing outside the session ' +
+              'workspace can be changed. Say so rather than working around it.',
+            isError: true,
+          }
+      }
     }
-  }
 
-  if (needsApproval(ctx.mode, toolName)) {
-    // No handler means nothing can present the request. Refusing is the only
-    // honest outcome: running it would make "Ask before changes" false.
-    if (!ctx.onApprove) return deniedByUser(toolName)
+    if (decision.needsApproval) {
+      // No handler means nothing can present the request. Refusing is the
+      // only honest outcome: running it would make "Ask before changes" false.
+      if (!ctx.onApprove) return deniedByUser(toolName)
     // A throw here — an aborted run, a closed prompt — is a refusal, not a
     // reason to reject: this function always resolves.
-    let allowed = false
-    try {
-      allowed = await ctx.onApprove(call.toolCallId, toolName, call.input)
-    } catch {
-      allowed = false
+      let allowed = false
+      try {
+        allowed = await ctx.onApprove(call.toolCallId, toolName, call.input)
+      } catch {
+        allowed = false
+      }
+      if (!allowed) return deniedByUser(toolName)
     }
-    if (!allowed) return deniedByUser(toolName)
   }
 
   try {

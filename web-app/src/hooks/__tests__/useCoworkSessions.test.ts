@@ -9,6 +9,7 @@ vi.mock('@/lib/backendStorage', () => ({
 }))
 
 import { useCoworkSessions } from '../useCoworkSessions'
+import { accessOf } from '@/lib/coworkAccess'
 import type { CoworkTurn, SubagentRun } from '@/types/coworkSession'
 
 const reset = () =>
@@ -242,3 +243,77 @@ describe('the mode a repository-bound session starts in', () => {
   })
 })
 
+/**
+ * Access is granted, never inherited.
+ *
+ * Every path that could leave a session able to write somewhere the user did
+ * not agree to is closed here: a session that predates access modes, a folder
+ * that was swapped, and consent that named a different repository.
+ */
+describe('what a session may write to', () => {
+  const sessionOf = (id: string) =>
+    useCoworkSessions.getState().sessions.find((x) => x.id === id)!
+
+  it('is nothing but the sandbox until told otherwise', () => {
+    const id = useCoworkSessions.getState().createSession()
+
+    expect(sessionOf(id).access).toBeUndefined()
+    expect(accessOf(sessionOf(id))).toBe('review-only')
+  })
+
+  it('keeps an access mode the user chose', () => {
+    const id = useCoworkSessions.getState().createSession()
+    useCoworkSessions.getState().setFolder(id, '/home/dev/obs-forwarder')
+    useCoworkSessions.getState().setAccess(id, 'edit-folder')
+
+    expect(accessOf(sessionOf(id))).toBe('edit-folder')
+  })
+
+  it('records consent against the session and folder it was given for', () => {
+    const id = useCoworkSessions.getState().createSession()
+    useCoworkSessions.getState().setFolder(id, '/home/dev/obs-forwarder')
+    useCoworkSessions.getState().grantEditConsent(id, '/home/dev/obs-forwarder')
+
+    expect(sessionOf(id).editConsent).toEqual({
+      sessionId: id,
+      folder: '/home/dev/obs-forwarder',
+    })
+  })
+
+  // Swapping the repository withdraws everything agreed about the old one.
+  it('returns to review only when the folder changes', () => {
+    const id = useCoworkSessions.getState().createSession()
+    useCoworkSessions.getState().setFolder(id, '/home/dev/obs-forwarder')
+    useCoworkSessions.getState().setAccess(id, 'edit-folder')
+    useCoworkSessions.getState().grantEditConsent(id, '/home/dev/obs-forwarder')
+
+    useCoworkSessions.getState().setFolder(id, '/home/dev/note-py')
+
+    expect(accessOf(sessionOf(id))).toBe('review-only')
+    expect(sessionOf(id).editConsent).toBeUndefined()
+  })
+
+  it('returns to review only when the folder is detached', () => {
+    const id = useCoworkSessions.getState().createSession()
+    useCoworkSessions.getState().setFolder(id, '/home/dev/obs-forwarder')
+    useCoworkSessions.getState().setAccess(id, 'edit-folder')
+    useCoworkSessions.getState().grantEditConsent(id, '/home/dev/obs-forwarder')
+
+    useCoworkSessions.getState().setFolder(id, null)
+
+    expect(accessOf(sessionOf(id))).toBe('review-only')
+    expect(sessionOf(id).editConsent).toBeUndefined()
+  })
+
+  it('leaves both alone when the same folder is set again', () => {
+    const id = useCoworkSessions.getState().createSession()
+    useCoworkSessions.getState().setFolder(id, '/home/dev/obs-forwarder')
+    useCoworkSessions.getState().setAccess(id, 'edit-folder')
+    useCoworkSessions.getState().grantEditConsent(id, '/home/dev/obs-forwarder')
+
+    useCoworkSessions.getState().setFolder(id, '/home/dev/obs-forwarder')
+
+    expect(accessOf(sessionOf(id))).toBe('edit-folder')
+    expect(sessionOf(id).editConsent).toBeDefined()
+  })
+})

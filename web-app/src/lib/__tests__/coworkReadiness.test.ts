@@ -350,3 +350,54 @@ describe('a manifest belonging to a binding', () => {
     ).toBe(false)
   })
 })
+
+/**
+ * A request that arrives after the conversation has started.
+ *
+ * The gap this closes: resolution used to read whatever was in the composer
+ * when a render happened, so "use the superpowers skill for this change" on
+ * turn five was resolved against an empty box by the time the run read it.
+ * Each submitted turn is now parsed on its own.
+ */
+describe('a skill requested part-way through a conversation', () => {
+  const known = ['superpowers']
+  const turns = [
+    'Read this project and learn it',
+    'now use the superpowers skill for this change',
+  ]
+
+  it('is found in the turn that asked for it', () => {
+    expect(parseSkillRequests(turns[1], known)).toEqual(['superpowers'])
+  })
+
+  it('was not present in the earlier turn', () => {
+    expect(parseSkillRequests(turns[0], known)).toEqual([])
+  })
+
+  // Each turn is read on its own, so an earlier sentence is not re-read as a
+  // fresh request every time a later one is submitted.
+  it('does not re-read an earlier mention as a new request', () => {
+    const mentionedOnce = 'earlier I said use superpowers'
+    expect(parseSkillRequests(mentionedOnce, known)).toEqual([])
+  })
+
+  it('keeps the negative case negative on a later turn too', () => {
+    expect(
+      parseSkillRequests('I used to use superpowers but stopped', known)
+    ).toEqual([])
+  })
+
+  it('resolves a follow-up request against the registry like any other', () => {
+    const resolved = resolveSkills(parseSkillRequests(turns[1], known), {
+      available: [{ name: 'superpowers' }],
+      enabled: new Set<string>(),
+    })
+
+    // Present but switched off: the run must stop before changing anything
+    // rather than proceed without the instructions it was told to follow.
+    expect(resolved).toEqual([
+      { requested: 'superpowers', matched: 'superpowers', state: 'disabled' },
+    ])
+    expect(unresolvedSkills(resolved)).toHaveLength(1)
+  })
+})
