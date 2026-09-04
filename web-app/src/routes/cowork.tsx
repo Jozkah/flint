@@ -73,6 +73,7 @@ import {
 import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
 import { CoworkModeSelector } from '@/containers/CoworkModeSelector'
 import { CoworkAccessSelector } from '@/containers/CoworkAccessSelector'
+import { authorizeDirectEdit as runAuthorizeDirectEdit } from '@/lib/coworkDirectEdit'
 import {
   DirectEditConfirmDialog,
   type DirectEditFacts,
@@ -653,31 +654,24 @@ function CoworkPage() {
    * session where it was.
    */
   const authorizeDirectEdit = useCallback(async (): Promise<boolean> => {
-    const sid = session?.id
-    if (!sid || !folder) return false
+    const sid = session?.id ?? null
     setAccessBusy('authorizing')
     try {
       const dataFolder = await serviceHub.app().getJanDataFolder()
-      if (!dataFolder) return false
-      const outcome = await useDirectEditGrants
-        .getState()
-        .authorize(sid, folder, dataFolder)
-      if (!outcome.ok) return false
-
-      // The question was about a session and a folder, and both can change
-      // while the backend is answering. A grant for the binding the user has
-      // already left is authority nobody asked for, so it goes back rather
-      // than sitting live behind a screen that has moved on.
-      const live = bindingRef.current
-      if (live.sessionId !== sid || live.folder !== folder) {
-        await useDirectEditGrants.getState().revokeSession(sid)
-        return false
-      }
-
-      // The grant exists, so the preference is now backed by something.
-      useCoworkSessions.getState().setAccess(sid, 'edit-folder')
-      setConfirmDirectEdit(false)
-      return true
+      const result = await runAuthorizeDirectEdit({
+        binding: { sessionId: sid, folder },
+        dataFolder: dataFolder ?? null,
+        authorize: (sessionId, target, data) =>
+          useDirectEditGrants.getState().authorize(sessionId, target, data),
+        revokeSession: (sessionId) =>
+          useDirectEditGrants.getState().revokeSession(sessionId),
+        // Read after the await, so it sees where the user actually is.
+        currentBinding: () => bindingRef.current,
+        setAccess: (sessionId) =>
+          useCoworkSessions.getState().setAccess(sessionId, 'edit-folder'),
+      })
+      if (result === 'granted') setConfirmDirectEdit(false)
+      return result === 'granted'
     } finally {
       setAccessBusy(null)
     }
