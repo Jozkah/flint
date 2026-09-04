@@ -1,10 +1,12 @@
 import {
   sameBinding,
   type Binding,
+  type EvidenceLimit as ReadinessEvidenceLimit,
   type WriteDestination,
 } from '@/lib/coworkReadiness'
 import type { GitStatus } from '@/lib/coworkGit'
 import type { FileOrigin } from '@/lib/fileActivity'
+import type { AccessMode } from '@/lib/coworkAccess'
 
 /**
  * Where a change went, and what we actually know about who made it.
@@ -258,6 +260,69 @@ export function buildOriginLedger(input: {
   }
 
   return entries
+}
+
+/**
+ * Everything a run knows about where its changes go, frozen at its start.
+ *
+ * The point of gathering these four facts into one object is that six surfaces
+ * — the prompt, readiness, the Code panel, activity, Changes and the
+ * completion summary — used to each re-derive them from the session. Six
+ * derivations of the same question is six chances to answer it differently,
+ * and the one that matters most is the prompt: telling the model the folder is
+ * editable while the gate refuses every write makes the run's own account of
+ * itself wrong from the first token.
+ *
+ * So this is derived once, at run start, and read by all of them.
+ */
+export type RunOrigins = {
+  binding: Binding
+  access: AccessMode
+  destination: ChangeDestination
+  /**
+   * The working tree as it was before the run, when it could be captured.
+   *
+   * Null is itself a fact — it means nothing later can be dated — and is why
+   * this belongs in the snapshot rather than being looked up per surface.
+   */
+  baseline: GitBaseline | null
+}
+
+/**
+ * What the model is told about the attached folder.
+ *
+ * Read from the run's frozen access rather than the stored preference. A
+ * session that remembers editing but holds no live grant is told read-only,
+ * because read-only is what the gate will actually do — and a model told
+ * otherwise spends the run trying writes that are refused.
+ */
+export const promptFolderAccess = (
+  origins: RunOrigins
+): 'read-only' | 'editable' =>
+  origins.access === 'edit-folder' && origins.destination === 'repository'
+    ? 'editable'
+    : 'read-only'
+
+/**
+ * What this run will not be able to tell the user afterwards.
+ *
+ * Surfaced in readiness *before* the run rather than only in the summary
+ * after it: someone deciding whether to let an agent loose in a folder should
+ * know in advance that nothing it finds will be attributable.
+ */
+export type { EvidenceLimit } from '@/lib/coworkReadiness'
+
+export const evidenceLimit = (
+  baseline: GitBaseline | null
+): ReadinessEvidenceLimit => {
+  if (!baseline) return 'not-captured'
+  switch (baseline.state) {
+    case 'clean':
+    case 'dirty':
+      return 'none'
+    default:
+      return baseline.state
+  }
 }
 
 /** The counted shape of a run's changes. Generated, never written by a model. */

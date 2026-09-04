@@ -73,6 +73,14 @@ export function CoworkReadinessCard({
         <Row label={t('common:readiness.writesGo')}>
           {t(`common:readiness.destination.${manifest.writeDestination}`)}
         </Row>
+        {manifest.evidence ? (
+          // Said before the run, not only in the summary after it: whether
+          // anything this agent does will be attributable is part of deciding
+          // whether to let it work here at all.
+          <Row label={t('common:readiness.evidence.label')}>
+            {t(`common:readiness.evidence.${manifest.evidence}`)}
+          </Row>
+        ) : null}
         <Row label={t('common:readiness.instructions')}>
           {manifest.instructions.length === 0 ? (
             t('common:readiness.noInstructions')

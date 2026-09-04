@@ -986,7 +986,15 @@
     "context": "Context",
     "tokens": "{{count}} tokens",
     "tokensPartial": "at least {{count}} tokens; some parts could not be measured",
-    "builtinsUnknown": "Tool set not built yet"
+    "builtinsUnknown": "Tool set not built yet",
+    "evidence": {
+      "label": "Change attribution",
+      "none": "Jan can tell its own changes from existing ones.",
+      "non-git": "Not a Git repository: Jan cannot tell its changes from existing ones.",
+      "git-unavailable": "Git could not be read: Jan cannot tell its changes from existing ones.",
+      "incomplete": "The starting state was not fully captured: attribution will be incomplete.",
+      "not-captured": "No starting state recorded yet."
+    }
   },
   "coworkAccess": {
     "label": "Where changes go",

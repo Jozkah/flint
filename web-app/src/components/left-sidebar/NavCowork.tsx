@@ -76,6 +76,10 @@ const SessionItem = memo(function SessionItem({
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
+  // Subscribed, not read once: the ledger is written when a run ends, and a
+  // snapshot taken at render time would leave the dialog describing the run
+  // before last.
+  const ledger = useCoworkOrigins((state) => state.bySession[session.id])
   const activity = useFileActivity((s) => s.byConversation[session.id])
 
   /**
@@ -147,6 +151,9 @@ const SessionItem = memo(function SessionItem({
         open={activityOpen}
         onOpenChange={setActivityOpen}
         events={activity ?? []}
+        // The same ledger the Changes panel and the completion summary read,
+        // so one file cannot be described three different ways.
+        origins={ledger?.entries}
         title={session.title}
         // The rows were inert without these: the dialog disables a row it
         // cannot act on, so every row was disabled. Selecting the session

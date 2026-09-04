@@ -81,11 +81,13 @@ import {
   baselineFromStatus,
   buildOriginLedger,
   destinationOfOrigin,
+  evidenceLimit,
+  promptFolderAccess,
   summarizeRun,
   unavailableBaseline,
-  type ChangeDestination,
   type GitBaseline,
   type JanFileCall,
+  type RunOrigins,
 } from '@/lib/coworkOrigins'
 import {
   authorityMayChange,
@@ -300,6 +302,17 @@ function CoworkPage() {
     grant: liveGrant ?? null,
     binding: { sessionId: session?.id ?? null, folder },
   })
+  /**
+   * This session's origin ledger, if a run has produced one.
+   *
+   * Keyed by session, so switching sessions shows that session's record and
+   * never the last run's. Withdrawing access does not touch it: a grant handed
+   * back changes what Jan may do next, not what already happened.
+   */
+  const runOrigins = useCoworkOrigins((s) =>
+    session?.id ? (s.bySession[session.id] ?? null) : null
+  )
+
   const readiness = useMemo<ReadinessManifest>(() => {
     const names = availableSkills.map((skill) => skill.name)
     const requested = parseSkillRequests(composerPrompt, names)
@@ -326,6 +339,9 @@ function CoworkPage() {
           ? Boolean(selectedModel.capabilities?.includes('tools'))
           : null,
       },
+      // From the run's own snapshot when there is one, so the card and the
+      // summary cannot disagree about whether anything is attributable.
+      evidence: evidenceLimit(runOrigins?.context.baseline ?? null),
       // Nothing here is measured yet. A plausible number would be worse than
       // an honest blank to someone deciding whether to trust the run.
       context: {
@@ -346,6 +362,7 @@ function CoworkPage() {
     mode,
     instructionFiles,
     effective.destination,
+    runOrigins?.context.baseline,
     advertisedToolCount,
     availableSkills,
     enabledSkills,
@@ -446,12 +463,11 @@ function CoworkPage() {
   const recordOrigins = useCallback(
     async (input: {
       sessionId: string
-      baseline: GitBaseline | null
-      binding: Binding
-      destination: ChangeDestination
+      origins: RunOrigins
       events: readonly FileActivityEvent[]
     }) => {
-      const { sessionId, baseline, binding, destination, events } = input
+      const { sessionId, origins, events } = input
+      const { baseline, binding, destination } = origins
 
       const janCalls: JanFileCall[] = events
         .filter((event) => isChange(event.operation) && event.ok)
@@ -744,17 +760,6 @@ function CoworkPage() {
         liveSubagents ?? session?.subagents ?? []
       ),
     [displayedTurns, liveSubagents, session?.subagents]
-  )
-
-  /**
-   * This session's origin ledger, if a run has produced one.
-   *
-   * Keyed by session, so switching sessions shows that session's record and
-   * never the last run's. Withdrawing access does not touch it: a grant handed
-   * back changes what Jan may do next, not what already happened.
-   */
-  const runOrigins = useCoworkOrigins((s) =>
-    session?.id ? (s.bySession[session.id] ?? null) : null
   )
 
   // Read-only working-tree status for the attached repo, loaded lazily and kept
@@ -1154,6 +1159,22 @@ function CoworkPage() {
       runBaseline = acceptBaseline(captured, bindingRef.current)
     }
 
+    /**
+     * One snapshot, read by every surface that describes this run.
+     *
+     * Published before the prompt is built, because the prompt is the first
+     * consumer: what the model is told about the folder has to come from the
+     * same frozen answer the gate, readiness and the ledger use, or the run
+     * describes itself wrongly from its first token.
+     */
+    const origins: RunOrigins = {
+      binding: baselineBinding,
+      access: effective.access,
+      destination: runAuthority.destination,
+      baseline: runBaseline,
+    }
+    useCoworkOrigins.getState().begin(sid, origins)
+
     // Warm the sandbox probe: the transport's prompt and tool set read it
     // synchronously via sandboxEnforces().
     await getSandboxStatus()
@@ -1183,10 +1204,9 @@ function CoworkPage() {
       webSearch,
       workspacePath,
       readOnlyFolder: current?.folder ?? null,
-      // The run's own answer, not the stored preference: a session that
-      // remembers editing but holds no live grant is told read-only, which is
-      // what the gate will do.
-      folderAccess: effective.access === 'edit-folder' ? 'editable' : 'read-only',
+      // Read from the run's frozen snapshot, not re-derived here: the model
+      // must be told exactly what the gate and the ledger will act on.
+      folderAccess: promptFolderAccess(origins),
       gitBranch,
       projectInstructions,
     })
@@ -1637,13 +1657,7 @@ function CoworkPage() {
       useFileActivity.getState().record(sid, fileEvents)
       // The run's own account of what changed, generated from evidence rather
       // than written by the model that did the changing.
-      void recordOrigins({
-        sessionId: sid,
-        baseline: runBaseline,
-        binding: baselineBinding,
-        destination: runAuthority.destination,
-        events: fileEvents,
-      })
+      void recordOrigins({ sessionId: sid, origins, events: fileEvents })
       liveTurnsRef.current = []
       setLiveTurns([])
       setRunning(false)
@@ -1829,7 +1843,7 @@ function CoworkPage() {
                       />
                     </div>
                   )}
-                  {!running && runOrigins && (
+                  {!running && runOrigins?.summary && (
                     // After the transcript, never inside it: the model's own
                     // account of the run and Jan's record of it must not read
                     // as one voice.

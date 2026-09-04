@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { TONE_CLASSES } from '@/lib/semanticTone'
+import type { OriginEntry } from '@/lib/coworkOrigins'
 import {
   countsByFilter,
   groupByFile,
@@ -62,11 +63,14 @@ const VIRTUALIZE_ABOVE = 50
 
 function ActivityRow({
   group,
+  origin,
   t,
   onOpenFile,
   onOpenDiff,
 }: {
   group: FileActivityGroup
+  /** What the ledger knows about this file, when it knows anything. */
+  origin?: OriginEntry
   t: (key: string, opts?: Record<string, unknown>) => string
   onOpenFile?: (path: string) => void
   onOpenDiff?: (path: string) => void
@@ -115,6 +119,19 @@ function ActivityRow({
             {' \u00b7 '}
             {t(`common:fileActivity.origin.${group.origin}`)}
           </span>
+          {origin ? (
+            // What is actually known, from the run's ledger. A row with no
+            // entry says nothing rather than being assumed to be Jan's.
+            <span className="block">
+              {t(
+                `common:coworkOrigins.row.${
+                  origin.evidence === 'jan-write' && origin.alsoPreExisting
+                    ? 'jan-write-over'
+                    : origin.evidence
+                }`
+              )}
+            </span>
+          ) : null}
         </span>
       </button>
     </div>
@@ -131,6 +148,14 @@ type Props = {
   onOpenFile?: (path: string) => void
   /** Focus a changed file's diff. Absent where there is no diff rail. */
   onOpenDiff?: (path: string) => void
+  /**
+   * The run's origin ledger, when one exists.
+   *
+   * Activity says what Jan *called*; the ledger says what is known about the
+   * result. Without it a failed write and a write someone else made look the
+   * same as Jan's own successful one.
+   */
+  origins?: readonly OriginEntry[]
 }
 
 /**
@@ -148,12 +173,17 @@ export function FileActivityDialog({
   title,
   onOpenFile,
   onOpenDiff,
+  origins,
 }: Props) {
   const { t } = useTranslation()
   const [filter, setFilter] = useState<FileActivityFilter>('all')
   const [search, setSearch] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
+  const originByPath = useMemo(
+    () => new Map((origins ?? []).map((one) => [one.path, one])),
+    [origins]
+  )
   const counts = useMemo(() => countsByFilter(events), [events])
   const groups = useMemo(
     () => groupByFile(events, { filter, search }),
@@ -240,6 +270,7 @@ export function FileActivityDialog({
                 >
                   <ActivityRow
                     group={groups[row.index]}
+                    origin={originByPath.get(groups[row.index].path)}
                     t={t}
                     onOpenFile={onOpenFile}
                     onOpenDiff={onOpenDiff}
@@ -254,6 +285,7 @@ export function FileActivityDialog({
               <ActivityRow
                 key={group.path}
                 group={group}
+                origin={originByPath.get(group.path)}
                 t={t}
                 onOpenFile={onOpenFile}
                 onOpenDiff={onOpenDiff}

@@ -504,3 +504,46 @@ describe('external files', () => {
     expect(twice.activeTabId).toBe(tabId(tab))
   })
 })
+
+/**
+ * A tab's origin is recorded when it is opened, and never recomputed.
+ *
+ * The failure this prevents: deriving origin from the path at render time.
+ * Withdrawing direct-edit access, or attaching a different folder, would then
+ * silently relabel tabs that are already open — a sandbox file would start
+ * claiming to be a repository file, or a repository file would go external
+ * while its bytes stayed on screen. What a tab is was settled when it opened.
+ */
+describe('a tab’s recorded origin', () => {
+  it('is fixed at open time, not derived from the path', () => {
+    // Same path, three origins. Nothing about the text decides which.
+    const project = projectTab('src/a.ts', 'repo-key')
+    const sandbox = sandboxTab('src/a.ts', 'session-a')
+    const external = externalTab('src/a.ts', 'session-a')
+
+    expect([project.origin.kind, sandbox.origin.kind, external.origin.kind]).toEqual([
+      'project',
+      'sandbox',
+      'external',
+    ])
+    expect(new Set([tabId(project), tabId(sandbox), tabId(external)]).size).toBe(3)
+  })
+
+  // Access is a property of the run, not of a tab that is already open.
+  it('does not change when the session’s access does', () => {
+    const before = projectTab('src/a.ts', 'repo-key')
+    // Nothing in the tab model takes access, so revoking it cannot reach here.
+    const after = projectTab('src/a.ts', 'repo-key')
+
+    expect(after).toEqual(before)
+    expect(isWritableOrigin(after.origin)).toBe(isWritableOrigin(before.origin))
+  })
+
+  it('survives being restored under the same identity', () => {
+    const tab = sandboxTab('out/report.md', 'session-a')
+    const restored = JSON.parse(JSON.stringify(tab))
+
+    expect(tabId(restored)).toBe(tabId(tab))
+    expect(restored.origin).toEqual(tab.origin)
+  })
+})

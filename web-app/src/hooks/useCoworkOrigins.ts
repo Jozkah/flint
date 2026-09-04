@@ -1,5 +1,9 @@
 import { create } from 'zustand'
-import type { CompletionSummary, OriginEntry } from '@/lib/coworkOrigins'
+import type {
+  CompletionSummary,
+  OriginEntry,
+  RunOrigins,
+} from '@/lib/coworkOrigins'
 
 /**
  * The last run's origin ledger, per session.
@@ -17,23 +21,52 @@ import type { CompletionSummary, OriginEntry } from '@/lib/coworkOrigins'
  * happened, so nothing here is rewritten when a grant is handed back.
  */
 export type SessionOrigins = {
+  /**
+   * Where this run's changes go, frozen when it started.
+   *
+   * Written before the first tool call rather than after the run, because the
+   * surfaces that need it most — the prompt and readiness — are asked during
+   * the run, not once it is over.
+   */
+  context: RunOrigins
+  /** Empty until the run ends: nothing is known about a run still going. */
   entries: OriginEntry[]
-  summary: CompletionSummary
-  /** When the run this describes finished. */
-  at: number
+  summary: CompletionSummary | null
+  /** When the run this describes finished, or null while it is running. */
+  at: number | null
 }
+
+const EMPTY_LEDGER = { entries: [], summary: null, at: null }
 
 type OriginsState = {
   bySession: Record<string, SessionOrigins>
-  record: (sessionId: string, origins: SessionOrigins) => void
+  /** Start a run: publish its frozen context, and clear the last run's ledger. */
+  begin: (sessionId: string, context: RunOrigins) => void
+  /** Finish a run: attach what the evidence showed. */
+  record: (
+    sessionId: string,
+    ledger: { entries: OriginEntry[]; summary: CompletionSummary; at: number }
+  ) => void
   forSession: (sessionId: string | null | undefined) => SessionOrigins | null
   forget: (sessionId: string) => void
 }
 
 export const useCoworkOrigins = create<OriginsState>()((set, get) => ({
   bySession: {},
-  record: (sessionId, origins) =>
-    set((s) => ({ bySession: { ...s.bySession, [sessionId]: origins } })),
+  begin: (sessionId, context) =>
+    set((s) => ({
+      bySession: { ...s.bySession, [sessionId]: { context, ...EMPTY_LEDGER } },
+    })),
+  record: (sessionId, ledger) =>
+    set((s) => {
+      const existing = s.bySession[sessionId]
+      // A ledger with no context is a ledger for a run nobody started. It is
+      // dropped rather than stored under a context invented here.
+      if (!existing) return s
+      return {
+        bySession: { ...s.bySession, [sessionId]: { ...existing, ...ledger } },
+      }
+    }),
   forSession: (sessionId) =>
     sessionId ? (get().bySession[sessionId] ?? null) : null,
   forget: (sessionId) =>
