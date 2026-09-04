@@ -145,6 +145,15 @@ import { CoworkRunSummary } from '@/containers/CoworkRunSummary'
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskCard } from '@/containers/CoworkAskCard'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
+import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
+import { useClaudeCompat } from '@/hooks/useClaudeCompat'
+import { useCompatManifest } from '@/hooks/useCompatManifest'
+import {
+  compatInstructionBlocks,
+  mergeSkillRegistry,
+  manifestMatches as compatMatches,
+  emptyManifest as emptyCompatManifest,
+} from '@/lib/claudeCompat'
 import { effectiveEnabled, useSkills } from '@/hooks/useSkills'
 import { accessOf, effectiveAccess } from '@/lib/coworkAccess'
 import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
@@ -273,6 +282,14 @@ function CoworkPage() {
   const [advertisedToolCount, setAdvertisedToolCount] = useState<number | null>(
     null
   )
+  /**
+   * The names, not just the count.
+   *
+   * An imported agent's requested tools are intersected against these, so
+   * whether a definition is usable can be answered before it is launched
+   * rather than discovered when a call is refused mid-run.
+   */
+  const [advertisedToolNames, setAdvertisedToolNames] = useState<string[]>([])
 
   const access = accessOf(session ?? {})
   // Asked of the backend rather than assumed here: whether a folder can be
@@ -313,9 +330,35 @@ function CoworkPage() {
     session?.id ? (s.bySession[session.id] ?? null) : null
   )
 
+  /**
+   * This folder's Claude configuration, resolved for the binding on screen.
+   *
+   * Readiness shows it and the run freezes it; nothing scans for itself. Three
+   * scans at three moments is three different answers to "what is in force",
+   * and the user is shown one of them while another is used.
+   */
+  const { manifest: compat } = useCompatManifest({
+    binding: { sessionId: session?.id ?? null, folder },
+    enabledSkills: new Set(
+      effectiveEnabled(enabledSkills, availableSkills.map((s) => s.name))
+    ),
+    availableTools: advertisedToolNames,
+  })
+
   const readiness = useMemo<ReadinessManifest>(() => {
-    const names = availableSkills.map((skill) => skill.name)
-    const requested = parseSkillRequests(composerPrompt, names)
+    const registry = mergeSkillRegistry(compat, {
+      available: availableSkills.map((skill) => ({ name: skill.name })),
+      enabled: new Set(
+        effectiveEnabled(
+          enabledSkills,
+          availableSkills.map((skill) => skill.name)
+        )
+      ),
+    })
+    const requested = parseSkillRequests(
+      composerPrompt,
+      registry.available.map((skill) => skill.name)
+    )
     return {
       binding: { sessionId: session?.id ?? null, folder },
       folder,
@@ -326,10 +369,9 @@ function CoworkPage() {
       // sandbox, and the card has to say so.
       writeDestination: effective.destination,
       instructions: instructionFiles,
-      skills: resolveSkills(requested, {
-        available: availableSkills.map((skill) => ({ name: skill.name })),
-        enabled: new Set(effectiveEnabled(enabledSkills, names)),
-      }),
+      // The same merged registry the run resolves against, so the card cannot
+      // call a skill available that the run will report missing.
+      skills: resolveSkills(requested, registry),
       // Null until a run has built its tool set: before that nothing knows
       // the number, and stating one would be inventing it.
       tools: { builtins: advertisedToolCount, mcpServers: [] },
@@ -362,6 +404,7 @@ function CoworkPage() {
     mode,
     instructionFiles,
     effective.destination,
+    compat,
     runOrigins?.context.baseline,
     advertisedToolCount,
     availableSkills,
@@ -1066,14 +1109,23 @@ function CoworkPage() {
      * null) keeps the previous turn's answer rather than deciding that the
      * request was withdrawn because there is no new message to find it in.
      */
-    const skillNames = availableSkills.map((skill) => skill.name)
+    // Jan's own skills and this folder's compatible ones, resolved as one
+    // registry: a request names a skill, not a source, and a name claimed by
+    // both lands as ambiguous rather than one silently winning.
+    const runRegistry = mergeSkillRegistry(compat, {
+      available: availableSkills.map((skill) => ({ name: skill.name })),
+      enabled: new Set(
+        effectiveEnabled(
+          enabledSkills,
+          availableSkills.map((skill) => skill.name)
+        )
+      ),
+    })
+    const skillNames = runRegistry.available.map((skill) => skill.name)
     const runSkills =
       text == null
         ? runSkillsRef.current
-        : resolveSkills(parseSkillRequests(text, skillNames), {
-            available: availableSkills.map((skill) => ({ name: skill.name })),
-            enabled: new Set(effectiveEnabled(enabledSkills, skillNames)),
-          })
+        : resolveSkills(parseSkillRequests(text, skillNames), runRegistry)
     runSkillsRef.current = runSkills
     if (!text && !(current?.messages?.length ?? 0)) return
     if (!selectedModel?.id) {
@@ -1175,6 +1227,19 @@ function CoworkPage() {
     }
     useCoworkOrigins.getState().begin(sid, origins)
 
+    /**
+     * The compatibility manifest this run carries, frozen with everything
+     * else.
+     *
+     * Discarded outright if it was resolved for a different binding: a scan of
+     * the previous folder must not activate that folder's instructions against
+     * this one. Configuration edited while the run is going applies to the
+     * next run, not this one.
+     */
+    const runCompat = compatMatches(compat, baselineBinding)
+      ? compat
+      : emptyCompatManifest(baselineBinding)
+
     // Warm the sandbox probe: the transport's prompt and tool set read it
     // synchronously via sandboxEnforces().
     await getSandboxStatus()
@@ -1209,11 +1274,17 @@ function CoworkPage() {
       folderAccess: promptFolderAccess(origins),
       gitBranch,
       projectInstructions,
+      // Only what the resolver made active: a file that is present but not
+      // switched on, oversized, or pointing outside the folder contributes
+      // nothing here.
+      compatInstructions: compatInstructionBlocks(runCompat),
     })
     await transport.refreshTools()
     // Now the count is a fact rather than a guess, so the readiness card can
     // stop saying the tool set has not been built.
-    setAdvertisedToolCount(Object.keys(transport.advertisedTools).length)
+    const advertised = Object.keys(transport.advertisedTools)
+    setAdvertisedToolCount(advertised.length)
+    setAdvertisedToolNames(advertised)
 
     const controller = new AbortController()
     abortRef.current = controller
@@ -1458,6 +1529,12 @@ function CoworkPage() {
                     workspacePath,
                     readOnlyFolder: current?.folder ?? null,
                     bashAvailable: sandboxEnforces(),
+                    // The parent's frozen answers, handed down unchanged: a
+                    // child never resolves its own access or its own
+                    // instructions.
+                    folderAccess: promptFolderAccess(origins),
+                    projectInstructions,
+                    compatInstructions: compatInstructionBlocks(runCompat),
                   },
                   signal: childAbort.signal,
                   sessionTokens: 0,
@@ -1907,6 +1984,19 @@ function CoworkPage() {
               {folder && (session?.turns.length ?? 0) === 0 && (
                 <div className="px-1 pb-2">
                   <CoworkReadinessCard manifest={readiness} />
+                  <CoworkCompatSection
+                    manifest={compat}
+                    hasFolder={Boolean(folder)}
+                    onToggle={(on) =>
+                      folder && useClaudeCompat.getState().setEnabled(folder, on)
+                    }
+                    onMcpConsent={(server, allowed) =>
+                      folder &&
+                      useClaudeCompat
+                        .getState()
+                        .setMcpConsent(folder, server, allowed)
+                    }
+                  />
                 </div>
               )}
               <ChatInput

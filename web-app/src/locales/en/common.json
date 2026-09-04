@@ -1093,5 +1093,45 @@
       "observed-in-run": "Appeared during this run",
       "no-evidence": "No evidence either way"
     }
+  },
+  "claudeCompat": {
+    "title": "Claude Code compatibility",
+    "subtitle": "Jan reads the parts of this folder’s Claude configuration it can reproduce. It never runs commands, hooks or plugins.",
+    "enable": "Use this folder’s Claude configuration",
+    "enabled": "On",
+    "disabledAll": "Off",
+    "needsFolder": "Attach a folder first",
+    "nothingFound": "No Claude configuration found in this folder.",
+    "grantsNothing": "Turning this on does not grant write access or change where changes go.",
+    "type": {
+      "instructions": "Instructions",
+      "skill": "Skill",
+      "agent": "Agent",
+      "mcp": "MCP server",
+      "command": "Command",
+      "hook": "Hook",
+      "plugin": "Plugin"
+    },
+    "state": {
+      "active": "In force",
+      "available": "Available, not switched on",
+      "disabled": "Switched off",
+      "malformed": "Could not be parsed",
+      "unreadable": "Could not be read",
+      "oversized": "Too large to read",
+      "duplicate": "Duplicate name",
+      "path-escape": "Points outside this folder",
+      "unsupported": "Not supported",
+      "missing-dependency": "Needs something not available here",
+      "consent-required": "Waiting for your approval",
+      "init-failed": "Did not start",
+      "unsupported-confinement": "Refused: cannot be confined on this platform"
+    },
+    "precedence": "Instruction precedence",
+    "mcpAllow": "Allow",
+    "mcpWithdraw": "Withdraw",
+    "mcpEnv": "Environment variables requested",
+    "mcpNoEnv": "No environment variables requested",
+    "inertNote": "Detected and never executed."
   }
 }

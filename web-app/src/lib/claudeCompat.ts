@@ -731,6 +731,38 @@ export const activeComponents = (
     (one) => one.state === 'active' && (!type || one.type === type)
   )
 
+/**
+ * Fold compatibility skills into the registry a run resolves requests against.
+ *
+ * Merged rather than kept in a second list, so a request for a skill resolves
+ * once against everything that exists. A Claude-compatible skill sharing a
+ * name with a Jan-native one lands as `ambiguous` — which blocks mutation and
+ * shows the user both — instead of one silently shadowing the other and the
+ * run following instructions nobody chose.
+ */
+export function mergeSkillRegistry(
+  manifest: CompatibilityManifest,
+  registry: { available: { name: string }[]; enabled: ReadonlySet<string> }
+): { available: { name: string }[]; enabled: ReadonlySet<string> } {
+  const skills = manifest.components.filter((one) => one.type === 'skill')
+  // A skill Jan refused — escaping, malformed, duplicate — is not offered as
+  // available: a request for it must resolve to `missing`, not to something
+  // that then fails to load.
+  const usable = skills.filter(
+    (one) => one.state === 'active' || one.state === 'disabled'
+  )
+  return {
+    available: [
+      ...registry.available,
+      ...usable.map((one) => ({ name: one.name })),
+    ],
+    enabled: new Set([
+      ...registry.enabled,
+      ...skills.filter((one) => one.state === 'active').map((one) => one.name),
+    ]),
+  }
+}
+
 /** Compatibility instruction text to put in front of the model, in order. */
 export function compatInstructionBlocks(
   manifest: CompatibilityManifest

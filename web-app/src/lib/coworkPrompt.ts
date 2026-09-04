@@ -77,6 +77,17 @@ export type CoworkPromptOptions = {
    * only what a user wrote for Jan is treated as authoritative.
    */
   projectInstructions?: string | null
+  /**
+   * Instructions from another harness's file, once the user has switched
+   * compatibility on for this folder.
+   *
+   * Wrapped and labelled with the file they came from, and ranked below
+   * `JAN.md`: a user's own instructions for Jan outrank instructions written
+   * for something else. Neither outranks this prompt — no instruction file
+   * moves the repository, grants a tool, or changes where changes go, however
+   * it is phrased.
+   */
+  compatInstructions?: readonly { name: string; content: string }[]
 }
 
 /**
@@ -89,18 +100,32 @@ export type CoworkPromptOptions = {
  * refuses to do. A monorepo therefore needs its instructions at the folder
  * that was attached.
  */
-function instructionsBlock(content: string): string {
-  return [
-    '<project_context>',
-    '',
-    'Project-specific instructions and guidelines:',
-    '',
-    '<project_instructions path="JAN.md">',
-    content.trim(),
-    '</project_instructions>',
-    '',
-    '</project_context>',
-  ].join('\n')
+function instructionsBlock(
+  content: string | null,
+  compat: readonly { name: string; content: string }[] = []
+): string {
+  const parts: string[] = ['<project_context>', '']
+  parts.push('Project-specific instructions and guidelines:', '')
+  if (content) {
+    parts.push(
+      '<project_instructions path="JAN.md">',
+      content.trim(),
+      '</project_instructions>',
+      ''
+    )
+  }
+  for (const one of compat) {
+    // Named by its own file and marked as lower precedence in the text, so the
+    // model can see which it is following where the two disagree.
+    parts.push(
+      `<project_instructions path="${one.name}" precedence="below JAN.md">`,
+      one.content.trim(),
+      '</project_instructions>',
+      ''
+    )
+  }
+  parts.push('</project_context>')
+  return parts.join('\n')
 }
 
 /** Marker text matches chat's, so the same renderer turns it into source chips. */
@@ -189,8 +214,13 @@ export function buildCoworkSystemPrompt(opts: CoworkPromptOptions): string {
   if (opts.planMode) blocks.push(PLAN_ADDENDUM)
   // Last, so the project's own instructions are the final word the model
   // reads before the conversation starts.
-  if (opts.projectInstructions?.trim()) {
-    blocks.push(instructionsBlock(opts.projectInstructions))
+  const compat = (opts.compatInstructions ?? []).filter((one) =>
+    one.content.trim()
+  )
+  if (opts.projectInstructions?.trim() || compat.length > 0) {
+    blocks.push(
+      instructionsBlock(opts.projectInstructions ?? null, compat)
+    )
   }
   return blocks.join('\n\n')
 }
@@ -220,5 +250,18 @@ export function buildSubagentSystemPrompt(
       'subagents of your own. Your final message is the whole answer returned to',
       'the agent that called you, so make it self-contained.',
     ].join('\n'),
+    // The parent's project instructions, handed down rather than re-resolved.
+    // A child following different rules from the agent that dispatched it, in
+    // the same repository and the same run, is the inconsistency this exists
+    // to prevent — and the user would see only the parent's set in readiness.
+    ...(opts.projectInstructions?.trim() ||
+    (opts.compatInstructions ?? []).some((one) => one.content.trim())
+      ? [
+          instructionsBlock(
+            opts.projectInstructions ?? null,
+            (opts.compatInstructions ?? []).filter((one) => one.content.trim())
+          ),
+        ]
+      : []),
   ].join('\n\n')
 }

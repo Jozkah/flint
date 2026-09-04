@@ -23,6 +23,13 @@ export type CoworkRunConfig = CoworkToolOptions & {
   gitBranch?: string | null
   /** Verbatim `JAN.md` from the attached folder, when it has one. */
   projectInstructions?: string | null
+  /**
+   * Compatibility instructions the resolver made active for this run.
+   *
+   * Frozen with the run like everything else here: configuration edited while
+   * a run is going applies to the next one.
+   */
+  compatInstructions?: readonly { name: string; content: string }[]
 }
 
 /**
@@ -92,6 +99,7 @@ export class CoworkChatTransport extends CustomChatTransport {
       folderAccess: this.config.folderAccess,
       gitBranch: this.config.gitBranch,
       projectInstructions: this.config.projectInstructions,
+      compatInstructions: this.config.compatInstructions,
       planMode: this.config.planMode,
       bashAvailable: sandboxEnforces(),
       subagentNames: this.config.allowSubagents ? this.config.subagentNames : [],
