@@ -72,6 +72,11 @@ import {
 } from '@/components/ai-elements/conversation'
 import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
 import { CoworkModeSelector } from '@/containers/CoworkModeSelector'
+import { CoworkAccessSelector } from '@/containers/CoworkAccessSelector'
+import {
+  DirectEditConfirmDialog,
+  type DirectEditFacts,
+} from '@/containers/dialogs/DirectEditConfirmDialog'
 import { isReadOnly, modeOf } from '@/lib/coworkMode'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
@@ -200,6 +205,11 @@ function CoworkPage() {
    * left over from another folder or session is recognisable rather than
    * merely stale-looking.
    */
+  const [accessBusy, setAccessBusy] = useState<
+    'authorizing' | 'revoking' | null
+  >(null)
+  const [confirmDirectEdit, setConfirmDirectEdit] = useState(false)
+
   const [running, setRunning] = useState(false)
   const [liveTurns, setLiveTurns] = useState<CoworkTurn[]>([])
   const liveTurnsRef = useRef<CoworkTurn[]>([])
@@ -616,6 +626,77 @@ function CoworkPage() {
   // strictly separate from the sandbox diffs above. The chip's counts combine
   // both sources so it appears whenever either has changes.
   const git = useCoworkGitStatus(folder)
+
+  /**
+   * Ask the backend to authorize this folder, then switch the session.
+   *
+   * In that order, and only in that order: switching first would show
+   * "editable" for however long the round trip takes, which is exactly the
+   * claim-without-authority this model exists to prevent. A refusal leaves the
+   * session where it was.
+   */
+  const authorizeDirectEdit = useCallback(async (): Promise<boolean> => {
+    const sid = session?.id
+    if (!sid || !folder) return false
+    setAccessBusy('authorizing')
+    try {
+      const dataFolder = await serviceHub.app().getJanDataFolder()
+      if (!dataFolder) return false
+      const outcome = await useDirectEditGrants
+        .getState()
+        .authorize(sid, folder, dataFolder)
+      if (!outcome.ok) return false
+      // The grant exists, so the preference is now backed by something.
+      useCoworkSessions.getState().setAccess(sid, 'edit-folder')
+      setConfirmDirectEdit(false)
+      return true
+    } finally {
+      setAccessBusy(null)
+    }
+  }, [session?.id, folder, serviceHub])
+
+  /**
+   * Withdraw first, then downgrade.
+   *
+   * If revocation fails the session is left saying what is true — the backend
+   * may still hold authority — rather than showing read-only over a grant that
+   * is still live.
+   */
+  const returnToReviewOnly = useCallback(async () => {
+    const sid = session?.id
+    if (!sid) return
+    setAccessBusy('revoking')
+    try {
+      const revoked = await useDirectEditGrants.getState().revokeSession(sid)
+      useCoworkSessions.getState().setAccess(sid, 'review-only')
+      if (!revoked) {
+        toast.error(t('common:coworkAccess.confirm.revokeFailed'))
+      }
+    } finally {
+      setAccessBusy(null)
+    }
+  }, [session?.id, t])
+
+  /** What the confirmation states, gathered before the question is asked. */
+  const directEditFacts: DirectEditFacts = {
+    folder: folder ?? '',
+    name: folder?.split(/[\\/]/).pop() ?? '',
+    branch: gitBranch,
+    git: git.error
+      ? 'unknown'
+      : git.status
+        ? git.status.files.length > 0
+          ? 'dirty'
+          : 'clean'
+        : 'not-a-repo',
+    runMode: mode,
+    shellAvailable: sandboxEnforces(),
+    backend: capabilityState.known
+      ? capabilityState.directEdit
+        ? t('common:coworkAccess.confirm.shellYes')
+        : t('common:coworkAccess.unsupportedPlatform')
+      : t('common:coworkAccess.capabilityLoading'),
+  }
   const changeCounts = useMemo(() => {
     const sandboxAdds = fileDiffs.reduce((s, f) => s + f.additions, 0)
     const sandboxDels = fileDiffs.reduce((s, f) => s + f.deletions, 0)
@@ -1554,6 +1635,15 @@ function CoworkPage() {
                           useCoworkSessions.getState().setMode(session.id, next)
                       }}
                     />
+                    <CoworkAccessSelector
+                      effective={effective}
+                      capability={capabilityState}
+                      hasFolder={Boolean(folder)}
+                      // Authority must not move under work already running.
+                      busyReason={running ? 'running' : accessBusy}
+                      onRequestDirectEdit={() => setConfirmDirectEdit(true)}
+                      onReviewOnly={() => void returnToReviewOnly()}
+                    />
                     <CoworkWorkspacePill
                       folder={folder}
                       workspacePath={workspacePath}
@@ -1634,6 +1724,14 @@ function CoworkPage() {
           />
         )}
       </div>
+      {/* Mounted outside the panels so it survives a rail change while the
+          authorization is in flight. */}
+      <DirectEditConfirmDialog
+        open={confirmDirectEdit}
+        facts={directEditFacts}
+        onConfirm={authorizeDirectEdit}
+        onCancel={() => setConfirmDirectEdit(false)}
+      />
     </div>
   )
 }

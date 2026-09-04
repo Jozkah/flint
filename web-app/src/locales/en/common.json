@@ -987,5 +987,69 @@
     "tokens": "{{count}} tokens",
     "tokensPartial": "at least {{count}} tokens; some parts could not be measured",
     "builtinsUnknown": "Tool set not built yet"
+  },
+  "coworkAccess": {
+    "label": "Where changes go",
+    "review-only": {
+      "label": "Review only",
+      "description": "Jan can inspect this folder. Changes are created only in the session sandbox."
+    },
+    "managed-worktree": {
+      "label": "Managed worktree",
+      "description": "Jan works in an isolated Git worktree. Your current checkout is not modified."
+    },
+    "edit-folder": {
+      "label": "Edit this folder",
+      "description": "Jan can modify files in this exact folder."
+    },
+    "notBuiltYet": "Not available yet",
+    "needsFolder": "Attach a folder first",
+    "capabilityLoading": "Checking what this platform can enforce…",
+    "capabilityFailed": "Couldn’t check whether this platform can enforce it",
+    "unsupportedPlatform": "This platform can’t confine changes to one folder",
+    "busy": {
+      "running": "Stop the current run first",
+      "authorizing": "Finishing an authorization…",
+      "revoking": "Withdrawing access…"
+    },
+    "downgrade": {
+      "no-capability": "Editing this folder isn’t available here, so Jan is reading only.",
+      "no-grant": "Editing this folder needs confirming again, so Jan is reading only.",
+      "binding-changed": "The folder changed, so Jan is reading only.",
+      "capability-unknown": "Jan is reading only until it can check what this platform enforces."
+    },
+    "refusal": {
+      "stale-binding": "the attached folder changed",
+      "unresolved-skill": "a requested skill is not in effect",
+      "review-mode": "the run is review-only",
+      "unsupported-access": "this platform cannot enforce the selected access",
+      "no-consent": "editing this folder has not been confirmed"
+    },
+    "confirm": {
+      "title": "Let Jan edit this folder?",
+      "description": "Jan can modify files in this exact folder.",
+      "folder": "Folder",
+      "branch": "Branch",
+      "gitClean": "No uncommitted changes",
+      "gitDirty": "Has uncommitted changes",
+      "gitNone": "Not a Git repository",
+      "gitUnknown": "Git state unavailable",
+      "runMode": "Run mode",
+      "shell": "Shell commands",
+      "shellYes": "run inside this folder",
+      "shellNo": "not available",
+      "backend": "Enforced by",
+      "duration": "This lasts for this app session and this folder only. Reopening Jan asks again.",
+      "existingChanges": "Existing uncommitted changes may not be Jan's. Jan will not commit, stash, reset, or discard them.",
+      "modeReview": "Review first still prevents every change.",
+      "modeAsk": "Ask before changes asks you before each change.",
+      "modeAuto": "Autonomous changes this folder without asking each time.",
+      "cancel": "Cancel",
+      "confirm": "Allow editing",
+      "working": "Authorizing…",
+      "failed": "Couldn’t authorize: {{reason}}",
+      "granted": "Jan can now edit this folder",
+      "revokeFailed": "Access could not be withdrawn. Jan may still be able to edit this folder."
+    }
   }
 }
