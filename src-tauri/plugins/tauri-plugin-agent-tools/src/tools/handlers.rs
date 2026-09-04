@@ -968,6 +968,13 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     if !ctx.read_roots.is_empty() {
         policy = policy.with_read_roots(ctx.read_roots.to_vec());
     }
+    // The same roots the file tools were granted. Refused outright where the
+    // backend cannot confine a shell to them, so `bash` is never the loose end
+    // that makes an access mode untrue: on such a platform the run keeps its
+    // sandbox-only shell and the mode is not offered in the first place.
+    if !ctx.write_roots.is_empty() && jail::supports_write_roots(jail::backend()) {
+        policy = policy.with_write_roots(ctx.write_roots.to_vec());
+    }
     // With the sandbox off the shell is spawned bare, the way the user's own
     // terminal would: no wrapper, no policy, the real `$HOME` and `/tmp`. Only
     // a surface that opted in gets here (the CLI's `--sandbox`/`sandbox`

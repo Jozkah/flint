@@ -1137,16 +1137,37 @@ mod tests {
             err.message
         );
 
-        // `/tmp` is the per-thread scratch: t1's scratch (written by its shell)
-        // is not visible to t2, whose own scratch is empty.
+        // `/tmp` is the per-thread scratch on Linux, where the bash sandbox binds
+        // it. Elsewhere it stays an ordinary host path outside every root this
+        // session may reach. Both are the same property from t2's side — it
+        // cannot read what t1 wrote — but they refuse differently: Linux serves
+        // an empty scratch and reports a missing file, while macOS and Windows
+        // refuse the path outright as a read escape. The assertion is therefore
+        // on the secret never arriving, not on which refusal was used.
         let one_scratch = crate::workspace::ensure_scratch_dir(t1).await.unwrap();
         std::fs::write(one_scratch.join("secret.txt"), b"classified").unwrap();
-        let out = execute_tool(
+        // Which spelling actually probes the isolation differs by platform.
+        // On Linux `/tmp` *is* the per-session scratch, so t2 asking for
+        // `/tmp/secret.txt` asks for its own empty one. Elsewhere there is no
+        // bind, and `/tmp` is refused as an escape whatever it holds — which
+        // would pass whether or not the sessions were isolated. So off Linux
+        // the test names t1's real scratch: correct code refuses it as an
+        // escape, and code that let sessions share a scratch would hand it
+        // over.
+        #[cfg(target_os = "linux")]
+        let target = "/tmp/secret.txt".to_string();
+        #[cfg(not(target_os = "linux"))]
+        let target = one_scratch
+            .join("secret.txt")
+            .to_string_lossy()
+            .into_owned();
+
+        let refusal = match execute_tool(
             df.clone(),
             t2.into(),
             None,
             "read".into(),
-            json!({"path": "/tmp/secret.txt"}),
+            json!({"path": target}),
             None,
             None,
             None,
@@ -1154,11 +1175,20 @@ mod tests {
             None,
         )
         .await
-        .unwrap();
+        {
+            Ok(out) => {
+                assert!(
+                    out.is_error,
+                    "t2 must not read t1's scratch, got: {}",
+                    out.content
+                );
+                out.content
+            }
+            Err(e) => e.message,
+        };
         assert!(
-            out.is_error,
-            "t2 sees an empty scratch, got: {}",
-            out.content
+            !refusal.contains("classified"),
+            "t1's scratch leaked to t2: {refusal}"
         );
         let _ = std::fs::remove_dir_all(&data);
         let _ = crate::workspace::remove_scratch_dir(t1).await;
