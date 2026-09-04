@@ -71,7 +71,9 @@ import {
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
 import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
-import { CoworkPlanToggle } from '@/containers/CoworkPlanToggle'
+import { CoworkModeSelector } from '@/containers/CoworkModeSelector'
+import { isReadOnly, modeOf } from '@/lib/coworkMode'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useFileActivity } from '@/hooks/useFileActivity'
@@ -166,7 +168,7 @@ function CoworkPage() {
     [sessions, currentId]
   )
   const folder = session?.folder ?? null
-  const planMode = session?.planMode ?? false
+  const mode = modeOf(session ?? {})
 
   const [running, setRunning] = useState(false)
   const [liveTurns, setLiveTurns] = useState<CoworkTurn[]>([])
@@ -651,8 +653,11 @@ function CoworkPage() {
     // Read once per run, not subscribed: the advertised set is frozen for the
     // run anyway, so a mid-run flip in Settings would only desync the prompt.
     const webSearch = useWebSearchConfig.getState().webSearchEnabled
+    // Read once, with the session this run is bound to: a mode flipped
+    // mid-run would leave the advertised tools and the dispatcher disagreeing.
+    const runMode = modeOf(current ?? {})
     const transport = new CoworkChatTransport(sid, {
-      planMode: current?.planMode ?? false,
+      planMode: isReadOnly(runMode),
       subagentNames: subagentDefs.map((d) => d.name),
       // Always on at depth 0, even with nothing saved: a one-off subagent with
       // an inline `system_prompt` is first-class, as it is in Rust.
@@ -770,8 +775,15 @@ function CoworkPage() {
             dispatchCoworkTool(call, {
               sessionId: sid,
               readOnlyFolder: current?.folder ?? null,
-              planMode: current?.planMode ?? false,
+              mode: runMode,
               webSearch,
+              // The prompt the chat surface already uses for tool approval,
+              // not a second one: it honours grants the user has already made
+              // and renders in the tool card the call is reported in.
+              onApprove: (callId, toolName) =>
+                useToolApprovalRequests
+                  .getState()
+                  .requestApproval(callId, toolName, sid),
               onTodo: async (input) => {
                 const result = applyTodoOp(
                   useCoworkSessions
@@ -882,8 +894,14 @@ function CoworkPage() {
                     dispatchCoworkTool(call, {
                       sessionId: sid,
                       readOnlyFolder: current?.folder ?? null,
-                      planMode: current?.planMode ?? false,
+                      mode: runMode,
                       webSearch,
+                      // A subagent's mutations are the session's mutations, so
+                      // they go through the same prompt rather than around it.
+                      onApprove: (callId, toolName) =>
+                        useToolApprovalRequests
+                          .getState()
+                          .requestApproval(callId, toolName, sid),
                       onTodo: async () => ({
                         output:
                           'The todo list belongs to the agent that dispatched you.',
@@ -1281,13 +1299,11 @@ function CoworkPage() {
                 tokenSource={tokenSource}
                 surfaceControls={
                   <>
-                    <CoworkPlanToggle
-                      planMode={planMode}
+                    <CoworkModeSelector
+                      mode={mode}
                       onChange={(next) => {
                         if (session?.id)
-                          useCoworkSessions
-                            .getState()
-                            .setPlanMode(session.id, next)
+                          useCoworkSessions.getState().setMode(session.id, next)
                       }}
                     />
                     <CoworkWorkspacePill

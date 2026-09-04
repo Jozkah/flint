@@ -70,8 +70,16 @@ export type CoworkSession = {
   goal?: CoworkGoal
   /** Canonical session todo list, updated by the `todo_write` tool. */
   todos?: TodoList
-  /** Plan mode: the agent reads and proposes, without writing. Absent means off. */
+  /**
+   * @deprecated Superseded by `mode`. Kept so sessions saved before modes
+   * existed keep their meaning; read through `modeOf`, never directly.
+   */
   planMode?: boolean
+  /**
+   * What this session is allowed to do. Absent on sessions from before modes
+   * existed, which `modeOf` reads from `planMode` instead.
+   */
+  mode?: CoworkMode
   /** Code panel state: open tabs, active tab, explorer expansion, word wrap.
    * Absent on sessions from before the code workspace existed. */
   codePanel?: CodePanelState
@@ -90,7 +98,7 @@ type CoworkSessionsState = {
   selectSession: (id: string) => void
   deleteSession: (id: string) => void
   setFolder: (id: string, folder: string | null) => void
-  setPlanMode: (id: string, planMode: boolean) => void
+  setMode: (id: string, mode: CoworkMode) => void
   /** Replace the session's code-panel state (tabs, expansion, word wrap). */
   setCodePanel: (id: string, codePanel: CodePanelState) => void
   setTitle: (id: string, title: string) => void
@@ -121,6 +129,7 @@ type CoworkSessionsState = {
 }
 
 import { decideSessionStart } from '@/lib/coworkSessionStart'
+import { defaultModeFor, type CoworkMode } from '@/lib/coworkMode'
 import { useFileActivity } from '@/hooks/useFileActivity'
 
 const now = () => Date.now()
@@ -187,6 +196,20 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               ? {
                   ...x,
                   folder,
+                  // Attaching a repository to a session that has not run yet
+                  // puts it in Review first: the turn that binds a repository
+                  // must not be the turn that edits it. A mode the user chose,
+                  // or one a legacy session already implies, is left alone —
+                  // and so is detaching, which must not stamp a mode that
+                  // would then suppress this default on the next attach.
+                  mode: folder
+                    ? (x.mode ??
+                      (x.turns.length === 0 &&
+                      x.messages.length === 0 &&
+                      x.planMode === undefined
+                        ? defaultModeFor(folder)
+                        : undefined))
+                    : x.mode,
                   codePanel: pruneTabsForProject(
                     x.codePanel ?? emptyCodePanelState(),
                     projectKeyOf(folder)
@@ -216,10 +239,14 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           sessions: s.sessions.map((x) => (x.id === id ? { ...x, todos } : x)),
         })),
 
-      setPlanMode: (id, planMode) =>
+      setMode: (id, mode) =>
         set((s) => ({
           sessions: s.sessions.map((x) =>
-            x.id === id ? { ...x, planMode, updated: now() } : x
+            // `planMode` is cleared as well, so the legacy field can never
+            // disagree with the explicit choice just made.
+            x.id === id
+              ? { ...x, mode, planMode: undefined, updated: now() }
+              : x
           ),
         })),
 

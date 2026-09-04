@@ -11,6 +11,7 @@ vi.mock('@/lib/webSearchTool', () => ({
 
 import { dispatchCoworkTool } from '../coworkDispatch'
 import type { PendingToolCall } from '../coworkRunner'
+import type { CoworkMode } from '../coworkMode'
 
 const call = (toolName: string, input: unknown = {}): PendingToolCall => ({
   toolCallId: 'c1',
@@ -21,7 +22,7 @@ const call = (toolName: string, input: unknown = {}): PendingToolCall => ({
 const ctx = (over = {}) => ({
   sessionId: 's1',
   readOnlyFolder: null,
-  planMode: false,
+  mode: 'auto' as CoworkMode,
   webSearch: false,
   onTodo: vi.fn(async () => ({ output: 'todo ok' })),
   onAsk: vi.fn(async () => ({ output: 'ask ok' })),
@@ -61,16 +62,79 @@ describe('dispatchCoworkTool', () => {
   // Withholding a tool from the advertised set is not authoritative: a model
   // can still emit a call for one. Without this the run would happily write
   // files in a mode whose entire promise is that it does not.
-  it('refuses a mutating tool in plan mode even though it was never advertised', async () => {
-    const c = ctx({ planMode: true })
+  it('refuses a mutating tool in review mode even though it was never advertised', async () => {
+    const c = ctx({ mode: 'review' })
     const out = await dispatchCoworkTool(call('write', { path: 'a' }), c)
     expect(out.isError).toBe(true)
-    expect(out.output).toMatch(/disabled in plan mode/)
+    expect(out.output).toMatch(/disabled in review mode/)
     expect(executeAgentTool).not.toHaveBeenCalled()
   })
 
-  it('still allows reads in plan mode', async () => {
-    await dispatchCoworkTool(call('read'), ctx({ planMode: true }))
+  it('still allows reads in review mode', async () => {
+    await dispatchCoworkTool(call('read'), ctx({ mode: 'review' }))
+    expect(executeAgentTool).toHaveBeenCalled()
+  })
+
+  it('asks before a mutation, and runs it once allowed', async () => {
+    const onApprove = vi.fn(async () => true)
+    const out = await dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'ask', onApprove })
+    )
+    expect(onApprove).toHaveBeenCalledWith('c1', 'write', { path: 'a' })
+    expect(out.isError).toBeUndefined()
+    expect(executeAgentTool).toHaveBeenCalled()
+  })
+
+  it('does not run a mutation the user refused', async () => {
+    const out = await dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'ask', onApprove: vi.fn(async () => false) })
+    )
+    expect(out.isError).toBe(true)
+    expect(out.output).toMatch(/did not allow/)
+    expect(executeAgentTool).not.toHaveBeenCalled()
+  })
+
+  // The gate failing open would make the mode's promise false, so a caller
+  // that cannot present the prompt refuses instead.
+  it('refuses a mutation when nothing can present the prompt', async () => {
+    const out = await dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'ask', onApprove: undefined })
+    )
+    expect(out.isError).toBe(true)
+    expect(executeAgentTool).not.toHaveBeenCalled()
+  })
+
+  it('treats a thrown prompt as a refusal rather than rejecting', async () => {
+    const out = await dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({
+        mode: 'ask',
+        onApprove: vi.fn(async () => {
+          throw new Error('run aborted')
+        }),
+      })
+    )
+    expect(out.isError).toBe(true)
+    expect(executeAgentTool).not.toHaveBeenCalled()
+  })
+
+  it('does not ask about a read in ask mode', async () => {
+    const onApprove = vi.fn(async () => true)
+    await dispatchCoworkTool(call('read'), ctx({ mode: 'ask', onApprove }))
+    expect(onApprove).not.toHaveBeenCalled()
+    expect(executeAgentTool).toHaveBeenCalled()
+  })
+
+  it('never asks in autonomous mode', async () => {
+    const onApprove = vi.fn(async () => true)
+    await dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'auto', onApprove })
+    )
+    expect(onApprove).not.toHaveBeenCalled()
     expect(executeAgentTool).toHaveBeenCalled()
   })
 

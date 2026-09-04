@@ -921,5 +921,20 @@
   "drop": {
     "openInCode": "Drop to open — read-only",
     "attachToMessage": "Drop to attach to your message"
+  },
+  "coworkMode": {
+    "label": "What Jan may do",
+    "review": {
+      "label": "Review first",
+      "description": "Reads, searches and inspects. Cannot write files or run commands."
+    },
+    "ask": {
+      "label": "Ask before changes",
+      "description": "Works normally, but every change waits for you to allow it."
+    },
+    "auto": {
+      "label": "Autonomous",
+      "description": "Changes files and runs commands without asking."
+    }
   }
 }

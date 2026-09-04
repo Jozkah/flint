@@ -120,12 +120,12 @@ describe('useCoworkSessions', () => {
     expect(s.lastUsage).toBeUndefined()
   })
 
-  it('toggles plan mode and detaches a folder', () => {
+  it('sets a mode and detaches a folder', () => {
     const id = useCoworkSessions.getState().createSession()
-    useCoworkSessions.getState().setPlanMode(id, true)
+    useCoworkSessions.getState().setMode(id, 'review')
     useCoworkSessions.getState().setFolder(id, '/tmp/project')
     let s = useCoworkSessions.getState().sessions.find((x) => x.id === id)!
-    expect(s.planMode).toBe(true)
+    expect(s.mode).toBe('review')
     expect(s.folder).toBe('/tmp/project')
 
     useCoworkSessions.getState().setFolder(id, null)
@@ -180,3 +180,65 @@ describe('useCoworkSessions persist migration', () => {
     expect(out.sessions[0].messages[0].id).toBe('keep')
   })
 })
+
+/**
+ * Attaching a repository is the moment the session gains something it can
+ * damage, so it is the moment the mode has to be decided — not the first time
+ * the user notices a file changed.
+ */
+describe('the mode a repository-bound session starts in', () => {
+  const sessionOf = (id: string) =>
+    useCoworkSessions.getState().sessions.find((x) => x.id === id)!
+
+  it('is review when a repository is attached to a fresh session', () => {
+    const id = useCoworkSessions.getState().createSession()
+    useCoworkSessions.getState().setFolder(id, '/home/dev/project')
+
+    expect(sessionOf(id).mode).toBe('review')
+  })
+
+  it('leaves a session with no repository alone', () => {
+    const id = useCoworkSessions.getState().createSession()
+    useCoworkSessions.getState().setFolder(id, null)
+
+    expect(sessionOf(id).mode).toBeUndefined()
+  })
+
+  it('does not overrule a mode the user already chose', () => {
+    const id = useCoworkSessions.getState().createSession()
+    useCoworkSessions.getState().setMode(id, 'auto')
+    useCoworkSessions.getState().setFolder(id, '/home/dev/project')
+
+    expect(sessionOf(id).mode).toBe('auto')
+  })
+
+  // A session that has already run is not a first turn, and quietly turning it
+  // read-only mid-conversation would strand work in progress.
+  it('does not change a session that has already run', () => {
+    const id = useCoworkSessions.getState().createSession()
+    useCoworkSessions.getState().commitTurns(
+      id,
+      [{ role: 'assistant', content: 'done' } as never],
+      [],
+      []
+    )
+    useCoworkSessions.getState().setFolder(id, '/home/dev/project')
+
+    expect(sessionOf(id).mode).toBeUndefined()
+  })
+
+  it('clears the legacy flag when a mode is chosen, so the two cannot disagree', () => {
+    const id = useCoworkSessions.getState().createSession()
+    useCoworkSessions.setState((s) => ({
+      sessions: s.sessions.map((x) =>
+        x.id === id ? { ...x, planMode: true } : x
+      ),
+    }))
+
+    useCoworkSessions.getState().setMode(id, 'auto')
+
+    expect(sessionOf(id).mode).toBe('auto')
+    expect(sessionOf(id).planMode).toBeUndefined()
+  })
+})
+
