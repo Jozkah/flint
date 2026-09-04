@@ -1055,5 +1055,35 @@
       "granted": "Jan can now edit this folder",
       "revokeFailed": "Access could not be withdrawn. Jan may still be able to edit this folder."
     }
+  },
+  "coworkOrigins": {
+    "title": "What changed",
+    "subtitle": "Recorded by Jan, not written by the model.",
+    "janWrites": {
+      "repository": "Jan changed in this folder",
+      "managed": "Jan changed in the worktree",
+      "sandbox": "Jan changed in the session workspace",
+      "external": "Jan changed outside the attached folder"
+    },
+    "overExisting": "Already had uncommitted changes before this run, so only Jan’s edit is Jan’s:",
+    "preExisting": "Already changed before this run. Not Jan’s:",
+    "observed": "Appeared during this run. Nothing shows Jan caused these:",
+    "unknown": "No Git evidence either way for these:",
+    "baseline": {
+      "clean": "Compared against a clean working tree.",
+      "dirty": "The working tree already had changes when this run started.",
+      "non-git": "This folder is not a Git repository, so nothing could be compared.",
+      "git-unavailable": "Git could not be read, so nothing could be compared.",
+      "incomplete": "The starting state was never fully captured, so nothing could be compared.",
+      "none": "No starting state was recorded, so nothing could be compared."
+    },
+    "nothing": "Jan changed no files in this run.",
+    "row": {
+      "jan-write": "Jan changed this",
+      "jan-write-over": "Jan changed this, over existing changes",
+      "pre-existing": "Already changed before this run",
+      "observed-in-run": "Appeared during this run",
+      "no-evidence": "No evidence either way"
+    }
   }
 }

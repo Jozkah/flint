@@ -74,6 +74,19 @@ import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
 import { CoworkModeSelector } from '@/containers/CoworkModeSelector'
 import { CoworkAccessSelector } from '@/containers/CoworkAccessSelector'
 import { authorizeDirectEdit as runAuthorizeDirectEdit } from '@/lib/coworkDirectEdit'
+import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
+import type { Binding } from '@/lib/coworkReadiness'
+import {
+  acceptBaseline,
+  baselineFromStatus,
+  buildOriginLedger,
+  destinationOfOrigin,
+  summarizeRun,
+  unavailableBaseline,
+  type ChangeDestination,
+  type GitBaseline,
+  type JanFileCall,
+} from '@/lib/coworkOrigins'
 import {
   authorityMayChange,
   useCoworkActiveWork,
@@ -91,8 +104,11 @@ import { useFileActivity } from '@/hooks/useFileActivity'
 import {
   deriveFromSubagent,
   deriveFromTurns,
+  isChange,
+  type FileActivityEvent,
   type FileOrigin,
 } from '@/lib/fileActivity'
+import { loadGitStatus } from '@/lib/coworkGit'
 import { awaitsModel } from '@/lib/agentActivity'
 import { artifactsFromParts } from '@/lib/coworkArtifacts'
 import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
@@ -123,6 +139,7 @@ import { useCoworkGitStatus } from '@/hooks/useCoworkGitStatus'
 import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
 import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
+import { CoworkRunSummary } from '@/containers/CoworkRunSummary'
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskCard } from '@/containers/CoworkAskCard'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
@@ -417,6 +434,68 @@ function CoworkPage() {
     [folder, workspacePath]
   )
 
+  /**
+   * Write the run's origin ledger, from evidence rather than from the model.
+   *
+   * Successful Jan file calls are the only thing claimed outright. Everything
+   * else found differing at the end is either proved pre-existing by the
+   * baseline, reported as merely observed during the run, or — with no usable
+   * baseline — reported as unknown. A file being inside the repository is
+   * never itself treated as evidence of anything.
+   */
+  const recordOrigins = useCallback(
+    async (input: {
+      sessionId: string
+      baseline: GitBaseline | null
+      binding: Binding
+      destination: ChangeDestination
+      events: readonly FileActivityEvent[]
+    }) => {
+      const { sessionId, baseline, binding, destination, events } = input
+
+      const janCalls: JanFileCall[] = events
+        .filter((event) => isChange(event.operation) && event.ok)
+        .map((event) => ({
+          // Compared against Git's repo-relative paths, so a project path has
+          // to be expressed the same way before the two can be matched.
+          path:
+            event.origin === 'project' && binding.folder
+              ? relativeToRoot(binding.folder, event.path)
+              : event.path,
+          destination: destinationOfOrigin(event.origin, destination),
+          ok: true,
+        }))
+
+      let endDifferences: string[] = []
+      if (binding.folder) {
+        try {
+          const status = await loadGitStatus(binding.folder, 'all')
+          endDifferences = (status?.files ?? []).map((file) => file.path)
+        } catch {
+          // Nothing found is nothing claimed: a failed read leaves the ledger
+          // with Jan's own calls and no assertions about anything else.
+        }
+      }
+
+      const entries = buildOriginLedger({
+        baseline,
+        janCalls,
+        endDifferences,
+        destinationOf: (path) =>
+          destinationOfOrigin(
+            originOfPath(binding.folder ? `${binding.folder}/${path}` : path),
+            destination
+          ),
+      })
+      useCoworkOrigins.getState().record(sessionId, {
+        entries,
+        summary: summarizeRun(entries, baseline),
+        at: Date.now(),
+      })
+    },
+    [originOfPath]
+  )
+
   // Source artifacts open as code, not as a plain-text preview dump.
   const showPreview = useCallback(
     (path: string) => {
@@ -665,6 +744,17 @@ function CoworkPage() {
         liveSubagents ?? session?.subagents ?? []
       ),
     [displayedTurns, liveSubagents, session?.subagents]
+  )
+
+  /**
+   * This session's origin ledger, if a run has produced one.
+   *
+   * Keyed by session, so switching sessions shows that session's record and
+   * never the last run's. Withdrawing access does not touch it: a grant handed
+   * back changes what Jan may do next, not what already happened.
+   */
+  const runOrigins = useCoworkOrigins((s) =>
+    session?.id ? (s.bySession[session.id] ?? null) : null
   )
 
   // Read-only working-tree status for the attached repo, loaded lazily and kept
@@ -1032,6 +1122,36 @@ function CoworkPage() {
       } catch {
         // Probe failed; skip the card rather than flash it every run.
       }
+    }
+
+    /**
+     * What the working tree looked like before this run touched anything.
+     *
+     * Taken here, before the first tool call, because it is the only moment
+     * that can answer "was this already different?" — and that question is
+     * what stops the run's own report from handing the user their existing
+     * uncommitted work back as something Jan did. Bound to the session and
+     * folder it describes, and discarded outright if the user has moved on by
+     * the time it arrives.
+     */
+    const baselineBinding: Binding = {
+      sessionId: sid,
+      folder: current?.folder ?? null,
+    }
+    let runBaseline: GitBaseline | null = null
+    if (baselineBinding.folder) {
+      let captured: GitBaseline
+      try {
+        captured = baselineFromStatus(
+          await loadGitStatus(baselineBinding.folder, 'all'),
+          baselineBinding
+        )
+      } catch {
+        // Git failing is not the same as a folder having no Git: with no
+        // before-state, nothing found later can be dated at all.
+        captured = unavailableBaseline(baselineBinding)
+      }
+      runBaseline = acceptBaseline(captured, bindingRef.current)
     }
 
     // Warm the sandbox probe: the transport's prompt and tool set read it
@@ -1508,14 +1628,22 @@ function CoworkPage() {
       // file work, which only exists on the runs themselves.
       const settledAt = Date.now()
       const subagentRuns = useCoworkRun.getState().subagents[sid] ?? []
-      useFileActivity
-        .getState()
-        .record(sid, [
-          ...deriveFromTurns(liveTurnsRef.current, originOfPath, settledAt),
-          ...subagentRuns.flatMap((run) =>
-            deriveFromSubagent(run.name, run.turns, originOfPath, settledAt)
-          ),
-        ])
+      const fileEvents = [
+        ...deriveFromTurns(liveTurnsRef.current, originOfPath, settledAt),
+        ...subagentRuns.flatMap((run) =>
+          deriveFromSubagent(run.name, run.turns, originOfPath, settledAt)
+        ),
+      ]
+      useFileActivity.getState().record(sid, fileEvents)
+      // The run's own account of what changed, generated from evidence rather
+      // than written by the model that did the changing.
+      void recordOrigins({
+        sessionId: sid,
+        baseline: runBaseline,
+        binding: baselineBinding,
+        destination: runAuthority.destination,
+        events: fileEvents,
+      })
       liveTurnsRef.current = []
       setLiveTurns([])
       setRunning(false)
@@ -1701,6 +1829,12 @@ function CoworkPage() {
                       />
                     </div>
                   )}
+                  {!running && runOrigins && (
+                    // After the transcript, never inside it: the model's own
+                    // account of the run and Jan's record of it must not read
+                    // as one voice.
+                    <CoworkRunSummary summary={runOrigins.summary} />
+                  )}
                   {stoppedBy === 'steps' && (
                     <CoworkBudgetNotice
                       kind="steps"
@@ -1830,6 +1964,7 @@ function CoworkPage() {
             onOpenFile={openToolPath}
             folder={folder}
             git={git}
+            origins={runOrigins?.entries}
             onClose={() => setRail(null)}
           />
         )}

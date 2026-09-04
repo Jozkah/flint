@@ -46,6 +46,7 @@ import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { memo, useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useCoworkActiveWork } from '@/hooks/useCoworkActiveWork'
+import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { FileActivityDialog } from '@/containers/dialogs/FileActivityDialog'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
@@ -228,6 +229,9 @@ export function NavCowork() {
       // hold its authority in place. Its work items would otherwise keep a
       // deleted session marked busy for the life of the app session.
       useCoworkActiveWork.getState().clearSession(pendingDelete.id)
+      // The origin ledger is keyed by session too, and describes a run whose
+      // transcript is about to be gone.
+      useCoworkOrigins.getState().forget(pendingDelete.id)
     }
     setPendingDelete(null)
   }

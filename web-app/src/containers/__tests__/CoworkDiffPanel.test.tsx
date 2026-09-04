@@ -231,3 +231,126 @@ describe('CoworkDiffPanel', () => {
     expect(screen.getByText('common:changes.empty')).toBeInTheDocument()
   })
 })
+
+/**
+ * Git says these files differ. It does not say who made them differ.
+ *
+ * Without the ledger every row here reads as the agent's work, which is how a
+ * user's own uncommitted changes get handed back to them as Jan's.
+ */
+describe('what the Changes panel claims about each file', () => {
+  const status: GitStatus = {
+    branch: 'main',
+    repoRoot: '/repo',
+    files: [
+      {
+        path: 'mine.ts',
+        origPath: null,
+        status: 'modified',
+        staged: false,
+        unstaged: true,
+        additions: 1,
+        deletions: 0,
+        binary: false,
+      },
+      {
+        path: 'theirs.ts',
+        origPath: null,
+        status: 'modified',
+        staged: false,
+        unstaged: true,
+        additions: 1,
+        deletions: 0,
+        binary: false,
+      },
+      {
+        path: 'built.js',
+        origPath: null,
+        status: 'untracked',
+        staged: false,
+        unstaged: true,
+        additions: 0,
+        deletions: 0,
+        binary: false,
+      },
+    ],
+    additions: 2,
+    deletions: 0,
+  }
+
+  const show = (origins?: Parameters<typeof CoworkDiffPanel>[0]['origins']) =>
+    render(
+      <CoworkDiffPanel
+        sandboxFiles={[]}
+        folder="/repo"
+        git={gitWith(status)}
+        origins={origins}
+        onClose={vi.fn()}
+      />
+    )
+
+  it('labels each row with what is actually known about it', () => {
+    show([
+      {
+        path: 'mine.ts',
+        destination: 'repository',
+        evidence: 'jan-write',
+        alsoPreExisting: false,
+      },
+      {
+        path: 'theirs.ts',
+        destination: 'repository',
+        evidence: 'pre-existing',
+        alsoPreExisting: false,
+      },
+      {
+        path: 'built.js',
+        destination: 'repository',
+        evidence: 'observed-in-run',
+        alsoPreExisting: false,
+      },
+    ])
+
+    expect(
+      screen.getByText('common:coworkOrigins.row.jan-write')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('common:coworkOrigins.row.pre-existing')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('common:coworkOrigins.row.observed-in-run')
+    ).toBeInTheDocument()
+  })
+
+  it('says so when Jan wrote over changes that were already there', () => {
+    show([
+      {
+        path: 'mine.ts',
+        destination: 'repository',
+        evidence: 'jan-write',
+        alsoPreExisting: true,
+      },
+    ])
+
+    expect(
+      screen.getByText('common:coworkOrigins.row.jan-write-over')
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('common:coworkOrigins.row.jan-write')
+    ).toBeNull()
+  })
+
+  // Before any run there is no ledger. Labelling nothing is right; labelling
+  // everything as Jan's would not be.
+  it('claims nothing about a session that has not run', () => {
+    show()
+
+    expect(screen.getByText('mine.ts')).toBeInTheDocument()
+    expect(
+      screen.queryByText('common:coworkOrigins.row.jan-write')
+    ).toBeNull()
+    expect(
+      screen.queryByText('common:coworkOrigins.row.observed-in-run')
+    ).toBeNull()
+  })
+})
