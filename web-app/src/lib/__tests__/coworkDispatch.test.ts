@@ -42,14 +42,11 @@ describe('dispatchCoworkTool', () => {
   it('routes built-ins to the Rust plugin with the session as workspace key', async () => {
     const c = ctx()
     await dispatchCoworkTool(call('read', { path: 'a' }), c)
-    expect(executeAgentTool).toHaveBeenCalledWith(
-      'read',
-      { path: 'a' },
-      's1',
-      null,
-      'session',
-      undefined
-    )
+    expect(executeAgentTool).toHaveBeenCalledWith('read', { path: 'a' }, 's1', {
+      readOnlyProject: null,
+      scope: 'session',
+      writeGrant: undefined,
+    })
   })
 
   it('routes the client-only tools to their handlers', async () => {
@@ -141,14 +138,11 @@ describe('dispatchCoworkTool', () => {
 
   it('passes the attached folder through', async () => {
     await dispatchCoworkTool(call('grep'), ctx({ readOnlyFolder: '/repo' }))
-    expect(executeAgentTool).toHaveBeenCalledWith(
-      'grep',
-      {},
-      's1',
-      '/repo',
-      'session',
-      undefined
-    )
+    expect(executeAgentTool).toHaveBeenCalledWith('grep', {}, 's1', {
+      readOnlyProject: '/repo',
+      scope: 'session',
+      writeGrant: undefined,
+    })
   })
 
   it('carries the display diff without putting it in the output', async () => {
@@ -282,7 +276,9 @@ describe('a requested skill that is not in play', () => {
  * the failure this whole access model exists to prevent.
  */
 describe('carrying the run’s write grant', () => {
-  const grantArg = () => executeAgentTool.mock.calls.at(-1)?.[5]
+  const grantArg = () =>
+    (executeAgentTool.mock.calls.at(-1)?.[3] as { writeGrant?: unknown })
+      ?.writeGrant
 
   it.each(['write', 'edit', 'bash'])(
     'passes it to the backend for %s',

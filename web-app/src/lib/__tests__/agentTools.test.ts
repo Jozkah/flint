@@ -199,7 +199,9 @@ describe('agentTools', () => {
       diff: null,
     } as never)
     const { executeAgentTool } = await import('../agentTools')
-    await executeAgentTool('read', { path: 'a.txt' }, 'thread-1', '/home/u/repo')
+    await executeAgentTool('read', { path: 'a.txt' }, 'thread-1', {
+      readOnlyProject: '/home/u/repo',
+    })
     expect(executeTool).toHaveBeenLastCalledWith(
       '/data',
       'thread-1',
@@ -343,7 +345,10 @@ describe('what reaches the backend command', () => {
   it('puts the session scope in the scope slot, not the grant slot', async () => {
     const { executeAgentTool } = await import('@/lib/agentTools')
 
-    await executeAgentTool('read', { path: 'a' }, 's1', '/repo', 'session')
+    await executeAgentTool('read', { path: 'a' }, 's1', {
+      readOnlyProject: '/repo',
+      scope: 'session',
+    })
 
     const args = callArgs()
     expect(args.scope).toBe('session')
@@ -353,14 +358,11 @@ describe('what reaches the backend command', () => {
   it('forwards a write grant in its own slot, leaving the scope intact', async () => {
     const { executeAgentTool } = await import('@/lib/agentTools')
 
-    await executeAgentTool(
-      'write',
-      { path: 'a', content: 'x' },
-      's1',
-      '/repo',
-      'session',
-      'grant-1'
-    )
+    await executeAgentTool('write', { path: 'a', content: 'x' }, 's1', {
+      readOnlyProject: '/repo',
+      scope: 'session',
+      writeGrant: 'grant-1',
+    })
 
     const args = callArgs()
     expect(args.writeGrant).toBe('grant-1')
@@ -374,7 +376,11 @@ describe('what reaches the backend command', () => {
   it('sends no grant when the run holds none', async () => {
     const { executeAgentTool } = await import('@/lib/agentTools')
 
-    await executeAgentTool('write', { path: 'a' }, 's1', '/repo', 'session', null)
+    await executeAgentTool('write', { path: 'a' }, 's1', {
+      readOnlyProject: '/repo',
+      scope: 'session',
+      writeGrant: null,
+    })
 
     expect(callArgs().writeGrant).toBeUndefined()
   })

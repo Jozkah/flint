@@ -60,7 +60,9 @@ const ctx = (over: Record<string, unknown> = {}) => ({
 
 /** Every root the dispatcher handed the backend across this test. */
 const rootsUsed = () =>
-  executeAgentTool.mock.calls.map((args) => args[3] as string | null)
+  executeAgentTool.mock.calls.map(
+    (args) => (args[3] as { readOnlyProject?: string | null })?.readOnlyProject ?? null
+  )
 
 const promptFor = (folder: string | null, instructions?: string | null) =>
   buildCoworkSystemPrompt({

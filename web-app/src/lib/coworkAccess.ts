@@ -14,7 +14,7 @@
 
 import type { CoworkMode } from '@/lib/coworkMode'
 import { isReadOnly } from '@/lib/coworkMode'
-import type { WriteDestination } from '@/lib/coworkReadiness'
+import type { Binding, WriteDestination } from '@/lib/coworkReadiness'
 
 export type AccessMode =
   /** Read the repository; everything produced lands in the session sandbox. */

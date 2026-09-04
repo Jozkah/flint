@@ -120,7 +120,9 @@ export function CoworkReadinessCard({
               : t('common:readiness.toolsUnsupported')}
         </Row>
         <Row label={t('common:readiness.tools')}>
-          {t('common:readiness.builtins', { count: manifest.tools.builtins })}
+          {manifest.tools.builtins == null
+            ? t('common:readiness.builtinsUnknown')
+            : t('common:readiness.builtins', { count: manifest.tools.builtins })}
           {manifest.tools.mcpServers.length > 0
             ? ` · ${manifest.tools.mcpServers.join(', ')}`
             : ` · ${t('common:readiness.noMcp')}`}

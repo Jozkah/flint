@@ -138,7 +138,6 @@ import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
 import { parseAskRequest, renderAskResult } from '@/lib/coworkAsk'
 import { getSandboxStatus, sandboxEnforces } from '@/lib/agentTools'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
-import { allowedToolNames } from '@/lib/coworkTools'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
 import {
   abortRun,
@@ -201,6 +200,30 @@ function CoworkPage() {
    * left over from another folder or session is recognisable rather than
    * merely stale-looking.
    */
+  const [running, setRunning] = useState(false)
+  const [liveTurns, setLiveTurns] = useState<CoworkTurn[]>([])
+  const liveTurnsRef = useRef<CoworkTurn[]>([])
+  const [stoppedBy, setStoppedBy] = useState<RunOutcome['stoppedBy'] | null>(
+    null
+  )
+  const [runError, setRunError] = useState<string | undefined>(undefined)
+  const [gitBranch, setGitBranch] = useState<string | null>(null)
+  const [projectInstructions, setProjectInstructions] = useState<string | null>(
+    null
+  )
+  const [instructionFiles, setInstructionFiles] = useState<InstructionFile[]>([])
+  const { skills: availableSkills, enabled: enabledSkills } = useSkills(folder)
+  const composerPrompt = usePrompt((s) => s.prompt)
+  /**
+   * How many tools the last run advertised.
+   *
+   * Set when a run builds its tool set. Null before that, so the readiness
+   * card says the set has not been built rather than reporting a count.
+   */
+  const [advertisedToolCount, setAdvertisedToolCount] = useState<number | null>(
+    null
+  )
+
   const access = accessOf(session ?? {})
   // Asked of the backend rather than assumed here: whether a folder can be
   // edited depends on what the sandbox can confine, which only it knows.
@@ -246,11 +269,9 @@ function CoworkPage() {
         available: availableSkills.map((skill) => ({ name: skill.name })),
         enabled: new Set(effectiveEnabled(enabledSkills, names)),
       }),
-      tools: { builtins: allowedToolNames({
-        planMode: isReadOnly(mode),
-        allowSubagents: true,
-        webSearch: useWebSearchConfig.getState().webSearchEnabled,
-      }).length, mcpServers: [] },
+      // Null until a run has built its tool set: before that nothing knows
+      // the number, and stating one would be inventing it.
+      tools: { builtins: advertisedToolCount, mcpServers: [] },
       model: {
         id: selectedModel?.id ?? null,
         supportsTools: selectedModel
@@ -277,26 +298,13 @@ function CoworkPage() {
     mode,
     instructionFiles,
     effective.destination,
+    advertisedToolCount,
     availableSkills,
     enabledSkills,
     composerPrompt,
     selectedModel,
   ])
 
-  const [running, setRunning] = useState(false)
-  const [liveTurns, setLiveTurns] = useState<CoworkTurn[]>([])
-  const liveTurnsRef = useRef<CoworkTurn[]>([])
-  const [stoppedBy, setStoppedBy] = useState<RunOutcome['stoppedBy'] | null>(
-    null
-  )
-  const [runError, setRunError] = useState<string | undefined>(undefined)
-  const [gitBranch, setGitBranch] = useState<string | null>(null)
-  const [projectInstructions, setProjectInstructions] = useState<string | null>(
-    null
-  )
-  const [instructionFiles, setInstructionFiles] = useState<InstructionFile[]>([])
-  const { skills: availableSkills, enabled: enabledSkills } = useSkills(folder)
-  const composerPrompt = usePrompt((s) => s.prompt)
   // Read inside the instruction effect without making the session a dependency:
   // the effect keys on the folder, and the ref is only used to notice that the
   // session changed underneath a read that was already in flight.
@@ -862,6 +870,9 @@ function CoworkPage() {
       projectInstructions,
     })
     await transport.refreshTools()
+    // Now the count is a fact rather than a guess, so the readiness card can
+    // stop saying the tool set has not been built.
+    setAdvertisedToolCount(Object.keys(transport.advertisedTools).length)
 
     const controller = new AbortController()
     abortRef.current = controller

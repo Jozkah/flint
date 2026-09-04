@@ -245,14 +245,11 @@ export async function dispatchCoworkTool(
     // `'session'`, not the default `'thread'`: a Cowork session id lives in its
     // own namespace, and the thread sweep would otherwise delete this sandbox
     // because no chat thread claims it.
-    const result = await executeAgentTool(
-      toolName,
-      call.input,
-      ctx.sessionId,
-      ctx.readOnlyFolder,
-      'session',
-      ctx.writeGrant
-    )
+    const result = await executeAgentTool(toolName, call.input, ctx.sessionId, {
+      readOnlyProject: ctx.readOnlyFolder,
+      scope: 'session',
+      writeGrant: ctx.writeGrant,
+    })
     if (result.error) return { output: result.error, isError: true }
     return {
       output:

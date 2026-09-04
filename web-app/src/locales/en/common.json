@@ -985,6 +985,7 @@
     "noMcp": "no MCP servers",
     "context": "Context",
     "tokens": "{{count}} tokens",
-    "tokensPartial": "at least {{count}} tokens; some parts could not be measured"
+    "tokensPartial": "at least {{count}} tokens; some parts could not be measured",
+    "builtinsUnknown": "Tool set not built yet"
   }
 }
