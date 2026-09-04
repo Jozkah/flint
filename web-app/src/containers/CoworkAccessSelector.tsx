@@ -17,6 +17,7 @@ import {
   type EffectiveAccess,
 } from '@/lib/coworkAccess'
 import type { CapabilityState } from '@/hooks/useDirectEditGrants'
+import type { WorkKind } from '@/hooks/useCoworkActiveWork'
 
 /**
  * Where this session's changes go — the choice that "Autonomous" used to
@@ -46,7 +47,7 @@ export type AccessSelectorProps = {
    * Work is running, so authority must not change underneath it. The selector
    * says why rather than silently refusing.
    */
-  busyReason?: 'running' | 'jobs' | 'authorizing' | 'revoking' | null
+  busyReason?: WorkKind | null
   /** Opens the confirmation. Selecting is not confirming. */
   onRequestDirectEdit: () => void
   /** Revokes first, then downgrades — the caller owns that ordering. */

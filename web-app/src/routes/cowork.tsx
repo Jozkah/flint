@@ -75,6 +75,11 @@ import { CoworkModeSelector } from '@/containers/CoworkModeSelector'
 import { CoworkAccessSelector } from '@/containers/CoworkAccessSelector'
 import { authorizeDirectEdit as runAuthorizeDirectEdit } from '@/lib/coworkDirectEdit'
 import {
+  authorityMayChange,
+  useCoworkActiveWork,
+  type WorkKind,
+} from '@/hooks/useCoworkActiveWork'
+import {
   DirectEditConfirmDialog,
   type DirectEditFacts,
 } from '@/containers/dialogs/DirectEditConfirmDialog'
@@ -206,9 +211,6 @@ function CoworkPage() {
    * left over from another folder or session is recognisable rather than
    * merely stale-looking.
    */
-  const [accessBusy, setAccessBusy] = useState<
-    'authorizing' | 'revoking' | null
-  >(null)
   const [confirmDirectEdit, setConfirmDirectEdit] = useState(false)
   /**
    * The binding as it stands right now.
@@ -229,6 +231,7 @@ function CoworkPage() {
   }, [session?.id, folder])
 
   const [running, setRunning] = useState(false)
+
   const [liveTurns, setLiveTurns] = useState<CoworkTurn[]>([])
   const liveTurnsRef = useRef<CoworkTurn[]>([])
   const [stoppedBy, setStoppedBy] = useState<RunOutcome['stoppedBy'] | null>(
@@ -586,16 +589,40 @@ function CoworkPage() {
     }
   }, [])
 
+  /**
+   * Refuse a folder change while something is still writing, and say why.
+   *
+   * Asked of the one active-work model rather than of a run flag: a subagent,
+   * a foreground shell and a background job can each still touch the old root
+   * after the turn that started them has ended.
+   */
+  const folderHeld = useCallback(
+    (sessionId: string | null | undefined) => {
+      if (authorityMayChange(sessionId)) return false
+      const kind = useCoworkActiveWork.getState().blockingKind(sessionId)
+      toast.error(t('common:coworkAccess.folderHeld'), {
+        description: kind ? t(`common:coworkAccess.busy.${kind}`) : undefined,
+      })
+      return true
+    },
+    [t]
+  )
+
   const attachFolder = useCallback(async () => {
+    // Checked before the dialog and again after it: the picker is modal to
+    // Jan, but a run started before it opened is still going behind it.
+    if (folderHeld(session?.id)) return
     const picked = await serviceHub.dialog().open({ directory: true })
     if (typeof picked !== 'string') return
+    if (folderHeld(session?.id)) return
     const sid = ensureCurrentSession()
     useCoworkSessions.getState().setFolder(sid, picked)
-  }, [serviceHub])
+  }, [serviceHub, session?.id, folderHeld])
 
   const detachFolder = useCallback(() => {
-    if (session?.id) useCoworkSessions.getState().setFolder(session.id, null)
-  }, [session?.id])
+    if (!session?.id || folderHeld(session.id)) return
+    useCoworkSessions.getState().setFolder(session.id, null)
+  }, [session?.id, folderHeld])
 
   // `liveTurns` holds only the rows this run has produced — `commitTurns`
   // appends them — so the committed transcript has to be shown alongside it or
@@ -655,7 +682,15 @@ function CoworkPage() {
    */
   const authorizeDirectEdit = useCallback(async (): Promise<boolean> => {
     const sid = session?.id ?? null
-    setAccessBusy('authorizing')
+    const done = useCoworkActiveWork.getState().acquire({
+      sessionId: sid ?? 'none',
+      kind: 'authorizing',
+      authority: {
+        folder,
+        access: effective.access,
+        destination: effective.destination,
+      },
+    })
     try {
       const dataFolder = await serviceHub.app().getJanDataFolder()
       const result = await runAuthorizeDirectEdit({
@@ -673,9 +708,15 @@ function CoworkPage() {
       if (result === 'granted') setConfirmDirectEdit(false)
       return result === 'granted'
     } finally {
-      setAccessBusy(null)
+      done()
     }
-  }, [session?.id, folder, serviceHub])
+  }, [
+    session?.id,
+    folder,
+    serviceHub,
+    effective.access,
+    effective.destination,
+  ])
 
   /**
    * Withdraw first, then downgrade.
@@ -687,7 +728,15 @@ function CoworkPage() {
   const returnToReviewOnly = useCallback(async () => {
     const sid = session?.id
     if (!sid) return
-    setAccessBusy('revoking')
+    const done = useCoworkActiveWork.getState().acquire({
+      sessionId: sid,
+      kind: 'revoking',
+      authority: {
+        folder,
+        access: effective.access,
+        destination: effective.destination,
+      },
+    })
     try {
       const revoked = await useDirectEditGrants.getState().revokeSession(sid)
       useCoworkSessions.getState().setAccess(sid, 'review-only')
@@ -695,9 +744,9 @@ function CoworkPage() {
         toast.error(t('common:coworkAccess.confirm.revokeFailed'))
       }
     } finally {
-      setAccessBusy(null)
+      done()
     }
-  }, [session?.id, t])
+  }, [session?.id, folder, t, effective.access, effective.destination])
 
   /** What the confirmation states, gathered before the question is asked. */
   const directEditFacts: DirectEditFacts = {
@@ -754,6 +803,34 @@ function CoworkPage() {
       clearInterval(id)
     }
   }, [])
+
+  /**
+   * What is holding this session's authority in place, if anything.
+   *
+   * Runs, subagents, shells and transitions register themselves while they can
+   * still write. Background jobs are polled rather than lifecycle-driven, so
+   * they are folded in here rather than pretending to be acquired.
+   */
+  const activeWorkItems = useCoworkActiveWork((s) => s.items)
+  const blockingKind: WorkKind | null = useMemo(() => {
+    const sid = session?.id
+    if (!sid) return null
+    const order: WorkKind[] = [
+      'run',
+      'subagent',
+      'shell',
+      'job',
+      'authorizing',
+      'revoking',
+    ]
+    const mine = Object.values(activeWorkItems).filter(
+      (one) => one.sessionId === sid
+    )
+    return (
+      order.find((kind) => mine.some((one) => one.kind === kind)) ??
+      (liveJobs.some((job) => !job.finished) ? 'job' : null)
+    )
+  }, [session?.id, activeWorkItems, liveJobs])
 
   // The one activity record. The panel, the chip and every inline workflow
   // card select from this, so none of them can disagree about the same work.
@@ -925,6 +1002,23 @@ function CoworkPage() {
     setLiveTurns(liveTurnsRef.current)
     useCoworkRun.getState().resetSubagents(sid)
     setRunning(true)
+    /**
+     * The authority this run holds, taken once and kept for its lifetime.
+     *
+     * Registered before the first await: the model probe and the sandbox probe
+     * below are both awaits, and the folder must not be swapped between
+     * pressing send and the run actually starting.
+     */
+    const runAuthority = {
+      folder: current?.folder ?? null,
+      access: effective.access,
+      destination: effective.destination,
+    }
+    const runWorkDone = useCoworkActiveWork.getState().acquire({
+      sessionId: sid,
+      kind: 'run',
+      authority: runAuthority,
+    })
 
     // Local models load before the first token, but only on a cold start. Probe
     // the engine so the load card shows on a real load, not on every warm run.
@@ -1107,6 +1201,23 @@ function CoworkPage() {
                 useToolApprovalRequests
                   .getState()
                   .requestApproval(callId, toolName, sid),
+              // A shell handed to the backend outlives a cancelled run, so it
+              // holds the authority it started with until the process is done.
+              trackShell: () =>
+                useCoworkActiveWork.getState().acquire({
+                  sessionId: sid,
+                  kind: 'shell',
+                  authority: runAuthority,
+                }),
+              // The child inherits this run's frozen authority and holds it
+              // for as long as it runs. It cannot widen it: this is the only
+              // authority handed down.
+              trackSubagent: () =>
+                useCoworkActiveWork.getState().acquire({
+                  sessionId: sid,
+                  kind: 'subagent',
+                  authority: runAuthority,
+                }),
               onTodo: async (input) => {
                 const result = applyTodoOp(
                   useCoworkSessions
@@ -1237,6 +1348,12 @@ function CoworkPage() {
                         useToolApprovalRequests
                           .getState()
                           .requestApproval(callId, toolName, sid),
+                      trackShell: () =>
+                        useCoworkActiveWork.getState().acquire({
+                          sessionId: sid,
+                          kind: 'shell',
+                          authority: runAuthority,
+                        }),
                       onTodo: async () => ({
                         output:
                           'The todo list belongs to the agent that dispatched you.',
@@ -1402,6 +1519,7 @@ function CoworkPage() {
       liveTurnsRef.current = []
       setLiveTurns([])
       setRunning(false)
+      runWorkDone()
       abortRef.current = null
       askResolvers.current.clear()
       setAsk(null)
@@ -1669,13 +1787,7 @@ function CoworkPage() {
                       // A background shell job outlives its run and can still
                       // write, so it holds authority in place just as a live
                       // turn does.
-                      busyReason={
-                        running
-                          ? 'running'
-                          : liveJobs.some((job) => !job.finished)
-                            ? 'jobs'
-                            : accessBusy
-                      }
+                      busyReason={blockingKind}
                       onRequestDirectEdit={() => setConfirmDirectEdit(true)}
                       onReviewOnly={() => void returnToReviewOnly()}
                     />

@@ -329,3 +329,148 @@ describe('carrying the run’s write grant', () => {
     expect(executeAgentTool).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * Holding authority in place for as long as something can still write.
+ *
+ * The run's own hold ends when its stream does, and cancelling a run ends that
+ * stream at once — while the shell already handed to the backend, and the
+ * subagent already dispatched, keep going. These are the holds that cover that
+ * window, so the folder cannot be swapped under a process still writing to it.
+ */
+describe('what holds a session in place while it works', () => {
+  beforeEach(() => {
+    executeAgentTool.mockReset()
+    executeAgentTool.mockResolvedValue({ content: 'ok' })
+  })
+
+  /** A hold that reports whether it is currently held. */
+  const tracker = () => {
+    let held = 0
+    return {
+      hook: () => {
+        held++
+        return () => {
+          held--
+        }
+      },
+      held: () => held,
+    }
+  }
+
+  /** A promise this test decides when to settle. */
+  const deferred = <T,>() => {
+    let resolve!: (value: T) => void
+    let reject!: (reason: unknown) => void
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res
+      reject = rej
+    })
+    return { promise, resolve, reject }
+  }
+
+  it('holds while a shell is running, and lets go when it returns', async () => {
+    const shell = tracker()
+    const gate = deferred<{ content: string }>()
+    executeAgentTool.mockReturnValueOnce(gate.promise)
+
+    const pending = dispatchCoworkTool(
+      call('bash', { command: 'ls' }),
+      ctx({ trackShell: shell.hook })
+    )
+    expect(shell.held()).toBe(1)
+
+    gate.resolve({ content: 'ok' })
+    await pending
+    expect(shell.held()).toBe(0)
+  })
+
+  // A shell that fails is a shell that has stopped writing.
+  it('lets go of a shell that threw', async () => {
+    const shell = tracker()
+    executeAgentTool.mockRejectedValueOnce(new Error('spawn failed'))
+
+    const result = await dispatchCoworkTool(
+      call('bash', { command: 'ls' }),
+      ctx({ trackShell: shell.hook })
+    )
+
+    expect(result.isError).toBe(true)
+    expect(shell.held()).toBe(0)
+  })
+
+  // Reading a file is not a process that outlives the run that asked for it.
+  it('holds nothing for a tool that is not a shell', async () => {
+    const shell = tracker()
+    await dispatchCoworkTool(
+      call('read', { path: 'a' }),
+      ctx({ trackShell: shell.hook })
+    )
+
+    expect(shell.held()).toBe(0)
+  })
+
+  it('holds for the whole life of a subagent', async () => {
+    const child = tracker()
+    const gate = deferred<{ output: string }>()
+
+    const pending = dispatchCoworkTool(
+      call('task', { name: 'reviewer' }),
+      ctx({ trackSubagent: child.hook, onTask: () => gate.promise })
+    )
+    expect(child.held()).toBe(1)
+
+    gate.resolve({ output: 'done' })
+    await pending
+    expect(child.held()).toBe(0)
+  })
+
+  // Cancelling a run rejects the child's dispatch. The hold still ends.
+  it('lets go of a subagent that was cancelled', async () => {
+    const child = tracker()
+    const gate = deferred<{ output: string }>()
+
+    const pending = dispatchCoworkTool(
+      call('task', { name: 'reviewer' }),
+      ctx({ trackSubagent: child.hook, onTask: () => gate.promise })
+    )
+    gate.reject(new Error('aborted'))
+    await pending
+
+    expect(child.held()).toBe(0)
+  })
+
+  it('holds separately for a shell and a subagent at once', async () => {
+    const shell = tracker()
+    const child = tracker()
+    const shellGate = deferred<{ content: string }>()
+    const childGate = deferred<{ output: string }>()
+    executeAgentTool.mockReturnValueOnce(shellGate.promise)
+    const c = ctx({
+      trackShell: shell.hook,
+      trackSubagent: child.hook,
+      onTask: () => childGate.promise,
+    })
+
+    const shellCall = dispatchCoworkTool(call('bash', { command: 'ls' }), c)
+    const childCall = dispatchCoworkTool(call('task', { name: 'r' }), c)
+
+    // One ending must not end the other.
+    shellGate.resolve({ content: 'ok' })
+    await shellCall
+    expect(shell.held()).toBe(0)
+    expect(child.held()).toBe(1)
+
+    childGate.resolve({ output: 'done' })
+    await childCall
+    expect(child.held()).toBe(0)
+  })
+
+  it('tracks nothing when the caller has no active-work model', async () => {
+    const c = ctx()
+    expect(
+      (await dispatchCoworkTool(call('bash', { command: 'ls' }), c)).isError
+    ).toBeUndefined()
+    expect((await dispatchCoworkTool(call('task'), c)).output).toBe('task ok')
+  })
+})

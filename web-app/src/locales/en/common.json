@@ -1008,11 +1008,14 @@
     "capabilityFailed": "Couldn’t check whether this platform can enforce it",
     "unsupportedPlatform": "This platform can’t confine changes to one folder",
     "busy": {
-      "running": "Stop the current run first",
       "authorizing": "Finishing an authorization…",
       "revoking": "Withdrawing access…",
-      "jobs": "Wait for background commands to finish"
+      "run": "Stop the current run first",
+      "subagent": "Wait for the running subagent to finish",
+      "shell": "Wait for the running command to finish",
+      "job": "Wait for background commands to finish"
     },
+    "folderHeld": "The folder can’t change while Jan is still working here",
     "downgrade": {
       "no-capability": "Editing this folder isn’t available here, so Jan is reading only.",
       "no-grant": "Editing this folder needs confirming again, so Jan is reading only.",

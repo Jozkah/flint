@@ -142,10 +142,10 @@ describe('when editing a folder cannot be offered', () => {
 
   // Authority must not move under work that is already running.
   it('is disabled while a run is in flight, and says so', async () => {
-    const { onRequestDirectEdit } = await open({ busyReason: 'running' })
+    const { onRequestDirectEdit } = await open({ busyReason: 'run' })
     const edit = await option('common:coworkAccess.edit-folder.label')
 
-    expect(edit).toHaveTextContent('common:coworkAccess.busy.running')
+    expect(edit).toHaveTextContent('common:coworkAccess.busy.run')
     await user.click(edit)
     expect(onRequestDirectEdit).not.toHaveBeenCalled()
   })
@@ -153,13 +153,27 @@ describe('when editing a folder cannot be offered', () => {
   // A background shell job outlives the run that started it and can still
   // write, so it holds authority in place just as a live turn does.
   it('is disabled while a background job is still running', async () => {
-    const { onRequestDirectEdit } = await open({ busyReason: 'jobs' })
+    const { onRequestDirectEdit } = await open({ busyReason: 'job' })
     const edit = await option('common:coworkAccess.edit-folder.label')
 
-    expect(edit).toHaveTextContent('common:coworkAccess.busy.jobs')
+    expect(edit).toHaveTextContent('common:coworkAccess.busy.job')
     await user.click(edit)
     expect(onRequestDirectEdit).not.toHaveBeenCalled()
   })
+
+  // A subagent or a foreground shell writes under the same authority the run
+  // does, so each holds it in place on its own.
+  it.each(['subagent', 'shell'] as const)(
+    'is disabled while a %s is writing',
+    async (busyReason) => {
+      const { onRequestDirectEdit } = await open({ busyReason })
+      const edit = await option('common:coworkAccess.edit-folder.label')
+
+      expect(edit).toHaveTextContent(`common:coworkAccess.busy.${busyReason}`)
+      await user.click(edit)
+      expect(onRequestDirectEdit).not.toHaveBeenCalled()
+    }
+  )
 
   it.each(['authorizing', 'revoking'] as const)(
     'is disabled while %s is in flight',
@@ -201,7 +215,7 @@ describe('choosing a mode', () => {
   it('does not switch away while a run is in flight', async () => {
     const { onReviewOnly } = await open({
       effective: editing,
-      busyReason: 'running',
+      busyReason: 'run',
     })
 
     await user.click(await option('common:coworkAccess.review-only.label'))

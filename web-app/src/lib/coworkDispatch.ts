@@ -76,6 +76,27 @@ export type DispatchContext = {
   writeGrant?: string | null
   /** Runs a nested subagent to completion. */
   onTask: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
+  /**
+   * Registers a shell that is running right now, and returns its release.
+   *
+   * A run releases its own hold when its stream ends, and cancelling a run
+   * ends that stream immediately — but the shell it already handed to the
+   * backend keeps running, and keeps writing, under the authority it started
+   * with. Held separately for exactly that window, so the folder cannot be
+   * swapped out from under a process that is still going.
+   *
+   * Optional: a caller with no active-work model simply tracks nothing.
+   */
+  trackShell?: () => () => void
+  /**
+   * Registers a subagent that is running right now, and returns its release.
+   *
+   * Held for the whole `task` call — queued, running, and winding down — so a
+   * child writing under the authority it inherited keeps that authority in
+   * place. A subagent cannot widen it: the hold carries the parent's frozen
+   * authority, and there is nothing here that could raise it.
+   */
+  trackSubagent?: () => () => void
 }
 
 /**
@@ -208,7 +229,12 @@ export async function dispatchCoworkTool(
       return await ctx.onAsk(call.toolCallId, call.input)
     }
     if (toolName === TASK_TOOL_NAME) {
-      return await ctx.onTask(call.toolCallId, call.input)
+      const childDone = ctx.trackSubagent?.()
+      try {
+        return await ctx.onTask(call.toolCallId, call.input)
+      } finally {
+        childDone?.()
+      }
     }
 
     if (WEB_TOOL_NAMES.has(toolName)) {
@@ -242,14 +268,22 @@ export async function dispatchCoworkTool(
       }
     }
 
-    // `'session'`, not the default `'thread'`: a Cowork session id lives in its
-    // own namespace, and the thread sweep would otherwise delete this sandbox
-    // because no chat thread claims it.
-    const result = await executeAgentTool(toolName, call.input, ctx.sessionId, {
-      readOnlyProject: ctx.readOnlyFolder,
-      scope: 'session',
-      writeGrant: ctx.writeGrant,
-    })
+    // Held for the length of the call, and released on every way out of it —
+    // output, refusal or throw.
+    const shellDone = toolName === 'bash' ? ctx.trackShell?.() : undefined
+    let result
+    try {
+      // `'session'`, not the default `'thread'`: a Cowork session id lives in
+      // its own namespace, and the thread sweep would otherwise delete this
+      // sandbox because no chat thread claims it.
+      result = await executeAgentTool(toolName, call.input, ctx.sessionId, {
+        readOnlyProject: ctx.readOnlyFolder,
+        scope: 'session',
+        writeGrant: ctx.writeGrant,
+      })
+    } finally {
+      shellDone?.()
+    }
     if (result.error) return { output: result.error, isError: true }
     return {
       output:

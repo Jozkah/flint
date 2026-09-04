@@ -45,6 +45,7 @@ import { usePrompt } from '@/hooks/usePrompt'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { memo, useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useCoworkActiveWork } from '@/hooks/useCoworkActiveWork'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { FileActivityDialog } from '@/containers/dialogs/FileActivityDialog'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
@@ -223,6 +224,10 @@ export function NavCowork() {
       // The file record is keyed by session too; leaving it behind would keep
       // a deleted session's paths in storage indefinitely.
       useFileActivity.getState().forget(pendingDelete.id)
+      // Teardown, not completion: the session is gone, so nothing is left to
+      // hold its authority in place. Its work items would otherwise keep a
+      // deleted session marked busy for the life of the app session.
+      useCoworkActiveWork.getState().clearSession(pendingDelete.id)
     }
     setPendingDelete(null)
   }
