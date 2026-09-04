@@ -47,7 +47,8 @@ describe('dispatchCoworkTool', () => {
       { path: 'a' },
       's1',
       null,
-      'session'
+      'session',
+      undefined
     )
   })
 
@@ -145,7 +146,8 @@ describe('dispatchCoworkTool', () => {
       {},
       's1',
       '/repo',
-      'session'
+      'session',
+      undefined
     )
   })
 
@@ -269,5 +271,65 @@ describe('a requested skill that is not in play', () => {
     )
 
     expect(executeAgentTool).toHaveBeenCalled()
+  })
+})
+
+/**
+ * The grant has to survive the whole way to the backend.
+ *
+ * A dispatcher that quietly drops it does not fail loudly — the run simply
+ * writes to its sandbox while the screen says the folder is editable, which is
+ * the failure this whole access model exists to prevent.
+ */
+describe('carrying the run’s write grant', () => {
+  const grantArg = () => executeAgentTool.mock.calls.at(-1)?.[5]
+
+  it.each(['write', 'edit', 'bash'])(
+    'passes it to the backend for %s',
+    async (tool) => {
+      await dispatchCoworkTool(
+        call(tool, { path: 'a', command: 'ls' }),
+        ctx({ mode: 'auto', writeGrant: 'grant-1' })
+      )
+
+      expect(grantArg()).toBe('grant-1')
+    }
+  )
+
+  it('passes it for reads too, so the backend sees one consistent run', async () => {
+    await dispatchCoworkTool(
+      call('read', { path: 'a' }),
+      ctx({ mode: 'auto', writeGrant: 'grant-1' })
+    )
+
+    expect(grantArg()).toBe('grant-1')
+  })
+
+  // A run that was never authorized must send nothing rather than something
+  // the backend has to interpret.
+  it('sends nothing when the run holds no grant', async () => {
+    await dispatchCoworkTool(call('write', { path: 'a' }), ctx({ mode: 'auto' }))
+
+    expect(grantArg()).toBeUndefined()
+  })
+
+  it('sends nothing when the grant was explicitly cleared', async () => {
+    await dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'auto', writeGrant: null })
+    )
+
+    expect(grantArg()).toBeNull()
+  })
+
+  // Review first refuses before any of this, so no grant is spent on a call
+  // that was never going to run.
+  it('does not reach the backend at all in review mode', async () => {
+    await dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'review', writeGrant: 'grant-1' })
+    )
+
+    expect(executeAgentTool).not.toHaveBeenCalled()
   })
 })

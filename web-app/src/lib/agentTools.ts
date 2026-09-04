@@ -149,7 +149,16 @@ export async function executeAgentTool(
    * where the thread sweep's keep-list can never mention them — and the sweep
    * would delete the only copy of the agent's work.
    */
-  scope: WorkspaceScope = 'thread'
+  scope: WorkspaceScope = 'thread',
+  /**
+   * An opaque grant authorizing this run to write to the attached folder.
+   *
+   * Never a path: the backend resolves the id against the session it was
+   * issued to, so nothing a model emits can widen or redirect where a write
+   * lands. Absent for every run that has not been authorized, which is the
+   * ordinary sandbox-only case.
+   */
+  writeGrant?: string | null
 ): Promise<AgentToolResult> {
   try {
     const dataFolder = await getServiceHub().app().getJanDataFolder()
@@ -167,6 +176,7 @@ export async function executeAgentTool(
       undefined,
       useAgentToolsConfig.getState().bashNetworkEnabled,
       readOnlyProject ?? undefined,
+      writeGrant ?? undefined,
       scope
     )
     if (result.isError) return { error: result.content }

@@ -66,6 +66,14 @@ export type DispatchContext = {
   accessCapability?: AccessCapability
   /** A managed worktree's path, once one exists. */
   worktreePath?: string | null
+  /**
+   * The run's opaque write grant, frozen at dispatch.
+   *
+   * Passed straight through to the backend, which resolves it against this
+   * session. It is authority-bearing: it must not reach a prompt, a message,
+   * an activity row, or anything a user or model can read.
+   */
+  writeGrant?: string | null
   /** Runs a nested subagent to completion. */
   onTask: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
 }
@@ -242,7 +250,8 @@ export async function dispatchCoworkTool(
       call.input,
       ctx.sessionId,
       ctx.readOnlyFolder,
-      'session'
+      'session',
+      ctx.writeGrant
     )
     if (result.error) return { output: result.error, isError: true }
     return {

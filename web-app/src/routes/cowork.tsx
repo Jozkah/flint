@@ -838,6 +838,17 @@ function CoworkPage() {
     // Read once, with the session this run is bound to: a mode flipped
     // mid-run would leave the advertised tools and the dispatcher disagreeing.
     const runMode = modeOf(current ?? {})
+    /**
+     * The write authority this run carries, frozen with everything else.
+     *
+     * Only sent when the effective access is actually direct editing — a
+     * session whose stored preference says so but whose grant is missing,
+     * revoked or issued elsewhere sends nothing and writes to its sandbox.
+     * The id is authority-bearing and goes only to the backend command: never
+     * into a prompt, a message, an activity row, or anything shown to anyone.
+     */
+    const runGrant =
+      effective.access === 'edit-folder' ? (liveGrant?.grantId ?? null) : null
     const transport = new CoworkChatTransport(sid, {
       planMode: isReadOnly(runMode),
       subagentNames: subagentDefs.map((d) => d.name),
@@ -958,6 +969,7 @@ function CoworkPage() {
               sessionId: sid,
               readOnlyFolder: current?.folder ?? null,
               mode: runMode,
+              writeGrant: runGrant,
               // Snapshotted with the run: a skill the user asked for and did
               // not get stops changes. Inspection still proceeds.
               unresolvedSkills: unresolvedSkills(runSkills),
@@ -1088,6 +1100,7 @@ function CoworkPage() {
                       sessionId: sid,
                       readOnlyFolder: current?.folder ?? null,
                       mode: runMode,
+                      writeGrant: runGrant,
                       // Snapshotted with the run: a skill the user asked for and did
                       // not get stops changes. Inspection still proceeds.
                       unresolvedSkills: unresolvedSkills(runSkills),
