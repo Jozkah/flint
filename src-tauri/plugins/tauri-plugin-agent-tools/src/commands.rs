@@ -145,6 +145,49 @@ pub async fn session_workspace_path(
     Ok(dir.to_string_lossy().to_string())
 }
 
+/// Can this platform confine both file tools and the shell to a project folder?
+///
+/// The UI asks before offering to edit a folder directly, so an option that
+/// could not be enforced is never shown rather than failing after the user
+/// confirms it.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub fn direct_edit_capability() -> bool {
+    crate::grants::capability()
+}
+
+/// Authorize this session to edit `folder`, returning an opaque grant id.
+///
+/// The id is what later runs carry. A path is never accepted at tool time, so
+/// nothing a model emits can widen or redirect what a run may write.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub async fn direct_edit_authorize(
+    data_folder: String,
+    session_id: String,
+    folder: String,
+) -> Result<String, AgentToolsError> {
+    // The session's own workspace, which the folder must not overlap.
+    let workspace =
+        workspace::ensure_session_workspace(Path::new(&data_folder), &session_id).await?;
+    Ok(crate::grants::authorize(
+        &session_id,
+        &folder,
+        &workspace,
+        Path::new(&data_folder),
+    )?)
+}
+
+/// Withdraw one grant. Succeeds whether or not it was still live.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub fn direct_edit_revoke(grant_id: String) -> bool {
+    crate::grants::revoke(&grant_id)
+}
+
+/// Withdraw every grant a session holds — detaching, switching, deleting.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub fn direct_edit_revoke_session(session_id: String) -> usize {
+    crate::grants::revoke_session(&session_id)
+}
+
 /// Delete a Cowork session's sandbox, with its scratch.
 #[cfg_attr(feature = "tauri", tauri::command)]
 pub async fn session_workspace_delete(
@@ -364,6 +407,7 @@ pub async fn execute_tool(
     enabled_skills: Option<Vec<String>>,
     allow_network: Option<bool>,
     read_only_project: Option<String>,
+    write_grant: Option<String>,
     scope: Option<WorkspaceScope>,
     call_id: Option<String>,
 ) -> Result<ToolResult, AgentToolsError> {
@@ -376,11 +420,7 @@ pub async fn execute_tool(
         enabled_skills,
         allow_network,
         read_only_project,
-        // Not reachable from the renderer yet: no access mode can select a
-        // write destination, so nothing may authorize one. The parameter
-        // exists because the gate and handlers already enforce it, and it is
-        // exercised directly by tests.
-        None,
+        write_grant,
         scope,
         call_id,
         None,
@@ -404,6 +444,7 @@ pub async fn execute_tool_streaming(
     enabled_skills: Option<Vec<String>>,
     allow_network: Option<bool>,
     read_only_project: Option<String>,
+    write_grant: Option<String>,
     scope: Option<WorkspaceScope>,
     call_id: Option<String>,
     on_output: tauri::ipc::Channel<ToolOutputChunk>,
@@ -418,11 +459,7 @@ pub async fn execute_tool_streaming(
         enabled_skills,
         allow_network,
         read_only_project,
-        // Not reachable from the renderer yet: no access mode can select a
-        // write destination, so nothing may authorize one. The parameter
-        // exists because the gate and handlers already enforce it, and it is
-        // exercised directly by tests.
-        None,
+        write_grant,
         scope,
         call_id,
         Some(sink),
@@ -440,13 +477,13 @@ async fn execute_tool_inner(
     enabled_skills: Option<Vec<String>>,
     allow_network: Option<bool>,
     read_only_project: Option<String>,
-    // A project root the user has explicitly authorized this run to write to.
-    // Validated exactly like a read root: canonicalized, refused if it is the
-    // filesystem root, and refused if it overlaps the workspace or the Jan data
-    // folder, so authorizing a repository can never authorize Jan's own
-    // settings, keys or skill storage. `None` is every run that has not chosen
-    // a write access mode, which is the unchanged sandbox-only behaviour.
-    write_project: Option<String>,
+    // An opaque grant id from `direct_edit_authorize`, naming a folder the user
+    // confirmed for this session. Not a path: a path arriving here could be
+    // anything the caller chose, whereas an id only resolves to the folder the
+    // grant was issued for, and only in the session it was issued to. `None` is
+    // every run that has not been authorized, which is the unchanged
+    // sandbox-only behaviour.
+    write_grant: Option<String>,
     scope: Option<WorkspaceScope>,
     call_id: Option<String>,
     sink: Option<crate::tools::OutputSink>,
@@ -471,17 +508,15 @@ async fn execute_tool_inner(
         )?],
         None => Vec::new(),
     };
-    // Same validation as a read root: a folder that fails it grants nothing,
-    // and an unusable authorization surfaces as an error rather than quietly
-    // degrading to sandbox-only writes while the user believes otherwise.
-    let write_roots: Vec<PathBuf> = match write_project.as_deref() {
-        Some(path) => vec![workspace::validate_read_root(
-            Path::new(path),
-            &root,
-            Some(Path::new(&data_folder)),
-        )?],
-        None => Vec::new(),
-    };
+    // Resolved against this thread, so a grant issued to another session — or
+    // one already revoked — authorizes nothing and the run simply writes to its
+    // own workspace. Validation happened when the grant was issued; what
+    // matters here is that it is still live and still ours.
+    let write_roots: Vec<PathBuf> = write_grant
+        .as_deref()
+        .and_then(|id| crate::grants::resolve(id, &thread_id))
+        .into_iter()
+        .collect();
     let grants = SessionGrants::default().with_write_roots(write_roots.clone());
 
     let tool = lookup(&name)
@@ -789,6 +824,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("a write inside the sandbox is allowed");
@@ -817,6 +853,7 @@ mod tests {
             None,
             "edit".into(),
             json!({"path": "a.txt", "edits": [{"old_string": "before", "new_string": "after"}]}),
+            None,
             None,
             None,
             None,
@@ -857,6 +894,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect_err("an escaping read must be refused");
@@ -886,6 +924,7 @@ mod tests {
                 None,
                 "write".into(),
                 json!({"path": path, "content": "x"}),
+                None,
                 None,
                 None,
                 None,
@@ -930,6 +969,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("a scratch write is the session scratch and must succeed");
@@ -947,6 +987,7 @@ mod tests {
             None,
             "write".into(),
             json!({"path": "ok.txt", "content": "x"}),
+            None,
             None,
             None,
             None,
@@ -984,6 +1025,7 @@ mod tests {
             None,
             "bash".into(),
             json!({"command": "echo hi"}),
+            None,
             None,
             None,
             None,
@@ -1031,6 +1073,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1063,6 +1106,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1084,6 +1128,7 @@ mod tests {
             None,
             "read".to_string(),
             json!({"path": "a.txt"}),
+            None,
             None,
             None,
             None,
@@ -1123,6 +1168,7 @@ mod tests {
             None,
             "read".into(),
             json!({"path": "../isolation-thread-one/secret.txt"}),
+            None,
             None,
             None,
             None,
@@ -1173,6 +1219,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         {
@@ -1213,6 +1260,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1229,6 +1277,7 @@ mod tests {
             None,
             "memory_read".into(),
             json!({"name": "prefs"}),
+            None,
             None,
             None,
             None,
@@ -1260,6 +1309,7 @@ mod tests {
             None,
             "read".into(),
             json!({"path": "../../memory/prefs.md"}),
+            None,
             None,
             None,
             None,
@@ -1320,7 +1370,8 @@ mod tests {
                     None,
                     None,
                     None,
-                    None
+                    None,
+                    None,
                 )
                 .await
                 .is_err(),
@@ -1347,6 +1398,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect_err("agent config must be hard-denied");
@@ -1368,6 +1420,7 @@ mod tests {
             None,
             "rm_rf".to_string(),
             json!({}),
+            None,
             None,
             None,
             None,
@@ -1449,6 +1502,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1462,6 +1516,7 @@ mod tests {
             None,
             "skill_read".into(),
             json!({"name": "deploy"}),
+            None,
             None,
             None,
             None,
@@ -1496,6 +1551,7 @@ mod tests {
             attached.clone(),
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1511,6 +1567,7 @@ mod tests {
             None,
             None,
             attached,
+            None,
             None,
             None,
         )
@@ -1547,6 +1604,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await;
         assert!(out.is_err() || out.unwrap().is_error);
@@ -1576,6 +1634,7 @@ mod tests {
             None,
             None,
             Some(inside.to_string_lossy().to_string()),
+            None,
             None,
             None,
         )

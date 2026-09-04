@@ -93,6 +93,48 @@ export async function sessionWorkspacePath(
   })
 }
 
+/**
+ * Can this platform confine both the file tools and the shell to a folder?
+ *
+ * Asked before offering to edit a folder directly, so an option that could not
+ * be enforced is never shown rather than failing after the user confirms it.
+ */
+export async function directEditCapability(): Promise<boolean> {
+  return await invoke('plugin:agent-tools|direct_edit_capability')
+}
+
+/**
+ * Authorize this session to edit `folder`, returning an opaque grant id.
+ *
+ * The id is what runs carry afterwards; a path is never accepted at tool time,
+ * so nothing a model emits can widen or redirect what a run may write.
+ */
+export async function directEditAuthorize(
+  dataFolder: string,
+  sessionId: string,
+  folder: string
+): Promise<string> {
+  return await invoke('plugin:agent-tools|direct_edit_authorize', {
+    dataFolder,
+    sessionId,
+    folder,
+  })
+}
+
+/** Withdraw one grant. Succeeds whether or not it was still live. */
+export async function directEditRevoke(grantId: string): Promise<boolean> {
+  return await invoke('plugin:agent-tools|direct_edit_revoke', { grantId })
+}
+
+/** Withdraw every grant a session holds. */
+export async function directEditRevokeSession(
+  sessionId: string
+): Promise<number> {
+  return await invoke('plugin:agent-tools|direct_edit_revoke_session', {
+    sessionId,
+  })
+}
+
 /** Delete a Cowork session's sandbox, with its scratch. */
 export async function sessionWorkspaceDelete(
   dataFolder: string,
@@ -350,6 +392,7 @@ export async function executeTool(
   enabledSkills?: string[],
   allowNetwork?: boolean,
   readOnlyProject?: string,
+  writeGrant?: string,
   scope?: WorkspaceScope,
   callId?: string
 ): Promise<ToolResult> {
@@ -362,6 +405,7 @@ export async function executeTool(
     enabledSkills,
     allowNetwork,
     readOnlyProject,
+    writeGrant,
     scope,
     callId,
   })
@@ -385,6 +429,7 @@ export async function executeToolStreaming(
     enabledSkills?: string[]
     allowNetwork?: boolean
     readOnlyProject?: string
+    writeGrant?: string
     scope?: WorkspaceScope
     callId?: string
   }
@@ -399,6 +444,7 @@ export async function executeToolStreaming(
     enabledSkills: options?.enabledSkills,
     allowNetwork: options?.allowNetwork,
     readOnlyProject: options?.readOnlyProject,
+    writeGrant: options?.writeGrant,
     scope: options?.scope,
     callId: options?.callId,
   })

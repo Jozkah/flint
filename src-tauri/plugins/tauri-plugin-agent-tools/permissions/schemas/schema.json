@@ -319,6 +319,54 @@
           "markdownDescription": "Denies the bash_jobs_list command without any pre-configured scope."
         },
         {
+          "description": "Enables the direct_edit_authorize command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-direct-edit-authorize",
+          "markdownDescription": "Enables the direct_edit_authorize command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the direct_edit_authorize command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-direct-edit-authorize",
+          "markdownDescription": "Denies the direct_edit_authorize command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the direct_edit_capability command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-direct-edit-capability",
+          "markdownDescription": "Enables the direct_edit_capability command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the direct_edit_capability command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-direct-edit-capability",
+          "markdownDescription": "Denies the direct_edit_capability command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the direct_edit_revoke command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-direct-edit-revoke",
+          "markdownDescription": "Enables the direct_edit_revoke command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the direct_edit_revoke command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-direct-edit-revoke",
+          "markdownDescription": "Denies the direct_edit_revoke command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the direct_edit_revoke_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-direct-edit-revoke-session",
+          "markdownDescription": "Enables the direct_edit_revoke_session command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the direct_edit_revoke_session command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-direct-edit-revoke-session",
+          "markdownDescription": "Denies the direct_edit_revoke_session command without any pre-configured scope."
+        },
+        {
           "description": "Enables the execute_tool command without any pre-configured scope.",
           "type": "string",
           "const": "allow-execute-tool",
@@ -571,10 +619,10 @@
           "markdownDescription": "Denies the workspace_path command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`",
+          "description": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`"
+          "markdownDescription": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`"
         }
       ]
     }
