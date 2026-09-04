@@ -21,6 +21,27 @@ import {
  * filename and a path — it is inventoried and never run.
  */
 
+/**
+ * Where user-level Claude skills may be looked for.
+ *
+ * A fixed, documented location plus whatever the user has configured in Jan's
+ * own settings — and nothing else. The repository must never be able to name a
+ * discovery root: a `CLAUDE.md` that could add one would be a file in the
+ * repository choosing which of the user's directories Jan reads.
+ *
+ * The home directory itself is never scanned. Only this exact subdirectory is.
+ */
+export const STANDARD_USER_SKILL_DIR = '.claude/skills'
+
+/** Reads rooted at a directory outside the repository, one per approved root. */
+export type UserSkillRoot = {
+  /** Absolute path, for display and for containment. */
+  root: string
+  /** Where it came from — the standard location, or Jan settings. */
+  source: 'standard' | 'configured'
+  io: CompatIO
+}
+
 /** The two reads discovery needs, injected so the walk itself can be tested. */
 export type CompatIO = {
   /** One directory level, relative to the repository root. */
@@ -118,16 +139,108 @@ export function referencedResources(body: string): string[] {
   )
 }
 
+/**
+ * How deep the nested walk goes.
+ *
+ * Bounded on purpose. The point is a complete-enough inventory, not a full
+ * repository crawl: an unbounded walk of a large monorepo costs a directory
+ * read per package for files that are reported and never read anyway.
+ */
+export const MAX_NESTED_DEPTH = 4
+
+/** Directories never worth walking for instruction files. */
+const SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  'target',
+  'vendor',
+  '.venv',
+  '__pycache__',
+])
+
+/**
+ * Find `CLAUDE.md` files below the repository root.
+ *
+ * Walks with the contained reader, so the walk cannot leave the repository:
+ * every listing is resolved against the root in Rust. A symlink pointing at a
+ * sibling repository therefore yields nothing readable rather than that
+ * repository's contents.
+ */
+async function readNested(
+  io: CompatIO,
+  root: string,
+  rel: string,
+  depth: number,
+  found: InstructionProbe[]
+): Promise<void> {
+  if (depth > MAX_NESTED_DEPTH) return
+  let entries: { name: string; relPath: string; isDir: boolean }[]
+  try {
+    entries = await io.list(rel)
+  } catch {
+    return
+  }
+
+  for (const entry of entries) {
+    if (entry.isDir) {
+      if (SKIP_DIRS.has(entry.name) || entry.name.startsWith('.')) continue
+      await readNested(io, root, entry.relPath, depth + 1, found)
+      continue
+    }
+    if (entry.name !== CLAUDE_INSTRUCTIONS) continue
+    const scope = rel
+    try {
+      const file = await io.read(entry.relPath)
+      found.push({
+        name: CLAUDE_INSTRUCTIONS,
+        path: `${root}/${entry.relPath}`,
+        scope,
+        ...(file && !file.binary && !file.oversized
+          ? { content: file.content }
+          : { error: file ? 'not readable text' : 'unreadable' }),
+      })
+    } catch (e) {
+      found.push({
+        name: CLAUDE_INSTRUCTIONS,
+        path: `${root}/${entry.relPath}`,
+        scope,
+        error: messageOf(e),
+      })
+    }
+  }
+}
+
+/** The repository's own top level, as the starting point for the walk. */
+async function listTop(io: CompatIO): Promise<string[]> {
+  try {
+    return (await io.list('.'))
+      .filter((one) => one.isDir && !SKIP_DIRS.has(one.name) && !one.name.startsWith('.'))
+      // Normalized: a listing of `.` can report `./packages`, and the walk
+      // keys directories by their path relative to the root.
+      .map((one) => one.relPath.replace(/^\.\//, ''))
+  } catch {
+    return []
+  }
+}
+
 async function readInstructions(
   io: CompatIO,
   root: string
 ): Promise<InstructionProbe[]> {
   const path = `${root}/${CLAUDE_INSTRUCTIONS}`
+  const nested: InstructionProbe[] = []
+  // Listed alongside the root file rather than hidden: a nested file nobody is
+  // told about is a compatibility gap the user cannot see.
+  for (const entry of await listTop(io)) {
+    await readNested(io, root, entry, 1, nested)
+  }
   try {
     const file = await io.read(CLAUDE_INSTRUCTIONS)
-    if (!file) return [{ name: CLAUDE_INSTRUCTIONS, path }]
+    if (!file) return [{ name: CLAUDE_INSTRUCTIONS, path }, ...nested]
     if (file.binary) {
-      return [{ name: CLAUDE_INSTRUCTIONS, path, error: 'not text' }]
+      return [{ name: CLAUDE_INSTRUCTIONS, path, error: 'not text' }, ...nested]
     }
     if (file.oversized) {
       // Given back at the limit so the resolver reaches the same verdict it
@@ -138,15 +251,72 @@ async function readInstructions(
           path,
           content: 'x'.repeat(MAX_COMPAT_BYTES + 1),
         },
+        ...nested,
       ]
     }
-    return [{ name: CLAUDE_INSTRUCTIONS, path, content: file.content }]
+    return [{ name: CLAUDE_INSTRUCTIONS, path, content: file.content }, ...nested]
   } catch (e) {
     const message = messageOf(e)
     return isMissing(message)
-      ? [{ name: CLAUDE_INSTRUCTIONS, path }]
-      : [{ name: CLAUDE_INSTRUCTIONS, path, error: message }]
+      ? [{ name: CLAUDE_INSTRUCTIONS, path }, ...nested]
+      : [{ name: CLAUDE_INSTRUCTIONS, path, error: message }, ...nested]
   }
+}
+
+/**
+ * Skills in one approved user-level directory.
+ *
+ * Same package shape and the same containment rule as a project skill, with
+ * the skill's own directory as the boundary: a user skill is not inside the
+ * repository, so the repository is not what its resources are checked against.
+ * A root that is absent or unreadable yields nothing and is reported by the
+ * caller, not treated as an error.
+ */
+export async function readUserSkills(
+  approved: readonly UserSkillRoot[]
+): Promise<SkillProbe[]> {
+  const probes: SkillProbe[] = []
+  for (const { root, io } of approved) {
+    let dirs: { name: string; relPath: string; isDir: boolean }[]
+    try {
+      dirs = await io.list('.')
+    } catch {
+      continue
+    }
+    for (const entry of dirs.filter((one) => one.isDir)) {
+      const dir = `${root}/${entry.name}`
+      try {
+        const file = await io.read(`${entry.name}/SKILL.md`)
+        if (!file || file.binary || file.oversized) {
+          probes.push({
+            name: entry.name,
+            dir,
+            source: 'user',
+            error: file ? 'not readable text' : 'no SKILL.md',
+          })
+          continue
+        }
+        const { data, body } = parseFrontmatter(file.content)
+        probes.push({
+          name: typeof data?.name === 'string' ? data.name : entry.name,
+          dir,
+          source: 'user',
+          frontmatter: data,
+          content: body,
+          resources: referencedResources(body),
+        })
+      } catch (e) {
+        const message = messageOf(e)
+        probes.push({
+          name: entry.name,
+          dir,
+          source: 'user',
+          error: isMissing(message) ? 'no SKILL.md' : message,
+        })
+      }
+    }
+  }
+  return probes
 }
 
 async function readSkills(io: CompatIO, root: string): Promise<SkillProbe[]> {
@@ -337,14 +507,20 @@ async function readInert(io: CompatIO, root: string): Promise<InertProbe[]> {
  */
 export async function discoverCompatibility(
   io: CompatIO,
-  root: string
+  root: string,
+  userRoots: readonly UserSkillRoot[] = []
 ): Promise<CompatProbes> {
-  const [instructions, skills, agents, mcp, inert] = await Promise.all([
-    readInstructions(io, root),
-    readSkills(io, root),
-    readAgents(io, root),
-    readMcp(io, root),
-    readInert(io, root),
-  ])
-  return { instructions, skills, agents, mcp, inert }
+  const [instructions, skills, userSkills, agents, mcp, inert] =
+    await Promise.all([
+      readInstructions(io, root),
+      readSkills(io, root),
+      readUserSkills(userRoots),
+      readAgents(io, root),
+      readMcp(io, root),
+      readInert(io, root),
+    ])
+  // Project first, so a name claimed by both resolves to the project's copy as
+  // the original and the user's as the duplicate — the repository in front of
+  // the user wins the identity, and the collision is still shown.
+  return { instructions, skills: [...skills, ...userSkills], agents, mcp, inert }
 }

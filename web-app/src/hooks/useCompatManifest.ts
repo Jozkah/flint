@@ -8,12 +8,14 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 import {
   emptyManifest,
   resolveCompatibility,
-  NO_LOCAL_CONFINEMENT,
   type CompatibilityManifest,
+  type McpProbe,
 } from '@/lib/claudeCompat'
+import { sandboxEnforces } from '@/lib/agentTools'
 import {
   discoverCompatibility,
   type CompatIO,
+  type UserSkillRoot,
 } from '@/lib/claudeCompatDiscovery'
 import { bindingKey, type Binding } from '@/lib/coworkReadiness'
 
@@ -32,24 +34,42 @@ export function useCompatManifest(input: {
   binding: Binding
   enabledSkills: Set<string>
   availableTools: readonly string[]
-}): { manifest: CompatibilityManifest; rescan: () => void } {
+  /**
+   * Absolute user-level skill directories Jan has approved.
+   *
+   * Empty by default. Never taken from the repository: a file in the folder
+   * being scanned must not get to choose which of the user's directories Jan
+   * reads.
+   */
+  approvedUserSkillRoots?: readonly string[]
+}): {
+  manifest: CompatibilityManifest
+  rescan: () => void
+  /** The MCP definitions as found on disk, for consent to bind against. */
+  mcpProbes: readonly McpProbe[]
+} {
   const { binding, enabledSkills, availableTools } = input
+  const approvedUserSkillRoots = input.approvedUserSkillRoots ?? []
   const folder = binding.folder
   const enabled = useClaudeCompat((s) =>
     folder ? Boolean(s.folders[folder]) : false
   )
   const consent = useClaudeCompat((s) => (folder ? s.mcpConsent[folder] : undefined))
+  // Runtime state, not configuration: a server is only reported up because
+  // Jan's MCP subsystem said it came up.
+  const runtime = useClaudeCompat((s) => (folder ? s.mcpRuntime[folder] : undefined))
   const [manifest, setManifest] = useState<CompatibilityManifest>(() =>
     emptyManifest(binding)
   )
   const [nonce, setNonce] = useState(0)
+  const lastProbes = useRef<readonly McpProbe[]>([])
   const rescan = useCallback(() => setNonce((n) => n + 1), [])
 
   // Read inside the effect without making them dependencies: a change to the
   // enabled skill set or the advertised tools re-resolves on the next scan
   // rather than restarting one in flight.
-  const latest = useRef({ enabledSkills, availableTools })
-  latest.current = { enabledSkills, availableTools }
+  const latest = useRef({ enabledSkills, availableTools, approvedUserSkillRoots })
+  latest.current = { enabledSkills, availableTools, approvedUserSkillRoots }
 
   useEffect(() => {
     if (!folder) {
@@ -75,13 +95,43 @@ export function useCompatManifest(input: {
             }
           },
         }
-        probes = await discoverCompatibility(io, folder)
+        /**
+         * User-level skill roots, if any are approved.
+         *
+         * Reads there go through the same contained reader with the root
+         * itself as the boundary — so a resource climbing out of a user skill
+         * is as unreadable as one climbing out of the repository. The
+         * repository cannot add a root: this list comes from Jan, never from
+         * a file in the folder being scanned.
+         */
+        const userRoots: UserSkillRoot[] = latest.current.approvedUserSkillRoots.map(
+          (root) => ({
+            root,
+            source: 'configured' as const,
+            io: {
+              list: async (rel) =>
+                (await projectListDir(dataFolder, root, rel)).entries,
+              read: async (rel) => {
+                const file = await projectReadFile(dataFolder, root, rel, false)
+                return {
+                  content: file.content,
+                  oversized: file.oversized,
+                  binary: file.binary,
+                }
+              },
+            },
+          })
+        )
+        probes = await discoverCompatibility(io, folder, userRoots)
       } catch {
         // A scan that could not run claims nothing rather than reporting an
         // empty repository, which would read as "there is nothing here".
         return
       }
       if (!alive || bindingKey(binding) !== startedFor) return
+      // Kept so consent can be given against the definition actually on disk
+      // rather than against the manifest's rendering of it.
+      lastProbes.current = probes.mcp
 
       setManifest(
         resolveCompatibility(probes, {
@@ -90,11 +140,23 @@ export function useCompatManifest(input: {
           enabledSkills: latest.current.enabledSkills,
           availableTools: latest.current.availableTools,
           consentedMcp: new Set(consent ?? []),
-          initializedMcp: new Set(),
-          // Nothing has been started, so nothing has initialized. A server
-          // reaches `active` only once Jan's own MCP subsystem reports it up.
-          failedMcp: new Map(),
-          confinement: NO_LOCAL_CONFINEMENT,
+          initializedMcp: new Set(
+            Object.entries(runtime ?? {})
+              .filter(([, record]) => record.state === 'active')
+              .map(([name]) => name)
+          ),
+          failedMcp: new Map(
+            Object.entries(runtime ?? {})
+              .filter(([, record]) => record.state === 'init-failed')
+              .map(([name, record]) => [
+                name,
+                record.reason ?? 'did not start',
+              ])
+          ),
+          // What this platform can actually enforce, asked of the backend
+          // rather than assumed. A local server is refused wherever nothing
+          // would confine it, which is the whole platform story for stdio.
+          confinement: { stdio: sandboxEnforces() },
         })
       )
     })()
@@ -102,10 +164,10 @@ export function useCompatManifest(input: {
     return () => {
       alive = false
     }
-    // `binding` is compared by key inside; depending on the object identity
-    // would rescan on every render.
+    // `binding` is compared by key inside, and the rest is read through the
+    // ref: depending on those identities would rescan on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [folder, binding.sessionId, enabled, consent, nonce])
+  }, [folder, binding.sessionId, enabled, consent, runtime, nonce])
 
-  return { manifest, rescan }
+  return { manifest, rescan, mcpProbes: lastProbes.current }
 }

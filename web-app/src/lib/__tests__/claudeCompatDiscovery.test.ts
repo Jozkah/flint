@@ -6,7 +6,11 @@ import {
   referencedResources,
   type CompatIO,
 } from '@/lib/claudeCompatDiscovery'
-import { resolveCompatibility, NO_LOCAL_CONFINEMENT } from '@/lib/claudeCompat'
+import {
+  compatInstructionBlocks,
+  resolveCompatibility,
+  NO_LOCAL_CONFINEMENT,
+} from '@/lib/claudeCompat'
 
 const ROOT = '/home/dev/obs-forwarder'
 const SIBLING = '/home/dev/note-py'
@@ -22,7 +26,9 @@ const repo = (
     if (!entries) throw new Error('ENOENT: no such file or directory')
     return entries.map((one) => ({
       name: one.name,
-      relPath: `${rel}/${one.name}`,
+      // As the contained reader reports it: relative to the root, with no
+      // `./` prefix for a listing of the top level.
+      relPath: rel === '.' ? one.name : `${rel}/${one.name}`,
       isDir: one.isDir,
     }))
   },
@@ -221,5 +227,258 @@ describe('walking a repository', () => {
     expect(skill?.state).toBe('path-escape')
     expect(skill?.content).toBeUndefined()
     expect(JSON.stringify(manifest)).not.toContain(SIBLING)
+  })
+})
+
+/**
+ * Nested instruction files.
+ *
+ * A `CLAUDE.md` in `packages/api` governs work under `packages/api`. Jan
+ * builds one system prompt per run and the dispatcher has no notion of a
+ * current directory, so there is nothing that could turn that into behaviour.
+ * Concatenating every nested file into the global prompt would apply each
+ * subtree's rules to every file — the opposite of what the file means. So they
+ * are found, listed with their scope, and not read.
+ */
+describe('nested CLAUDE.md files', () => {
+  const nested = repo(
+    {
+      'CLAUDE.md': 'Root rules.',
+      'packages/api/CLAUDE.md': 'API rules.',
+      'packages/web/CLAUDE.md': 'Web rules.',
+    },
+    {
+      '.': [
+        { name: 'packages', isDir: true },
+        { name: 'node_modules', isDir: true },
+      ],
+      packages: [
+        { name: 'api', isDir: true },
+        { name: 'web', isDir: true },
+      ],
+      'packages/api': [{ name: 'CLAUDE.md', isDir: false }],
+      'packages/web': [{ name: 'CLAUDE.md', isDir: false }],
+    }
+  )
+
+  it('finds them instead of leaving them invisible', async () => {
+    const probes = await discoverCompatibility(nested, ROOT)
+
+    expect(probes.instructions.map((one) => one.scope ?? '(root)')).toEqual([
+      '(root)',
+      'packages/api',
+      'packages/web',
+    ])
+  })
+
+  it('reports each one as scoped rather than applying it', async () => {
+    const probes = await discoverCompatibility(nested, ROOT)
+    const manifest = resolveCompatibility(probes, {
+      binding,
+      enabled: true,
+      enabledSkills: new Set(),
+      availableTools: [],
+      consentedMcp: new Set(),
+      initializedMcp: new Set(),
+      failedMcp: new Map(),
+      confinement: NO_LOCAL_CONFINEMENT,
+    })
+    const scoped = manifest.components.filter(
+      (one) => one.state === 'unsupported-scoping'
+    )
+
+    expect(scoped.map((one) => one.name)).toEqual([
+      'packages/api/CLAUDE.md',
+      'packages/web/CLAUDE.md',
+    ])
+    expect(scoped.every((one) => one.content === undefined)).toBe(true)
+  })
+
+  // The failure this prevents: every subtree's rules applied to every file.
+  it('puts no nested content in front of the model', async () => {
+    const probes = await discoverCompatibility(nested, ROOT)
+    const manifest = resolveCompatibility(probes, {
+      binding,
+      enabled: true,
+      enabledSkills: new Set(),
+      availableTools: [],
+      consentedMcp: new Set(),
+      initializedMcp: new Set(),
+      failedMcp: new Map(),
+      confinement: NO_LOCAL_CONFINEMENT,
+    })
+    const blocks = JSON.stringify(compatInstructionBlocks(manifest))
+
+    expect(blocks).toContain('Root rules.')
+    expect(blocks).not.toContain('API rules.')
+    expect(blocks).not.toContain('Web rules.')
+  })
+
+  it('does not walk into dependency or VCS directories', async () => {
+    const listed: string[] = []
+    const io: CompatIO = {
+      list: async (rel) => {
+        listed.push(rel)
+        if (rel === '.') {
+          return [
+            { name: 'node_modules', relPath: 'node_modules', isDir: true },
+            { name: '.git', relPath: '.git', isDir: true },
+          ]
+        }
+        throw new Error('ENOENT')
+      },
+      read: async () => {
+        throw new Error('ENOENT')
+      },
+    }
+    await discoverCompatibility(io, ROOT)
+
+    expect(listed).not.toContain('node_modules')
+    expect(listed).not.toContain('.git')
+  })
+})
+
+/**
+ * User-level skills.
+ *
+ * Read only from roots Jan itself approved. The repository must never be able
+ * to name one: a `CLAUDE.md` that could add a discovery root would be a file
+ * in the repository choosing which of the user's directories Jan reads.
+ */
+describe('user-level Claude skills', () => {
+  const userRoot = '/home/dev/.claude/skills'
+  const userIo = (files: Record<string, string>, dirs: string[]): CompatIO => ({
+    list: async (rel) => {
+      if (rel !== '.') throw new Error('ENOENT')
+      return dirs.map((name) => ({ name, relPath: name, isDir: true }))
+    },
+    read: async (rel) => {
+      const content = files[rel]
+      if (content === undefined) throw new Error('ENOENT')
+      return { content, oversized: false, binary: false }
+    },
+  })
+
+  const approved = [
+    {
+      root: userRoot,
+      source: 'standard' as const,
+      io: userIo(
+        { 'auditor/SKILL.md': '---\nname: auditor\n---\nAudit carefully.' },
+        ['auditor']
+      ),
+    },
+  ]
+
+  it('finds a skill in an approved root', async () => {
+    const probes = await discoverCompatibility(repo({}), ROOT, approved)
+
+    expect(probes.skills).toEqual([
+      expect.objectContaining({
+        name: 'auditor',
+        source: 'user',
+        dir: `${userRoot}/auditor`,
+      }),
+    ])
+  })
+
+  it('is usable once switched on, from outside the repository', async () => {
+    const probes = await discoverCompatibility(repo({}), ROOT, approved)
+    const manifest = resolveCompatibility(probes, {
+      binding,
+      enabled: true,
+      enabledSkills: new Set(['auditor']),
+      availableTools: [],
+      consentedMcp: new Set(),
+      initializedMcp: new Set(),
+      failedMcp: new Map(),
+      confinement: NO_LOCAL_CONFINEMENT,
+    })
+
+    expect(manifest.components.find((one) => one.type === 'skill')).toMatchObject({
+      state: 'active',
+      source: 'user',
+    })
+  })
+
+  // A user skill's resources are checked against the skill, not the repository.
+  it('refuses a user skill whose resource climbs out of it', async () => {
+    const probes = await discoverCompatibility(repo({}), ROOT, [
+      {
+        root: userRoot,
+        source: 'standard',
+        io: userIo(
+          {
+            'auditor/SKILL.md':
+              '---\nname: auditor\n---\nRead [x](../../../note-py/.env).',
+          },
+          ['auditor']
+        ),
+      },
+    ])
+    const manifest = resolveCompatibility(probes, {
+      binding,
+      enabled: true,
+      enabledSkills: new Set(['auditor']),
+      availableTools: [],
+      consentedMcp: new Set(),
+      initializedMcp: new Set(),
+      failedMcp: new Map(),
+      confinement: NO_LOCAL_CONFINEMENT,
+    })
+
+    const skill = manifest.components.find((one) => one.type === 'skill')
+    expect(skill?.state).toBe('path-escape')
+    expect(skill?.content).toBeUndefined()
+  })
+
+  // Nothing configured is not an error, and neither is a directory that is not
+  // there: most users have neither.
+  it('says nothing when there is no approved root', async () => {
+    expect((await discoverCompatibility(repo({}), ROOT, [])).skills).toEqual([])
+  })
+
+  it('carries on when an approved root cannot be read', async () => {
+    const probes = await discoverCompatibility(repo({}), ROOT, [
+      {
+        root: userRoot,
+        source: 'configured',
+        io: {
+          list: async () => {
+            throw new Error('EACCES')
+          },
+          read: async () => {
+            throw new Error('EACCES')
+          },
+        },
+      },
+      ...approved,
+    ])
+
+    expect(probes.skills.map((one) => one.name)).toEqual(['auditor'])
+  })
+
+  // The project's copy is the original; the user's is the duplicate. Both are
+  // shown, and the ambiguity is what blocks a request naming that skill.
+  it('shows a project/user collision rather than letting one win silently', async () => {
+    const project = repo(
+      { '.claude/skills/auditor/SKILL.md': '---\nname: auditor\n---\nProject.' },
+      { '.claude/skills': [{ name: 'auditor', isDir: true }] }
+    )
+    const probes = await discoverCompatibility(project, ROOT, approved)
+    const manifest = resolveCompatibility(probes, {
+      binding,
+      enabled: true,
+      enabledSkills: new Set(['auditor']),
+      availableTools: [],
+      consentedMcp: new Set(),
+      initializedMcp: new Set(),
+      failedMcp: new Map(),
+      confinement: NO_LOCAL_CONFINEMENT,
+    })
+
+    const skills = manifest.components.filter((one) => one.type === 'skill')
+    expect(skills.map((one) => one.state)).toEqual(['active', 'duplicate'])
+    expect(skills[0].source).toBe('project')
   })
 })

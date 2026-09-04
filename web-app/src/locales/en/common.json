@@ -1125,7 +1125,8 @@
       "missing-dependency": "Needs something not available here",
       "consent-required": "Waiting for your approval",
       "init-failed": "Did not start",
-      "unsupported-confinement": "Refused: cannot be confined on this platform"
+      "unsupported-confinement": "Refused: cannot be confined on this platform",
+      "unsupported-scoping": "Applies to a subdirectory only, which Jan cannot reproduce"
     },
     "precedence": "Instruction precedence",
     "mcpAllow": "Allow",

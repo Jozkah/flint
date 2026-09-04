@@ -148,6 +148,7 @@ import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCompatManifest } from '@/hooks/useCompatManifest'
+import { useImportedMcp } from '@/hooks/useImportedMcp'
 import {
   compatInstructionBlocks,
   mergeSkillRegistry,
@@ -337,13 +338,27 @@ function CoworkPage() {
    * scans at three moments is three different answers to "what is in force",
    * and the user is shown one of them while another is used.
    */
-  const { manifest: compat } = useCompatManifest({
+  const { manifest: compat, mcpProbes } = useCompatManifest({
     binding: { sessionId: session?.id ?? null, folder },
     enabledSkills: new Set(
       effectiveEnabled(enabledSkills, availableSkills.map((s) => s.name))
     ),
     availableTools: advertisedToolNames,
   })
+
+  const { setConsent: setMcpConsent, revalidate: revalidateMcp } =
+    useImportedMcp(folder)
+
+  /**
+   * A definition edited after it was allowed is a different program.
+   *
+   * Checked whenever the scan produces new definitions: the consent is
+   * withdrawn and the running server stopped, rather than left up under a
+   * permission that was given for something else.
+   */
+  useEffect(() => {
+    void revalidateMcp(mcpProbes)
+  }, [mcpProbes, revalidateMcp])
 
   const readiness = useMemo<ReadinessManifest>(() => {
     const registry = mergeSkillRegistry(compat, {
@@ -1990,12 +2005,13 @@ function CoworkPage() {
                     onToggle={(on) =>
                       folder && useClaudeCompat.getState().setEnabled(folder, on)
                     }
-                    onMcpConsent={(server, allowed) =>
-                      folder &&
-                      useClaudeCompat
-                        .getState()
-                        .setMcpConsent(folder, server, allowed)
-                    }
+                    // Drives Jan's own MCP subsystem, against the definition
+                    // as it stands on disk: consent is permission to run
+                    // *this* server, not whatever the file says later.
+                    onMcpConsent={(server, allowed) => {
+                      const probe = mcpProbes.find((one) => one.name === server)
+                      if (probe) void setMcpConsent(probe, allowed)
+                    }}
                   />
                 </div>
               )}

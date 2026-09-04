@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { backendStorage } from '@/lib/backendStorage'
 import { localStorageKey } from '@/constants/localStorage'
+import type { McpRuntimeRecord } from '@/lib/claudeCompatMcp'
 
 /**
  * Whether a repository's Claude Code configuration is switched on, and what
@@ -37,6 +38,29 @@ type CompatState = {
   setMcpConsent: (folder: string, server: string, allowed: boolean) => void
   /** Drop a folder's consent outright. For teardown and for revocation. */
   clearMcpConsent: (folder: string) => void
+  /**
+   * The exact definition each consent was given for, by folder and server.
+   *
+   * Consent means "run *this*". A definition edited afterwards is a different
+   * program, and the fingerprint is what notices.
+   */
+  mcpFingerprints: Record<string, Record<string, string>>
+  setMcpFingerprint: (folder: string, server: string, fp: string) => void
+  /**
+   * What Jan's MCP subsystem is actually doing with each imported server.
+   *
+   * Runtime state, never configuration: readiness renders this so it cannot
+   * show a server as running that never came up.
+   */
+  mcpRuntime: Record<string, Record<string, McpRuntimeRecord>>
+  setMcpRuntime: (
+    folder: string,
+    server: string,
+    record: McpRuntimeRecord | null
+  ) => void
+  runtimeFor: (
+    folder: string | null | undefined
+  ) => Record<string, McpRuntimeRecord>
 }
 
 export const useClaudeCompat = create<CompatState>()(
@@ -44,6 +68,8 @@ export const useClaudeCompat = create<CompatState>()(
     (set, get) => ({
       folders: {},
       mcpConsent: {},
+      mcpFingerprints: {},
+      mcpRuntime: {},
 
       enabledFor: (folder) => (folder ? Boolean(get().folders[folder]) : false),
 
@@ -70,7 +96,28 @@ export const useClaudeCompat = create<CompatState>()(
         }),
 
       clearMcpConsent: (folder) =>
-        set((s) => ({ mcpConsent: { ...s.mcpConsent, [folder]: [] } })),
+        set((s) => ({
+          mcpConsent: { ...s.mcpConsent, [folder]: [] },
+          mcpFingerprints: { ...s.mcpFingerprints, [folder]: {} },
+        })),
+
+      setMcpFingerprint: (folder, server, fp) =>
+        set((s) => ({
+          mcpFingerprints: {
+            ...s.mcpFingerprints,
+            [folder]: { ...(s.mcpFingerprints[folder] ?? {}), [server]: fp },
+          },
+        })),
+
+      setMcpRuntime: (folder, server, record) =>
+        set((s) => {
+          const forFolder = { ...(s.mcpRuntime[folder] ?? {}) }
+          if (record) forFolder[server] = record
+          else delete forFolder[server]
+          return { mcpRuntime: { ...s.mcpRuntime, [folder]: forFolder } }
+        }),
+
+      runtimeFor: (folder) => (folder ? (get().mcpRuntime[folder] ?? {}) : {}),
     }),
     {
       name: localStorageKey.claudeCompat,

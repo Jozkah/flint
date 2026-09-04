@@ -78,6 +78,18 @@ export type CompatState =
    * maintains.
    */
   | 'unsupported-confinement'
+  /**
+   * Found in a subdirectory, and not applied.
+   *
+   * A nested instruction file is scoped to its own subtree: it applies while
+   * work happens under that directory and not elsewhere. Jan builds one system
+   * prompt per run and the dispatcher has no notion of a current directory, so
+   * there is nothing here that could turn "applies under `packages/api`" into
+   * behaviour. Concatenating them all into the global prompt would apply every
+   * subtree's rules to every file — the opposite of what the file means — so
+   * they are listed, with their scope, and not read.
+   */
+  | 'unsupported-scoping'
 
 /** Where a component came from. */
 export type CompatSource = 'project' | 'user' | 'plugin'
@@ -174,6 +186,13 @@ export type InstructionProbe = {
    * the repository on disk.
    */
   canonicalInside?: boolean
+  /**
+   * The directory this file governs, relative to the repository root.
+   *
+   * Absent for the root file, which governs everything. Present means nested,
+   * and nested means scoped — which is the thing Jan cannot reproduce.
+   */
+  scope?: string
 }
 
 /**
@@ -189,9 +208,11 @@ export function classifyCompatInstruction(
   opts: { enabled: boolean; root: string | null }
 ): CompatComponent {
   const base = {
-    id: `instructions:${probe.name}`,
+    id: `instructions:${probe.scope ?? ''}${probe.name}`,
     type: 'instructions' as const,
-    name: probe.name,
+    // Named by where it is, so two `CLAUDE.md` files are told apart in the
+    // list by the thing that actually distinguishes them.
+    name: probe.scope ? `${probe.scope}/${probe.name}` : probe.name,
     source: 'project' as const,
     path: probe.path,
     enabled: opts.enabled,
@@ -225,6 +246,15 @@ export function classifyCompatInstruction(
   }
   if (probe.content.trim().length === 0) {
     return { ...base, state: 'unsupported', reason: 'empty' }
+  }
+  if (probe.scope) {
+    // Reported with its scope so the inventory is complete and honest, and
+    // never ingested: see `unsupported-scoping`.
+    return {
+      ...base,
+      state: 'unsupported-scoping',
+      reason: `applies to ${probe.scope}/ only, which Jan cannot reproduce`,
+    }
   }
   return {
     ...base,
