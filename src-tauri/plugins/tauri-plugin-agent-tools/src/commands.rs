@@ -376,6 +376,11 @@ pub async fn execute_tool(
         enabled_skills,
         allow_network,
         read_only_project,
+        // Not reachable from the renderer yet: no access mode can select a
+        // write destination, so nothing may authorize one. The parameter
+        // exists because the gate and handlers already enforce it, and it is
+        // exercised directly by tests.
+        None,
         scope,
         call_id,
         None,
@@ -413,6 +418,11 @@ pub async fn execute_tool_streaming(
         enabled_skills,
         allow_network,
         read_only_project,
+        // Not reachable from the renderer yet: no access mode can select a
+        // write destination, so nothing may authorize one. The parameter
+        // exists because the gate and handlers already enforce it, and it is
+        // exercised directly by tests.
+        None,
         scope,
         call_id,
         Some(sink),
@@ -430,6 +440,13 @@ async fn execute_tool_inner(
     enabled_skills: Option<Vec<String>>,
     allow_network: Option<bool>,
     read_only_project: Option<String>,
+    // A project root the user has explicitly authorized this run to write to.
+    // Validated exactly like a read root: canonicalized, refused if it is the
+    // filesystem root, and refused if it overlaps the workspace or the Jan data
+    // folder, so authorizing a repository can never authorize Jan's own
+    // settings, keys or skill storage. `None` is every run that has not chosen
+    // a write access mode, which is the unchanged sandbox-only behaviour.
+    write_project: Option<String>,
     scope: Option<WorkspaceScope>,
     call_id: Option<String>,
     sink: Option<crate::tools::OutputSink>,
@@ -454,6 +471,19 @@ async fn execute_tool_inner(
         )?],
         None => Vec::new(),
     };
+    // Same validation as a read root: a folder that fails it grants nothing,
+    // and an unusable authorization surfaces as an error rather than quietly
+    // degrading to sandbox-only writes while the user believes otherwise.
+    let write_roots: Vec<PathBuf> = match write_project.as_deref() {
+        Some(path) => vec![workspace::validate_read_root(
+            Path::new(path),
+            &root,
+            Some(Path::new(&data_folder)),
+        )?],
+        None => Vec::new(),
+    };
+    let grants = SessionGrants::default().with_write_roots(write_roots.clone());
+
     let tool = lookup(&name)
         .ok_or_else(|| AgentToolsError::from(format!("unknown built-in tool '{name}'")))?;
 
@@ -464,7 +494,7 @@ async fn execute_tool_inner(
         Some(&scratch),
         &read_roots,
         &ToolPermissions::default(),
-        &SessionGrants::default(),
+        &grants,
         true,
     ) {
         Decision::Allow => {}
@@ -528,7 +558,8 @@ async fn execute_tool_inner(
         .with_confined_writes(true)
         .with_mask_root(Path::new(&data_folder))
         .with_scratch_root(&scratch)
-        .with_read_roots(&read_roots);
+        .with_read_roots(&read_roots)
+        .with_write_roots(&write_roots);
     if let Some(id) = call_id.as_deref() {
         ctx = ctx.with_call_id(id);
     }

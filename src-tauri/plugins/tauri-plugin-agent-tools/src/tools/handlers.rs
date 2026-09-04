@@ -16,7 +16,7 @@ use crate::skills;
 use crate::tools::jail;
 use crate::tools::proc;
 use crate::tools::sandbox::{
-    escapes_project, in_scratch, is_hidden_jan_path, lexical_normalize, resolve_path,
+    escapes_write_roots, in_scratch, is_hidden_jan_path, lexical_normalize, resolve_path,
     scratch_display_path, symlink_escapes_any_root, symlink_escapes_root,
 };
 use crate::tools::{BuiltinTool, ImageContentPart, ToolContext};
@@ -343,8 +343,26 @@ async fn execute_text(
         // readable and unwritable.
         "read" => read(args, project_root, scratch, ctx.read_roots).await.0,
         "ls" => ls(args, project_root, scratch, ctx.sandbox, ctx.read_roots).await,
-        "write" => write(args, project_root, scratch, ctx.confine_writes).await,
-        "edit" => edit(args, project_root, scratch, ctx.confine_writes).await,
+        "write" => {
+            write(
+                args,
+                project_root,
+                scratch,
+                ctx.confine_writes,
+                ctx.write_roots,
+            )
+            .await
+        }
+        "edit" => {
+            edit(
+                args,
+                project_root,
+                scratch,
+                ctx.confine_writes,
+                ctx.write_roots,
+            )
+            .await
+        }
         "bash" => bash(args, ctx).await,
         "find" => find(args, project_root, scratch, ctx.sandbox, ctx.read_roots).await,
         "grep" => grep(args, project_root, scratch, ctx.sandbox, ctx.read_roots).await,
@@ -810,6 +828,7 @@ async fn write(
     root: &Path,
     scratch: Option<&Path>,
     confine: bool,
+    write_roots: &[PathBuf],
 ) -> String {
     let Some(path) = arg_str(args, "path") else {
         return "ERROR: missing required argument 'path'".to_string();
@@ -821,7 +840,7 @@ async fn write(
     // canonical root (not the raw argument) so `..` and absolute paths are
     // caught even if the gate's decision was made against a stale view.
     let target = resolve_path(root, scratch, path);
-    if confine && escapes_project(root, scratch, path).unwrap_or(true) {
+    if confine && escapes_write_roots(root, scratch, write_roots, path).unwrap_or(true) {
         return format!("ERROR: refused to write outside the agent workspace: {path}");
     }
     // Report the resolved location, not the raw argument: an absolute or `../`
@@ -860,6 +879,7 @@ async fn edit(
     root: &Path,
     scratch: Option<&Path>,
     confine: bool,
+    write_roots: &[PathBuf],
 ) -> String {
     let Some(path) = arg_str(args, "path") else {
         return "ERROR: missing required argument 'path'".to_string();
@@ -871,7 +891,7 @@ async fn edit(
         return "ERROR: edits must contain at least one replacement".to_string();
     }
     let target = resolve_path(root, scratch, path);
-    if confine && escapes_project(root, scratch, path).unwrap_or(true) {
+    if confine && escapes_write_roots(root, scratch, write_roots, path).unwrap_or(true) {
         return format!("ERROR: refused to edit outside the agent workspace: {path}");
     }
     let shown = display_path(root, scratch, &target);
