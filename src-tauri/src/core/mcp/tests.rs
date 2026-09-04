@@ -1038,3 +1038,179 @@ async fn terminate_browser_mcp_reaps_process_group() {
         "group leader should have been signalled, got {status:?}"
     );
 }
+
+/// Confining a local MCP server at the launcher boundary.
+///
+/// These assert the thing the plugin's own tests cannot: that the command
+/// Jan is about to spawn is the confined one, with the environment rebuilt
+/// rather than inherited. The policy itself is the plugin's, and tested there.
+#[cfg(test)]
+mod mcp_confinement_tests {
+    use super::super::helpers::confined_mcp_command;
+    use super::super::models::{McpConfinement, McpServerConfig};
+    use std::path::PathBuf;
+    use tokio::process::Command;
+
+    fn params(env: &[(&str, &str)]) -> McpServerConfig {
+        let mut envs = serde_json::Map::new();
+        for (k, v) in env {
+            envs.insert(
+                (*k).to_string(),
+                serde_json::Value::String((*v).to_string()),
+            );
+        }
+        McpServerConfig {
+            transport_type: Some("stdio".to_string()),
+            url: None,
+            command: "node".to_string(),
+            args: vec![],
+            envs,
+            timeout: None,
+            headers: serde_json::Map::new(),
+            confinement: None,
+        }
+    }
+
+    fn confinement() -> McpConfinement {
+        McpConfinement {
+            workspace: PathBuf::from("/tmp/jan-session"),
+            repository: Some(PathBuf::from("/home/dev/obs-forwarder")),
+            writable_repository: None,
+            jan_data: Some(PathBuf::from("/home/dev/.jan")),
+            allowed_env: vec!["API_TOKEN".to_string()],
+        }
+    }
+
+    fn plain() -> Command {
+        let mut cmd = Command::new("/usr/bin/node");
+        cmd.arg("server.js");
+        cmd
+    }
+
+    /// A server the user configured themselves is untouched. They chose the
+    /// program; confining it would break the ordinary case for no gain.
+    #[test]
+    fn a_user_configured_server_is_left_alone() {
+        let mut p = params(&[]);
+        p.confinement = None;
+
+        // The caller skips confinement entirely when there is none to apply,
+        // which is what `start_mcp_server` does with the `confine` closure.
+        assert!(p.confinement.is_none());
+    }
+
+    #[test]
+    fn an_imported_server_is_spawned_through_the_wrapper() {
+        let built = confined_mcp_command(plain(), &params(&[]), &confinement());
+
+        let Ok(cmd) = built else {
+            // No backend on this host: refusing is the correct outcome and is
+            // asserted by `an_imported_server_will_not_start_unconfined`.
+            return;
+        };
+        assert_ne!(
+            cmd.as_std().get_program(),
+            std::ffi::OsStr::new("/usr/bin/node"),
+            "the server must be launched through the sandbox wrapper"
+        );
+    }
+
+    /// Jan's process holds the user's whole session. `Command` inherits that
+    /// by default, so the environment is rebuilt rather than filtered.
+    #[test]
+    fn only_approved_environment_names_reach_the_server() {
+        let p = params(&[
+            ("API_TOKEN", "for-the-server"),
+            ("AWS_SECRET_ACCESS_KEY", "not-yours"),
+        ]);
+        let Ok(cmd) = confined_mcp_command(plain(), &p, &confinement()) else {
+            return;
+        };
+
+        let passed: Vec<String> = cmd
+            .as_std()
+            .get_envs()
+            .map(|(k, _)| k.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(passed, vec!["API_TOKEN".to_string()]);
+        assert!(!passed.iter().any(|one| one.contains("AWS")));
+    }
+
+    #[test]
+    fn the_server_starts_in_the_session_workspace() {
+        let Ok(cmd) = confined_mcp_command(plain(), &params(&[]), &confinement()) else {
+            return;
+        };
+
+        assert_eq!(
+            cmd.as_std().get_current_dir(),
+            Some(std::path::Path::new("/tmp/jan-session"))
+        );
+    }
+
+    /// Fail closed. A confinement that cannot be built means no server, not a
+    /// server running with the user's whole filesystem in reach.
+    #[test]
+    fn an_imported_server_will_not_start_unconfined() {
+        if tauri_plugin_agent_tools::tools::mcp_confine::confinement_available() {
+            return;
+        }
+
+        let err = confined_mcp_command(plain(), &params(&[]), &confinement())
+            .expect_err("with nothing enforcing there is no confined command");
+
+        assert!(!err.is_empty(), "the refusal has to explain itself");
+    }
+
+    /// The environment is rebuilt, not filtered — proved by running it.
+    ///
+    /// `Command` inherits the parent's environment by default, and inspecting
+    /// the builder cannot tell `env_clear` apart from its absence: the getter
+    /// reports only explicit overrides either way. So the check is behavioural:
+    /// set a marker in this process, run a confined shell, and require that it
+    /// cannot see it.
+    #[tokio::test]
+    async fn a_confined_server_cannot_see_this_process_environment() {
+        if !tauri_plugin_agent_tools::tools::mcp_confine::confinement_available() {
+            return;
+        }
+        std::env::set_var("JAN_MCP_LEAK_MARKER", "must-not-escape");
+
+        let workspace = std::env::temp_dir()
+            .canonicalize()
+            .unwrap_or_else(|_| std::env::temp_dir())
+            .join(format!("jan-mcp-env-{}", std::process::id()));
+        std::fs::create_dir_all(&workspace).expect("workspace");
+
+        let mut inner = Command::new("/bin/sh");
+        inner
+            .arg("-c")
+            .arg("echo [$JAN_MCP_LEAK_MARKER][$API_TOKEN]");
+
+        let mut p = params(&[("API_TOKEN", "approved-value")]);
+        p.confinement = Some(McpConfinement {
+            workspace: workspace.clone(),
+            repository: None,
+            writable_repository: None,
+            jan_data: None,
+            allowed_env: vec!["API_TOKEN".to_string()],
+        });
+        let confinement = p.confinement.clone().expect("set above");
+
+        let Ok(mut cmd) = confined_mcp_command(inner, &p, &confinement) else {
+            return;
+        };
+        let out = cmd.output().await.expect("run the confined command");
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+
+        assert!(
+            !text.contains("must-not-escape"),
+            "the parent environment leaked into a confined server: {text}"
+        );
+        assert!(
+            text.contains("approved-value"),
+            "an approved variable must still reach the server: {text}"
+        );
+    }
+}

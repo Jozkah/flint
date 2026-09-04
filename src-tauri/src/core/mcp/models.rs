@@ -3,6 +3,30 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// How a server imported from repository configuration must be confined.
+///
+/// Present only on a server Jan imported from a repository's own
+/// configuration. A server the user configured themselves carries `None` and
+/// keeps the behaviour it has always had — they chose the program, and
+/// confining it would break the ordinary case for no gain in trust.
+///
+/// When it *is* present it is not advisory. A confinement that cannot be
+/// built means the server does not start, because the alternative is running
+/// a program a repository chose with the user's whole filesystem in reach.
+#[derive(Debug, Clone)]
+pub struct McpConfinement {
+    /// The session workspace: readable and writable.
+    pub workspace: std::path::PathBuf,
+    /// The attached repository, readable.
+    pub repository: Option<std::path::PathBuf>,
+    /// Writable, when the session holds a live direct-edit grant for it.
+    pub writable_repository: Option<std::path::PathBuf>,
+    /// Jan's data folder, hidden from the server.
+    pub jan_data: Option<std::path::PathBuf>,
+    /// Environment names the user approved. Nothing else is passed through.
+    pub allowed_env: Vec<String>,
+}
+
 /// Configuration parameters extracted from MCP server config
 #[derive(Debug, Clone)]
 pub struct McpServerConfig {
@@ -13,6 +37,8 @@ pub struct McpServerConfig {
     pub envs: serde_json::Map<String, Value>,
     pub timeout: Option<Duration>,
     pub headers: serde_json::Map<String, Value>,
+    /// Set for an imported server; `None` for one the user configured.
+    pub confinement: Option<McpConfinement>,
 }
 
 /// Parse a raw `mcp_config.json` server entry into typed connection params.
@@ -44,6 +70,11 @@ pub fn extract_command_args(config: &Value) -> Option<McpServerConfig> {
         args,
         envs,
         headers,
+        // Parsed configuration never carries it: confinement is decided by
+        // the session that imported the server, not by the file that
+        // described it. A repository that could put this in its own JSON
+        // would be choosing its own sandbox.
+        confinement: None,
     })
 }
 
