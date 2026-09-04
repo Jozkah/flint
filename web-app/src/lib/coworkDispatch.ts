@@ -1,6 +1,7 @@
 import { executeAgentTool } from '@/lib/agentTools'
 import {
   ASK_TOOL_NAME,
+  PLAN_DENIED_TOOLS,
   TASK_TOOL_NAME,
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
@@ -46,6 +47,14 @@ export type DispatchContext = {
    * before the filesystem is touched, so the answer cannot be stale.
    */
   bindingIntact?: () => boolean
+  /**
+   * Skills the user asked for that are not in play.
+   *
+   * Reading is still fine — that is what Review first is for — but changing
+   * files while ignoring the instructions those changes were meant to follow
+   * is not. Empty when everything resolved, which is the ordinary case.
+   */
+  unresolvedSkills?: readonly { requested: string; state: string }[]
   /** Runs a nested subagent to completion. */
   onTask: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
 }
@@ -89,6 +98,22 @@ export async function dispatchCoworkTool(
   const { toolName } = call
 
   if (deniedTools(ctx.mode).has(toolName)) return planRefusal(toolName)
+
+  // Ahead of the approval prompt: there is no point asking the user to allow a
+  // change that would be made without the instructions they asked for.
+  const unresolved = ctx.unresolvedSkills ?? []
+  if (unresolved.length > 0 && PLAN_DENIED_TOOLS.has(toolName)) {
+    const named = unresolved
+      .map((skill) => `${skill.requested} (${skill.state})`)
+      .join(', ')
+    return {
+      output:
+        `\`${toolName}\` was not run: you were asked to use ${named}, and ` +
+        'that is not in effect. Do not work around it. Say which skill is ' +
+        'unavailable and what the user can do about it, then stop.',
+      isError: true,
+    }
+  }
 
   if (needsApproval(ctx.mode, toolName)) {
     // No handler means nothing can present the request. Refusing is the only

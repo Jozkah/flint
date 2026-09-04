@@ -208,3 +208,66 @@ describe('web tools', () => {
     expect(out).toMatchObject({ output: 'no API key', isError: true })
   })
 })
+
+/**
+ * A skill the user explicitly asked for and did not get.
+ *
+ * Reading on is fine — that is what Review first is for. Changing files while
+ * ignoring the instructions those changes were supposed to follow is not, and
+ * silently doing it is the complaint this exists to answer.
+ */
+describe('a requested skill that is not in play', () => {
+  const unresolved = [{ requested: 'superpowers', state: 'missing' }]
+
+  it('stops a mutation, naming the skill and its state', async () => {
+    const out = await dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'auto', unresolvedSkills: unresolved })
+    )
+
+    expect(out.isError).toBe(true)
+    expect(out.output).toContain('superpowers (missing)')
+    expect(executeAgentTool).not.toHaveBeenCalled()
+  })
+
+  it.each(['write', 'edit', 'bash', 'memory_write', 'skill_write', 'task'])(
+    'stops %s',
+    async (tool) => {
+      const out = await dispatchCoworkTool(
+        call(tool, { path: 'a', command: 'ls' }),
+        ctx({ mode: 'auto', unresolvedSkills: unresolved })
+      )
+      expect({ tool, isError: out.isError }).toEqual({ tool, isError: true })
+    }
+  )
+
+  it('still allows inspection', async () => {
+    await dispatchCoworkTool(
+      call('read', { path: 'a' }),
+      ctx({ mode: 'auto', unresolvedSkills: unresolved })
+    )
+
+    expect(executeAgentTool).toHaveBeenCalled()
+  })
+
+  // It refuses before the prompt, so the user is never asked to approve a
+  // change that would be made without the instructions they asked for.
+  it('does not ask for approval first', async () => {
+    const onApprove = vi.fn(async () => true)
+    await dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'ask', onApprove, unresolvedSkills: unresolved })
+    )
+
+    expect(onApprove).not.toHaveBeenCalled()
+  })
+
+  it('gets out of the way once every request resolved', async () => {
+    await dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'auto', unresolvedSkills: [] })
+    )
+
+    expect(executeAgentTool).toHaveBeenCalled()
+  })
+})

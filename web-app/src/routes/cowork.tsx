@@ -114,12 +114,29 @@ import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
 import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskCard } from '@/containers/CoworkAskCard'
+import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
+import { effectiveEnabled, useSkills } from '@/hooks/useSkills'
+import {
+  COMPATIBILITY_INSTRUCTION_FILES,
+  MAX_INSTRUCTION_BYTES,
+  NATIVE_INSTRUCTION_FILE,
+  bindingKey,
+  classifyInstruction,
+  measured,
+  parseSkillRequests,
+  resolveSkills,
+  unresolvedSkills,
+  type InstructionFile,
+  type InstructionProbe,
+  type ReadinessManifest,
+} from '@/lib/coworkReadiness'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
 import { dispatchCoworkTool } from '@/lib/coworkDispatch'
 import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
 import { parseAskRequest, renderAskResult } from '@/lib/coworkAsk'
 import { getSandboxStatus, sandboxEnforces } from '@/lib/agentTools'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import { allowedToolNames } from '@/lib/coworkTools'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
 import {
   abortRun,
@@ -156,6 +173,10 @@ export const Route = createFileRoute(route.cowork as any)({
   component: CoworkPage,
 })
 
+/** Same shape the other Cowork surfaces use; kept local, as they do. */
+const messageOf = (e: unknown): string =>
+  e instanceof Error ? e.message : String(e)
+
 function CoworkPage() {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
@@ -170,6 +191,67 @@ function CoworkPage() {
   const folder = session?.folder ?? null
   const mode = modeOf(session ?? {})
 
+  /**
+   * The one description of this run.
+   *
+   * Both the readiness card and the prompt are built from this, so they cannot
+   * end up describing different runs. It carries its binding, so a manifest
+   * left over from another folder or session is recognisable rather than
+   * merely stale-looking.
+   */
+  const readiness = useMemo<ReadinessManifest>(() => {
+    const names = availableSkills.map((skill) => skill.name)
+    const requested = parseSkillRequests(composerPrompt, names)
+    return {
+      binding: { sessionId: session?.id ?? null, folder },
+      folder,
+      branch: gitBranch,
+      mode,
+      // The only destination Cowork has: the agent writes to its own
+      // workspace and reads the repository. Worktrees and direct editing are
+      // not built, and naming them here before they exist would be a lie.
+      writeDestination: 'sandbox',
+      instructions: instructionFiles,
+      skills: resolveSkills(requested, {
+        available: availableSkills.map((skill) => ({ name: skill.name })),
+        enabled: new Set(effectiveEnabled(enabledSkills, names)),
+      }),
+      tools: { builtins: allowedToolNames({
+        planMode: isReadOnly(mode),
+        allowSubagents: true,
+        webSearch: useWebSearchConfig.getState().webSearchEnabled,
+      }).length, mcpServers: [] },
+      model: {
+        id: selectedModel?.id ?? null,
+        supportsTools: selectedModel
+          ? Boolean(selectedModel.capabilities?.includes('tools'))
+          : null,
+      },
+      // Nothing here is measured yet. A plausible number would be worse than
+      // an honest blank to someone deciding whether to trust the run.
+      context: {
+        categories: {
+          instructions: measured(null),
+          skills: measured(null),
+          repositoryMap: measured(null),
+          conversation: measured(null),
+          tools: measured(null),
+        },
+        budget: measured(null),
+      },
+    }
+  }, [
+    session?.id,
+    folder,
+    gitBranch,
+    mode,
+    instructionFiles,
+    availableSkills,
+    enabledSkills,
+    composerPrompt,
+    selectedModel,
+  ])
+
   const [running, setRunning] = useState(false)
   const [liveTurns, setLiveTurns] = useState<CoworkTurn[]>([])
   const liveTurnsRef = useRef<CoworkTurn[]>([])
@@ -181,6 +263,14 @@ function CoworkPage() {
   const [projectInstructions, setProjectInstructions] = useState<string | null>(
     null
   )
+  const [instructionFiles, setInstructionFiles] = useState<InstructionFile[]>([])
+  const { skills: availableSkills, enabled: enabledSkills } = useSkills(folder)
+  const composerPrompt = usePrompt((s) => s.prompt)
+  // Read inside the instruction effect without making the session a dependency:
+  // the effect keys on the folder, and the ref is only used to notice that the
+  // session changed underneath a read that was already in flight.
+  const sessionIdRef = useRef<string | null>(null)
+  sessionIdRef.current = session?.id ?? null
   const [subagentDefs, setSubagentDefs] = useState<SubagentDefinition[]>([])
   const workspacePath = useSessionWorkspacePath(session?.id)
   // The step just finished, so the counter tracks a run instead of jumping once
@@ -332,29 +422,69 @@ function CoworkPage() {
       .catch(() => setGitBranch(null))
   }, [folder])
 
-  // `JAN.md` at the attached root: the one instructions file Jan reads. Read
-  // through the same root-contained reader the code panel uses, so it cannot
-  // become a way to pull in a file from outside the attached folder. A missing
-  // file is the normal case and simply leaves the prompt without the block.
+  // Every instruction file at the attached root, in one pass.
+  //
+  // `JAN.md` is Jan's own and the only one whose text reaches the model.
+  // `AGENTS.md` and `CLAUDE.md` are recognised and reported so a repository
+  // written for another harness does not look instruction-less — detected is
+  // not the same as ingested, and nothing here reads them into the prompt.
+  //
+  // Read through the same root-contained reader the code panel uses, so this
+  // cannot become a way to pull in a file from outside the attached folder.
   useEffect(() => {
     if (!folder) {
+      setInstructionFiles([])
       setProjectInstructions(null)
       return
     }
+    // The binding this read belongs to. A result for the previous folder must
+    // not land on the current one, so it is compared before anything is set.
+    const startedFor = bindingKey({ sessionId: sessionIdRef.current, folder })
     let alive = true
     void (async () => {
-      try {
-        const dataFolder = await serviceHub.app().getJanDataFolder()
-        if (!dataFolder || !alive) return
-        const file = await projectReadFile(dataFolder, folder, 'JAN.md', false)
-        if (!alive) return
-        setProjectInstructions(
-          file.oversized || file.binary ? null : file.content
-        )
-      } catch {
-        // No JAN.md is the ordinary case; the prompt simply omits the block.
-        if (alive) setProjectInstructions(null)
+      const probe = async (
+        name: string,
+        role: 'native' | 'compatibility'
+      ): Promise<InstructionProbe> => {
+        try {
+          const dataFolder = await serviceHub.app().getJanDataFolder()
+          if (!dataFolder) return { name, role, error: 'data folder unavailable' }
+          const file = await projectReadFile(dataFolder, folder, name, false)
+          if (file.binary) return { name, role, error: 'not text' }
+          if (file.oversized) {
+            return { name, role, content: 'x'.repeat(MAX_INSTRUCTION_BYTES + 1) }
+          }
+          return { name, role, content: file.content }
+        } catch (e) {
+          const message = messageOf(e)
+          // Absent is the ordinary case and is not a failure.
+          return /not found|no such file|ENOENT/i.test(message)
+            ? { name, role }
+            : { name, role, error: message }
+        }
       }
+
+      const probes = await Promise.all([
+        probe(NATIVE_INSTRUCTION_FILE, 'native'),
+        ...COMPATIBILITY_INSTRUCTION_FILES.map((name) =>
+          probe(name, 'compatibility')
+        ),
+      ])
+      if (!alive) return
+      if (bindingKey({ sessionId: sessionIdRef.current, folder }) !== startedFor) {
+        return
+      }
+      const files = probes.map(classifyInstruction)
+      setInstructionFiles(files)
+      // The prompt gets exactly what the card calls active, from the same
+      // list, so the two cannot describe different runs.
+      const native = files.find(
+        (file) => file.role === 'native' && file.active
+      )
+      const nativeProbe = probes.find(
+        (one) => one.name === NATIVE_INSTRUCTION_FILE
+      )
+      setProjectInstructions(native ? (nativeProbe?.content ?? null) : null)
     })()
     return () => {
       alive = false
@@ -776,6 +906,9 @@ function CoworkPage() {
               sessionId: sid,
               readOnlyFolder: current?.folder ?? null,
               mode: runMode,
+              // Snapshotted with the run: a skill the user asked for and did
+              // not get stops changes. Inspection still proceeds.
+              unresolvedSkills: unresolvedSkills(readiness.skills),
               // The root this run is bound to, re-checked before every
               // filesystem call: detaching or switching folders mid-run must
               // not leave the run reading the folder that was taken away.
@@ -903,6 +1036,9 @@ function CoworkPage() {
                       sessionId: sid,
                       readOnlyFolder: current?.folder ?? null,
                       mode: runMode,
+                      // Snapshotted with the run: a skill the user asked for and did
+                      // not get stops changes. Inspection still proceeds.
+                      unresolvedSkills: unresolvedSkills(readiness.skills),
               // The root this run is bound to, re-checked before every
               // filesystem call: detaching or switching folders mid-run must
               // not leave the run reading the folder that was taken away.
@@ -1313,6 +1449,15 @@ function CoworkPage() {
                     request={ask.request}
                     onRespond={respondAsk}
                   />
+                </div>
+              )}
+              {/* Before the first run of a repository-bound session: the
+                  moment where knowing which repository, which mode and which
+                  instructions are in play actually changes what someone
+                  types. It disappears once the session has run. */}
+              {folder && (session?.turns.length ?? 0) === 0 && (
+                <div className="px-1 pb-2">
+                  <CoworkReadinessCard manifest={readiness} />
                 </div>
               )}
               <ChatInput

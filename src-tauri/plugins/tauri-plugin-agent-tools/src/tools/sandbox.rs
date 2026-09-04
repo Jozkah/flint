@@ -778,4 +778,96 @@ mod tests {
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&ws);
     }
+
+    /// A parent directory holding two checkouts, which is the shape of the
+    /// reported failure: the user selected `obs-forwarder` and Jan read
+    /// `note-py` sitting beside it.
+    ///
+    /// Built with real directories because this is the validator, not a
+    /// helper: it canonicalizes, so a path that does not exist proves nothing.
+    fn sibling_repos() -> (PathBuf, PathBuf, PathBuf) {
+        let parent = unique_root_outside_tmp();
+        let selected = parent.join("obs-forwarder");
+        let sibling = parent.join("note-py");
+        std::fs::create_dir_all(&selected).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+        std::fs::write(selected.join("README.md"), b"selected").unwrap();
+        std::fs::write(sibling.join("main.py"), b"sibling").unwrap();
+        (parent, selected, sibling)
+    }
+
+    // The reported failure, pinned at the boundary that decides it.
+    #[test]
+    fn a_sibling_repository_is_a_read_escape() {
+        let ws = unique_root_outside_tmp();
+        let (parent, selected, sibling) = sibling_repos();
+        let roots = vec![selected.clone()];
+        let read = |raw: &Path| {
+            escapes_read_roots(&ws, None, &roots, &raw.to_string_lossy()).unwrap()
+        };
+
+        // The sibling, addressed absolutely -- what the model would emit after
+        // being told the wrong repository's name.
+        assert!(read(&sibling.join("main.py")));
+        // The parent, which is how a sibling would be discovered at all.
+        assert!(read(&parent));
+        // Climbing out of the selected root and back down into the sibling.
+        assert!(read(&selected.join("../note-py/main.py")));
+        // And the repository the user actually selected still reads.
+        assert!(!read(&selected.join("README.md")));
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    // `starts_with` on a `Path` compares components, not characters. This is
+    // the test that fails if anyone reimplements it as a string prefix.
+    #[test]
+    fn a_sibling_whose_name_extends_the_selected_root_is_still_an_escape() {
+        let ws = unique_root_outside_tmp();
+        let (parent, selected, _) = sibling_repos();
+        let lookalike = parent.join("obs-forwarder-backup");
+        std::fs::create_dir_all(&lookalike).unwrap();
+        std::fs::write(lookalike.join("main.py"), b"not ours").unwrap();
+        let roots = vec![selected.clone()];
+
+        assert!(escapes_read_roots(
+            &ws,
+            None,
+            &roots,
+            &lookalike.join("main.py").to_string_lossy()
+        )
+        .unwrap());
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    /// Windows separators and case, on Windows only.
+    ///
+    /// The reported paths were `D:\Code\obs-forwarder` and `D:\Code\note-py`.
+    /// On a Unix host a backslash is an ordinary filename character, so writing
+    /// those literals here would assert nothing about separators — the test
+    /// would pass for the wrong reason. Real temp directories are used instead,
+    /// addressed with backslashes, and the case behaviour asserted is whatever
+    /// `canonicalize` already gives on the platform.
+    #[cfg(windows)]
+    #[test]
+    fn windows_sibling_is_an_escape_by_either_separator_or_case() {
+        let ws = unique_root_outside_tmp();
+        let (parent, selected, sibling) = sibling_repos();
+        let roots = vec![selected.clone()];
+        let read = |raw: String| escapes_read_roots(&ws, None, &roots, &raw).unwrap();
+
+        let backslashed = sibling.join("main.py").to_string_lossy().replace('/', "\\");
+        assert!(read(backslashed));
+        // Windows paths are case-insensitive, so a differently-cased spelling of
+        // the selected root is the same root -- not a way around it, and not a
+        // way in either.
+        assert!(!read(selected.join("README.md").to_string_lossy().to_uppercase()));
+        assert!(read(sibling.join("main.py").to_string_lossy().to_uppercase()));
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&parent);
+    }
 }

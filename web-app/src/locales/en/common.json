@@ -941,5 +941,50 @@
       "label": "Autonomous",
       "description": "Changes files and runs commands without asking."
     }
+  },
+  "readiness": {
+    "title": "Before this run",
+    "repository": "Repository",
+    "noRepository": "None attached",
+    "branch": "Branch",
+    "unknown": "Unknown",
+    "mode": "Mode",
+    "writesGo": "Changes go to",
+    "destination": {
+      "sandbox": "This session's workspace, not your repository",
+      "managed": "A managed worktree",
+      "repository": "The attached repository"
+    },
+    "instructions": "Instructions",
+    "noInstructions": "None found",
+    "detectedOnly": "detected, not used",
+    "instruction": {
+      "loaded": "loaded",
+      "missing": "not found",
+      "unreadable": "could not be read",
+      "oversized": "too large to load",
+      "empty": "empty"
+    },
+    "skills": "Skills",
+    "noSkillsRequested": "None requested",
+    "skill": {
+      "active": "in use",
+      "available": "available, not in use",
+      "disabled": "turned off",
+      "missing": "not found",
+      "ambiguous": "more than one match",
+      "failed": "could not be loaded"
+    },
+    "model": "Model",
+    "noModel": "No model selected",
+    "toolsSupported": "supports tools",
+    "toolsUnsupported": "cannot call tools",
+    "toolsUnknown": "tool support unknown",
+    "tools": "Tools",
+    "builtins": "{{count}} built-in",
+    "noMcp": "no MCP servers",
+    "context": "Context",
+    "tokens": "{{count}} tokens",
+    "tokensPartial": "at least {{count}} tokens; some parts could not be measured"
   }
 }
