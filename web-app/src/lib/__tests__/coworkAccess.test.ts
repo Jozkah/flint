@@ -5,6 +5,7 @@ import {
   accessOf,
   consentCovers,
   decideMutation,
+  effectiveAccess,
   rootsFor,
   supports,
   type AccessCapability,
@@ -288,5 +289,92 @@ describe('a session saved before access modes existed', () => {
 
   it('keeps an access mode it was given', () => {
     expect(accessOf({ access: 'edit-folder' })).toBe('edit-folder')
+  })
+})
+
+describe('a managed worktree in force', () => {
+  const base = {
+    persisted: 'managed-worktree' as const,
+    capability: { managedWorktree: true, directEdit: true },
+    capabilityKnown: true,
+    binding: { sessionId: 's1', folder: '/repo' },
+    worktreePath: '/jan/worktrees/abc/s1',
+  }
+  const grant = {
+    sessionId: 's1',
+    folder: '/jan/worktrees/abc/s1',
+    grantId: 'g1',
+  }
+
+  it('reads and writes the worktree, and not the checkout', () => {
+    // The worktree is the run's whole world. Reading the source alongside it
+    // would have the agent reasoning about one tree and changing another.
+    const effective = effectiveAccess({ ...base, grant })
+
+    expect(effective.access).toBe('managed-worktree')
+    expect(effective.readRoot).toBe('/jan/worktrees/abc/s1')
+    expect(effective.writeRoot).toBe('/jan/worktrees/abc/s1')
+    expect(effective.destination).toBe('managed')
+  })
+
+  it('refuses a grant that names the source checkout', () => {
+    // The failure that would defeat the entire mode: a grant for /repo would
+    // write the very tree the worktree exists to leave alone.
+    const effective = effectiveAccess({
+      ...base,
+      grant: { sessionId: 's1', folder: '/repo', grantId: 'g1' },
+    })
+
+    expect(effective.access).toBe('review-only')
+    expect(effective.writeRoot).toBeNull()
+    expect(effective.reason).toBe('binding-changed')
+  })
+
+  it('refuses a grant issued to another session', () => {
+    const effective = effectiveAccess({
+      ...base,
+      grant: { ...grant, sessionId: 'other' },
+    })
+
+    expect(effective.access).toBe('review-only')
+    expect(effective.reason).toBe('binding-changed')
+  })
+
+  it('writes nothing until a worktree actually exists', () => {
+    const effective = effectiveAccess({ ...base, worktreePath: null, grant })
+
+    expect(effective.access).toBe('review-only')
+    expect(effective.downgradedFrom).toBe('managed-worktree')
+    expect(effective.reason).toBe('no-grant')
+  })
+
+  it('writes nothing while the backend holds no grant', () => {
+    const effective = effectiveAccess({ ...base, grant: null })
+
+    expect(effective.reason).toBe('no-grant')
+    expect(effective.writeRoot).toBeNull()
+  })
+
+  it('stays in review when the platform cannot confine writes', () => {
+    const effective = effectiveAccess({
+      ...base,
+      capability: { managedWorktree: false, directEdit: false },
+      grant,
+    })
+
+    expect(effective.reason).toBe('no-capability')
+  })
+
+  it('treats an unanswered capability query as a no', () => {
+    // An absent answer is not a yes, for this mode as for the other one.
+    const effective = effectiveAccess({
+      ...base,
+      capabilityKnown: false,
+      grant,
+    })
+
+    expect(effective.access).toBe('review-only')
+    expect(effective.downgradedFrom).toBe('managed-worktree')
+    expect(effective.reason).toBe('capability-unknown')
   })
 })

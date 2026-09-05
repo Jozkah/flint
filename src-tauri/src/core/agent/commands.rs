@@ -14,6 +14,7 @@ use crate::core::agent::project::{
 use crate::core::agent::skill_hub;
 use crate::core::agent::skills as agent_skills;
 use crate::core::agent::subagent;
+use crate::core::agent::worktree;
 use crate::core::app::commands::get_jan_data_folder_path;
 use tauri_plugin_agent_tools::skills::{self, SkillMeta};
 use tauri_plugin_agent_tools::workspace;
@@ -239,4 +240,80 @@ pub async fn agent_subagent_list<R: tauri::Runtime>(
             })
             .collect(),
     )
+}
+
+/// Create, or reuse, the managed worktree for a Cowork session.
+///
+/// Idempotent by design: a session that already has one gets the same record
+/// back rather than a second branch beside its work. Every refusal — a branch
+/// that is already someone else's, a directory in our place that is not a
+/// worktree, a repository with no commits — comes back as a message the UI can
+/// show, because each of them means something happened outside Jan that a
+/// silently chosen alternative would hide.
+#[tauri::command]
+pub fn agent_worktree_ensure(
+    data_folder: String,
+    session_id: String,
+    project: String,
+) -> Result<worktree::WorktreeRecord, String> {
+    let roots = workspace::worktrees_dir(std::path::Path::new(&data_folder));
+    worktree::ensure(std::path::Path::new(&project), &roots, &session_id)
+}
+
+/// What state a recorded worktree is actually in.
+///
+/// Asked before a run uses one, so a worktree deleted, moved or moved-off-branch
+/// between sessions is reported rather than written into.
+#[tauri::command]
+pub fn agent_worktree_state(record: WorktreeRecordInput) -> worktree::WorktreeState {
+    worktree::state(&record.into())
+}
+
+/// Remove a worktree and its branch.
+///
+/// Only ever called because someone asked: this is the one operation here that
+/// destroys work, so it is never cleanup on a path doing something else.
+#[tauri::command]
+pub fn agent_worktree_discard(record: WorktreeRecordInput) -> Result<(), String> {
+    worktree::discard(&record.into())
+}
+
+/// A record as it comes back from the renderer.
+///
+/// Deserialized into its own type rather than reusing the serialize-only record:
+/// what the frontend stores is state Jan wrote, but it arrives over IPC and is
+/// treated as input like anything else that does.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeRecordInput {
+    pub path: String,
+    pub branch: String,
+    pub base_sha: String,
+    pub source_root: String,
+    pub identity: RepoIdentityInput,
+    #[serde(default)]
+    pub uncommitted_at_creation: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoIdentityInput {
+    pub root: String,
+    pub first_commit: Option<String>,
+}
+
+impl From<WorktreeRecordInput> for worktree::WorktreeRecord {
+    fn from(input: WorktreeRecordInput) -> Self {
+        worktree::WorktreeRecord {
+            path: input.path,
+            branch: input.branch,
+            base_sha: input.base_sha,
+            source_root: input.source_root,
+            identity: worktree::RepoIdentity {
+                root: input.identity.root,
+                first_commit: input.identity.first_commit,
+            },
+            uncommitted_at_creation: input.uncommitted_at_creation,
+        }
+    }
 }

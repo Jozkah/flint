@@ -32,6 +32,7 @@ const open = async (
   over: Partial<Parameters<typeof CoworkAccessSelector>[0]> = {}
 ) => {
   const onRequestDirectEdit = vi.fn()
+  const onRequestWorktree = vi.fn()
   const onReviewOnly = vi.fn()
   render(
     <CoworkAccessSelector
@@ -39,12 +40,13 @@ const open = async (
       capability={SUPPORTED}
       hasFolder
       onRequestDirectEdit={onRequestDirectEdit}
+      onRequestWorktree={onRequestWorktree}
       onReviewOnly={onReviewOnly}
       {...over}
     />
   )
   await user.click(screen.getByRole('button'))
-  return { onRequestDirectEdit, onReviewOnly }
+  return { onRequestDirectEdit, onRequestWorktree, onReviewOnly }
 }
 
 const option = async (name: string) =>
@@ -185,16 +187,40 @@ describe('when editing a folder cannot be offered', () => {
     }
   )
 
-  it('keeps the managed worktree visible but unavailable', async () => {
+  it('offers the managed worktree once writes can be confined', async () => {
+    // It was inert while there was no lifecycle beneath it. There is one now,
+    // and it rests on the same confinement direct editing does.
     await open()
     const worktree = await option('common:coworkAccess.managed-worktree.label')
 
+    expect(worktree).toHaveAttribute('aria-disabled', 'false')
+  })
+
+  it('withholds the worktree on a platform that cannot confine writes', async () => {
+    // A worktree the shell could escape is not isolation, so the option is not
+    // offered rather than offered and quietly downgraded.
+    await open({ capability: { known: true, directEdit: false } })
+    const worktree = await option('common:coworkAccess.managed-worktree.label')
+
     expect(worktree).toHaveAttribute('aria-disabled', 'true')
-    expect(worktree).toHaveTextContent('common:coworkAccess.notBuiltYet')
+    expect(worktree).toHaveTextContent(
+      'common:coworkAccess.unsupportedPlatform'
+    )
   })
 })
 
 describe('choosing a mode', () => {
+  it('asks for a worktree without a separate confirmation', async () => {
+    // Unlike direct editing, this cannot alter the user's checkout, so there
+    // is nothing to warn about that the mode's own description does not say.
+    const { onRequestWorktree, onRequestDirectEdit } = await open()
+    const worktree = await option('common:coworkAccess.managed-worktree.label')
+    worktree.click()
+
+    expect(onRequestWorktree).toHaveBeenCalled()
+    expect(onRequestDirectEdit).not.toHaveBeenCalled()
+  })
+
   // Selecting is not confirming: the switch happens after a grant exists.
   it('asks for confirmation rather than switching', async () => {
     const { onRequestDirectEdit } = await open()

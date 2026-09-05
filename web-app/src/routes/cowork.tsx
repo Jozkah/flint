@@ -183,6 +183,7 @@ import {
   recordFor,
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
+import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { dispatchCoworkTool } from '@/lib/coworkDispatch'
 import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
 import { parseAskRequest, renderAskResult } from '@/lib/coworkAsk'
@@ -352,15 +353,22 @@ function CoworkPage() {
    * One derivation, read by the readiness card and the prompt, so the screen
    * cannot describe a destination the dispatcher would not use.
    */
+  const worktree = useCoworkWorktrees((s) =>
+    session?.id ? s.bySession[session.id] : undefined
+  )
   const effective = effectiveAccess({
     persisted: access,
     capability: {
-      managedWorktree: false,
+      // Both write modes rest on the same confinement: an authorized writable
+      // root the tool gate holds to. A worktree needs Git as well, which the
+      // lifecycle reports by refusing to produce one.
+      managedWorktree: capabilityState.known && capabilityState.directEdit,
       directEdit: capabilityState.known && capabilityState.directEdit,
     },
     capabilityKnown: capabilityState.known,
     grant: liveGrant ?? null,
     binding: { sessionId: session?.id ?? null, folder },
+    worktreePath: worktree?.path ?? null,
   })
   /**
    * This session's origin ledger, if a run has produced one.
@@ -931,6 +939,65 @@ function CoworkPage() {
       })
       if (result === 'granted') setConfirmDirectEdit(false)
       return result === 'granted'
+    } finally {
+      done()
+    }
+  }, [
+    session?.id,
+    folder,
+    serviceHub,
+    effective.access,
+    effective.destination,
+  ])
+
+  /**
+   * Create or find this session's worktree, authorize it, then switch.
+   *
+   * The same order as direct editing and for the same reason: switching first
+   * would show "isolated worktree" while the backend still refused every write
+   * outside the sandbox. A failure at either step leaves the session where it
+   * was, saying what is true.
+   *
+   * The grant names the *worktree*, never the source checkout — which is what
+   * makes this mode structurally unable to write the tree it exists to protect,
+   * rather than merely instructed not to.
+   */
+  const authorizeManagedWorktree = useCallback(async (): Promise<boolean> => {
+    const sid = session?.id ?? null
+    if (!sid || !folder) return false
+    const done = useCoworkActiveWork.getState().acquire({
+      sessionId: sid,
+      kind: 'authorizing',
+      authority: {
+        folder,
+        access: effective.access,
+        destination: effective.destination,
+      },
+    })
+    try {
+      const dataFolder = await serviceHub.app().getJanDataFolder()
+      if (!dataFolder) return false
+      const created = await useCoworkWorktrees
+        .getState()
+        .ensure(sid, folder, dataFolder)
+      if (!created.ok) {
+        toast.error(created.reason)
+        return false
+      }
+      // The user may have moved on during the round trip; authorizing for a
+      // binding nobody is looking at would leave authority nobody asked for.
+      const now = bindingRef.current
+      if (now.sessionId !== sid || now.folder !== folder) return false
+
+      const granted = await useDirectEditGrants
+        .getState()
+        .authorize(sid, created.record.path, dataFolder)
+      if (!granted.ok) {
+        if (granted.reason !== 'superseded') toast.error(granted.reason)
+        return false
+      }
+      useCoworkSessions.getState().setAccess(sid, 'managed-worktree')
+      return true
     } finally {
       done()
     }
@@ -2237,6 +2304,7 @@ function CoworkPage() {
                       // turn does.
                       busyReason={blockingKind}
                       onRequestDirectEdit={() => setConfirmDirectEdit(true)}
+                      onRequestWorktree={() => void authorizeManagedWorktree()}
                       onReviewOnly={() => void returnToReviewOnly()}
                     />
                     <CoworkWorkspacePill

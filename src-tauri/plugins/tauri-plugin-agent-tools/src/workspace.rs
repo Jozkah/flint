@@ -31,6 +31,15 @@ const THREADS: &str = "threads";
 /// a session workspace, whatever `keep` list it is handed.
 const SESSIONS: &str = "sessions";
 
+/// Where Jan-owned Git worktrees live, a sibling of `sessions/`.
+///
+/// A sibling rather than a child on purpose. A worktree placed inside a
+/// session's sandbox would overlap it, and `validate_read_root` refuses an
+/// overlapping root — correctly, since the sandbox is swept when the session
+/// goes and the worktree holds work that must outlive it. Keeping the two
+/// disjoint is what lets a worktree be authorized as a write root at all.
+const WORKTREES: &str = "worktrees";
+
 /// `<store_root>/<kind>`, for `kind` in `{memory, skills}`.
 pub fn store_dir(store_root: &Path, kind: &str) -> PathBuf {
     store_root.join(kind)
@@ -66,6 +75,11 @@ pub fn threads_dir(jan_data_folder: &Path) -> PathBuf {
 /// Where per-session sandboxes live: `<permanent_store>/sessions`.
 pub fn sessions_dir(jan_data_folder: &Path) -> PathBuf {
     permanent_store(jan_data_folder).join(SESSIONS)
+}
+
+/// Where Jan-owned worktrees live: `<permanent_store>/worktrees`.
+pub fn worktrees_dir(jan_data_folder: &Path) -> PathBuf {
+    permanent_store(jan_data_folder).join(WORKTREES)
 }
 
 /// A Cowork session's sandbox root:
