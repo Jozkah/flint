@@ -9,6 +9,7 @@
 // Tauri IPC surface for the desktop agent; the CLI drives the loop directly.
 #[cfg(not(feature = "cli"))]
 pub mod commands;
+pub mod checkpoint;
 pub mod compaction;
 pub mod context;
 pub mod events;
