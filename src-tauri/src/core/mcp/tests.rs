@@ -1309,7 +1309,7 @@ mod mcp_confinement_tests {
 #[cfg(all(test, unix))]
 mod mcp_end_to_end_tests {
     use super::super::launch::ConfinedMcpLaunch;
-    use super::super::models::{extract_command_args, McpConfinement};
+    use super::super::models::extract_command_args;
     use rmcp::model::CallToolRequestParam;
     use rmcp::ServiceExt;
     use std::path::PathBuf;
@@ -1693,5 +1693,359 @@ mod mcp_http_integration_tests {
             !message.contains("https://"),
             "the fixture is loopback-only: {message}"
         );
+    }
+}
+
+/// Jan's real SSE transport, against a real SSE server on loopback.
+///
+/// SSE is two halves: a long-lived stream the server writes events to, and a
+/// POST endpoint the client is told about in the stream's first event. Both
+/// are real here, driven through Jan's own `serve_sse` — so this covers the
+/// transport Jan advertises rather than a parser that recognises its name.
+#[cfg(test)]
+mod mcp_sse_integration_tests {
+    use super::super::helpers::serve_sse;
+    use super::super::progress::JanClientHandler;
+    use rmcp::model::{CallToolRequestParam, ClientInfo};
+    use std::io::BufRead;
+    use std::path::PathBuf;
+
+    struct Fixture {
+        child: std::process::Child,
+        port: u16,
+    }
+
+    impl Fixture {
+        fn start(mode: &str, barrier: Option<&std::path::Path>) -> Option<Self> {
+            let script =
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mcp_sse_server.py");
+            if !script.exists() || !std::path::Path::new("/usr/bin/python3").exists() {
+                return None;
+            }
+            let mut command = std::process::Command::new("/usr/bin/python3");
+            command.arg(&script).arg(mode);
+            if let Some(path) = barrier {
+                command.arg(path);
+            }
+            let mut child = command
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .ok()?;
+            let stdout = child.stdout.take()?;
+            let mut line = String::new();
+            std::io::BufReader::new(stdout).read_line(&mut line).ok()?;
+            Some(Self {
+                child,
+                port: line.trim().parse().ok()?,
+            })
+        }
+
+        fn url(&self) -> String {
+            format!("http://127.0.0.1:{}/sse", self.port)
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    async fn connect(
+        fixture: &Fixture,
+    ) -> Result<super::super::super::state::RunningMcpService, String> {
+        let client = reqwest::Client::builder()
+            .build()
+            .map_err(|e| e.to_string())?;
+        serve_sse(
+            client,
+            &fixture.url(),
+            JanClientHandler::for_test(ClientInfo::default(), "sse-fixture".to_string()),
+        )
+        .await
+    }
+
+    /// The whole lifecycle: stream, endpoint, initialize, list, call, shutdown.
+    #[tokio::test]
+    async fn an_sse_server_handshakes_lists_and_calls() {
+        let Some(fixture) = Fixture::start("ok", None) else {
+            return;
+        };
+
+        let service = connect(&fixture).await.expect("initialize over SSE");
+        let info = service.peer_info().expect("the server identified itself");
+        assert_eq!(info.server_info.name, "jan-sse-fixture");
+
+        let tools = service.list_all_tools().await.expect("tools/list");
+        assert!(
+            tools.iter().any(|tool| tool.name == "echo_fixture"),
+            "the server's tool must be discovered: {tools:?}"
+        );
+
+        let called = service
+            .call_tool(CallToolRequestParam {
+                name: "echo_fixture".into(),
+                arguments: None,
+            })
+            .await
+            .expect("tools/call");
+        let text = serde_json::to_string(&called).expect("serialize");
+        assert!(text.contains("fixture-answer"), "{text}");
+
+        service.cancel().await.expect("shutdown");
+    }
+
+    /// The stream drops before the handshake completes. There is no service.
+    #[tokio::test]
+    async fn a_stream_that_closes_during_initialize_yields_no_service() {
+        let Some(fixture) = Fixture::start("close-during-init", None) else {
+            return;
+        };
+
+        let outcome =
+            tokio::time::timeout(std::time::Duration::from_secs(10), connect(&fixture)).await;
+
+        assert!(
+            outcome.is_err() || outcome.expect("settled").is_err(),
+            "a stream that closes during initialize must not produce a service"
+        );
+    }
+
+    /// An event that is not valid JSON-RPC must not derail the handshake into
+    /// reporting success.
+    #[tokio::test]
+    async fn a_malformed_event_does_not_produce_a_working_service() {
+        let Some(fixture) = Fixture::start("malformed-event", None) else {
+            return;
+        };
+
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            let service = connect(&fixture).await?;
+            // If the handshake did survive the junk event, the server is
+            // genuinely usable — which is also an acceptable outcome, as
+            // long as it is real.
+            service.list_all_tools().await.map_err(|e| e.to_string())?;
+            service.cancel().await.ok();
+            Ok::<(), String>(())
+        })
+        .await;
+
+        // What must not happen is a hang: either it worked or it failed.
+        assert!(
+            outcome.is_ok(),
+            "a malformed event must not leave the client waiting forever"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_tool_listing_failure_is_reported_over_sse() {
+        let Some(fixture) = Fixture::start("tools-list-error", None) else {
+            return;
+        };
+
+        let service = connect(&fixture).await.expect("initialize");
+        assert!(
+            service.list_all_tools().await.is_err(),
+            "a failing tools/list must be reported, not treated as an empty set"
+        );
+        service.cancel().await.ok();
+    }
+
+    /// A call held open by the server, released by the test rather than by a
+    /// sleep, then shut down.
+    #[tokio::test]
+    async fn a_call_in_flight_settles_and_shutdown_completes() {
+        let barrier = std::env::temp_dir().join(format!("jan-sse-barrier-{}", std::process::id()));
+        let _ = std::fs::remove_file(&barrier);
+
+        let Some(fixture) = Fixture::start("slow-call", Some(&barrier)) else {
+            return;
+        };
+
+        let service = std::sync::Arc::new(connect(&fixture).await.expect("initialize"));
+        let held = service.clone();
+        let call = tokio::spawn(async move {
+            held.call_tool(CallToolRequestParam {
+                name: "echo_fixture".into(),
+                arguments: None,
+            })
+            .await
+        });
+
+        std::fs::write(&barrier, b"go").expect("release the barrier");
+        let settled = tokio::time::timeout(std::time::Duration::from_secs(15), call).await;
+        let _ = std::fs::remove_file(&barrier);
+
+        assert!(
+            settled.is_ok(),
+            "a call the server released must settle rather than hang"
+        );
+    }
+
+    /// Nothing in a failure carries a secret, and the endpoint is loopback.
+    #[tokio::test]
+    async fn sse_failures_carry_no_secret_and_no_public_endpoint() {
+        let Some(fixture) = Fixture::start("close-during-init", None) else {
+            return;
+        };
+
+        let message =
+            match tokio::time::timeout(std::time::Duration::from_secs(10), connect(&fixture)).await
+            {
+                Ok(Err(message)) => message,
+                _ => return,
+            };
+
+        assert!(!message.to_lowercase().contains("secret"), "{message}");
+        assert!(!message.to_lowercase().contains("token"), "{message}");
+        assert!(!message.contains("https://"), "{message}");
+    }
+}
+
+/// Deciding whether a server may start under a name.
+///
+/// The rule this pins: a name is not an identity. Two definitions that differ
+/// in what they run, where they run it, or what they are handed are two
+/// programs, and one must never quietly stand in for the other.
+#[cfg(test)]
+mod registration_decision_tests {
+    use super::super::models::{definition_identity, registration_decision, RegistrationDecision};
+    use serde_json::json;
+
+    fn stdio(command: &str, args: &[&str]) -> serde_json::Value {
+        json!({ "type": "stdio", "command": command, "args": args })
+    }
+
+    #[test]
+    fn a_name_nobody_is_using_may_start() {
+        assert_eq!(
+            registration_decision(false, None, &stdio("node", &["server.js"])),
+            RegistrationDecision::Start
+        );
+    }
+
+    /// Starting the same server twice opens a second client that sends its own
+    /// `initialize`, which a streamable-HTTP server rejects — tearing down the
+    /// connection that was already working.
+    #[test]
+    fn the_same_definition_already_running_is_skipped() {
+        let config = stdio("node", &["server.js"]);
+
+        assert_eq!(
+            registration_decision(true, Some(&config), &config),
+            RegistrationDecision::AlreadyRunning
+        );
+    }
+
+    /// The failure this closes. Before, the guard compared names only, so an
+    /// edited definition returned "fine" while the old program kept running.
+    #[test]
+    fn a_different_definition_under_the_same_name_is_refused() {
+        let running = stdio("node", &["server.js"]);
+        let edited = stdio("node", &["other-server.js"]);
+
+        match registration_decision(true, Some(&running), &edited) {
+            RegistrationDecision::Conflict { reason } => {
+                assert!(reason.contains("different"), "{reason}");
+            }
+            other => panic!("an edited definition must not silently share a name: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_server_running_under_a_name_nothing_describes_is_refused() {
+        match registration_decision(true, None, &stdio("node", &["server.js"])) {
+            RegistrationDecision::Conflict { .. } => {}
+            other => panic!("an unidentifiable server must not be claimed: {other:?}"),
+        }
+    }
+
+    /// Everything that decides which program runs is part of the identity.
+    #[test]
+    fn identity_changes_when_the_program_does() {
+        let base = stdio("node", &["server.js"]);
+
+        for (what, changed) in [
+            ("the executable", stdio("python3", &["server.js"])),
+            ("the arguments", stdio("node", &["evil.js"])),
+            (
+                "the transport",
+                json!({ "type": "http", "url": "https://example.test/mcp" }),
+            ),
+            (
+                "the endpoint",
+                json!({ "type": "http", "url": "https://elsewhere.test/mcp" }),
+            ),
+            (
+                "the environment it is handed",
+                json!({
+                    "type": "stdio",
+                    "command": "node",
+                    "args": ["server.js"],
+                    "env": { "AWS_SECRET_ACCESS_KEY": "x" }
+                }),
+            ),
+        ] {
+            assert_ne!(
+                definition_identity(&base),
+                definition_identity(&changed),
+                "changing {what} must change the identity"
+            );
+        }
+    }
+
+    /// And nothing else is. A description or an `active` flag does not make it
+    /// a different program, and treating it as one would refuse a server the
+    /// user never changed.
+    #[test]
+    fn identity_ignores_what_does_not_decide_the_program() {
+        let plain = stdio("node", &["server.js"]);
+        let annotated = json!({
+            "type": "stdio",
+            "command": "node",
+            "args": ["server.js"],
+            "active": true,
+            "description": "notes for the user"
+        });
+
+        assert_eq!(definition_identity(&plain), definition_identity(&annotated));
+        assert_eq!(
+            registration_decision(true, Some(&plain), &annotated),
+            RegistrationDecision::AlreadyRunning
+        );
+    }
+
+    /// Only the names travel. A value would make two servers with the same
+    /// program look different, and would put a secret in the comparison.
+    #[test]
+    fn identity_carries_environment_names_and_no_values() {
+        let with_value = json!({
+            "type": "stdio",
+            "command": "node",
+            "args": [],
+            "env": { "API_TOKEN": "sk-live-do-not-leak" }
+        });
+
+        let identity = definition_identity(&with_value);
+        assert!(identity.contains("API_TOKEN"));
+        assert!(!identity.contains("sk-live-do-not-leak"), "{identity}");
+    }
+
+    /// Two servers differing only in the *value* of an environment variable
+    /// are the same program, and must not be refused as a conflict.
+    #[test]
+    fn a_changed_environment_value_alone_is_not_a_different_program() {
+        let before = json!({
+            "type": "stdio", "command": "node", "args": [],
+            "env": { "API_TOKEN": "one" }
+        });
+        let after = json!({
+            "type": "stdio", "command": "node", "args": [],
+            "env": { "API_TOKEN": "two" }
+        });
+
+        assert_eq!(definition_identity(&before), definition_identity(&after));
     }
 }

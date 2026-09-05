@@ -331,9 +331,21 @@ pub async fn start_mcp_server<R: Runtime>(
     // request id 0); the second is rejected by streamable-http servers with a
     // 400, tearing down the connection (issue #8411). This can happen when boot
     // startup and a frontend activation fire for the same server.
-    if servers_state.lock().await.contains_key(&name) {
-        log::debug!("MCP server {name} already running; skipping duplicate start");
-        return Ok(());
+    // Name alone is not identity. A definition edited under the same name is
+    // a different program, and skipping it would leave the user looking at
+    // their edit while the old one keeps running.
+    let running = servers_state.lock().await.contains_key(&name);
+    let registered = active_servers_state.lock().await.get(&name).cloned();
+    match crate::core::mcp::models::registration_decision(running, registered.as_ref(), &config) {
+        crate::core::mcp::models::RegistrationDecision::Start => {}
+        crate::core::mcp::models::RegistrationDecision::AlreadyRunning => {
+            log::debug!("MCP server {name} already running; skipping duplicate start");
+            return Ok(());
+        }
+        crate::core::mcp::models::RegistrationDecision::Conflict { reason } => {
+            log::warn!("MCP server {name} not started: {reason}");
+            return Err(format!("{name}: {reason}"));
+        }
     }
     if !app_state.mcp_starting.lock().await.insert(name.clone()) {
         log::debug!("MCP server {name} start already in progress; skipping duplicate start");

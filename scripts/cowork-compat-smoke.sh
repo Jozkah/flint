@@ -85,6 +85,12 @@ step "MCP over a real remote transport"
 check "loopback HTTP: handshake, list, call, refusal, malformed init" \
   cargo test --quiet --manifest-path src-tauri/Cargo.toml --lib mcp_http_integration
 
+check "loopback SSE: stream, endpoint, handshake, call, shutdown" \
+  cargo test --quiet --manifest-path src-tauri/Cargo.toml --lib mcp_sse_integration
+
+check "registration refuses a different definition under the same name" \
+  cargo test --quiet --manifest-path src-tauri/Cargo.toml --lib registration_decision
+
 step "Restart, in two real processes"
 # One process writes what Jan persists and exits; a second starts fresh and
 # reads it. Clearing a store inside one process would test the clearing, not
@@ -122,12 +128,15 @@ Covered by an executing runtime:
   - refusal to launch an import that carries no confinement
   - the environment a confined server is given
   - a real remote MCP handshake, tool call, and failure handling on loopback
+    over both streamable HTTP and SSE
+  - refusing to start a different definition under a name already running
   - a restart, across two separate processes
 
 Not covered here:
   - the Tauri window: layout, focus order, where a control sits
   - clicking through consent in the running application
-  - Linux bubblewrap and Windows AppContainer at runtime
+  - Linux bubblewrap and Windows AppContainer at runtime (see the
+    "Cowork sandbox runtime" workflow; it needs Actions billing enabled)
 
 NOTE
 

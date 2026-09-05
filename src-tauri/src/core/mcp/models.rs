@@ -347,3 +347,94 @@ mod tests {
         assert_eq!(extract_active_status(&serde_json::json!(true)), None);
     }
 }
+
+/// What to do when a server is asked to start.
+///
+/// Extracted from `start_mcp_server` so the decision is one function the
+/// command and the tests share, rather than a rule embedded in a body that
+/// needs a Tauri app to reach.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RegistrationDecision {
+    /// Nothing is registered under this name. Go ahead.
+    Start,
+    /// The same definition is already running. Doing it again would open a
+    /// second client that sends its own `initialize`, which a streamable-HTTP
+    /// server rejects — tearing down the connection that was working.
+    AlreadyRunning,
+    /// Something else is registered under this name.
+    ///
+    /// Refused rather than skipped. Silently returning "fine" would leave the
+    /// user looking at a definition they edited while the old program keeps
+    /// running, and a tool call would reach whichever won — the shadowing this
+    /// exists to prevent.
+    Conflict { reason: String },
+}
+
+/// The identity of a server definition, for deciding whether two are the same.
+///
+/// Compares what actually determines the program: transport, executable,
+/// argv, endpoint and the environment *names* it is handed. Ordering and
+/// unrelated keys (a description, an `active` flag) do not make it a different
+/// server, so they are excluded.
+pub fn definition_identity(config: &Value) -> String {
+    let obj = config.as_object();
+    let field = |key: &str| {
+        obj.and_then(|one| one.get(key))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let args: Vec<String> = obj
+        .and_then(|one| one.get("args"))
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut env_names: Vec<String> = obj
+        .and_then(|one| one.get("env"))
+        .and_then(Value::as_object)
+        .map(|env| env.keys().cloned().collect())
+        .unwrap_or_default();
+    env_names.sort();
+
+    serde_json::json!({
+        "type": field("type"),
+        "command": field("command"),
+        "url": field("url"),
+        "args": args,
+        "env": env_names,
+    })
+    .to_string()
+}
+
+/// Decide whether to start, skip, or refuse.
+pub fn registration_decision(
+    running: bool,
+    registered: Option<&Value>,
+    incoming: &Value,
+) -> RegistrationDecision {
+    if !running {
+        return RegistrationDecision::Start;
+    }
+    match registered {
+        // Running, and the definition matches what is registered.
+        Some(existing) if definition_identity(existing) == definition_identity(incoming) => {
+            RegistrationDecision::AlreadyRunning
+        }
+        // Running under this name, but not this program.
+        Some(_) => RegistrationDecision::Conflict {
+            reason: "a different server definition is already running under this name".to_string(),
+        },
+        // Running with nothing recorded about what it is. Treated as a
+        // conflict: an unidentifiable server is not one this definition can
+        // claim to be.
+        None => RegistrationDecision::Conflict {
+            reason: "a server is already running under this name".to_string(),
+        },
+    }
+}
