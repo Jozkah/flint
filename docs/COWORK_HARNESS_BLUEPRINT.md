@@ -17,6 +17,25 @@ production code is changed by this document.**
 
 ---
 
+## Status
+
+| Phase | State |
+|---|---|
+| 1 — managed worktree enforcement | **Built.** `core/agent/worktree.rs`, grant names the worktree, capability follows the backend. |
+| 2 — context measurement | **Built.** Measured from the run's own payload; per-category breakdown. |
+| 3 — first-turn inspect → propose | **Built.** Classifier widens only; review mode is the enforcement. |
+| 4 — compatibility ingestion | Policy decided (5.4). Not implemented. |
+| 5 — coordinated agent teams | Not started. |
+| 6 — checkpoints and rewind | Not started. |
+| 7 — parity UX review | Not started. |
+| 8 — verification and platform evidence | Largely pre-existing (5.8); blocked on runners (6.3). |
+
+Each built phase turned out smaller than this document first estimated, and
+always for the same reason: `main` already carried the types, the vocabulary and
+the refusal paths, and what was missing was the layer underneath them. The
+estimates below are left as written rather than revised after the fact, so the
+gap between them and what the work took stays visible.
+
 ## 0. How to read this
 
 Section 1 records what is in the merged tree, with references. Sections 2-4 map
