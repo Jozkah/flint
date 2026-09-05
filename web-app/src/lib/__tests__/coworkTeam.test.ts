@@ -187,7 +187,10 @@ describe('the report the parent gives back', () => {
 
   it('keeps a failure a failure', () => {
     const tasks = [task('a'), task('b')]
-    const report = assembleReport(tasks, [result('a', true), result('b', false)])
+    const report = assembleReport(tasks, [
+      result('a', true),
+      result('b', false),
+    ])
 
     expect(report.failed.map((r) => r.taskId)).toEqual(['b'])
     expect(report.allDone).toBe(false)
@@ -223,10 +226,10 @@ describe('the report the parent gives back', () => {
   it('ignores a result for a task that is not in the graph', () => {
     // A stale result from a cancelled or superseded plan must not add itself
     // to the tally of work that was asked for.
-    const report = assembleReport([task('a')], [
-      result('a', true),
-      result('ghost', true),
-    ])
+    const report = assembleReport(
+      [task('a')],
+      [result('a', true), result('ghost', true)]
+    )
 
     expect(report.completed.map((r) => r.taskId)).toEqual(['a'])
     expect(report.allDone).toBe(true)
@@ -342,9 +345,9 @@ describe('running the graph', () => {
 
     expect(outcome.ok).toBe(true)
     expect(outcome.ok && outcome.report.failed[0].output).toContain('exploded')
-    expect(outcome.ok && outcome.report.completed.map((r) => r.taskId)).toEqual([
-      'b',
-    ])
+    expect(outcome.ok && outcome.report.completed.map((r) => r.taskId)).toEqual(
+      ['b']
+    )
   })
 
   it('stops dispatching when the team is cancelled', async () => {
@@ -407,7 +410,9 @@ describe('what the dispatching agent is told', () => {
       completed: [
         { taskId: 'a', ok: true, output: 'found it', producedBy: 'a' },
       ],
-      failed: [{ taskId: 'b', ok: false, output: 'could not read', producedBy: 'b' }],
+      failed: [
+        { taskId: 'b', ok: false, output: 'could not read', producedBy: 'b' },
+      ],
       unfinished: ['c'],
       allDone: false,
     })
@@ -470,5 +475,48 @@ describe('reading a team request', () => {
     const tasks = parsed as TeamTask[]
     expect(tasks[0].writes).toEqual(['x.ts'])
     expect(tasks[1].dependsOn).toEqual(['a'])
+  })
+
+  it('reads a request for a checkout of its own, and only a real one', () => {
+    const parsed = parseTeamRequest({
+      tasks: [
+        { id: 'a', description: 'one', isolate: true },
+        { id: 'b', description: 'two' },
+        { id: 'c', description: 'three', isolate: 'yes' },
+      ],
+    }) as TeamTask[]
+
+    expect(parsed[0].isolate).toBe(true)
+    expect(parsed[1].isolate).toBeUndefined()
+    // Anything that is not the boolean is not a request: isolation costs a
+    // worktree and a grant, so it is granted on a clear yes or not at all.
+    expect(parsed[2].isolate).toBeUndefined()
+  })
+
+  it('names an isolated task’s checkout in the report', () => {
+    const report = assembleReport(
+      [
+        { id: 'a', description: 'x', dependsOn: [], writes: [], isolate: true },
+        { id: 'b', description: 'y', dependsOn: [], writes: [] },
+      ],
+      [
+        {
+          taskId: 'a',
+          ok: true,
+          output: 'done',
+          producedBy: 'a',
+          destination: '/data/worktrees/a',
+        },
+        { taskId: 'b', ok: true, output: 'done', producedBy: 'b' },
+      ]
+    )
+
+    const rendered = renderTeamReport(report)
+    expect(rendered).toContain(
+      'a — completed (in its own checkout: /data/worktrees/a)'
+    )
+    // The one that worked in the run's own destination says nothing extra, so
+    // the distinction is visible rather than uniform.
+    expect(rendered).toContain('b — completed\n')
   })
 })

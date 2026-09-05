@@ -138,7 +138,9 @@ function teamTool(subagentNames: string[]): Tool {
       'by a child that cannot see this conversation, so describe it in full. ' +
       'Declare in `writes` the files a task will change: two tasks that would ' +
       'change the same file with nothing ordering them are refused before ' +
-      'anything runs.' +
+      'anything runs. Set `isolate` on a task that should work in a checkout ' +
+      'of its own, when its changes must not reach the attached folder or its ' +
+      'siblings.' +
       known,
     inputSchema: jsonSchema({
       type: 'object',
@@ -149,7 +151,10 @@ function teamTool(subagentNames: string[]): Tool {
           items: {
             type: 'object',
             properties: {
-              id: { type: 'string', description: 'Short, unique in this team.' },
+              id: {
+                type: 'string',
+                description: 'Short, unique in this team.',
+              },
               description: {
                 type: 'string',
                 description: 'The whole brief; the child sees nothing else.',
@@ -164,6 +169,14 @@ function teamTool(subagentNames: string[]): Tool {
                 type: 'array',
                 items: { type: 'string' },
                 description: 'Files this task expects to change.',
+              },
+              isolate: {
+                type: 'boolean',
+                description:
+                  'Give this task its own checkout of the project. Its ' +
+                  'changes go nowhere else and nothing downstream can see ' +
+                  'them, so a task that waits on an isolated task that ' +
+                  'changes files is refused.',
               },
             },
             required: ['id', 'description'],
@@ -255,9 +268,7 @@ export async function buildCoworkTools(
     if (opts.planMode && PLAN_DENIED_TOOLS.has(name)) continue
     tools[name] = {
       description: s.function.description,
-      inputSchema: jsonSchema(
-        s.function.parameters as Record<string, unknown>
-      ),
+      inputSchema: jsonSchema(s.function.parameters as Record<string, unknown>),
     } as Tool
   }
 
@@ -265,11 +276,15 @@ export async function buildCoworkTools(
   if (opts.webSearch) {
     tools['web_search'] = {
       description: WEB_SEARCH_DESCRIPTION,
-      inputSchema: jsonSchema(WEB_SEARCH_INPUT_SCHEMA as Record<string, unknown>),
+      inputSchema: jsonSchema(
+        WEB_SEARCH_INPUT_SCHEMA as Record<string, unknown>
+      ),
     } as Tool
     tools['web_fetch'] = {
       description: WEB_FETCH_DESCRIPTION,
-      inputSchema: jsonSchema(WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>),
+      inputSchema: jsonSchema(
+        WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>
+      ),
     } as Tool
   }
 

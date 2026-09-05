@@ -195,21 +195,34 @@ pub fn uncommitted(repo: &Path) -> Vec<String> {
     paths
 }
 
-/// The branch a session's worktree uses.
+/// A short, stable, filesystem- and ref-safe name for one owner id.
 ///
-/// Stable across restarts, so reopening a session finds its own work rather
-/// than starting a second branch beside it, and namespaced so it is obvious in
-/// `git branch` who made it and why.
-pub fn branch_name(session_id: &str) -> String {
-    let short: String = session_id
+/// Readable half plus a hash of the whole id, and the hash is the part that
+/// matters. Owners are no longer only session ids: a team gives each isolated
+/// child its own destination, and those ids share a long common prefix. A
+/// name built by truncating would hand two different children the same branch
+/// and the same directory — which is not a cosmetic collision but two agents
+/// writing the same checkout while each is told it is alone in it.
+fn slug(owner_id: &str) -> String {
+    let head: String = owner_id
         .chars()
         .filter(|c| c.is_ascii_alphanumeric())
         .take(12)
         .collect();
     format!(
-        "jan/cowork/{}",
-        if short.is_empty() { "session" } else { &short }
+        "{}-{:016x}",
+        if head.is_empty() { "session" } else { &head },
+        fnv1a(owner_id.as_bytes())
     )
+}
+
+/// The branch a worktree uses.
+///
+/// Stable across restarts, so reopening a session finds its own work rather
+/// than starting a second branch beside it, and namespaced so it is obvious in
+/// `git branch` who made it and why.
+pub fn branch_name(session_id: &str) -> String {
+    format!("jan/cowork/{}", slug(session_id))
 }
 
 /// Where a session's worktree lives, under Jan's own data directory.
@@ -218,12 +231,7 @@ pub fn branch_name(session_id: &str) -> String {
 /// up in their editor, their search results and — but for `.git` bookkeeping —
 /// their next commit.
 pub fn worktree_path(worktrees_root: &Path, identity: &RepoIdentity, session_id: &str) -> PathBuf {
-    let session: String = session_id
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-        .take(64)
-        .collect();
-    worktrees_root.join(identity.key()).join(session)
+    worktrees_root.join(identity.key()).join(slug(session_id))
 }
 
 /// Whether `path` is a Git worktree of `repo`.
@@ -488,7 +496,7 @@ mod tests {
         // The property the whole mode rests on: the isolated checkout is not
         // inside the one the user is working in.
         assert!(!path.starts_with(&f.repo));
-        assert_eq!(record.branch, "jan/cowork/session1");
+        assert_eq!(record.branch, branch_name("session-1"));
         assert_eq!(state(&record), WorktreeState::Ready);
     }
 
@@ -538,7 +546,7 @@ mod tests {
         let f = fixture();
         // Picking another name here would leave the user with two branches and
         // no explanation of why.
-        git_in(&f.repo, &["branch", "jan/cowork/session1"]);
+        git_in(&f.repo, &["branch", &branch_name("session-1")]);
 
         let err = ensure(&f.repo, &f.worktrees, "session-1").expect_err("refuse");
         assert!(err.contains("already exists"), "{err}");
@@ -627,7 +635,11 @@ mod tests {
         assert!(!PathBuf::from(&record.path).exists());
         assert!(run(
             &f.repo,
-            &["rev-parse", "--verify", "refs/heads/jan/cowork/session1"]
+            &[
+                "rev-parse",
+                "--verify",
+                &format!("refs/heads/{}", branch_name("session-1"))
+            ]
         )
         .is_err());
         // And the repository it came from is still intact.
@@ -661,5 +673,29 @@ mod tests {
         assert!(branch_name("../../main").starts_with("jan/cowork/"));
         assert!(branch_name("").starts_with("jan/cowork/"));
         assert!(!branch_name("a/b").contains("a/b"));
+    }
+
+    #[test]
+    fn ids_sharing_a_long_prefix_get_different_destinations() {
+        // A team's isolated children are named after the session and the run
+        // that dispatched them, so they differ only in the last few
+        // characters. Two of them sharing a branch or a directory would put
+        // two agents in one checkout while each is told it has its own.
+        let f = fixture();
+        let id = identity(&f.repo).unwrap();
+        let a = "3f2a9c1e-1234-4c9a-9b7e-000000000000--child-parser";
+        let b = "3f2a9c1e-1234-4c9a-9b7e-000000000000--child-docs";
+
+        assert_ne!(branch_name(a), branch_name(b));
+        assert_ne!(
+            worktree_path(&f.worktrees, &id, a),
+            worktree_path(&f.worktrees, &id, b)
+        );
+        // And still stable: the same id names the same place next time.
+        assert_eq!(branch_name(a), branch_name(a));
+        assert_eq!(
+            worktree_path(&f.worktrees, &id, a),
+            worktree_path(&f.worktrees, &id, a)
+        );
     }
 }

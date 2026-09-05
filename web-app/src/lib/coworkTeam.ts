@@ -42,6 +42,22 @@ export type TeamTask = {
    * nothing, which never conflicts with anything.
    */
   writes: string[]
+  /**
+   * Whether this task wants a checkout of its own.
+   *
+   * Asked for, never assumed. An isolated task gets its own managed worktree
+   * and its own write grant, so what it changes is invisible to its siblings
+   * and to the user's checkout until someone applies it. That is the point,
+   * and it is also the cost: [`refuseGraph`] refuses a graph where something
+   * downstream would need to *see* an isolated task's changes, because it
+   * would not.
+   *
+   * Absent means the run's own destination, which is what a team has always
+   * used. The flag never widens authority — an isolated child writes a
+   * worktree of the same repository under the same access mode, or the team is
+   * refused before anything starts.
+   */
+  isolate?: boolean
 }
 
 export type TaskStatus =
@@ -260,6 +276,16 @@ export type TaskResult = {
   output: string
   /** Where the claim comes from: the child that produced it. */
   producedBy: string
+  /**
+   * Where this task's changes actually landed, when it was not the run's own
+   * destination.
+   *
+   * Carried through to the report because a completed task whose work is in a
+   * checkout nobody has looked at is not the same outcome as one whose work is
+   * in the folder the user is watching, and a summary that reads the same for
+   * both is the one that gets believed.
+   */
+  destination?: string
 }
 
 export type TeamReport = {
@@ -340,7 +366,8 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
   const tasks: TeamTask[] = []
   const seen = new Set<string>()
   for (const entry of input.tasks) {
-    if (!entry || typeof entry !== 'object') return 'each task must be an object'
+    if (!entry || typeof entry !== 'object')
+      return 'each task must be an object'
     const one = entry as Record<string, unknown>
     const id = typeof one.id === 'string' ? one.id.trim() : ''
     const description =
@@ -363,6 +390,7 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
       ...(subagentName ? { subagentName } : {}),
       dependsOn: stringList(one.depends_on),
       writes: stringList(one.writes),
+      ...(one.isolate === true ? { isolate: true } : {}),
     })
   }
   return tasks
@@ -370,7 +398,9 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
 
 const stringList = (value: unknown): string[] =>
   Array.isArray(value)
-    ? value.filter((one): one is string => typeof one === 'string' && one !== '')
+    ? value.filter(
+        (one): one is string => typeof one === 'string' && one !== ''
+      )
     : []
 
 /**
@@ -399,7 +429,40 @@ export function refuseGraph(tasks: readonly TeamTask[]): string | null {
       'Add a `depends_on` so one runs after the other, or give them separate files.'
     )
   }
-  return null
+  return refuseIsolation(tasks)
+}
+
+/**
+ * Isolation declarations that cannot mean what they say.
+ *
+ * An isolated task writes a checkout only it can see. So a task that waits on
+ * one, in order to build on what it did, waits for changes that will not be
+ * there — and it would run anyway, look successful, and produce work against
+ * the wrong tree. Refused before anything starts, because the failure is
+ * silent once it has: nothing errors, the answer is just wrong.
+ *
+ * Only isolated tasks that declare writes trigger this. A task isolated purely
+ * to keep a risky experiment off the shared tree, changing nothing, is a
+ * perfectly good dependency.
+ */
+function refuseIsolation(tasks: readonly TeamTask[]): string | null {
+  const byId = new Map(tasks.map((task) => [task.id, task]))
+  const related = reachability(tasks)
+  const blocked: string[] = []
+  for (const task of tasks) {
+    for (const dep of related.get(task.id) ?? []) {
+      const upstream = byId.get(dep)
+      if (upstream?.isolate && upstream.writes.length > 0) {
+        blocked.push(`${task.id} waits on ${dep}`)
+      }
+    }
+  }
+  if (blocked.length === 0) return null
+  return (
+    `these tasks wait on isolated tasks that change files: ${[...new Set(blocked)].sort().join('; ')}. ` +
+    'An isolated task writes its own checkout, which nothing downstream can see. ' +
+    'Drop `isolate` on the task being waited on, or drop the dependency.'
+  )
 }
 
 export type TeamRunDeps = {
@@ -461,7 +524,12 @@ export async function runTeam(
       .then(
         (result) => {
           results.push(result)
-          state = settle(tasks, state, task.id, result.ok ? 'completed' : 'failed')
+          state = settle(
+            tasks,
+            state,
+            task.id,
+            result.ok ? 'completed' : 'failed'
+          )
         },
         (error: unknown) => {
           // A child that threw is a failed task, not a crashed team: the point
@@ -474,7 +542,12 @@ export async function runTeam(
             output: cancelled ? 'cancelled' : message,
             producedBy: task.id,
           })
-          state = settle(tasks, state, task.id, cancelled ? 'cancelled' : 'failed')
+          state = settle(
+            tasks,
+            state,
+            task.id,
+            cancelled ? 'cancelled' : 'failed'
+          )
         }
       )
       .finally(() => {
@@ -521,10 +594,10 @@ export function renderTeamReport(report: TeamReport): string {
       : `${report.completed.length} completed, ${report.failed.length} failed, ${report.unfinished.length} did not run.`
   )
   for (const one of report.completed) {
-    lines.push('', `## ${one.taskId} — completed`, one.output)
+    lines.push('', `## ${one.taskId} — completed${whereIt(one)}`, one.output)
   }
   for (const one of report.failed) {
-    lines.push('', `## ${one.taskId} — FAILED`, one.output)
+    lines.push('', `## ${one.taskId} — FAILED${whereIt(one)}`, one.output)
   }
   if (report.unfinished.length > 0) {
     lines.push(
@@ -543,6 +616,10 @@ export function renderTeamReport(report: TeamReport): string {
  * 2 waiting" is what someone glancing at it needs. The detail is in the
  * children's own rows, which already exist.
  */
+/** The heading suffix naming an isolated task's own checkout. */
+const whereIt = (one: TaskResult): string =>
+  one.destination ? ` (in its own checkout: ${one.destination})` : ''
+
 export function teamProgress(state: TeamState): string {
   const tally: Record<string, number> = {}
   for (const one of Object.values(state)) {

@@ -40,8 +40,15 @@ import {
   runTeam,
   renderTeamReport,
   parseTeamRequest,
+  refuseGraph,
   type TeamTask,
 } from '@/lib/coworkTeam'
+import {
+  planDestinations,
+  describeDestinations,
+  type Destination,
+  type DestinationDeps,
+} from '@/lib/coworkTeamDestinations'
 import type { PendingToolCall, ToolOutcome } from '@/lib/coworkRunner'
 
 const chunkStream = (chunks: unknown[]) =>
@@ -92,11 +99,13 @@ const parentTools = (): Record<string, Tool> =>
   )
 
 /** The run's own dispatcher, as the route builds it for a child. */
-const childDispatch = (over: Record<string, unknown> = {}) =>
+const childDispatch =
+  (over: Record<string, unknown> = {}) =>
   (call: PendingToolCall): Promise<ToolOutcome> =>
     dispatchCoworkTool(call, {
       sessionId: 's1',
       readOnlyFolder: '/repo',
+      writeGrant: 'grant-run',
       mode: 'auto',
       webSearch: false,
       onTodo: async () => ({
@@ -111,10 +120,35 @@ const childDispatch = (over: Record<string, unknown> = {}) =>
       ...over,
     } as never)
 
-/** Runs one task the way the route's `dispatchChild` does. */
+/**
+ * Runs one task the way the route's `dispatchChild` does.
+ *
+ * Including the part that decides where the child writes: a destination
+ * replaces the root, the grant and the owner id together, exactly as the route
+ * passes them, because passing only some of them is how a child ends up
+ * writing one place while being told about another.
+ */
 const runOne =
-  (opts: { dispatch?: ReturnType<typeof childDispatch> } = {}) =>
+  (
+    opts: {
+      dispatch?: ReturnType<typeof childDispatch>
+      byTask?: Map<string, Destination>
+    } = {}
+  ) =>
   async (task: TeamTask, signal: AbortSignal) => {
+    const destination = opts.byTask?.get(task.id)
+    const childFolder = destination?.path ?? '/repo'
+    const dispatch =
+      opts.dispatch ??
+      childDispatch(
+        destination
+          ? {
+              sessionId: destination.ownerId,
+              readOnlyFolder: destination.path,
+              writeGrant: destination.grantId,
+            }
+          : {}
+      )
     const child = await runSubagent({
       resolved: {
         name: task.subagentName || 'worker',
@@ -127,10 +161,10 @@ const runOne =
       parentTools: parentTools(),
       system: {
         workspacePath: '/ws/s1',
-        readOnlyFolder: '/repo',
+        readOnlyFolder: childFolder,
         bashAvailable: true,
       },
-      dispatch: opts.dispatch ?? childDispatch(),
+      dispatch,
       signal,
       events: {
         onQueued: vi.fn(),
@@ -144,17 +178,44 @@ const runOne =
       ok: !child.isError,
       output: child.output,
       producedBy: task.id,
+      ...(destination ? { destination: destination.path } : {}),
     }
   }
 
-const task = (
-  id: string,
-  over: Partial<TeamTask> = {}
-): TeamTask => ({
+const task = (id: string, over: Partial<TeamTask> = {}): TeamTask => ({
   id,
   description: `brief for ${id}`,
   dependsOn: [],
   writes: [],
+  ...over,
+})
+
+/**
+ * The provisioning the route performs, with the backend replaced.
+ *
+ * Only the two calls that cross into Rust are faked — creating a worktree and
+ * issuing its grant. Everything that decides *which* task gets *which* root,
+ * and what happens when one cannot be made, is the code that ships.
+ */
+const planDeps = (over: Partial<DestinationDeps> = {}): DestinationDeps => ({
+  parentSessionId: 's1',
+  project: '/repo',
+  dataFolder: '/data',
+  canIsolate: true,
+  ensure: async (owner: string) => ({
+    ok: true as const,
+    record: {
+      path: `/data/worktrees/${owner}`,
+      branch: `jan/cowork/${owner}`,
+      baseSha: 'a'.repeat(40),
+      uncommittedAtCreation: [],
+    },
+  }),
+  authorize: async (owner: string) => ({
+    ok: true as const,
+    grant: { grantId: `grant-${owner}` },
+  }),
+  revoke: async () => true,
   ...over,
 })
 
@@ -312,17 +373,20 @@ describe('a team, through the real dispatch path', () => {
     const control = new AbortController()
     modelSaying({})
 
-    const outcome = await runTeam([task('a'), task('b', { dependsOn: ['a'] })], {
-      signal: control.signal,
-      maxParallel: 1,
-      runTask: async (one, signal) => {
-        // The child's signal is the team's, chained: aborting here must reach
-        // the run that is already in flight.
-        control.abort()
-        expect(signal.aborted).toBe(true)
-        return runOne()(one, signal)
-      },
-    })
+    const outcome = await runTeam(
+      [task('a'), task('b', { dependsOn: ['a'] })],
+      {
+        signal: control.signal,
+        maxParallel: 1,
+        runTask: async (one, signal) => {
+          // The child's signal is the team's, chained: aborting here must reach
+          // the run that is already in flight.
+          control.abort()
+          expect(signal.aborted).toBe(true)
+          return runOne()(one, signal)
+        },
+      }
+    )
 
     expect(outcome.ok && outcome.report.unfinished).toContain('b')
   })
@@ -340,6 +404,144 @@ describe('a team, through the real dispatch path', () => {
     expect(outcome.ok).toBe(false)
     // Nothing reached a model at all.
     expect(streamText).not.toHaveBeenCalled()
+  })
+
+  it('sends two isolated children to two different checkouts', async () => {
+    // The claim this whole increment makes, proven where it matters: not that
+    // the planner returns two paths, but that the two children's writes leave
+    // through the real gate carrying two different roots, two different grants
+    // and two different owners.
+    modelSaying({
+      'brief for a': [
+        toolStep('c1', 'write', { path: 'out.ts', content: 'a' }),
+        textStep('a wrote'),
+      ],
+      'brief for b': [
+        toolStep('c2', 'write', { path: 'out.ts', content: 'b' }),
+        textStep('b wrote'),
+      ],
+    })
+
+    const plan = await planDestinations(
+      [task('a', { isolate: true }), task('b', { isolate: true })],
+      planDeps()
+    )
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+
+    const outcome = await runTeam(
+      [task('a', { isolate: true }), task('b', { isolate: true })],
+      { runTask: runOne({ byTask: plan.byTask }) }
+    )
+    expect(outcome.ok && outcome.report.allDone).toBe(true)
+
+    const writes = executeAgentTool.mock.calls.filter(
+      (call) => call[0] === 'write'
+    )
+    expect(writes).toHaveLength(2)
+    const roots = writes.map(
+      (call) => (call[3] as { readOnlyProject: string }).readOnlyProject
+    )
+    const grants = writes.map(
+      (call) => (call[3] as { writeGrant: string }).writeGrant
+    )
+    const owners = writes.map((call) => call[2])
+    expect(new Set(roots).size).toBe(2)
+    expect(new Set(grants).size).toBe(2)
+    expect(new Set(owners).size).toBe(2)
+    // And neither of them is the run's own destination or its grant: two
+    // children declaring the same file only stops colliding because they are
+    // not writing the same tree.
+    expect(roots).not.toContain('/repo')
+    expect(grants).not.toContain('grant-run')
+    expect(owners).not.toContain('s1')
+  })
+
+  it('leaves a task that did not ask for isolation in the run’s destination', async () => {
+    modelSaying({
+      'brief for a': [
+        toolStep('c1', 'write', { path: 'a.ts', content: 'a' }),
+        textStep('a wrote'),
+      ],
+      'brief for b': [
+        toolStep('c2', 'write', { path: 'b.ts', content: 'b' }),
+        textStep('b wrote'),
+      ],
+    })
+    const tasks = [task('a', { isolate: true }), task('b')]
+    const plan = await planDestinations(tasks, planDeps())
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+
+    const outcome = await runTeam(tasks, {
+      runTask: runOne({ byTask: plan.byTask }),
+    })
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+
+    const byRoot = new Map(
+      executeAgentTool.mock.calls
+        .filter((call) => call[0] === 'write')
+        .map((call) => [
+          (call[1] as { path: string }).path,
+          (call[3] as { readOnlyProject: string }).readOnlyProject,
+        ])
+    )
+    expect(byRoot.get('b.ts')).toBe('/repo')
+    expect(byRoot.get('a.ts')).not.toBe('/repo')
+
+    // And the report says which is which, so "completed" cannot be read as
+    // "changed your folder" for the one that did not.
+    const rendered = renderTeamReport(outcome.report)
+    expect(rendered).toContain('own checkout')
+    expect(describeDestinations(plan.byTask)).toContain(
+      plan.byTask.get('a')!.path
+    )
+  })
+
+  it('refuses the team before any child starts when isolation is impossible', async () => {
+    modelSaying({})
+    const tasks = [task('a', { isolate: true }), task('b')]
+    const plan = await planDestinations(tasks, planDeps({ canIsolate: false }))
+
+    expect(plan.ok).toBe(false)
+    // The route returns the refusal without calling `runTeam`, so nothing
+    // reached a model — including the task that could have run.
+    expect(streamText).not.toHaveBeenCalled()
+  })
+
+  it('refuses a dependency on isolated work nothing downstream could see', async () => {
+    // Not a scheduling problem: `b` would run, succeed, and be wrong, because
+    // the changes it was told to build on are in a checkout it cannot reach.
+    const refusal = refuseGraph([
+      task('a', { isolate: true, writes: ['src/parser.ts'] }),
+      task('b', { dependsOn: ['a'] }),
+    ])
+    expect(refusal).toContain('b waits on a')
+
+    // Isolated but changing nothing is a perfectly good dependency.
+    expect(
+      refuseGraph([
+        task('a', { isolate: true }),
+        task('b', { dependsOn: ['a'] }),
+      ])
+    ).toBeNull()
+  })
+
+  it('hands back every child grant when the team is over', async () => {
+    const revoke = vi.fn(async () => true)
+    const tasks = [task('a', { isolate: true }), task('b', { isolate: true })]
+    const plan = await planDestinations(tasks, planDeps({ revoke }))
+    expect(plan.ok).toBe(true)
+    if (!plan.ok) return
+
+    modelSaying({})
+    const owners = [...plan.byTask.values()].map((one) => one.ownerId).sort()
+    await runTeam(tasks, { runTask: runOne({ byTask: plan.byTask }) })
+    await plan.release()
+
+    // Authority does not outlive the work it was issued for.
+    expect(revoke.mock.calls.map((call) => call[0]).sort()).toEqual(owners)
   })
 
   it('accepts the shape the tool actually advertises', async () => {
