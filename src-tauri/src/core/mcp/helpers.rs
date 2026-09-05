@@ -877,7 +877,7 @@ fn client_info(label: &str) -> ClientInfo {
 
 /// Serve the streamable-http transport over any client that implements it, so
 /// the plain and OAuth-wrapped clients share one transport construction.
-async fn serve_http<C>(
+pub(super) async fn serve_http<C>(
     client: C,
     url: &str,
     handler: JanClientHandler,
@@ -896,7 +896,7 @@ where
 }
 
 /// `serve_http`'s counterpart for the legacy SSE transport.
-async fn serve_sse<C>(
+pub(super) async fn serve_sse<C>(
     client: C,
     url: &str,
     handler: JanClientHandler,

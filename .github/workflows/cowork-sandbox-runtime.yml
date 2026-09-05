@@ -1,0 +1,118 @@
+name: Cowork sandbox runtime
+
+# Runtime evidence for the Cowork sandbox, per platform.
+#
+# A platform claim is only as good as a job that actually ran. macOS Seatbelt
+# is exercised locally and here; Linux runs the same confined-process tests
+# under bubblewrap; Windows proves the refusal path — it cannot confine writes
+# to a chosen folder, and the job checks that it says so rather than quietly
+# offering less than it promises.
+#
+# Each job prints the backend it detected before running anything, so a run
+# that silently fell back to "no sandbox" cannot be mistaken for a pass: with
+# no backend the confinement tests return early, and the summary is the only
+# thing that would show it.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/cowork-sandbox-runtime.yml
+      - 'src-tauri/**'
+  pull_request:
+    branches:
+      - main
+      - release/**
+    paths:
+      - .github/workflows/cowork-sandbox-runtime.yml
+      - 'src-tauri/**'
+
+concurrency:
+  group: cowork-sandbox-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-bubblewrap:
+    name: Linux (bubblewrap)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install bubblewrap
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+
+      # Without this, a runner missing bubblewrap would pass every confinement
+      # test by skipping it. Fail here instead.
+      - name: Confirm the backend is really available
+        run: |
+          set -euo pipefail
+          command -v bwrap
+          bwrap --version
+          # Prove it can confine something before claiming it can.
+          bwrap --ro-bind / / --dev /dev --unshare-all -- /bin/true
+          echo 'backend=bubblewrap (verified)' >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Sandbox policy and real confined processes
+        run: |
+          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml \
+            mcp_confine -- --nocapture
+
+      - name: Confined MCP launch, and a real handshake
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --lib launch -- --nocapture
+          cargo test --manifest-path src-tauri/Cargo.toml --lib mcp_confinement -- --nocapture
+          cargo test --manifest-path src-tauri/Cargo.toml --lib mcp_end_to_end -- --nocapture
+
+  windows-fails-closed:
+    name: Windows (refusal is the outcome)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Record what this platform can enforce
+        run: echo "backend=appcontainer (edit-folder unsupported by design)" >> $env:GITHUB_STEP_SUMMARY
+
+      # Windows grants writes by an ACE on the thread workspace, never on the
+      # user's own folder. The required outcome is a visible refusal, not a
+      # capability.
+      - name: Edit-folder is reported unsupported, and imports fail closed
+        run: |
+          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml mcp_confine -- --nocapture
+          cargo test --manifest-path src-tauri/Cargo.toml --lib launch -- --nocapture
+          cargo test --manifest-path src-tauri/Cargo.toml --lib mcp_confinement -- --nocapture
+
+      - name: Path handling under Windows separators, casing and prefix siblings
+        run: |
+          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml sandbox -- --nocapture
+
+  macos-seatbelt:
+    name: macOS (Seatbelt)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Confirm the backend is really available
+        run: |
+          set -euo pipefail
+          command -v sandbox-exec
+          echo 'backend=seatbelt (verified)' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Sandbox policy and real confined processes
+        run: |
+          cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml \
+            mcp_confine -- --nocapture
+
+      - name: Confined launch, real handshake, and the remote transport
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --lib launch -- --nocapture
+          cargo test --manifest-path src-tauri/Cargo.toml --lib mcp_confinement -- --nocapture
+          cargo test --manifest-path src-tauri/Cargo.toml --lib mcp_end_to_end -- --nocapture
+          cargo test --manifest-path src-tauri/Cargo.toml --lib mcp_http_integration -- --nocapture

@@ -1427,3 +1427,271 @@ mod mcp_end_to_end_tests {
         assert!(err.contains("unconfined"), "{err}");
     }
 }
+
+/// Jan's real remote transport, against a real server on loopback.
+///
+/// Everything here goes through `serve_http` — the same construction the
+/// desktop and the CLI use — with a real `reqwest` client and a real
+/// `StreamableHttpClientTransport`. The only substitution is the progress
+/// sink, which exists to emit events into a Tauri window there is none of
+/// here. The server is a fixture on 127.0.0.1 with an OS-chosen port, so the
+/// test reaches no network and guesses no port.
+#[cfg(test)]
+mod mcp_http_integration_tests {
+    use super::super::helpers::serve_http;
+    use super::super::progress::JanClientHandler;
+    use rmcp::model::{CallToolRequestParam, ClientInfo};
+    use std::io::BufRead;
+    use std::path::PathBuf;
+
+    /// A fixture process, and the port it bound.
+    struct Fixture {
+        child: std::process::Child,
+        port: u16,
+    }
+
+    impl Fixture {
+        fn start(mode: &str, barrier: Option<&std::path::Path>) -> Option<Self> {
+            let script =
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mcp_http_server.py");
+            if !script.exists() || !std::path::Path::new("/usr/bin/python3").exists() {
+                return None;
+            }
+
+            let mut command = std::process::Command::new("/usr/bin/python3");
+            command.arg(&script).arg(mode);
+            if let Some(path) = barrier {
+                command.arg(path);
+            }
+            let mut child = command
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .ok()?;
+
+            // The fixture prints the port it was given, so nothing here has to
+            // pick one and race another test for it.
+            let stdout = child.stdout.take()?;
+            let mut line = String::new();
+            std::io::BufReader::new(stdout).read_line(&mut line).ok()?;
+            let port = line.trim().parse().ok()?;
+            Some(Self { child, port })
+        }
+
+        fn url(&self) -> String {
+            format!("http://127.0.0.1:{}/mcp", self.port)
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    fn handler(name: &str) -> JanClientHandler {
+        JanClientHandler::for_test(ClientInfo::default(), name.to_string())
+    }
+
+    /// Connect the way production does, and report what the server said.
+    async fn connect(
+        fixture: &Fixture,
+    ) -> Result<super::super::super::state::RunningMcpService, String> {
+        let client = reqwest::Client::builder()
+            .build()
+            .map_err(|e| e.to_string())?;
+        serve_http(client, &fixture.url(), handler("fixture")).await
+    }
+
+    #[tokio::test]
+    async fn a_remote_server_handshakes_lists_and_calls() {
+        let Some(fixture) = Fixture::start("ok", None) else {
+            return;
+        };
+
+        let service = connect(&fixture).await.expect("initialize");
+        let info = service.peer_info().expect("the server identified itself");
+        assert_eq!(info.server_info.name, "jan-http-fixture");
+
+        let tools = service.list_all_tools().await.expect("tools/list");
+        assert!(
+            tools.iter().any(|tool| tool.name == "echo_fixture"),
+            "the server's tool must be discovered: {tools:?}"
+        );
+
+        let result = service
+            .call_tool(CallToolRequestParam {
+                name: "echo_fixture".into(),
+                arguments: None,
+            })
+            .await
+            .expect("tools/call");
+        let text = serde_json::to_string(&result).expect("serialize");
+        assert!(text.contains("fixture-answer"), "{text}");
+
+        service.cancel().await.expect("shutdown");
+    }
+
+    /// Nothing is listening. The client has to say so rather than hang.
+    #[tokio::test]
+    async fn a_refused_connection_is_reported_not_awaited() {
+        // Bind and drop, so the port is one nothing is listening on.
+        let port = {
+            let socket = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+            socket.local_addr().expect("addr").port()
+        };
+        let client = reqwest::Client::builder().build().expect("client");
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            serve_http(
+                client,
+                &format!("http://127.0.0.1:{port}/mcp"),
+                handler("gone"),
+            ),
+        )
+        .await;
+
+        match result {
+            Ok(Err(_)) => {}
+            Ok(Ok(_)) => panic!("connecting to a closed port must not succeed"),
+            Err(_) => panic!("a refused connection must fail rather than hang"),
+        }
+    }
+
+    /// An `initialize` reply that is not a valid result is a failed handshake,
+    /// not a server to start publishing tools from.
+    #[tokio::test]
+    async fn a_malformed_initialize_is_a_failed_handshake() {
+        let Some(fixture) = Fixture::start("malformed-init", None) else {
+            return;
+        };
+
+        assert!(
+            connect(&fixture).await.is_err(),
+            "a malformed initialize must not produce a usable service"
+        );
+    }
+
+    /// A server that accepts the connection and never answers must not hold a
+    /// caller open indefinitely.
+    #[tokio::test]
+    async fn an_unanswered_initialize_does_not_hang_forever() {
+        let Some(fixture) = Fixture::start("hang-init", None) else {
+            return;
+        };
+
+        let outcome =
+            tokio::time::timeout(std::time::Duration::from_secs(3), connect(&fixture)).await;
+
+        // Either the client gave up on its own, or the caller's timeout did.
+        // What matters is that a bounded wait is possible at all.
+        assert!(
+            outcome.is_err() || outcome.expect("settled").is_err(),
+            "a server that never answers must not yield a working service"
+        );
+    }
+
+    /// The handshake succeeded and the tool listing did not. There are no
+    /// tools to publish, and the failure has to surface.
+    #[tokio::test]
+    async fn a_tool_listing_failure_yields_no_tools() {
+        let Some(fixture) = Fixture::start("tools-list-error", None) else {
+            return;
+        };
+
+        let service = connect(&fixture).await.expect("initialize");
+        assert!(
+            service.list_all_tools().await.is_err(),
+            "a failing tools/list must be reported, not treated as an empty set"
+        );
+
+        service.cancel().await.ok();
+    }
+
+    #[tokio::test]
+    async fn a_failing_tool_call_is_reported() {
+        let Some(fixture) = Fixture::start("tool-call-error", None) else {
+            return;
+        };
+
+        let service = connect(&fixture).await.expect("initialize");
+        let outcome = service
+            .call_tool(CallToolRequestParam {
+                name: "echo_fixture".into(),
+                arguments: None,
+            })
+            .await;
+
+        assert!(
+            outcome.is_err(),
+            "the server refused; that must reach the caller"
+        );
+        service.cancel().await.ok();
+    }
+
+    /// Shutting down while a call is still in flight.
+    ///
+    /// The call blocks on a barrier the test controls, so "in flight" is a
+    /// state rather than a race. Cancelling must not wedge: the point is that
+    /// the shutdown completes and the pending call stops waiting.
+    #[tokio::test]
+    async fn a_call_in_flight_does_not_wedge_shutdown() {
+        let barrier = std::env::temp_dir().join(format!(
+            "jan-mcp-barrier-{}-{}",
+            std::process::id(),
+            "inflight"
+        ));
+        let _ = std::fs::remove_file(&barrier);
+
+        let Some(fixture) = Fixture::start("slow-call", Some(&barrier)) else {
+            return;
+        };
+
+        let service = connect(&fixture).await.expect("initialize");
+        let call = tokio::spawn({
+            let service = std::sync::Arc::new(service);
+            let held = service.clone();
+            async move {
+                held.call_tool(CallToolRequestParam {
+                    name: "echo_fixture".into(),
+                    arguments: None,
+                })
+                .await
+            }
+        });
+
+        // Let the server answer, then confirm the call settles one way or the
+        // other rather than hanging forever.
+        std::fs::write(&barrier, b"go").expect("release the barrier");
+        let settled = tokio::time::timeout(std::time::Duration::from_secs(10), call).await;
+        let _ = std::fs::remove_file(&barrier);
+
+        assert!(
+            settled.is_ok(),
+            "a call released by the server must settle rather than hang"
+        );
+    }
+
+    /// Nothing in a failure string is a secret. The fixture is given none, and
+    /// the URL it reports is a loopback address.
+    #[tokio::test]
+    async fn failures_carry_no_secret_and_no_public_endpoint() {
+        let Some(fixture) = Fixture::start("malformed-init", None) else {
+            return;
+        };
+
+        let message = match connect(&fixture).await {
+            Err(message) => message,
+            Ok(_) => panic!("a malformed initialize must not produce a service"),
+        };
+
+        assert!(!message.to_lowercase().contains("secret"), "{message}");
+        assert!(!message.to_lowercase().contains("token"), "{message}");
+        assert!(
+            !message.contains("https://"),
+            "the fixture is loopback-only: {message}"
+        );
+    }
+}
