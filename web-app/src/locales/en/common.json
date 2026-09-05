@@ -987,6 +987,22 @@
     "tokens": "{{count}} tokens",
     "tokensPartial": "at least {{count}} tokens; some parts could not be measured",
     "tokensEstimated": "~{{count}} tokens ({{method}})",
+    "contextBreakdown": "What the model received",
+    "contextCategory": {
+      "instructions": "Instructions",
+      "skills": "Skills",
+      "repositoryMap": "Repository map",
+      "conversation": "Conversation",
+      "tools": "Tool definitions"
+    },
+    "categoryNothing": "nothing sent",
+    "categoryUnknown": "not known yet",
+    "categoryCounted": "{{count}} tokens",
+    "categoryEstimated": "~{{count}} tokens",
+    "budgetLabel": "Context window",
+    "budgetUnknown": "not known",
+    "budgetRemaining": "{{used}} of ~{{total}} used",
+    "budgetOver": "over the configured window by ~{{over}} tokens",
     "tokensEstimatedPartial": "at least ~{{count}} tokens ({{method}}); some parts could not be measured",
     "builtinsUnknown": "Tool set not built yet",
     "evidence": {

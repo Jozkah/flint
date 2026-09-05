@@ -145,6 +145,7 @@ import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
 import { CoworkRunSummary } from '@/containers/CoworkRunSummary'
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskCard } from '@/containers/CoworkAskCard'
+import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
 import { ClaudeSkillRootsSettings } from '@/containers/ClaudeSkillRootsSettings'
@@ -2136,6 +2137,16 @@ function CoworkPage() {
                       }
                     }}
                   />
+                </div>
+              )}
+              {/* After the run exists, not before: the breakdown's whole value
+                  is saying what this run's payload actually held, and before a
+                  run is built most of it is honestly unknown. Shown above the
+                  composer so it is answering "what did it get" at the moment
+                  someone is deciding what to say next. */}
+              {runContext && (
+                <div className="px-1 pb-2">
+                  <CoworkContextBreakdown context={runContext} />
                 </div>
               )}
               <ChatInput
