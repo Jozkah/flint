@@ -17,9 +17,7 @@
 //! ref. The user's `git status`, current branch, and staged changes are never
 //! touched. Shelling out keeps us free of a libgit2 dependency.
 
-use std::path::Path;
-#[cfg(feature = "cli")]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 
@@ -99,8 +97,7 @@ pub(crate) fn snapshot_ref(thread_id: &str) -> String {
 /// The repository top-level for `path`, or `None` when `path` is not inside a
 /// git work tree (workspace-restore is unavailable then; the agent still edits
 /// in place). Also `None` when `git` is not installed.
-#[cfg(feature = "cli")]
-pub(crate) fn repo_root(path: &Path) -> Option<PathBuf> {
+pub fn repo_root(path: &Path) -> Option<PathBuf> {
     let p = path.to_string_lossy();
     git(&["-C", &p, "rev-parse", "--show-toplevel"])
         .ok()
@@ -230,6 +227,663 @@ pub(crate) fn restore(repo: &Path, target: &str, latest: &str) -> Result<(), Str
     })();
     let _ = std::fs::remove_file(&idx);
     result
+}
+
+// ---------------------------------------------------------------------------
+// Read-only working-tree inspection (Cowork "Changes" review panel).
+//
+// Everything below is strictly read-only: `status`, `diff`, `rev-parse`,
+// `ls-files` and reading files off disk. Nothing here stages, unstages,
+// commits, resets, checks out, or otherwise mutates the user's repository or
+// index. Machine-readable git output (`--porcelain=v2 -z`, `--numstat -z`) is
+// parsed rather than the localizable human-readable form. All git file
+// arguments are passed after `--` so a path can never be read as a flag.
+// ---------------------------------------------------------------------------
+
+/// Which set of changes to report and diff against.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DiffScope {
+    /// Unstaged changes (working tree vs. index), plus untracked files.
+    Working,
+    /// Staged changes only (index vs. `HEAD`).
+    Staged,
+    /// Everything not yet committed (working tree vs. `HEAD`), plus untracked.
+    All,
+}
+
+impl DiffScope {
+    /// Parse the wire value sent by the UI; unknown values fall back to the
+    /// safe default of the plain working tree.
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "staged" => Self::Staged,
+            "all" => Self::All,
+            _ => Self::Working,
+        }
+    }
+}
+
+/// One changed file, as shown in a review row. `path` is always repo-relative
+/// and, for renames/copies, is the new path; `orig_path` carries the old one.
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitFileEntry {
+    pub path: String,
+    pub orig_path: Option<String>,
+    /// One of: modified, added, deleted, renamed, copied, type_changed,
+    /// untracked, unmerged.
+    pub status: String,
+    /// Has a staged component (index differs from `HEAD`).
+    pub staged: bool,
+    /// Has an unstaged component (working tree differs from index), or is
+    /// untracked.
+    pub unstaged: bool,
+    pub additions: u32,
+    pub deletions: u32,
+    pub binary: bool,
+}
+
+/// The whole working-tree snapshot for one scope.
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStatus {
+    pub branch: Option<String>,
+    pub repo_root: String,
+    pub files: Vec<GitFileEntry>,
+    pub additions: u32,
+    pub deletions: u32,
+}
+
+/// The unified diff for a single file, loaded lazily when a row is expanded.
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitFileDiff {
+    /// A standard unified diff, or a short placeholder for binary files.
+    pub diff: String,
+    pub binary: bool,
+    /// True when the diff exceeded the size cap and was cut short.
+    pub truncated: bool,
+}
+
+/// True when `HEAD` resolves to a commit (i.e. the repo is not unborn).
+fn head_born(root: &str) -> bool {
+    git(&["-C", root, "rev-parse", "--verify", "-q", "HEAD"])
+        .map(|s| !s.is_empty())
+        .unwrap_or(false)
+}
+
+/// Parse `git diff --numstat -z` into `path -> (additions, deletions, binary)`,
+/// keyed by the new path for renames/copies. Binary files report `-`/`-` and
+/// are recorded with zero counts and `binary = true`.
+fn parse_numstat(raw: &str) -> std::collections::HashMap<String, (u32, u32, bool)> {
+    let mut map = std::collections::HashMap::new();
+    let tokens: Vec<&str> = raw.split('\0').filter(|t| !t.is_empty()).collect();
+    let mut i = 0;
+    while i < tokens.len() {
+        let field = tokens[i];
+        // `add \t del \t path`; for -z renames the path is empty and the two
+        // following NUL-separated tokens are the old and new paths.
+        let mut parts = field.splitn(3, '\t');
+        let add = parts.next().unwrap_or("");
+        let del = parts.next().unwrap_or("");
+        let inline_path = parts.next().unwrap_or("");
+        let binary = add == "-" || del == "-";
+        let additions = add.parse::<u32>().unwrap_or(0);
+        let deletions = del.parse::<u32>().unwrap_or(0);
+        let path = if inline_path.is_empty() {
+            // Rename/copy: consume `<old>` and `<new>`; key on `<new>`.
+            let new_path = tokens.get(i + 2).copied().unwrap_or("");
+            i += 3;
+            new_path.to_string()
+        } else {
+            i += 1;
+            inline_path.to_string()
+        };
+        if !path.is_empty() {
+            map.insert(path, (additions, deletions, binary));
+        }
+    }
+    map
+}
+
+/// Map a porcelain-v2 status code character to a UI status string.
+fn status_word(code: char) -> &'static str {
+    match code {
+        'M' => "modified",
+        'A' => "added",
+        'D' => "deleted",
+        'R' => "renamed",
+        'C' => "copied",
+        'T' => "type_changed",
+        'U' => "unmerged",
+        _ => "modified",
+    }
+}
+
+/// A single parsed porcelain-v2 record we care about for review.
+struct StatusRecord {
+    path: String,
+    orig_path: Option<String>,
+    /// Index (staged) status char, `.` when unmodified.
+    x: char,
+    /// Worktree (unstaged) status char, `.` when unmodified.
+    y: char,
+    untracked: bool,
+}
+
+/// Parse `git status --porcelain=v2 --branch -z` into the branch name and the
+/// changed-file records. Rename/copy ("2") records span two NUL tokens (new
+/// path then old path); untracked ("?") and unmerged ("u") records are handled
+/// too. Ignored ("!") records are skipped.
+fn parse_status_v2(raw: &str) -> (Option<String>, Vec<StatusRecord>) {
+    let mut branch = None;
+    let mut records = Vec::new();
+    let tokens: Vec<&str> = raw.split('\0').filter(|t| !t.is_empty()).collect();
+    let mut i = 0;
+    while i < tokens.len() {
+        let tok = tokens[i];
+        if let Some(rest) = tok.strip_prefix("# branch.head ") {
+            branch = Some(rest.trim().to_string()).filter(|s| !s.is_empty() && s != "(detached)");
+            i += 1;
+        } else if tok.starts_with("# ") {
+            i += 1;
+        } else if let Some(rest) = tok.strip_prefix("1 ") {
+            // Ordinary change: `<XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>`.
+            let mut f = rest.splitn(8, ' ');
+            let xy = f.next().unwrap_or("..");
+            let path = f.nth(6).unwrap_or("").to_string();
+            let (x, y) = xy_chars(xy);
+            if !path.is_empty() {
+                records.push(StatusRecord { path, orig_path: None, x, y, untracked: false });
+            }
+            i += 1;
+        } else if let Some(rest) = tok.strip_prefix("2 ") {
+            // Rename/copy: same leading fields plus `<score> <newPath>`; the
+            // old path is the next NUL token.
+            let mut f = rest.splitn(9, ' ');
+            let xy = f.next().unwrap_or("..");
+            let new_path = f.nth(7).unwrap_or("").to_string();
+            let orig = tokens.get(i + 1).copied().unwrap_or("").to_string();
+            let (x, y) = xy_chars(xy);
+            if !new_path.is_empty() {
+                records.push(StatusRecord {
+                    path: new_path,
+                    orig_path: if orig.is_empty() { None } else { Some(orig) },
+                    x,
+                    y,
+                    untracked: false,
+                });
+            }
+            i += 2;
+        } else if let Some(rest) = tok.strip_prefix("? ") {
+            records.push(StatusRecord {
+                path: rest.to_string(),
+                orig_path: None,
+                x: '.',
+                y: 'A',
+                untracked: true,
+            });
+            i += 1;
+        } else if let Some(rest) = tok.strip_prefix("u ") {
+            // Unmerged: `<xy> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>`.
+            let path = rest.rsplit(' ').next().unwrap_or("").to_string();
+            if !path.is_empty() {
+                records.push(StatusRecord {
+                    path,
+                    orig_path: None,
+                    x: 'U',
+                    y: 'U',
+                    untracked: false,
+                });
+            }
+            i += 1;
+        } else {
+            i += 1;
+        }
+    }
+    (branch, records)
+}
+
+/// Split a two-char `XY` field into its index and worktree status chars.
+fn xy_chars(xy: &str) -> (char, char) {
+    let mut it = xy.chars();
+    let x = it.next().unwrap_or('.');
+    let y = it.next().unwrap_or('.');
+    (x, y)
+}
+
+/// Cap for a file read when counting/synthesizing an untracked-file diff, so a
+/// stray multi-GB file can never be slurped into memory.
+const MAX_INLINE_FILE_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Whether a byte slice looks binary (contains a NUL in its leading window).
+fn looks_binary(bytes: &[u8]) -> bool {
+    bytes.iter().take(8000).any(|&b| b == 0)
+}
+
+/// A symlink's target as a display string, or `None` when `abs` is not a
+/// symlink. Read without following, so an untracked symlink is shown by its
+/// target text (git's own representation, mode 120000) rather than by
+/// dereferencing to whatever it points at — a symlink to a file outside the
+/// repository must never have that file's contents surfaced in the diff.
+fn symlink_target(abs: &Path) -> Option<String> {
+    let meta = std::fs::symlink_metadata(abs).ok()?;
+    if !meta.file_type().is_symlink() {
+        return None;
+    }
+    Some(std::fs::read_link(abs).ok()?.to_string_lossy().to_string())
+}
+
+/// Count additions in a freshly-added (untracked) file. A symlink counts as its
+/// single target line, never the pointed-at file. Returns `None` when the path
+/// cannot be stat'd; binary and oversized regular files report zero additions.
+fn untracked_counts(root: &str, rel: &str) -> Option<(u32, bool)> {
+    let abs = Path::new(root).join(rel);
+    let meta = std::fs::symlink_metadata(&abs).ok()?;
+    if meta.file_type().is_symlink() {
+        // One line: the link target. Never dereferenced.
+        return Some((1, false));
+    }
+    if !meta.is_file() {
+        // Untracked directories/fifos/etc: nothing textual to count.
+        return Some((0, false));
+    }
+    if meta.len() > MAX_INLINE_FILE_BYTES {
+        return Some((0, false));
+    }
+    let bytes = std::fs::read(&abs).ok()?;
+    if looks_binary(&bytes) {
+        return Some((0, true));
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    let lines = if text.is_empty() {
+        0
+    } else {
+        text.split('\n').count() - usize::from(text.ends_with('\n'))
+    };
+    Some((lines as u32, false))
+}
+
+/// Load the working-tree status for `project` under `scope`. Errors when
+/// `project` is not inside a git work tree (or git is unavailable).
+pub fn status(project: &Path, scope: DiffScope) -> Result<GitStatus, String> {
+    let root = repo_root(project).ok_or_else(|| "not a git repository".to_string())?;
+    let root_s = root.to_string_lossy().to_string();
+
+    let raw = git(&[
+        "-C",
+        &root_s,
+        "status",
+        "--porcelain=v2",
+        "--branch",
+        "--untracked-files=all",
+        "--renames",
+        "-z",
+    ])?;
+    let (branch, records) = parse_status_v2(&raw);
+
+    // Counts come from numstat for the same scope. `HEAD`-relative scopes fall
+    // back to `--cached` on an unborn repo, where there is no `HEAD` to diff.
+    let numstat_args: Vec<&str> = match scope {
+        DiffScope::Staged => vec!["-C", &root_s, "diff", "--cached", "--numstat", "-z", "-M"],
+        DiffScope::Working => vec!["-C", &root_s, "diff", "--numstat", "-z", "-M"],
+        DiffScope::All => {
+            if head_born(&root_s) {
+                vec!["-C", &root_s, "diff", "HEAD", "--numstat", "-z", "-M"]
+            } else {
+                vec!["-C", &root_s, "diff", "--cached", "--numstat", "-z", "-M"]
+            }
+        }
+    };
+    let counts = parse_numstat(&git(&numstat_args).unwrap_or_default());
+
+    let mut files = Vec::new();
+    let mut total_add = 0u32;
+    let mut total_del = 0u32;
+    for rec in records {
+        let staged = rec.x != '.';
+        let unstaged = rec.y != '.' || rec.untracked;
+        // Scope filter: which side of the change this scope cares about.
+        let include = match scope {
+            DiffScope::Staged => staged,
+            DiffScope::Working => unstaged,
+            DiffScope::All => staged || unstaged,
+        };
+        if !include {
+            continue;
+        }
+        // Pick the status char that matches what this scope shows.
+        let code = match scope {
+            DiffScope::Staged => rec.x,
+            DiffScope::Working => rec.y,
+            DiffScope::All => {
+                if rec.x != '.' {
+                    rec.x
+                } else {
+                    rec.y
+                }
+            }
+        };
+        let (additions, deletions, binary) = if rec.untracked {
+            match untracked_counts(&root_s, &rec.path) {
+                Some((add, bin)) => (add, 0, bin),
+                None => (0, 0, false),
+            }
+        } else {
+            counts.get(&rec.path).copied().unwrap_or((0, 0, false))
+        };
+        total_add = total_add.saturating_add(additions);
+        total_del = total_del.saturating_add(deletions);
+        files.push(GitFileEntry {
+            path: rec.path,
+            orig_path: rec.orig_path,
+            status: if rec.untracked {
+                "untracked".to_string()
+            } else {
+                status_word(code).to_string()
+            },
+            staged,
+            unstaged,
+            additions,
+            deletions,
+            binary,
+        });
+    }
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+
+    Ok(GitStatus {
+        branch,
+        repo_root: root_s,
+        files,
+        additions: total_add,
+        deletions: total_del,
+    })
+}
+
+/// Reject a path that could escape the repository when joined to its root.
+/// Status output is already repo-relative and safe, but the value round-trips
+/// through the UI, so it is re-validated here.
+fn safe_rel(path: &str) -> Result<(), String> {
+    let p = Path::new(path);
+    if p.is_absolute()
+        || path.is_empty()
+        || p.components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err("invalid path".to_string());
+    }
+    Ok(())
+}
+
+/// Build a synthetic "new file" unified diff for an untracked text file, so it
+/// renders like any other addition. Binary/oversized files get a placeholder.
+fn untracked_diff(root: &str, rel: &str, max_bytes: usize) -> GitFileDiff {
+    let abs = Path::new(root).join(rel);
+    // A symlink is shown by its target text, never by dereferencing it — a link
+    // pointing outside the repo must not surface that file's contents here.
+    if let Some(target) = symlink_target(&abs) {
+        let out = format!(
+            "diff --git a/{rel} b/{rel}\nnew file mode 120000\n--- /dev/null\n+++ b/{rel}\n@@ -0,0 +1 @@\n+{target}\n\\ No newline at end of file\n"
+        );
+        return cap_diff(out, max_bytes, false);
+    }
+    let meta = std::fs::metadata(&abs).ok();
+    if meta.as_ref().map(|m| m.len()).unwrap_or(0) > MAX_INLINE_FILE_BYTES {
+        return GitFileDiff {
+            diff: format!("diff --git a/{rel} b/{rel}\n(new file too large to display)"),
+            binary: false,
+            truncated: true,
+        };
+    }
+    let Ok(bytes) = std::fs::read(&abs) else {
+        return GitFileDiff {
+            diff: String::new(),
+            binary: false,
+            truncated: false,
+        };
+    };
+    if looks_binary(&bytes) {
+        return GitFileDiff {
+            diff: format!("diff --git a/{rel} b/{rel}\nBinary file (untracked) differs"),
+            binary: true,
+            truncated: false,
+        };
+    }
+    let text = String::from_utf8_lossy(&bytes);
+    let raw_lines: Vec<&str> = if text.is_empty() {
+        Vec::new()
+    } else {
+        // Drop the trailing empty element from a final newline.
+        let mut v: Vec<&str> = text.split('\n').collect();
+        if text.ends_with('\n') {
+            v.pop();
+        }
+        v
+    };
+    let count = raw_lines.len();
+    let mut out = String::new();
+    out.push_str(&format!("diff --git a/{rel} b/{rel}\n"));
+    out.push_str("new file mode 100644\n");
+    out.push_str("--- /dev/null\n");
+    out.push_str(&format!("+++ b/{rel}\n"));
+    out.push_str(&format!("@@ -0,0 +1,{count} @@\n"));
+    for line in raw_lines {
+        out.push('+');
+        out.push_str(line);
+        out.push('\n');
+    }
+    if !text.ends_with('\n') && !text.is_empty() {
+        out.push_str("\\ No newline at end of file\n");
+    }
+    cap_diff(out, max_bytes, true)
+}
+
+/// Truncate `diff` to `max_bytes` on a line boundary, flagging when cut.
+fn cap_diff(diff: String, max_bytes: usize, binary: bool) -> GitFileDiff {
+    if diff.len() <= max_bytes {
+        return GitFileDiff {
+            diff,
+            binary,
+            truncated: false,
+        };
+    }
+    let cut = diff[..max_bytes]
+        .rfind('\n')
+        .map(|n| n + 1)
+        .unwrap_or(max_bytes);
+    let mut head = diff[..cut].to_string();
+    head.push_str("\n… diff truncated (too large to display in full) …\n");
+    GitFileDiff {
+        diff: head,
+        binary,
+        truncated: true,
+    }
+}
+
+/// The unified diff for a single file under `scope`, loaded on demand. Untracked
+/// files (present in Working/All scopes) are synthesized as new-file diffs since
+/// plain `git diff` never shows them.
+pub fn file_diff(
+    project: &Path,
+    path: &str,
+    scope: DiffScope,
+    max_bytes: usize,
+) -> Result<GitFileDiff, String> {
+    safe_rel(path)?;
+    let root = repo_root(project).ok_or_else(|| "not a git repository".to_string())?;
+    let root_s = root.to_string_lossy().to_string();
+
+    let args: Vec<&str> = match scope {
+        DiffScope::Staged => vec![
+            "-C", &root_s, "diff", "--cached", "-M", "--no-color", "--", path,
+        ],
+        DiffScope::Working => vec!["-C", &root_s, "diff", "-M", "--no-color", "--", path],
+        DiffScope::All => {
+            if head_born(&root_s) {
+                vec![
+                    "-C", &root_s, "diff", "HEAD", "-M", "--no-color", "--", path,
+                ]
+            } else {
+                vec![
+                    "-C", &root_s, "diff", "--cached", "-M", "--no-color", "--", path,
+                ]
+            }
+        }
+    };
+    let diff = git(&args)?;
+
+    // Empty diff on a scope that includes untracked files means the file is not
+    // known to git yet: synthesize its addition.
+    if diff.trim().is_empty() && scope != DiffScope::Staged {
+        let tracked = git(&["-C", &root_s, "ls-files", "--error-unmatch", "--", path])
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+        // `symlink_metadata` (not `exists`) so a broken symlink still counts as
+        // present and is rendered by its target rather than dereferenced.
+        let present = Path::new(&root_s).join(path).symlink_metadata().is_ok();
+        if !tracked && present {
+            return Ok(untracked_diff(&root_s, path, max_bytes));
+        }
+    }
+
+    let binary = diff.contains("Binary files ") || diff.contains("GIT binary patch");
+    Ok(cap_diff(diff, max_bytes, binary))
+}
+
+/// Pure-parser tests for the review-panel plumbing. These need neither git nor
+/// the `cli` feature, so they always run.
+#[cfg(test)]
+mod review_tests {
+    use super::*;
+
+    #[test]
+    fn numstat_parses_normal_and_binary() {
+        // `10\t2\tsrc/a.rs\0-\t-\tlogo.png\0`
+        let raw = "10\t2\tsrc/a.rs\0-\t-\tlogo.png\0";
+        let map = parse_numstat(raw);
+        assert_eq!(map.get("src/a.rs"), Some(&(10, 2, false)));
+        assert_eq!(map.get("logo.png"), Some(&(0, 0, true)));
+    }
+
+    #[test]
+    fn numstat_keys_rename_on_new_path() {
+        // Rename in -z form: `add\tdel\t` then `<old>` then `<new>`.
+        let raw = "3\t1\t\0old/name.rs\0new/name.rs\0";
+        let map = parse_numstat(raw);
+        assert_eq!(map.get("new/name.rs"), Some(&(3, 1, false)));
+        assert!(map.get("old/name.rs").is_none());
+    }
+
+    #[test]
+    fn status_v2_reads_branch_and_ordinary_change() {
+        let raw = "# branch.oid abc123\0# branch.head feature/x\01 .M N... 100644 100644 100644 aaa bbb src/a.rs\0";
+        let (branch, records) = parse_status_v2(raw);
+        assert_eq!(branch.as_deref(), Some("feature/x"));
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].path, "src/a.rs");
+        assert_eq!(records[0].x, '.');
+        assert_eq!(records[0].y, 'M');
+        assert!(!records[0].untracked);
+    }
+
+    #[test]
+    fn status_v2_reads_rename_with_orig_path() {
+        // A "2" record: XY, sub, three modes, two hashes, score, new path; the
+        // old path is the following NUL token.
+        let raw = "2 R. N... 100644 100644 100644 aaa bbb R100 new.rs\0old.rs\0";
+        let (_branch, records) = parse_status_v2(raw);
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].path, "new.rs");
+        assert_eq!(records[0].orig_path.as_deref(), Some("old.rs"));
+        assert_eq!(records[0].x, 'R');
+    }
+
+    #[test]
+    fn status_v2_reads_untracked() {
+        let raw = "? notes.txt\0";
+        let (_branch, records) = parse_status_v2(raw);
+        assert_eq!(records.len(), 1);
+        assert!(records[0].untracked);
+        assert_eq!(records[0].path, "notes.txt");
+    }
+
+    #[test]
+    fn detached_head_reports_no_branch() {
+        let raw = "# branch.head (detached)\0";
+        let (branch, _records) = parse_status_v2(raw);
+        assert!(branch.is_none());
+    }
+
+    #[test]
+    fn safe_rel_rejects_traversal_and_absolute() {
+        assert!(safe_rel("src/a.rs").is_ok());
+        assert!(safe_rel("../etc/passwd").is_err());
+        assert!(safe_rel("a/../../b").is_err());
+        assert!(safe_rel("").is_err());
+        #[cfg(unix)]
+        assert!(safe_rel("/etc/passwd").is_err());
+    }
+
+    #[test]
+    fn cap_diff_truncates_on_line_boundary() {
+        let big = "line one\nline two\nline three\n".to_string();
+        let out = cap_diff(big, 10, false);
+        assert!(out.truncated);
+        assert!(out.diff.starts_with("line one\n"));
+        assert!(out.diff.contains("truncated"));
+    }
+
+    #[test]
+    fn cap_diff_keeps_small_diffs_intact() {
+        let small = "one\ntwo\n".to_string();
+        let out = cap_diff(small.clone(), 1000, false);
+        assert!(!out.truncated);
+        assert_eq!(out.diff, small);
+    }
+
+    #[test]
+    fn scope_parse_defaults_to_working() {
+        assert_eq!(DiffScope::parse("staged"), DiffScope::Staged);
+        assert_eq!(DiffScope::parse("all"), DiffScope::All);
+        assert_eq!(DiffScope::parse("working"), DiffScope::Working);
+        assert_eq!(DiffScope::parse("nonsense"), DiffScope::Working);
+    }
+
+    // An untracked symlink must be shown by its target text, never by
+    // dereferencing to the pointed-at file — otherwise a link to a file outside
+    // the attached repo would surface that file's contents in the panel.
+    #[cfg(unix)]
+    #[test]
+    fn untracked_symlink_is_not_dereferenced() {
+        use std::os::unix::fs::symlink;
+        let dir = std::env::temp_dir().join(format!(
+            "jan_symlink_review_{}_{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let secret = dir.join("secret.txt");
+        std::fs::write(&secret, "TOP SECRET CONTENTS\n").unwrap();
+        symlink(&secret, dir.join("link")).unwrap();
+        let root = dir.to_string_lossy().to_string();
+
+        let d = untracked_diff(&root, "link", 512 * 1024);
+        assert!(!d.binary);
+        assert!(d.diff.contains("mode 120000"), "rendered as a symlink");
+        assert!(d.diff.contains("secret.txt"), "shows the target path");
+        assert!(
+            !d.diff.contains("TOP SECRET"),
+            "must not dereference the symlink target"
+        );
+
+        assert_eq!(untracked_counts(&root, "link"), Some((1, false)));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    use std::sync::atomic::Ordering;
 }
 
 #[cfg(all(test, feature = "cli"))]

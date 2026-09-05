@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { useState } from 'react'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { useRef, useState } from 'react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('@/i18n/react-i18next-compat', () => ({
@@ -27,6 +27,10 @@ vi.mock('shiki', () => ({
   codeToHtml: vi.fn(async (c: string) => `<pre>${c}</pre>`),
 }))
 
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() },
+}))
+
 vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
   projectListDir: vi.fn(),
   projectReadFile: vi.fn(),
@@ -36,12 +40,33 @@ import {
   projectListDir,
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
+import { toast } from 'sonner'
 import { CoworkCodePanel } from '../CoworkCodePanel'
-import { emptyCodePanelState, type CodePanelState } from '@/lib/coworkCode'
+import {
+  emptyCodePanelState,
+  openTab,
+  externalTab,
+  projectKeyOf,
+  projectTab,
+  sandboxTab,
+  tabId,
+  type CodePanelState,
+} from '@/lib/coworkCode'
 import type { CoworkTurn } from '@/types/coworkSession'
 
 const listDir = vi.mocked(projectListDir)
 const readFile = vi.mocked(projectReadFile)
+
+// Sandbox and artifact tabs stream off disk through the asset protocol, the
+// way the preview pane reads them, so those reads go through `fetch`.
+const fetchMock = vi.fn()
+vi.stubGlobal('fetch', fetchMock)
+const textResponse = (content: string) =>
+  ({
+    ok: true,
+    headers: { get: () => String(content.length) },
+    text: async () => content,
+  }) as unknown as Response
 
 const DATA_FOLDER = '/mock/jan/data'
 const ROOT = '/home/dev/project'
@@ -70,20 +95,33 @@ function Harness({
   folder = ROOT as string | null,
   initial = emptyCodePanelState(),
   turns,
+  workspacePath = null,
+  sessionKey = 'session-a',
   onStateChange,
   onAttach = vi.fn(),
 }: {
   folder?: string | null
   initial?: CodePanelState
   turns?: CoworkTurn[]
+  workspacePath?: string | null
+  sessionKey?: string | null
   onStateChange?: (next: CodePanelState) => void
   onAttach?: () => void
 }) {
   const [state, setState] = useState(initial)
+  // The route keeps one panel mounted and hands it the new session's stored
+  // state, so a session switch re-seeds rather than remounts. Reproduce that:
+  // remounting would hide the very races these tests exist to catch.
+  const lastSession = useRef(sessionKey)
+  if (lastSession.current !== sessionKey) {
+    lastSession.current = sessionKey
+    setState(initial)
+  }
   return (
     <CoworkCodePanel
       folder={folder}
-      workspacePath={null}
+      workspacePath={workspacePath}
+      sessionKey={sessionKey}
       state={state}
       turns={turns}
       onStateChange={(next) => {
@@ -209,9 +247,9 @@ describe('CoworkCodePanel', () => {
 
     await openFromExplorer('app.ts')
 
-    expect(onStateChange).toHaveBeenCalledWith(
-      expect.objectContaining({ openPaths: ['app.ts'], activePath: 'app.ts' })
-    )
+    const opened = onStateChange.mock.lastCall?.[0] as CodePanelState
+    expect(opened.tabs.map((t) => t.path)).toEqual(['app.ts'])
+    expect(opened.activeTabId).toBe(tabId(projectTab('app.ts', projectKeyOf(ROOT)!)))
     expect(await screen.findByTestId('code-viewer-body')).toHaveTextContent(
       'export const answer = 42'
     )
@@ -228,7 +266,7 @@ describe('CoworkCodePanel', () => {
 
     expect(screen.getAllByRole('tab')).toHaveLength(1)
     const last = onStateChange.mock.lastCall?.[0] as CodePanelState
-    expect(last.openPaths).toEqual(['app.ts'])
+    expect(last.tabs.map((t) => t.path)).toEqual(['app.ts'])
   })
 
   it('drops a closed tab from the reported state', async () => {
@@ -242,8 +280,8 @@ describe('CoworkCodePanel', () => {
     )
 
     const last = onStateChange.mock.lastCall?.[0] as CodePanelState
-    expect(last.openPaths).toEqual([])
-    expect(last.activePath).toBeNull()
+    expect(last.tabs).toEqual([])
+    expect(last.activeTabId).toBeNull()
     expect(screen.queryAllByRole('tab')).toHaveLength(0)
   })
 
@@ -330,7 +368,7 @@ describe('CoworkCodePanel', () => {
     )
 
     const last = onStateChange.mock.lastCall?.[0] as CodePanelState
-    expect(last.openPaths).toEqual([])
+    expect(last.tabs).toEqual([])
     expect(screen.queryAllByRole('tab')).toHaveLength(0)
   })
 })
@@ -364,7 +402,7 @@ describe('CoworkCodePanel — an open file the agent rewrites', () => {
 
   it('marks the tab stale, and reload replaces the content', async () => {
     readFile.mockResolvedValue(projectFile({ content: 'first' }))
-    const { rerender } = render(<Harness turns={[]} initial={{ ...emptyCodePanelState(), openPaths: ['app.ts'], activePath: 'app.ts' }} />)
+    const { rerender } = render(<Harness turns={[]} initial={openTab(emptyCodePanelState(), projectTab('app.ts', projectKeyOf(ROOT)!))} />)
 
     expect((await screen.findAllByText('first')).length).toBeGreaterThan(0)
 
@@ -373,7 +411,7 @@ describe('CoworkCodePanel — an open file the agent rewrites', () => {
     rerender(
       <Harness
         turns={[wrote('app.ts')]}
-        initial={{ ...emptyCodePanelState(), openPaths: ['app.ts'], activePath: 'app.ts' }}
+        initial={openTab(emptyCodePanelState(), projectTab('app.ts', projectKeyOf(ROOT)!))}
       />
     )
 
@@ -398,7 +436,7 @@ describe('CoworkCodePanel — an open file the agent rewrites', () => {
     render(
       <Harness
         turns={[wrote('elsewhere.ts')]}
-        initial={{ ...emptyCodePanelState(), openPaths: ['app.ts'], activePath: 'app.ts' }}
+        initial={openTab(emptyCodePanelState(), projectTab('app.ts', projectKeyOf(ROOT)!))}
       />
     )
 
@@ -406,5 +444,504 @@ describe('CoworkCodePanel — an open file the agent rewrites', () => {
     expect(
       screen.queryByText('common:codePanel.stale')
     ).not.toBeInTheDocument()
+  })
+})
+
+
+describe('CoworkCodePanel — project detach and switching', () => {
+  const OTHER = '/home/dev/other-project'
+  // `mockReturnValueOnce` queues survive `clearAllMocks`, so a value queued by
+  // one case can be handed to the next. Reset the implementations outright.
+  afterEach(() => {
+    listDir.mockReset()
+    readFile.mockReset()
+  })
+  const tabIn = (root: string, path = 'app.ts') =>
+    projectTab(path, projectKeyOf(root)!)
+  const stateWith = (root: string, path = 'app.ts'): CodePanelState =>
+    openTab(emptyCodePanelState(), tabIn(root, path))
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getJanDataFolder.mockResolvedValue(DATA_FOLDER)
+    listDir.mockResolvedValue(listing(fileEntry('app.ts')))
+    readFile.mockResolvedValue(projectFile({ content: 'from A' }))
+  })
+
+  it('does not leave a tab spinning forever when the project is detached', async () => {
+    // Regression: the reset effect emptied the file cache, the active-tab
+    // effect re-fired, set {status:'loading'} and then returned early on
+    // !folder — so the tab showed a spinner nothing would ever resolve.
+    const { rerender } = render(<Harness initial={stateWith(ROOT)} />)
+    expect((await screen.findAllByText('from A')).length).toBeGreaterThan(0)
+
+    rerender(<Harness folder={null} initial={stateWith(ROOT)} />)
+
+    expect(
+      await screen.findByText('common:codePanel.detached')
+    ).toBeInTheDocument()
+    expect(screen.queryByText('common:codePanel.loading')).toBeNull()
+  })
+
+  it('ignores a read that resolves after the project was detached', async () => {
+    let release!: (v: ReturnType<typeof projectFile>) => void
+    readFile.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve
+      })
+    )
+    const { rerender } = render(<Harness initial={stateWith(ROOT)} />)
+    // The read must actually be in flight before detaching, or the pending
+    // promise is never the one under test.
+    await waitFor(() =>
+      expect(readFile).toHaveBeenCalledWith(DATA_FOLDER, ROOT, 'app.ts', false)
+    )
+
+    rerender(<Harness folder={null} initial={stateWith(ROOT)} />)
+    release(projectFile({ content: 'stale bytes from A' }))
+
+    expect(
+      await screen.findByText('common:codePanel.detached')
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByText('stale bytes from A')).toBeNull()
+    )
+  })
+
+  it('never resolves project A’s path against project B', async () => {
+    const onStateChange = vi.fn()
+    const { rerender } = render(
+      <Harness initial={stateWith(ROOT)} onStateChange={onStateChange} />
+    )
+    expect((await screen.findAllByText('from A')).length).toBeGreaterThan(0)
+
+    // Switching projects: the store prunes A's tabs, so the panel is given a
+    // state that contains none of them.
+    readFile.mockResolvedValue(projectFile({ content: 'from B' }))
+    rerender(<Harness folder={OTHER} initial={emptyCodePanelState()} />)
+
+    await waitFor(() =>
+      expect(listDir).toHaveBeenCalledWith(DATA_FOLDER, OTHER, '')
+    )
+    // A's bytes are gone, and no read was ever issued for A's path against B.
+    await waitFor(() => expect(screen.queryByText('from A')).toBeNull())
+    for (const call of readFile.mock.calls) {
+      if (call[1] === OTHER) expect(call[2]).not.toBe('app.ts')
+    }
+  })
+
+  it('drops a listing that arrives from the previous project', async () => {
+    let releaseA!: (v: ReturnType<typeof listing>) => void
+    listDir.mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseA = resolve
+      })
+    )
+    const { rerender } = render(<Harness initial={emptyCodePanelState()} />)
+    // Wait for A's listing to actually be in flight. The roots resolve
+    // asynchronously, so rerendering before this would hand the pending
+    // promise to B's request instead and prove nothing.
+    await waitFor(() =>
+      expect(listDir).toHaveBeenCalledWith(DATA_FOLDER, ROOT, '')
+    )
+
+    listDir.mockResolvedValue(listing(fileEntry('only-in-b.ts')))
+    rerender(<Harness folder={OTHER} initial={emptyCodePanelState()} />)
+    await waitFor(() =>
+      expect(listDir).toHaveBeenCalledWith(DATA_FOLDER, OTHER, '')
+    )
+    // Only now does A's listing land, naming a file that exists only in A.
+    releaseA(listing(fileEntry('only-in-a.ts')))
+
+    expect(
+      await screen.findByRole('button', { name: 'only-in-b.ts' })
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'only-in-a.ts' })).toBeNull()
+    )
+  })
+
+  it('keeps a workspace tab across a project switch', async () => {
+    // A sandbox file belongs to the session, not the project, so switching
+    // projects must not close it.
+    const sandboxState = openTab(emptyCodePanelState(), {
+      path: 'out.ts',
+      origin: { kind: 'sandbox' },
+    })
+    render(<Harness folder={OTHER} initial={sandboxState} />)
+    expect(await screen.findAllByRole('tab')).toHaveLength(1)
+  })
+})
+
+
+describe('CoworkCodePanel — session isolation', () => {
+  const WS_A = '/data/agent-workspace/sessions/session-a'
+  const WS_B = '/data/agent-workspace/sessions/session-b'
+  const SAME_PATH = 'notes.ts'
+
+  /** A promise whose resolution this test controls. */
+  const deferred = <T,>() => {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((r) => {
+      resolve = r
+    })
+    return { promise, resolve }
+  }
+
+  const sandboxState = (sessionKey: string) =>
+    openTab(emptyCodePanelState(), sandboxTab(SAME_PATH, sessionKey))
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getJanDataFolder.mockResolvedValue(DATA_FOLDER)
+    listDir.mockResolvedValue(listing())
+  })
+  afterEach(() => {
+    listDir.mockReset()
+    readFile.mockReset()
+    fetchMock.mockReset()
+  })
+
+  it('drops a sandbox read from session A that resolves after switching to B', async () => {
+    // Sandbox files are read through the asset protocol, not the project
+    // commands, so this path had no generation guard at all.
+    const a = deferred<Response>()
+    fetchMock.mockReturnValueOnce(a.promise as unknown as Promise<Response>)
+
+    const { rerender } = render(
+      <Harness
+        folder={null}
+        workspacePath={WS_A}
+        sessionKey="session-a"
+        initial={sandboxState('session-a')}
+      />
+    )
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    // Switch to session B, whose own sandbox read resolves first.
+    fetchMock.mockResolvedValue(textResponse('bytes from B'))
+    rerender(
+      <Harness
+        folder={null}
+        workspacePath={WS_B}
+        sessionKey="session-b"
+        initial={sandboxState('session-b')}
+      />
+    )
+    expect((await screen.findAllByText('bytes from B')).length).toBeGreaterThan(0)
+
+    // A's read lands late and must be discarded. Drain it first: asserting
+    // before the response has been read through would pass on any build.
+    a.resolve(textResponse('bytes from A'))
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.queryByText('bytes from A')).toBeNull()
+    expect((await screen.findAllByText('bytes from B')).length).toBeGreaterThan(
+      0
+    )
+  })
+
+  it('keeps the same relative sandbox path distinct between sessions', () => {
+    // Both sessions have `notes.ts` in their own workspace; sharing a cache
+    // key would show one session's bytes in the other.
+    expect(tabId(sandboxTab(SAME_PATH, 'session-a'))).not.toBe(
+      tabId(sandboxTab(SAME_PATH, 'session-b'))
+    )
+  })
+
+  it('does not read a sandbox tab against another session’s workspace', async () => {
+    // Session B is active, but a tab belonging to A is somehow present: it must
+    // not be read, because its path is relative to A's directory.
+    render(
+      <Harness
+        folder={null}
+        workspacePath={WS_B}
+        sessionKey="session-b"
+        initial={sandboxState('session-a')}
+      />
+    )
+    await waitFor(() =>
+      expect(screen.getByText('common:codePanel.detached')).toBeInTheDocument()
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('reads nothing while the workspace lookup for this session is pending', async () => {
+    // The route clears workspacePath on a session change; until the new one
+    // resolves there is no root, and nothing may be read against the old one.
+    render(
+      <Harness
+        folder={null}
+        workspacePath={null}
+        sessionKey="session-b"
+        initial={sandboxState('session-b')}
+      />
+    )
+    await waitFor(() => expect(fetchMock).not.toHaveBeenCalled())
+    expect(screen.queryByText('common:codePanel.detached')).toBeNull()
+  })
+
+  it('keeps this session’s sandbox tabs when the project changes', async () => {
+    // A project switch inside one session must not disturb session-owned tabs.
+    fetchMock.mockResolvedValue(textResponse('workspace bytes'))
+    const { rerender } = render(
+      <Harness
+        workspacePath={WS_A}
+        sessionKey="session-a"
+        initial={sandboxState('session-a')}
+      />
+    )
+    expect(
+      (await screen.findAllByText('workspace bytes')).length
+    ).toBeGreaterThan(0)
+
+    rerender(
+      <Harness
+        folder="/home/dev/other-project"
+        workspacePath={WS_A}
+        sessionKey="session-a"
+        initial={sandboxState('session-a')}
+      />
+    )
+    expect(await screen.findAllByRole('tab')).toHaveLength(1)
+    expect(
+      (await screen.findAllByText('workspace bytes')).length
+    ).toBeGreaterThan(0)
+  })
+})
+
+describe('CoworkCodePanel — external files', () => {
+  const SESSION_A = 'session-a'
+  const SESSION_B = 'session-b'
+  const WS_A = '/data/agent-workspace/sessions/session-a'
+
+  /**
+   * A file the way the browser hands one over: bytes plus a name, with the
+   * snapshot semantics that matter here. `size` is overridable so the
+   * oversize path can be exercised without allocating a megabyte.
+   */
+  const pickedFile = (
+    name: string,
+    content: string | Uint8Array,
+    over: { size?: number; unreadable?: boolean } = {}
+  ) => {
+    const file = new File([content as BlobPart], name)
+    if (over.size !== undefined) {
+      Object.defineProperty(file, 'size', { value: over.size })
+    }
+    if (over.unreadable) {
+      // What a browser does when the file moved or permission was revoked
+      // between selection and read.
+      Object.defineProperty(file, 'text', {
+        value: () => Promise.reject(new DOMException('gone', 'NotReadableError')),
+      })
+    }
+    return file
+  }
+
+  const pick = async (...files: File[]) =>
+    userEvent.upload(screen.getByTestId('code-file-picker'), files)
+
+  const externalState = (name: string, sessionKey: string) =>
+    openTab(emptyCodePanelState(), externalTab(name, sessionKey))
+
+  const errorKeys = () =>
+    vi.mocked(toast.error).mock.calls.map((c) => String(c[0]))
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getJanDataFolder.mockResolvedValue(DATA_FOLDER)
+    listDir.mockResolvedValue(listing())
+    readFile.mockResolvedValue(projectFile())
+  })
+  afterEach(() => {
+    fetchMock.mockReset()
+  })
+
+  it('opens a picked file as its own tab and shows its bytes', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+
+    await pick(pickedFile('notes.ts', 'export const a = 1'))
+
+    expect(await screen.findByTestId('code-viewer-body')).toHaveTextContent(
+      'export const a = 1'
+    )
+  })
+
+  it('refuses a credentials file without opening a tab', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+
+    await pick(pickedFile('.env', 'TOKEN=hunter2'))
+
+    expect(errorKeys().join()).toContain('codePanel.sensitiveRefused')
+    expect(screen.queryByTestId('code-viewer-body')).not.toBeInTheDocument()
+    expect(screen.queryByText('TOKEN=hunter2')).not.toBeInTheDocument()
+  })
+
+  it('refuses a binary renamed to a text extension', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    await pick(pickedFile('image.ts', png))
+
+    expect(errorKeys().join()).toContain('codePanel.binaryRefused')
+    expect(screen.queryByTestId('code-viewer-body')).not.toBeInTheDocument()
+  })
+
+  it('refuses a file too large to open, before reading it', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+
+    await pick(pickedFile('big.ts', 'x', { size: 4 * 1024 * 1024 }))
+
+    expect(errorKeys().join()).toContain('codePanel.tooLargeToOpen')
+    expect(screen.queryByTestId('code-viewer-body')).not.toBeInTheDocument()
+  })
+
+  it('reports a file that cannot be read and opens no tab', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+
+    await pick(pickedFile('gone.ts', 'never read', { unreadable: true }))
+
+    expect(errorKeys().join()).toContain('codePanel.unreadable')
+    expect(screen.queryByTestId('code-viewer-body')).not.toBeInTheDocument()
+  })
+
+  it('offers re-selection rather than a reload it cannot perform', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+    await pick(pickedFile('notes.ts', 'first'))
+    await screen.findByTestId('code-viewer-body')
+
+    // The banner offers "Choose again". It must not offer "Reload": the
+    // handle is a snapshot and cannot produce newer bytes.
+    expect(
+      screen.getByRole('button', { name: 'common:codePanel.chooseAgainAction' })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'common:codePanel.reload' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('replaces the content when the same name is chosen again', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+    await pick(pickedFile('notes.ts', 'first'))
+    expect(await screen.findByTestId('code-viewer-body')).toHaveTextContent(
+      'first'
+    )
+
+    // The same name selected from somewhere else: one tab, new bytes.
+    await pick(pickedFile('notes.ts', 'second'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('code-viewer-body')).toHaveTextContent('second')
+    )
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
+  })
+
+  it('keeps the old content when the replacement is sensitive', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+    await pick(pickedFile('notes.ts', 'safe content'))
+    await screen.findByTestId('code-viewer-body')
+
+    await pick(pickedFile('.env', 'TOKEN=hunter2'))
+
+    expect(errorKeys().join()).toContain('codePanel.sensitiveRefused')
+    expect(screen.getByTestId('code-viewer-body')).toHaveTextContent(
+      'safe content'
+    )
+    expect(screen.queryByText('TOKEN=hunter2')).not.toBeInTheDocument()
+  })
+
+  it('keeps the old content when the replacement turns binary', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+    await pick(pickedFile('notes.ts', 'safe content'))
+    await screen.findByTestId('code-viewer-body')
+
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02, 0x03])
+    await pick(pickedFile('notes.ts', png))
+
+    expect(errorKeys().join()).toContain('codePanel.binaryRefused')
+    expect(screen.getByTestId('code-viewer-body')).toHaveTextContent(
+      'safe content'
+    )
+  })
+
+  it('does not read an external tab against the workspace after a restart', async () => {
+    // Tab metadata is persisted; the handle is memory only. Nothing may be
+    // read here — resolving the bare name against the session workspace
+    // would open a different file that happens to share it.
+    render(
+      <Harness
+        sessionKey={SESSION_A}
+        workspacePath={WS_A}
+        initial={externalState('notes.ts', SESSION_A)}
+      />
+    )
+
+    // `findByText` returns the node that is actually mounted; asserting
+    // attachment separately races the re-render that resolving the roots
+    // causes, and tests the harness rather than the panel.
+    expect(
+      await screen.findByText('common:codePanel.externalGone')
+    ).toBeTruthy()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(readFile).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('button', { name: 'common:codePanel.chooseAgainAction' })
+    ).toBeInTheDocument()
+  })
+
+  it('never shows one session’s picked file under another', async () => {
+    const { rerender } = render(
+      <Harness sessionKey={SESSION_A} workspacePath={WS_A} />
+    )
+    await pick(pickedFile('notes.ts', 'session A bytes'))
+    await screen.findByTestId('code-viewer-body')
+
+    // Switching sessions re-seeds the panel with B's stored state, which
+    // happens to carry a tab for the same file name stamped to A.
+    rerender(
+      <Harness
+        sessionKey={SESSION_B}
+        workspacePath="/data/agent-workspace/sessions/session-b"
+        initial={externalState('notes.ts', SESSION_A)}
+      />
+    )
+
+    await waitFor(() =>
+      expect(screen.queryByText('session A bytes')).not.toBeInTheDocument()
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('gives the same file name a different tab in each session', () => {
+    expect(tabId(externalTab('notes.ts', SESSION_A))).not.toBe(
+      tabId(externalTab('notes.ts', SESSION_B))
+    )
+  })
+
+  it('settles on the last selection when two reads resolve out of order', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+
+    // The first selection's read finishes after the second's.
+    let releaseFirst!: (value: string) => void
+    const slow = new File(['ignored'], 'notes.ts')
+    Object.defineProperty(slow, 'text', {
+      value: () => new Promise<string>((r) => (releaseFirst = r)),
+    })
+
+    await pick(slow)
+    await pick(pickedFile('notes.ts', 'second'))
+    await waitFor(() =>
+      expect(screen.getByTestId('code-viewer-body')).toHaveTextContent('second')
+    )
+
+    await act(async () => {
+      releaseFirst('first')
+    })
+
+    // The stale read must not overwrite the newer content.
+    expect(screen.getByTestId('code-viewer-body')).toHaveTextContent('second')
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
   })
 })

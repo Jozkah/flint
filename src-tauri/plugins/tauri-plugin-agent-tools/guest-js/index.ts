@@ -93,6 +93,48 @@ export async function sessionWorkspacePath(
   })
 }
 
+/**
+ * Can this platform confine both the file tools and the shell to a folder?
+ *
+ * Asked before offering to edit a folder directly, so an option that could not
+ * be enforced is never shown rather than failing after the user confirms it.
+ */
+export async function directEditCapability(): Promise<boolean> {
+  return await invoke('plugin:agent-tools|direct_edit_capability')
+}
+
+/**
+ * Authorize this session to edit `folder`, returning an opaque grant id.
+ *
+ * The id is what runs carry afterwards; a path is never accepted at tool time,
+ * so nothing a model emits can widen or redirect what a run may write.
+ */
+export async function directEditAuthorize(
+  dataFolder: string,
+  sessionId: string,
+  folder: string
+): Promise<string> {
+  return await invoke('plugin:agent-tools|direct_edit_authorize', {
+    dataFolder,
+    sessionId,
+    folder,
+  })
+}
+
+/** Withdraw one grant. Succeeds whether or not it was still live. */
+export async function directEditRevoke(grantId: string): Promise<boolean> {
+  return await invoke('plugin:agent-tools|direct_edit_revoke', { grantId })
+}
+
+/** Withdraw every grant a session holds. */
+export async function directEditRevokeSession(
+  sessionId: string
+): Promise<number> {
+  return await invoke('plugin:agent-tools|direct_edit_revoke_session', {
+    sessionId,
+  })
+}
+
 /** Delete a Cowork session's sandbox, with its scratch. */
 export async function sessionWorkspaceDelete(
   dataFolder: string,
@@ -268,6 +310,38 @@ export async function bashJobsList(): Promise<BashJobStatus[]> {
   return await invoke('plugin:agent-tools|bash_jobs_list')
 }
 
+/** Why a kill request ended the way it did. Mirrors `BashJobKillOutcome`. */
+export type BashJobKillOutcome =
+  /** The process tree was signalled. */
+  | 'killed'
+  /** The command had already finished; its output is still collectable. */
+  | 'alreadyFinished'
+  /** No job by that id: never existed, or already collected. */
+  | 'unknown'
+  /** The job exists but no pid was ever captured, so nothing was signalled. */
+  | 'noPid'
+  /** The OS refused. The command is still running and can be asked again. */
+  | 'failed'
+
+export type BashJobKill = {
+  jobId: string
+  outcome: BashJobKillOutcome
+  /** Why it failed, when it did. Safe to show: it names the OS refusal. */
+  error?: string | null
+}
+
+/**
+ * Kill one backgrounded shell command and every process it spawned.
+ *
+ * The job entry survives, so the agent's own collection still returns whatever
+ * the command printed before it died. The outcome is reported rather than
+ * assumed: a UI must not claim to have stopped something that had already
+ * finished, or that it could not signal.
+ */
+export async function bashJobKill(jobId: string): Promise<BashJobKill> {
+  return await invoke('plugin:agent-tools|bash_job_kill', { jobId })
+}
+
 /** Which OS sandbox, if any, can confine a shell on this machine. */
 export type SandboxStatus = {
   /** `bubblewrap`, `seatbelt`, `appcontainer`, or `none`. */
@@ -318,6 +392,7 @@ export async function executeTool(
   enabledSkills?: string[],
   allowNetwork?: boolean,
   readOnlyProject?: string,
+  writeGrant?: string,
   scope?: WorkspaceScope,
   callId?: string
 ): Promise<ToolResult> {
@@ -330,6 +405,7 @@ export async function executeTool(
     enabledSkills,
     allowNetwork,
     readOnlyProject,
+    writeGrant,
     scope,
     callId,
   })
@@ -353,6 +429,7 @@ export async function executeToolStreaming(
     enabledSkills?: string[]
     allowNetwork?: boolean
     readOnlyProject?: string
+    writeGrant?: string
     scope?: WorkspaceScope
     callId?: string
   }
@@ -367,6 +444,7 @@ export async function executeToolStreaming(
     enabledSkills: options?.enabledSkills,
     allowNetwork: options?.allowNetwork,
     readOnlyProject: options?.readOnlyProject,
+    writeGrant: options?.writeGrant,
     scope: options?.scope,
     callId: options?.callId,
   })

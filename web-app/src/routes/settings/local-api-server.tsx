@@ -3,7 +3,6 @@ import { route } from '@/constants/routes'
 import HeaderPage from '@/containers/HeaderPage'
 import SettingsMenu from '@/containers/SettingsMenu'
 import { Card, CardItem } from '@/containers/Card'
-import { SettingTarget } from '@/components/SettingTarget'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -63,6 +62,8 @@ function LocalAPIServerContent() {
     setVerboseLogs,
     enableOnStartup,
     setEnableOnStartup,
+    runInBackground,
+    setRunInBackground,
     serverHost,
     serverPort,
     setServerPort,
@@ -445,20 +446,33 @@ function LocalAPIServerContent() {
                   </div>
                 }
               >
-                <SettingTarget anchor="settings-local-api-server-run-on-startup">
+                <CardItem
+                  anchor="settings-local-api-server-run-on-startup"
+                  title={t('settings:localApiServer.runOnStartup')}
+                  description={t('settings:localApiServer.runOnStartupDesc')}
+                  actions={
+                    <Switch
+                      checked={enableOnStartup}
+                      onCheckedChange={(checked) => {
+                        setEnableOnStartup(checked)
+                      }}
+                    />
+                  }
+                />
+                {!IS_MACOS && (
                   <CardItem
-                    title={t('settings:localApiServer.runOnStartup')}
-                    description={t('settings:localApiServer.runOnStartupDesc')}
+                    title={t('settings:localApiServer.runInBackground')}
+                    description={t(
+                      'settings:localApiServer.runInBackgroundDesc'
+                    )}
                     actions={
                       <Switch
-                        checked={enableOnStartup}
-                        onCheckedChange={(checked) => {
-                          setEnableOnStartup(checked)
-                        }}
+                        checked={runInBackground}
+                        onCheckedChange={setRunInBackground}
                       />
                     }
                   />
-                </SettingTarget>
+                )}
                 <CardItem
                   title={t('settings:localApiServer.defaultModel')}
                   description={t('settings:localApiServer.defaultModelDesc')}

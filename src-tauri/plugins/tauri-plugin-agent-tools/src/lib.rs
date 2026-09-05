@@ -18,6 +18,7 @@ pub mod workspace;
 
 #[cfg(feature = "tauri")]
 mod commands;
+mod grants;
 
 /// Runs the confined-spawn helper and exits, when this process was re-exec'd as
 /// one by the Windows sandbox backend. A no-op on every other platform and on a
@@ -41,6 +42,10 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::session_workspace_path,
             commands::session_workspace_delete,
             commands::session_workspace_sweep,
+            commands::direct_edit_capability,
+            commands::direct_edit_authorize,
+            commands::direct_edit_revoke,
+            commands::direct_edit_revoke_session,
             commands::skill_list,
             commands::skill_read,
             commands::skill_write,
@@ -55,7 +60,8 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::execute_tool_streaming,
             commands::project_list_dir,
             commands::project_read_file,
-            commands::bash_jobs_list
+            commands::bash_jobs_list,
+            commands::bash_job_kill
         ])
         .build()
 }

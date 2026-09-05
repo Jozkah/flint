@@ -6,6 +6,10 @@ const COMMANDS: &[&str] = &[
     "session_workspace_path",
     "session_workspace_delete",
     "session_workspace_sweep",
+    "direct_edit_capability",
+    "direct_edit_authorize",
+    "direct_edit_revoke",
+    "direct_edit_revoke_session",
     "skill_list",
     "skill_read",
     "skill_write",
@@ -21,6 +25,7 @@ const COMMANDS: &[&str] = &[
     "project_list_dir",
     "project_read_file",
     "bash_jobs_list",
+    "bash_job_kill",
 ];
 
 fn main() {

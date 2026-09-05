@@ -3,7 +3,6 @@ import { route } from '@/constants/routes'
 import SettingsMenu from '@/containers/SettingsMenu'
 import HeaderPage from '@/containers/HeaderPage'
 import { Card, CardItem } from '@/containers/Card'
-import { SettingTarget } from '@/components/SettingTarget'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ThemeSwitcher } from '@/containers/ThemeSwitcher'
 import { FontSizeSwitcher } from '@/containers/FontSizeSwitcher'
@@ -46,45 +45,41 @@ function InterfaceSettings() {
           <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
             {/* Interface */}
             <Card title={t('settings:interface.title')}>
-              <SettingTarget anchor="settings-appearance-theme">
-                <CardItem
-                  title={t('settings:interface.theme')}
-                  description={t('settings:interface.themeDesc')}
-                  actions={<ThemeSwitcher />}
-                />
-              </SettingTarget>
-              <SettingTarget anchor="settings-appearance-font-size">
-                <CardItem
-                  title={t('settings:interface.fontSize')}
-                  description={t('settings:interface.fontSizeDesc')}
-                  actions={<FontSizeSwitcher />}
-                />
-              </SettingTarget>
+              <CardItem
+                anchor="settings-appearance-theme"
+                title={t('settings:interface.theme')}
+                description={t('settings:interface.themeDesc')}
+                actions={<ThemeSwitcher />}
+              />
+              <CardItem
+                anchor="settings-appearance-font-size"
+                title={t('settings:interface.fontSize')}
+                description={t('settings:interface.fontSizeDesc')}
+                actions={<FontSizeSwitcher />}
+              />
               <CardItem
                 title="Accent color"
                 description="Customize the accent color of the application."
                 className="flex-col sm:flex-row items-start sm:items-center sm:justify-between gap-y-2"
                 actions={<AccentColorPicker />}
               />
-              <SettingTarget anchor="settings-appearance-notification-position">
-                <CardItem
-                  title={t('settings:interface.notificationPosition')}
-                  description={t('settings:interface.notificationPositionDesc')}
-                  actions={<NotificationPositionSwitcher />}
-                />
-              </SettingTarget>
-              <SettingTarget anchor="settings-appearance-token-speed">
-                <CardItem
-                  title={t('settings:interface.showTokenSpeed')}
-                  description={t('settings:interface.showTokenSpeedDesc')}
-                  actions={
-                    <Switch
-                      checked={showTokenSpeed}
-                      onCheckedChange={setShowTokenSpeed}
-                    />
-                  }
-                />
-              </SettingTarget>
+              <CardItem
+                anchor="settings-appearance-notification-position"
+                title={t('settings:interface.notificationPosition')}
+                description={t('settings:interface.notificationPositionDesc')}
+                actions={<NotificationPositionSwitcher />}
+              />
+              <CardItem
+                anchor="settings-appearance-token-speed"
+                title={t('settings:interface.showTokenSpeed')}
+                description={t('settings:interface.showTokenSpeedDesc')}
+                actions={
+                  <Switch
+                    checked={showTokenSpeed}
+                    onCheckedChange={setShowTokenSpeed}
+                  />
+                }
+              />
               <CardItem
                 title={t('settings:interface.coloredUserBubble')}
                 description={t('settings:interface.coloredUserBubbleDesc')}
@@ -95,37 +90,35 @@ function InterfaceSettings() {
                   />
                 }
               />
-              <SettingTarget anchor="settings-appearance-html-artifacts">
-                <CardItem
-                  title={
-                    <span className="inline-flex items-center gap-2">
-                      <span>{t('settings:interface.renderHtmlArtifacts')}</span>
-                      <span className="text-xs bg-secondary border text-muted-foreground rounded-full py-0.5 px-2">
-                        {t('common:experimental')}
-                      </span>
+              <CardItem
+                anchor="settings-appearance-html-artifacts"
+                title={
+                  <span className="inline-flex items-center gap-2">
+                    <span>{t('settings:interface.renderHtmlArtifacts')}</span>
+                    <span className="text-xs bg-secondary border text-muted-foreground rounded-full py-0.5 px-2">
+                      {t('common:experimental')}
                     </span>
-                  }
-                  description={t('settings:interface.renderHtmlArtifactsDesc')}
-                  actions={
-                    <Switch
-                      checked={renderHtmlArtifacts}
-                      onCheckedChange={setRenderHtmlArtifacts}
-                    />
-                  }
-                />
-              </SettingTarget>
-              <SettingTarget anchor="settings-appearance-auto-title">
-                <CardItem
-                  title={t('settings:interface.autoGenerateTitle')}
-                  description={t('settings:interface.autoGenerateTitleDesc')}
-                  actions={
-                    <Switch
-                      checked={autoGenerateTitle}
-                      onCheckedChange={setAutoGenerateTitle}
-                    />
-                  }
-                />
-              </SettingTarget>
+                  </span>
+                }
+                description={t('settings:interface.renderHtmlArtifactsDesc')}
+                actions={
+                  <Switch
+                    checked={renderHtmlArtifacts}
+                    onCheckedChange={setRenderHtmlArtifacts}
+                  />
+                }
+              />
+              <CardItem
+                anchor="settings-appearance-auto-title"
+                title={t('settings:interface.autoGenerateTitle')}
+                description={t('settings:interface.autoGenerateTitleDesc')}
+                actions={
+                  <Switch
+                    checked={autoGenerateTitle}
+                    onCheckedChange={setAutoGenerateTitle}
+                  />
+                }
+              />
               <CardItem
                 title={t('settings:interface.resetToDefault')}
                 description={t('settings:interface.resetToDefaultDesc')}

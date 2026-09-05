@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::permissions::ToolPermissions;
 use crate::tools::cmdscan::{normalize, scan_command, CommandScan};
 use crate::tools::sandbox::{
-    command_touches_hidden_jan_path, escapes_project, escapes_read_roots, is_hidden_jan_path,
+    command_touches_hidden_jan_path, escapes_read_roots, escapes_write_roots, is_hidden_jan_path,
 };
 use crate::tools::{BuiltinTool, Capability};
 
@@ -47,9 +47,27 @@ pub struct SessionGrants {
     exec_opaque: std::collections::BTreeSet<String>,
     /// MCP tools granted "allow always" this thread, by tool name.
     mcp_tools: std::collections::BTreeSet<String>,
+    /// Project roots this session may write to, beyond its own workspace.
+    ///
+    /// Empty by default, which is every session that has not been given an
+    /// explicit access mode: writes reach the workspace and nothing else. A
+    /// root arrives here only from the desktop command layer, which takes it
+    /// from the user's confirmed access mode — never from a tool argument, and
+    /// never from anything the model can influence.
+    write_roots: Vec<std::path::PathBuf>,
 }
 
 impl SessionGrants {
+    /// Authorize writes under `roots`, in addition to the workspace.
+    pub fn with_write_roots(mut self, roots: Vec<std::path::PathBuf>) -> Self {
+        self.write_roots = roots;
+        self
+    }
+
+    pub fn write_roots(&self) -> &[std::path::PathBuf] {
+        &self.write_roots
+    }
+
     pub fn covers(&self, kind: PromptKind) -> bool {
         match kind {
             PromptKind::ReadEscape => self.read_escape,
@@ -204,10 +222,16 @@ pub fn resolve_decision(
         // sandbox confines, so mirror the Read branch and gate it separately. It
         // is refused outright on the desktop, where no prompt round-trip exists.
         Capability::Write => {
+            // Widened only by roots the session was explicitly granted. With
+            // none — the default, and every session that never chose an access
+            // mode — this is the unchanged `escapes_project` check.
             let escapes = tool.path_args.iter().any(|key| {
                 args.get(key)
                     .and_then(|v| v.as_str())
-                    .map(|p| escapes_project(project_root, scratch, p).unwrap_or(true))
+                    .map(|p| {
+                        escapes_write_roots(project_root, scratch, grants.write_roots(), p)
+                            .unwrap_or(true)
+                    })
                     .unwrap_or(false)
             });
             if escapes {
@@ -950,5 +974,72 @@ mod tests {
         for d in [&root, &repo, &elsewhere] {
             let _ = std::fs::remove_dir_all(d);
         }
+    }
+
+    /// The gate itself, not the helper underneath it.
+    ///
+    /// An authorized root is what "Edit this folder" would grant, so these
+    /// assertions are the product promise stated as a verdict.
+    #[test]
+    fn an_authorized_write_root_changes_the_gate_verdict() {
+        let root = unique_root();
+        let repo = unique_root();
+        let sibling = unique_root();
+        std::fs::write(repo.join("main.rs"), b"x").unwrap();
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let grants = SessionGrants::default().with_write_roots(vec![repo.clone()]);
+        let verdict = |path: std::path::PathBuf| {
+            resolve_decision(
+                lookup("write").unwrap(),
+                &json!({"path": path.to_string_lossy(), "content": "y"}),
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                true,
+            )
+        };
+
+        // Inside the authorized repository this is an ordinary write, which
+        // the desktop allows without a prompt round-trip.
+        assert_eq!(verdict(repo.join("new.txt")), Decision::Prompt(PromptKind::Write));
+        // Anywhere else is still an escape, authorization or not.
+        assert_eq!(
+            verdict(sibling.join("new.txt")),
+            Decision::Prompt(PromptKind::WriteEscape)
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(&sibling);
+    }
+
+    // Attaching a folder to read it is not what makes it writable. Two lists,
+    // two decisions, and this is the test that fails if they are ever merged.
+    #[test]
+    fn attaching_a_folder_for_reading_does_not_make_it_writable() {
+        let root = unique_root();
+        let repo = unique_root();
+        std::fs::write(repo.join("main.rs"), b"x").unwrap();
+        let read_roots = vec![repo.clone()];
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let grants = SessionGrants::default();
+
+        let write = resolve_decision(
+            lookup("write").unwrap(),
+            &json!({"path": repo.join("new.txt").to_string_lossy(), "content": "y"}),
+            &root,
+            None,
+            &read_roots,
+            &perms,
+            &grants,
+            true,
+        );
+
+        assert_eq!(write, Decision::Prompt(PromptKind::WriteEscape));
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&repo);
     }
 }

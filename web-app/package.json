@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "cross-env NODE_OPTIONS=--max-old-space-size=4096 vitest --run",
@@ -57,7 +58,6 @@
     "@tauri-apps/plugin-opener": "2.5.2",
     "@tauri-apps/plugin-os": "2.2.1",
     "@tauri-apps/plugin-store": "^2.4.2",
-    "@tauri-apps/plugin-updater": "2.8.1",
     "@types/react-syntax-highlighter": "15.5.13",
     "@types/uuid": "10.0.0",
     "@uiw/react-textarea-code-editor": "3.1.1",
@@ -76,7 +76,6 @@
     "matter-js": "^0.20.0",
     "motion": "^12.35.0",
     "next-themes": "0.4.6",
-    "posthog-js": "1.255.1",
     "radix-ui": "^1.4.3",
     "react": "19.0.0",
     "react-colorful": "5.6.1",

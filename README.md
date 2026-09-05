@@ -26,6 +26,47 @@
 
 Jan is bringing the best of open-source AI in an easy-to-use product. Download and run LLMs with **full control** and **privacy**.
 
+## This build is local-only
+
+This fork has had every service that reaches the network on its own removed.
+It does not phone home, and it will not fetch anything you did not ask it for.
+
+**Removed**
+
+- **Telemetry and analytics.** No PostHog, no product analytics, no consent
+  prompt, no analytics settings, and no `POSTHOG_KEY` / `POSTHOG_HOST` build
+  variables. Nothing counts what you do.
+- **Update checking.** No updater plugin and no update endpoint. The app never
+  asks whether a newer version exists — update it the way you installed it.
+- **Vendor services.** No `jan.ai` URLs, no documentation, release, repository,
+  community or issue-tracker links, and no vendor identification headers on
+  outbound provider requests.
+
+**You bring your own models.** Point the app at models already on your
+machine: add a local GGUF through **Settings → Model Providers → llama.cpp →
+Import**, or an MLX model through the MLX provider.
+
+> **In progress.** The built-in model catalogue and downloader have not been
+> removed yet. Until they are, the Hub can still fetch model listings and
+> download weights when you use it. Tracked on the
+> `wip/local-only-model-downloads` branch.
+
+**What can still reach the network, only if you set it up.** Nothing below is
+configured out of the box, and nothing happens until you enter a credential:
+
+| Capability | Reaches the network when |
+|---|---|
+| Cloud model providers | You enter your own API key for one |
+| MCP servers | You add a server that is not on localhost |
+| Web search | You enable it and supply a key |
+
+Leave them alone and the app makes no outbound request at all — not at
+startup, not while you use it.
+
+Guards live in `web-app/src/__tests__/localOnly.test.ts`: the suite fails if an
+analytics SDK, an update check, or a `jan.ai` URL is reintroduced.
+
+
 ## Installation
 
 <p align="center">
@@ -96,6 +137,36 @@ Download from [jan.ai](https://jan.ai/) or [GitHub Releases](https://github.com/
 - **Model Context Protocol**: MCP integration for agentic capabilities
 - **Privacy First**: Everything runs locally when you want it to
 
+### Workspace edition highlights
+
+This fork extends Jan with a more complete desktop workspace for coding and
+long-running agent tasks:
+
+- **Unified workspace rail**: Open Files, Code, Changes, and Activity from one
+  discoverable toolbar without leaving the conversation.
+- **Read-only code workspace**: Browse project files, open referenced files from
+  tool output or assistant messages, inspect syntax-highlighted source, and send
+  only the selected code back into the conversation.
+- **Git working-tree review**: Review modified and untracked files as real diffs
+  in the Changes panel, including safe handling for symlinks and inaccessible
+  paths.
+- **Background activity tracking**: Follow running shell jobs from the Activity
+  panel, status chip, or conversation; inspect their state and cancel individual
+  jobs when needed.
+- **Search across Settings**: Find settings globally, see results grouped by
+  section, and jump directly to the relevant control with keyboard focus.
+- **Temporary chats**: Start conversations that are not saved automatically,
+  then explicitly keep or discard them, with protection against accidentally
+  leaving an unfinished temporary chat.
+- **Per-chat model controls**: Override the model and reasoning effort for an
+  individual conversation and see the selected reasoning level at a glance.
+- **Project-aware instructions**: Agent sessions automatically use the active
+  project's `JAN.md` guidance while keeping project file access isolated.
+- **Clickable local file references**: Open safe `@path` references from
+  assistant messages directly in the Code panel.
+- **macOS window polish**: Keeps the Jan header and navigation clear of the
+  native close, minimize, and zoom controls.
+
 ## Build from Source
 
 For those who enjoy the scenic route:
@@ -131,6 +202,26 @@ yarn install
 yarn build
 yarn dev
 ```
+
+### Building on Windows
+
+Run `make dev` from **Git Bash** (installed with Git for Windows) — make dispatches its recipes through `sh`, so a plain `cmd.exe` won't work.
+
+You do **not** need a "Native Tools Command Prompt for VS 2022". The bundled llama.cpp engine builds with Ninja + `clang-cl`, and `clang-cl` locates the MSVC toolchain and Windows SDK on its own. What has to be installed (and on `PATH` for `ninja`/`clang-cl`/`cmake`):
+
+- Visual Studio 2022 Build Tools (MSVC x64 workload + Windows SDK)
+- LLVM (provides `clang-cl`)
+- Ninja
+- CMake
+- CUDA Toolkit — only for `JAN_ENGINE_VARIANT=cuda12`/`cuda13` builds
+
+Engine variants are picked with `JAN_ENGINE_VARIANT` (tokens: `cpu`, `vulkan`, `metal`, `cuda12`, `cuda13`, `hip`/`rocm`, joined by `-`), e.g.:
+
+```bash
+make dev JAN_ENGINE_VARIANT=cuda13
+```
+
+**"nvcc fatal : Could not open output file ...fattn-...cu.obj.d"** during `tauri-plugin-llamacpp(build)` means the build path crossed Windows' 260-character `MAX_PATH` limit — nvcc does not honor the long-path opt-in. The build script now detects this and automatically relocates the llama.cpp build tree to a short directory under `%LOCALAPPDATA%\jan-engine`. If you hit path-length errors anyway, set `JAN_ENGINE_BUILD_DIR` to a short path (e.g. `C:\jb`) or move the checkout closer to the drive root.
 
 ## System Requirements
 

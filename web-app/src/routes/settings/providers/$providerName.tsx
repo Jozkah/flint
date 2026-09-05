@@ -4,6 +4,7 @@ import HeaderPage from '@/containers/HeaderPage'
 import SettingsMenu from '@/containers/SettingsMenu'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { cn, getProviderTitle, getModelDisplayName, isLocalProvider } from '@/lib/utils'
+import { sortModels } from '@/lib/modelSort'
 import { createFileRoute, Link, useParams } from '@tanstack/react-router'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import Capabilities from '@/containers/Capabilities'
@@ -86,7 +87,16 @@ function ProviderDetail() {
     () => predefinedProviders.some((p) => p.provider === providerName),
     [providerName]
   )
-  const allModels = useMemo(() => provider?.models ?? [], [provider?.models])
+  // Listed by the name on screen rather than the order the provider returned
+  // them in, so a renamed model sits where its new name says it should.
+  const allModels = useMemo(() => {
+    const models = provider?.models ?? []
+    if (!provider) return models
+    return sortModels(
+      models.map((model) => ({ model, provider })),
+      'name-asc'
+    ).map((item) => item.model)
+  }, [provider])
   const embeddingModels = useMemo(
     () =>
       isLlamacpp
@@ -1095,6 +1105,14 @@ function ProviderDetail() {
                             >
                               {getModelDisplayName(model)}
                             </h1>
+                            {/* A renamed model still answers to its own
+                                identifier, which is what requests carry. */}
+                            {model.displayName &&
+                              model.displayName !== model.id && (
+                                <span className="shrink-0 truncate text-xs text-muted-foreground">
+                                  {model.id}
+                                </span>
+                              )}
                             <Capabilities capabilities={capabilities} />
                             {model.imported && (
                               <span
@@ -1273,6 +1291,12 @@ function ProviderDetail() {
                               >
                                 {getModelDisplayName(model)}
                               </h1>
+                              {model.displayName &&
+                                model.displayName !== model.id && (
+                                  <span className="shrink-0 truncate text-xs text-muted-foreground">
+                                    {model.id}
+                                  </span>
+                                )}
                               <Capabilities
                                 capabilities={model.capabilities || []}
                               />

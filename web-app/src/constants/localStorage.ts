@@ -14,8 +14,6 @@ export const localStorageKey = {
   settingAgentTools: 'setting-agent-tools',
   settingHardware: 'setting-hardware',
   settingVulkan: 'setting-vulkan',
-  productAnalyticPrompt: 'productAnalyticPrompt',
-  productAnalytic: 'productAnalytic',
   toolApproval: 'tool-approval',
   toolAvailability: 'tool-availability',
   mcpGlobalPermissions: 'mcp-global-permissions',
@@ -23,6 +21,7 @@ export const localStorageKey = {
   lastUsedAssistant: 'last-used-assistant',
   defaultAssistantId: 'default-assistant-id',
   favoriteModels: 'favorite-models',
+  modelOrder: 'model-order',
   setupCompleted: 'setup-completed',
   threadManagement: 'thread-management',
   modelSupportCache: 'jan_model_support_cache',
@@ -32,8 +31,12 @@ export const localStorageKey = {
   latestJanModel: 'latest-jan-model',
   defaultEmbeddingModel: 'default-embedding-model',
   pausedDownloads: 'paused-downloads',
+  modelOverrides: 'model-overrides',
   // Value predates the Cowork rename; changing it would orphan saved sessions.
+  fileActivity: 'file-activity',
   coworkSessions: 'code-sessions',
+  coworkActivity: 'cowork-activity',
+  claudeCompat: 'claude-compat',
 }
 
 export const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24

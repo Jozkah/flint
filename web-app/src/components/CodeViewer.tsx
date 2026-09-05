@@ -29,8 +29,10 @@ import {
 } from '@/lib/highlightCache'
 import {
   detectLanguage,
+  isWritableOrigin,
   lineRangeOfSlice,
   type CodeRef,
+  type FileOrigin,
 } from '@/lib/coworkCode'
 
 type CodeViewerProps = {
@@ -38,6 +40,9 @@ type CodeViewerProps = {
   relPath: string
   /** Verbatim file content. Never reformatted: what is on disk is what shows. */
   content: string
+  /** Where the file lives. Travels onto any CodeRef the selection produces, so
+   * the model is never told a sandbox file belongs to the user's project. */
+  origin: FileOrigin
   wordWrap: boolean
   onToggleWrap: (next: boolean) => void
   /** When set, a selection offers “Add to chat” and reports the selected span. */
@@ -95,6 +100,7 @@ function lineOfNode(node: Node | null): number | null {
 export function CodeViewer({
   relPath,
   content,
+  origin,
   wordWrap,
   onToggleWrap,
   onAddToChat,
@@ -203,8 +209,8 @@ export function CodeViewer({
       startLine = fallback.startLine
       endLine = fallback.endLine
     }
-    setSelection({ path: relPath, startLine, endLine, code: text })
-  }, [content, onAddToChat, relPath])
+    setSelection({ path: relPath, origin, startLine, endLine, code: text })
+  }, [content, onAddToChat, relPath, origin])
 
   const iconButton = (
     label: string,
@@ -251,6 +257,15 @@ export function CodeViewer({
         <span className="shrink-0 text-[11px] text-muted-foreground">
           {language.label}
         </span>
+        {/* Truthful about capability: this surface never writes. */}
+        {!isWritableOrigin(origin) && (
+          <span
+            className="shrink-0 rounded-sm bg-secondary px-1 text-[10px] uppercase tracking-wide text-muted-foreground"
+            title={t('common:codePanel.readOnlyHint')}
+          >
+            {t('common:codePanel.readOnly')}
+          </span>
+        )}
         {iconButton(
           t('common:codePanel.toggleWrap'),
           <WrapText className="size-3.5" />,

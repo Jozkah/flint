@@ -16,7 +16,7 @@ use crate::skills;
 use crate::tools::jail;
 use crate::tools::proc;
 use crate::tools::sandbox::{
-    escapes_project, in_scratch, is_hidden_jan_path, lexical_normalize, resolve_path,
+    escapes_write_roots, in_scratch, is_hidden_jan_path, lexical_normalize, resolve_path,
     scratch_display_path, symlink_escapes_any_root, symlink_escapes_root,
 };
 use crate::tools::{BuiltinTool, ImageContentPart, ToolContext};
@@ -64,6 +64,18 @@ pub struct BashJob {
     pub command: String,
     pub started: std::time::Instant,
     pub call_id: Option<String>,
+    /// The shell's pid, which is also its process-group id (see `proc::spawn`).
+    /// Held so one job can be reaped on its own; `None` only when the child had
+    /// already exited before its id could be read.
+    pub pid: Option<u32>,
+    /// A collector is awaiting this job's receiver right now.
+    ///
+    /// The receiver has to leave the entry to be awaited — it cannot be held
+    /// across an await while the registry is locked — but the *entry* stays,
+    /// so a command being collected can still be listed and still be killed.
+    /// Without this the whole of a long collection was invisible: the panel
+    /// dropped the row and its Stop button reported "unknown job".
+    collecting: bool,
 }
 
 impl BashJob {
@@ -72,6 +84,11 @@ impl BashJob {
     fn poll_finished(&mut self) -> bool {
         if self.output.is_some() {
             return true;
+        }
+        // Being collected: the receiver is with the collector, and the command
+        // is still running until that collector says otherwise.
+        if self.collecting {
+            return false;
         }
         let Some(rx) = self.rx.as_mut() else {
             return true;
@@ -105,6 +122,36 @@ pub struct BashJobStatus {
     pub call_id: Option<String>,
 }
 
+/// Why a kill request ended the way it did. Reported rather than inferred so a
+/// caller can tell "there was nothing left to kill" from "the kill failed".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BashJobKillOutcome {
+    /// The process tree was signalled.
+    Killed,
+    /// The command had already finished; its output is still collectable.
+    AlreadyFinished,
+    /// No job by that id: never existed, or already collected.
+    Unknown,
+    /// The job exists but its pid was never captured, so nothing can be
+    /// signalled. The command is left alone rather than reported as killed.
+    NoPid,
+    /// The OS refused to stop it. The command is still running, and the pid is
+    /// kept so the request can be made again.
+    Failed,
+}
+
+/// The result of asking for one background job to be killed.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BashJobKill {
+    pub job_id: String,
+    pub outcome: BashJobKillOutcome,
+    /// Why it failed, when it did. Safe to show: it names the OS refusal,
+    /// never a path or an environment value.
+    pub error: Option<String>,
+}
+
 /// Commands still running past their `bash` call's timeout, keyed by job_id.
 /// Entries are removed once collected via `job_id`; uncollected jobs live for
 /// the process's lifetime, same tradeoff as the bash-output temp files this
@@ -131,6 +178,59 @@ pub fn list_bash_jobs() -> Vec<BashJobStatus> {
     // Newest first: job ids are a monotonic `bash-N`.
     out.sort_by(|a, b| b.job_id.len().cmp(&a.job_id.len()).then(b.job_id.cmp(&a.job_id)));
     out
+}
+
+/// Kill one backgrounded command and every process it spawned.
+///
+/// The job is kept, not removed: the detached collector still resolves once the
+/// shell dies, so the agent's `bash {"job_id": ...}` collection returns whatever
+/// the command printed before it was killed instead of `unknown job_id`. A job
+/// that has already finished is left alone — killing it would signal a pid the
+/// OS may since have reused.
+pub fn kill_bash_job(job_id: &str) -> BashJobKill {
+    let mut jobs = bash_jobs().lock().unwrap();
+    let (outcome, error) = match jobs.get_mut(job_id) {
+        None => (BashJobKillOutcome::Unknown, None),
+        Some(job) => {
+            if job.poll_finished() {
+                (BashJobKillOutcome::AlreadyFinished, None)
+            } else {
+                match job.pid {
+                    None => (BashJobKillOutcome::NoPid, None),
+                    // Borrowed, not taken. The pid is surrendered only once the
+                    // process is known to be gone, so a refused kill can be
+                    // asked again — and a *successful* one is never repeated
+                    // against a number the OS may since have reused.
+                    Some(pid) => match super::proc::kill_tree(pid) {
+                        // Signalled, or already gone: either way it is stopped,
+                        // which also covers the command exiting between the
+                        // poll above and the signal. Its output stays
+                        // collectable because the entry is kept.
+                        outcome if outcome.stopped() => {
+                            job.pid = None;
+                            super::proc::unregister(pid);
+                            (BashJobKillOutcome::Killed, None)
+                        }
+                        super::proc::KillOutcome::Failed(reason) => {
+                            (BashJobKillOutcome::Failed, Some(reason))
+                        }
+                        // `stopped()` covers every other variant; saying so
+                        // beats a fallthrough that would report a kill that
+                        // did not happen.
+                        other => (
+                            BashJobKillOutcome::Failed,
+                            Some(format!("unexpected kill outcome: {other:?}")),
+                        ),
+                    },
+                }
+            }
+        }
+    };
+    BashJobKill {
+        job_id: job_id.to_string(),
+        outcome,
+        error,
+    }
 }
 
 fn arg_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str> {
@@ -243,8 +343,26 @@ async fn execute_text(
         // readable and unwritable.
         "read" => read(args, project_root, scratch, ctx.read_roots).await.0,
         "ls" => ls(args, project_root, scratch, ctx.sandbox, ctx.read_roots).await,
-        "write" => write(args, project_root, scratch, ctx.confine_writes).await,
-        "edit" => edit(args, project_root, scratch, ctx.confine_writes).await,
+        "write" => {
+            write(
+                args,
+                project_root,
+                scratch,
+                ctx.confine_writes,
+                ctx.write_roots,
+            )
+            .await
+        }
+        "edit" => {
+            edit(
+                args,
+                project_root,
+                scratch,
+                ctx.confine_writes,
+                ctx.write_roots,
+            )
+            .await
+        }
         "bash" => bash(args, ctx).await,
         "find" => find(args, project_root, scratch, ctx.sandbox, ctx.read_roots).await,
         "grep" => grep(args, project_root, scratch, ctx.sandbox, ctx.read_roots).await,
@@ -710,6 +828,7 @@ async fn write(
     root: &Path,
     scratch: Option<&Path>,
     confine: bool,
+    write_roots: &[PathBuf],
 ) -> String {
     let Some(path) = arg_str(args, "path") else {
         return "ERROR: missing required argument 'path'".to_string();
@@ -721,7 +840,7 @@ async fn write(
     // canonical root (not the raw argument) so `..` and absolute paths are
     // caught even if the gate's decision was made against a stale view.
     let target = resolve_path(root, scratch, path);
-    if confine && escapes_project(root, scratch, path).unwrap_or(true) {
+    if confine && escapes_write_roots(root, scratch, write_roots, path).unwrap_or(true) {
         return format!("ERROR: refused to write outside the agent workspace: {path}");
     }
     // Report the resolved location, not the raw argument: an absolute or `../`
@@ -760,6 +879,7 @@ async fn edit(
     root: &Path,
     scratch: Option<&Path>,
     confine: bool,
+    write_roots: &[PathBuf],
 ) -> String {
     let Some(path) = arg_str(args, "path") else {
         return "ERROR: missing required argument 'path'".to_string();
@@ -771,7 +891,7 @@ async fn edit(
         return "ERROR: edits must contain at least one replacement".to_string();
     }
     let target = resolve_path(root, scratch, path);
-    if confine && escapes_project(root, scratch, path).unwrap_or(true) {
+    if confine && escapes_write_roots(root, scratch, write_roots, path).unwrap_or(true) {
         return format!("ERROR: refused to edit outside the agent workspace: {path}");
     }
     let shown = display_path(root, scratch, &target);
@@ -847,6 +967,13 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     }
     if !ctx.read_roots.is_empty() {
         policy = policy.with_read_roots(ctx.read_roots.to_vec());
+    }
+    // The same roots the file tools were granted. Refused outright where the
+    // backend cannot confine a shell to them, so `bash` is never the loose end
+    // that makes an access mode untrue: on such a platform the run keeps its
+    // sandbox-only shell and the mode is not offered in the first place.
+    if !ctx.write_roots.is_empty() && jail::supports_write_roots(jail::backend()) {
+        policy = policy.with_write_roots(ctx.write_roots.to_vec());
     }
     // With the sandbox off the shell is spawned bare, the way the user's own
     // terminal would: no wrapper, no policy, the real `$HOME` and `/tmp`. Only
@@ -933,6 +1060,8 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                     command: command.to_string(),
                     started: job_started,
                     call_id: ctx.call_id.map(str::to_string),
+                    pid,
+                    collecting: false,
                 },
             );
             format!(
@@ -948,21 +1077,48 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
 /// (already-formatted) output, or an error if `job_id` is unknown or was
 /// already collected.
 async fn await_bash_job(job_id: &str) -> String {
-    let job = bash_jobs().lock().unwrap().remove(job_id);
-    match job {
-        // A status check may already have received the output; hand over what
-        // it parked rather than waiting on a channel that has been drained.
-        Some(BashJob {
-            output: Some(done), ..
-        }) => done,
-        Some(BashJob { rx: Some(rx), .. }) => rx.await.unwrap_or_else(|_| {
+    // The receiver is taken, but the entry is left behind: for however long
+    // this command still runs, it must stay listable and killable. Removed
+    // only once it has actually produced its output.
+    enum Collect {
+        Parked(String),
+        Awaiting(oneshot::Receiver<String>),
+        Drained,
+        Unknown,
+    }
+
+    let taken = {
+        let mut jobs = bash_jobs().lock().unwrap();
+        match jobs.get_mut(job_id) {
+            None => Collect::Unknown,
+            Some(job) => {
+                if let Some(done) = job.output.take() {
+                    Collect::Parked(done)
+                } else if let Some(rx) = job.rx.take() {
+                    job.collecting = true;
+                    Collect::Awaiting(rx)
+                } else {
+                    Collect::Drained
+                }
+            }
+        }
+    };
+
+    let result = match taken {
+        // A status check already received the output; hand over what it parked.
+        Collect::Parked(done) => done,
+        Collect::Awaiting(rx) => rx.await.unwrap_or_else(|_| {
             "ERROR: background command ended without producing output".to_string()
         }),
-        Some(BashJob { rx: None, .. }) => {
+        Collect::Drained => {
             "ERROR: background command ended without producing output".to_string()
         }
-        None => format!("ERROR: unknown or already-collected job_id '{job_id}'"),
-    }
+        Collect::Unknown => {
+            return format!("ERROR: unknown or already-collected job_id '{job_id}'")
+        }
+    };
+    bash_jobs().lock().unwrap().remove(job_id);
+    result
 }
 
 /// Drain a running child's stdout+stderr into a bounded rolling buffer (so a
@@ -1707,6 +1863,14 @@ mod bash_job_registry_tests {
     use super::*;
 
     fn park(job_id: &str, command: &str) -> tokio::sync::oneshot::Sender<String> {
+        park_with_pid(job_id, command, None)
+    }
+
+    fn park_with_pid(
+        job_id: &str,
+        command: &str,
+        pid: Option<u32>,
+    ) -> tokio::sync::oneshot::Sender<String> {
         let (tx, rx) = oneshot::channel::<String>();
         bash_jobs().lock().unwrap().insert(
             job_id.to_string(),
@@ -1716,9 +1880,146 @@ mod bash_job_registry_tests {
                 command: command.to_string(),
                 started: std::time::Instant::now(),
                 call_id: Some("call-1".to_string()),
+                pid,
+                collecting: false,
             },
         );
         tx
+    }
+
+    /// A kill the OS refuses must not be reported as a kill, and must leave the
+    /// pid in place so the request can be made again.
+    #[tokio::test]
+    async fn a_refused_kill_is_reported_and_the_job_stays_killable() {
+        // pid 1 is init/launchd: it exists, and an unprivileged process may not
+        // signal it. That is the refusal path, exercised against the real OS
+        // rather than a stub.
+        let _tx = park_with_pid("bash-kill-refused", "sleep 300", Some(1));
+
+        let first = kill_bash_job("bash-kill-refused");
+        assert_eq!(first.outcome, BashJobKillOutcome::Failed);
+        assert!(first.error.is_some(), "a refusal must say why");
+
+        // Still killable: the pid was not surrendered.
+        let second = kill_bash_job("bash-kill-refused");
+        assert_eq!(second.outcome, BashJobKillOutcome::Failed);
+        let _ = bash_jobs().lock().unwrap().remove("bash-kill-refused");
+    }
+
+    /// A pid that no longer exists is not a failure: there is nothing to kill,
+    /// and the job is stopped either way.
+    #[tokio::test]
+    async fn killing_a_process_that_has_already_exited_counts_as_stopped() {
+        let tx = park_with_pid("bash-kill-gone", "true", Some(u32::MAX - 5));
+        let killed = kill_bash_job("bash-kill-gone");
+        assert_eq!(killed.outcome, BashJobKillOutcome::Killed);
+        assert!(killed.error.is_none());
+
+        // And its output still reaches the agent.
+        tx.send("printed before it died".to_string()).unwrap();
+        assert_eq!(
+            await_bash_job("bash-kill-gone").await,
+            "printed before it died"
+        );
+    }
+
+    /// A command being collected is still running, so it must still be listed
+    /// and still be killable. It used to leave the registry the instant the
+    /// agent asked for it, hiding the whole of a long build from the panel.
+    #[tokio::test]
+    async fn a_job_stays_listable_and_killable_while_it_is_collected() {
+        let tx = park_with_pid("bash-collect-live", "npm run build", Some(u32::MAX - 8));
+
+        let collector = tokio::spawn(async { await_bash_job("bash-collect-live").await });
+        // Let the collector take the receiver.
+        for _ in 0..100 {
+            if bash_jobs()
+                .lock()
+                .unwrap()
+                .get("bash-collect-live")
+                .is_some_and(|j| j.rx.is_none())
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+
+        let listed = list_bash_jobs();
+        let job = listed
+            .iter()
+            .find(|j| j.job_id == "bash-collect-live")
+            .expect("a job being collected is still a job");
+        assert!(!job.finished, "it is still running");
+        assert_eq!(kill_bash_job("bash-collect-live").outcome, BashJobKillOutcome::Killed);
+
+        tx.send("built".to_string()).unwrap();
+        assert_eq!(collector.await.unwrap(), "built");
+        // Collected: now it is gone.
+        assert!(!list_bash_jobs().iter().any(|j| j.job_id == "bash-collect-live"));
+    }
+
+    #[tokio::test]
+    async fn killing_an_unknown_job_reports_it_rather_than_claiming_success() {
+        let killed = kill_bash_job("bash-never-existed");
+        assert_eq!(killed.outcome, BashJobKillOutcome::Unknown);
+        assert_eq!(killed.job_id, "bash-never-existed");
+    }
+
+    #[tokio::test]
+    async fn killing_a_finished_job_leaves_its_output_collectable() {
+        // The pid may already have been reused by the OS, so a finished job is
+        // never signalled — and its output must still reach the agent.
+        let tx = park_with_pid("bash-kill-finished", "true", Some(u32::MAX - 2));
+        tx.send("all done".to_string()).unwrap();
+
+        let killed = kill_bash_job("bash-kill-finished");
+        assert_eq!(killed.outcome, BashJobKillOutcome::AlreadyFinished);
+        assert_eq!(await_bash_job("bash-kill-finished").await, "all done");
+    }
+
+    #[tokio::test]
+    async fn a_job_with_no_pid_is_reported_rather_than_reported_killed() {
+        let _tx = park("bash-kill-nopid", "sleep 5");
+        let killed = kill_bash_job("bash-kill-nopid");
+        assert_eq!(killed.outcome, BashJobKillOutcome::NoPid);
+        // Still listed: nothing was signalled, so nothing has stopped.
+        assert!(list_bash_jobs().iter().any(|j| j.job_id == "bash-kill-nopid"));
+        let _ = bash_jobs().lock().unwrap().remove("bash-kill-nopid");
+    }
+
+    /// The whole point of keeping the entry: a killed command's partial output
+    /// is what the agent needs to see, and `unknown job_id` would hide it.
+    #[tokio::test]
+    async fn a_killed_job_still_hands_over_what_it_printed() {
+        let tx = park_with_pid("bash-kill-partial", "sleep 300", Some(u32::MAX - 3));
+
+        let killed = kill_bash_job("bash-kill-partial");
+        assert_eq!(killed.outcome, BashJobKillOutcome::Killed);
+
+        // The detached collector resolves when the shell dies.
+        tx.send("half a line before the kill".to_string()).unwrap();
+        assert_eq!(
+            await_bash_job("bash-kill-partial").await,
+            "half a line before the kill"
+        );
+    }
+
+    /// A second kill must not signal the pid again: by then the OS is free to
+    /// have handed that number to an unrelated process. The pid is surrendered
+    /// on success, so the repeat has nothing to signal.
+    #[tokio::test]
+    async fn killing_twice_signals_once() {
+        let _tx = park_with_pid("bash-kill-twice", "sleep 300", Some(u32::MAX - 4));
+
+        assert_eq!(
+            kill_bash_job("bash-kill-twice").outcome,
+            BashJobKillOutcome::Killed
+        );
+        assert_eq!(
+            kill_bash_job("bash-kill-twice").outcome,
+            BashJobKillOutcome::NoPid
+        );
+        let _ = bash_jobs().lock().unwrap().remove("bash-kill-twice");
     }
 
     #[tokio::test]

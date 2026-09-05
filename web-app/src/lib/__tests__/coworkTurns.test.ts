@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { coworkTurnsToUIMessages } from '@/lib/coworkTurns'
+import { assistantAnchorId, coworkTurnsToUIMessages } from '@/lib/coworkTurns'
 import type { CoworkTurn } from '@/hooks/useCoworkSessions'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -100,5 +100,70 @@ describe('coworkTurnsToUIMessages', () => {
     const committed = coworkTurnsToUIMessages(turns, 'c')
     const live = coworkTurnsToUIMessages(turns, 'l')
     expect(committed[0].id).not.toBe(live[0].id)
+  })
+})
+
+describe('assistantAnchorId', () => {
+  const user = (content: string): CoworkTurn => ({ role: 'user', content })
+  const assistant = (content: string): CoworkTurn => ({
+    role: 'assistant',
+    content,
+  })
+  const tool = (callId: string): CoworkTurn => ({
+    role: 'tool',
+    content: '',
+    name: 'bash',
+    callId,
+    status: 'running',
+  })
+
+  /** The id must name a message the conversion actually produces. */
+  const messageIds = (turns: CoworkTurn[]) =>
+    coworkTurnsToUIMessages(turns, 's').map((m) => m.id)
+
+  it('names the message the current block is building', () => {
+    const turns = [user('go'), assistant('thinking'), tool('c1')]
+    const id = assistantAnchorId(turns, 's')
+    expect(id).toBe('s-asst-1')
+    expect(messageIds(turns)).toContain(id)
+  })
+
+  it('starts a new block after each user turn', () => {
+    const turns = [
+      user('first'),
+      assistant('a'),
+      user('second'),
+      assistant('b'),
+      tool('c1'),
+    ]
+    const id = assistantAnchorId(turns, 's')
+    expect(id).toBe('s-asst-3')
+    expect(messageIds(turns)).toContain(id)
+  })
+
+  it('skips an assistant turn that produced nothing', () => {
+    // An empty assistant turn adds no parts, so it does not open the message.
+    const turns = [user('go'), assistant(''), tool('c1')]
+    const id = assistantAnchorId(turns, 's')
+    expect(id).toBe('s-asst-2')
+    expect(messageIds(turns)).toContain(id)
+  })
+
+  it('names a block that opened with a tool call', () => {
+    const turns = [user('go'), tool('c1')]
+    expect(assistantAnchorId(turns, 's')).toBe('s-asst-1')
+    expect(messageIds(turns)).toContain('s-asst-1')
+  })
+
+  it('names nothing while the block has produced nothing', () => {
+    expect(assistantAnchorId([], 's')).toBeUndefined()
+    expect(assistantAnchorId([user('go')], 's')).toBeUndefined()
+    expect(assistantAnchorId([user('go'), assistant('')], 's')).toBeUndefined()
+  })
+
+  it('handles a transcript that never had a user turn', () => {
+    const turns = [assistant('resumed')]
+    expect(assistantAnchorId(turns, 's')).toBe('s-asst-0')
+    expect(messageIds(turns)).toContain('s-asst-0')
   })
 })

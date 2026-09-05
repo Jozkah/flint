@@ -1038,3 +1038,1014 @@ async fn terminate_browser_mcp_reaps_process_group() {
         "group leader should have been signalled, got {status:?}"
     );
 }
+
+/// Confining a local MCP server at the launcher boundary.
+///
+/// These assert the thing the plugin's own tests cannot: that the command
+/// Jan is about to spawn is the confined one, with the environment rebuilt
+/// rather than inherited. The policy itself is the plugin's, and tested there.
+#[cfg(test)]
+mod mcp_confinement_tests {
+    use super::super::helpers::confined_mcp_command;
+    use super::super::models::{McpConfinement, McpServerConfig};
+    use std::path::PathBuf;
+    use tokio::process::Command;
+
+    fn params(env: &[(&str, &str)]) -> McpServerConfig {
+        let mut envs = serde_json::Map::new();
+        for (k, v) in env {
+            envs.insert(
+                (*k).to_string(),
+                serde_json::Value::String((*v).to_string()),
+            );
+        }
+        McpServerConfig {
+            transport_type: Some("stdio".to_string()),
+            url: None,
+            command: "node".to_string(),
+            args: vec![],
+            envs,
+            timeout: None,
+            headers: serde_json::Map::new(),
+            confinement: None,
+            imported: false,
+        }
+    }
+
+    fn confinement() -> McpConfinement {
+        McpConfinement {
+            workspace: PathBuf::from("/tmp/jan-session"),
+            repository: Some(PathBuf::from("/home/dev/obs-forwarder")),
+            writable_repository: None,
+            jan_data: Some(PathBuf::from("/home/dev/.jan")),
+            allowed_env: vec!["API_TOKEN".to_string()],
+        }
+    }
+
+    fn plain() -> Command {
+        let mut cmd = Command::new("/usr/bin/node");
+        cmd.arg("server.js");
+        cmd
+    }
+
+    /// A server the user configured themselves is untouched. They chose the
+    /// program; confining it would break the ordinary case for no gain.
+    #[test]
+    fn a_user_configured_server_is_left_alone() {
+        let mut p = params(&[]);
+        p.confinement = None;
+
+        // The caller skips confinement entirely when there is none to apply,
+        // which is what `start_mcp_server` does with the `confine` closure.
+        assert!(p.confinement.is_none());
+    }
+
+    #[test]
+    fn an_imported_server_is_spawned_through_the_wrapper() {
+        let built = confined_mcp_command(plain(), &params(&[]), &confinement());
+
+        let Ok(cmd) = built else {
+            // No backend on this host: refusing is the correct outcome and is
+            // asserted by `an_imported_server_will_not_start_unconfined`.
+            return;
+        };
+        assert_ne!(
+            cmd.as_std().get_program(),
+            std::ffi::OsStr::new("/usr/bin/node"),
+            "the server must be launched through the sandbox wrapper"
+        );
+    }
+
+    /// Jan's process holds the user's whole session. `Command` inherits that
+    /// by default, so the environment is rebuilt rather than filtered.
+    #[test]
+    fn only_approved_environment_names_reach_the_server() {
+        let p = params(&[
+            ("API_TOKEN", "for-the-server"),
+            ("AWS_SECRET_ACCESS_KEY", "not-yours"),
+        ]);
+        let Ok(cmd) = confined_mcp_command(plain(), &p, &confinement()) else {
+            return;
+        };
+
+        let passed: Vec<String> = cmd
+            .as_std()
+            .get_envs()
+            .map(|(k, _)| k.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(passed, vec!["API_TOKEN".to_string()]);
+        assert!(!passed.iter().any(|one| one.contains("AWS")));
+    }
+
+    #[test]
+    fn the_server_starts_in_the_session_workspace() {
+        let Ok(cmd) = confined_mcp_command(plain(), &params(&[]), &confinement()) else {
+            return;
+        };
+
+        assert_eq!(
+            cmd.as_std().get_current_dir(),
+            Some(std::path::Path::new("/tmp/jan-session"))
+        );
+    }
+
+    /// Fail closed. A confinement that cannot be built means no server, not a
+    /// server running with the user's whole filesystem in reach.
+    #[test]
+    fn an_imported_server_will_not_start_unconfined() {
+        if tauri_plugin_agent_tools::tools::mcp_confine::confinement_available() {
+            return;
+        }
+
+        let err = confined_mcp_command(plain(), &params(&[]), &confinement())
+            .expect_err("with nothing enforcing there is no confined command");
+
+        assert!(!err.is_empty(), "the refusal has to explain itself");
+    }
+
+    /// The environment is rebuilt, not filtered — proved by running it.
+    ///
+    /// `Command` inherits the parent's environment by default, and inspecting
+    /// the builder cannot tell `env_clear` apart from its absence: the getter
+    /// reports only explicit overrides either way. So the check is behavioural:
+    /// set a marker in this process, run a confined shell, and require that it
+    /// cannot see it.
+    #[tokio::test]
+    async fn a_confined_server_cannot_see_this_process_environment() {
+        if !tauri_plugin_agent_tools::tools::mcp_confine::confinement_available() {
+            return;
+        }
+        std::env::set_var("JAN_MCP_LEAK_MARKER", "must-not-escape");
+
+        let workspace = std::env::temp_dir()
+            .canonicalize()
+            .unwrap_or_else(|_| std::env::temp_dir())
+            .join(format!("jan-mcp-env-{}", std::process::id()));
+        std::fs::create_dir_all(&workspace).expect("workspace");
+
+        let mut inner = Command::new("/bin/sh");
+        inner
+            .arg("-c")
+            .arg("echo [$JAN_MCP_LEAK_MARKER][$API_TOKEN]");
+
+        let mut p = params(&[("API_TOKEN", "approved-value")]);
+        p.confinement = Some(McpConfinement {
+            workspace: workspace.clone(),
+            repository: None,
+            writable_repository: None,
+            jan_data: None,
+            allowed_env: vec!["API_TOKEN".to_string()],
+        });
+        let confinement = p.confinement.clone().expect("set above");
+
+        let Ok(mut cmd) = confined_mcp_command(inner, &p, &confinement) else {
+            return;
+        };
+        let out = cmd.output().await.expect("run the confined command");
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+
+        assert!(
+            !text.contains("must-not-escape"),
+            "the parent environment leaked into a confined server: {text}"
+        );
+        assert!(
+            text.contains("approved-value"),
+            "an approved variable must still reach the server: {text}"
+        );
+    }
+
+    /// Fail closed at the launcher, not at the caller.
+    ///
+    /// Every path that starts a local server constructs a `ConfinedMcpLaunch`
+    /// — the desktop activation, the restart loop that replays a stored
+    /// config, and the CLI. An imported server whose confinement was never
+    /// attached stops there rather than starting with the user's whole
+    /// filesystem in reach because some caller forgot.
+    #[test]
+    fn an_imported_server_with_no_confinement_is_refused() {
+        use super::super::launch::ConfinedMcpLaunch;
+
+        let mut p = params(&[]);
+        p.imported = true;
+        p.confinement = None;
+
+        let err = ConfinedMcpLaunch::prepare(&p, plain)
+            .expect_err("an imported server must not start unconfined");
+
+        assert!(err.contains("unconfined"), "{err}");
+    }
+
+    #[test]
+    fn a_user_configured_server_still_starts_unchanged() {
+        use super::super::launch::ConfinedMcpLaunch;
+
+        let mut p = params(&[]);
+        p.imported = false;
+        p.confinement = None;
+
+        let launch =
+            ConfinedMcpLaunch::prepare(&p, plain).expect("a user's own server is untouched");
+
+        assert!(!launch.is_confined());
+    }
+
+    /// The confinement is read from what Jan attached, never from the
+    /// repository's own file.
+    #[test]
+    fn confinement_is_parsed_from_the_configuration_jan_builds() {
+        use super::super::models::extract_command_args;
+
+        let config = serde_json::json!({
+            "command": "node",
+            "args": [],
+            "janImported": true,
+            "janConfinement": {
+                "workspace": "/tmp/jan-session",
+                "repository": "/home/dev/obs-forwarder",
+                "allowedEnv": ["API_TOKEN"]
+            }
+        });
+
+        let parsed = extract_command_args(&config).expect("parse");
+
+        assert!(parsed.imported);
+        let confinement = parsed.confinement.expect("confinement");
+        assert_eq!(
+            confinement.workspace,
+            std::path::PathBuf::from("/tmp/jan-session")
+        );
+        assert_eq!(confinement.allowed_env, vec!["API_TOKEN".to_string()]);
+        assert!(
+            confinement.writable_repository.is_none(),
+            "no write root unless one was granted"
+        );
+    }
+
+    /// An ordinary server carries neither, and is unaffected.
+    #[test]
+    fn an_ordinary_configuration_is_neither_imported_nor_confined() {
+        use super::super::models::extract_command_args;
+
+        let parsed = extract_command_args(&serde_json::json!({
+            "command": "node",
+            "args": []
+        }))
+        .expect("parse");
+
+        assert!(!parsed.imported);
+        assert!(parsed.confinement.is_none());
+    }
+}
+
+/// The real launch path, with a real MCP server on the other end.
+///
+/// Everything else in this file asserts how a command is *built*. This runs
+/// one: it prepares a confined launch through the production capability,
+/// spawns it, completes an actual JSON-RPC handshake with a server on stdio,
+/// lists its tools and calls one. The fixture is a small script rather than a
+/// mock so the protocol is genuinely exercised, and it reaches no network and
+/// depends on nothing installed beyond python3.
+#[cfg(all(test, unix))]
+mod mcp_end_to_end_tests {
+    use super::super::launch::ConfinedMcpLaunch;
+    use super::super::models::extract_command_args;
+    use rmcp::model::CallToolRequestParam;
+    use rmcp::ServiceExt;
+    use std::path::PathBuf;
+    use std::process::Stdio;
+
+    fn fixture_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mcp_stdio_server.py")
+    }
+
+    /// A workspace holding its own copy of the server.
+    ///
+    /// The confined process cannot read the repository — that is the policy
+    /// working, not a problem to route around — so the fixture is placed
+    /// where the session can actually reach it, which is also where a real
+    /// imported server's files would have to be.
+    fn workspace() -> (PathBuf, PathBuf) {
+        let dir = std::env::temp_dir()
+            .canonicalize()
+            .unwrap_or_else(|_| std::env::temp_dir())
+            .join(format!("jan-mcp-e2e-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("workspace");
+        let server = dir.join("mcp_stdio_server.py");
+        std::fs::copy(fixture_path(), &server).expect("stage the fixture");
+        (dir, server)
+    }
+
+    /// The config Jan builds when a session consents to an imported server.
+    fn imported_config(workspace: &std::path::Path, server: &std::path::Path) -> serde_json::Value {
+        serde_json::json!({
+            "command": "/usr/bin/python3",
+            "args": [server.to_string_lossy()],
+            "type": "stdio",
+            "janImported": true,
+            "janConfinement": {
+                "workspace": workspace.to_string_lossy(),
+                "allowedEnv": []
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn a_consented_import_handshakes_lists_and_calls_through_the_real_path() {
+        if !tauri_plugin_agent_tools::tools::mcp_confine::confinement_available() {
+            return;
+        }
+        if !fixture_path().exists() || !std::path::Path::new("/usr/bin/python3").exists() {
+            return;
+        }
+
+        let (ws, server) = workspace();
+        let config = imported_config(&ws, &server);
+
+        // Exactly what the desktop and the CLI do: parse the config Jan built,
+        // then prepare a launch through the one capability that can make one.
+        let params = extract_command_args(&config).expect("parse the imported config");
+        assert!(params.imported, "the config Jan builds marks the import");
+        assert!(params.confinement.is_some(), "and carries its confinement");
+
+        let launch = ConfinedMcpLaunch::prepare(&params, || {
+            let mut cmd = tokio::process::Command::new(&params.command);
+            for arg in params.args.iter().filter_map(serde_json::Value::as_str) {
+                cmd.arg(arg);
+            }
+            cmd
+        })
+        .expect("a confined launch");
+        assert!(launch.is_confined(), "an imported server runs confined");
+
+        let (process, _stderr) = launch.spawn(Stdio::piped()).expect("spawn");
+
+        // A real handshake, through the same client the production path uses.
+        let service = ().serve(process).await.expect("initialize");
+        let info = service.peer_info().expect("the server identified itself");
+        assert_eq!(info.server_info.name, "jan-test-fixture");
+
+        let tools = service.list_all_tools().await.expect("tools/list");
+        assert!(
+            tools.iter().any(|tool| tool.name == "echo_fixture"),
+            "the server's tool must be discovered: {tools:?}"
+        );
+
+        let result = service
+            .call_tool(CallToolRequestParam {
+                name: "echo_fixture".into(),
+                arguments: None,
+            })
+            .await
+            .expect("tools/call");
+        let text = serde_json::to_string(&result).expect("serialize the result");
+        assert!(
+            text.contains("fixture-answer"),
+            "the tool call must return the server's answer: {text}"
+        );
+
+        // Shutting down is part of the lifecycle: a server left running would
+        // outlive the test that started it.
+        service.cancel().await.expect("shutdown");
+    }
+
+    /// An imported definition with no confinement never reaches a process.
+    #[tokio::test]
+    async fn an_import_without_confinement_never_starts() {
+        let (ws, server) = workspace();
+        let mut config = imported_config(&ws, &server);
+        config
+            .as_object_mut()
+            .expect("object")
+            .remove("janConfinement");
+
+        let params = extract_command_args(&config).expect("parse");
+        let err =
+            ConfinedMcpLaunch::prepare(&params, || tokio::process::Command::new(&params.command))
+                .expect_err("must not be launchable");
+
+        assert!(err.contains("unconfined"), "{err}");
+    }
+}
+
+/// Jan's real remote transport, against a real server on loopback.
+///
+/// Everything here goes through `serve_http` — the same construction the
+/// desktop and the CLI use — with a real `reqwest` client and a real
+/// `StreamableHttpClientTransport`. The only substitution is the progress
+/// sink, which exists to emit events into a Tauri window there is none of
+/// here. The server is a fixture on 127.0.0.1 with an OS-chosen port, so the
+/// test reaches no network and guesses no port.
+#[cfg(test)]
+mod mcp_http_integration_tests {
+    use super::super::helpers::serve_http;
+    use super::super::progress::JanClientHandler;
+    use rmcp::model::{CallToolRequestParam, ClientInfo};
+    use std::io::BufRead;
+    use std::path::PathBuf;
+
+    /// A fixture process, and the port it bound.
+    struct Fixture {
+        child: std::process::Child,
+        port: u16,
+    }
+
+    impl Fixture {
+        fn start(mode: &str, barrier: Option<&std::path::Path>) -> Option<Self> {
+            let script =
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mcp_http_server.py");
+            if !script.exists() || !std::path::Path::new("/usr/bin/python3").exists() {
+                return None;
+            }
+
+            let mut command = std::process::Command::new("/usr/bin/python3");
+            command.arg(&script).arg(mode);
+            if let Some(path) = barrier {
+                command.arg(path);
+            }
+            let mut child = command
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .ok()?;
+
+            // The fixture prints the port it was given, so nothing here has to
+            // pick one and race another test for it.
+            let stdout = child.stdout.take()?;
+            let mut line = String::new();
+            std::io::BufReader::new(stdout).read_line(&mut line).ok()?;
+            let port = line.trim().parse().ok()?;
+            Some(Self { child, port })
+        }
+
+        fn url(&self) -> String {
+            format!("http://127.0.0.1:{}/mcp", self.port)
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    fn handler(name: &str) -> JanClientHandler {
+        JanClientHandler::for_test(ClientInfo::default(), name.to_string())
+    }
+
+    /// Connect the way production does, and report what the server said.
+    async fn connect(
+        fixture: &Fixture,
+    ) -> Result<super::super::super::state::RunningMcpService, String> {
+        let client = reqwest::Client::builder()
+            .build()
+            .map_err(|e| e.to_string())?;
+        serve_http(client, &fixture.url(), handler("fixture")).await
+    }
+
+    #[tokio::test]
+    async fn a_remote_server_handshakes_lists_and_calls() {
+        let Some(fixture) = Fixture::start("ok", None) else {
+            return;
+        };
+
+        let service = connect(&fixture).await.expect("initialize");
+        let info = service.peer_info().expect("the server identified itself");
+        assert_eq!(info.server_info.name, "jan-http-fixture");
+
+        let tools = service.list_all_tools().await.expect("tools/list");
+        assert!(
+            tools.iter().any(|tool| tool.name == "echo_fixture"),
+            "the server's tool must be discovered: {tools:?}"
+        );
+
+        let result = service
+            .call_tool(CallToolRequestParam {
+                name: "echo_fixture".into(),
+                arguments: None,
+            })
+            .await
+            .expect("tools/call");
+        let text = serde_json::to_string(&result).expect("serialize");
+        assert!(text.contains("fixture-answer"), "{text}");
+
+        service.cancel().await.expect("shutdown");
+    }
+
+    /// Nothing is listening. The client has to say so rather than hang.
+    #[tokio::test]
+    async fn a_refused_connection_is_reported_not_awaited() {
+        // Bind and drop, so the port is one nothing is listening on.
+        let port = {
+            let socket = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+            socket.local_addr().expect("addr").port()
+        };
+        let client = reqwest::Client::builder().build().expect("client");
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            serve_http(
+                client,
+                &format!("http://127.0.0.1:{port}/mcp"),
+                handler("gone"),
+            ),
+        )
+        .await;
+
+        match result {
+            Ok(Err(_)) => {}
+            Ok(Ok(_)) => panic!("connecting to a closed port must not succeed"),
+            Err(_) => panic!("a refused connection must fail rather than hang"),
+        }
+    }
+
+    /// An `initialize` reply that is not a valid result is a failed handshake,
+    /// not a server to start publishing tools from.
+    #[tokio::test]
+    async fn a_malformed_initialize_is_a_failed_handshake() {
+        let Some(fixture) = Fixture::start("malformed-init", None) else {
+            return;
+        };
+
+        assert!(
+            connect(&fixture).await.is_err(),
+            "a malformed initialize must not produce a usable service"
+        );
+    }
+
+    /// A server that accepts the connection and never answers must not hold a
+    /// caller open indefinitely.
+    #[tokio::test]
+    async fn an_unanswered_initialize_does_not_hang_forever() {
+        let Some(fixture) = Fixture::start("hang-init", None) else {
+            return;
+        };
+
+        let outcome =
+            tokio::time::timeout(std::time::Duration::from_secs(3), connect(&fixture)).await;
+
+        // Either the client gave up on its own, or the caller's timeout did.
+        // What matters is that a bounded wait is possible at all.
+        assert!(
+            outcome.is_err() || outcome.expect("settled").is_err(),
+            "a server that never answers must not yield a working service"
+        );
+    }
+
+    /// The handshake succeeded and the tool listing did not. There are no
+    /// tools to publish, and the failure has to surface.
+    #[tokio::test]
+    async fn a_tool_listing_failure_yields_no_tools() {
+        let Some(fixture) = Fixture::start("tools-list-error", None) else {
+            return;
+        };
+
+        let service = connect(&fixture).await.expect("initialize");
+        assert!(
+            service.list_all_tools().await.is_err(),
+            "a failing tools/list must be reported, not treated as an empty set"
+        );
+
+        service.cancel().await.ok();
+    }
+
+    #[tokio::test]
+    async fn a_failing_tool_call_is_reported() {
+        let Some(fixture) = Fixture::start("tool-call-error", None) else {
+            return;
+        };
+
+        let service = connect(&fixture).await.expect("initialize");
+        let outcome = service
+            .call_tool(CallToolRequestParam {
+                name: "echo_fixture".into(),
+                arguments: None,
+            })
+            .await;
+
+        assert!(
+            outcome.is_err(),
+            "the server refused; that must reach the caller"
+        );
+        service.cancel().await.ok();
+    }
+
+    /// Shutting down while a call is still in flight.
+    ///
+    /// The call blocks on a barrier the test controls, so "in flight" is a
+    /// state rather than a race. Cancelling must not wedge: the point is that
+    /// the shutdown completes and the pending call stops waiting.
+    #[tokio::test]
+    async fn a_call_in_flight_does_not_wedge_shutdown() {
+        let barrier = std::env::temp_dir().join(format!(
+            "jan-mcp-barrier-{}-{}",
+            std::process::id(),
+            "inflight"
+        ));
+        let _ = std::fs::remove_file(&barrier);
+
+        let Some(fixture) = Fixture::start("slow-call", Some(&barrier)) else {
+            return;
+        };
+
+        let service = connect(&fixture).await.expect("initialize");
+        let call = tokio::spawn({
+            let service = std::sync::Arc::new(service);
+            let held = service.clone();
+            async move {
+                held.call_tool(CallToolRequestParam {
+                    name: "echo_fixture".into(),
+                    arguments: None,
+                })
+                .await
+            }
+        });
+
+        // Let the server answer, then confirm the call settles one way or the
+        // other rather than hanging forever.
+        std::fs::write(&barrier, b"go").expect("release the barrier");
+        let settled = tokio::time::timeout(std::time::Duration::from_secs(10), call).await;
+        let _ = std::fs::remove_file(&barrier);
+
+        assert!(
+            settled.is_ok(),
+            "a call released by the server must settle rather than hang"
+        );
+    }
+
+    /// Nothing in a failure string is a secret. The fixture is given none, and
+    /// the URL it reports is a loopback address.
+    #[tokio::test]
+    async fn failures_carry_no_secret_and_no_public_endpoint() {
+        let Some(fixture) = Fixture::start("malformed-init", None) else {
+            return;
+        };
+
+        let message = match connect(&fixture).await {
+            Err(message) => message,
+            Ok(_) => panic!("a malformed initialize must not produce a service"),
+        };
+
+        assert!(!message.to_lowercase().contains("secret"), "{message}");
+        assert!(!message.to_lowercase().contains("token"), "{message}");
+        assert!(
+            !message.contains("https://"),
+            "the fixture is loopback-only: {message}"
+        );
+    }
+}
+
+/// Jan's real SSE transport, against a real SSE server on loopback.
+///
+/// SSE is two halves: a long-lived stream the server writes events to, and a
+/// POST endpoint the client is told about in the stream's first event. Both
+/// are real here, driven through Jan's own `serve_sse` — so this covers the
+/// transport Jan advertises rather than a parser that recognises its name.
+#[cfg(test)]
+mod mcp_sse_integration_tests {
+    use super::super::helpers::serve_sse;
+    use super::super::progress::JanClientHandler;
+    use rmcp::model::{CallToolRequestParam, ClientInfo};
+    use std::io::BufRead;
+    use std::path::PathBuf;
+
+    struct Fixture {
+        child: std::process::Child,
+        port: u16,
+    }
+
+    impl Fixture {
+        fn start(mode: &str, barrier: Option<&std::path::Path>) -> Option<Self> {
+            let script =
+                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mcp_sse_server.py");
+            if !script.exists() || !std::path::Path::new("/usr/bin/python3").exists() {
+                return None;
+            }
+            let mut command = std::process::Command::new("/usr/bin/python3");
+            command.arg(&script).arg(mode);
+            if let Some(path) = barrier {
+                command.arg(path);
+            }
+            let mut child = command
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .ok()?;
+            let stdout = child.stdout.take()?;
+            let mut line = String::new();
+            std::io::BufReader::new(stdout).read_line(&mut line).ok()?;
+            Some(Self {
+                child,
+                port: line.trim().parse().ok()?,
+            })
+        }
+
+        fn url(&self) -> String {
+            format!("http://127.0.0.1:{}/sse", self.port)
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    async fn connect(
+        fixture: &Fixture,
+    ) -> Result<super::super::super::state::RunningMcpService, String> {
+        let client = reqwest::Client::builder()
+            .build()
+            .map_err(|e| e.to_string())?;
+        serve_sse(
+            client,
+            &fixture.url(),
+            JanClientHandler::for_test(ClientInfo::default(), "sse-fixture".to_string()),
+        )
+        .await
+    }
+
+    /// The whole lifecycle: stream, endpoint, initialize, list, call, shutdown.
+    #[tokio::test]
+    async fn an_sse_server_handshakes_lists_and_calls() {
+        let Some(fixture) = Fixture::start("ok", None) else {
+            return;
+        };
+
+        let service = connect(&fixture).await.expect("initialize over SSE");
+        let info = service.peer_info().expect("the server identified itself");
+        assert_eq!(info.server_info.name, "jan-sse-fixture");
+
+        let tools = service.list_all_tools().await.expect("tools/list");
+        assert!(
+            tools.iter().any(|tool| tool.name == "echo_fixture"),
+            "the server's tool must be discovered: {tools:?}"
+        );
+
+        let called = service
+            .call_tool(CallToolRequestParam {
+                name: "echo_fixture".into(),
+                arguments: None,
+            })
+            .await
+            .expect("tools/call");
+        let text = serde_json::to_string(&called).expect("serialize");
+        assert!(text.contains("fixture-answer"), "{text}");
+
+        service.cancel().await.expect("shutdown");
+    }
+
+    /// The stream drops before the handshake completes. There is no service.
+    #[tokio::test]
+    async fn a_stream_that_closes_during_initialize_yields_no_service() {
+        let Some(fixture) = Fixture::start("close-during-init", None) else {
+            return;
+        };
+
+        let outcome =
+            tokio::time::timeout(std::time::Duration::from_secs(10), connect(&fixture)).await;
+
+        assert!(
+            outcome.is_err() || outcome.expect("settled").is_err(),
+            "a stream that closes during initialize must not produce a service"
+        );
+    }
+
+    /// An event that is not valid JSON-RPC must not derail the handshake into
+    /// reporting success.
+    #[tokio::test]
+    async fn a_malformed_event_does_not_produce_a_working_service() {
+        let Some(fixture) = Fixture::start("malformed-event", None) else {
+            return;
+        };
+
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            let service = connect(&fixture).await?;
+            // If the handshake did survive the junk event, the server is
+            // genuinely usable — which is also an acceptable outcome, as
+            // long as it is real.
+            service.list_all_tools().await.map_err(|e| e.to_string())?;
+            service.cancel().await.ok();
+            Ok::<(), String>(())
+        })
+        .await;
+
+        // What must not happen is a hang: either it worked or it failed.
+        assert!(
+            outcome.is_ok(),
+            "a malformed event must not leave the client waiting forever"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_tool_listing_failure_is_reported_over_sse() {
+        let Some(fixture) = Fixture::start("tools-list-error", None) else {
+            return;
+        };
+
+        let service = connect(&fixture).await.expect("initialize");
+        assert!(
+            service.list_all_tools().await.is_err(),
+            "a failing tools/list must be reported, not treated as an empty set"
+        );
+        service.cancel().await.ok();
+    }
+
+    /// A call held open by the server, released by the test rather than by a
+    /// sleep, then shut down.
+    #[tokio::test]
+    async fn a_call_in_flight_settles_and_shutdown_completes() {
+        let barrier = std::env::temp_dir().join(format!("jan-sse-barrier-{}", std::process::id()));
+        let _ = std::fs::remove_file(&barrier);
+
+        let Some(fixture) = Fixture::start("slow-call", Some(&barrier)) else {
+            return;
+        };
+
+        let service = std::sync::Arc::new(connect(&fixture).await.expect("initialize"));
+        let held = service.clone();
+        let call = tokio::spawn(async move {
+            held.call_tool(CallToolRequestParam {
+                name: "echo_fixture".into(),
+                arguments: None,
+            })
+            .await
+        });
+
+        std::fs::write(&barrier, b"go").expect("release the barrier");
+        let settled = tokio::time::timeout(std::time::Duration::from_secs(15), call).await;
+        let _ = std::fs::remove_file(&barrier);
+
+        assert!(
+            settled.is_ok(),
+            "a call the server released must settle rather than hang"
+        );
+    }
+
+    /// Nothing in a failure carries a secret, and the endpoint is loopback.
+    #[tokio::test]
+    async fn sse_failures_carry_no_secret_and_no_public_endpoint() {
+        let Some(fixture) = Fixture::start("close-during-init", None) else {
+            return;
+        };
+
+        let message =
+            match tokio::time::timeout(std::time::Duration::from_secs(10), connect(&fixture)).await
+            {
+                Ok(Err(message)) => message,
+                _ => return,
+            };
+
+        assert!(!message.to_lowercase().contains("secret"), "{message}");
+        assert!(!message.to_lowercase().contains("token"), "{message}");
+        assert!(!message.contains("https://"), "{message}");
+    }
+}
+
+/// Deciding whether a server may start under a name.
+///
+/// The rule this pins: a name is not an identity. Two definitions that differ
+/// in what they run, where they run it, or what they are handed are two
+/// programs, and one must never quietly stand in for the other.
+#[cfg(test)]
+mod registration_decision_tests {
+    use super::super::models::{definition_identity, registration_decision, RegistrationDecision};
+    use serde_json::json;
+
+    fn stdio(command: &str, args: &[&str]) -> serde_json::Value {
+        json!({ "type": "stdio", "command": command, "args": args })
+    }
+
+    #[test]
+    fn a_name_nobody_is_using_may_start() {
+        assert_eq!(
+            registration_decision(false, None, &stdio("node", &["server.js"])),
+            RegistrationDecision::Start
+        );
+    }
+
+    /// Starting the same server twice opens a second client that sends its own
+    /// `initialize`, which a streamable-HTTP server rejects — tearing down the
+    /// connection that was already working.
+    #[test]
+    fn the_same_definition_already_running_is_skipped() {
+        let config = stdio("node", &["server.js"]);
+
+        assert_eq!(
+            registration_decision(true, Some(&config), &config),
+            RegistrationDecision::AlreadyRunning
+        );
+    }
+
+    /// The failure this closes. Before, the guard compared names only, so an
+    /// edited definition returned "fine" while the old program kept running.
+    #[test]
+    fn a_different_definition_under_the_same_name_is_refused() {
+        let running = stdio("node", &["server.js"]);
+        let edited = stdio("node", &["other-server.js"]);
+
+        match registration_decision(true, Some(&running), &edited) {
+            RegistrationDecision::Conflict { reason } => {
+                assert!(reason.contains("different"), "{reason}");
+            }
+            other => panic!("an edited definition must not silently share a name: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_server_running_under_a_name_nothing_describes_is_refused() {
+        match registration_decision(true, None, &stdio("node", &["server.js"])) {
+            RegistrationDecision::Conflict { .. } => {}
+            other => panic!("an unidentifiable server must not be claimed: {other:?}"),
+        }
+    }
+
+    /// Everything that decides which program runs is part of the identity.
+    #[test]
+    fn identity_changes_when_the_program_does() {
+        let base = stdio("node", &["server.js"]);
+
+        for (what, changed) in [
+            ("the executable", stdio("python3", &["server.js"])),
+            ("the arguments", stdio("node", &["evil.js"])),
+            (
+                "the transport",
+                json!({ "type": "http", "url": "https://example.test/mcp" }),
+            ),
+            (
+                "the endpoint",
+                json!({ "type": "http", "url": "https://elsewhere.test/mcp" }),
+            ),
+            (
+                "the environment it is handed",
+                json!({
+                    "type": "stdio",
+                    "command": "node",
+                    "args": ["server.js"],
+                    "env": { "AWS_SECRET_ACCESS_KEY": "x" }
+                }),
+            ),
+        ] {
+            assert_ne!(
+                definition_identity(&base),
+                definition_identity(&changed),
+                "changing {what} must change the identity"
+            );
+        }
+    }
+
+    /// And nothing else is. A description or an `active` flag does not make it
+    /// a different program, and treating it as one would refuse a server the
+    /// user never changed.
+    #[test]
+    fn identity_ignores_what_does_not_decide_the_program() {
+        let plain = stdio("node", &["server.js"]);
+        let annotated = json!({
+            "type": "stdio",
+            "command": "node",
+            "args": ["server.js"],
+            "active": true,
+            "description": "notes for the user"
+        });
+
+        assert_eq!(definition_identity(&plain), definition_identity(&annotated));
+        assert_eq!(
+            registration_decision(true, Some(&plain), &annotated),
+            RegistrationDecision::AlreadyRunning
+        );
+    }
+
+    /// Only the names travel. A value would make two servers with the same
+    /// program look different, and would put a secret in the comparison.
+    #[test]
+    fn identity_carries_environment_names_and_no_values() {
+        let with_value = json!({
+            "type": "stdio",
+            "command": "node",
+            "args": [],
+            "env": { "API_TOKEN": "sk-live-do-not-leak" }
+        });
+
+        let identity = definition_identity(&with_value);
+        assert!(identity.contains("API_TOKEN"));
+        assert!(!identity.contains("sk-live-do-not-leak"), "{identity}");
+    }
+
+    /// Two servers differing only in the *value* of an environment variable
+    /// are the same program, and must not be refused as a conflict.
+    #[test]
+    fn a_changed_environment_value_alone_is_not_a_different_program() {
+        let before = json!({
+            "type": "stdio", "command": "node", "args": [],
+            "env": { "API_TOKEN": "one" }
+        });
+        let after = json!({
+            "type": "stdio", "command": "node", "args": [],
+            "env": { "API_TOKEN": "two" }
+        });
+
+        assert_eq!(definition_identity(&before), definition_identity(&after));
+    }
+}

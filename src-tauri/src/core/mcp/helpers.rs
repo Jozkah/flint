@@ -3,7 +3,7 @@ use rmcp::{
     transport::{
         sse_client::SseClient, streamable_http_client::StreamableHttpClient,
         streamable_http_client::StreamableHttpClientTransportConfig, SseClientTransport,
-        StreamableHttpClientTransport, TokioChildProcess,
+        StreamableHttpClientTransport,
     },
     ServiceExt,
 };
@@ -331,9 +331,21 @@ pub async fn start_mcp_server<R: Runtime>(
     // request id 0); the second is rejected by streamable-http servers with a
     // 400, tearing down the connection (issue #8411). This can happen when boot
     // startup and a frontend activation fire for the same server.
-    if servers_state.lock().await.contains_key(&name) {
-        log::debug!("MCP server {name} already running; skipping duplicate start");
-        return Ok(());
+    // Name alone is not identity. A definition edited under the same name is
+    // a different program, and skipping it would leave the user looking at
+    // their edit while the old one keeps running.
+    let running = servers_state.lock().await.contains_key(&name);
+    let registered = active_servers_state.lock().await.get(&name).cloned();
+    match crate::core::mcp::models::registration_decision(running, registered.as_ref(), &config) {
+        crate::core::mcp::models::RegistrationDecision::Start => {}
+        crate::core::mcp::models::RegistrationDecision::AlreadyRunning => {
+            log::debug!("MCP server {name} already running; skipping duplicate start");
+            return Ok(());
+        }
+        crate::core::mcp::models::RegistrationDecision::Conflict { reason } => {
+            log::warn!("MCP server {name} not started: {reason}");
+            return Err(format!("{name}: {reason}"));
+        }
     }
     if !app_state.mcp_starting.lock().await.insert(name.clone()) {
         log::debug!("MCP server {name} start already in progress; skipping duplicate start");
@@ -515,6 +527,9 @@ async fn schedule_mcp_start_task<R: Runtime>(
             && can_override_npx(bun_x_path.display().to_string()))
             || (config_params.command == "uvx" && can_override_uvx(uv_path.display().to_string()));
 
+        // Builds the command as the caller would otherwise have spawned it.
+        // What confines it is `ConfinedMcpLaunch::prepare`, which is the only
+        // way to reach the process builder for a local server.
         let build_cmd = |use_override: bool| -> Command {
             let mut cmd = Command::new(config_params.command.clone());
             if use_override
@@ -567,13 +582,19 @@ async fn schedule_mcp_start_task<R: Runtime>(
 
         let mut use_override = true;
         let (server, stderr) = loop {
-            let (process, stderr) = TokioChildProcess::builder(build_cmd(use_override))
-                .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|e| {
-                    log::error!("Failed to run command {name}: {e}");
-                    format!("Failed to run command {name}: {e}")
+            // An imported server is a program the repository chose, so it
+            // runs under the session's own sandbox or it does not run.
+            // Confinement failing is the server not starting, and `prepare`
+            // is the only constructor of a launchable command, so there is no
+            // unconfined path to fall back to.
+            let launch =
+                crate::core::mcp::launch::ConfinedMcpLaunch::prepare(&config_params, || {
+                    build_cmd(use_override)
                 })?;
+            let (process, stderr) = launch.spawn(Stdio::piped()).map_err(|e| {
+                log::error!("Failed to run command {name}: {e}");
+                format!("Failed to run command {name}: {e}")
+            })?;
 
             if let Some(pid) = process.id() {
                 log::info!("MCP server {name} spawned with PID {pid}");
@@ -765,6 +786,78 @@ fn log_mcp_stderr_line(server_name: &str, line: &str) {
 
 /// Turn the entry's configured `headers` map into a `HeaderMap`, skipping any
 /// pair that is not a valid header name/value. Shared by both remote transports.
+/// Rebuild a command so it runs inside the session's sandbox.
+///
+/// The policy is not invented here: it comes from the agent-tools plugin,
+/// which is the one implementation of Jan's sandboxing and the same one the
+/// agent's own shell runs under. A second, MCP-shaped imitation of it would
+/// drift from the real boundary, and the drift would be invisible until
+/// something escaped.
+///
+/// The environment is rebuilt rather than filtered. `Command` inherits the
+/// parent's environment by default, and Jan's process holds the user's whole
+/// session — so `env_clear` first, then exactly the names the user approved.
+pub(super) fn confined_mcp_command(
+    cmd: Command,
+    params: &crate::core::mcp::models::McpServerConfig,
+    confinement: &crate::core::mcp::models::McpConfinement,
+) -> Result<Command, String> {
+    use tauri_plugin_agent_tools::tools::mcp_confine::{confined_command, McpAuthority};
+
+    let program = cmd.as_std().get_program().to_os_string();
+    let args: Vec<String> = cmd
+        .as_std()
+        .get_args()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+
+    let authority = match confinement.writable_repository.clone() {
+        Some(repository) => McpAuthority::EditFolder {
+            workspace: confinement.workspace.clone(),
+            repository,
+        },
+        None => McpAuthority::ReviewOnly {
+            workspace: confinement.workspace.clone(),
+            repository: confinement.repository.clone(),
+        },
+    };
+
+    let wrapped = confined_command(
+        std::path::Path::new(&program),
+        &args,
+        None,
+        &authority,
+        confinement.jan_data.as_deref(),
+    )
+    .map_err(|e| e.reason())?;
+
+    let mut confined = Command::new(&wrapped.program);
+    for arg in &wrapped.args {
+        confined.arg(arg);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        confined.creation_flags(0x08000000);
+    }
+    #[cfg(unix)]
+    {
+        confined.process_group(0);
+    }
+    confined.kill_on_drop(true);
+
+    // Nothing inherited. Only the names the user approved, and only where the
+    // configuration actually supplied a value for them.
+    confined.env_clear();
+    for name in &confinement.allowed_env {
+        if let Some(value) = params.envs.get(name).and_then(Value::as_str) {
+            confined.env(name, value);
+        }
+    }
+    confined.current_dir(&confinement.workspace);
+    Ok(confined)
+}
+
 fn header_map(headers: &serde_json::Map<String, Value>) -> reqwest::header::HeaderMap {
     let mut map = reqwest::header::HeaderMap::new();
     for (key, value) in headers.iter() {
@@ -796,7 +889,7 @@ fn client_info(label: &str) -> ClientInfo {
 
 /// Serve the streamable-http transport over any client that implements it, so
 /// the plain and OAuth-wrapped clients share one transport construction.
-async fn serve_http<C>(
+pub(super) async fn serve_http<C>(
     client: C,
     url: &str,
     handler: JanClientHandler,
@@ -815,7 +908,7 @@ where
 }
 
 /// `serve_http`'s counterpart for the legacy SSE transport.
-async fn serve_sse<C>(
+pub(super) async fn serve_sse<C>(
     client: C,
     url: &str,
     handler: JanClientHandler,

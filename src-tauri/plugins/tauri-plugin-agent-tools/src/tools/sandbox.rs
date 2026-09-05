@@ -94,6 +94,50 @@ pub fn escapes_read_roots(
     Ok(true)
 }
 
+/// True iff `raw` escapes every root a *write* may legitimately reach: the
+/// workspace, the scratch, or a project root the user has explicitly authorized
+/// for editing.
+///
+/// The mirror of [`escapes_read_roots`], and deliberately a separate list. A
+/// folder attached for reading must never become writable because the two were
+/// collapsed into one set — read access is granted by attaching a folder, while
+/// write access is granted only by a confirmation naming that exact folder.
+///
+/// An authorized root that cannot be canonicalized grants nothing. A vanished
+/// or replaced root must not silently widen what a write can reach.
+pub fn escapes_write_roots(
+    project_root: &Path,
+    scratch: Option<&Path>,
+    write_roots: &[PathBuf],
+    raw: &str,
+) -> Result<bool, String> {
+    if !escapes_project(project_root, scratch, raw)? {
+        return Ok(false);
+    }
+    if write_roots.is_empty() {
+        return Ok(true);
+    }
+    let abs = if Path::new(raw).is_absolute() {
+        PathBuf::from(raw)
+    } else {
+        // Relative paths belong to the workspace, exactly as they do for reads.
+        // Resolving them against an authorized root instead would silently move
+        // where every unqualified write lands.
+        project_root.join(raw)
+    };
+    let resolved = canonicalize_lenient(&abs)?;
+    for root in write_roots {
+        if let Ok(root) = root.canonicalize() {
+            // `starts_with` on a `Path` compares components, so an authorized
+            // `/src/app` never covers `/src/app-backup`.
+            if resolved.starts_with(&root) {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
 /// Resolve a tool-supplied path to its on-disk location, forwarding an absolute
 /// `/tmp/...` path into the session scratch when one is set (and only on Linux,
 /// where the bash sandbox binds the scratch over `/tmp`). This keeps every
@@ -777,5 +821,211 @@ mod tests {
         assert!(!symlink_escapes_any_root(&ws, None, &roots, &link));
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    /// A parent directory holding two checkouts, which is the shape of the
+    /// reported failure: the user selected `obs-forwarder` and Jan read
+    /// `note-py` sitting beside it.
+    ///
+    /// Built with real directories because this is the validator, not a
+    /// helper: it canonicalizes, so a path that does not exist proves nothing.
+    fn sibling_repos() -> (PathBuf, PathBuf, PathBuf) {
+        let parent = unique_root_outside_tmp();
+        let selected = parent.join("obs-forwarder");
+        let sibling = parent.join("note-py");
+        std::fs::create_dir_all(&selected).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+        std::fs::write(selected.join("README.md"), b"selected").unwrap();
+        std::fs::write(sibling.join("main.py"), b"sibling").unwrap();
+        (parent, selected, sibling)
+    }
+
+    // The reported failure, pinned at the boundary that decides it.
+    #[test]
+    fn a_sibling_repository_is_a_read_escape() {
+        let ws = unique_root_outside_tmp();
+        let (parent, selected, sibling) = sibling_repos();
+        let roots = vec![selected.clone()];
+        let read =
+            |raw: &Path| escapes_read_roots(&ws, None, &roots, &raw.to_string_lossy()).unwrap();
+
+        // The sibling, addressed absolutely -- what the model would emit after
+        // being told the wrong repository's name.
+        assert!(read(&sibling.join("main.py")));
+        // The parent, which is how a sibling would be discovered at all.
+        assert!(read(&parent));
+        // Climbing out of the selected root and back down into the sibling.
+        assert!(read(&selected.join("../note-py/main.py")));
+        // And the repository the user actually selected still reads.
+        assert!(!read(&selected.join("README.md")));
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    // `starts_with` on a `Path` compares components, not characters. This is
+    // the test that fails if anyone reimplements it as a string prefix.
+    #[test]
+    fn a_sibling_whose_name_extends_the_selected_root_is_still_an_escape() {
+        let ws = unique_root_outside_tmp();
+        let (parent, selected, _) = sibling_repos();
+        let lookalike = parent.join("obs-forwarder-backup");
+        std::fs::create_dir_all(&lookalike).unwrap();
+        std::fs::write(lookalike.join("main.py"), b"not ours").unwrap();
+        let roots = vec![selected.clone()];
+
+        assert!(escapes_read_roots(
+            &ws,
+            None,
+            &roots,
+            &lookalike.join("main.py").to_string_lossy()
+        )
+        .unwrap());
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    /// Windows separators and case, on Windows only.
+    ///
+    /// The reported paths were `D:\Code\obs-forwarder` and `D:\Code\note-py`.
+    /// On a Unix host a backslash is an ordinary filename character, so writing
+    /// those literals here would assert nothing about separators — the test
+    /// would pass for the wrong reason. Real temp directories are used instead,
+    /// addressed with backslashes, and the case behaviour asserted is whatever
+    /// `canonicalize` already gives on the platform.
+    #[cfg(windows)]
+    #[test]
+    fn windows_sibling_is_an_escape_by_either_separator_or_case() {
+        let ws = unique_root_outside_tmp();
+        let (parent, selected, sibling) = sibling_repos();
+        let roots = vec![selected.clone()];
+        let read = |raw: String| escapes_read_roots(&ws, None, &roots, &raw).unwrap();
+
+        let backslashed = sibling.join("main.py").to_string_lossy().replace('/', "\\");
+        assert!(read(backslashed));
+        // Windows paths are case-insensitive, so a differently-cased spelling of
+        // the selected root is the same root -- not a way around it, and not a
+        // way in either.
+        assert!(!read(
+            selected.join("README.md").to_string_lossy().to_uppercase()
+        ));
+        assert!(read(
+            sibling.join("main.py").to_string_lossy().to_uppercase()
+        ));
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    /// Writes authorized against one checkout, with a sibling beside it.
+    ///
+    /// The same shape as the read tests, asked of the write boundary: this is
+    /// the door "Edit this folder" opens, so it is the one worth pushing on.
+    #[test]
+    fn an_authorized_write_root_reaches_only_itself() {
+        let ws = unique_root_outside_tmp();
+        let (parent, selected, sibling) = sibling_repos();
+        let lookalike = parent.join("obs-forwarder-backup");
+        std::fs::create_dir_all(&lookalike).unwrap();
+        let roots = vec![selected.clone()];
+        let writes =
+            |raw: &Path| escapes_write_roots(&ws, None, &roots, &raw.to_string_lossy()).unwrap();
+
+        // Inside the authorized checkout, including a file that does not exist
+        // yet -- which is most writes.
+        assert!(!writes(&selected.join("README.md")));
+        assert!(!writes(&selected.join("src/new-file.rs")));
+
+        // Everything around it stays shut.
+        assert!(writes(&sibling.join("main.py")));
+        assert!(writes(&parent.join("anything.txt")));
+        assert!(writes(&selected.join("../note-py/main.py")));
+        // Component matching, not string prefix: `obs-forwarder` must not
+        // authorize `obs-forwarder-backup`.
+        assert!(writes(&lookalike.join("main.py")));
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    // The two lists are separate for exactly this reason: attaching a folder
+    // to read it must never be what makes it writable.
+    #[test]
+    fn a_read_root_does_not_authorize_writing_to_it() {
+        let ws = unique_root_outside_tmp();
+        let repo = unique_root_outside_tmp();
+        std::fs::write(repo.join("main.rs"), b"fn main() {}").unwrap();
+        let target = repo.join("main.rs").to_string_lossy().into_owned();
+        let attached = vec![repo.clone()];
+
+        // Readable, because it was attached.
+        assert!(!escapes_read_roots(&ws, None, &attached, &target).unwrap());
+        // Not writable, because nothing authorized writing to it.
+        assert!(escapes_write_roots(&ws, None, &[], &target).unwrap());
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[test]
+    fn no_authorized_root_keeps_writes_in_the_workspace() {
+        let ws = unique_root_outside_tmp();
+        let outside = unique_root_outside_tmp();
+
+        assert!(!escapes_write_roots(&ws, None, &[], "inside.txt").unwrap());
+        assert!(
+            escapes_write_roots(&ws, None, &[], &outside.join("x.txt").to_string_lossy()).unwrap()
+        );
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
+
+    // A relative path is the workspace's, always. Resolving it against an
+    // authorized root would silently move where every unqualified write lands.
+    #[test]
+    fn a_relative_write_still_belongs_to_the_workspace() {
+        let ws = unique_root_outside_tmp();
+        let (parent, selected, _) = sibling_repos();
+        let roots = vec![selected.clone()];
+
+        assert!(!escapes_write_roots(&ws, None, &roots, "notes.txt").unwrap());
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    // A root that vanished grants nothing: an authorization must not widen
+    // because the thing it named is no longer there to check.
+    #[test]
+    fn a_missing_authorized_root_grants_nothing() {
+        let ws = unique_root_outside_tmp();
+        let gone = unique_root_outside_tmp();
+        let target = gone.join("x.txt").to_string_lossy().into_owned();
+        let roots = vec![gone.clone()];
+        let _ = std::fs::remove_dir_all(&gone);
+
+        assert!(escapes_write_roots(&ws, None, &roots, &target).unwrap());
+
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_out_of_an_authorized_root_is_caught() {
+        let ws = unique_root_outside_tmp();
+        let (parent, selected, sibling) = sibling_repos();
+        let link = selected.join("escape");
+        std::os::unix::fs::symlink(&sibling, &link).unwrap();
+        let roots = vec![selected.clone()];
+
+        assert!(
+            escapes_write_roots(&ws, None, &roots, &link.join("main.py").to_string_lossy())
+                .unwrap()
+        );
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&parent);
     }
 }

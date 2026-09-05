@@ -12,7 +12,6 @@ import {
   IconPalette,
   IconPlus,
   IconTopologyStar3,
-  IconLock,
   IconCpu,
   IconWorld,
   IconWorldSearch,
@@ -193,7 +192,6 @@ const SettingsMenu = () => {
     'agent-tools': IconFolderCode,
     shortcuts: IconCommand,
     hardware: IconCpu,
-    privacy: IconLock,
     'mcp-servers': IconTopologyStar3,
     extensions: IconPuzzle,
     'claude-code': ({ size, className }) => (

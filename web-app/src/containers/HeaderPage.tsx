@@ -3,36 +3,40 @@ import { cn } from '@/lib/utils'
 import {
   IconLayoutSidebar,
 } from '@tabler/icons-react'
-import { ReactNode, memo } from 'react'
+import { ReactNode, memo, useMemo } from 'react'
 import { Button } from "@/components/ui/button"
-import { DownloadManagement } from '@/containers/DownloadManegement'
 import { useTitlebarLayout } from '@/stores/titlebar-layout-store'
+import { detectMacOverlay, resolveHeaderInset } from '@/lib/titlebar'
 
 type HeaderPageProps = {
   children?: ReactNode
 }
 const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
   const { open, setLeftPanel } = useLeftPanel()
-  // Collapsed, this header owns the top-left strip — indent past left-anchored Linux
-  // window controls (size-8 each at left-4); macOS uses the pl-24 class below.
+  // Collapsed, this header owns the top-left strip and must clear the window
+  // controls. The reservation is resolved centrally (see lib/titlebar) so the
+  // sidebar and this header can never disagree, and so the macOS traffic-light
+  // indent survives a web bundle built without TAURI_ENV_PLATFORM.
   const leftButtons = useTitlebarLayout((s) => s.layout.left.length)
-  const linuxControlsPad =
-    !IS_MACOS && !open && leftButtons > 0 ? leftButtons * 32 + 24 : undefined
-  // Right-anchored controls (Windows, and Linux DEs that place them there) sit at
-  // right-4 above the header — keep header content clear of them at every width.
   const rightButtons = useTitlebarLayout((s) => s.layout.right.length)
-  const rightControlsPad = rightButtons > 0 ? rightButtons * 32 + 24 : undefined
+  const macOverlay = useMemo(() => detectMacOverlay(), [])
+  const inset = resolveHeaderInset({
+    macOverlay,
+    sidebarOpen: open,
+    leftButtonCount: leftButtons,
+    rightButtonCount: rightButtons,
+  })
 
   return (
     <div
       className={cn(
         'h-15 flex items-center shrink-0',
-        (IS_MACOS && !open) ? 'pl-24' : ' pl-4',
+        inset.macLeftPad ? 'pl-24' : ' pl-4',
         children === undefined && 'border-none'
       )}
       style={{
-        ...(linuxControlsPad ? { paddingLeft: linuxControlsPad } : {}),
-        ...(rightControlsPad ? { paddingRight: rightControlsPad } : {}),
+        ...(inset.leftPx ? { paddingLeft: inset.leftPx } : {}),
+        ...(inset.rightPx ? { paddingRight: inset.rightPx } : {}),
       }}
     >
       <div
@@ -42,7 +46,6 @@ const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
       >
         {!open && (
           <>
-            <DownloadManagement />
             <Button
               variant="ghost"
               size="icon-sm"

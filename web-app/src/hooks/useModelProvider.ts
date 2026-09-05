@@ -7,6 +7,10 @@ import { modelSettings } from '@/lib/predefined'
 import { predefinedProviders } from '@/constants/providers'
 import { isLocalProvider } from '@/lib/utils'
 import { API_KEY_FALLBACKS_SETTING_KEY } from '@/lib/provider-api-keys'
+import {
+  originOf,
+  useProviderReachability,
+} from '@/hooks/useProviderReachability'
 
 const API_KEY_SETTING_KEY = 'api-key'
 
@@ -235,6 +239,22 @@ export const useModelProvider = create<ModelProviderState>()(
               }
         }),
       updateProvider: (providerName, data) => {
+        // Reconfiguring a provider makes past failures meaningless: a new base
+        // URL or key is a different endpoint, and the old verdict would just
+        // be an accusation carried forward.
+        if (
+          'base_url' in data ||
+          'api_key' in data ||
+          'api_key_fallbacks' in data
+        ) {
+          const previous = get().providers.find(
+            (p) => p.provider === providerName
+          )
+          for (const url of [previous?.base_url, data.base_url]) {
+            const origin = originOf(url)
+            if (origin) useProviderReachability.getState().forgetOrigin(origin)
+          }
+        }
         set((state) => {
           const providers = state.providers.map((provider) => {
             if (provider.provider === providerName) {
@@ -756,9 +776,28 @@ export const useModelProvider = create<ModelProviderState>()(
           })
         }
 
+        if (version <= 17 && state?.providers) {
+          // Grammar became a per-model setting; add the control to persisted
+          // llamacpp models so the sidebar renders it.
+          state.providers.forEach((provider) => {
+            if (provider.provider !== 'llamacpp' || !provider.models) return
+            provider.models.forEach((model) => {
+              if (!model.settings) model.settings = {}
+              if (!model.settings.grammar) {
+                model.settings.grammar = {
+                  ...modelSettings.grammar,
+                  controller_props: {
+                    ...modelSettings.grammar.controller_props,
+                  },
+                }
+              }
+            })
+          })
+        }
+
         return state
       },
-      version: 17,
+      version: 18,
     }
   )
 )

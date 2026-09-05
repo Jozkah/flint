@@ -3,10 +3,6 @@ import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useLeftPanel } from '@/hooks/useLeftPanel'
 import { useModelProvider } from '@/hooks/useModelProvider'
-import {
-  useProductAnalytic,
-  useProductAnalyticPrompt,
-} from '@/hooks/useAnalytic'
 import { useHardware } from '@/hooks/useHardware'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { useToolApproval } from '@/hooks/useToolApproval'
@@ -15,13 +11,18 @@ import { useDownloadStore } from '@/hooks/useDownloadStore'
 import { useProxyConfig } from '@/hooks/useProxyConfig'
 import { useVulkan } from '@/hooks/useVulkan'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
+import { useModelOrder } from '@/hooks/useModelOrder'
 import { useLatestJanModel } from '@/hooks/useLatestJanModel'
 import { useJanModelPromptDismissed } from '@/hooks/useJanModelPrompt'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useCoworkActivity } from '@/hooks/useCoworkActivity'
+import { useFileActivity } from '@/hooks/useFileActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { useModelOverrides } from '@/hooks/useModelOverrides'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -38,8 +39,6 @@ const secondaryStores = [
   useGeneralSetting,
   useLeftPanel,
   useModelProvider,
-  useProductAnalytic,
-  useProductAnalyticPrompt,
   useHardware,
   useLocalApiServer,
   useToolApproval,
@@ -48,13 +47,18 @@ const secondaryStores = [
   useProxyConfig,
   useVulkan,
   useFavoriteModel,
+  useModelOrder,
   useLatestJanModel,
   useJanModelPromptDismissed,
   useDefaultEmbeddingModel,
   useAgentMode,
   useWebSearchConfig,
   useCoworkSessions,
+  useClaudeCompat,
+  useCoworkActivity,
+  useFileActivity,
   useAgentToolsConfig,
+  useModelOverrides,
 ] as const
 
 export async function hydrateBackendStores(): Promise<void> {
@@ -62,4 +66,12 @@ export async function hydrateBackendStores(): Promise<void> {
   await Promise.all(
     secondaryStores.map((store) => Promise.resolve(store.persist.rehydrate()))
   )
+  // Nothing survives a restart: a subagent's stream and a shell's process both
+  // died with the process that owned them. Settle whatever the previous app
+  // run left in flight, or the panel would show work still running that
+  // nothing can ever finish.
+  useCoworkActivity.getState().recoverOnLoad(INTERRUPTED_BY_RESTART)
 }
+
+/** Recorded as the reason on work the previous app run left unfinished. */
+export const INTERRUPTED_BY_RESTART = 'interrupted:restart'

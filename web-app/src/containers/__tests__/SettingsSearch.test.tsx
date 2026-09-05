@@ -140,6 +140,35 @@ describe('SettingsSearch', () => {
     )
   })
 
+  it('groups results under their Settings section', async () => {
+    render(<SettingsSearch />)
+    // A broad query matches settings in more than one section.
+    await type('e')
+    const groups = screen.getAllByRole('group')
+    expect(groups.length).toBeGreaterThan(0)
+    // Every group carries a section label, and every option lives in a group.
+    for (const g of groups) {
+      expect(g.getAttribute('aria-label')?.length).toBeTruthy()
+    }
+    const options = screen.getAllByRole('option')
+    expect(options.length).toBeGreaterThan(0)
+    for (const opt of options) {
+      expect(opt.closest('[role="group"]')).not.toBeNull()
+    }
+  })
+
+  it('arrow navigation crosses section group boundaries in visual order', async () => {
+    render(<SettingsSearch />)
+    const { user } = await type('e')
+    const count = screen.getAllByRole('option').length
+    expect(count).toBeGreaterThan(1)
+    // Walk down through options, including across group headers, in order.
+    for (let n = 1; n < Math.min(count, 5); n++) {
+      await user.keyboard('{ArrowDown}')
+      expect(selectedIndex()).toBe(n)
+    }
+  })
+
   it('supports arrow-key navigation and Enter to open', async () => {
     render(<SettingsSearch />)
     const { user } = await type('proxy')
@@ -245,6 +274,92 @@ describe('SettingsSearch', () => {
     expect(useSettingsSearch.getState().pendingTarget).toBeNull()
   })
 
+  it('takes the last of several results chosen in quick succession', async () => {
+    // The target is a single slot. Choosing again before the first has been
+    // claimed must leave the newest request standing, not the stale one.
+    render(<SettingsSearch />)
+    const { user } = await type('Theme')
+    await user.click(screen.getAllByRole('option')[0])
+    expect(useSettingsSearch.getState().pendingTarget).toBe(
+      'settings-appearance-theme'
+    )
+
+    await user.clear(screen.getByLabelText('Search settings'))
+    await user.type(screen.getByLabelText('Search settings'), 'Font size')
+    await user.click(screen.getAllByRole('option')[0])
+
+    expect(useSettingsSearch.getState().pendingTarget).toBe(
+      'settings-appearance-font-size'
+    )
+  })
+
+  it('navigates to whichever result was chosen last', async () => {
+    render(<SettingsSearch />)
+    const { user } = await type('Theme')
+    await user.click(screen.getAllByRole('option')[0])
+    await user.clear(screen.getByLabelText('Search settings'))
+    await user.type(screen.getByLabelText('Search settings'), 'Proxy')
+    await user.click(screen.getAllByRole('option')[0])
+
+    const calls = mockNavigate.mock.calls
+    expect(calls.length).toBeGreaterThan(1)
+    expect(calls[calls.length - 1][0].to).not.toBe(calls[0][0].to)
+  })
+
+  describe('what a screen reader is told', () => {
+    it('names the field, and says whether results are open', async () => {
+      render(<SettingsSearch />)
+      const field = screen.getByLabelText('Search settings')
+      expect(field).toHaveAttribute('aria-expanded', 'false')
+
+      const { user } = await type('Theme')
+      expect(screen.getByLabelText('Search settings')).toHaveAttribute(
+        'aria-expanded',
+        'true'
+      )
+      expect(field).toHaveAttribute('aria-controls', 'settings-search-results')
+      await user.keyboard('{Escape}')
+    })
+
+    it('points at the highlighted option as the arrows move', async () => {
+      // `aria-activedescendant` is how a listbox reports the active choice
+      // without moving focus off the field.
+      render(<SettingsSearch />)
+      const { user } = await type('Theme')
+      const field = screen.getByLabelText('Search settings')
+      const options = screen.getAllByRole('option')
+
+      await user.keyboard('{ArrowDown}')
+      expect(field.getAttribute('aria-activedescendant')).toBe(options[1].id)
+      await user.keyboard('{ArrowUp}')
+      expect(field.getAttribute('aria-activedescendant')).toBe(options[0].id)
+    })
+
+    it('announces the result count politely', async () => {
+      render(<SettingsSearch />)
+      await type('Theme')
+      const live = document.querySelector('[aria-live="polite"]')
+      expect(live).not.toBeNull()
+      expect(live!.textContent?.trim()).not.toBe('')
+    })
+
+    it('announces that nothing matched', async () => {
+      render(<SettingsSearch />)
+      await type('zzzzz no such setting')
+      const live = document.querySelector('[aria-live="polite"]')
+      expect(live!.textContent?.trim()).not.toBe('')
+    })
+
+    it('gives the results list and the clear control names of their own', async () => {
+      render(<SettingsSearch />)
+      await type('Theme')
+      expect(screen.getByRole('listbox')).toHaveAccessibleName()
+      expect(
+        screen.getByRole('button', { name: /clear/i })
+      ).toBeInTheDocument()
+    })
+  })
+
   it('never puts provider secrets or values in the index', async () => {
     providers = [
       {
@@ -301,6 +416,35 @@ describe('SettingTarget', () => {
     expect(document.activeElement).toBe(group)
     // Claimed: a later render must not re-trigger it.
     expect(useSettingsSearch.getState().pendingTarget).toBeNull()
+  })
+
+  it('clears the highlight after its window, instead of leaving it up forever', async () => {
+    // Regression: consumeTarget nulls pendingTarget, which re-renders this
+    // subscriber and changed the effect's own dependency — so the cleanup
+    // cancelled the timer it had just set and the row stayed highlighted for
+    // the life of the page.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      Element.prototype.scrollIntoView = vi.fn()
+      render(
+        <SettingTarget anchor="settings-appearance-theme">
+          <button>Theme control</button>
+        </SettingTarget>
+      )
+      act(() =>
+        useSettingsSearch.getState().requestTarget('settings-appearance-theme')
+      )
+
+      const group = document.getElementById('settings-appearance-theme')!
+      expect(group).toHaveAttribute('data-setting-highlight', 'true')
+
+      act(() => {
+        vi.advanceTimersByTime(2500)
+      })
+      expect(group).not.toHaveAttribute('data-setting-highlight')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('ignores a request aimed at a different anchor', async () => {

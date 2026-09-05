@@ -111,8 +111,6 @@ export default defineConfig(({ mode }) => {
 
       VERSION: JSON.stringify(packageJson.version),
 
-      POSTHOG_KEY: JSON.stringify(env.POSTHOG_KEY),
-      POSTHOG_HOST: JSON.stringify(env.POSTHOG_HOST),
       GA_MEASUREMENT_ID: JSON.stringify(env.GA_MEASUREMENT_ID),
       MODEL_CATALOG_URL: JSON.stringify(
         'https://raw.githubusercontent.com/janhq/model-catalog/main/model_catalog_v2.json'

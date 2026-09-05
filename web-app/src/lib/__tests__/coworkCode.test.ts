@@ -1,22 +1,40 @@
 import { describe, expect, it } from 'vitest'
 import {
+  activeTab,
+  artifactTab,
+  closeAllTabs,
+  closeOtherTabs,
   closeTab,
   codeRefBlock,
   codeRefToken,
   detectLanguage,
   emptyCodePanelState,
   expandCodeRefs,
+  externalTab,
   focusTab,
   isSourcePath,
   isTabStale,
+  isWritableOrigin,
   lineRangeOfSlice,
+  neighbourTabId,
   openTab,
-  sandboxTabPath,
-  writeCountsByPath,
+  originLabel,
+  originScope,
+  projectKeyOf,
+  projectTab,
+  pruneTabsForProject,
   relativeToRoot,
+  sandboxTab,
   shouldOpenInCode,
+  tabBelongsToProject,
+  tabBelongsToSession,
+  tabId,
   toggleDir,
+  writeCountsByPath,
 } from '@/lib/coworkCode'
+
+/** The session a sandbox tab belongs to; its identity is part of the tab id. */
+const SESSION = 'session-1'
 import { resolveInRoot } from '@/lib/coworkPreview'
 
 describe('detectLanguage', () => {
@@ -117,45 +135,156 @@ describe('relativeToRoot', () => {
   })
 })
 
+describe('project identity', () => {
+  it('normalises a folder into a stable key across platforms', () => {
+    expect(projectKeyOf('/home/u/Proj')).toBe('/home/u/proj')
+    expect(projectKeyOf('/home/u/proj/')).toBe('/home/u/proj')
+    expect(projectKeyOf('C:\\Users\\me\\Proj')).toBe('c:/users/me/proj')
+    expect(projectKeyOf('\\\\server\\share\\Proj')).toBe(
+      '//server/share/proj'
+    )
+    expect(projectKeyOf(null)).toBeNull()
+    expect(projectKeyOf('')).toBeNull()
+  })
+
+  it('gives the same file in two projects different tab ids', () => {
+    const a = projectTab('src/index.ts', '/a')
+    const b = projectTab('src/index.ts', '/b')
+    expect(tabId(a)).not.toBe(tabId(b))
+  })
+
+  it('distinguishes a project file from a sandbox file of the same path', () => {
+    expect(tabId(projectTab('out.ts', '/a'))).not.toBe(
+      tabId(sandboxTab('out.ts', SESSION))
+    )
+  })
+
+  it('treats no origin as writable', () => {
+    // The code surface is read-only; a future writable origin has to change
+    // this deliberately rather than by omission.
+    for (const origin of [
+      { kind: 'project', projectKey: '/a' } as const,
+      { kind: 'sandbox' } as const,
+      { kind: 'artifact' } as const,
+      { kind: 'external' } as const,
+    ]) {
+      expect(isWritableOrigin(origin)).toBe(false)
+    }
+  })
+
+  it('describes each origin to the model without claiming project ownership', () => {
+    expect(originLabel({ kind: 'project', projectKey: '/a' })).toContain(
+      'attached project'
+    )
+    expect(originLabel({ kind: 'sandbox' })).toContain('workspace')
+    expect(originLabel({ kind: 'artifact' })).toContain('generated')
+    expect(originLabel({ kind: 'external' })).toContain('external')
+    // None of the non-project origins may read as the user's project.
+    for (const origin of [
+      { kind: 'sandbox' } as const,
+      { kind: 'artifact' } as const,
+      { kind: 'external' } as const,
+    ]) {
+      expect(originLabel(origin)).not.toContain('attached project')
+    }
+  })
+})
+
 describe('tab state', () => {
+  const A = '/proj-a'
+  const B = '/proj-b'
+
   it('opens a file and focuses it', () => {
-    const s = openTab(emptyCodePanelState(), 'a.ts')
-    expect(s.openPaths).toEqual(['a.ts'])
-    expect(s.activePath).toBe('a.ts')
+    const tab = projectTab('a.ts', A)
+    const s = openTab(emptyCodePanelState(), tab)
+    expect(s.tabs).toEqual([tab])
+    expect(s.activeTabId).toBe(tabId(tab))
   })
 
   it('focuses instead of duplicating an already-open file', () => {
-    let s = openTab(openTab(emptyCodePanelState(), 'a.ts'), 'b.ts')
-    s = openTab(s, 'a.ts')
-    expect(s.openPaths).toEqual(['a.ts', 'b.ts'])
-    expect(s.activePath).toBe('a.ts')
+    const a = projectTab('a.ts', A)
+    const b = projectTab('b.ts', A)
+    let s = openTab(openTab(emptyCodePanelState(), a), b)
+    s = openTab(s, a)
+    expect(s.tabs).toHaveLength(2)
+    expect(s.activeTabId).toBe(tabId(a))
   })
 
   it('closing the active tab focuses the neighbour', () => {
-    let s = emptyCodePanelState()
-    for (const p of ['a.ts', 'b.ts', 'c.ts']) s = openTab(s, p)
-    s = focusTab(s, 'b.ts')
-    s = closeTab(s, 'b.ts')
-    expect(s.openPaths).toEqual(['a.ts', 'c.ts'])
-    expect(s.activePath).toBe('c.ts')
+    const tabs = ['a.ts', 'b.ts', 'c.ts'].map((p) => projectTab(p, A))
+    let s = tabs.reduce(openTab, emptyCodePanelState())
+    s = focusTab(s, tabId(tabs[1]))
+    s = closeTab(s, tabId(tabs[1]))
+    expect(s.tabs.map((t) => t.path)).toEqual(['a.ts', 'c.ts'])
+    expect(s.activeTabId).toBe(tabId(tabs[2]))
   })
 
-  it('closing the last tab clears the active path', () => {
-    let s = openTab(emptyCodePanelState(), 'a.ts')
-    s = closeTab(s, 'a.ts')
-    expect(s.openPaths).toEqual([])
-    expect(s.activePath).toBeNull()
+  it('closing the last tab clears the active id', () => {
+    const tab = projectTab('a.ts', A)
+    const s = closeTab(openTab(emptyCodePanelState(), tab), tabId(tab))
+    expect(s.tabs).toEqual([])
+    expect(s.activeTabId).toBeNull()
   })
 
-  it('closing an inactive tab keeps focus where it was', () => {
-    let s = openTab(openTab(emptyCodePanelState(), 'a.ts'), 'b.ts')
-    s = closeTab(s, 'a.ts')
-    expect(s.activePath).toBe('b.ts')
+  it('closes other tabs and all tabs', () => {
+    const tabs = ['a.ts', 'b.ts', 'c.ts'].map((p) => projectTab(p, A))
+    const s = tabs.reduce(openTab, emptyCodePanelState())
+    const others = closeOtherTabs(s, tabId(tabs[1]))
+    expect(others.tabs).toEqual([tabs[1]])
+    expect(others.activeTabId).toBe(tabId(tabs[1]))
+    expect(closeAllTabs(s).tabs).toEqual([])
+    expect(closeAllTabs(s).activeTabId).toBeNull()
   })
 
-  it('closing an unknown path is a no-op', () => {
-    const s = openTab(emptyCodePanelState(), 'a.ts')
-    expect(closeTab(s, 'zzz.ts')).toBe(s)
+  it('moves between tabs for keyboard switching, wrapping at the ends', () => {
+    const tabs = ['a.ts', 'b.ts'].map((p) => projectTab(p, A))
+    const s = tabs.reduce(openTab, emptyCodePanelState())
+    expect(neighbourTabId(s, 1)).toBe(tabId(tabs[0]))
+    expect(neighbourTabId(s, -1)).toBe(tabId(tabs[0]))
+    expect(neighbourTabId(emptyCodePanelState(), 1)).toBeNull()
+  })
+
+  it('drops the other project’s tabs when the project changes', () => {
+    // The regression: a tab opened against A kept its bare relative path and
+    // was re-resolved inside B, showing B's file of the same name.
+    const fromA = projectTab('src/index.ts', A)
+    const sandbox = sandboxTab('out.ts', SESSION)
+    let s = openTab(openTab(emptyCodePanelState(), fromA), sandbox)
+    s = toggleDir(s, 'src')
+
+    const switched = pruneTabsForProject(s, B)
+    expect(switched.tabs).toEqual([sandbox])
+    expect(switched.activeTabId).toBe(tabId(sandbox))
+    // The tree belonged to the project that went away.
+    expect(switched.expandedDirs).toEqual([])
+  })
+
+  it('keeps session-owned tabs when the project is detached', () => {
+    const fromA = projectTab('a.ts', A)
+    const sandbox = sandboxTab('out.ts', SESSION)
+    const s = openTab(openTab(emptyCodePanelState(), fromA), sandbox)
+    const detached = pruneTabsForProject(s, null)
+    expect(detached.tabs).toEqual([sandbox])
+  })
+
+  it('keeps tabs when the same project is re-attached', () => {
+    const tab = projectTab('a.ts', A)
+    const s = openTab(emptyCodePanelState(), tab)
+    expect(pruneTabsForProject(s, A).tabs).toEqual([tab])
+  })
+
+  it('knows which tabs belong to the attached project', () => {
+    expect(tabBelongsToProject(projectTab('a.ts', A), A)).toBe(true)
+    expect(tabBelongsToProject(projectTab('a.ts', A), B)).toBe(false)
+    expect(tabBelongsToProject(sandboxTab('a.ts', SESSION), B)).toBe(true)
+    expect(tabBelongsToProject(sandboxTab('a.ts', SESSION), null)).toBe(true)
+  })
+
+  it('resolves the active tab, or nothing when it was closed', () => {
+    const tab = projectTab('a.ts', A)
+    const s = openTab(emptyCodePanelState(), tab)
+    expect(activeTab(s)).toEqual(tab)
+    expect(activeTab(closeTab(s, tabId(tab)))).toBeUndefined()
   })
 
   it('toggleDir expands and collapses', () => {
@@ -199,22 +328,25 @@ describe('staleness', () => {
 
   it('reports a tab stale only once its path is written again', () => {
     const counts = { 'a.ts': 2 }
-    expect(isTabStale('a.ts', 2, counts)).toBe(false)
-    expect(isTabStale('a.ts', 1, counts)).toBe(true)
+    const tab = projectTab('a.ts', '/proj')
+    expect(isTabStale(tab, 2, counts)).toBe(false)
+    expect(isTabStale(tab, 1, counts)).toBe(true)
     // Never loaded: nothing to be stale against.
-    expect(isTabStale('a.ts', undefined, counts)).toBe(false)
+    expect(isTabStale(tab, undefined, counts)).toBe(false)
     // A different file's writes do not touch this one.
-    expect(isTabStale('b.ts', 0, counts)).toBe(false)
+    expect(isTabStale(projectTab('b.ts', '/proj'), 0, counts)).toBe(false)
   })
 
-  it('compares a sandbox tab on its display path', () => {
-    expect(isTabStale(sandboxTabPath('out.ts'), 0, { 'out.ts': 1 })).toBe(true)
+  it('compares a sandbox tab on its own path', () => {
+    expect(isTabStale(sandboxTab('out.ts', SESSION), 0, { 'out.ts': 1 })).toBe(true)
   })
 })
 
 describe('code references', () => {
   it('formats the visible token', () => {
-    expect(codeRefToken({ path: 'src/example.ts', startLine: 24, endLine: 48 })).toBe(
+    expect(
+      codeRefToken({ path: 'src/example.ts', startLine: 24, endLine: 48 })
+    ).toBe(
       '@src/example.ts:24-48'
     )
     expect(codeRefToken({ path: 'a.py', startLine: 7, endLine: 7 })).toBe('@a.py:7')
@@ -235,11 +367,13 @@ describe('code references', () => {
   it('builds a fenced block with path, range and language', () => {
     const block = codeRefBlock({
       path: 'src/example.ts',
+      origin: { kind: 'project', projectKey: '/proj' },
       startLine: 24,
       endLine: 48,
       code: 'const x = 1\n',
     })
     expect(block).toContain('src/example.ts (lines 24-48)')
+    expect(block).toContain('attached project')
     expect(block).toContain('```typescript')
     expect(block).toContain('const x = 1')
   })
@@ -247,11 +381,18 @@ describe('code references', () => {
   it('expands only references whose token survived editing', () => {
     const kept = {
       path: 'a.ts',
+      origin: { kind: 'project' as const, projectKey: '/proj' },
       startLine: 1,
       endLine: 2,
       code: 'let a\nlet b',
     }
-    const deleted = { path: 'b.ts', startLine: 3, endLine: 4, code: 'x' }
+    const deleted = {
+      path: 'b.ts',
+      origin: { kind: 'sandbox' as const },
+      startLine: 3,
+      endLine: 4,
+      code: 'x',
+    }
     const text = `Explain @a.ts:1-2 please`
     const expanded = expandCodeRefs(text, [kept, deleted])
     expect(expanded).toContain('Explain @a.ts:1-2 please')
@@ -261,5 +402,148 @@ describe('code references', () => {
 
   it('returns the text untouched with no surviving refs', () => {
     expect(expandCodeRefs('hello', [])).toBe('hello')
+  })
+})
+
+describe('session identity', () => {
+  const OTHER = 'session-2'
+
+  it('gives the same sandbox path different ids in different sessions', () => {
+    // Every session has its own workspace, so `out.ts` is a different file in
+    // each. One id would mean one cache entry and one set of bytes.
+    expect(tabId(sandboxTab('out.ts', SESSION))).not.toBe(
+      tabId(sandboxTab('out.ts', OTHER))
+    )
+  })
+
+  it('separates a sandbox tab from an artifact tab of the same path', () => {
+    expect(tabId(sandboxTab('out.ts', SESSION))).not.toBe(
+      tabId(artifactTab('out.ts', SESSION))
+    )
+  })
+
+  it('scopes a sandbox origin by its session and a project origin by its key', () => {
+    expect(originScope({ kind: 'sandbox', sessionKey: SESSION })).toBe(SESSION)
+    expect(originScope({ kind: 'artifact', sessionKey: SESSION })).toBe(SESSION)
+    expect(originScope({ kind: 'project', projectKey: '/p' })).toBe('/p')
+    expect(originScope({ kind: 'external' })).toBe('')
+  })
+
+  it('scopes a tab persisted before the field existed to the empty string', () => {
+    // What a v3 blob holds. A migration must be able to name such a tab.
+    const legacy = { kind: 'sandbox' } as unknown as Parameters<
+      typeof originScope
+    >[0]
+    expect(originScope(legacy)).toBe('')
+  })
+
+  it('claims a session-owned tab only for the session that owns it', () => {
+    expect(tabBelongsToSession(sandboxTab('out.ts', SESSION), SESSION)).toBe(
+      true
+    )
+    expect(tabBelongsToSession(sandboxTab('out.ts', SESSION), OTHER)).toBe(
+      false
+    )
+    expect(tabBelongsToSession(artifactTab('c.svg', SESSION), OTHER)).toBe(
+      false
+    )
+    // No session at all: nothing session-owned can be read.
+    expect(tabBelongsToSession(sandboxTab('out.ts', SESSION), null)).toBe(false)
+  })
+
+  it('leaves project tabs out of the session question entirely', () => {
+    // A project tab is keyed to its project, and follows the session it is
+    // stored on; asking whether it belongs to a session is not meaningful.
+    expect(tabBelongsToSession(projectTab('a.ts', '/p'), OTHER)).toBe(true)
+    expect(tabBelongsToSession(projectTab('a.ts', '/p'), null)).toBe(true)
+  })
+
+  it('keeps a session’s own tabs when its project changes', () => {
+    // Detaching or switching a project prunes project tabs; the session's own
+    // files have nothing to do with the project.
+    const state = openTab(
+      openTab(emptyCodePanelState(), projectTab('a.ts', '/p')),
+      sandboxTab('out.ts', SESSION)
+    )
+    expect(pruneTabsForProject(state, '/other').tabs).toEqual([
+      sandboxTab('out.ts', SESSION),
+    ])
+  })
+})
+
+describe('external files', () => {
+  it('belong to the session they were opened in', () => {
+    // A file dropped into one session must not appear in the next.
+    const tab = externalTab('notes.md', 'session-a')
+    expect(tabBelongsToSession(tab, 'session-a')).toBe(true)
+    expect(tabBelongsToSession(tab, 'session-b')).toBe(false)
+  })
+
+  it('take the session into their id, so two sessions never share a tab', () => {
+    expect(tabId(externalTab('notes.md', 'a'))).not.toBe(
+      tabId(externalTab('notes.md', 'b'))
+    )
+  })
+
+  it('stay read-only', () => {
+    expect(isWritableOrigin(externalTab('notes.md', 'a').origin)).toBe(false)
+  })
+
+  it('still show for tabs persisted before they carried a session', () => {
+    // Migration: an older tab has no session key and is shown rather than
+    // hidden, since hiding it would look like data loss.
+    const legacy = { path: 'old.md', origin: { kind: 'external' as const } }
+    expect(tabBelongsToSession(legacy, 'anything')).toBe(true)
+  })
+
+  it('opens an already-open file by focusing its tab, not duplicating it', () => {
+    const tab = externalTab('notes.md', 'a')
+    const once = openTab(emptyCodePanelState(), tab)
+    const twice = openTab(once, tab)
+    expect(twice.tabs).toHaveLength(1)
+    expect(twice.activeTabId).toBe(tabId(tab))
+  })
+})
+
+/**
+ * A tab's origin is recorded when it is opened, and never recomputed.
+ *
+ * The failure this prevents: deriving origin from the path at render time.
+ * Withdrawing direct-edit access, or attaching a different folder, would then
+ * silently relabel tabs that are already open — a sandbox file would start
+ * claiming to be a repository file, or a repository file would go external
+ * while its bytes stayed on screen. What a tab is was settled when it opened.
+ */
+describe('a tab’s recorded origin', () => {
+  it('is fixed at open time, not derived from the path', () => {
+    // Same path, three origins. Nothing about the text decides which.
+    const project = projectTab('src/a.ts', 'repo-key')
+    const sandbox = sandboxTab('src/a.ts', 'session-a')
+    const external = externalTab('src/a.ts', 'session-a')
+
+    expect([project.origin.kind, sandbox.origin.kind, external.origin.kind]).toEqual([
+      'project',
+      'sandbox',
+      'external',
+    ])
+    expect(new Set([tabId(project), tabId(sandbox), tabId(external)]).size).toBe(3)
+  })
+
+  // Access is a property of the run, not of a tab that is already open.
+  it('does not change when the session’s access does', () => {
+    const before = projectTab('src/a.ts', 'repo-key')
+    // Nothing in the tab model takes access, so revoking it cannot reach here.
+    const after = projectTab('src/a.ts', 'repo-key')
+
+    expect(after).toEqual(before)
+    expect(isWritableOrigin(after.origin)).toBe(isWritableOrigin(before.origin))
+  })
+
+  it('survives being restored under the same identity', () => {
+    const tab = sandboxTab('out/report.md', 'session-a')
+    const restored = JSON.parse(JSON.stringify(tab))
+
+    expect(tabId(restored)).toBe(tabId(tab))
+    expect(restored.origin).toEqual(tab.origin)
   })
 })

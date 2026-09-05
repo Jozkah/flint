@@ -114,6 +114,7 @@ describe('code references survive the prompt round trip', () => {
     // the fix `surviving` was empty and the selection was silently discarded.
     const ref = {
       path: 'src/example.ts',
+      origin: { kind: 'project' as const, projectKey: '/home/dev/project' },
       startLine: 24,
       endLine: 25,
       code: 'const a = 1\nconst b = 2',

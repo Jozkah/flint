@@ -99,6 +99,18 @@ pub struct Policy {
     /// masks (so a project under either survives) and before the workspace bind
     /// (so one can never shadow the only writable path).
     pub read_roots: Vec<PathBuf>,
+    /// Repositories the user explicitly authorized this session to edit.
+    ///
+    /// Kept apart from [`Self::read_roots`] for the same reason the tool gate
+    /// keeps two lists: attaching a folder is what makes it readable, and only
+    /// a confirmation naming that exact folder makes it writable. A root
+    /// arrives here from `SessionGrants`, which the model cannot influence.
+    ///
+    /// The file tools and the shell must agree about this set. A shell that
+    /// could write where `write`/`edit` are refused — or the reverse — would
+    /// make the access mode a statement about one of them rather than about
+    /// the run.
+    pub write_roots: Vec<PathBuf>,
 }
 
 impl Policy {
@@ -111,11 +123,18 @@ impl Policy {
             home_readonly: false,
             scratch_root: None,
             read_roots: Vec::new(),
+            write_roots: Vec::new(),
         }
     }
 
     /// Attach read-only roots. See [`Policy::read_roots`] for why their bind
     /// order relative to the masks and the workspace is load-bearing.
+    /// Authorize the shell to write under `write_roots`, as the file tools are.
+    pub fn with_write_roots(mut self, write_roots: Vec<PathBuf>) -> Self {
+        self.write_roots = write_roots;
+        self
+    }
+
     pub fn with_read_roots(mut self, read_roots: Vec<PathBuf>) -> Self {
         self.read_roots = read_roots;
         self
@@ -174,6 +193,28 @@ fn home_dir() -> Option<PathBuf> {
 
 /// The active backend, probed once. Probing runs a subprocess on Linux, so it is
 /// cached for the life of the process.
+/// Can this backend confine a shell to a repository the user authorized?
+///
+/// Direct editing is only offered where the shell and the file tools can be
+/// held to the same roots. A backend that can grant one but not the other
+/// would make "Jan can modify files in this exact folder" true of `write` and
+/// false of `bash`, which is not a feature — it is a wrong answer.
+///
+/// Seatbelt takes a subpath rule per root and bubblewrap a read-write bind, so
+/// both express it directly. AppContainer grants writes only by placing an ACE
+/// on the thread workspace; authorizing a repository would mean writing an ACE
+/// onto the user's own folder, which this backend does not do. Until it does,
+/// Windows reports unsupported rather than silently granting less than the UI
+/// would promise.
+pub fn supports_write_roots(backend: Backend) -> bool {
+    match backend {
+        Backend::Seatbelt | Backend::Bubblewrap => true,
+        Backend::AppContainer => false,
+        // Nothing enforces anything; `bash` is withheld entirely.
+        Backend::None => false,
+    }
+}
+
 pub fn backend() -> Backend {
     static BACKEND: OnceLock<Backend> = OnceLock::new();
     *BACKEND.get_or_init(detect)
@@ -399,6 +440,13 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
         let root = root.to_string_lossy();
         push(&mut args, &["--ro-bind", &root, &root]);
     }
+    // Read-write, unlike the roots above. Bound before the workspace so the
+    // workspace still wins if the two ever overlap, and each path is its own
+    // argument rather than part of a command string.
+    for root in &policy.write_roots {
+        let root = root.to_string_lossy();
+        push(&mut args, &["--bind", &root, &root]);
+    }
 
     push(&mut args, &["--bind", &ws, &ws]);
     // After the workspace bind, so it is not shadowed by it: an empty tmpfs where
@@ -507,6 +555,16 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
             "(allow file-read* (subpath (param \"READ_ROOT_{i}\")))\n"
         ));
     }
+    // An authorized repository, readable *and* writable. Same placement as the
+    // read roots — after the HOME/MASK denials so a repository inside either is
+    // reachable — and still before `HIDE_ROOT`, so the agent's own state
+    // directory stays denied even inside a folder the user is editing.
+    for i in 0..policy.write_roots.len() {
+        p.push_str(&format!(
+            "(allow file-read* (subpath (param \"WRITE_ROOT_{i}\")))\n\
+             (allow file-write* (subpath (param \"WRITE_ROOT_{i}\")))\n"
+        ));
+    }
     // Last, so it wins over the workspace allow above: the agent's own state
     // directory is neither readable nor writable, however the command spells it.
     if policy.hide_root.is_some() {
@@ -547,6 +605,11 @@ pub fn seatbelt_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     }
     for (i, root) in policy.read_roots.iter().enumerate() {
         args.push(format!("-DREAD_ROOT_{i}={}", root.to_string_lossy()));
+    }
+    // Passed as a profile parameter, never interpolated into a command: a path
+    // with spaces, quotes or a leading hyphen stays one argument's data.
+    for (i, root) in policy.write_roots.iter().enumerate() {
+        args.push(format!("-DWRITE_ROOT_{i}={}", root.to_string_lossy()));
     }
     if let Some(hide) = &policy.hide_root {
         args.push(format!("-DHIDE_ROOT={}", hide.to_string_lossy()));
@@ -1050,6 +1113,142 @@ mod tests {
     fn backend_is_stable_across_calls() {
         assert_eq!(backend(), backend());
     }
+
+    /// The shell's half of "Edit this folder".
+    ///
+    /// Policy construction, not sandbox execution: these assert the rules and
+    /// arguments each backend would be given. Whether the kernel then honours
+    /// them is a runtime question, and is reported as such.
+    #[test]
+    fn seatbelt_grants_an_authorized_repository_read_and_write() {
+        let repo = "/home/dev/obs-forwarder";
+        let p = seatbelt_policy(
+            &policy()
+                .with_mask_root(Path::new("/data"))
+                .with_write_roots(vec![PathBuf::from(repo)]),
+        );
+
+        let deny = p
+            .find("(deny file-read* (subpath (param \"MASK_ROOT\")))")
+            .expect("mask deny");
+        let read = p
+            .find("(allow file-read* (subpath (param \"WRITE_ROOT_0\")))")
+            .expect("write root read allow");
+        let write = p
+            .find("(allow file-write* (subpath (param \"WRITE_ROOT_0\")))")
+            .expect("write root write allow");
+
+        // Later rules win in Seatbelt, so a repository inside $HOME or the data
+        // folder is still reachable.
+        assert!(deny < read, "the allow must win over the denials: {p}");
+        assert!(read < write);
+
+        let args = seatbelt_args(
+            &policy().with_write_roots(vec![PathBuf::from(repo)]),
+            &cfg(),
+        );
+        assert!(args.iter().any(|a| a == &format!("-DWRITE_ROOT_0={repo}")));
+    }
+
+    // The agent's own state directory stays denied even inside a folder the
+    // user is actively editing.
+    #[test]
+    fn seatbelt_still_hides_the_agent_state_dir_inside_a_writable_repository() {
+        let p = seatbelt_policy(
+            &policy()
+                .with_write_roots(vec![PathBuf::from("/home/dev/obs-forwarder")])
+                .with_hide_root(Path::new("/home/dev/obs-forwarder/.jan")),
+        );
+
+        let write = p
+            .find("(allow file-write* (subpath (param \"WRITE_ROOT_0\")))")
+            .expect("write allow");
+        let hide = p
+            .find("(deny file-write* (subpath (param \"HIDE_ROOT\")))")
+            .expect("hide deny");
+        assert!(write < hide, "the hide must come last: {p}");
+    }
+
+    // sandbox-exec refuses a profile naming a parameter no `-D` supplies.
+    #[test]
+    fn seatbelt_omits_the_write_root_rule_when_there_is_none() {
+        let p = seatbelt_policy(&policy());
+        assert!(!p.contains("WRITE_ROOT"), "{p}");
+        assert!(!seatbelt_args(&policy(), &cfg())
+            .iter()
+            .any(|a| a.contains("WRITE_ROOT")));
+    }
+
+    // Two lists, two answers. Attaching a folder to read it must not make the
+    // shell able to write to it either.
+    #[test]
+    fn seatbelt_never_makes_a_read_root_writable() {
+        let p = seatbelt_policy(&policy().with_read_roots(vec![PathBuf::from("/repo")]));
+
+        assert!(p.contains("(allow file-read* (subpath (param \"READ_ROOT_0\")))"));
+        assert!(!p.contains("(allow file-write* (subpath (param \"READ_ROOT_0\")))"));
+    }
+
+    #[test]
+    fn bubblewrap_binds_an_authorized_repository_read_write() {
+        let args = bwrap_args(
+            &policy()
+                .with_read_roots(vec![PathBuf::from("/repo-ro")])
+                .with_write_roots(vec![PathBuf::from("/repo-rw")]),
+            &cfg(),
+        );
+
+        // Not simply the first `--ro-bind`: bubblewrap binds the root
+        // filesystem read-only before any attached folder.
+        let ro = args
+            .windows(2)
+            .position(|w| w[0] == "--ro-bind" && w[1] == "/repo-ro")
+            .expect("ro bind for the attached folder");
+        assert_eq!(args[ro + 2], "/repo-ro");
+
+        // `--bind` is read-write, unlike the attached folder above.
+        let rw = args
+            .windows(2)
+            .position(|w| w[0] == "--bind" && w[1] == "/repo-rw")
+            .expect("rw bind for the authorized repository");
+        assert_eq!(args[rw + 2], "/repo-rw");
+    }
+
+    /// A path is data, never syntax.
+    ///
+    /// Spaces, quotes, a leading hyphen and non-ASCII all survive as one
+    /// argument because nothing here builds a command string out of them.
+    #[test]
+    fn awkward_repository_paths_stay_one_argument() {
+        let awkward = "/home/dev/my repo \"quoted\" --not-a-flag/ünïcode";
+        let args = bwrap_args(
+            &policy().with_write_roots(vec![PathBuf::from(awkward)]),
+            &cfg(),
+        );
+        assert!(args.iter().any(|a| a == awkward), "{args:?}");
+
+        let sb = seatbelt_args(
+            &policy().with_write_roots(vec![PathBuf::from(awkward)]),
+            &cfg(),
+        );
+        assert!(
+            sb.iter().any(|a| a == &format!("-DWRITE_ROOT_0={awkward}")),
+            "{sb:?}"
+        );
+    }
+
+    /// Which platforms may offer direct editing at all.
+    ///
+    /// AppContainer grants writes only through an ACE on the thread workspace,
+    /// so it cannot yet authorize a repository; reporting it supported would
+    /// promise a confinement Windows is not applying.
+    #[test]
+    fn only_backends_that_can_confine_a_repository_support_direct_editing() {
+        assert!(supports_write_roots(Backend::Seatbelt));
+        assert!(supports_write_roots(Backend::Bubblewrap));
+        assert!(!supports_write_roots(Backend::AppContainer));
+        assert!(!supports_write_roots(Backend::None));
+    }
 }
 
 /// Live end-to-end checks: these assert the kernel actually refuses things,
@@ -1104,6 +1303,17 @@ mod enforcement_tests {
         (out.status.success(), text)
     }
 
+    /// A second directory tree to stand in for the user's repositories.
+    fn repo_pair() -> (PathBuf, PathBuf, PathBuf) {
+        let n = N.fetch_add(1, Ordering::SeqCst);
+        let parent = temp_dir().join(format!("jan_repos_{}_{}", std::process::id(), n));
+        let selected = parent.join("obs-forwarder");
+        let sibling = parent.join("note-py");
+        std::fs::create_dir_all(&selected).expect("create selected");
+        std::fs::create_dir_all(&sibling).expect("create sibling");
+        (parent, selected, sibling)
+    }
+
     macro_rules! require_backend {
         () => {
             if !backend().enforces() {
@@ -1111,6 +1321,95 @@ mod enforcement_tests {
                 return;
             }
         };
+    }
+
+    /// The shell half of "Edit this folder", asserted against the kernel.
+    ///
+    /// Not that the right flags were generated — that the sandbox actually
+    /// lets the command write the authorized repository and actually stops it
+    /// writing the one beside it.
+    #[tokio::test]
+    async fn an_authorized_repository_is_writable_by_the_shell() {
+        require_backend!();
+        if !supports_write_roots(backend()) {
+            eprintln!(
+                "skipping: {} cannot confine a repository",
+                backend().as_str()
+            );
+            return;
+        }
+        let ws = workspace();
+        let (parent, selected, sibling) = repo_pair();
+        let policy = Policy::new(&ws, false).with_write_roots(vec![selected.clone()]);
+
+        let (ok, out) = run_policy(
+            policy,
+            &ws,
+            &format!("printf edited > {}/inside.txt", selected.display()),
+        )
+        .await;
+
+        assert!(ok, "writing the authorized repository failed: {out}");
+        assert_eq!(
+            std::fs::read_to_string(selected.join("inside.txt")).unwrap_or_default(),
+            "edited"
+        );
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&parent);
+        let _ = sibling;
+    }
+
+    #[tokio::test]
+    async fn a_sibling_repository_stays_unwritable_by_the_shell() {
+        require_backend!();
+        if !supports_write_roots(backend()) {
+            eprintln!(
+                "skipping: {} cannot confine a repository",
+                backend().as_str()
+            );
+            return;
+        }
+        let ws = workspace();
+        let (parent, selected, sibling) = repo_pair();
+        let policy = Policy::new(&ws, false).with_write_roots(vec![selected.clone()]);
+
+        let (_ok, _out) = run_policy(
+            policy,
+            &ws,
+            &format!("printf leaked > {}/outside.txt", sibling.display()),
+        )
+        .await;
+
+        // The command's exit status is the shell's business; what matters is
+        // that nothing landed in the repository nobody authorized.
+        assert!(
+            !sibling.join("outside.txt").exists(),
+            "a sibling repository was written through the shell"
+        );
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    // Authorizing nothing must leave the shell exactly as confined as before.
+    #[tokio::test]
+    async fn with_no_authorized_repository_the_shell_still_cannot_write_one() {
+        require_backend!();
+        let ws = workspace();
+        let (parent, selected, _sibling) = repo_pair();
+
+        let (_ok, _out) = run_policy(
+            Policy::new(&ws, false),
+            &ws,
+            &format!("printf leaked > {}/inside.txt", selected.display()),
+        )
+        .await;
+
+        assert!(!selected.join("inside.txt").exists());
+
+        let _ = std::fs::remove_dir_all(&ws);
+        let _ = std::fs::remove_dir_all(&parent);
     }
 
     #[tokio::test]

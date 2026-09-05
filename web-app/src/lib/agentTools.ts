@@ -133,23 +133,44 @@ const messageOf = (e: unknown): string =>
  * once, so toggling it takes effect on the next command instead of the next
  * restart.
  */
-export async function executeAgentTool(
-  toolName: string,
-  input: unknown,
-  threadId: string,
+/**
+ * How a tool call should be run, by name rather than by position.
+ *
+ * The generated binding underneath is positional and several of its arguments
+ * are optional strings — `WorkspaceScope` among them — so a value handed to the
+ * wrong slot type-checks and is accepted in silence. That is not hypothetical:
+ * the session scope once landed in the write-grant slot and Cowork sessions ran
+ * under the thread sweep for a commit. Callers now name what they mean, and the
+ * one place that still knows the order is the adapter below.
+ */
+export type AgentToolOptions = {
   /**
    * A project folder to attach read-only. Rust validates it and refuses one
    * that overlaps the workspace or the Jan data folder, rather than silently
    * dropping it, so an unusable attachment surfaces as a tool error.
    */
-  readOnlyProject?: string | null,
+  readOnlyProject?: string | null
   /**
    * Which sandbox namespace `threadId` names. Load-bearing: a Cowork session id
    * is not a chat thread id, so running one under `'thread'` would put its files
    * where the thread sweep's keep-list can never mention them — and the sweep
    * would delete the only copy of the agent's work.
    */
-  scope: WorkspaceScope = 'thread'
+  scope?: WorkspaceScope
+  /**
+   * An opaque grant authorizing this run to write to the attached folder.
+   *
+   * Never a path: the backend resolves the id against the session it was issued
+   * to, so nothing a model emits can widen or redirect where a write lands.
+   */
+  writeGrant?: string | null
+}
+
+export async function executeAgentTool(
+  toolName: string,
+  input: unknown,
+  threadId: string,
+  options: AgentToolOptions = {}
 ): Promise<AgentToolResult> {
   try {
     const dataFolder = await getServiceHub().app().getJanDataFolder()
@@ -166,8 +187,11 @@ export async function executeAgentTool(
       undefined,
       undefined,
       useAgentToolsConfig.getState().bashNetworkEnabled,
-      readOnlyProject ?? undefined,
-      scope
+      // The only place argument order is known. Keep these adjacent to the
+      // binding's parameter list so a change there is visible here.
+      options.readOnlyProject ?? undefined,
+      options.writeGrant ?? undefined,
+      options.scope ?? ('thread' as WorkspaceScope)
     )
     if (result.isError) return { error: result.content }
     return { content: result.content, diff: result.diff ?? undefined }

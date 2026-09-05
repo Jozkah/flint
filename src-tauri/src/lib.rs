@@ -83,6 +83,7 @@ macro_rules! invoke_commands_with_extras {
         core::server::commands::start_server,
         core::server::commands::stop_server,
         core::server::commands::get_server_status,
+        core::server::commands::set_server_run_in_background,
         // Agent commands
         core::agent::commands::agent_skill_list,
         core::agent::commands::agent_skill_read,
@@ -97,6 +98,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_plugin_remove,
         core::agent::commands::agent_plugin_search,
         core::agent::commands::agent_git_branch,
+        core::agent::commands::agent_git_status,
+        core::agent::commands::agent_git_file_diff,
         core::agent::commands::agent_subagent_list,
         // Remote provider commands
         core::server::remote_provider_commands::register_provider_config,
@@ -370,9 +373,9 @@ pub fn run() {
             // Migration completed
 
             #[cfg(feature = "desktop")]
-            if option_env!("ENABLE_SYSTEM_TRAY_ICON").unwrap_or("false") == "true" {
+            if setup::tray_always_visible() {
                 log::info!("Enabling system tray icon");
-                let _ = setup::setup_tray(app);
+                let _ = setup::setup_tray(app.handle());
             }
 
             #[cfg(all(feature = "deep-link", any(windows, target_os = "linux")))]
@@ -422,12 +425,16 @@ pub fn run() {
                     return;
                 }
                 // Windows/Linux: hide to tray only while the Local API Server is
-                // running; otherwise fall through to the normal quit-on-close.
+                // running and the user opted into keeping it alive in the
+                // background; otherwise fall through to the normal quit-on-close.
                 // The llamacpp engine is not a reason to keep the app resident
                 // (normal chat usage keeps it alive), so it gets torn down via
                 // the ExitRequested path on quit.
                 #[cfg(not(target_os = "macos"))]
-                if is_proxy_server_running(app) {
+                if is_proxy_server_running(app)
+                    && core::server::commands::SERVER_RUN_IN_BACKGROUND
+                        .load(Ordering::SeqCst)
+                {
                     api.prevent_close();
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.hide();

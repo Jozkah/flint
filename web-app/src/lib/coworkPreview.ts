@@ -132,21 +132,39 @@ export function resolveInRoot(root: string, path: string): string | null {
   const r = trim(root)
   if (!r || !path) return null
   const raw = slash(path)
-  const isAbs = raw.startsWith('/') || /^[a-z]:\//i.test(raw)
+
+  // The prefix a path keeps through normalization. A UNC share (`//server/share`)
+  // and a Windows verbatim path (`//?/C:`) both begin with two slashes that are
+  // part of the name, not empty segments — collapsing them to one made every UNC
+  // project fail containment, so nothing under it could ever be opened.
+  const prefixOf = (p: string): string => (p.startsWith('//') ? '//' : p.startsWith('/') ? '/' : '')
+  const rootPrefix = prefixOf(r)
+
+  const isAbs =
+    raw.startsWith('/') || /^[a-z]:\//i.test(raw) || /^[a-z]:$/i.test(raw)
   const joined = isAbs ? raw : `${r}/${raw.replace(/^\/+/, '')}`
+  const prefix = prefixOf(joined)
 
   const parts: string[] = []
   for (const seg of joined.split('/')) {
     if (!seg || seg === '.') continue
-    if (seg === '..') parts.pop()
-    else parts.push(seg)
+    if (seg === '..') {
+      // Never pop past the prefix: `//server/share/..` must not become a bare
+      // root, and `/..` stays `/`.
+      parts.pop()
+    } else parts.push(seg)
   }
-  const abs = (joined.startsWith('/') ? '/' : '') + parts.join('/')
+  const abs = prefix + parts.join('/')
+
   // Containment compared case-insensitively: Windows and default macOS volumes
   // are case-insensitive, so `/Users/me/Proj` and `/users/me/proj` are the same
   // directory and a case-sensitive check would refuse an in-project file. The
   // returned path keeps its original casing for the actual read.
-  const inRoot = abs.toLowerCase() === r.toLowerCase() ||
+  //
+  // The trailing separator is what keeps `/root` from containing `/root-evil`.
+  if (prefix !== rootPrefix) return null
+  const inRoot =
+    abs.toLowerCase() === r.toLowerCase() ||
     abs.toLowerCase().startsWith(`${r.toLowerCase()}/`)
   return inRoot ? abs : null
 }

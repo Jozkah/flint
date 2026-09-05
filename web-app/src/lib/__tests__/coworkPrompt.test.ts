@@ -169,3 +169,58 @@ describe('project instructions (JAN.md)', () => {
     expect(p).toContain('It is mounted READ-ONLY.')
   })
 })
+
+/**
+ * What the model is told about the attached folder.
+ *
+ * This block used to assert read-only unconditionally, which was true until a
+ * folder could be authorized and then became a lie the model would repeat back
+ * to the user. It now follows the run's effective access.
+ */
+describe('describing the attached folder', () => {
+  const withAccess = (folderAccess?: 'read-only' | 'editable') =>
+    buildCoworkSystemPrompt(
+      opts({ readOnlyFolder: '/home/dev/obs-forwarder', folderAccess })
+    )
+
+  it('says read-only when nothing authorized writing to it', () => {
+    const prompt = withAccess('read-only')
+
+    expect(prompt).toContain('READ-ONLY')
+    expect(prompt).toContain('will be refused')
+  })
+
+  // Every caller that predates direct editing keeps what it had.
+  it('says read-only when the caller says nothing at all', () => {
+    expect(withAccess()).toContain('READ-ONLY')
+  })
+
+  it('says it may be edited once the run is authorized', () => {
+    const prompt = withAccess('editable')
+
+    expect(prompt).not.toContain('READ-ONLY')
+    expect(prompt).toContain('authorized you to edit it')
+    expect(prompt).toContain('working directory')
+  })
+
+  // The sandbox does not stop existing when the folder becomes writable, and
+  // work left there is still not a change to the user's repository.
+  it('keeps the sandbox a separate destination when editing', () => {
+    const prompt = withAccess('editable')
+
+    expect(prompt).toContain('not a change to their repository')
+  })
+
+  it('tells it not to claim changes it did not make', () => {
+    const prompt = withAccess('editable')
+
+    expect(prompt).toContain('already modified when you started')
+    expect(prompt).toContain('Do not commit, stash, reset or discard')
+  })
+
+  it('names the folder either way', () => {
+    for (const access of ['read-only', 'editable'] as const) {
+      expect(withAccess(access)).toContain('/home/dev/obs-forwarder')
+    }
+  })
+})

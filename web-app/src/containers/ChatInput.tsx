@@ -45,6 +45,14 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useTokensCount } from '@/hooks/useTokensCount'
+import { ReasoningEffortSlider } from '@/containers/ReasoningEffortSlider'
+import {
+  EFFORT_SETTING_KEY,
+  effortOf,
+  supportedEffortLevels,
+} from '@/lib/modelEffort'
+import { isOverridden, resolveModel } from '@/lib/modelOverrides'
+import { useModelOverrides } from '@/hooks/useModelOverrides'
 import {
   THINKING_BUDGET_LEVELS,
   DEFAULT_THINKING_BUDGET_LEVEL,
@@ -94,6 +102,14 @@ import {
 } from '@/hooks/useChatAttachments'
 
 import {
+  acceptAttribute,
+  DEFAULT_ATTACHMENT_LIMITS,
+  isTextual,
+  reasonMessageKey,
+  validateAttachment,
+  type RejectionReason,
+} from '@/lib/attachmentSupport'
+import {
   Attachment,
   createImageAttachment,
   createDocumentAttachment,
@@ -112,6 +128,7 @@ import {
   type FilePickerEntry as FileEntry,
 } from '@/lib/path-references'
 import { FilePickerPopover } from '@/components/FilePickerPopover'
+import { readFileAsText } from '@/lib/fileSafety'
 
 type ChatInputProps = {
   className?: string
@@ -198,6 +215,14 @@ const ChatInput = memo(function ChatInput({
   const addToHistory = usePrompt((state) => state.addToHistory)
   const navigateHistory = usePrompt((state) => state.navigateHistory)
   const currentThreadId = useThreads((state) => state.currentThreadId)
+  // Subscribed to the map, not read through getState(), so the control
+  // re-renders when this chat's overrides change.
+  const overridesByThread = useModelOverrides((state) => state.byThread)
+  const chatOverrides = currentThreadId
+    ? overridesByThread[currentThreadId]
+    : undefined
+  const setThreadOverride = useModelOverrides((state) => state.setForThread)
+  const clearThreadOverride = useModelOverrides((state) => state.clearForThread)
   const currentThread = useThreads((state) => state.getCurrentThread())
   const updateCurrentThreadAssistant = useThreads(
     (state) => state.updateCurrentThreadAssistant
@@ -394,6 +419,17 @@ const ChatInput = memo(function ChatInput({
   const ATTACHMENT_AUTO_INLINE_FALLBACK_BYTES = 512 * 1024
 
   const selectedModel = useModelProvider((state) => state.selectedModel)
+
+  /** What the picker offers, which follows the model's actual capabilities. */
+  const attachmentAccept = useMemo(
+    () =>
+      acceptAttribute({
+        vision: Boolean(selectedModel?.capabilities?.includes('vision')),
+        audio: Boolean(selectedModel?.capabilities?.includes('audio')),
+        video: Boolean(selectedModel?.capabilities?.includes('video')),
+      }),
+    [selectedModel?.capabilities]
+  )
   const selectedProvider = useModelProvider((state) => state.selectedProvider)
   const selectModelProvider = useModelProvider(
     (state) => state.selectModelProvider
@@ -1158,35 +1194,63 @@ const ChatInput = memo(function ChatInput({
 
   const processImageFiles = useCallback(async (files: File[]) => {
     const maxSize = 10 * 1024 * 1024 // 10MB in bytes
-    const oversizedFiles: string[] = []
-    const invalidTypeFiles: string[] = []
 
-    const allowedTypes = ['image/jpg', 'image/jpeg', 'image/png']
     const validFiles: File[] = []
+    const textFiles: File[] = []
+    // Each rejection keeps its own reason, so the message can say which of
+    // several possible problems this file actually had.
+    const rejected: { name: string; reason: RejectionReason }[] = []
 
-    // First pass: validate file size and type (no duplicate check yet)
+    const capabilities = {
+      vision: Boolean(selectedModel?.capabilities?.includes('vision')),
+      audio: Boolean(selectedModel?.capabilities?.includes('audio')),
+      video: Boolean(selectedModel?.capabilities?.includes('video')),
+    }
+    const limits = {
+      maxBytes: maxSize,
+      maxCount: DEFAULT_ATTACHMENT_LIMITS.maxCount,
+    }
+
     Array.from(files).forEach((file) => {
-      // Check file size
-      if (file.size > maxSize) {
-        oversizedFiles.push(file.name)
+      const decision = validateAttachment(file, { capabilities, limits })
+      if (!decision.ok) {
+        rejected.push({ name: file.name, reason: decision.reason })
         return
       }
-
-      // Get file type - use extension as fallback if MIME type is incorrect
-      const detectedType = file.type || getFileTypeFromExtension(file.name)
-      const actualType = getFileTypeFromExtension(file.name) || detectedType
-
-      // Check file type - images only
-      if (!allowedTypes.includes(actualType)) {
-        invalidTypeFiles.push(file.name)
-        return
-      }
-
-      validFiles.push(file)
+      // Text and code are read as text and travel through the document
+      // pipeline; raw bytes are never handed to a model.
+      if (isTextual(decision.kind)) textFiles.push(file)
+      else if (decision.kind === 'image') validFiles.push(file)
+      else rejected.push({ name: file.name, reason: 'unsupported' })
     })
 
     // Process valid files into attachments
     const preparedFiles: Attachment[] = []
+
+    // Text and code arrive as text, not bytes. They become inline document
+    // attachments, which is the path the model already understands, and which
+    // is why they need nothing of its media capabilities.
+    for (const file of textFiles) {
+      // Classification is by extension, so the bytes get the deciding vote:
+      // a renamed binary or a credentials file is refused here, not sent.
+      const read = await readFileAsText(file)
+      if (!read.ok) {
+        rejected.push({ name: file.name, reason: read.reason })
+        continue
+      }
+      const text = read.text
+      preparedFiles.push({
+        ...createDocumentAttachment({
+          name: file.name,
+          path: file.name,
+          fileType: file.name.split('.').pop(),
+          size: file.size,
+          parseMode: 'inline',
+        }),
+        inlineContent: text,
+        processed: true,
+      })
+    }
     for (const file of validFiles) {
       const detectedType = file.type || getFileTypeFromExtension(file.name)
       const actualType = getFileTypeFromExtension(file.name) || detectedType
@@ -1329,16 +1393,18 @@ const ChatInput = memo(function ChatInput({
     }
 
     const errors: string[] = []
-    if (oversizedFiles.length > 0) {
-      errors.push(
-        `File${oversizedFiles.length > 1 ? 's' : ''} too large (max 10MB): ${oversizedFiles.join(', ')}`
-      )
+    // One line per reason, naming the files it applies to. The old message
+    // asserted an image-only rule that is no longer true, and never said
+    // which of several problems a given file actually had.
+    const byReason = new Map<RejectionReason, string[]>()
+    for (const item of rejected) {
+      byReason.set(item.reason, [
+        ...(byReason.get(item.reason) ?? []),
+        item.name,
+      ])
     }
-
-    if (invalidTypeFiles.length > 0) {
-      errors.push(
-        `Invalid file type${invalidTypeFiles.length > 1 ? 's' : ''} (only JPEG, JPG, PNG allowed): ${invalidTypeFiles.join(', ')}`
-      )
+    for (const [reason, names] of byReason) {
+      errors.push(`${t(reasonMessageKey(reason))}: ${names.join(', ')}`)
     }
 
     if (errors.length > 0) {
@@ -1350,7 +1416,15 @@ const ChatInput = memo(function ChatInput({
     } else {
       setMessage('')
     }
-  }, [attachmentsKey, currentThreadId, setAttachmentsForThread, serviceHub, setFileIngestProgress])
+  }, [
+    attachmentsKey,
+    currentThreadId,
+    setAttachmentsForThread,
+    serviceHub,
+    setFileIngestProgress,
+    selectedModel?.capabilities,
+    t,
+  ])
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -2223,19 +2297,26 @@ const ChatInput = memo(function ChatInput({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start">
-                    {hasMmproj && (
-                      <DropdownMenuItem onClick={() => void openImagePicker()}>
-                        <IconPhoto size={18} className="text-muted-foreground" />
-                        <span>Add Images</span>
-                        <input
-                          type="file"
-                          ref={fileInputRef}
-                          className="hidden"
-                          multiple
-                          onChange={handleFileChange}
-                        />
-                      </DropdownMenuItem>
-                    )}
+                    {/* Not gated on vision: text and code are attachable to
+                        any model, and hiding the only entry point behind an
+                        image capability left text-only models with no way to
+                        attach anything at all. */}
+                    <DropdownMenuItem onClick={() => void openImagePicker()}>
+                      <IconPhoto size={18} className="text-muted-foreground" />
+                      <span>
+                        {hasMmproj
+                          ? t('common:attachFiles.addFilesOrImages')
+                          : t('common:attachFiles.addFiles')}
+                      </span>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        className="hidden"
+                        multiple
+                        accept={attachmentAccept}
+                        onChange={handleFileChange}
+                      />
+                    </DropdownMenuItem>
                     {audioSupported && (
                       <DropdownMenuItem onClick={() => void openAudioPicker()}>
                         <IconMusic size={18} className="text-muted-foreground" />
@@ -2555,112 +2636,50 @@ const ChatInput = memo(function ChatInput({
                       // chat transport both observe the new value.
                       selectModelProvider(selectedProvider, selectedModel.id)
                     }
-                    const clearModelSetting = (settingKey: string) => {
-                      if (!selectedProvider || !selectedModel) return
-                      const providerObj = getProviderByName(selectedProvider)
-                      if (!providerObj) return
-                      const modelIndex = providerObj.models.findIndex(
-                        (m) => m.id === selectedModel.id
-                      )
-                      if (modelIndex === -1) return
-                      const nextSettings = { ...(selectedModel.settings ?? {}) }
-                      delete nextSettings[settingKey]
-                      const updatedModels = [...providerObj.models]
-                      updatedModels[modelIndex] = {
-                        ...selectedModel,
-                        settings: nextSettings,
-                      } as Model
-                      updateProvider(selectedProvider, { models: updatedModels })
-                      selectModelProvider(selectedProvider, selectedModel.id)
-                    }
 
-                    // OpenAI reasoning models expose a discrete effort (no
-                    // on/off, no token budget). Reuse the thinking_budget_tokens
-                    // level as the effort value; "Default" clears it so the
-                    // model uses its own default effort.
-                    if (selectedProvider === 'openai') {
-                      const rawEffort =
-                        selectedModel?.settings?.thinking_budget_tokens
-                          ?.controller_props?.value
-                      const currentEffort =
-                        isThinkingBudgetLevelKey(rawEffort) &&
-                        rawEffort !== 'unlimited'
-                          ? rawEffort
-                          : undefined
-                      const EFFORTS: ThinkingBudgetLevelKey[] = [
-                        'low',
-                        'medium',
-                        'high',
-                        'xhigh',
-                      ]
-                      const effortLabel = currentEffort
-                        ? THINKING_BUDGET_LEVELS.find(
-                            (l) => l.key === currentEffort
-                          )!.label
-                        : 'Default'
-                      return (
-                        <DropdownMenu>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-xs"
-                                  aria-label={`Reasoning effort: ${effortLabel}`}
-                                >
-                                  <IconBrain
-                                    size={18}
-                                    className={cn(
-                                      'text-muted-foreground',
-                                      currentEffort && 'text-primary'
-                                    )}
-                                  />
-                                </Button>
-                              </DropdownMenuTrigger>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Reasoning effort: {effortLabel}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                          <DropdownMenuContent align="start">
-                            <DropdownMenuItem
-                              onClick={() =>
-                                clearModelSetting('thinking_budget_tokens')
-                              }
-                            >
-                              Default
-                              {!currentEffort && (
-                                <span className="ml-auto text-xs text-muted-foreground">
-                                  ✓
-                                </span>
-                              )}
-                            </DropdownMenuItem>
-                            {EFFORTS.map((key) => (
-                              <DropdownMenuItem
-                                key={key}
-                                onClick={() =>
-                                  updateModelSetting(
-                                    'thinking_budget_tokens',
-                                    'Reasoning Effort',
-                                    'dropdown',
-                                    key
-                                  )
-                                }
-                              >
-                                {
-                                  THINKING_BUDGET_LEVELS.find(
-                                    (l) => l.key === key
-                                  )!.label
-                                }
-                                {currentEffort === key && (
-                                  <span className="ml-auto text-xs text-muted-foreground">
-                                    ✓
-                                  </span>
-                                )}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                    // Providers that honour a discrete reasoning effort get the
+                    // stepped bar. Which levels exist is the provider's answer,
+                    // not a guess: see `supportedEffortLevels`. The value is
+                    // stored per chat, over the global model configuration.
+                    // Which discrete effort levels this provider will act
+                    // on. Empty for providers that size their own thinking, in
+                    // which case the bar is not shown at all — see
+                    // `supportedEffortLevels`.
+                    const effortLevels = supportedEffortLevels(
+                      selectedProvider,
+                      selectedModel
+                    )
+                    // What this chat will actually send: its own override
+                    // where it has one, the global model setting otherwise.
+                    const currentEffort = effortOf(
+                      resolveModel(selectedModel, chatOverrides)
+                    )
+                    const effortOverridden = isOverridden(
+                      chatOverrides,
+                      EFFORT_SETTING_KEY
+                    )
+                    /**
+                     * Store the chosen level.
+                     *
+                     * Per chat once a chat exists. On the new-chat screen there
+                     * is no thread yet, and the control still has to work — so
+                     * it writes the global model setting there, which is what
+                     * the menu it replaced always did.
+                     */
+                    const setEffort = (level: string) => {
+                      if (currentThreadId) {
+                        setThreadOverride(
+                          currentThreadId,
+                          EFFORT_SETTING_KEY,
+                          level
+                        )
+                        return
+                      }
+                      updateModelSetting(
+                        EFFORT_SETTING_KEY,
+                        'Reasoning Effort',
+                        'dropdown',
+                        level
                       )
                     }
                     const setReasoning = (value: 'auto' | 'on' | 'off') =>
@@ -2736,7 +2755,29 @@ const ChatInput = memo(function ChatInput({
                             <p>{tooltipText}</p>
                           </TooltipContent>
                         </Tooltip>
-                        <DropdownMenuContent align="start">
+                        <DropdownMenuContent align="start" className="w-64">
+                          {effortLevels.length > 0 && (
+                            <>
+                              <div className="px-2 py-1.5">
+                                <ReasoningEffortSlider
+                                  levels={effortLevels}
+                                  value={currentEffort}
+                                  overridden={effortOverridden}
+                                  onChange={setEffort}
+                                  onReset={
+                                    currentThreadId && effortOverridden
+                                      ? () =>
+                                          clearThreadOverride(
+                                            currentThreadId,
+                                            EFFORT_SETTING_KEY
+                                          )
+                                      : undefined
+                                  }
+                                />
+                              </div>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
                           <DropdownMenuItem onClick={() => setReasoning('auto')}>
                             Auto
                             {reasoningValue === 'auto' && (

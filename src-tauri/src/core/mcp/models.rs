@@ -3,6 +3,30 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// How a server imported from repository configuration must be confined.
+///
+/// Present only on a server Jan imported from a repository's own
+/// configuration. A server the user configured themselves carries `None` and
+/// keeps the behaviour it has always had — they chose the program, and
+/// confining it would break the ordinary case for no gain in trust.
+///
+/// When it *is* present it is not advisory. A confinement that cannot be
+/// built means the server does not start, because the alternative is running
+/// a program a repository chose with the user's whole filesystem in reach.
+#[derive(Debug, Clone)]
+pub struct McpConfinement {
+    /// The session workspace: readable and writable.
+    pub workspace: std::path::PathBuf,
+    /// The attached repository, readable.
+    pub repository: Option<std::path::PathBuf>,
+    /// Writable, when the session holds a live direct-edit grant for it.
+    pub writable_repository: Option<std::path::PathBuf>,
+    /// Jan's data folder, hidden from the server.
+    pub jan_data: Option<std::path::PathBuf>,
+    /// Environment names the user approved. Nothing else is passed through.
+    pub allowed_env: Vec<String>,
+}
+
 /// Configuration parameters extracted from MCP server config
 #[derive(Debug, Clone)]
 pub struct McpServerConfig {
@@ -13,6 +37,14 @@ pub struct McpServerConfig {
     pub envs: serde_json::Map<String, Value>,
     pub timeout: Option<Duration>,
     pub headers: serde_json::Map<String, Value>,
+    /// Set for an imported server; `None` for one the user configured.
+    pub confinement: Option<McpConfinement>,
+    /// Did this definition come from a repository rather than from the user?
+    ///
+    /// Carried separately from [`Self::confinement`] so the two can disagree,
+    /// which is the whole point: an imported server with no confinement is a
+    /// programming error, and it must fail closed rather than start.
+    pub imported: bool,
 }
 
 /// Parse a raw `mcp_config.json` server entry into typed connection params.
@@ -44,6 +76,44 @@ pub fn extract_command_args(config: &Value) -> Option<McpServerConfig> {
         args,
         envs,
         headers,
+        // Not read from the repository's own file: Jan writes these onto the
+        // config it builds when a session activates an imported server. A
+        // `.mcp.json` never reaches this function verbatim — the importer
+        // emits only command, args, env, type and url — so a repository
+        // cannot describe its own sandbox or declare itself trusted.
+        confinement: parse_confinement(obj),
+        imported: obj
+            .get("janImported")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+    })
+}
+
+/// Read the confinement Jan attached when a session activated this server.
+fn parse_confinement(obj: &serde_json::Map<String, Value>) -> Option<McpConfinement> {
+    let value = obj.get("janConfinement")?.as_object()?;
+    let path = |key: &str| {
+        value
+            .get(key)
+            .and_then(Value::as_str)
+            .map(std::path::PathBuf::from)
+    };
+    Some(McpConfinement {
+        workspace: path("workspace")?,
+        repository: path("repository"),
+        writable_repository: path("writableRepository"),
+        jan_data: path("janData"),
+        allowed_env: value
+            .get("allowedEnv")
+            .and_then(Value::as_array)
+            .map(|names| {
+                names
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default(),
     })
 }
 
@@ -275,5 +345,96 @@ mod tests {
         );
         // Not an object
         assert_eq!(extract_active_status(&serde_json::json!(true)), None);
+    }
+}
+
+/// What to do when a server is asked to start.
+///
+/// Extracted from `start_mcp_server` so the decision is one function the
+/// command and the tests share, rather than a rule embedded in a body that
+/// needs a Tauri app to reach.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RegistrationDecision {
+    /// Nothing is registered under this name. Go ahead.
+    Start,
+    /// The same definition is already running. Doing it again would open a
+    /// second client that sends its own `initialize`, which a streamable-HTTP
+    /// server rejects — tearing down the connection that was working.
+    AlreadyRunning,
+    /// Something else is registered under this name.
+    ///
+    /// Refused rather than skipped. Silently returning "fine" would leave the
+    /// user looking at a definition they edited while the old program keeps
+    /// running, and a tool call would reach whichever won — the shadowing this
+    /// exists to prevent.
+    Conflict { reason: String },
+}
+
+/// The identity of a server definition, for deciding whether two are the same.
+///
+/// Compares what actually determines the program: transport, executable,
+/// argv, endpoint and the environment *names* it is handed. Ordering and
+/// unrelated keys (a description, an `active` flag) do not make it a different
+/// server, so they are excluded.
+pub fn definition_identity(config: &Value) -> String {
+    let obj = config.as_object();
+    let field = |key: &str| {
+        obj.and_then(|one| one.get(key))
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let args: Vec<String> = obj
+        .and_then(|one| one.get("args"))
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut env_names: Vec<String> = obj
+        .and_then(|one| one.get("env"))
+        .and_then(Value::as_object)
+        .map(|env| env.keys().cloned().collect())
+        .unwrap_or_default();
+    env_names.sort();
+
+    serde_json::json!({
+        "type": field("type"),
+        "command": field("command"),
+        "url": field("url"),
+        "args": args,
+        "env": env_names,
+    })
+    .to_string()
+}
+
+/// Decide whether to start, skip, or refuse.
+pub fn registration_decision(
+    running: bool,
+    registered: Option<&Value>,
+    incoming: &Value,
+) -> RegistrationDecision {
+    if !running {
+        return RegistrationDecision::Start;
+    }
+    match registered {
+        // Running, and the definition matches what is registered.
+        Some(existing) if definition_identity(existing) == definition_identity(incoming) => {
+            RegistrationDecision::AlreadyRunning
+        }
+        // Running under this name, but not this program.
+        Some(_) => RegistrationDecision::Conflict {
+            reason: "a different server definition is already running under this name".to_string(),
+        },
+        // Running with nothing recorded about what it is. Treated as a
+        // conflict: an unidentifiable server is not one this definition can
+        // claim to be.
+        None => RegistrationDecision::Conflict {
+            reason: "a server is already running under this name".to_string(),
+        },
     }
 }

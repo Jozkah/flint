@@ -3,6 +3,23 @@
   "description": "How can I help you today?",
   "temporaryChat": "Temporary Chat",
   "temporaryChatDescription": "Start a temporary conversation that won't be saved to your chat history.",
+  "temporaryChatBanner": "Temporary chat — won't be saved",
+  "temporaryChatKeep": "Keep this chat",
+  "temporaryChatLeave": {
+    "title": "Keep this temporary chat?",
+    "description": "This chat isn't saved anywhere. Keep it to move it into your history, or discard it to delete it for good.",
+    "keep": "Keep",
+    "discard": "Discard",
+    "kept": "Chat saved to your history",
+    "keepFailed": "Couldn't save this chat",
+    "discardFailed": "Couldn't discard — generation is still running. Stop it and try again.",
+    "reason": {
+      "generation-not-stopped": "Generation is still running. Stop it and try again.",
+      "messages-not-persisted": "The chat couldn't be fully saved. Nothing was lost — please try again.",
+      "thread-not-created": "The chat couldn't be saved. Nothing was lost — please try again.",
+      "error": "Something went wrong. Your chat is still here — please try again."
+    }
+  },
   "status": {
     "empty": "No Chats Found"
   },

@@ -37,6 +37,7 @@ import { Button } from '@/components/ui/button'
 import { ShieldAlertIcon } from 'lucide-react'
 import { Citations } from '@/components/Citations'
 import { parseCitationsFromToolOutput } from '@/lib/citation-parser'
+import { TONE_CLASSES, toneForTool } from '@/lib/semanticTone'
 
 /** Payloads shorter than this fit the collapsed box, so no expand control. */
 const OUTPUT_EXPAND_THRESHOLD = 600
@@ -182,6 +183,11 @@ export const ToolHeader = memo(
       toolCallId ? s.timings[toolCallId]?.endedAt : undefined
     )
 
+    // Colour says what kind of row this is; the status text below still says
+    // what happened, so nothing here is the only signal.
+    const tone = toneForTool({ name: toolName, state, origin })
+    const toneIcon = TONE_CLASSES[tone].icon
+
     return (
       <CollapsibleTrigger
         className={cn(
@@ -193,11 +199,11 @@ export const ToolHeader = memo(
         {awaitingApproval ? (
           <ShieldAlertIcon className="size-4 shrink-0 text-amber-500" />
         ) : toolName === 'web_search' ? (
-          <SearchIcon className="size-4 shrink-0" />
+          <SearchIcon className={cn('size-4 shrink-0', toneIcon)} />
         ) : toolName === 'web_fetch' ? (
-          <GlobeIcon className="size-4 shrink-0" />
+          <GlobeIcon className={cn('size-4 shrink-0', toneIcon)} />
         ) : (
-          <WrenchIcon className="size-4 shrink-0" />
+          <WrenchIcon className={cn('size-4 shrink-0', toneIcon)} />
         )}
         <span
           className={cn(
@@ -214,7 +220,9 @@ export const ToolHeader = memo(
           )}
         </span>
         {origin && (
-          <span className="shrink-0 text-muted-foreground/60">{origin}</span>
+          <span className={cn('shrink-0', TONE_CLASSES[tone].badge)}>
+            {origin}
+          </span>
         )}
         {summary && (
           <span className="min-w-0 truncate text-left font-mono text-xs text-muted-foreground/60">

@@ -5,13 +5,22 @@ import {
   TASK_TOOL_NAME,
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
+import { type CoworkMode } from '@/lib/coworkMode'
+import {
+  BACKEND_ACCESS_CAPABILITY,
+  decideMutation,
+  type AccessCapability,
+  type AccessMode,
+  type EditConsent,
+} from '@/lib/coworkAccess'
 import type { PendingToolCall, ToolOutcome } from '@/lib/coworkRunner'
 import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
 
 export type DispatchContext = {
   sessionId: string
   readOnlyFolder: string | null
-  planMode: boolean
+  /** What this session is allowed to do. */
+  mode: CoworkMode
   /** Mirrors the advertised set. Refused when off, so a call to a tool that was
    * never advertised cannot reach the network the user switched off. */
   webSearch: boolean
@@ -19,8 +28,90 @@ export type DispatchContext = {
   onTodo: (input: unknown) => Promise<ToolOutcome>
   /** Suspends until the user answers, or the run is aborted. */
   onAsk: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
+  /**
+   * Asks the user to allow one mutating call, in `ask` mode.
+   *
+   * Optional because not every caller can present a prompt — a subagent has no
+   * composer of its own. Absent, a mutation is refused rather than run: the
+   * gate failing open would make the mode a lie.
+   */
+  onApprove?: (
+    toolCallId: string,
+    toolName: string,
+    input: unknown
+  ) => Promise<boolean>
+  /**
+   * Is the folder this run was bound to still the session's folder?
+   *
+   * A run captures its root once, at the start. If the user detaches that
+   * folder or picks a different one while the run is in flight, every later
+   * tool call would still read the old root — the run would go on reading a
+   * repository the user has already taken away. Asked per call, immediately
+   * before the filesystem is touched, so the answer cannot be stale.
+   */
+  bindingIntact?: () => boolean
+  /**
+   * Skills the user asked for that are not in play.
+   *
+   * Reading is still fine — that is what Review first is for — but changing
+   * files while ignoring the instructions those changes were meant to follow
+   * is not. Empty when everything resolved, which is the ordinary case.
+   */
+  unresolvedSkills?: readonly { requested: string; state: string }[]
+  /** Where this session may write. Absent is Review only. */
+  access?: AccessMode
+  /** The user's confirmation to edit the attached folder, when given. */
+  editConsent?: EditConsent
+  /** What the backend can enforce. Absent is what it enforces today. */
+  accessCapability?: AccessCapability
+  /** A managed worktree's path, once one exists. */
+  worktreePath?: string | null
+  /**
+   * The run's opaque write grant, frozen at dispatch.
+   *
+   * Passed straight through to the backend, which resolves it against this
+   * session. It is authority-bearing: it must not reach a prompt, a message,
+   * an activity row, or anything a user or model can read.
+   */
+  writeGrant?: string | null
   /** Runs a nested subagent to completion. */
   onTask: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
+  /**
+   * Instructions that govern one path's subtree and have not been delivered.
+   *
+   * A nested `CLAUDE.md` applies under its own directory. There is one system
+   * prompt per run, so a subtree's rules cannot be in it from the start
+   * without also applying everywhere else — which is the opposite of what the
+   * file says. Instead they are handed over the first time work reaches that
+   * subtree, before anything there is changed.
+   *
+   * Returns the chain still owed for `path`, and records it as delivered.
+   * Absent when there are no nested files, which is the ordinary case.
+   */
+  scopedInstructions?: (
+    path: string
+  ) => { scope: string; name: string; content: string }[]
+  /**
+   * Registers a shell that is running right now, and returns its release.
+   *
+   * A run releases its own hold when its stream ends, and cancelling a run
+   * ends that stream immediately — but the shell it already handed to the
+   * backend keeps running, and keeps writing, under the authority it started
+   * with. Held separately for exactly that window, so the folder cannot be
+   * swapped out from under a process that is still going.
+   *
+   * Optional: a caller with no active-work model simply tracks nothing.
+   */
+  trackShell?: () => () => void
+  /**
+   * Registers a subagent that is running right now, and returns its release.
+   *
+   * Held for the whole `task` call — queued, running, and winding down — so a
+   * child writing under the authority it inherited keeps that authority in
+   * place. A subagent cannot widen it: the hold carries the parent's frozen
+   * authority, and there is nothing here that could raise it.
+   */
+  trackSubagent?: () => () => void
 }
 
 /**
@@ -34,9 +125,100 @@ export type DispatchContext = {
 function planRefusal(toolName: string): ToolOutcome {
   return {
     output:
-      `The \`${toolName}\` tool is disabled in plan mode, which is read-only. ` +
-      'Finish investigating, stage the plan with the `todo` tool, then call ' +
-      '`ask` for plan review.',
+      `The \`${toolName}\` tool is disabled in review mode, which is ` +
+      'read-only. Finish investigating, stage the plan with the `todo` tool, ' +
+      'then call `ask` for review.',
+    isError: true,
+  }
+}
+
+/** The folder the run was bound to is no longer the session's folder. */
+function detachedRefusal(toolName: string): ToolOutcome {
+  return {
+    output:
+      `The folder this session was working in is no longer attached, so ` +
+      `\`${toolName}\` was not run. Stop, say what was done so far, and ` +
+      'wait for the user to choose a folder again.',
+    isError: true,
+  }
+}
+
+/** A skill the user asked for is not in play, so nothing may change. */
+function skillRefusal(
+  toolName: string,
+  unresolved: readonly { requested: string; state: string }[]
+): ToolOutcome {
+  const named = unresolved
+    .map((skill) => `${skill.requested} (${skill.state})`)
+    .join(', ')
+  return {
+    output:
+      `\`${toolName}\` was not run: you were asked to use ${named}, and ` +
+      'that is not in effect. Do not work around it. Say which skill is ' +
+      'unavailable and what the user can do about it, then stop.',
+    isError: true,
+  }
+}
+
+/**
+ * The path a tool call is about to act on, where it names one.
+ *
+ * Deliberately only the declared argument. Guessing at paths inside a shell
+ * command would be a parser pretending to know what a command will touch; the
+ * sandbox is what actually bounds that, and a shell's scope comes from its
+ * working directory instead.
+ */
+function pathFromInput(input: unknown): string | null {
+  if (!input || typeof input !== 'object') return null
+  const record = input as Record<string, unknown>
+  for (const key of ['path', 'file_path', 'file', 'target', 'cwd']) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value
+  }
+  return null
+}
+
+/**
+ * Hand over a subtree's instructions and ask for the call again.
+ *
+ * A refusal rather than a warning attached to a completed write: the whole
+ * point of a scoped instruction file is that it governs the change, so the
+ * change has to happen after it has been read. The retry is explicit so the
+ * model does not treat this as a failure to work around.
+ */
+function scopedInstructionsOwed(
+  toolName: string,
+  path: string,
+  owed: { scope: string; name: string; content: string }[]
+): ToolOutcome {
+  const blocks = owed
+    .map((one) =>
+      [
+        `<project_instructions path="${one.scope}/${one.name}" applies_to="${one.scope}/">`,
+        one.content.trim(),
+        '</project_instructions>',
+      ].join('\n')
+    )
+    .join('\n\n')
+
+  return {
+    output:
+      `\`${toolName}\` was not run yet: \`${path}\` is under a directory with ` +
+      'its own instructions, which you had not been given. They are below, ' +
+      'they apply to everything under that directory, and they rank below ' +
+      '`JAN.md` and this system prompt where they disagree. Read them, then ' +
+      'make the same call again.\n\n' +
+      blocks,
+    isError: true,
+  }
+}
+
+/** The user was asked to allow this call and said no. */
+function deniedByUser(toolName: string): ToolOutcome {
+  return {
+    output:
+      `The user did not allow \`${toolName}\`. Do not retry it. Say what you ` +
+      'would have changed, and wait for instructions.',
     isError: true,
   }
 }
@@ -51,8 +233,72 @@ export async function dispatchCoworkTool(
 ): Promise<ToolOutcome> {
   const { toolName } = call
 
-  if (ctx.planMode && PLAN_DENIED_TOOLS.has(toolName)) {
-    return planRefusal(toolName)
+  // Every mutating call goes through the one policy, so the run mode and the
+  // access mode cannot be answered differently in different places.
+  if (PLAN_DENIED_TOOLS.has(toolName)) {
+    const unresolved = ctx.unresolvedSkills ?? []
+    const decision = decideMutation({
+      runMode: ctx.mode,
+      access: ctx.access ?? 'review-only',
+      binding: { sessionId: ctx.sessionId, folder: ctx.readOnlyFolder },
+      consent: ctx.editConsent,
+      bindingIntact: ctx.bindingIntact ? ctx.bindingIntact() : true,
+      unresolvedSkillCount: unresolved.length,
+      capability: ctx.accessCapability ?? BACKEND_ACCESS_CAPABILITY,
+      worktreePath: ctx.worktreePath,
+    })
+
+    if (!decision.allowed) {
+      switch (decision.reason) {
+        case 'review-mode':
+          return planRefusal(toolName)
+        case 'stale-binding':
+          return detachedRefusal(toolName)
+        case 'unresolved-skill':
+          return skillRefusal(toolName, unresolved)
+        case 'no-consent':
+          return {
+            output:
+              `\`${toolName}\` was not run: editing this folder has not been ` +
+              'confirmed for this session. Ask the user to confirm it, or ' +
+              'work in the session workspace instead.',
+            isError: true,
+          }
+        case 'unsupported-access':
+          return {
+            output:
+              `\`${toolName}\` was not run: the selected access mode is not ` +
+              'available in this build, so nothing outside the session ' +
+              'workspace can be changed. Say so rather than working around it.',
+            isError: true,
+          }
+      }
+    }
+
+    if (decision.needsApproval) {
+      // No handler means nothing can present the request. Refusing is the
+      // only honest outcome: running it would make "Ask before changes" false.
+      if (!ctx.onApprove) return deniedByUser(toolName)
+    // A throw here — an aborted run, a closed prompt — is a refusal, not a
+    // reason to reject: this function always resolves.
+      let allowed = false
+      try {
+        allowed = await ctx.onApprove(call.toolCallId, toolName, call.input)
+      } catch {
+        allowed = false
+      }
+      if (!allowed) return deniedByUser(toolName)
+    }
+  }
+
+  // Before the change, not after it: a mutation that lands and *then* reports
+  // the rules it should have followed has already not followed them.
+  if (PLAN_DENIED_TOOLS.has(toolName) && ctx.scopedInstructions) {
+    const target = pathFromInput(call.input)
+    if (target) {
+      const owed = ctx.scopedInstructions(target)
+      if (owed.length > 0) return scopedInstructionsOwed(toolName, target, owed)
+    }
   }
 
   try {
@@ -61,7 +307,12 @@ export async function dispatchCoworkTool(
       return await ctx.onAsk(call.toolCallId, call.input)
     }
     if (toolName === TASK_TOOL_NAME) {
-      return await ctx.onTask(call.toolCallId, call.input)
+      const childDone = ctx.trackSubagent?.()
+      try {
+        return await ctx.onTask(call.toolCallId, call.input)
+      } finally {
+        childDone?.()
+      }
     }
 
     if (WEB_TOOL_NAMES.has(toolName)) {
@@ -83,16 +334,34 @@ export async function dispatchCoworkTool(
       }
     }
 
-    // `'session'`, not the default `'thread'`: a Cowork session id lives in its
-    // own namespace, and the thread sweep would otherwise delete this sandbox
-    // because no chat thread claims it.
-    const result = await executeAgentTool(
-      toolName,
-      call.input,
-      ctx.sessionId,
-      ctx.readOnlyFolder,
-      'session'
-    )
+    // Checked here rather than at run start: this is the last moment before a
+    // path is resolved, and the binding can change at any point before it.
+    if (ctx.bindingIntact && !ctx.bindingIntact()) {
+      return {
+        output:
+          `The folder this session was working in is no longer attached, so ` +
+          `\`${toolName}\` was not run. Stop, say what was done so far, and ` +
+          'wait for the user to choose a folder again.',
+        isError: true,
+      }
+    }
+
+    // Held for the length of the call, and released on every way out of it —
+    // output, refusal or throw.
+    const shellDone = toolName === 'bash' ? ctx.trackShell?.() : undefined
+    let result
+    try {
+      // `'session'`, not the default `'thread'`: a Cowork session id lives in
+      // its own namespace, and the thread sweep would otherwise delete this
+      // sandbox because no chat thread claims it.
+      result = await executeAgentTool(toolName, call.input, ctx.sessionId, {
+        readOnlyProject: ctx.readOnlyFolder,
+        scope: 'session',
+        writeGrant: ctx.writeGrant,
+      })
+    } finally {
+      shellDone?.()
+    }
     if (result.error) return { output: result.error, isError: true }
     return {
       output:

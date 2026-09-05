@@ -6,26 +6,20 @@ import HeaderPage from '@/containers/HeaderPage'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Card, CardItem } from '@/containers/Card'
-import { SettingTarget } from '@/components/SettingTarget'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
-import { useAppUpdater } from '@/hooks/useAppUpdater'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import ChangeDataFolderLocation from '@/containers/dialogs/ChangeDataFolderLocation'
 import { FactoryResetDialog } from '@/containers/dialogs'
 import type { FactoryResetOptions } from '@/services/app/types'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import {
-  IconBrandDiscord,
-  IconBrandGithub,
-  IconExternalLink,
   IconFolder,
   IconLogs,
   IconCopy,
   IconCopyCheck,
 } from '@tabler/icons-react'
 import { toast } from 'sonner'
-import { isDev } from '@/lib/utils'
 import { SystemEvent } from '@/types/events'
 import { Input } from '@/components/ui/input'
 import { useHardware } from '@/hooks/useHardware'
@@ -43,8 +37,6 @@ function General() {
   const {
     spellCheckChatInput,
     setSpellCheckChatInput,
-    autoUpdateCheck,
-    setAutoUpdateCheck,
     huggingfaceToken,
     setHuggingfaceToken,
   } = useGeneralSetting()
@@ -59,13 +51,11 @@ function General() {
       return t('settings:general.openContainingFolder')
     }
   }
-  const { checkForUpdate } = useAppUpdater()
   const { pausePolling } = useHardware()
   const [janDataFolder, setJanDataFolder] = useState<string | undefined>()
   const [isCopied, setIsCopied] = useState(false)
   const [selectedNewPath, setSelectedNewPath] = useState<string | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false)
   const [isValidatingToken, setIsValidatingToken] = useState(false)
   const [cliInstalled, setCliInstalled] = useState<boolean | null>(null)
   const [cliPath, setCliPath] = useState<string | null>(null)
@@ -192,23 +182,6 @@ function General() {
     }
   }
 
-  const handleCheckForUpdate = useCallback(async () => {
-    setIsCheckingUpdate(true)
-    try {
-      if (isDev()) return toast.info(t('settings:general.devVersion'))
-      const update = await checkForUpdate(true)
-      if (!update) {
-        toast.info(t('settings:general.noUpdateAvailable'))
-      }
-      // If update is available, the AppUpdater dialog will automatically show
-    } catch (error) {
-      console.error('Failed to check for updates:', error)
-      toast.error(t('settings:general.updateError'))
-    } finally {
-      setIsCheckingUpdate(false)
-    }
-  }, [t, checkForUpdate])
-
   return (
     <div className="flex flex-col h-svh w-full">
       <HeaderPage>
@@ -233,134 +206,102 @@ function General() {
               />
               {!AUTO_UPDATER_DISABLED && (
                 <>
-                  <SettingTarget anchor="settings-general-auto-update">
-                    <CardItem
-                      title={t('settings:general.autoUpdateCheck')}
-                      description={t('settings:general.autoUpdateCheckDesc')}
-                      className="items-center flex-row gap-y-2"
-                      actions={
-                        <Switch
-                          checked={autoUpdateCheck}
-                          onCheckedChange={(e) => setAutoUpdateCheck(e)}
-                        />
-                      }
-                    />
-                  </SettingTarget>
-                  <CardItem
-                    title={t('settings:general.checkForUpdates')}
-                    description={t('settings:general.checkForUpdatesDesc')}
-                    className="items-center flex-row gap-y-2"
-                    actions={
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={handleCheckForUpdate}
-                        disabled={isCheckingUpdate}
-                      >
-                        {isCheckingUpdate
-                          ? t('settings:general.checkingForUpdates')
-                          : t('settings:general.checkForUpdates')}
-                      </Button>
-                    }
-                  />
                 </>
               )}
-              <SettingTarget anchor="settings-general-language">
-                <CardItem
-                  title={t('common:language')}
-                  actions={<LanguageSwitcher />}
-                />
-              </SettingTarget>
+              <CardItem
+                anchor="settings-general-language"
+                title={t('common:language')}
+                actions={<LanguageSwitcher />}
+              />
             </Card>
 
             {/* Data folder - Desktop only */}
             <Card title={t('common:dataFolder')}>
-              <SettingTarget anchor="settings-general-data-folder">
-                <CardItem
-                  title={t('settings:dataFolder.appData', {
-                    ns: 'settings',
-                  })}
-                  align="start"
-                  className="items-start flex-row gap-2"
-                  description={
-                    <>
-                      <span>
-                        {t('settings:dataFolder.appDataDesc', {
-                          ns: 'settings',
-                        })}
-                        &nbsp;
-                      </span>
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="max-w-100 bg-secondary rounded-sm px-1 py-0.5">
-                          <span
-                            title={janDataFolder}
-                            className="text-xs line-clamp-1 break-all"
-                          >
-                            {janDataFolder}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() =>
-                            janDataFolder && copyToClipboard(janDataFolder)
-                          }
-                          className="cursor-pointer flex items-center justify-center rounded-sm bg-secondary transition-all duration-200 ease-in-out p-1"
-                          title={
-                            isCopied
-                              ? t('settings:general.copied')
-                              : t('settings:general.copyPath')
-                          }
+              <CardItem
+                anchor="settings-general-data-folder"
+                title={t('settings:dataFolder.appData', {
+                  ns: 'settings',
+                })}
+                align="start"
+                className="items-start flex-row gap-2"
+                description={
+                  <>
+                    <span>
+                      {t('settings:dataFolder.appDataDesc', {
+                        ns: 'settings',
+                      })}
+                      &nbsp;
+                    </span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="max-w-100 bg-secondary rounded-sm px-1 py-0.5">
+                        <span
+                          title={janDataFolder}
+                          className="text-xs line-clamp-1 break-all"
                         >
-                          {isCopied ? (
-                            <div className="flex items-center gap-1">
-                              <IconCopyCheck size={14} className="text-green-500 dark:text-green-600" />
-                              <span className="text-xs leading-0">
-                                {t('settings:general.copied')}
-                              </span>
-                            </div>
-                          ) : (
-                            <IconCopy
-                              size={14}
-                              className="text-muted-foreground"
-                            />
-                          )}
-                        </button>
+                          {janDataFolder}
+                        </span>
                       </div>
-                    </>
-                  }
-                  actions={
-                    <>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        title={t('settings:dataFolder.appData')}
-                        onClick={handleDataFolderChange}
+                      <button
+                        onClick={() =>
+                          janDataFolder && copyToClipboard(janDataFolder)
+                        }
+                        className="cursor-pointer flex items-center justify-center rounded-sm bg-secondary transition-all duration-200 ease-in-out p-1"
+                        title={
+                          isCopied
+                            ? t('settings:general.copied')
+                            : t('settings:general.copyPath')
+                        }
                       >
-                          <IconFolder
-                            size={12}
+                        {isCopied ? (
+                          <div className="flex items-center gap-1">
+                            <IconCopyCheck size={14} className="text-green-500 dark:text-green-600" />
+                            <span className="text-xs leading-0">
+                              {t('settings:general.copied')}
+                            </span>
+                          </div>
+                        ) : (
+                          <IconCopy
+                            size={14}
                             className="text-muted-foreground"
                           />
-                          <span>{t('settings:general.changeLocation')}</span>
-                      </Button>
-                      {selectedNewPath && (
-                        <ChangeDataFolderLocation
-                          currentPath={janDataFolder || ''}
-                          newPath={selectedNewPath}
-                          onConfirm={confirmDataFolderChange}
-                          open={isDialogOpen}
-                          onOpenChange={(open) => {
-                            setIsDialogOpen(open)
-                            if (!open) {
-                              setSelectedNewPath(null)
-                            }
-                          }}
-                        >
-                          <div />
-                        </ChangeDataFolderLocation>
-                      )}
-                    </>
-                  }
-                />
-              </SettingTarget>
+                        )}
+                      </button>
+                    </div>
+                  </>
+                }
+                actions={
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      title={t('settings:dataFolder.appData')}
+                      onClick={handleDataFolderChange}
+                    >
+                        <IconFolder
+                          size={12}
+                          className="text-muted-foreground"
+                        />
+                        <span>{t('settings:general.changeLocation')}</span>
+                    </Button>
+                    {selectedNewPath && (
+                      <ChangeDataFolderLocation
+                        currentPath={janDataFolder || ''}
+                        newPath={selectedNewPath}
+                        onConfirm={confirmDataFolderChange}
+                        open={isDialogOpen}
+                        onOpenChange={(open) => {
+                          setIsDialogOpen(open)
+                          if (!open) {
+                            setSelectedNewPath(null)
+                          }
+                        }}
+                      >
+                        <div />
+                      </ChangeDataFolderLocation>
+                    )}
+                  </>
+                }
+              />
               <CardItem
                 title={t('settings:dataFolder.appLogs', {
                   ns: 'settings',
@@ -444,43 +385,41 @@ function General() {
                   }
                 />
               )}
-              <SettingTarget anchor="settings-general-factory-reset">
-                <CardItem
-                  title={t('settings:others.resetFactory', {
-                    ns: 'settings',
-                  })}
-                  description={t('settings:others.resetFactoryDesc', {
-                    ns: 'settings',
-                  })}
-                  actions={
-                    <FactoryResetDialog onReset={resetApp}>
-                      <Button variant="destructive" size="sm">
-                        {t('common:reset')}
-                      </Button>
-                    </FactoryResetDialog>
-                  }
-                />
-              </SettingTarget>
+              <CardItem
+                anchor="settings-general-factory-reset"
+                title={t('settings:others.resetFactory', {
+                  ns: 'settings',
+                })}
+                description={t('settings:others.resetFactoryDesc', {
+                  ns: 'settings',
+                })}
+                actions={
+                  <FactoryResetDialog onReset={resetApp}>
+                    <Button variant="destructive" size="sm">
+                      {t('common:reset')}
+                    </Button>
+                  </FactoryResetDialog>
+                }
+              />
             </Card>
 
             {/* Other */}
             <Card title={t('common:others')}>
-              <SettingTarget anchor="settings-general-spell-check">
-                <CardItem
-                  title={t('settings:others.spellCheck', {
-                    ns: 'settings',
-                  })}
-                  description={t('settings:others.spellCheckDesc', {
-                    ns: 'settings',
-                  })}
-                  actions={
-                    <Switch
-                      checked={spellCheckChatInput}
-                      onCheckedChange={(e) => setSpellCheckChatInput(e)}
-                    />
-                  }
-                />
-              </SettingTarget>
+              <CardItem
+                anchor="settings-general-spell-check"
+                title={t('settings:others.spellCheck', {
+                  ns: 'settings',
+                })}
+                description={t('settings:others.spellCheckDesc', {
+                  ns: 'settings',
+                })}
+                actions={
+                  <Switch
+                    checked={spellCheckChatInput}
+                    onCheckedChange={(e) => setSpellCheckChatInput(e)}
+                  />
+                }
+              />
               <CardItem
                 title={t('settings:general.huggingfaceToken', {
                   ns: 'settings',
@@ -562,96 +501,6 @@ function General() {
               />
             </Card>
 
-            {/* Resources */}
-            <Card title={t('settings:general.resources')}>
-              <CardItem
-                title={t('settings:general.documentation')}
-                description={t('settings:general.documentationDesc')}
-                actions={
-                  <a
-                    href="https://jan.ai/docs"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>{t('settings:general.viewDocs')}</span>
-                      <IconExternalLink size={14} />
-                    </div>
-                  </a>
-                }
-              />
-              <CardItem
-                title={t('settings:general.releaseNotes')}
-                description={t('settings:general.releaseNotesDesc')}
-                actions={
-                  <a
-                    href="https://github.com/janhq/jan/releases"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>{t('settings:general.viewReleases')}</span>
-                      <IconExternalLink size={14} />
-                    </div>
-                  </a>
-                }
-              />
-            </Card>
-
-            {/* Community */}
-            <Card title={t('settings:general.community')}>
-              <CardItem
-                title={t('settings:general.github')}
-                description={t('settings:general.githubDesc')}
-                actions={
-                  <a
-                    href="https://github.com/janhq/jan"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                      <IconBrandGithub
-                        size={18}
-                        className="text-muted-foreground"
-                      />
-                  </a>
-                }
-              />
-              <CardItem
-                title={t('settings:general.discord')}
-                description={t('settings:general.discordDesc')}
-                actions={
-                  <a
-                    href="https://discord.com/invite/FTk2MvZwJH"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <IconBrandDiscord
-                      size={18}
-                      className="text-muted-foreground"
-                    />
-                  </a>
-                }
-              />
-            </Card>
-
-            {/* Support */}
-            <Card title={t('settings:general.support')}>
-              <CardItem
-                title={t('settings:general.reportAnIssue')}
-                description={t('settings:general.reportAnIssueDesc')}
-                actions={
-                  <a
-                    href="https://github.com/janhq/jan/issues/new"
-                    target="_blank"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>{t('settings:general.reportIssue')}</span>
-                      <IconExternalLink size={14} />
-                    </div>
-                  </a>
-                }
-              />
-            </Card>
 
             {/* Credits */}
             <Card title={t('settings:general.credits')}>

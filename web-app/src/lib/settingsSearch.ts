@@ -18,6 +18,16 @@ export type SettingsSearchItem = {
   descriptionKey?: string
   keywords?: string[]
   anchor?: string
+  /**
+   * Required when `anchor` is absent: why this setting cannot carry one.
+   *
+   * A setting inside a popover or a conditional branch is not in the document
+   * when a search result arrives, so an anchor would promise a scroll and a
+   * highlight that never happen. Such an entry stays findable and navigable —
+   * it opens the right page — and says so here. The structural coverage test
+   * holds every other entry to having an anchor.
+   */
+  anchorNote?: string
   providerName?: string
 }
 
@@ -29,6 +39,19 @@ export type SettingsPage = {
   titleKey: string
   group: 'core' | 'integrations'
   keywords?: readonly string[]
+  /**
+   * How this page is searchable.
+   *
+   * `'items'` — the default — means the page must contribute at least one
+   * entry to {@link SETTINGS_ITEMS}, each with its own stable anchor. A page
+   * that renders only a list built at runtime cannot, and declares
+   * `'page-only'` with a `coverageNote` saying why: the structural coverage
+   * test holds every other page to the stronger rule, so a page added without
+   * search coverage fails rather than being quietly unreachable.
+   */
+  coverage?: 'items' | 'page-only'
+  /** Required with `coverage: 'page-only'`: why this page has no entries. */
+  coverageNote?: string
 }
 
 /**
@@ -109,13 +132,6 @@ export const SETTINGS_PAGES = [
     keywords: ['gpu', 'cpu', 'ram', 'vram'],
   },
   {
-    id: 'privacy',
-    route: route.settings.privacy,
-    titleKey: 'common:privacy',
-    group: 'core',
-    keywords: ['analytics', 'telemetry', 'data'],
-  },
-  {
     id: 'mcp-servers',
     route: route.settings.mcp_servers,
     titleKey: 'common:mcp-servers',
@@ -131,6 +147,10 @@ export const SETTINGS_PAGES = [
   },
   {
     id: 'extensions',
+    coverage: 'page-only',
+    coverageNote:
+      'The page lists the extensions actually installed, which is runtime ' +
+      'state; there is no static setting to anchor. Reached by page title.',
     route: route.settings.extensions,
     titleKey: 'common:extensions',
     group: 'integrations',
@@ -188,10 +208,6 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:dataFolder.appDataDesc',
     keywords: ['storage', 'location', 'move data', 'disk'],
   }),
-  item('general', 'auto-update', 'settings:general.autoUpdateCheck', {
-    descriptionKey: 'settings:general.autoUpdateCheckDesc',
-    keywords: ['updates', 'version', 'upgrade'],
-  }),
   item('general', 'spell-check', 'settings:others.spellCheck', {
     descriptionKey: 'settings:others.spellCheckDesc',
     keywords: ['spelling', 'typo'],
@@ -235,11 +251,6 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:interface.autoGenerateTitleDesc',
     keywords: ['thread title', 'naming'],
   }),
-  // Privacy
-  item('privacy', 'analytics', 'settings:privacy.helpUsImprove', {
-    descriptionKey: 'settings:privacy.helpUsImproveDesc',
-    keywords: ['analytics', 'telemetry', 'tracking', 'usage data'],
-  }),
   // HTTPS proxy
   item('https-proxy', 'proxy-url', 'settings:httpsProxy.proxyUrl', {
     descriptionKey: 'settings:httpsProxy.proxyUrlDesc',
@@ -260,13 +271,16 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   }),
   // Two names for one conditional slot: both stay separately searchable, and
   // both land on the group. See WEB_SEARCH_PROVIDER_CONFIG_ANCHOR.
-  item('web-search', 'api-key', 'settings:webSearch.apiKey', {
+  // Search-only labels: the page's own strings interpolate the chosen
+  // provider's name, and the index resolves keys with no options, so those
+  // would render a literal "{{provider}}" in the results.
+  item('web-search', 'api-key', 'settings:webSearch.apiKeySearch', {
     anchor: WEB_SEARCH_PROVIDER_CONFIG_ANCHOR,
     keywords: ['api key', 'credentials', 'search provider'],
   }),
-  item('web-search', 'endpoint', 'settings:webSearch.endpoint', {
+  item('web-search', 'endpoint', 'settings:webSearch.endpointSearch', {
     anchor: WEB_SEARCH_PROVIDER_CONFIG_ANCHOR,
-    descriptionKey: 'settings:webSearch.endpointDesc',
+    descriptionKey: 'settings:webSearch.endpointSearchDesc',
     keywords: ['url', 'searxng'],
   }),
   // Agent tools
@@ -287,11 +301,17 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   // deliver. Give them an anchor again if the controls move into the page.
   item('local-api-server', 'host', 'settings:localApiServer.serverHost', {
     anchor: undefined,
+    anchorNote:
+      'Rendered inside the Configuration popover, which is unmounted until it ' +
+      'is opened, so there is nothing to scroll to on arrival.',
     descriptionKey: 'settings:localApiServer.serverHostDesc',
     keywords: ['host', 'address', 'bind'],
   }),
   item('local-api-server', 'port', 'settings:localApiServer.serverPort', {
     anchor: undefined,
+    anchorNote:
+      'Rendered inside the Configuration popover, which is unmounted until it ' +
+      'is opened, so there is nothing to scroll to on arrival.',
     descriptionKey: 'settings:localApiServer.serverPortDesc',
     keywords: ['port', 'listen'],
   }),
@@ -325,6 +345,103 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   // `settings:hardware.enableVulkan` was listed here, but the Vulkan toggle
   // it named has no UI anywhere — only a persisted store nothing reads. A
   // result for a control that does not exist is worse than no result.
+
+  // Assistants
+  item('assistants', 'default', 'assistants:defaultAssistantSection', {
+    keywords: ['persona', 'instructions', 'system prompt'],
+  }),
+
+  // Shortcuts
+  item('shortcuts', 'new-chat', 'settings:shortcuts.newChat', {
+    keywords: ['keybinding', 'hotkey', 'start chat'],
+  }),
+  item('shortcuts', 'new-project', 'settings:shortcuts.newProject', {
+    keywords: ['keybinding', 'hotkey'],
+  }),
+  item('shortcuts', 'toggle-sidebar', 'settings:shortcuts.toggleSidebar', {
+    keywords: ['keybinding', 'hotkey', 'hide panel', 'show panel'],
+  }),
+  item('shortcuts', 'zoom-in', 'settings:shortcuts.zoomIn', {
+    keywords: ['keybinding', 'hotkey', 'bigger', 'enlarge'],
+  }),
+  item('shortcuts', 'zoom-out', 'settings:shortcuts.zoomOut', {
+    keywords: ['keybinding', 'hotkey', 'smaller'],
+  }),
+  item('shortcuts', 'send-message', 'settings:shortcuts.sendMessage', {
+    keywords: ['keybinding', 'hotkey', 'enter', 'submit'],
+  }),
+  item('shortcuts', 'new-line', 'settings:shortcuts.newLine', {
+    keywords: ['keybinding', 'hotkey', 'shift enter'],
+  }),
+  item(
+    'shortcuts',
+    'switch-assistant',
+    'settings:shortcuts.switchAssistant',
+    { keywords: ['keybinding', 'hotkey', 'change assistant'] }
+  ),
+  item('shortcuts', 'search', 'settings:shortcuts.search', {
+    keywords: ['keybinding', 'hotkey', 'find'],
+  }),
+  item('shortcuts', 'go-to-settings', 'settings:shortcuts.goToSettings', {
+    keywords: ['keybinding', 'hotkey', 'preferences'],
+  }),
+
+  // Hardware — read-only sections, but the headings are what a user looks for.
+  item('hardware', 'os', 'settings:hardware.os', {
+    keywords: ['operating system', 'platform', 'version'],
+  }),
+  item('hardware', 'cpu', 'settings:hardware.cpu', {
+    keywords: ['processor', 'cores', 'architecture'],
+  }),
+  item('hardware', 'memory', 'settings:hardware.memory', {
+    keywords: ['ram', 'gb', 'available memory'],
+  }),
+
+  // MCP servers
+  item('mcp-servers', 'allow-permissions', 'mcp-servers:allowPermissions', {
+    keywords: ['approve', 'tool permission', 'trust'],
+  }),
+  item(
+    'mcp-servers',
+    'tool-call-timeout',
+    'mcp-servers:runtimeSettings.toolCallTimeout',
+    { keywords: ['timeout', 'seconds', 'slow tool'] }
+  ),
+  item(
+    'mcp-servers',
+    'max-tool-output',
+    'mcp-servers:runtimeSettings.maxToolOutputChars',
+    { keywords: ['truncate', 'characters', 'output limit'] }
+  ),
+  item(
+    'mcp-servers',
+    'smart-tool-routing',
+    'mcp-servers:runtimeSettings.smartToolRouting',
+    { keywords: ['routing', 'tool selection'] }
+  ),
+  item(
+    'mcp-servers',
+    'lightweight-router',
+    'mcp-servers:runtimeSettings.useLightweightRouterModel',
+    { keywords: ['router model', 'small model', 'routing'] }
+  ),
+  item('mcp-servers', 'router-model', 'mcp-servers:runtimeSettings.routerModel', {
+    keywords: ['router', 'model selection'],
+  }),
+
+  // Claude Code
+  item('claude-code', 'large-model', 'settings:claudeCode.largeModel', {
+    descriptionKey: 'settings:claudeCode.largeModelDesc',
+    keywords: ['opus', 'model', 'claude code'],
+  }),
+  item('claude-code', 'medium-model', 'settings:claudeCode.mediumModel', {
+    descriptionKey: 'settings:claudeCode.mediumModelDesc',
+    keywords: ['sonnet', 'model', 'claude code'],
+  }),
+  item('claude-code', 'small-model', 'settings:claudeCode.smallModel', {
+    descriptionKey: 'settings:claudeCode.smallModelDesc',
+    keywords: ['haiku', 'model', 'claude code'],
+  }),
 ]
 
 // ---------------------------------------------------------------------------

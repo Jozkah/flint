@@ -4,7 +4,20 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { coworkTurnsToUIMessages } from '@/lib/coworkTurns'
-import { emptyCodePanelState, type CodePanelState } from '@/lib/coworkCode'
+import {
+  emptyCodePanelState,
+  projectKeyOf,
+  projectTab,
+  pruneTabsForProject,
+  sandboxTab,
+  tabId,
+  type CodePanelState,
+  type CodeTab,
+  type FileOrigin,
+} from '@/lib/coworkCode'
+
+/** The `sandbox:` marker used by the v2 tab-path scheme. */
+const LEGACY_SANDBOX_PREFIX = 'sandbox:'
 import type {
   CoworkTurn,
   SubagentRun,
@@ -57,8 +70,26 @@ export type CoworkSession = {
   goal?: CoworkGoal
   /** Canonical session todo list, updated by the `todo_write` tool. */
   todos?: TodoList
-  /** Plan mode: the agent reads and proposes, without writing. Absent means off. */
+  /**
+   * @deprecated Superseded by `mode`. Kept so sessions saved before modes
+   * existed keep their meaning; read through `modeOf`, never directly.
+   */
   planMode?: boolean
+  /**
+   * What this session is allowed to do. Absent on sessions from before modes
+   * existed, which `modeOf` reads from `planMode` instead.
+   */
+  mode?: CoworkMode
+  /**
+   * Where this session may write. Absent means Review only — silence from a
+   * session saved before access modes existed is not permission.
+   */
+  access?: AccessMode
+  /**
+   * Confirmation to edit the attached folder, naming the session and folder it
+   * was given for so it cannot follow the user to another repository.
+   */
+  editConsent?: EditConsent
   /** Code panel state: open tabs, active tab, explorer expansion, word wrap.
    * Absent on sessions from before the code workspace existed. */
   codePanel?: CodePanelState
@@ -69,10 +100,18 @@ type CoworkSessionsState = {
   sessions: CoworkSession[]
   currentId: string | null
   createSession: () => string
+  /**
+   * What "New session" does: create one, or stay put when this session is
+   * already blank or holds an unsent draft. Returns the session to show.
+   */
+  startSession: (input: { running: boolean; hasDraft: boolean }) => string
   selectSession: (id: string) => void
   deleteSession: (id: string) => void
   setFolder: (id: string, folder: string | null) => void
-  setPlanMode: (id: string, planMode: boolean) => void
+  setMode: (id: string, mode: CoworkMode) => void
+  setAccess: (id: string, access: AccessMode) => void
+  /** Record the user's confirmation to edit `folder` in this session. */
+  grantEditConsent: (id: string, folder: string) => void
   /** Replace the session's code-panel state (tabs, expansion, word wrap). */
   setCodePanel: (id: string, codePanel: CodePanelState) => void
   setTitle: (id: string, title: string) => void
@@ -102,11 +141,16 @@ type CoworkSessionsState = {
   clearSession: (id: string) => void
 }
 
+import { decideSessionStart } from '@/lib/coworkSessionStart'
+import { defaultModeFor, type CoworkMode } from '@/lib/coworkMode'
+import type { AccessMode, EditConsent } from '@/lib/coworkAccess'
+import { useFileActivity } from '@/hooks/useFileActivity'
+
 const now = () => Date.now()
 
 export const useCoworkSessions = create<CoworkSessionsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       sessions: [],
       currentId: null,
 
@@ -124,6 +168,28 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         return id
       },
 
+      startSession: ({ running, hasDraft }) => {
+        const state = get()
+        const current = state.sessions.find((s) => s.id === state.currentId)
+        // Asked here rather than at each call site so every entry point to
+        // "New session" judges emptiness the same way.
+        const hasFileActivity = current
+          ? useFileActivity.getState().eventsFor(current.id).length > 0
+          : false
+        if (
+          decideSessionStart({
+            current,
+            running,
+            hasDraft,
+            hasFileActivity,
+          }) === 'reuse' &&
+          current
+        ) {
+          return current.id
+        }
+        return get().createSession()
+      },
+
       selectSession: (id) => set({ currentId: id }),
 
       deleteSession: (id) =>
@@ -134,10 +200,46 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           return { sessions, currentId }
         }),
 
+      // Attaching, switching and detaching all land here, so the code panel is
+      // pruned in the same update: a tab from the old project must never be
+      // left to re-resolve its relative path inside the new one.
       setFolder: (id, folder) =>
         set((s) => ({
           sessions: s.sessions.map((x) =>
-            x.id === id ? { ...x, folder, updated: now() } : x
+            x.id === id
+              ? {
+                  ...x,
+                  folder,
+                  // Attaching a repository to a session that has not run yet
+                  // puts it in Review first: the turn that binds a repository
+                  // must not be the turn that edits it. A mode the user chose,
+                  // or one a legacy session already implies, is left alone —
+                  // and so is detaching, which must not stamp a mode that
+                  // would then suppress this default on the next attach.
+                  mode: folder
+                    ? (x.mode ??
+                      (x.turns.length === 0 &&
+                      x.messages.length === 0 &&
+                      x.planMode === undefined
+                        ? defaultModeFor(folder)
+                        : undefined))
+                    : x.mode,
+                  // Changing the repository withdraws everything that was
+                  // agreed about the previous one. Consent named that folder,
+                  // and an access mode chosen for it says nothing about this
+                  // one, so both return to the safe default.
+                  access: folder === x.folder ? x.access : 'review-only',
+                  editConsent:
+                    folder === x.folder && x.editConsent?.folder === folder
+                      ? x.editConsent
+                      : undefined,
+                  codePanel: pruneTabsForProject(
+                    x.codePanel ?? emptyCodePanelState(),
+                    projectKeyOf(folder)
+                  ),
+                  updated: now(),
+                }
+              : x
           ),
         })),
 
@@ -160,10 +262,30 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           sessions: s.sessions.map((x) => (x.id === id ? { ...x, todos } : x)),
         })),
 
-      setPlanMode: (id, planMode) =>
+      setAccess: (id, access) =>
         set((s) => ({
           sessions: s.sessions.map((x) =>
-            x.id === id ? { ...x, planMode, updated: now() } : x
+            x.id === id ? { ...x, access, updated: now() } : x
+          ),
+        })),
+
+      grantEditConsent: (id, folder) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id
+              ? { ...x, editConsent: { sessionId: id, folder }, updated: now() }
+              : x
+          ),
+        })),
+
+      setMode: (id, mode) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            // `planMode` is cleared as well, so the legacy field can never
+            // disagree with the explicit choice just made.
+            x.id === id
+              ? { ...x, mode, planMode: undefined, updated: now() }
+              : x
           ),
         })),
 
@@ -258,7 +380,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // hydrateBackendStores() once the ServiceHub is ready.
       storage: createJSONStorage(() => backendStorage),
       skipHydration: true,
-      version: 2,
+      version: 4,
       // v0 persisted an OpenAI-shaped `history` that could not represent tool
       // calls, so replaying it dropped every tool turn. Rebuild the message
       // list from `turns`, which did record them, and leave `history` in place
@@ -290,6 +412,109 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               ? session
               : { ...session, codePanel: emptyCodePanelState() }
           )
+        }
+        // v2 → v3: tabs were bare strings with a `sandbox:` prefix and no idea
+        // which project they came from, so a tab opened against one project
+        // would silently re-resolve inside the next one attached. Each becomes
+        // a CodeTab carrying its origin; a project tab is keyed to the folder
+        // the session has now, and dropped when there is none, because nothing
+        // records which project it was actually read from.
+        if (version < 3) {
+          sessions = sessions.map((session) => {
+            const legacy = session.codePanel as unknown as
+              | { openPaths?: unknown; activePath?: unknown }
+              | undefined
+            if (!legacy || !Array.isArray(legacy.openPaths)) {
+              return session.codePanel
+                ? session
+                : { ...session, codePanel: emptyCodePanelState() }
+            }
+            const projectKey = projectKeyOf(session.folder)
+            const tabs: CodeTab[] = []
+            for (const raw of legacy.openPaths) {
+              if (typeof raw !== 'string' || !raw) continue
+              if (raw.startsWith(LEGACY_SANDBOX_PREFIX)) {
+                // The tab is stored on its own session, so that session owns it.
+                tabs.push(
+                  sandboxTab(raw.slice(LEGACY_SANDBOX_PREFIX.length), session.id)
+                )
+              } else if (projectKey) {
+                tabs.push(projectTab(raw, projectKey))
+              }
+            }
+            const previousActive =
+              typeof legacy.activePath === 'string' ? legacy.activePath : null
+            const active = tabs.find((tab) =>
+              previousActive === null
+                ? false
+                : previousActive.startsWith(LEGACY_SANDBOX_PREFIX)
+                  ? tab.origin.kind !== 'project' &&
+                    tab.path ===
+                      previousActive.slice(LEGACY_SANDBOX_PREFIX.length)
+                  : tab.origin.kind === 'project' && tab.path === previousActive
+            )
+            return {
+              ...session,
+              codePanel: {
+                tabs,
+                activeTabId: active ? tabId(active) : (tabs[0] ? tabId(tabs[0]) : null),
+                expandedDirs: Array.isArray(
+                  (session.codePanel as unknown as { expandedDirs?: unknown })
+                    ?.expandedDirs
+                )
+                  ? ((session.codePanel as unknown as { expandedDirs: string[] })
+                      .expandedDirs)
+                  : [],
+                wordWrap: Boolean(
+                  (session.codePanel as unknown as { wordWrap?: unknown })
+                    ?.wordWrap
+                ),
+              },
+            }
+          })
+        }
+        // v3 → v4: sandbox and artifact origins gained a `sessionKey`. Without
+        // one a tab has no owner, so it would be read against whichever
+        // session happened to be open. Each is stamped with the session it is
+        // stored on, which is the session that opened it.
+        if (version < 4) {
+          sessions = sessions.map((session) => {
+            const panel = session.codePanel
+            if (!panel?.tabs?.length) return session
+            let changed = false
+            const tabs = panel.tabs.map((tab) => {
+              const origin = tab.origin as FileOrigin & { sessionKey?: string }
+              if (
+                (origin?.kind !== 'sandbox' && origin?.kind !== 'artifact') ||
+                origin.sessionKey
+              ) {
+                return tab
+              }
+              changed = true
+              return {
+                ...tab,
+                origin: { kind: origin.kind, sessionKey: session.id },
+              }
+            })
+            if (!changed) return session
+            // Tab ids embed the origin, so every id just changed. Re-derive
+            // the active one from the tab it pointed at rather than leaving a
+            // dangling id that would blank the viewer.
+            const activeIndex = panel.tabs.findIndex(
+              (tab) => tabId(tab) === panel.activeTabId
+            )
+            return {
+              ...session,
+              codePanel: {
+                ...panel,
+                tabs,
+                activeTabId:
+                  activeIndex >= 0
+                    ? tabId(tabs[activeIndex])
+                    : panel.activeTabId,
+              },
+            }
+          })
         }
         return { ...state, sessions }
       },

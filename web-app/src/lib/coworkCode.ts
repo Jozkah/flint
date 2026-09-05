@@ -208,29 +208,167 @@ export function relativeToRoot(root: string | null, path: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Tab paths
+// File origins and tab identity
 // ---------------------------------------------------------------------------
 
 /**
- * Tabs can show two roots: the attached project (plain relative paths) and the
- * session's writable sandbox, where agent-written source artifacts live. A
- * sandbox tab is marked with this prefix so the loader picks the right root —
- * the prefix never reaches the backend or the model.
+ * Where a file lives, and therefore what may be done with it.
+ *
+ * Explicit rather than inferred: a readable path is NOT evidence that it
+ * belongs to the attached project. A sandbox file, a generated artifact and an
+ * external read-only file are all readable, and treating any of them as
+ * project-owned would claim a write capability the app does not have and would
+ * label the wrong workspace to the model.
  */
-export const SANDBOX_TAB_PREFIX = 'sandbox:'
+export type FileOrigin =
+  /** Inside the attached project. Read-only in Cowork today. */
+  | { kind: 'project'; projectKey: string }
+  /** Inside one session's writable sandbox. */
+  | { kind: 'sandbox'; sessionKey: string }
+  /** A file the agent generated, which lives in that session's sandbox. */
+  | { kind: 'artifact'; sessionKey: string }
+  /**
+   * Readable, but outside every root. Always read-only.
+   *
+   * Session-scoped like the sandbox origins: a file dropped into one session
+   * is that session's, and must not appear in the next one. The key is absent
+   * on tabs persisted before external files could be opened.
+   */
+  | { kind: 'external'; sessionKey?: string }
 
-export function sandboxTabPath(rel: string): string {
-  return `${SANDBOX_TAB_PREFIX}${rel}`
+/**
+ * The identity a tab is scoped to: the project for a project file, the session
+ * for anything in a sandbox.
+ *
+ * Sandbox paths are relative to a per-session directory, so the same
+ * `out.ts` exists in every session. Without the session in the identity, two
+ * sessions' tabs share a cache key and one session's bytes can be shown under
+ * the other.
+ */
+export function originScope(origin: FileOrigin): string {
+  switch (origin.kind) {
+    case 'project':
+      // Persisted tabs predate these fields, and a migration has to be able to
+      // identify a tab it has not stamped yet. The `?? ''` covers that case;
+      // the types hold everywhere else.
+      return origin.projectKey ?? ''
+    case 'sandbox':
+    case 'artifact':
+      return origin.sessionKey ?? ''
+    case 'external':
+      return origin.sessionKey ?? ''
+  }
 }
 
-export function isSandboxTabPath(path: string): boolean {
-  return path.startsWith(SANDBOX_TAB_PREFIX)
+/** Nothing in Cowork may write through the code surface; the project itself is
+ * mounted read-only and the other origins are not ours to edit. Kept as a
+ * function so a future writable origin is a compile error here, not a silent
+ * capability change. */
+export function isWritableOrigin(origin: FileOrigin): boolean {
+  switch (origin.kind) {
+    // The project is mounted read-only; the rest are not ours to edit. Listing
+    // every case means a new origin is a compile error here rather than a
+    // silent write capability.
+    case 'project':
+    case 'sandbox':
+    case 'artifact':
+    case 'external':
+      return false
+  }
 }
 
-/** The path without its sandbox marker — what headers, tooltips, copy-path and
- * code references should show. */
-export function tabDisplayPath(path: string): string {
-  return isSandboxTabPath(path) ? path.slice(SANDBOX_TAB_PREFIX.length) : path
+/**
+ * Stable identity for an attached project.
+ *
+ * Derived from the folder path, normalized the way containment is checked
+ * (separators unified, trailing slash dropped, case folded) so the same folder
+ * always produces the same key on macOS and Windows alike. It is an identity,
+ * not a path: never use it to read a file.
+ */
+export function projectKeyOf(folder: string | null | undefined): string | null {
+  if (!folder) return null
+  const normalized = folder.replace(/\\/g, '/').replace(/\/+$/, '')
+  return normalized ? normalized.toLowerCase() : null
+}
+
+/** One open file in the code panel. */
+export type CodeTab = {
+  /** Path relative to the origin's own root, `/`-separated. */
+  path: string
+  origin: FileOrigin
+}
+
+/**
+ * Stable id for a tab, unique across origins and projects.
+ *
+ * Two projects can both contain `src/index.ts`; without the project key in the
+ * id, switching projects would silently retarget the open tab at a different
+ * file of the same name.
+ */
+export function tabId(tab: CodeTab): string {
+  return `${tab.origin.kind}:${originScope(tab.origin)}:${tab.path}`
+}
+
+export const projectTab = (path: string, projectKey: string): CodeTab => ({
+  path,
+  origin: { kind: 'project', projectKey },
+})
+
+export const sandboxTab = (path: string, sessionKey: string): CodeTab => ({
+  path,
+  origin: { kind: 'sandbox', sessionKey },
+})
+
+export const artifactTab = (path: string, sessionKey: string): CodeTab => ({
+  path,
+  origin: { kind: 'artifact', sessionKey },
+})
+
+/**
+ * A file opened from outside every root — dropped in, or chosen from the
+ * picker. Read-only, and scoped to the session it was opened in.
+ */
+export const externalTab = (path: string, sessionKey: string): CodeTab => ({
+  path,
+  origin: { kind: 'external', sessionKey },
+})
+
+/**
+ * Does this tab belong to `sessionKey`?
+ *
+ * Project and external tabs are not session-scoped; a sandbox or artifact tab
+ * is, and must never be rendered or read under another session.
+ */
+export function tabBelongsToSession(
+  tab: CodeTab,
+  sessionKey: string | null
+): boolean {
+  const origin = tab.origin
+  switch (origin.kind) {
+    case 'project':
+      // Not session-scoped: a project file is the same file in every session.
+      return true
+    case 'sandbox':
+    case 'artifact':
+      return origin.sessionKey === sessionKey
+    case 'external':
+      // Tabs persisted before external files carried a session are shown
+      // rather than hidden; anything stamped since belongs to its session.
+      return origin.sessionKey === undefined || origin.sessionKey === sessionKey
+  }
+}
+
+/** Does this tab belong to the project currently attached? */
+export function tabBelongsToProject(
+  tab: CodeTab,
+  projectKey: string | null
+): boolean {
+  return tab.origin.kind !== 'project' || tab.origin.projectKey === projectKey
+}
+
+/** The path shown in headers, tooltips, copy-path and code references. */
+export function tabDisplayPath(tab: CodeTab): string {
+  return tab.path
 }
 
 // ---------------------------------------------------------------------------
@@ -264,19 +402,19 @@ export function writeCountsByPath(
 }
 
 /**
- * Has `tabPath` been written since it was loaded, when it carried
- * `loadedCount` writes at that moment?
+ * Has `tab` been written since it was loaded, when it carried `loadedCount`
+ * writes at that moment?
  *
- * The tab path may carry the sandbox marker; the tools report the plain path,
- * so the comparison is on the display form.
+ * Only a project or sandbox file can go stale from a tool call; the tools
+ * report a plain path, which is what the tab stores.
  */
 export function isTabStale(
-  tabPath: string,
+  tab: CodeTab,
   loadedCount: number | undefined,
   counts: Record<string, number>
 ): boolean {
   if (loadedCount == null) return false
-  const key = tabDisplayPath(tabPath).replace(/\\/g, '/')
+  const key = tab.path.replace(/\\/g, '/')
   return (counts[key] ?? 0) > loadedCount
 }
 
@@ -286,48 +424,89 @@ export function isTabStale(
 
 /**
  * Code-panel state persisted per Cowork session. No dirty flag on purpose: the
- * viewer is read-only in this phase, so nothing can become dirty; the
- * open/active split already leaves room for one later.
+ * viewer is read-only, so nothing can become dirty; the open/active split
+ * already leaves room for one later.
  */
 export type CodePanelState = {
-  /** Project-relative paths of open tabs, in tab order. */
-  openPaths: string[]
-  activePath: string | null
-  /** Expanded explorer directories (relative paths). Bounded in practice:
+  /** Open tabs, in tab order. */
+  tabs: CodeTab[]
+  /** `tabId` of the active tab. */
+  activeTabId: string | null
+  /** Expanded explorer directories (project-relative). Bounded in practice:
    * only directories the user actually opened are ever in here. */
   expandedDirs: string[]
   wordWrap: boolean
 }
 
 export function emptyCodePanelState(): CodePanelState {
-  return { openPaths: [], activePath: null, expandedDirs: [], wordWrap: false }
+  return { tabs: [], activeTabId: null, expandedDirs: [], wordWrap: false }
 }
 
-/** Open `path`, or focus its existing tab: opening twice must not duplicate. */
-export function openTab(state: CodePanelState, path: string): CodePanelState {
-  if (state.openPaths.includes(path)) {
-    return state.activePath === path ? state : { ...state, activePath: path }
+export function findTab(
+  state: CodePanelState,
+  id: string | null
+): CodeTab | undefined {
+  return id == null ? undefined : state.tabs.find((t) => tabId(t) === id)
+}
+
+/** The active tab, if it is still open. */
+export function activeTab(state: CodePanelState): CodeTab | undefined {
+  return findTab(state, state.activeTabId)
+}
+
+/** Open `tab`, or focus it when already open: opening twice must not duplicate. */
+export function openTab(state: CodePanelState, tab: CodeTab): CodePanelState {
+  const id = tabId(tab)
+  if (state.tabs.some((t) => tabId(t) === id)) {
+    return state.activeTabId === id ? state : { ...state, activeTabId: id }
   }
-  return { ...state, openPaths: [...state.openPaths, path], activePath: path }
+  return { ...state, tabs: [...state.tabs, tab], activeTabId: id }
 }
 
-/** Close `path`. When it was active, focus its nearest surviving neighbour —
- * the tab that takes its slot, falling back leftward — or nothing when it was
- * the last. */
-export function closeTab(state: CodePanelState, path: string): CodePanelState {
-  const index = state.openPaths.indexOf(path)
+/** Close one tab. When it was active, focus the tab that takes its slot,
+ * falling back leftward — or nothing when it was the last. */
+export function closeTab(state: CodePanelState, id: string): CodePanelState {
+  const index = state.tabs.findIndex((t) => tabId(t) === id)
   if (index < 0) return state
-  const openPaths = state.openPaths.filter((p) => p !== path)
-  let activePath = state.activePath
-  if (activePath === path) {
-    activePath = openPaths[Math.min(index, openPaths.length - 1)] ?? null
+  const tabs = state.tabs.filter((t) => tabId(t) !== id)
+  let activeTabId = state.activeTabId
+  if (activeTabId === id) {
+    const next = tabs[Math.min(index, tabs.length - 1)]
+    activeTabId = next ? tabId(next) : null
   }
-  return { ...state, openPaths, activePath }
+  return { ...state, tabs, activeTabId }
 }
 
-export function focusTab(state: CodePanelState, path: string): CodePanelState {
-  if (!state.openPaths.includes(path) || state.activePath === path) return state
-  return { ...state, activePath: path }
+/** Close every tab except `id`, which becomes active. */
+export function closeOtherTabs(
+  state: CodePanelState,
+  id: string
+): CodePanelState {
+  const keep = findTab(state, id)
+  if (!keep) return state
+  return { ...state, tabs: [keep], activeTabId: id }
+}
+
+export function closeAllTabs(state: CodePanelState): CodePanelState {
+  if (state.tabs.length === 0) return state
+  return { ...state, tabs: [], activeTabId: null }
+}
+
+export function focusTab(state: CodePanelState, id: string): CodePanelState {
+  if (!state.tabs.some((t) => tabId(t) === id)) return state
+  return state.activeTabId === id ? state : { ...state, activeTabId: id }
+}
+
+/** The tab before/after the active one, for keyboard switching. */
+export function neighbourTabId(
+  state: CodePanelState,
+  step: 1 | -1
+): string | null {
+  if (state.tabs.length === 0) return null
+  const index = state.tabs.findIndex((t) => tabId(t) === state.activeTabId)
+  const from = index < 0 ? 0 : index
+  const next = (from + step + state.tabs.length) % state.tabs.length
+  return tabId(state.tabs[next])
 }
 
 export function toggleDir(state: CodePanelState, relPath: string): CodePanelState {
@@ -340,14 +519,50 @@ export function toggleDir(state: CodePanelState, relPath: string): CodePanelStat
   }
 }
 
+/**
+ * Drop every tab belonging to a project other than `projectKey`, and the
+ * explorer expansion with them.
+ *
+ * Called whenever the attached folder changes, including detach
+ * (`projectKey === null`). A project tab is only meaningful against the project
+ * it came from: keeping it would either show project A's file while B is
+ * attached, or silently re-resolve A's relative path inside B. Sandbox and
+ * artifact tabs are unaffected — they belong to the session, not the project.
+ */
+export function pruneTabsForProject(
+  state: CodePanelState,
+  projectKey: string | null
+): CodePanelState {
+  const tabs = state.tabs.filter((t) => tabBelongsToProject(t, projectKey))
+  if (tabs.length === state.tabs.length && state.expandedDirs.length === 0) {
+    return state
+  }
+  const stillOpen = tabs.some((t) => tabId(t) === state.activeTabId)
+  return {
+    ...state,
+    tabs,
+    activeTabId: stillOpen ? state.activeTabId : (tabs[0] ? tabId(tabs[0]) : null),
+    // The tree belongs to the project that is going away.
+    expandedDirs: [],
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Code references ("Add to chat")
 // ---------------------------------------------------------------------------
 
-/** One selected span of a project file, referenced from the prompt. */
+/**
+ * One selected span of a file, referenced from the prompt.
+ *
+ * `origin` travels with it: the model is told whether the span came from the
+ * attached project, the session sandbox, a generated artifact or an external
+ * read-only file, and never has to infer ownership from the path.
+ */
 export type CodeRef = {
-  /** Project-relative path. */
+  /** Path relative to the origin's root. */
   path: string
+  /** Where the file lives, and therefore whether it is the user's project. */
+  origin: FileOrigin
   /** 1-based, inclusive. */
   startLine: number
   endLine: number
@@ -383,6 +598,21 @@ export function lineRangeOfSlice(
 }
 
 /** The structured block appended to the model's copy of the prompt. */
+/** How an origin is described to the model, so it never mistakes a sandbox or
+ * external file for the user's own project. */
+export function originLabel(origin: FileOrigin): string {
+  switch (origin.kind) {
+    case 'project':
+      return 'the attached project (read-only)'
+    case 'sandbox':
+      return 'your session workspace'
+    case 'artifact':
+      return 'a file you generated, in your session workspace'
+    case 'external':
+      return 'an external read-only file'
+  }
+}
+
 export function codeRefBlock(ref: CodeRef): string {
   const lang = detectLanguage(ref.path).lang
   const range =
@@ -390,7 +620,7 @@ export function codeRefBlock(ref: CodeRef): string {
       ? `line ${ref.startLine}`
       : `lines ${ref.startLine}-${ref.endLine}`
   return [
-    `Referenced code from the attached project — ${ref.path} (${range}):`,
+    `Referenced code from ${originLabel(ref.origin)} — ${ref.path} (${range}):`,
     '```' + (lang === 'text' ? '' : lang),
     ref.code.replace(/\n$/, ''),
     '```',

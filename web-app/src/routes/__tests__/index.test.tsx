@@ -20,6 +20,7 @@ const h = vi.hoisted(() => ({
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => (config: any) => ({ ...config, id: '/' }),
   useSearch: () => h.search,
+  useNavigate: () => vi.fn(),
 }))
 
 vi.mock('@/i18n/react-i18next-compat', () => ({

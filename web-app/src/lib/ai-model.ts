@@ -129,13 +129,6 @@ export function createLanguageModel(
       provider.base_url?.includes('127.0.0.1:')
         ? { Origin: 'tauri://localhost' }
         : {}),
-      // OpenRouter identification headers
-      ...(provider.provider === 'openrouter'
-        ? {
-            'HTTP-Referer': 'https://jan.ai',
-            'X-Title': 'Jan',
-          }
-        : {}),
     },
     // Include usage data in streaming responses for token speed calculation
     includeUsage: true,

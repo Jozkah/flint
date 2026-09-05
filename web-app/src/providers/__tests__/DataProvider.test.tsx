@@ -11,7 +11,6 @@ const h = vi.hoisted(() => {
     updateProvider: vi.fn(),
     getProviderByName: vi.fn(),
     providers: [] as Array<Record<string, unknown>>,
-    checkForUpdate: vi.fn(),
     setServers: vi.fn(),
     setSettings: vi.fn(),
     setAssistants: vi.fn(),
@@ -62,7 +61,6 @@ vi.mock('@/hooks/useModelProvider', () => {
 })
 
 vi.mock('@/hooks/useAppUpdater', () => ({
-  useAppUpdater: () => ({ checkForUpdate: h.checkForUpdate }),
 }))
 
 vi.mock('@/hooks/useMCPServers', () => ({
@@ -158,6 +156,7 @@ const hubState = vi.hoisted(() => ({
   getAssistants: vi.fn().mockResolvedValue([]),
   fetchThreads: vi.fn().mockResolvedValue([]),
   getServerStatus: vi.fn().mockResolvedValue(false),
+  setServerRunInBackground: vi.fn().mockResolvedValue(undefined),
   startModel: vi.fn().mockResolvedValue(undefined),
   getActiveModels: vi.fn().mockResolvedValue([]),
   startServer: vi.fn().mockResolvedValue(1337),
@@ -179,7 +178,10 @@ vi.mock('@/hooks/useServiceHub', () => {
         return Promise.resolve(hubState.unsubscribe)
       },
     }),
-    app: () => ({ getServerStatus: hubState.getServerStatus }),
+    app: () => ({
+      getServerStatus: hubState.getServerStatus,
+      setServerRunInBackground: hubState.setServerRunInBackground,
+    }),
     models: () => ({
       startModel: hubState.startModel,
       getActiveModels: hubState.getActiveModels,
@@ -452,33 +454,6 @@ describe('DataProvider', () => {
     await waitFor(() => {
       expect(h.eventsOn).toHaveBeenCalledWith('onModelImported', expect.any(Function))
     })
-  })
-
-  it('skips update check when in dev mode', async () => {
-    h.isDev.mockReturnValue(true)
-    render(<DataProvider />)
-    // Yield microtasks
-    await act(async () => {
-      await Promise.resolve()
-    })
-    expect(h.checkForUpdate).not.toHaveBeenCalled()
-  })
-
-  it('defers initial update check off mount and schedules periodic checks outside dev', async () => {
-    vi.useFakeTimers()
-    h.isDev.mockReturnValue(false)
-    render(<DataProvider />)
-    // Initial check is deferred to idle (setTimeout fallback in jsdom), not on mount
-    expect(h.checkForUpdate).not.toHaveBeenCalled()
-    await act(async () => {
-      vi.advanceTimersByTime(1)
-    })
-    expect(h.checkForUpdate).toHaveBeenCalledTimes(1)
-    await act(async () => {
-      vi.advanceTimersByTime(60_000)
-    })
-    expect(h.checkForUpdate).toHaveBeenCalledTimes(2)
-    vi.useRealTimers()
   })
 
   it('does not start server on mount when enableOnStartup is false', async () => {

@@ -23,13 +23,11 @@ import {
 } from '@tabler/icons-react'
 import { cn } from '@/lib/utils'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
-import { useAnalytic } from '@/hooks/useAnalytic'
 import {
   useSetupChecklist,
   type SetupStageState,
 } from '@/hooks/useSetupChecklist'
 import { pickMmproj, type SetupModelOption } from '@/lib/setupModelOptions'
-import { AnalyticConsent } from './analytics/AnalyticConsent'
 import { DependencyAdvice } from './dialogs/DependencyAdvice'
 import HeaderPage from './HeaderPage'
 
@@ -229,15 +227,6 @@ function SetupScreen() {
     enabled: hasStarted,
   })
   const [showDetails, setShowDetails] = useState(false)
-  const { productAnalyticPrompt } = useAnalytic()
-  // `productAnalyticPrompt` flips to false the moment consent is answered, which
-  // dropped that page out of the list and renumbered the flow under the user
-  // ("Step 3 of 4" became "Step 3 of 3"). Latched instead, so the page count is
-  // fixed once known.
-  const [includesConsent, setIncludesConsent] = useState(false)
-  useEffect(() => {
-    if (productAnalyticPrompt) setIncludesConsent(true)
-  }, [productAnalyticPrompt])
 
 
   // Check model support for variants when janNewModel is available
@@ -575,18 +564,8 @@ function SetupScreen() {
       status: 'pending',
       messageKey: '',
     }
-    const consent: WizardStep[] = includesConsent
-      ? [
-          {
-            id: 'consent',
-            labelKey: 'setup:stageConsent',
-            status: 'pending',
-            messageKey: '',
-          },
-        ]
-      : []
-    return [welcome, setupPage, ...consent, modelStep]
-  }, [setupPage, modelStep, includesConsent])
+    return [welcome, setupPage, modelStep]
+  }, [setupPage, modelStep])
 
   const isPageSettled = useCallback(
     (page: WizardStep) => {
@@ -595,13 +574,11 @@ function SetupScreen() {
           return hasStarted
         case 'setup':
           return isSetupSettled
-        case 'consent':
-          return !productAnalyticPrompt
         default:
           return Boolean(isDownloaded)
       }
     },
-    [hasStarted, isSetupSettled, productAnalyticPrompt, isDownloaded]
+    [hasStarted, isSetupSettled, isDownloaded]
   )
 
   const currentIndex = pages.findIndex((page) => !isPageSettled(page))
@@ -653,16 +630,12 @@ function SetupScreen() {
       ? t(`setup:${currentPage.messageKey}`, currentPage.values)
       : t('setup:stageChecking')
 
-  // The consent page has no subtitle of its own: AnalyticConsent's own detail
-  // paragraph is the body, so a second one here would just repeat it.
   const body = () => {
     switch (currentPage?.id) {
       case 'welcome':
         return t('setup:welcomeBody')
       case 'model':
         return t('setup:description')
-      case 'consent':
-        return null
       default:
         return setupBody
     }
@@ -869,12 +842,6 @@ function SetupScreen() {
                       )}
                     </div>
                   </>
-                )}
-
-                {currentPage.id === 'consent' && (
-                  <div className="mt-5">
-                    <AnalyticConsent />
-                  </div>
                 )}
 
                 {currentPage.id === 'model' && (
