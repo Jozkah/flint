@@ -26,7 +26,7 @@ production code is changed by this document.**
 | 3 — first-turn inspect → propose | **Built.** Classifier widens only; review mode is the enforcement. |
 | 4 — compatibility ingestion | Policy decided (5.4). Not implemented. |
 | 5 — coordinated agent teams | Not started. |
-| 6 — checkpoints and rewind | Not started. |
+| 6 — checkpoints and rewind | **Built.** `core/agent/checkpoint.rs`; a managed tree restores, a user's checkout gets a patch. |
 | 7 — parity UX review | Not started. |
 | 8 — verification and platform evidence | Largely pre-existing (5.8); blocked on runners (6.3). |
 
