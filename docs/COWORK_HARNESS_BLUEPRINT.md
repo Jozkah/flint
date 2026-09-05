@@ -110,8 +110,9 @@ better located than the epic assumes.
    'native'`, so a compatibility file is never in context. The type comment
    already anticipates the switch: "never read into the model's context
    *without the user turning it on*". The gap is the opt-in and the ingestion
-   path -- but see 5.4, because the injection question is not resolved by the
-   scaffolding being present.
+   path. The policy governing that switch is decided and recorded in 5.4; the
+   scaffolding being present did not settle it, and does not substitute for the
+   five constraints there.
 4. **First-turn gate -- absent.** `coworkSessionStart.ts` is about the "New
    session" button, not about inspect-then-propose. `coworkMode.ts` has
    `isReadOnly`, and `decideMutation()` refuses with `review-mode`, so the
@@ -376,35 +377,54 @@ sibling fixture.
 
 **Effort:** 4-6 days. **Risk:** medium, concentrated in classification.
 
-### 5.4 Phase 4 -- compatibility ingestion (needs a decision first)
+### 5.4 Phase 4 -- compatibility ingestion
 
 **Starts from:** detection without consent (1.3.3). The scaffolding is done --
 recognised names, precedence order, full state classification, a size cap, and a
 type comment anticipating an opt-in switch.
 
-**The scaffolding being present does not settle the question it defers.**
-Turning the switch on means ingesting content from a repository the user may
-have merely cloned, into a tool-using agent with filesystem access. Two existing
-decisions push back: `JAN.md` is authoritative because only what a user wrote
-*for Jan* counts, and subagent definitions are kept out of attached folders
-precisely so a cloned repo cannot inject a system prompt and a tool allowlist.
-Project-level skills and agent definitions -- which carry tool allowlists and
-executable resources -- are the same shape as the thing already refused.
+**Decision taken.** Ingestion is approved, under the policy below. It was worth
+deciding explicitly rather than inferring from the scaffolding, because turning
+the switch on means feeding content from a repository the user may have merely
+cloned into a tool-using agent with filesystem access, and two existing
+decisions pushed the other way: `JAN.md` is authoritative because only what a
+user wrote *for Jan* counts, and subagent definitions are kept out of attached
+folders precisely so a cloned repo cannot inject a system prompt and a tool
+allowlist. Project-level skills and agent definitions -- which carry tool
+allowlists and executable resources -- are the same shape as the thing already
+refused.
 
-A workable shape, if the decision is yes:
+The policy resolves that tension by separating *reading* from *authority*:
+compatibility content may inform the model and may never empower it. The five
+constraints below are the decision, not suggestions, and each one is a test:
 
-- **Off by default**, enabled per project by explicit user action, never by file
-  presence. (`classifyInstruction()` already has the right shape for this: flip
-  `active` from a policy input, not from the file's existence.)
-- **Ingested content is inert prose** -- inside an untrusted-content envelope,
-  never able to grant a tool, change the root, activate a skill, consent to an
-  MCP server, or alter access. Invariant 5 in section 3 is the one to test
-  hardest, per source type.
-- **Project-sourced tool allowlists intersect** with what the user granted,
-  never union. Bundled scripts are never executed merely because a skill exists.
-- **Hooks, plugin installers and lifecycle scripts stay disabled** and are
-  reported individually. Partial plugin support shown per-portion, never as
-  "compatible".
+1. **Off by default.** No compatibility file is ever active because it exists.
+   `classifyInstruction()` already has the right shape: `active` flips from a
+   policy input, never from the file's presence. Detection stays what it is
+   today, and stays visible whether or not ingestion is on.
+2. **Enabled per repository, by explicit user action.** The switch is bound to
+   one repository, like `EditConsent` is bound to one session and one folder, so
+   enabling it for a repository the user vetted cannot follow them to the next
+   one they clone. Enabling is a user act; no instruction file, skill, agent
+   definition or MCP server may enable it, for itself or for anything else.
+3. **Path-contained.** Every read -- instruction files, skill roots, bundled
+   resources, agent definitions -- is canonicalised and required to resolve
+   inside the enabled repository, by the same `escapes_project` discipline the
+   tool layer already uses. Nothing above the repository root, nothing from a
+   sibling, no symlink out. A path that cannot be canonicalised is refused, not
+   guessed at.
+4. **Tool-allowlisted.** A project-sourced allowlist may only narrow: requested
+   tools are **intersected** with what the user has already granted, never
+   unioned. A skill's bundled scripts are never executed merely because the
+   skill exists, and hooks, plugin installers and lifecycle scripts stay
+   disabled and are reported individually -- partial plugin support shown
+   per-portion, never as "compatible".
+5. **Never able to grant authority.** Ingested content is inert prose inside an
+   untrusted-content envelope. It cannot grant a tool, widen or change the root,
+   activate a skill, consent to an MCP server, alter the access mode, or turn on
+   ingestion itself. This is invariant 5 in section 3, and it is the one to test
+   hardest -- per source type, because the envelope is easy to get right for
+   `AGENTS.md` and easy to forget for a skill's frontmatter.
 
 Precedence once enabled: system/security, then binding and access policy, then
 `JAN.md`, then `AGENTS.md`/`CLAUDE.md` -- the order
@@ -414,11 +434,14 @@ unsupported-scoping report. Never above the repository root.
 
 **Exit criteria.** Every imported component listed in readiness with source,
 state, precedence and unsupported fields; a prose-cannot-grant test per source
-type; the decision recorded with its rationale.
+type; a path-containment test per resource root; a tool-intersection test
+proving a project-sourced allowlist can only narrow.
 
-**Effort:** 8-12 days, **plus a product decision that blocks the start.**
-**Risk:** high -- the one phase where a subtle mistake becomes a prompt-injection
-path into an agent with filesystem access.
+**Effort:** 8-12 days. **Risk:** high -- the one phase where a subtle mistake
+becomes a prompt-injection path into an agent with filesystem access. The
+decision is made, which removes the scheduling block but none of the care: the
+sequencing in section 7 still puts it last, because the risk is in the code and
+not in the approval.
 
 ### 5.5 Phase 5 — coordinated agent teams
 
@@ -502,8 +525,8 @@ Measured in this container:
 | Check | Status |
 |---|---|
 | Dependency install | Works, but **not out of the box** — see below |
-| `yarn test:web` | Runs; baseline in 6.1. Red on `main` by 3 files |
-| `yarn build:web` | **Fails on `main`** — see 6.1(a) |
+| `yarn test:web` | Runs; baseline in 6.1. Red by 2 files after 6.1(a) |
+| `yarn build:web` | Fixed on this branch; was failing on `main` — 6.1(a) |
 | Rust plugin tests | Runs after installing GTK/WebKit headers; 2 container-specific failures |
 | macOS native / WebView smoke | Impossible here (Linux container) |
 | Windows fail-closed runtime | Impossible here |
@@ -561,12 +584,14 @@ package and `services/index.ts:145` dynamically importing that module into the
 service hub. `services/updater/__tests__/tauri.test.ts` fails to resolve for the
 same reason, which is the third failing test file.
 
-The fix is small and already scaffolded: `DefaultUpdaterService`
+**Fixed on this branch.** `DefaultUpdaterService`
 (`services/updater/default.ts`) is a no-op returning `null`, which *is* the
 intended local-only behaviour, and the hub already defaults to it
-(`services/index.ts:96`). Deleting `updater/tauri.ts` plus its test and dropping
-the two lines that load it in `services/index.ts` finishes the removal that
-`3be8879` started.
+(`services/index.ts:96`) — the mobile branch already relies on exactly that. So
+finishing the removal meant deleting `updater/tauri.ts` and its test, dropping
+the three lines that loaded it into the desktop branch of the hub, and removing
+two dangling `vi.mock` calls. `yarn build:web` goes from failing to exit 0, and
+`services/updater/__tests__/tauri.test.ts` stops being a third failing file.
 
 **b. Two tests cannot pass under the default runner.**
 `web-app/src/hooks/__tests__/restart/processA.spec.ts` and `processB.spec.ts`
@@ -585,7 +610,7 @@ self-skipping spec still reports its own absence, where an exclude hides it.
 
 Both findings are `main`'s and outside this epic's scope, recorded here because
 a Phase 0 baseline that does not say "the tree does not currently build" is not
-a baseline.
+a baseline. (a) has since been fixed on this branch; (b) is still open.
 
 ### 6.2 Pre-merge results at `adfd071`
 
@@ -637,10 +662,10 @@ cannot be produced by CI here at all.
 4. **Phase 6** (checkpoints/rewind) — after Phase 1; mostly promotion of
    existing, already-exercised code.
 5. **Phase 5** (agent teams) — after Phases 1 and 6.
-6. **Phase 4** (Claude compatibility) — **last, and only after the policy
-   decision in §5.4 is made**, because it is the only phase that trades away an
-   existing security property, and doing it under time pressure at the end of a
-   long epic is how injection paths get shipped.
+6. **Phase 4** (compatibility ingestion) -- last. The policy decision is made
+   (5.4), so nothing blocks starting it; it stays last because it is the only
+   phase that relaxes an existing security property, and doing that under time
+   pressure at the end of a long epic is how injection paths get shipped.
 7. **Phases 7–8** continuously rather than as a tail.
 
 Rough total: **40-60 implementation-days**, excluding the Phase 4 decision and
