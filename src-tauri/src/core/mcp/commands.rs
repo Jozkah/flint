@@ -431,12 +431,12 @@ pub async fn call_tool(
     let servers = state.mcp_servers.lock().await;
 
     // If server_name is provided, only check that specific server
-    let servers_to_check: Vec<(&String, &RunningMcpService)> =
-        if let Some(ref server) = server_name {
-            servers.iter().filter(|(name, _)| *name == server).collect()
-        } else {
-            servers.iter().collect()
-        };
+    let servers_to_check: Vec<(&String, &RunningMcpService)> = if let Some(ref server) = server_name
+    {
+        servers.iter().filter(|(name, _)| *name == server).collect()
+    } else {
+        servers.iter().collect()
+    };
 
     if servers_to_check.is_empty() {
         cleanup_cancellation_token(&state, &cancellation_token).await;
@@ -629,7 +629,10 @@ pub async fn authorize_mcp_server<R: Runtime>(
     }
     // Best-effort: the url has already been emitted, so a session with no
     // browser can still finish by opening it by hand.
-    if let Err(e) = app.opener().open_url(&pending.authorization_url, None::<&str>) {
+    if let Err(e) = app
+        .opener()
+        .open_url(&pending.authorization_url, None::<&str>)
+    {
         log::warn!("Could not open the browser for '{name}': {e}");
     }
 
@@ -640,10 +643,7 @@ pub async fn authorize_mcp_server<R: Runtime>(
 /// Forget one server's stored tokens. `false` when there were none, so the UI
 /// can tell "cleared" from "nothing to clear".
 #[tauri::command]
-pub async fn clear_mcp_auth<R: Runtime>(
-    app: AppHandle<R>,
-    name: String,
-) -> Result<bool, String> {
+pub async fn clear_mcp_auth<R: Runtime>(app: AppHandle<R>, name: String) -> Result<bool, String> {
     let folder = get_jan_data_folder_path(app);
     oauth::clear(&folder, &name)
 }

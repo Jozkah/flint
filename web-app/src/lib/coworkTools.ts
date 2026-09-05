@@ -6,6 +6,7 @@
  * transcribed from their Rust counterparts (`todo.rs`, `interaction.rs`,
  * `subagent.rs`) so the CLI and the desktop advertise the same contract.
  */
+import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
 import {
@@ -27,7 +28,9 @@ export const PLAN_DENIED_TOOLS = new Set([
 
 /** Named `todo` to match the Rust tool: the plan-mode addendum instructs the
  * model to call `todo` by name, so renaming it here breaks that prompt. */
+export { TEAM_TOOL_NAME }
 export const TODO_TOOL_NAME = 'todo'
+
 export const ASK_TOOL_NAME = 'ask'
 export const TASK_TOOL_NAME = 'task'
 
@@ -36,6 +39,7 @@ export const CLIENT_TOOL_NAMES = new Set([
   TODO_TOOL_NAME,
   ASK_TOOL_NAME,
   TASK_TOOL_NAME,
+  TEAM_TOOL_NAME,
 ])
 
 const todoTool: Tool = {
@@ -113,6 +117,83 @@ const askTool: Tool = {
     additionalProperties: false,
   }),
 } as Tool
+
+/**
+ * Several children on one piece of work, with an order between them.
+ *
+ * Separate from `task` rather than an option on it, because the interesting
+ * part is the graph: what waits for what, and which tasks would collide. A
+ * single call carrying the whole plan is what makes those answerable before
+ * anything runs — asked one `task` at a time, they cannot be.
+ */
+function teamTool(subagentNames: string[]): Tool {
+  const known = subagentNames.length
+    ? ` Saved subagents: ${subagentNames.join(', ')}.`
+    : ''
+  return {
+    description:
+      'Run several subagents on one piece of work, respecting an order you ' +
+      'declare. Use it when the work splits into parts that can go at once, ' +
+      'or where one part must finish before another starts. Each task is run ' +
+      'by a child that cannot see this conversation, so describe it in full. ' +
+      'Declare in `writes` the files a task will change: two tasks that would ' +
+      'change the same file with nothing ordering them are refused before ' +
+      'anything runs. Set `isolate` on a task that should work in a checkout ' +
+      'of its own, when its changes must not reach the attached folder or its ' +
+      'siblings.' +
+      known,
+    inputSchema: jsonSchema({
+      type: 'object',
+      properties: {
+        tasks: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              id: {
+                type: 'string',
+                description: 'Short, unique in this team.',
+              },
+              description: {
+                type: 'string',
+                description: 'The whole brief; the child sees nothing else.',
+              },
+              subagent_name: { type: 'string' },
+              depends_on: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Task ids that must complete before this starts.',
+              },
+              writes: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Files this task expects to change.',
+              },
+              retries: {
+                type: 'number',
+                description:
+                  'Extra attempts if this task fails, at most 2. Only worth ' +
+                  'setting for work that can fail transiently; a refusal fails ' +
+                  'the same way every time.',
+              },
+              isolate: {
+                type: 'boolean',
+                description:
+                  'Give this task its own checkout of the project. Its ' +
+                  'changes go nowhere else and nothing downstream can see ' +
+                  'them, so a task that waits on an isolated task that ' +
+                  'changes files is refused.',
+              },
+            },
+            required: ['id', 'description'],
+          },
+        },
+      },
+      required: ['tasks'],
+    }),
+  } as Tool
+}
 
 function taskTool(subagentNames: string[]): Tool {
   const known = subagentNames.length
@@ -194,9 +275,7 @@ export async function buildCoworkTools(
     if (opts.planMode && PLAN_DENIED_TOOLS.has(name)) continue
     tools[name] = {
       description: s.function.description,
-      inputSchema: jsonSchema(
-        s.function.parameters as Record<string, unknown>
-      ),
+      inputSchema: jsonSchema(s.function.parameters as Record<string, unknown>),
     } as Tool
   }
 
@@ -204,11 +283,15 @@ export async function buildCoworkTools(
   if (opts.webSearch) {
     tools['web_search'] = {
       description: WEB_SEARCH_DESCRIPTION,
-      inputSchema: jsonSchema(WEB_SEARCH_INPUT_SCHEMA as Record<string, unknown>),
+      inputSchema: jsonSchema(
+        WEB_SEARCH_INPUT_SCHEMA as Record<string, unknown>
+      ),
     } as Tool
     tools['web_fetch'] = {
       description: WEB_FETCH_DESCRIPTION,
-      inputSchema: jsonSchema(WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>),
+      inputSchema: jsonSchema(
+        WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>
+      ),
     } as Tool
   }
 
@@ -216,6 +299,7 @@ export async function buildCoworkTools(
   tools[ASK_TOOL_NAME] = askTool
   if (opts.allowSubagents && !opts.planMode) {
     tools[TASK_TOOL_NAME] = taskTool(opts.subagentNames)
+    tools[TEAM_TOOL_NAME] = teamTool(opts.subagentNames)
   }
   return tools
 }

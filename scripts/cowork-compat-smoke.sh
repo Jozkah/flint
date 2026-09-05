@@ -35,11 +35,79 @@ check() {
   fi
 }
 
-if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "This harness asserts macOS Seatbelt behaviour; run it on macOS." >&2
-  exit 2
+# Seatbelt is macOS-only, so the checks that need a real one are gated rather
+# than the whole script. Everything else — the worktree lifecycle, the
+# checkpoint asymmetry, context measurement, the opening-turn gate, the
+# coordination layer — is platform-independent and worth running wherever
+# someone is working, which is usually not macOS.
+IS_MACOS=0
+[[ "$(uname -s)" == "Darwin" ]] && IS_MACOS=1
+
+skip() {
+  printf '  \033[33mskip\033[0m  %s (%s)\n' "$1" "$2"
+}
+
+step "The safety properties, anywhere"
+# These are the guarantees the access modes rest on, and none of them needs a
+# particular platform to be true.
+check "managed worktree: creation, reuse, refusal, and the source left alone" \
+  cargo test --quiet --manifest-path src-tauri/Cargo.toml --lib worktree
+
+check "checkpoints: a managed tree restores, a user's checkout never does" \
+  cargo test --quiet --manifest-path src-tauri/Cargo.toml --lib checkpoint
+
+check "access: a grant for the source checkout cannot serve a worktree run" \
+  web-app/node_modules/.bin/vitest run --root web-app \
+  src/lib/__tests__/coworkAccess.test.ts
+
+check "context: measured from the payload, estimates labelled as estimates" \
+  web-app/node_modules/.bin/vitest run --root web-app \
+  src/lib/__tests__/coworkContext.test.ts \
+  src/lib/__tests__/coworkReadiness.test.ts \
+  src/containers/__tests__/CoworkContextBreakdown.test.tsx
+
+check "opening turn: an ambiguous request proposes rather than acts" \
+  web-app/node_modules/.bin/vitest run --root web-app \
+  src/lib/__tests__/coworkContinuity.test.ts
+
+check "coordination: a failed child never becomes a finished task" \
+  web-app/node_modules/.bin/vitest run --root web-app \
+  src/lib/__tests__/coworkTeam.test.ts
+
+# The graph rules proved against a table say nothing about the wiring. This
+# drives a team through the real subagent runner and the real dispatcher, with
+# only the model replaced, because the bugs live in the seams.
+check "team dispatch: children inherit the run's tools and none of its own" \
+  web-app/node_modules/.bin/vitest run --root web-app \
+  src/lib/__tests__/coworkTeamDispatch.test.ts
+
+# Isolation has to be a boundary rather than a declaration: two children asking
+# for their own checkout must get two roots, two grants and two owners, and a
+# team that cannot isolate every task that asked must be refused whole.
+check "isolated children: separate roots, or the team does not start" \
+  web-app/node_modules/.bin/vitest run --root web-app \
+  src/lib/__tests__/coworkTeamDestinations.test.ts
+
+# One session's grant used to be one grant. A team of three isolated children
+# needs three live ones, and none of them usable under another's id.
+check "grants: children of one session hold separate roots" \
+  cargo test --quiet \
+  --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml \
+  --lib grants
+
+# What the run reads and what authority it carries, and the surfaces that
+# report where the changes went. The failure this catches is a mode the screen
+# names and the run does not use.
+check "destinations: the run uses the tree it says it uses" \
+  web-app/node_modules/.bin/vitest run --root web-app \
+  src/lib/__tests__/coworkOriginAgreement.test.ts
+
+if [[ "$IS_MACOS" -eq 0 ]]; then
+  step "Seatbelt, and what needs a real one"
+  skip "Seatbelt confinement and the MCP runtime suites" "not macOS"
 fi
 
+if [[ "$IS_MACOS" -eq 1 ]]; then
 step "Sandbox confinement, under the real backend"
 # Policy construction and real confined processes: review-only cannot write the
 # repository, edit-folder writes only the authorized root, and neither sibling
@@ -110,6 +178,7 @@ restart_across_processes() {
   return "$status"
 }
 check "consent and running servers do not survive a restart" restart_across_processes
+fi
 
 printf '\n'
 if [[ "$FAILED" -eq 0 ]]; then
@@ -120,7 +189,21 @@ fi
 
 cat <<'NOTE'
 
-Covered by an executing runtime:
+Covered by an executing runtime, on any platform:
+  - a real Git worktree created outside the checkout, reused across restarts,
+    and refusing a branch or directory that is already someone else's
+  - the source checkout left untouched while its worktree is edited
+  - a checkpoint restoring a managed tree, and refusing to restore over the
+    user's own checkout
+  - a write grant naming the source checkout refused for a worktree run
+  - context measured from the payload the run actually sends
+  - an ambiguous opening request answered with a proposal rather than an edit
+  - a failed child staying failed in the parent's report
+  - a team dispatched through the real subagent runner: ordering honoured,
+    tools inherited, `team` and `task` withheld from children, a cancelled
+    team reaching the child already in flight
+
+Covered by an executing runtime, on macOS:
   - Seatbelt confining a real child process, on this host
   - review-only vs edit-folder write boundaries
   - sibling and prefix-sibling refusal, for reads and writes

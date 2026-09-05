@@ -98,6 +98,15 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_plugin_remove,
         core::agent::commands::agent_plugin_search,
         core::agent::commands::agent_git_branch,
+        core::agent::commands::agent_worktree_ensure,
+        core::agent::commands::agent_worktree_state,
+        core::agent::commands::agent_worktree_discard,
+        core::agent::commands::agent_worktree_pending,
+        core::agent::commands::agent_worktree_list,
+        core::agent::commands::agent_checkpoint_capture,
+        core::agent::commands::agent_checkpoint_plan,
+        core::agent::commands::agent_checkpoint_restore,
+        core::agent::commands::agent_checkpoint_forget,
         core::agent::commands::agent_git_status,
         core::agent::commands::agent_git_file_diff,
         core::agent::commands::agent_subagent_list,
@@ -432,8 +441,7 @@ pub fn run() {
                 // the ExitRequested path on quit.
                 #[cfg(not(target_os = "macos"))]
                 if is_proxy_server_running(app)
-                    && core::server::commands::SERVER_RUN_IN_BACKGROUND
-                        .load(Ordering::SeqCst)
+                    && core::server::commands::SERVER_RUN_IN_BACKGROUND.load(Ordering::SeqCst)
                 {
                     api.prevent_close();
                     if let Some(window) = app.get_webview_window("main") {

@@ -128,7 +128,6 @@ class PlatformServiceHub implements ServiceHub {
           providersModule,
           dialogModule,
           openerModule,
-          updaterModule,
           pathModule,
           coreModule,
           deepLinkModule,
@@ -142,7 +141,6 @@ class PlatformServiceHub implements ServiceHub {
           import('./providers/tauri'),
           import('./dialog/tauri'),
           import('./opener/tauri'),
-          import('./updater/tauri'),
           import('./path/tauri'),
           import('./core/tauri'),
           import('./deeplink/tauri'),
@@ -157,7 +155,6 @@ class PlatformServiceHub implements ServiceHub {
         this.providersService = new providersModule.TauriProvidersService()
         this.dialogService = new dialogModule.TauriDialogService()
         this.openerService = new openerModule.TauriOpenerService()
-        this.updaterService = new updaterModule.TauriUpdaterService()
         this.pathService = new pathModule.TauriPathService()
         this.coreService = new coreModule.TauriCoreService()
         this.deepLinkService = new deepLinkModule.TauriDeepLinkService()

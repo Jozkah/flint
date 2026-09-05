@@ -22,7 +22,6 @@ pub enum Transport {
     Anthropic,
 }
 
-
 /// Non-secret guidance for minting an API key.
 #[derive(Debug, Clone)]
 pub struct ApiKeyMetadata {
@@ -45,7 +44,6 @@ pub struct ProviderDefinition {
     pub transport: Transport,
     pub api_key: ApiKeyMetadata,
 }
-
 
 /// The providers the TUI `/login` flow offers, in picker order.
 pub fn provider_catalog() -> Vec<ProviderDefinition> {
@@ -109,12 +107,10 @@ pub fn provider_catalog() -> Vec<ProviderDefinition> {
     catalog
 }
 
-
 /// The catalog entry for `id`, if any.
 pub fn provider_by_id(id: &str) -> Option<ProviderDefinition> {
     provider_catalog().into_iter().find(|p| p.id == id)
 }
-
 
 /// Non-secret outcome of a successful login, safe to render and report.
 #[derive(Debug, Clone, PartialEq)]
@@ -170,5 +166,4 @@ mod tests {
             .collect();
         assert_eq!(enabled, vec!["opencode"]);
     }
-
 }

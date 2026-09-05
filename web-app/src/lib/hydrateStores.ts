@@ -20,6 +20,7 @@ import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
+import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
@@ -56,6 +57,7 @@ const secondaryStores = [
   useCoworkSessions,
   useClaudeCompat,
   useCoworkActivity,
+  useCoworkCheckpoints,
   useFileActivity,
   useAgentToolsConfig,
   useModelOverrides,

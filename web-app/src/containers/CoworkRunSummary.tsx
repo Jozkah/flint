@@ -51,6 +51,14 @@ export function CoworkRunSummary({ summary }: { summary: CompletionSummary }) {
         </p>
       </header>
 
+      {summary.tree ? (
+        // Named, because "in the worktree" is true of a specific one and the
+        // reader has to be able to go and look at it.
+        <p className="mb-2 break-all font-mono text-main-view-fg/70">
+          {t('common:coworkOrigins.inTree', { tree: summary.tree })}
+        </p>
+      ) : null}
+
       <div className="flex flex-col gap-2">
         {summaryIsEmpty(summary) ? (
           <p className="text-main-view-fg/70">

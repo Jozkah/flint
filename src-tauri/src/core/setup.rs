@@ -1,6 +1,6 @@
-use std::{fs, sync::Arc, time::Duration};
 #[cfg(target_os = "linux")]
 use std::path::PathBuf;
+use std::{fs, sync::Arc, time::Duration};
 use tauri::{App, AppHandle, Emitter, Listener, Manager, Runtime, WindowEvent, Wry};
 
 #[cfg(feature = "desktop")]
@@ -68,7 +68,9 @@ pub fn migrate_mcp_servers(
         }
     }
     if mcp_version < 4 {
-        log::info!("Migrating MCP schema version 4: Removing default Exa MCP (native web search cutover)");
+        log::info!(
+            "Migrating MCP schema version 4: Removing default Exa MCP (native web search cutover)"
+        );
         if let Err(e) = remove_exa_server(app_handle) {
             log::error!("Failed to remove Exa MCP server: {e}");
         }

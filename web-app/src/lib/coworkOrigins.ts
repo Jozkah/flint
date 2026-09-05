@@ -280,6 +280,17 @@ export type RunOrigins = {
   access: AccessMode
   destination: ChangeDestination
   /**
+   * The working tree this run's changes actually land in.
+   *
+   * Not the same as `binding.folder`, and the difference is the whole reason
+   * this field exists: a managed-worktree run reads and writes a checkout of
+   * its own, so a baseline taken in the attached folder would describe a tree
+   * nothing touched, and every change would come back unattributable. Equal to
+   * the attached folder for repository and sandbox runs, null when there is no
+   * folder at all.
+   */
+  tree: string | null
+  /**
    * The working tree as it was before the run, when it could be captured.
    *
    * Null is itself a fact — it means nothing later can be dated — and is why
@@ -299,7 +310,14 @@ export type RunOrigins = {
 export const promptFolderAccess = (
   origins: RunOrigins
 ): 'read-only' | 'editable' =>
-  origins.access === 'edit-folder' && origins.destination === 'repository'
+  // Both writing destinations, because both are true: a managed worktree is
+  // the run's whole world, read and written, and telling the model it is
+  // read-only would have it spend the run proposing changes it could have
+  // made. The pairing of access and destination is what keeps a downgraded
+  // session honest — either half alone would say editable for a session
+  // holding no grant.
+  (origins.access === 'edit-folder' && origins.destination === 'repository') ||
+  (origins.access === 'managed-worktree' && origins.destination === 'managed')
     ? 'editable'
     : 'read-only'
 
@@ -338,6 +356,15 @@ export type CompletionSummary = {
   /** Differences with no Git evidence either way. */
   unknown: string[]
   baseline: BaselineState | 'none'
+  /**
+   * The tree these paths are relative to, when it is not the attached folder.
+   *
+   * A managed run's "Jan changed in the worktree" is true of a specific
+   * worktree, and someone reading the summary has to be able to go and look at
+   * it. Null for a run whose changes are in the folder the session is attached
+   * to, where naming it again would add nothing.
+   */
+  tree: string | null
 }
 
 const DESTINATION_ORDER: ChangeDestination[] = [
@@ -358,7 +385,9 @@ const DESTINATION_ORDER: ChangeDestination[] = [
  */
 export function summarizeRun(
   entries: readonly OriginEntry[],
-  baseline: GitBaseline | null
+  baseline: GitBaseline | null,
+  /** The run's frozen snapshot, when the summary is for a live run. */
+  origins?: Pick<RunOrigins, 'tree' | 'destination'>
 ): CompletionSummary {
   const writes = entries.filter((one) => one.evidence === 'jan-write')
   const janWrites = DESTINATION_ORDER.map((destination) => ({
@@ -380,6 +409,10 @@ export function summarizeRun(
     observed: by('observed-in-run'),
     unknown: by('no-evidence'),
     baseline: baseline?.state ?? 'none',
+    // Only where it differs from the attached folder: a repository or sandbox
+    // run naming its tree again would be noise, and a managed one not naming
+    // it leaves the reader with nowhere to look.
+    tree: origins?.destination === 'managed' ? (origins.tree ?? null) : null,
   }
 }
 

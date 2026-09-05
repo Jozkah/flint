@@ -7,6 +7,7 @@
 //! one implementation. This module owns orchestration only.
 
 // Tauri IPC surface for the desktop agent; the CLI drives the loop directly.
+pub mod checkpoint;
 #[cfg(not(feature = "cli"))]
 pub mod commands;
 pub mod compaction;
@@ -32,3 +33,4 @@ pub mod skills;
 pub mod subagent;
 pub mod todo;
 pub mod upstream;
+pub mod worktree;

@@ -125,10 +125,6 @@ vi.mock('../opener/tauri', () => ({
   TauriOpenerService: vi.fn().mockImplementation(() => ({}))
 }))
 
-vi.mock('../updater/tauri', () => ({
-  TauriUpdaterService: vi.fn().mockImplementation(() => ({}))
-}))
-
 vi.mock('../path/tauri', () => ({
   TauriPathService: vi.fn().mockImplementation(() => ({}))
 }))

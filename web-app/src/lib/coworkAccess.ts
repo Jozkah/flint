@@ -44,17 +44,26 @@ export const accessDescriptionKey = (access: AccessMode): string =>
  * refuses every path outside the sandbox would be a promise the product does
  * not keep — the precise class of claim this rework exists to remove.
  *
- * Both write modes are false until their enforcement lands: the managed
- * worktree needs a lifecycle the Git layer does not have yet (`core/agent/git`
- * offers `repo_root`, `status` and `file_diff` and nothing else), and direct
- * editing needs an authorized writable root threaded through the tool gate,
- * which today measures every write against the sandbox.
+ * Both write modes rest on the same thing: an authorized writable root the tool
+ * gate confines to. That is why they move together rather than separately —
+ * `directEdit` authorizes the user's own checkout, `managedWorktree` authorizes
+ * a Jan-owned worktree, and neither can be honoured on a platform that cannot
+ * confine a shell to a directory.
+ *
+ * A worktree additionally needs Git, since there is nothing to branch from
+ * without it.
  */
 export type AccessCapability = {
   managedWorktree: boolean
   directEdit: boolean
 }
 
+/**
+ * The safe default, used before the backend has answered.
+ *
+ * False is not "no"; it is "not yet established", and the two are the same
+ * thing here because neither may be acted on.
+ */
 export const BACKEND_ACCESS_CAPABILITY: AccessCapability = {
   managedWorktree: false,
   directEdit: false,
@@ -146,6 +155,30 @@ export function rootsFor(
     }
   }
   return { readRoot: input.folder, writeRoot: null, destination: 'sandbox' }
+}
+
+/**
+ * What a run carries: the tree it reads, and the authority it holds.
+ *
+ * Derived from the effective access in one place, so every destination is
+ * distinct wherever it is read. The mistake this exists to prevent is subtle
+ * and was real: a run that read the attached folder while its access said
+ * "managed worktree" wrote to a sandbox and reported an isolated checkout, and
+ * every part of that is a sentence someone would believe.
+ *
+ * The grant travels only when there is somewhere to write. A session holding a
+ * live grant whose access has been downgraded — capability lost, binding
+ * changed, worktree gone — carries none, which is what makes the downgrade
+ * mean something rather than merely display something.
+ */
+export function runCarries(
+  effective: Pick<EffectiveAccess, 'readRoot' | 'writeRoot' | 'destination'>,
+  input: { folder: string | null; grantId: string | null }
+): { readRoot: string | null; writeGrant: string | null } {
+  return {
+    readRoot: effective.readRoot ?? input.folder,
+    writeGrant: effective.writeRoot ? input.grantId : null,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -282,6 +315,14 @@ export function effectiveAccess(input: {
   binding: Binding
   /** False while the capability query is in flight or after it failed. */
   capabilityKnown?: boolean
+  /**
+   * The session's resolved worktree, when it has one.
+   *
+   * Absent means none has been created yet, which is not permission: a
+   * managed-worktree session with nowhere isolated to write falls back to its
+   * sandbox like any other unauthorized run.
+   */
+  worktreePath?: string | null
 }): EffectiveAccess {
   const sandbox = (
     downgradedFrom?: AccessMode,
@@ -295,16 +336,42 @@ export function effectiveAccess(input: {
   })
 
   if (input.persisted === 'review-only') return sandbox()
-  // Not built yet, and saying so is the whole of its behaviour.
-  if (input.persisted === 'managed-worktree') {
-    return sandbox('managed-worktree', 'no-capability')
-  }
 
   // An unanswered or failed capability query is not permission.
   if (input.capabilityKnown === false) {
-    return sandbox('edit-folder', 'capability-unknown')
+    return sandbox(input.persisted, 'capability-unknown')
   }
-  if (!input.capability.directEdit) return sandbox('edit-folder', 'no-capability')
+
+  if (input.persisted === 'managed-worktree') {
+    if (!input.capability.managedWorktree) {
+      return sandbox('managed-worktree', 'no-capability')
+    }
+    // No worktree resolved yet is not a downgrade the user did anything to
+    // deserve, but it is still not authority: until one exists there is
+    // nowhere isolated to write.
+    if (!input.worktreePath) return sandbox('managed-worktree', 'no-grant')
+    if (!input.grant) return sandbox('managed-worktree', 'no-grant')
+    // The grant must be for *this* worktree. A grant naming the source
+    // checkout would write the very tree this mode exists to leave alone.
+    if (
+      input.grant.sessionId !== input.binding.sessionId ||
+      input.grant.folder !== input.worktreePath
+    ) {
+      return sandbox('managed-worktree', 'binding-changed')
+    }
+    // The worktree is the run's whole world: read and written. The source
+    // checkout is not read alongside it, so the agent cannot reason about one
+    // tree while changing another.
+    return {
+      access: 'managed-worktree',
+      readRoot: input.worktreePath,
+      writeRoot: input.worktreePath,
+      destination: 'managed',
+    }
+  }
+
+  if (!input.capability.directEdit)
+    return sandbox('edit-folder', 'no-capability')
   if (!input.grant) return sandbox('edit-folder', 'no-grant')
   // A grant belongs to one session and one folder. Anything else is a grant
   // for a run that is not this one.

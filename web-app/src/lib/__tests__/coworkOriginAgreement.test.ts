@@ -50,6 +50,7 @@ const editing: RunOrigins = {
   binding,
   access: 'edit-folder',
   destination: 'repository',
+  tree: FOLDER,
   baseline: baselineFromStatus(status(['theirs.ts']), binding),
 }
 
@@ -57,6 +58,7 @@ const reviewing: RunOrigins = {
   binding,
   access: 'review-only',
   destination: 'sandbox',
+  tree: FOLDER,
   baseline: baselineFromStatus(status([]), binding),
 }
 
@@ -64,9 +66,7 @@ const reviewing: RunOrigins = {
 const describeRun = (origins: RunOrigins) => {
   const entries = buildOriginLedger({
     baseline: origins.baseline,
-    janCalls: [
-      { path: 'mine.ts', destination: origins.destination, ok: true },
-    ],
+    janCalls: [{ path: 'mine.ts', destination: origins.destination, ok: true }],
     endDifferences: ['theirs.ts', 'built.js'],
     destinationOf: () => destinationOfOrigin('project', origins.destination),
   })
@@ -79,7 +79,8 @@ const describeRun = (origins: RunOrigins) => {
 
   const prompt = buildCoworkSystemPrompt({
     workspacePath: '/jan/sessions/a',
-    readOnlyFolder: origins.binding.folder,
+    // The tree the run works in, which is what the model is told about.
+    readOnlyFolder: origins.tree ?? origins.binding.folder,
     folderAccess: promptFolderAccess(origins),
     planMode: false,
     bashAvailable: true,
@@ -103,9 +104,9 @@ describe('every surface describing the same run', () => {
     // The prompt has to say the same thing the gate will do.
     expect(prompt).toContain(FOLDER)
     expect(promptFolderAccess(editing)).toBe('editable')
-    expect(
-      entries.find((one) => one.path === 'mine.ts')?.destination
-    ).toBe('repository')
+    expect(entries.find((one) => one.path === 'mine.ts')?.destination).toBe(
+      'repository'
+    )
     expect(summary.janWrites).toEqual([
       { destination: 'repository', paths: ['mine.ts'] },
     ])
@@ -120,6 +121,55 @@ describe('every surface describing the same run', () => {
     expect(
       summary.janWrites.every((group) => group.destination !== 'repository')
     ).toBe(true)
+  })
+
+  it('agrees a managed run works in its worktree, and may write it', () => {
+    const WORKTREE = '/jan/worktrees/abc/s1'
+    const managed: RunOrigins = {
+      binding,
+      access: 'managed-worktree',
+      destination: 'managed',
+      // The distinction the whole field exists for: the session is attached
+      // to one tree and changing another.
+      tree: WORKTREE,
+      baseline: baselineFromStatus(status([]), binding),
+    }
+    const { prompt, readiness, entries } = describeRun(managed)
+
+    expect(readiness.writeDestination).toBe('managed')
+    // Editable, because it is: telling the model otherwise would have it
+    // spend the run proposing changes it could have made.
+    expect(promptFolderAccess(managed)).toBe('editable')
+    // And the tree it is told about is the worktree, not the checkout it must
+    // not touch.
+    expect(prompt).toContain(WORKTREE)
+    expect(prompt).not.toContain(FOLDER)
+    expect(entries.find((one) => one.path === 'mine.ts')?.destination).toBe(
+      'managed'
+    )
+    // And the completion summary names which worktree, because "in the
+    // worktree" is true of a specific one.
+    expect(summarizeRun(entries, managed.baseline, managed).tree).toBe(WORKTREE)
+  })
+
+  it('does not name a tree when the changes are in the attached folder', () => {
+    const { entries } = describeRun(editing)
+    expect(summarizeRun(entries, editing.baseline, editing).tree).toBeNull()
+  })
+
+  it('says read-only for a managed session whose worktree is gone', () => {
+    // Same doubling as the direct-edit case: the access remembers the mode,
+    // the destination reports what would happen, and only agreement is
+    // editable.
+    expect(
+      promptFolderAccess({
+        binding,
+        access: 'managed-worktree',
+        destination: 'sandbox',
+        tree: FOLDER,
+        baseline: null,
+      })
+    ).toBe('read-only')
   })
 
   /**
@@ -160,15 +210,15 @@ describe('every surface describing the same run', () => {
     const { readiness, entries, summary } = describeRun(editing)
 
     expect(readiness.evidence).toBe('none')
-    expect(
-      entries.find((one) => one.path === 'theirs.ts')?.evidence
-    ).toBe('pre-existing')
+    expect(entries.find((one) => one.path === 'theirs.ts')?.evidence).toBe(
+      'pre-existing'
+    )
     expect(summary.preExisting).toEqual(['theirs.ts'])
     expect(summary.observed).toEqual(['built.js'])
     // Whatever the surface, the file Jan did not touch is never in its writes.
-    expect(
-      summary.janWrites.flatMap((group) => group.paths)
-    ).not.toContain('theirs.ts')
+    expect(summary.janWrites.flatMap((group) => group.paths)).not.toContain(
+      'theirs.ts'
+    )
   })
 
   // The snapshot is the run's, not the session's current state: this is what

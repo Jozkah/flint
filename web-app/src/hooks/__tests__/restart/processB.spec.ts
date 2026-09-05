@@ -16,7 +16,18 @@ const ROOT = '/home/dev/obs-forwarder'
  * nothing is in memory except what rehydration puts there — which is the same
  * position Jan is in after a restart.
  */
-describe('process B: starting again against the same stored state', () => {
+/**
+ * Driven by `scripts/cowork-compat-smoke.sh`, which supplies the shared file.
+ *
+ * Skipped rather than failed when it is absent, because the default runner
+ * picks this file up too and a two-process fixture cannot work in one process.
+ * Skipping rather than excluding the directory is deliberate: a skipped spec
+ * still names itself in the output, so the coverage it represents is visibly
+ * absent instead of silently missing.
+ */
+const withFixture = describe.skipIf(!process.env.JAN_RESTART_FIXTURE)
+
+withFixture('process B: starting again against the same stored state', () => {
   it('restores what grants nothing, and none of what does', async () => {
     await useClaudeCompat.persist.rehydrate()
     const store = useClaudeCompat.getState()

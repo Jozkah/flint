@@ -78,12 +78,15 @@ impl CredentialStore {
         let Some(raw) = provider_secrets::load_secret_record(&secret_key(provider)) else {
             return Ok(None);
         };
-        let parsed: serde_json::Value =
-            serde_json::from_str(&raw).map_err(|e| format!("stored credential is unreadable: {e}"))?;
+        let parsed: serde_json::Value = serde_json::from_str(&raw)
+            .map_err(|e| format!("stored credential is unreadable: {e}"))?;
         if parsed.get("version").and_then(|v| v.as_u64()) != Some(CREDENTIAL_VERSION as u64) {
             return Ok(None);
         }
-        let body = parsed.get("credential").cloned().unwrap_or(serde_json::Value::Null);
+        let body = parsed
+            .get("credential")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
         serde_json::from_value(body)
             .map(Some)
             .map_err(|e| format!("stored credential is unreadable: {e}"))
@@ -114,7 +117,9 @@ mod tests {
 
     impl TempSecrets {
         fn new() -> Self {
-            let guard = SECRET_STORE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let guard = SECRET_STORE_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             let dir = tempfile::tempdir().unwrap();
             let prev_data_folder = std::env::var("JAN_DATA_FOLDER").ok();
             std::env::set_var("JAN_DATA_FOLDER", dir.path());

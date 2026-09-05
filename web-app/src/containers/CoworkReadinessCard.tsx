@@ -2,7 +2,9 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { modeLabelKey } from '@/lib/coworkMode'
 import {
   accountedTotal,
+  CONTEXT_CATEGORIES,
   type InstructionFile,
+  type ContextAccounting,
   type ReadinessManifest,
   type ResolvedSkill,
 } from '@/lib/coworkReadiness'
@@ -43,6 +45,32 @@ function Row({
   )
 }
 
+/** Which of the four honest phrasings this total needs. */
+function contextKey(total: { complete: boolean; estimated: boolean }): string {
+  if (total.estimated) {
+    return total.complete
+      ? 'common:readiness.tokensEstimated'
+      : 'common:readiness.tokensEstimatedPartial'
+  }
+  return total.complete
+    ? 'common:readiness.tokens'
+    : 'common:readiness.tokensPartial'
+}
+
+/**
+ * The method behind the derived numbers, for the reader to judge.
+ *
+ * Categories are measured the same way, so the first method found stands for
+ * the total; naming one is what stops "~12,000 tokens" from reading as a count.
+ */
+function estimateMethod(accounting: ContextAccounting): string {
+  for (const category of CONTEXT_CATEGORIES) {
+    const value = accounting.categories[category]
+    if (value.known === 'estimated') return value.method
+  }
+  return ''
+}
+
 export function CoworkReadinessCard({
   manifest,
 }: {
@@ -73,6 +101,36 @@ export function CoworkReadinessCard({
         <Row label={t('common:readiness.writesGo')}>
           {t(`common:readiness.destination.${manifest.writeDestination}`)}
         </Row>
+        {manifest.worktree ? (
+          <>
+            {/* Which checkout, not merely that there is one: this is the row
+                someone reads before letting a run change anything, and "an
+                isolated worktree" is the same sentence for all of them. */}
+            <Row label={t('common:readiness.worktree.path')}>
+              <span title={manifest.worktree.path}>
+                {manifest.worktree.path}
+              </span>
+            </Row>
+            <Row label={t('common:readiness.worktree.branch')}>
+              {manifest.worktree.branch} (
+              {t('common:readiness.worktree.from', {
+                sha: manifest.worktree.baseSha.slice(0, 8),
+              })}
+              )
+            </Row>
+            {manifest.worktree.uncommittedAtCreation.length > 0 ? (
+              // Said before the work, not discovered after it: the run cannot
+              // see these, so anything it concludes about them is wrong.
+              <Row label={t('common:readiness.worktree.unseen.label')}>
+                <span className="text-destructive">
+                  {t('common:readiness.worktree.unseen.value', {
+                    count: manifest.worktree.uncommittedAtCreation.length,
+                  })}
+                </span>
+              </Row>
+            ) : null}
+          </>
+        ) : null}
         {manifest.evidence ? (
           // Said before the run, not only in the summary after it: whether
           // anything this agent does will be attributable is part of deciding
@@ -130,18 +188,23 @@ export function CoworkReadinessCard({
         <Row label={t('common:readiness.tools')}>
           {manifest.tools.builtins == null
             ? t('common:readiness.builtinsUnknown')
-            : t('common:readiness.builtins', { count: manifest.tools.builtins })}
+            : t('common:readiness.builtins', {
+                count: manifest.tools.builtins,
+              })}
           {manifest.tools.mcpServers.length > 0
             ? ` · ${manifest.tools.mcpServers.join(', ')}`
             : ` · ${t('common:readiness.noMcp')}`}
         </Row>
         <Row label={t('common:readiness.context')}>
-          {/* Deliberately says "at least" when a category could not be
-              measured. A total that silently omits something reads as a
-              complete one. */}
-          {total.complete
-            ? t('common:readiness.tokens', { count: total.tokens })
-            : t('common:readiness.tokensPartial', { count: total.tokens })}
+          {/* Two separate admissions, and the wording keeps them separate.
+              "At least" covers a category that could not be measured at all;
+              the tilde and the named method cover a number that was derived
+              rather than counted. A total that silently omitted either would
+              read as an exact and complete one. */}
+          {t(contextKey(total), {
+            count: total.tokens,
+            method: estimateMethod(manifest.context),
+          })}
         </Row>
       </dl>
     </section>

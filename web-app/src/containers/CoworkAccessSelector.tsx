@@ -50,6 +50,14 @@ export type AccessSelectorProps = {
   busyReason?: WorkKind | null
   /** Opens the confirmation. Selecting is not confirming. */
   onRequestDirectEdit: () => void
+  /**
+   * Creates or finds the worktree and authorizes it.
+   *
+   * No separate confirmation: unlike direct editing, this cannot alter the
+   * user's checkout, so there is nothing to warn about that the mode's own
+   * description does not already say.
+   */
+  onRequestWorktree: () => void
   /** Revokes first, then downgrades — the caller owns that ordering. */
   onReviewOnly: () => void
 }
@@ -59,7 +67,6 @@ function blockedReason(
   option: AccessMode,
   props: AccessSelectorProps
 ): string | null {
-  if (option === 'managed-worktree') return 'common:coworkAccess.notBuiltYet'
   if (props.busyReason) return `common:coworkAccess.busy.${props.busyReason}`
   if (option === 'review-only') return null
   if (!props.hasFolder) return 'common:coworkAccess.needsFolder'
@@ -84,6 +91,7 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
     if (blockedReason(option, props)) return
     setOpen(false)
     if (option === 'edit-folder') props.onRequestDirectEdit()
+    else if (option === 'managed-worktree') props.onRequestWorktree()
     else if (option === 'review-only') props.onReviewOnly()
   }
 

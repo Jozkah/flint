@@ -223,8 +223,9 @@ impl SubagentRegistry {
                 def.name
             )));
         }
-        std::fs::create_dir_all(dir)
-            .map_err(|e| SubagentError::Upstream(format!("failed to create {}: {e}", dir.display())))?;
+        std::fs::create_dir_all(dir).map_err(|e| {
+            SubagentError::Upstream(format!("failed to create {}: {e}", dir.display()))
+        })?;
         let file = SubagentFile {
             name: def.name.clone(),
             description: def.description.clone(),
@@ -235,8 +236,9 @@ impl SubagentRegistry {
         let body = toml::to_string_pretty(&file)
             .map_err(|e| SubagentError::Upstream(format!("failed to serialize subagent: {e}")))?;
         let path = dir.join(format!("{}.toml", def.name));
-        std::fs::write(&path, body)
-            .map_err(|e| SubagentError::Upstream(format!("failed to write {}: {e}", path.display())))?;
+        std::fs::write(&path, body).map_err(|e| {
+            SubagentError::Upstream(format!("failed to write {}: {e}", path.display()))
+        })?;
 
         let shadows_user = scope == SubagentScope::Project
             && self
@@ -566,9 +568,7 @@ fn forward_to_parent(ev: &crate::core::agent::events::StreamEvent) -> bool {
     use crate::core::agent::events::StreamEvent;
     !matches!(
         ev,
-        StreamEvent::Done { .. }
-            | StreamEvent::Error { .. }
-            | StreamEvent::MessagesUpdated { .. }
+        StreamEvent::Done { .. } | StreamEvent::Error { .. } | StreamEvent::MessagesUpdated { .. }
     )
 }
 
@@ -591,7 +591,10 @@ use std::sync::Arc;
 static SUBAGENT_RUN_SEQ: AtomicU64 = AtomicU64::new(1);
 
 fn next_subagent_run_id(name: &str) -> String {
-    format!("sub-{name}-{}", SUBAGENT_RUN_SEQ.fetch_add(1, Ordering::Relaxed))
+    format!(
+        "sub-{name}-{}",
+        SUBAGENT_RUN_SEQ.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 /// One in-flight background subagent: the channel that will carry its final
@@ -668,7 +671,10 @@ impl BackgroundSubagents {
     pub(crate) async fn join_all(&self) {
         let receivers: Vec<_> = {
             let mut guard = self.inner.lock().unwrap();
-            guard.drain().filter_map(|(_, entry)| entry.result).collect()
+            guard
+                .drain()
+                .filter_map(|(_, entry)| entry.result)
+                .collect()
         };
         for rx in receivers {
             let _ = rx.await;
@@ -720,7 +726,10 @@ fn child_body(
         body.insert("allowed_tools".to_string(), serde_json::json!(tools));
     }
     if let Some(remaining) = parent.budget_remaining {
-        body.insert("max_session_tokens".to_string(), serde_json::json!(remaining));
+        body.insert(
+            "max_session_tokens".to_string(),
+            serde_json::json!(remaining),
+        );
     }
     // A child's own tool-call turns carry `reasoning_content`, so the parent's
     // opt-out has to travel with the dispatch or a strict provider still sees
@@ -819,10 +828,9 @@ pub(crate) fn spawn_subagent(
             "subagents cannot dispatch nested subagents".to_string(),
         ));
     }
-    let project_root = parent_args
-        .project_root
-        .as_ref()
-        .ok_or_else(|| SubagentError::Upstream("subagents require an active project".to_string()))?;
+    let project_root = parent_args.project_root.as_ref().ok_or_else(|| {
+        SubagentError::Upstream("subagents require an active project".to_string())
+    })?;
     let registry = SubagentRegistry::load(project_root);
     let resolved = resolve_dispatch(&registry, &req, &parent_args.permissions)?;
 
@@ -1109,10 +1117,7 @@ pub fn parse_create_args(
             description,
             system_prompt,
             allowed_tools: optional_tool_list(args),
-            model: args
-                .get("model")
-                .and_then(|v| v.as_str())
-                .map(String::from),
+            model: args.get("model").and_then(|v| v.as_str()).map(String::from),
             scope,
         },
         scope,
@@ -1186,7 +1191,10 @@ mod tests {
         let def = reg.get("rust-reviewer").expect("loaded");
         assert_eq!(def.description, "desc for rust-reviewer");
         assert_eq!(def.system_prompt, "You are rust-reviewer.");
-        assert_eq!(def.allowed_tools.as_deref(), Some(&["read".to_string(), "grep".to_string()][..]));
+        assert_eq!(
+            def.allowed_tools.as_deref(),
+            Some(&["read".to_string(), "grep".to_string()][..])
+        );
         assert_eq!(def.model.as_deref(), Some("m-1"));
         assert_eq!(def.scope, SubagentScope::Project);
         let _ = std::fs::remove_dir_all(&root);
@@ -1268,7 +1276,10 @@ mod tests {
         // A fresh load sees it too.
         let reg2 = SubagentRegistry::load(&root);
         let loaded = reg2.get("helper").expect("reloaded");
-        assert_eq!(loaded.allowed_tools.as_deref(), Some(&["read".to_string()][..]));
+        assert_eq!(
+            loaded.allowed_tools.as_deref(),
+            Some(&["read".to_string()][..])
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1311,7 +1322,10 @@ mod tests {
         let reg = SubagentRegistry { defs };
 
         // get() resolves the project entry (shadowing).
-        assert_eq!(reg.get("reviewer").unwrap().model.as_deref(), Some("proj-model"));
+        assert_eq!(
+            reg.get("reviewer").unwrap().model.as_deref(),
+            Some("proj-model")
+        );
         assert_eq!(reg.get("reviewer").unwrap().scope, SubagentScope::Project);
         // list() still shows both, with correct scope tags.
         let all = reg.list();
@@ -1341,7 +1355,10 @@ mod tests {
         let shadows = reg
             .create_in(&proj_dir, def, SubagentScope::Project, false)
             .expect("create");
-        assert!(shadows, "project create over a user def must report shadowing");
+        assert!(
+            shadows,
+            "project create over a user def must report shadowing"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1358,7 +1375,9 @@ mod tests {
             model: None,
             scope: SubagentScope::Project,
         };
-        assert!(reg.create_in(&dir, def, SubagentScope::Project, false).is_err());
+        assert!(reg
+            .create_in(&dir, def, SubagentScope::Project, false)
+            .is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1576,8 +1595,8 @@ mod tests {
     fn resolve_rejects_tool_outside_definition() {
         let reg = registry_with("reviewer", Some(vec!["read".to_string()]));
         let p = ToolPermissions::allow_all();
-        let err =
-            resolve_dispatch(&reg, &req("reviewer", Some(vec!["bash".to_string()])), &p).unwrap_err();
+        let err = resolve_dispatch(&reg, &req("reviewer", Some(vec!["bash".to_string()])), &p)
+            .unwrap_err();
         assert!(matches!(err, SubagentError::PermissionDenied(_)));
     }
 
@@ -1715,8 +1734,14 @@ mod tests {
         );
         let guard = AbortOnDrop(bg.clone());
         drop(guard);
-        assert!(bg.inner.lock().unwrap().is_empty(), "abort_all drains the map");
-        assert!(handle.await.unwrap_err().is_cancelled(), "child was aborted");
+        assert!(
+            bg.inner.lock().unwrap().is_empty(),
+            "abort_all drains the map"
+        );
+        assert!(
+            handle.await.unwrap_err().is_cancelled(),
+            "child was aborted"
+        );
         match ev_rx.try_recv() {
             Ok(crate::core::agent::events::StreamEvent::SubagentEnd { run_id, name }) => {
                 assert_eq!(run_id, "r1");
@@ -1784,8 +1809,14 @@ mod tests {
             },
         );
         bg.join_all().await;
-        assert!(bg.inner.lock().unwrap().is_empty(), "join_all drains the map");
-        assert!(!handle.is_finished() || handle.await.is_ok(), "child ran to completion");
+        assert!(
+            bg.inner.lock().unwrap().is_empty(),
+            "join_all drains the map"
+        );
+        assert!(
+            !handle.is_finished() || handle.await.is_ok(),
+            "child ran to completion"
+        );
     }
 
     #[tokio::test]
@@ -1826,12 +1857,18 @@ mod tests {
         );
 
         AbortOnDrop(bg.clone()); // constructs + drops -> abort_all
-        assert!(handle.await.unwrap_err().is_cancelled(), "child was aborted");
+        assert!(
+            handle.await.unwrap_err().is_cancelled(),
+            "child was aborted"
+        );
         assert!(
             matches!(awaiting.await.unwrap(), Err(SubagentError::Cancelled)),
             "await resolves to Cancelled once the child is aborted"
         );
-        assert!(bg.inner.lock().unwrap().is_empty(), "teardown drained the map");
+        assert!(
+            bg.inner.lock().unwrap().is_empty(),
+            "teardown drained the map"
+        );
     }
 
     // ── max-parallel admission (semaphore queue) ───────────────────────────
@@ -1908,7 +1945,10 @@ mod tests {
             }
             // All three parked: none can start while the permit is held.
             tokio::task::yield_now().await;
-            assert!(order.lock().unwrap().is_empty(), "cap holds while a child runs");
+            assert!(
+                order.lock().unwrap().is_empty(),
+                "cap holds while a child runs"
+            );
             drop(running);
             for h in handles {
                 h.await.unwrap();
@@ -1935,9 +1975,12 @@ mod tests {
         let (events_tx, mut events_rx) = tokio::sync::mpsc::unbounded_channel();
         let mut starts = Vec::new();
 
-        let r1 = spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
-        let r2 = spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
-        let r3 = spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
+        let r1 =
+            spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
+        let r2 =
+            spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
+        let r3 =
+            spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
         assert_ne!(r1, r2);
         assert_ne!(r2, r3);
 
@@ -1945,13 +1988,20 @@ mod tests {
         // 1-based queue positions in dispatch order.
         let mut queued = Vec::new();
         while let Ok(ev) = events_rx.try_recv() {
-            if let StreamEvent::SubagentQueued { run_id, waiting, .. } = ev {
+            if let StreamEvent::SubagentQueued {
+                run_id, waiting, ..
+            } = ev
+            {
                 queued.push((run_id, waiting));
             }
         }
         assert_eq!(queued.len(), 2, "two dispatches exceeded the cap of 1");
         assert_eq!(queued[0], (r2.clone(), 1), "second dispatch queues first");
-        assert_eq!(queued[1], (r3.clone(), 2), "third dispatch queues behind it");
+        assert_eq!(
+            queued[1],
+            (r3.clone(), 2),
+            "third dispatch queues behind it"
+        );
 
         // The first dispatch is admitted immediately: it starts without a
         // queued event (children fail fast without a provider, which is fine --
@@ -1959,8 +2009,14 @@ mod tests {
         let out1 = await_subagent(&bg, &r1).await;
         let out2 = await_subagent(&bg, &r2).await;
         let out3 = await_subagent(&bg, &r3).await;
-        assert!(out1.is_err(), "child run fails without a provider (expected)");
-        assert!(out2.is_err() && out3.is_err(), "queued children also complete");
+        assert!(
+            out1.is_err(),
+            "child run fails without a provider (expected)"
+        );
+        assert!(
+            out2.is_err() && out3.is_err(),
+            "queued children also complete"
+        );
 
         // Promotion must be FIFO: r2 started before r3.
         while let Ok(ev) = events_rx.try_recv() {
@@ -1990,8 +2046,10 @@ mod tests {
         // Occupy the only slot BEFORE dispatching, so every dispatch queues and
         // the await below is deterministic: nothing can start while held.
         let _running = bg.semaphore.clone().try_acquire_owned().unwrap();
-        let r1 = spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
-        let r2 = spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
+        let r1 =
+            spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
+        let r2 =
+            spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
 
         // r2 is queued (not started), and awaiting it must NOT start it: the
         // slot is still held, so the await parks. Assert via the events: no
@@ -2032,9 +2090,12 @@ mod tests {
         // Hold the slot before dispatching so r1, r2, r3 all queue (parked on
         // the semaphore) -- the interesting teardown case.
         let _running = bg.semaphore.clone().try_acquire_owned().unwrap();
-        let _r1 = spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
-        let r2 = spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
-        let r3 = spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
+        let _r1 =
+            spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
+        let r2 =
+            spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
+        let r3 =
+            spawn_subagent(&bg, &args, req("reviewer", None), &parent_run(), &events_tx).unwrap();
 
         AbortOnDrop(bg.clone()); // teardown with queued children parked
 
@@ -2044,7 +2105,10 @@ mod tests {
                 ends.push(run_id);
             }
         }
-        assert!(ends.contains(&r2) && ends.contains(&r3), "queued children get SubagentEnd: {ends:?}");
+        assert!(
+            ends.contains(&r2) && ends.contains(&r3),
+            "queued children get SubagentEnd: {ends:?}"
+        );
         assert!(
             bg.inner.lock().unwrap().is_empty(),
             "abort_all drains queued dispatches too"
@@ -2055,7 +2119,8 @@ mod tests {
     #[test]
     fn schemas_list_available_names_in_dispatch_description() {
         let reg = registry_with("reviewer", None);
-        let schemas = subagent_tool_schemas(&reg, DEFAULT_MAX_PARALLEL_SUBAGENTS);        assert_eq!(schemas.len(), 4);
+        let schemas = subagent_tool_schemas(&reg, DEFAULT_MAX_PARALLEL_SUBAGENTS);
+        assert_eq!(schemas.len(), 4);
         let names: Vec<&str> = schemas
             .iter()
             .map(|s| s["function"]["name"].as_str().unwrap())
@@ -2071,7 +2136,10 @@ mod tests {
         );
         let dispatch = &schemas[0]["function"]["description"].as_str().unwrap();
         assert!(dispatch.contains("reviewer"), "got: {dispatch}");
-        assert!(dispatch.contains("await_subagent"), "dispatch should mention await");
+        assert!(
+            dispatch.contains("await_subagent"),
+            "dispatch should mention await"
+        );
     }
 
     #[test]

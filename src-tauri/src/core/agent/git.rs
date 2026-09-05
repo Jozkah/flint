@@ -20,7 +20,6 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-
 /// Run `git` with literal args (callers pass their own `-C`). Returns trimmed
 /// stdout on success, trimmed stderr (or a generic message) on failure.
 fn git(args: &[&str]) -> Result<String, String> {
@@ -43,7 +42,6 @@ fn git(args: &[&str]) -> Result<String, String> {
 /// Run a repo-scoped `git` (`-C <repo>`), optionally against a throwaway index,
 /// with a fixed agent identity so `commit-tree` never needs user config and
 /// never triggers commit signing.
-#[cfg(feature = "cli")]
 fn run(repo: &Path, index: Option<&Path>, args: &[&str]) -> Result<String, String> {
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(repo).args(args);
@@ -54,7 +52,9 @@ fn run(repo: &Path, index: Option<&Path>, args: &[&str]) -> Result<String, Strin
     if let Some(idx) = index {
         cmd.env("GIT_INDEX_FILE", idx);
     }
-    let out = cmd.output().map_err(|e| format!("failed to launch git: {e}"))?;
+    let out = cmd
+        .output()
+        .map_err(|e| format!("failed to launch git: {e}"))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     } else {
@@ -69,7 +69,6 @@ fn run(repo: &Path, index: Option<&Path>, args: &[&str]) -> Result<String, Strin
 
 /// A unique throwaway index path so one-off git operations (restore) never
 /// disturb the real index.
-#[cfg(feature = "cli")]
 fn temp_index() -> PathBuf {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -82,14 +81,12 @@ fn temp_index() -> PathBuf {
 /// prior stat cache instead of a fresh empty one, so unchanged files are only
 /// stat'd (cheap) rather than re-hashed and re-inserted like every other file
 /// touched this turn.
-#[cfg(feature = "cli")]
 fn snapshot_index(thread_id: &str) -> PathBuf {
     std::env::temp_dir().join(format!("jan-agent-snap-idx-{thread_id}"))
 }
 
 /// Hidden ref that keeps a thread's snapshot chain reachable across GC. One ref
 /// per thread; each snapshot parents the previous, so the whole chain is live.
-#[cfg(feature = "cli")]
 pub(crate) fn snapshot_ref(thread_id: &str) -> String {
     format!("refs/jan/agent/snapshots/{thread_id}")
 }
@@ -119,7 +116,6 @@ pub(crate) fn current_branch(path: &Path) -> Option<String> {
 
 /// The canonical empty tree object every git repo has, without needing a
 /// commit to hash it from -- used as the base tree when `HEAD` is unborn.
-#[cfg(feature = "cli")]
 const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 /// Stage a single relative path into `idx`: `add` if it still exists on disk,
@@ -128,7 +124,6 @@ const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 /// HEAD`: a later .gitignore rule must not prevent the base snapshot from
 /// preserving their dirty state. Never touches any other path, so cost is O(1)
 /// per call, not O(repo size).
-#[cfg(feature = "cli")]
 fn stage_path(repo: &Path, idx: &Path, rel: &Path, force_add: bool) -> Result<(), String> {
     let rel_str = rel.to_string_lossy();
     if repo.join(rel).exists() {
@@ -138,7 +133,11 @@ fn stage_path(repo: &Path, idx: &Path, rel: &Path, force_add: bool) -> Result<()
             run(repo, Some(idx), &["add", "--", &rel_str])?;
         }
     } else {
-        run(repo, Some(idx), &["rm", "--cached", "--ignore-unmatch", "--", &rel_str])?;
+        run(
+            repo,
+            Some(idx),
+            &["rm", "--cached", "--ignore-unmatch", "--", &rel_str],
+        )?;
     }
     Ok(())
 }
@@ -155,7 +154,6 @@ fn stage_path(repo: &Path, idx: &Path, rel: &Path, force_add: bool) -> Result<()
 /// diff --name-only HEAD`, which compares only tracked paths -- no untracked
 /// scan). Every later checkpoint reuses that same index and stages only
 /// `changed`.
-#[cfg(feature = "cli")]
 pub(crate) fn snapshot(
     repo: &Path,
     parent: Option<&str>,
@@ -193,21 +191,41 @@ pub(crate) fn snapshot(
 /// Drop a thread's persistent snapshot index (e.g. once the thread is done or
 /// after a workspace restore invalidates it). Safe to call even if it was
 /// never created.
-#[cfg(feature = "cli")]
 pub(crate) fn cleanup_snapshot_index(thread_id: &str) {
     let _ = std::fs::remove_file(snapshot_index(thread_id));
 }
 
 /// Point the thread's snapshot ref at `sha` (create or update).
-#[cfg(feature = "cli")]
 pub(crate) fn update_ref(repo: &Path, thread_id: &str, sha: &str) -> Result<(), String> {
     run(repo, None, &["update-ref", &snapshot_ref(thread_id), sha]).map(|_| ())
+}
+
+/// A unified diff from `from` to `to`, both snapshot commits.
+///
+/// Used to show what a rewind *would* do in a tree Jan does not own, where the
+/// answer has to be reviewable rather than applied. `--no-index` is not wanted
+/// here: these are real commit objects, and diffing them is what makes the
+/// patch exact rather than reconstructed from the working tree.
+pub(crate) fn diff_between(repo: &Path, from: &str, to: &str) -> Result<String, String> {
+    run(repo, None, &["diff", from, to])
+}
+
+/// Drop a thread's snapshot ref, letting the chain be collected.
+///
+/// Idempotent: a ref that is already gone is success, because the caller's
+/// intent — that nothing keeps this chain alive — is already satisfied.
+pub(crate) fn drop_ref(repo: &Path, thread_id: &str) -> Result<(), String> {
+    let name = snapshot_ref(thread_id);
+    match run(repo, None, &["update-ref", "-d", &name]) {
+        Ok(_) => Ok(()),
+        // `update-ref -d` on a missing ref is not a failure worth surfacing.
+        Err(_) => Ok(()),
+    }
 }
 
 /// Restore the working tree to snapshot `target`, discarding changes made after
 /// it. `latest` (the newest snapshot) is used only to find files added since
 /// `target` so they can be removed. Files matching `.gitignore` are untouched.
-#[cfg(feature = "cli")]
 pub(crate) fn restore(repo: &Path, target: &str, latest: &str) -> Result<(), String> {
     let idx = temp_index();
     let result = (|| {
@@ -394,7 +412,13 @@ fn parse_status_v2(raw: &str) -> (Option<String>, Vec<StatusRecord>) {
             let path = f.nth(6).unwrap_or("").to_string();
             let (x, y) = xy_chars(xy);
             if !path.is_empty() {
-                records.push(StatusRecord { path, orig_path: None, x, y, untracked: false });
+                records.push(StatusRecord {
+                    path,
+                    orig_path: None,
+                    x,
+                    y,
+                    untracked: false,
+                });
             }
             i += 1;
         } else if let Some(rest) = tok.strip_prefix("2 ") {
@@ -715,17 +739,38 @@ pub fn file_diff(
 
     let args: Vec<&str> = match scope {
         DiffScope::Staged => vec![
-            "-C", &root_s, "diff", "--cached", "-M", "--no-color", "--", path,
+            "-C",
+            &root_s,
+            "diff",
+            "--cached",
+            "-M",
+            "--no-color",
+            "--",
+            path,
         ],
         DiffScope::Working => vec!["-C", &root_s, "diff", "-M", "--no-color", "--", path],
         DiffScope::All => {
             if head_born(&root_s) {
                 vec![
-                    "-C", &root_s, "diff", "HEAD", "-M", "--no-color", "--", path,
+                    "-C",
+                    &root_s,
+                    "diff",
+                    "HEAD",
+                    "-M",
+                    "--no-color",
+                    "--",
+                    path,
                 ]
             } else {
                 vec![
-                    "-C", &root_s, "diff", "--cached", "-M", "--no-color", "--", path,
+                    "-C",
+                    &root_s,
+                    "diff",
+                    "--cached",
+                    "-M",
+                    "--no-color",
+                    "--",
+                    path,
                 ]
             }
         }
@@ -909,7 +954,12 @@ mod tests {
         // --no-gpg-sign: this is a throwaway test repo, so signing (which
         // needs the developer's own key/passphrase and would hang or fail on
         // a box without one configured) is irrelevant and must be off.
-        run(&root, None, &["commit", "-q", "-m", "init", "--no-gpg-sign"]).ok()?;
+        run(
+            &root,
+            None,
+            &["commit", "-q", "-m", "init", "--no-gpg-sign"],
+        )
+        .ok()?;
         repo_root(&root)
     }
 
@@ -933,7 +983,10 @@ mod tests {
 
         // Restore to base: a.txt reverts, b.txt (added) is removed, ignored file stays.
         restore(&root, &base, &turn).expect("restore");
-        assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "one\n");
+        assert_eq!(
+            std::fs::read_to_string(root.join("a.txt")).unwrap(),
+            "one\n"
+        );
         assert!(!root.join("b.txt").exists(), "added file must be removed");
         assert!(
             root.join("ignored/keep.txt").exists(),
@@ -1065,7 +1118,10 @@ mod tests {
         git(&["-C", &r, "checkout", "-q", "-b", "feature/other"]).expect("checkout");
         let second = current_branch(&root);
         assert_eq!(second.as_deref(), Some("feature/other"));
-        assert_ne!(first, second, "the branch must change after an external checkout");
+        assert_ne!(
+            first, second,
+            "the branch must change after an external checkout"
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }

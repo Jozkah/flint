@@ -35,6 +35,14 @@ export function useCompatManifest(input: {
   enabledSkills: Set<string>
   availableTools: readonly string[]
   /**
+   * Agents the user has saved in Jan.
+   *
+   * Passed in so an imported agent that reuses one of those names is reported
+   * as a duplicate rather than quietly shadowed: a repository must not be able
+   * to redefine an agent the user configured for themselves.
+   */
+  savedAgentNames?: readonly string[]
+  /**
    * Absolute user-level skill directories Jan has approved.
    *
    * Empty by default. Never taken from the repository: a file in the folder
@@ -48,16 +56,20 @@ export function useCompatManifest(input: {
   /** The MCP definitions as found on disk, for consent to bind against. */
   mcpProbes: readonly McpProbe[]
 } {
-  const { binding, enabledSkills, availableTools } = input
+  const { binding, enabledSkills, availableTools, savedAgentNames } = input
   const approvedUserSkillRoots = input.approvedUserSkillRoots ?? []
   const folder = binding.folder
   const enabled = useClaudeCompat((s) =>
     folder ? Boolean(s.folders[folder]) : false
   )
-  const consent = useClaudeCompat((s) => (folder ? s.mcpConsent[folder] : undefined))
+  const consent = useClaudeCompat((s) =>
+    folder ? s.mcpConsent[folder] : undefined
+  )
   // Runtime state, not configuration: a server is only reported up because
   // Jan's MCP subsystem said it came up.
-  const runtime = useClaudeCompat((s) => (folder ? s.mcpRuntime[folder] : undefined))
+  const runtime = useClaudeCompat((s) =>
+    folder ? s.mcpRuntime[folder] : undefined
+  )
   const [manifest, setManifest] = useState<CompatibilityManifest>(() =>
     emptyManifest(binding)
   )
@@ -68,8 +80,18 @@ export function useCompatManifest(input: {
   // Read inside the effect without making them dependencies: a change to the
   // enabled skill set or the advertised tools re-resolves on the next scan
   // rather than restarting one in flight.
-  const latest = useRef({ enabledSkills, availableTools, approvedUserSkillRoots })
-  latest.current = { enabledSkills, availableTools, approvedUserSkillRoots }
+  const latest = useRef({
+    enabledSkills,
+    availableTools,
+    approvedUserSkillRoots,
+    savedAgentNames,
+  })
+  latest.current = {
+    enabledSkills,
+    availableTools,
+    approvedUserSkillRoots,
+    savedAgentNames,
+  }
 
   useEffect(() => {
     if (!folder) {
@@ -85,7 +107,8 @@ export function useCompatManifest(input: {
         const dataFolder = await getServiceHub().app().getJanDataFolder()
         if (!dataFolder) return
         const io: CompatIO = {
-          list: async (rel) => (await projectListDir(dataFolder, folder, rel)).entries,
+          list: async (rel) =>
+            (await projectListDir(dataFolder, folder, rel)).entries,
           read: async (rel) => {
             const file = await projectReadFile(dataFolder, folder, rel, false)
             return {
@@ -104,8 +127,8 @@ export function useCompatManifest(input: {
          * repository cannot add a root: this list comes from Jan, never from
          * a file in the folder being scanned.
          */
-        const userRoots: UserSkillRoot[] = latest.current.approvedUserSkillRoots.map(
-          (root) => ({
+        const userRoots: UserSkillRoot[] =
+          latest.current.approvedUserSkillRoots.map((root) => ({
             root,
             source: 'configured' as const,
             io: {
@@ -120,8 +143,7 @@ export function useCompatManifest(input: {
                 }
               },
             },
-          })
-        )
+          }))
         probes = await discoverCompatibility(io, folder, userRoots)
       } catch {
         // A scan that could not run claims nothing rather than reporting an
@@ -139,6 +161,7 @@ export function useCompatManifest(input: {
           enabled,
           enabledSkills: latest.current.enabledSkills,
           availableTools: latest.current.availableTools,
+          savedAgentNames: latest.current.savedAgentNames ?? [],
           consentedMcp: new Set(consent ?? []),
           initializedMcp: new Set(
             Object.entries(runtime ?? {})
@@ -148,10 +171,7 @@ export function useCompatManifest(input: {
           failedMcp: new Map(
             Object.entries(runtime ?? {})
               .filter(([, record]) => record.state === 'init-failed')
-              .map(([name, record]) => [
-                name,
-                record.reason ?? 'did not start',
-              ])
+              .map(([name, record]) => [name, record.reason ?? 'did not start'])
           ),
           // What this platform can actually enforce, asked of the backend
           // rather than assumed. A local server is refused wherever nothing

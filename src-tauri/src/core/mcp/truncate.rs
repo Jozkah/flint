@@ -107,9 +107,8 @@ mod tests {
     #[test]
     fn serialized_result_the_web_layer_receives_is_bounded() {
         // Stand-in for a Jan Browser MCP page snapshot: one enormous text block.
-        let snapshot = CallToolResult::success(vec![Content::text(
-            "<div>page</div>".repeat(100_000),
-        )]);
+        let snapshot =
+            CallToolResult::success(vec![Content::text("<div>page</div>".repeat(100_000))]);
 
         let capped = truncate_tool_result(&snapshot, 40_000);
         let wire = serde_json::to_value(&capped).expect("serializes");
@@ -187,7 +186,11 @@ mod tests {
         // First block intact, second cut mid-way, third dropped, marker appended.
         assert_eq!(blocks[0], "aaaa");
         assert_eq!(blocks[1], "bb");
-        assert_eq!(blocks.len(), 3, "third block dropped, marker added: {blocks:?}");
+        assert_eq!(
+            blocks.len(),
+            3,
+            "third block dropped, marker added: {blocks:?}"
+        );
         assert!(blocks[2].contains("6 of 12"), "marker text: {}", blocks[2]);
     }
 

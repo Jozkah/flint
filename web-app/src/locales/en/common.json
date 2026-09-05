@@ -942,6 +942,29 @@
       "description": "Changes files and runs commands without asking."
     }
   },
+  "rewind": {
+    "title": "Go back to an earlier point",
+    "goBack": "Go back",
+    "confirmTitle": "Go back to this point",
+    "willRestore": "This puts the worktree back as it was before \"{{label}}\". Everything Jan changed after that point is discarded.",
+    "confirmRestore": "Put it back",
+    "patchOnly": "This is your own checkout, so Jan will not restore over it — it holds work Jan never saw. Here is the change to undo, for you to apply.",
+    "patchEmpty": "Nothing changed since that point.",
+    "close": "Close",
+    "cancel": "Cancel"
+  },
+  "worktreeRecovery": {
+    "title": "Worktrees from earlier runs",
+    "found": "{{count}} worktree(s) here from an earlier run",
+    "use": "Use",
+    "remove": "Remove",
+    "noAuthority": "Using one tells this session where the work is. It does not make it writable — choose an access mode for that.",
+    "confirmTitle": "Remove this worktree",
+    "confirmDirty": "Removing this destroys {{count}} uncommitted file(s): {{files}}",
+    "confirmClean": "Removing this deletes the worktree and its branch {{branch}}. Nothing is uncommitted in it.",
+    "confirmRemove": "Remove it",
+    "cancel": "Cancel"
+  },
   "readiness": {
     "title": "Before this run",
     "repository": "Repository",
@@ -954,6 +977,15 @@
       "sandbox": "This session's workspace, not your repository",
       "managed": "A managed worktree",
       "repository": "The attached repository"
+    },
+    "worktree": {
+      "path": "Worktree",
+      "branch": "Worktree branch",
+      "from": "from {{sha}}",
+      "unseen": {
+        "label": "Not in the worktree",
+        "value": "{{count}} uncommitted file(s) from your checkout"
+      }
     },
     "instructions": "Instructions",
     "noInstructions": "None found",
@@ -986,6 +1018,24 @@
     "context": "Context",
     "tokens": "{{count}} tokens",
     "tokensPartial": "at least {{count}} tokens; some parts could not be measured",
+    "tokensEstimated": "~{{count}} tokens ({{method}})",
+    "contextBreakdown": "What the model received",
+    "contextCategory": {
+      "instructions": "Instructions",
+      "skills": "Skills",
+      "repositoryMap": "Repository map",
+      "conversation": "Conversation",
+      "tools": "Tool definitions"
+    },
+    "categoryNothing": "nothing sent",
+    "categoryUnknown": "not known yet",
+    "categoryCounted": "{{count}} tokens",
+    "categoryEstimated": "~{{count}} tokens",
+    "budgetLabel": "Context window",
+    "budgetUnknown": "not known",
+    "budgetRemaining": "{{used}} of ~{{total}} used",
+    "budgetOver": "over the configured window by ~{{over}} tokens",
+    "tokensEstimatedPartial": "at least ~{{count}} tokens ({{method}}); some parts could not be measured",
     "builtinsUnknown": "Tool set not built yet",
     "evidence": {
       "label": "Change attribution",
@@ -1014,6 +1064,12 @@
     "needsFolder": "Attach a folder first",
     "capabilityLoading": "Checking what this platform can enforce…",
     "capabilityFailed": "Couldn’t check whether this platform can enforce it",
+    "worktreeState": {
+      "missing": "This session's worktree is gone from disk. Access has returned to Review only; choose a mode again to make a new one.",
+      "corrupt": "This session's worktree is no longer a worktree of the attached repository. Access has returned to Review only.",
+      "branch-moved": "Someone moved this session's worktree onto another branch. Access has returned to Review only rather than writing into it.",
+      "identity-changed": "The attached folder is not the repository this worktree came from. Access has returned to Review only."
+    },
     "unsupportedPlatform": "This platform can’t confine changes to one folder",
     "busy": {
       "authorizing": "Finishing an authorization…",
@@ -1073,6 +1129,7 @@
       "sandbox": "Jan changed in the session workspace",
       "external": "Jan changed outside the attached folder"
     },
+    "inTree": "These paths are in {{tree}}, not in the folder this session is attached to.",
     "overExisting": "Already had uncommitted changes before this run, so only Jan’s edit is Jan’s:",
     "preExisting": "Already changed before this run. Not Jan’s:",
     "observed": "Appeared during this run. Nothing shows Jan caused these:",

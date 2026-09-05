@@ -4,6 +4,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { coworkTurnsToUIMessages } from '@/lib/coworkTurns'
+import type { ContinuityRecord } from '@/lib/coworkContinuity'
 import {
   emptyCodePanelState,
   projectKeyOf,
@@ -90,6 +91,14 @@ export type CoworkSession = {
    * was given for so it cannot follow the user to another repository.
    */
   editConsent?: EditConsent
+  /**
+   * Where this session is in the opening exchange with its repository.
+   *
+   * Absent on sessions that never had one, and on every session saved before
+   * this existed — which reads as "no proposal is outstanding", the state that
+   * grants nothing.
+   */
+  continuity?: ContinuityRecord
   /** Code panel state: open tabs, active tab, explorer expansion, word wrap.
    * Absent on sessions from before the code workspace existed. */
   codePanel?: CodePanelState
@@ -109,6 +118,8 @@ type CoworkSessionsState = {
   deleteSession: (id: string) => void
   setFolder: (id: string, folder: string | null) => void
   setMode: (id: string, mode: CoworkMode) => void
+  /** Record, or clear, where the session is in its opening exchange. */
+  setContinuity: (id: string, continuity: ContinuityRecord | null) => void
   setAccess: (id: string, access: AccessMode) => void
   /** Record the user's confirmation to edit `folder` in this session. */
   grantEditConsent: (id: string, folder: string) => void
@@ -275,6 +286,13 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
             x.id === id
               ? { ...x, editConsent: { sessionId: id, folder }, updated: now() }
               : x
+          ),
+        })),
+
+      setContinuity: (id, continuity) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id ? { ...x, continuity: continuity ?? undefined } : x
           ),
         })),
 

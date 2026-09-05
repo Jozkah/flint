@@ -6,6 +6,7 @@
 //! the tool plugin directly; `core::agent::r#loop` stays for the headless CLI
 //! and the OpenAI-compatible API server, which still orchestrate in Rust.
 
+use crate::core::agent::checkpoint;
 use crate::core::agent::git;
 use crate::core::agent::plugins;
 use crate::core::agent::project::{
@@ -14,6 +15,7 @@ use crate::core::agent::project::{
 use crate::core::agent::skill_hub;
 use crate::core::agent::skills as agent_skills;
 use crate::core::agent::subagent;
+use crate::core::agent::worktree;
 use crate::core::app::commands::get_jan_data_folder_path;
 use tauri_plugin_agent_tools::skills::{self, SkillMeta};
 use tauri_plugin_agent_tools::workspace;
@@ -239,4 +241,230 @@ pub async fn agent_subagent_list<R: tauri::Runtime>(
             })
             .collect(),
     )
+}
+
+/// Create, or reuse, the managed worktree for a Cowork session.
+///
+/// Idempotent by design: a session that already has one gets the same record
+/// back rather than a second branch beside its work. Every refusal — a branch
+/// that is already someone else's, a directory in our place that is not a
+/// worktree, a repository with no commits — comes back as a message the UI can
+/// show, because each of them means something happened outside Jan that a
+/// silently chosen alternative would hide.
+#[tauri::command]
+pub fn agent_worktree_ensure(
+    data_folder: String,
+    session_id: String,
+    project: String,
+) -> Result<worktree::WorktreeRecord, String> {
+    let roots = workspace::worktrees_dir(std::path::Path::new(&data_folder));
+    worktree::ensure(std::path::Path::new(&project), &roots, &session_id)
+}
+
+/// What state a recorded worktree is actually in.
+///
+/// Asked before a run uses one, so a worktree deleted, moved or moved-off-branch
+/// between sessions is reported rather than written into.
+#[tauri::command]
+pub fn agent_worktree_state(record: WorktreeRecordInput) -> worktree::WorktreeState {
+    worktree::state(&record.into())
+}
+
+/// Remove a worktree and its branch.
+///
+/// Only ever called because someone asked: this is the one operation here that
+/// destroys work, so it is never cleanup on a path doing something else.
+///
+/// The record arrives over IPC, so the path is checked against the folder Jan
+/// owns before anything is removed. Without that, a wrong record — a bug, a
+/// stale value, anything — would be a request to delete an arbitrary directory
+/// and its branch.
+#[tauri::command]
+pub fn agent_worktree_discard(
+    data_folder: String,
+    record: WorktreeRecordInput,
+    force: bool,
+) -> Result<(), String> {
+    let roots = workspace::worktrees_dir(std::path::Path::new(&data_folder));
+    let record: worktree::WorktreeRecord = record.into();
+    if !std::path::Path::new(&record.path).starts_with(&roots) {
+        return Err(format!(
+            "{} is not a worktree Jan manages, so Jan will not remove it",
+            record.path
+        ));
+    }
+    worktree::discard(&record, force)
+}
+
+/// What a worktree holds that removing it would destroy.
+///
+/// Asked before offering to remove one, so the confirmation names the work
+/// rather than asking about a path.
+#[tauri::command]
+pub fn agent_worktree_pending(record: WorktreeRecordInput) -> Vec<String> {
+    worktree::pending(&record.into())
+}
+
+/// Every Jan-owned worktree of this repository that is on disk.
+///
+/// The recovery surface. A session's own record dies with the process, so
+/// after a crash this is the only truthful answer to "where is the work that
+/// run was doing" — and it is only that. Nothing here authorizes anything: a
+/// listed worktree is a place, and writing to one still requires the user to
+/// authorize it again.
+#[tauri::command]
+pub fn agent_worktree_list(data_folder: String, project: String) -> Vec<worktree::WorktreeRecord> {
+    let roots = workspace::worktrees_dir(std::path::Path::new(&data_folder));
+    let repo = std::path::Path::new(&project);
+    // Bookkeeping for directories that are gone is dropped first, so a crash
+    // that left Git's record behind does not show a worktree that is not there.
+    let _ = worktree::prune(repo);
+    worktree::list(repo, &roots)
+}
+
+/// Take a checkpoint of the tree a run is about to change.
+///
+/// The snapshot is a commit object off to one side: the user's branch, HEAD,
+/// index and working tree are untouched, and only the paths named in `changed`
+/// are staged, so the cost is proportional to the turn rather than to the
+/// repository.
+///
+/// `destination` is not a hint. It is what decides, later, whether a rewind may
+/// discard anything — so it is recorded with the checkpoint rather than
+/// supplied at rewind time by whoever happens to be asking.
+#[tauri::command]
+pub fn agent_checkpoint_capture(
+    root: String,
+    thread_id: String,
+    parent: Option<String>,
+    label: String,
+    changed: Vec<String>,
+    destination: checkpoint::Destination,
+) -> Result<checkpoint::Checkpoint, String> {
+    let changed: Vec<std::path::PathBuf> =
+        changed.into_iter().map(std::path::PathBuf::from).collect();
+    checkpoint::capture(
+        std::path::Path::new(&root),
+        &thread_id,
+        parent.as_deref(),
+        &label,
+        &changed,
+        destination,
+    )
+}
+
+/// What rewinding to a checkpoint would do, without doing it.
+///
+/// In a managed tree, a restore. In the user's own checkout, a patch and never
+/// anything else — there is no argument to this that turns it into one.
+#[tauri::command]
+pub fn agent_checkpoint_plan(
+    checkpoint: checkpoint::Checkpoint,
+    latest: String,
+) -> Result<checkpoint::RewindPlan, String> {
+    checkpoint::plan(&checkpoint, &latest)
+}
+
+/// Roll a Jan-owned tree back to a checkpoint.
+///
+/// Refuses a checkpoint taken in the user's checkout, whatever the caller
+/// says: that path leads to deleting work whose only sin was being in the same
+/// directory as the run.
+#[tauri::command]
+pub fn agent_checkpoint_restore(
+    checkpoint: checkpoint::Checkpoint,
+    latest: String,
+) -> Result<(), String> {
+    checkpoint::restore(&checkpoint, &latest)
+}
+
+/// Forget a session's snapshot chain.
+#[tauri::command]
+pub fn agent_checkpoint_forget(root: String, thread_id: String) {
+    checkpoint::forget(std::path::Path::new(&root), &thread_id)
+}
+
+/// A record as it comes back from the renderer.
+///
+/// Deserialized into its own type rather than reusing the serialize-only record:
+/// what the frontend stores is state Jan wrote, but it arrives over IPC and is
+/// treated as input like anything else that does.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeRecordInput {
+    pub path: String,
+    pub branch: String,
+    pub base_sha: String,
+    pub source_root: String,
+    pub identity: RepoIdentityInput,
+    #[serde(default)]
+    pub uncommitted_at_creation: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoIdentityInput {
+    pub root: String,
+    pub first_commit: Option<String>,
+}
+
+impl From<WorktreeRecordInput> for worktree::WorktreeRecord {
+    fn from(input: WorktreeRecordInput) -> Self {
+        worktree::WorktreeRecord {
+            path: input.path,
+            branch: input.branch,
+            base_sha: input.base_sha,
+            source_root: input.source_root,
+            identity: worktree::RepoIdentity {
+                root: input.identity.root,
+                first_commit: input.identity.first_commit,
+            },
+            uncommitted_at_creation: input.uncommitted_at_creation,
+        }
+    }
+}
+
+#[cfg(test)]
+mod worktree_command_tests {
+    use super::*;
+
+    fn record(path: &str) -> WorktreeRecordInput {
+        WorktreeRecordInput {
+            path: path.to_string(),
+            branch: "jan/cowork/x".to_string(),
+            base_sha: "a".repeat(40),
+            source_root: "/repo".to_string(),
+            identity: RepoIdentityInput {
+                root: "/repo".to_string(),
+                first_commit: None,
+            },
+            uncommitted_at_creation: Vec::new(),
+        }
+    }
+
+    /// The record arrives over IPC, so it is input. A wrong one — a bug, a
+    /// stale value, anything — must not be a request to delete an arbitrary
+    /// directory and its branch.
+    #[test]
+    fn refuses_to_remove_anything_outside_the_folder_jan_owns() {
+        let data = std::env::temp_dir().join(format!("jan_wt_cmd_{}", std::process::id()));
+        for path in ["/etc", "/home/someone/important-project", "../../elsewhere"] {
+            let err =
+                agent_worktree_discard(data.to_string_lossy().to_string(), record(path), true)
+                    .expect_err("must refuse");
+            assert!(err.contains("not a worktree Jan manages"), "{err}");
+        }
+    }
+
+    /// And a listing for a folder that is not a repository is empty rather
+    /// than an error the UI would have to interpret.
+    #[test]
+    fn lists_nothing_for_a_folder_that_is_not_a_repository() {
+        let data = std::env::temp_dir().join(format!("jan_wt_list_{}", std::process::id()));
+        let listed = agent_worktree_list(
+            data.to_string_lossy().to_string(),
+            std::env::temp_dir().to_string_lossy().to_string(),
+        );
+        assert!(listed.is_empty());
+    }
 }

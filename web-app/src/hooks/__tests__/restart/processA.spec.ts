@@ -18,7 +18,18 @@ const ROOT = '/home/dev/obs-forwarder'
  * It writes exactly what Jan writes, then exits. Nothing here asserts the
  * restart behaviour — that is process B's job.
  */
-describe('process A: a session that used compatibility', () => {
+/**
+ * Driven by `scripts/cowork-compat-smoke.sh`, which supplies the shared file.
+ *
+ * Skipped rather than failed when it is absent, because the default runner
+ * picks this file up too and a two-process fixture cannot work in one process.
+ * Skipping rather than excluding the directory is deliberate: a skipped spec
+ * still names itself in the output, so the coverage it represents is visibly
+ * absent instead of silently missing.
+ */
+const withFixture = describe.skipIf(!process.env.JAN_RESTART_FIXTURE)
+
+withFixture('process A: a session that used compatibility', () => {
   it('switches compatibility on and allows an imported server', async () => {
     const store = useClaudeCompat.getState()
 

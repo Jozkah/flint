@@ -111,13 +111,58 @@ pub fn revoke(grant_id: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// How a child destination's owner id is spelled.
+///
+/// A team can give a child its own isolated checkout, and that checkout needs
+/// its own grant: one write root per child, not one shared between them. The
+/// registry keys authority by session id, so a child is given a *derived*
+/// session id rather than the parent's — which is what makes
+/// [`resolve`] refuse a child's grant id when the parent presents it, and the
+/// parent's when a child does.
+///
+/// The separator stays out of the alphabet generated session ids use, and the
+/// whole id stays within what [`crate::workspace::thread_segment`] accepts, so
+/// a derived id is a legal workspace name as well as a legal grant owner.
+const CHILD_SEP: &str = "--child-";
+
+/// The owner id for one isolated child of `parent`.
+///
+/// Deterministic, so the same child asked for twice is the same destination
+/// rather than a second one beside it.
+pub fn child_session_id(parent: &str, child: &str) -> String {
+    let safe: String = child
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '-'
+            }
+        })
+        .take(48)
+        .collect();
+    format!("{parent}{CHILD_SEP}{safe}")
+}
+
+/// Whether `id` is a child destination of `parent`.
+pub fn is_child_of(id: &str, parent: &str) -> bool {
+    id.starts_with(parent) && id[parent.len()..].starts_with(CHILD_SEP)
+}
+
 /// Withdraw everything a session holds — detaching, switching, deleting.
+///
+/// Children go with the parent. A grant issued to an isolated child outliving
+/// the session that dispatched it would be authority nobody can see and nobody
+/// asked to keep: the user detached the folder, and every root that was reached
+/// through that decision goes away with it.
 pub fn revoke_session(session_id: &str) -> usize {
     let Ok(mut grants) = registry().lock() else {
         return 0;
     };
     let before = grants.len();
-    grants.retain(|_, grant| grant.session_id != session_id);
+    grants.retain(|_, grant| {
+        grant.session_id != session_id && !is_child_of(&grant.session_id, session_id)
+    });
     before - grants.len()
 }
 
@@ -236,6 +281,47 @@ mod tests {
         assert_eq!(revoke_session(&session), 0);
 
         let _ = std::fs::remove_dir_all(ws.parent().unwrap());
+    }
+
+    #[test]
+    fn two_isolated_children_hold_separate_roots() {
+        require_capability!();
+        let (ws, data, repo, session) = fixture();
+        let other = repo.parent().unwrap().join("note-py");
+        std::fs::create_dir_all(&other).unwrap();
+
+        let a = child_session_id(&session, "parser");
+        let b = child_session_id(&session, "docs");
+        let first = authorize(&a, &repo.to_string_lossy(), &ws, &data).unwrap();
+        let second = authorize(&b, &other.to_string_lossy(), &ws, &data).unwrap();
+
+        // Authorizing the second must not have replaced the first: children of
+        // one session are separate owners, or a team of three would end with
+        // one live grant and two children writing nothing they were promised.
+        assert_eq!(resolve(&first, &a), Some(repo.canonicalize().unwrap()));
+        assert_eq!(resolve(&second, &b), Some(other.canonicalize().unwrap()));
+        // And neither child can use the other's, or the parent's session.
+        assert_eq!(resolve(&first, &b), None);
+        assert_eq!(resolve(&first, &session), None);
+
+        assert_eq!(revoke_session(&session), 2, "children go with the parent");
+        let _ = std::fs::remove_dir_all(ws.parent().unwrap());
+    }
+
+    #[test]
+    fn a_child_id_is_recognised_only_under_its_own_parent() {
+        let a = child_session_id("session-1", "parser");
+        assert!(is_child_of(&a, "session-1"));
+        assert!(!is_child_of(&a, "session-2"));
+        // A parent whose id is a prefix of another must not collect its grants.
+        assert!(!is_child_of(
+            &child_session_id("session-10", "x"),
+            "session-1"
+        ));
+        assert!(!is_child_of("session-1", "session-1"));
+        // Whatever a task calls itself, the id stays a legal workspace name.
+        let odd = child_session_id("session-1", "../../etc/passwd");
+        assert!(crate::workspace::thread_segment(&odd).is_ok(), "{odd}");
     }
 
     #[test]

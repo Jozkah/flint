@@ -45,9 +45,8 @@ pub async fn login_with_api_key(
 /// Remove the stored credential and the provider's non-secret
 /// configuration entry. Missing entries are not an error.
 pub fn logout(provider: &str) -> Result<(), LoginError> {
-    CredentialStore::delete(provider).map_err(|e| {
-        LoginError::Persist(format!("could not clear the stored credential: {e}"))
-    })?;
+    CredentialStore::delete(provider)
+        .map_err(|e| LoginError::Persist(format!("could not clear the stored credential: {e}")))?;
     remove_provider(provider).map_err(|e| {
         LoginError::Persist(format!("could not clear the provider configuration: {e}"))
     })?;
@@ -131,7 +130,10 @@ pub(crate) async fn discover_codex_models(
     // surface (`api.openai.com/v1`), which rejects an account token. Discovery
     // must target the ChatGPT backend instead; a test override (the mock
     // model server) is used verbatim.
-    let backend = if base_url.trim_end_matches('/').ends_with("api.openai.com/v1") {
+    let backend = if base_url
+        .trim_end_matches('/')
+        .ends_with("api.openai.com/v1")
+    {
         "https://chatgpt.com/backend-api"
     } else {
         base_url
@@ -460,10 +462,7 @@ mod tests {
                 {"slug": "gpt-5.3", "display_name": "GPT-5.3", "visibility": "hidden"}
             ]
         });
-        assert_eq!(
-            parse_codex_models(&body),
-            vec!["gpt-5.5".to_string()]
-        );
+        assert_eq!(parse_codex_models(&body), vec!["gpt-5.5".to_string()]);
         // Accepts the OpenAI `data` shape for backends that serve either.
         assert_eq!(
             parse_codex_models(&json!({"data": [{"id": "gpt-5.4"}, {"id": "gpt-5.5"}]})),

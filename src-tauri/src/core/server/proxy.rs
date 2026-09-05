@@ -17,7 +17,9 @@ use std::sync::Arc;
 use tauri_plugin_llamacpp::state::LlamacppState;
 use tokio::sync::Mutex;
 
-use crate::core::server::converters::{converter_for, SseAccumulator, StreamState, UpstreamConverter};
+use crate::core::server::converters::{
+    converter_for, SseAccumulator, StreamState, UpstreamConverter,
+};
 use crate::core::{
     mcp::models::McpSettings,
     state::{ProviderConfig, ServerHandle, SharedMcpServers},
@@ -1331,7 +1333,6 @@ async fn proxy_request(
                 crate::core::agent::upstream::strip_provider_prefix(&model_id, &pc)
             };
 
-
             let max_turns = json_body
                 .get("max_turns")
                 .and_then(|v| v.as_u64())
@@ -1599,8 +1600,10 @@ async fn proxy_request(
                                     // must keep the plain API-key scheme rather than
                                     // treat every anthropic provider as an account.
                                     #[cfg(feature = "cli")]
-                                    let oauth = crate::core::cli::auth::account::
-                                        has_oauth_credential(&provider_cfg.provider);
+                                    let oauth =
+                                        crate::core::cli::auth::account::has_oauth_credential(
+                                            &provider_cfg.provider,
+                                        );
                                     #[cfg(not(feature = "cli"))]
                                     let oauth = false;
                                     converter_for(provider_cfg.api_type.as_deref(), oauth)
@@ -2246,8 +2249,12 @@ async fn proxy_request(
                             forward_converted_stream(response.bytes_stream(), sender, converter)
                                 .await;
                         } else {
-                            forward_converted_non_streaming(response.bytes().await, sender, converter)
-                                .await;
+                            forward_converted_non_streaming(
+                                response.bytes().await,
+                                sender,
+                                converter,
+                            )
+                            .await;
                         }
                     });
                     return Ok(builder.body(body).unwrap());
@@ -2992,6 +2999,9 @@ mod tests {
         let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
         let err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
         let msg = map_bind_error(addr, err).to_string();
-        assert!(msg.contains("denied"), "should keep the original error: {msg}");
+        assert!(
+            msg.contains("denied"),
+            "should keep the original error: {msg}"
+        );
     }
 }

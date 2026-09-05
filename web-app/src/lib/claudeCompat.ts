@@ -110,6 +110,14 @@ export type CompatComponent = {
   /** Tools, skills or servers this needs, once resolved. */
   dependencies?: string[]
   /**
+   * What the definition says it is for, as written.
+   *
+   * Carried for an agent because the dispatching model chooses between agents
+   * by their descriptions; without it an imported agent is a name with nothing
+   * behind it.
+   */
+  description?: string
+  /**
    * The subtree this component governs, for a nested instruction file.
    *
    * Absent means it applies to the whole repository.
@@ -353,8 +361,7 @@ export function instructionOrder(
   names: readonly string[]
 ): InstructionPrecedence[] {
   return INSTRUCTION_PRECEDENCE.filter(
-    (one) =>
-      one === 'system' || one === 'cowork-policy' || names.includes(one)
+    (one) => one === 'system' || one === 'cowork-policy' || names.includes(one)
   )
 }
 
@@ -408,7 +415,10 @@ export function classifyCompatSkill(
   if (!containmentRoot) {
     return { ...base, state: 'unsupported', reason: 'no folder attached' }
   }
-  if (!isContained(containmentRoot, probe.dir) || probe.canonicalInside === false) {
+  if (
+    !isContained(containmentRoot, probe.dir) ||
+    probe.canonicalInside === false
+  ) {
     return {
       ...base,
       state: 'path-escape',
@@ -474,7 +484,13 @@ export function intersectAgentTools(
 
 export function classifyCompatAgent(
   probe: AgentProbe,
-  opts: { enabled: boolean; root: string | null; availableTools: readonly string[] }
+  opts: {
+    enabled: boolean
+    root: string | null
+    availableTools: readonly string[]
+    /** Agents the user saved in Jan. Those names are taken. */
+    savedAgentNames?: readonly string[]
+  }
 ): CompatComponent {
   const base = {
     id: `agent:${probe.name}`,
@@ -483,11 +499,21 @@ export function classifyCompatAgent(
     source: 'project' as const,
     path: probe.path,
     enabled: opts.enabled,
+    description: probe.description ?? '',
   }
 
   if (probe.error) return { ...base, state: 'unreadable', reason: probe.error }
   if (!probe.content) {
     return { ...base, state: 'malformed', reason: 'no agent body' }
+  }
+  if (opts.savedAgentNames?.includes(probe.name)) {
+    // Reported, not silently dropped: someone who wrote this file and never
+    // saw it run deserves to know a saved definition holds the name.
+    return {
+      ...base,
+      state: 'duplicate',
+      reason: 'a subagent saved in Jan already has this name',
+    }
   }
   if (
     !opts.root ||
@@ -553,11 +579,12 @@ export type McpProbe = {
 /**
  * Can this platform confine a local MCP server?
  *
- * Today, nowhere: Jan launches a stdio server as an ordinary child process
- * with the parent's environment and no filesystem restriction. That is fine
- * for a server the user configured themselves — they chose it — and not fine
- * for one a repository asked for. Passed in rather than assumed so that a
- * launcher that gains confinement flips this without touching the classifier.
+ * Asked of the sandbox backend, never assumed. An imported stdio server runs
+ * through the same confinement the agent's own shell runs under — one
+ * implementation of the boundary, so a second MCP-shaped imitation of it
+ * cannot drift from the real one — and a platform with no backend refuses the
+ * import rather than launching it unconfined. A server the user configured
+ * themselves keeps the behaviour it has always had: they chose the program.
  */
 export type ConfinementSupport = { stdio: boolean }
 
@@ -634,7 +661,8 @@ export function classifyCompatMcp(
   }
 
   if (!opts.enabled) return { ...base, state: 'available' }
-  if (!opts.consented.has(probe.name)) return { ...base, state: 'consent-required' }
+  if (!opts.consented.has(probe.name))
+    return { ...base, state: 'consent-required' }
   const failure = opts.initFailed.get(probe.name)
   if (failure) return { ...base, state: 'init-failed', reason: failure }
   // Not "consented" but "answered": a server that has not finished starting
@@ -781,6 +809,8 @@ export type ResolveOptions = {
   initializedMcp: Set<string>
   failedMcp: Map<string, string>
   confinement: ConfinementSupport
+  /** Agents the user saved in Jan; those names are already taken. */
+  savedAgentNames?: readonly string[]
 }
 
 /**
@@ -834,6 +864,7 @@ export function resolveCompatibility(
         enabled: opts.enabled,
         root,
         availableTools: opts.availableTools,
+        savedAgentNames: opts.savedAgentNames,
       })
     )
   }
@@ -898,6 +929,64 @@ export function mergeSkillRegistry(
       ...skills.filter((one) => one.state === 'active').map((one) => one.name),
     ]),
   }
+}
+
+/**
+ * Imported agents, as definitions the `task` tool can actually run.
+ *
+ * Only the active ones. An agent Jan refused — escaping the folder,
+ * malformed, missing a tool it asked for — is not offered as something to
+ * dispatch: a request for it must fail as unknown rather than launch
+ * something that quietly is not what the repository described.
+ *
+ * The tools are the intersection already computed at classification, so this
+ * cannot widen anything; `resolveSubagent` intersects again against the
+ * parent's set at dispatch, which is the ceiling that actually holds.
+ *
+ * Jan's own saved definitions win a name collision, and the caller is told
+ * which imported ones were shadowed: a repository must not be able to
+ * redefine an agent the user configured for themselves by choosing its name.
+ */
+export type ImportedAgentDefinition = {
+  name: string
+  description: string
+  system_prompt: string
+  allowed_tools: string[] | null
+  model: string | null
+}
+
+export function importedAgents(
+  manifest: CompatibilityManifest,
+  saved: readonly { name: string }[]
+): {
+  definitions: ImportedAgentDefinition[]
+  shadowed: string[]
+} {
+  const own = new Set(saved.map((one) => one.name))
+  const definitions: ImportedAgentDefinition[] = []
+  const shadowed: string[] = []
+
+  for (const one of manifest.components) {
+    if (one.type !== 'agent' || one.state !== 'active' || !one.content) continue
+    if (own.has(one.name)) {
+      shadowed.push(one.name)
+      continue
+    }
+    definitions.push({
+      name: one.name,
+      description: one.description ?? '',
+      system_prompt: one.content,
+      // Already intersected against what this run advertises. Null would mean
+      // "everything the parent has", which is not what a definition naming
+      // tools asked for.
+      allowed_tools: [...(one.dependencies ?? [])],
+      // Never the model the definition named: choosing a model is the user's,
+      // and a repository naming one would be configuration arriving as
+      // instruction. Reported as an ignored field at classification.
+      model: null,
+    })
+  }
+  return { definitions, shadowed: shadowed.sort() }
 }
 
 /** Compatibility instruction text to put in front of the model, in order. */

@@ -3,6 +3,7 @@ import {
   ASK_TOOL_NAME,
   PLAN_DENIED_TOOLS,
   TASK_TOOL_NAME,
+  TEAM_TOOL_NAME,
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { type CoworkMode } from '@/lib/coworkMode'
@@ -76,6 +77,14 @@ export type DispatchContext = {
   writeGrant?: string | null
   /** Runs a nested subagent to completion. */
   onTask: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
+  /**
+   * Runs a declared task graph as several children.
+   *
+   * Optional: a subagent's own dispatcher has no team, and a run without one
+   * refuses the call by name rather than executing a tool that was never
+   * advertised.
+   */
+  onTeam?: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
   /**
    * Instructions that govern one path's subtree and have not been delivered.
    *
@@ -312,6 +321,28 @@ export async function dispatchCoworkTool(
         return await ctx.onTask(call.toolCallId, call.input)
       } finally {
         childDone?.()
+      }
+    }
+    if (toolName === TEAM_TOOL_NAME) {
+      // A subagent's dispatcher has no team, so the call is refused by name
+      // rather than executed: a model can emit a call to a tool that was never
+      // advertised, and a child dispatching a team would be one level of
+      // nesting past what the depth limit allows.
+      if (!ctx.onTeam) {
+        return {
+          output:
+            'You cannot dispatch a team. Do this work yourself, or report ' +
+            'what you would need.',
+          isError: true,
+        }
+      }
+      // The team holds the parent's subagent slot for as long as it runs, the
+      // same way one `task` does: its children are this run's children.
+      const teamDone = ctx.trackSubagent?.()
+      try {
+        return await ctx.onTeam(call.toolCallId, call.input)
+      } finally {
+        teamDone?.()
       }
     }
 

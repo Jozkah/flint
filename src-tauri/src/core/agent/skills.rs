@@ -465,7 +465,6 @@ fn default_jan_skill_meta() -> SkillMeta {
     }
 }
 
-
 /// Metadata for every project skill (name + description + invocation
 /// flags). Keeps empty stubs so the user can see and edit them.
 ///
@@ -560,7 +559,6 @@ pub(crate) fn read_raw(root: &Path, name: &str) -> Result<String, String> {
     std::fs::read_to_string(&entry.file).map_err(|e| format!("ERROR: {e}"))
 }
 
-
 /// Parse a `/skill:<name>` invocation in a user draft.
 ///
 /// Returns `(name, args)` for:
@@ -642,10 +640,9 @@ pub(crate) fn build_invocation_message(
         find_user_skill(&user_skills, name).ok_or_else(|| format!("skill '{name}' not found"))?;
     let body = match resolve_readable(root, name) {
         Ok(entry) => {
-            let body = parse(
-                &std::fs::read_to_string(&entry.file).map_err(|e| format!("ERROR: {e}"))?,
-            )
-            .body;
+            let body =
+                parse(&std::fs::read_to_string(&entry.file).map_err(|e| format!("ERROR: {e}"))?)
+                    .body;
             // Folder skills (and single-skill plugins) may bundle files next to
             // their SKILL.md; announce that directory so relative paths resolve.
             let dir_note = entry.is_folder.then(|| {
@@ -872,12 +869,20 @@ mod tests {
         write("user_only", "disable-model-invocation: true\n");
 
         let model: Vec<_> = catalog(&root, &[]).into_iter().map(|m| m.name).collect();
-        assert_eq!(model, vec!["both", "model_only", "jan"], "model side: {model:?}");
+        assert_eq!(
+            model,
+            vec!["both", "model_only", "jan"],
+            "model side: {model:?}"
+        );
         let user: Vec<_> = user_catalog(&root, &[])
             .into_iter()
             .map(|m| m.name)
             .collect();
-        assert_eq!(user, vec!["both", "user_only", "jan"], "user side: {user:?}");
+        assert_eq!(
+            user,
+            vec!["both", "user_only", "jan"],
+            "user side: {user:?}"
+        );
 
         // Both flags still visible to the management list.
         let all = list_meta(&root);
@@ -1059,7 +1064,11 @@ mod tests {
         // An interrupted install stage must not leak its skills.
         let staging = plugins_dir(&root).join(".installing-12345");
         std::fs::create_dir_all(staging.join("skills").join("half")).unwrap();
-        std::fs::write(staging.join("skills").join("half").join("SKILL.md"), "partial").unwrap();
+        std::fs::write(
+            staging.join("skills").join("half").join("SKILL.md"),
+            "partial",
+        )
+        .unwrap();
 
         let entries = discover_plugins(&root);
         let names: Vec<String> = entries.iter().map(qualified_name).collect();

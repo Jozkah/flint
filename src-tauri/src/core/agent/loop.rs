@@ -2911,8 +2911,7 @@ mod tests {
         .expect("the run continues from clean history");
 
         assert_eq!(
-            completion["choices"][0]["message"]["content"],
-            "done",
+            completion["choices"][0]["message"]["content"], "done",
             "the user gets an answer, not a wedged run"
         );
         assert!(
@@ -2961,10 +2960,8 @@ mod tests {
                     for tc in m["tool_calls"].as_array().into_iter().flatten() {
                         if let Some(args) = tc["function"]["arguments"].as_str() {
                             let decoded = serde_json::from_str::<serde_json::Value>(args);
-                            let plain_object = decoded
-                                .as_ref()
-                                .map(|v| v.is_object())
-                                .unwrap_or(false);
+                            let plain_object =
+                                decoded.as_ref().map(|v| v.is_object()).unwrap_or(false);
                             if !args.trim().is_empty() && !plain_object {
                                 return Err("HTTP 422: invalid tool call arguments".to_string());
                             }
