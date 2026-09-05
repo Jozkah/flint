@@ -441,10 +441,9 @@ async fn schedule_mcp_start_task<R: Runtime>(
         // base client so every request carries the bearer token. `None` means
         // there is no OAuth here -- nothing stored, or the user configured their
         // own `Authorization` header, which the base client already sends.
-        let authorized =
-            oauth::authorized_client(&app_path, &name, &url, &config, base.clone())
-                .await
-                .map_err(|detail| oauth::NEEDS_AUTH_PREFIX.to_string() + &detail)?;
+        let authorized = oauth::authorized_client(&app_path, &name, &url, &config, base.clone())
+            .await
+            .map_err(|detail| oauth::NEEDS_AUTH_PREFIX.to_string() + &detail)?;
         let had_credentials = authorized.is_some();
 
         let label = if transport == "http" {
@@ -605,8 +604,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
 
             // ClientInfo::default() is exactly what the previous `()` handler
             // sent on initialize, so the handshake is unchanged.
-            let handler =
-                JanClientHandler::new(ClientInfo::default(), name.clone(), app.clone());
+            let handler = JanClientHandler::new(ClientInfo::default(), name.clone(), app.clone());
             match handler.serve(process).await {
                 Ok(server) => break (server, stderr),
                 Err(e) => {
@@ -660,10 +658,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
             });
         }
         log::trace!("Connected to server: {:#?}", server.peer_info());
-        servers
-            .lock()
-            .await
-            .insert(name.clone(), server);
+        servers.lock().await.insert(name.clone(), server);
         log::info!("Server {name} started successfully.");
 
         // Wait a short time to verify the server is stable before marking as connected

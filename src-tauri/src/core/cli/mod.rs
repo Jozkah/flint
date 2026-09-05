@@ -11,8 +11,8 @@ pub mod login;
 pub mod mcp;
 mod model_capabilities;
 mod path_refs;
-pub mod run_report;
 pub mod providers;
+pub mod run_report;
 mod secret_input;
 pub mod telemetry;
 pub mod terminal_setup;
@@ -28,8 +28,7 @@ use crate::core::threads::{
     constants::THREADS_FILE,
     helpers::{read_messages_from_file, update_thread_metadata, write_messages_to_file},
     utils::{
-        ensure_data_dirs, get_data_dir, get_messages_path, get_thread_dir,
-        get_thread_metadata_path,
+        ensure_data_dirs, get_data_dir, get_messages_path, get_thread_dir, get_thread_metadata_path,
     },
 };
 
@@ -473,13 +472,13 @@ use crate::core::agent::project::{
 use crate::core::agent::r#loop::{
     run_orchestration_streamed, OrchestrationArgs, PermissionRegistry,
 };
-use tauri_plugin_agent_tools::workspace;
 use crate::core::cli::providers::{load_provider_configs, ProviderOverrides};
 use crate::core::cli::run_report::{OutputFormat, RunReport};
 use crate::core::mcp::models::McpSettings;
 use std::collections::HashMap;
 use std::io::Write as _;
 use tauri_plugin_agent_tools::tools::gate::PermissionDecision;
+use tauri_plugin_agent_tools::workspace;
 use tokio::sync::{mpsc, Mutex};
 
 /// Token-spend ceiling for one agent run when `agent.toml [budget].max_tokens`
@@ -654,7 +653,10 @@ pub async fn cli_agent_run(
     resume: Option<ResumeTarget>,
     format: OutputFormat,
 ) -> Result<(), String> {
-    run_agent_loop(project, task, model, false, overrides, flags, resume, format).await
+    run_agent_loop(
+        project, task, model, false, overrides, flags, resume, format,
+    )
+    .await
 }
 
 /// Single-turn run for debugging: the one place a turn cap is still applied,
@@ -879,7 +881,11 @@ fn prepare_agent_session(
     let explicit = model_override.is_some() || overrides.api_key.is_some();
     let model = model_override
         .or_else(|| cfg.agent.model.clone())
-        .or_else(|| crate::core::agent::global_config::default_model().ok().flatten())
+        .or_else(|| {
+            crate::core::agent::global_config::default_model()
+                .ok()
+                .flatten()
+        })
         .or_else(|| {
             inherit_desktop_model(
                 crate::core::cli::tokamak::auth_status().signed_in,
@@ -937,8 +943,7 @@ fn prepare_agent_session(
     // before the first turn (tools are collected once per run), so a race with
     // the first message can't leave the model without its MCP tools. `None` when
     // no server is active.
-    let mcp_servers: crate::core::state::SharedMcpServers =
-        Arc::new(Mutex::new(HashMap::new()));
+    let mcp_servers: crate::core::state::SharedMcpServers = Arc::new(Mutex::new(HashMap::new()));
     let mcp_settings = mcp::read_settings();
     let mcp_task = if mcp::active_count() > 0 {
         let servers = mcp_servers.clone();
@@ -973,8 +978,10 @@ fn prepare_agent_session(
 
     // Resolution order: configured `[agent].context_window` override, then the
     // built-in model catalog, then the 128K fallback.
-    let resolved_window =
-        crate::core::cli::model_capabilities::resolve_context_window(&model, cfg.agent.context_window);
+    let resolved_window = crate::core::cli::model_capabilities::resolve_context_window(
+        &model,
+        cfg.agent.context_window,
+    );
 
     Ok(AgentSession {
         args,
@@ -1058,7 +1065,11 @@ fn prepare_agent_run(
     let resumed = resume.and_then(|target| {
         match load_resume_history(&agent_dir_for(&project_root), &target) {
             Ok(r) => {
-                eprintln!("(resumed session {} with {} message(s))", short_id(&r.thread_id), r.history.len());
+                eprintln!(
+                    "(resumed session {} with {} message(s))",
+                    short_id(&r.thread_id),
+                    r.history.len()
+                );
                 Some(r)
             }
             Err(e) => {
@@ -1068,7 +1079,10 @@ fn prepare_agent_run(
         }
     });
 
-    let mut history = resumed.as_ref().map(|r| r.history.clone()).unwrap_or_default();
+    let mut history = resumed
+        .as_ref()
+        .map(|r| r.history.clone())
+        .unwrap_or_default();
     history.push(serde_json::json!({ "role": "user", "content": final_task }));
     let mut body = session.body(serde_json::json!(history.clone()));
     if single_turn {
@@ -1384,7 +1398,10 @@ async fn print_event(ev: StreamEvent, registry: &PermissionRegistry) {
             eprintln!("\x1b[2m[subagent:{name}] finished\x1b[0m")
         }
         StreamEvent::Subagent { name, event, .. } => {
-            if let StreamEvent::ToolCall { name: tool, args, .. } = *event {
+            if let StreamEvent::ToolCall {
+                name: tool, args, ..
+            } = *event
+            {
                 eprintln!(
                     "\x1b[2m[subagent:{name}] {}\x1b[0m",
                     crate::core::agent::events::describe_tool_call(&tool, &args)
@@ -1491,7 +1508,10 @@ mod tests {
     #[test]
     fn an_empty_desktop_selection_contributes_nothing() {
         assert_eq!(
-            inherit_desktop_model(true, crate::core::cli::providers::DesktopSelection::default()),
+            inherit_desktop_model(
+                true,
+                crate::core::cli::providers::DesktopSelection::default()
+            ),
             None
         );
     }
@@ -1501,7 +1521,10 @@ mod tests {
     #[test]
     fn resume_target_from_flags() {
         assert_eq!(ResumeTarget::from_flags(None, false), None);
-        assert_eq!(ResumeTarget::from_flags(None, true), Some(ResumeTarget::Latest));
+        assert_eq!(
+            ResumeTarget::from_flags(None, true),
+            Some(ResumeTarget::Latest)
+        );
         assert_eq!(
             ResumeTarget::from_flags(Some(None), false),
             Some(ResumeTarget::Latest)
@@ -1697,13 +1720,15 @@ mod tests {
             serde_json::json!({ "role": "system", "content": "ignored" }),
         ];
         let out = rebuild_wire_history(&messages);
-        assert_eq!(out, vec![serde_json::json!({ "role": "user", "content": "hi" })]);
+        assert_eq!(
+            out,
+            vec![serde_json::json!({ "role": "user", "content": "hi" })]
+        );
     }
 
     #[test]
     fn completion_text_extracts_assistant_content() {
-        let completion =
-            serde_json::json!({ "choices": [{ "message": { "content": "hello" } }] });
+        let completion = serde_json::json!({ "choices": [{ "message": { "content": "hello" } }] });
         assert_eq!(completion_text(&completion).as_deref(), Some("hello"));
         assert_eq!(completion_text(&serde_json::json!({})), None);
         assert_eq!(
@@ -1775,7 +1800,10 @@ mod tests {
             { "type": "image_url", "image_url": { "url": "data:image/png;base64,AA" } },
         ]);
         assert_eq!(openai_content_text(Some(&content)), "describe");
-        assert_eq!(openai_content_text(Some(&serde_json::json!("plain"))), "plain");
+        assert_eq!(
+            openai_content_text(Some(&serde_json::json!("plain"))),
+            "plain"
+        );
     }
 
     #[test]
@@ -1802,7 +1830,10 @@ mod tests {
         assert!(title.ends_with('…'));
 
         let no_user = serde_json::json!([{ "role": "assistant", "content": "hi" }]);
-        assert_eq!(default_thread_title(no_user.as_array().unwrap()), "Agent chat");
+        assert_eq!(
+            default_thread_title(no_user.as_array().unwrap()),
+            "Agent chat"
+        );
     }
 
     // ── cli_save_thread metadata (snapshot bookkeeping) ────────────────────
@@ -1905,7 +1936,9 @@ mod tests {
             // Sanity: the desktop selection really is readable, so a passing
             // assertion below means the gate fired, not that the fixture is dead.
             assert_eq!(
-                crate::core::cli::providers::desktop_selection().model.as_deref(),
+                crate::core::cli::providers::desktop_selection()
+                    .model
+                    .as_deref(),
                 Some("gemma-4-E2B-it-IQ4_XS")
             );
             assert!(!crate::core::cli::tokamak::auth_status().signed_in);
@@ -1940,7 +1973,7 @@ mod tests {
                     base_url: Some(crate::core::cli::tokamak::BASE_URL.into()),
                     models: Some(vec!["tokamak-1-preview".into()]),
                     api_type: None,
-                                    ..Default::default()
+                    ..Default::default()
                 },
             )
             .unwrap();

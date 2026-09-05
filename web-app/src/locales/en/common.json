@@ -942,6 +942,17 @@
       "description": "Changes files and runs commands without asking."
     }
   },
+  "rewind": {
+    "title": "Go back to an earlier point",
+    "goBack": "Go back",
+    "confirmTitle": "Go back to this point",
+    "willRestore": "This puts the worktree back as it was before \"{{label}}\". Everything Jan changed after that point is discarded.",
+    "confirmRestore": "Put it back",
+    "patchOnly": "This is your own checkout, so Jan will not restore over it — it holds work Jan never saw. Here is the change to undo, for you to apply.",
+    "patchEmpty": "Nothing changed since that point.",
+    "close": "Close",
+    "cancel": "Cancel"
+  },
   "worktreeRecovery": {
     "title": "Worktrees from earlier runs",
     "found": "{{count}} worktree(s) here from an earlier run",

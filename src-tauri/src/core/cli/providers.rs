@@ -278,9 +278,7 @@ pub async fn fetch_missing_models(
     let configs = load_provider_configs(project_root, &ProviderOverrides::default().with_env())?;
     let to_fetch: Vec<(String, String, Vec<String>)> = configs
         .values()
-        .filter(|c| {
-            global.contains_key(&c.provider) && is_cli_reachable(c) && c.models.is_empty()
-        })
+        .filter(|c| global.contains_key(&c.provider) && is_cli_reachable(c) && c.models.is_empty())
         // Probe each provider at most once per session. A provider that still
         // has an empty list after a probe was unreachable or offered nothing;
         // re-probing it on every bare `/model` would freeze the render loop
@@ -937,15 +935,27 @@ mod tests {
         let mut configs = HashMap::new();
         configs.insert(
             "anthropic".to_string(),
-            cfg("anthropic", Some("https://api.anthropic.com/v1"), &["claude-sonnet-5"]),
+            cfg(
+                "anthropic",
+                Some("https://api.anthropic.com/v1"),
+                &["claude-sonnet-5"],
+            ),
         );
         configs.insert(
             "tokamak".to_string(),
-            cfg("tokamak", Some("https://api.tokamak.sh/v1"), &["tokamak-1-preview"]),
+            cfg(
+                "tokamak",
+                Some("https://api.tokamak.sh/v1"),
+                &["tokamak-1-preview"],
+            ),
         );
         configs.insert(
             "openai".to_string(),
-            cfg("openai", Some("https://api.openai.com/v1"), &["gpt-5", "gpt-4o"]),
+            cfg(
+                "openai",
+                Some("https://api.openai.com/v1"),
+                &["gpt-5", "gpt-4o"],
+            ),
         );
 
         assert_eq!(
@@ -964,8 +974,14 @@ mod tests {
     #[test]
     fn without_tokamak_the_order_is_unchanged() {
         let mut configs = HashMap::new();
-        configs.insert("zeta".to_string(), cfg("zeta", Some("https://z.example/v1"), &["z1"]));
-        configs.insert("alpha".to_string(), cfg("alpha", Some("https://a.example/v1"), &["a1"]));
+        configs.insert(
+            "zeta".to_string(),
+            cfg("zeta", Some("https://z.example/v1"), &["z1"]),
+        );
+        configs.insert(
+            "alpha".to_string(),
+            cfg("alpha", Some("https://a.example/v1"), &["a1"]),
+        );
         assert_eq!(
             reachable_models(&configs),
             vec![
@@ -1122,13 +1138,18 @@ mod tests {
                     clear_api_key: false,
                     models: Some(vec![]),
                     api_type: None,
-                                    ..Default::default()
+                    ..Default::default()
                 },
             )
             .unwrap();
 
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let populated = rt.block_on(fetch_missing_models(None, &mut std::collections::HashSet::new())).expect("fetch");
+            let populated = rt
+                .block_on(fetch_missing_models(
+                    None,
+                    &mut std::collections::HashSet::new(),
+                ))
+                .expect("fetch");
             assert!(populated);
 
             let configs = load_global_config().unwrap();
@@ -1151,7 +1172,7 @@ mod tests {
                     clear_api_key: false,
                     models: Some(vec!["my-model".into()]),
                     api_type: None,
-                                    ..Default::default()
+                    ..Default::default()
                 },
             )
             .unwrap();
@@ -1159,10 +1180,18 @@ mod tests {
             let rt = tokio::runtime::Runtime::new().unwrap();
             // Nothing to fetch: the provider already names its models, so the
             // dead endpoint above must never be contacted.
-            let populated = rt.block_on(fetch_missing_models(None, &mut std::collections::HashSet::new())).expect("fetch");
+            let populated = rt
+                .block_on(fetch_missing_models(
+                    None,
+                    &mut std::collections::HashSet::new(),
+                ))
+                .expect("fetch");
             assert!(!populated);
             let configs = load_global_config().unwrap();
-            assert_eq!(configs.get("chosen").unwrap().models, vec!["my-model".to_string()]);
+            assert_eq!(
+                configs.get("chosen").unwrap().models,
+                vec!["my-model".to_string()]
+            );
         });
     }
 
@@ -1181,16 +1210,24 @@ mod tests {
                     clear_api_key: false,
                     models: Some(vec![]),
                     api_type: None,
-                                    ..Default::default()
+                    ..Default::default()
                 },
             )
             .unwrap();
 
             let rt = tokio::runtime::Runtime::new().unwrap();
-            let populated = rt.block_on(fetch_missing_models(None, &mut std::collections::HashSet::new())).expect("fetch");
+            let populated = rt
+                .block_on(fetch_missing_models(
+                    None,
+                    &mut std::collections::HashSet::new(),
+                ))
+                .expect("fetch");
             assert!(populated, "a keyless endpoint is queried unauthenticated");
             let configs = load_global_config().unwrap();
-            assert_eq!(configs.get("local").unwrap().models, vec!["local-model".to_string()]);
+            assert_eq!(
+                configs.get("local").unwrap().models,
+                vec!["local-model".to_string()]
+            );
         });
     }
 
@@ -1208,7 +1245,9 @@ mod tests {
                 let body = serde_json::json!({"data": [{"id": models}]}).to_string();
                 let barrier = barrier.clone();
                 std::thread::spawn(move || {
-                    let Ok((mut stream, _)) = listener.accept() else { return };
+                    let Ok((mut stream, _)) = listener.accept() else {
+                        return;
+                    };
                     let mut buf = [0u8; 4096];
                     let _ = std::io::Read::read(&mut stream, &mut buf);
                     barrier.wait();
@@ -1232,7 +1271,7 @@ mod tests {
                         clear_api_key: false,
                         models: Some(vec![]),
                         api_type: None,
-                                            ..Default::default()
+                        ..Default::default()
                     },
                 )
                 .unwrap();
@@ -1240,12 +1279,21 @@ mod tests {
 
             let rt = tokio::runtime::Runtime::new().unwrap();
             let populated = rt
-                .block_on(fetch_missing_models(None, &mut std::collections::HashSet::new()))
+                .block_on(fetch_missing_models(
+                    None,
+                    &mut std::collections::HashSet::new(),
+                ))
                 .expect("fetch");
             assert!(populated);
             let configs = load_global_config().unwrap();
-            assert_eq!(configs.get("prov-a").unwrap().models, vec!["model-a".to_string()]);
-            assert_eq!(configs.get("prov-b").unwrap().models, vec!["model-b".to_string()]);
+            assert_eq!(
+                configs.get("prov-a").unwrap().models,
+                vec!["model-a".to_string()]
+            );
+            assert_eq!(
+                configs.get("prov-b").unwrap().models,
+                vec!["model-b".to_string()]
+            );
         });
     }
 
@@ -1261,7 +1309,7 @@ mod tests {
                     clear_api_key: false,
                     models: Some(vec![]),
                     api_type: None,
-                                    ..Default::default()
+                    ..Default::default()
                 },
             )
             .unwrap();
@@ -1426,7 +1474,8 @@ mod tests {
                     },
                 )
                 .unwrap();
-                CredentialStore::store("deepseek", &Credential::ApiKey("sk-stored".into())).unwrap();
+                CredentialStore::store("deepseek", &Credential::ApiKey("sk-stored".into()))
+                    .unwrap();
 
                 // A CLI/env override is the most explicit, most ephemeral signal
                 // and must win over the persisted secret.

@@ -179,12 +179,14 @@ fn random_hex(bytes: usize) -> String {
 fn codex_chatgpt_account_id(token: &str) -> Result<String, String> {
     let mut segments = token.split('.');
     let _header = segments.next();
-    let payload = segments.next().ok_or_else(|| "token is not a JWT".to_string())?;
+    let payload = segments
+        .next()
+        .ok_or_else(|| "token is not a JWT".to_string())?;
     let decoded = URL_SAFE_NO_PAD
         .decode(payload)
         .map_err(|_| "token payload is not base64url".to_string())?;
-    let claims: serde_json::Value = serde_json::from_slice(&decoded)
-        .map_err(|_| "token payload is not JSON".to_string())?;
+    let claims: serde_json::Value =
+        serde_json::from_slice(&decoded).map_err(|_| "token payload is not JSON".to_string())?;
     claims
         .get("https://api.openai.com/auth")
         .and_then(|auth| auth.get("chatgpt_account_id"))
@@ -415,7 +417,6 @@ async fn bind_fresh_loopback() -> Option<CallbackListener> {
     None
 }
 
-
 fn token_request_body(
     login: &AccountLogin,
     code: &str,
@@ -482,16 +483,13 @@ async fn exchange(login: &AccountLogin, code: &str) -> Result<OAuthToken, String
         AccountProvider::Claude => request.json(&token_request_body(login, code)),
         AccountProvider::Codex => request.form(&token_request_body(login, code)),
     };
-    let response = request
-        .send()
-        .await
-        .map_err(|error| {
-            debug_log(&format!(
-                "exchange: could not reach {}: {error}",
-                login.token_endpoint
-            ));
-            "could not exchange the authorization code".to_string()
-        })?;
+    let response = request.send().await.map_err(|error| {
+        debug_log(&format!(
+            "exchange: could not reach {}: {error}",
+            login.token_endpoint
+        ));
+        "could not exchange the authorization code".to_string()
+    })?;
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
@@ -574,13 +572,12 @@ pub async fn refresh(provider: AccountProvider, token: &OAuthToken) -> Result<OA
             .json(&body),
         AccountProvider::Codex => request.form(&body),
     };
-    let response = request
-        .send()
-        .await
-        .map_err(|error| {
-            debug_log(&format!("refresh: could not reach {token_endpoint}: {error}"));
-            "could not refresh the account token".to_string()
-        })?;
+    let response = request.send().await.map_err(|error| {
+        debug_log(&format!(
+            "refresh: could not reach {token_endpoint}: {error}"
+        ));
+        "could not refresh the account token".to_string()
+    })?;
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
@@ -861,7 +858,6 @@ pub fn has_oauth_credential(provider: &str) -> bool {
     true
 }
 
-
 pub fn store(provider: AccountProvider, token: &OAuthToken) -> Result<(), String> {
     CredentialStore::store(
         provider.credential_provider(),
@@ -936,11 +932,7 @@ pub async fn claude_plan_summary(fallback: &str) -> String {
 fn is_paid_claude_tier(tier: Option<&str>) -> bool {
     matches!(
         tier,
-        Some("team")
-            | Some("pro")
-            | Some("enterprise")
-            | Some("max")
-            | Some("premium")
+        Some("team") | Some("pro") | Some("enterprise") | Some("max") | Some("premium")
     )
 }
 
@@ -959,7 +951,6 @@ fn claude_plan_message(heavy_ok: bool, tier: Option<&str>) -> String {
         "Claude account resolves to a plan without heavy-model access (likely the free personal plan): claude-sonnet-5 is rate-limited (429) while claude-haiku-4-5 works. This is a quota/entitlement boundary, not a sign-in problem, so reusing Claude Code's saved login (sign out with x on the picker) inherits whatever quota that workspace carries - heavy-model access only improves if your Claude Code workspace has a premium allowance.".to_string()
     }
 }
-
 
 pub async fn complete_callback_login_with_manual(
     listener: CallbackListener,
@@ -997,15 +988,11 @@ pub async fn complete_callback_login_with_manual(
     complete_code_login(login, code).await
 }
 
-async fn complete_code_login(
-    login: AccountLogin,
-    code: String,
-) -> Result<AccountProvider, String> {
+async fn complete_code_login(login: AccountLogin, code: String) -> Result<AccountProvider, String> {
     let provider = login.provider;
     let token = exchange(&login, &code).await?;
-    let definition =
-        crate::core::cli::auth::provider_by_id(provider.credential_provider())
-            .ok_or_else(|| "selected account is unavailable".to_string())?;
+    let definition = crate::core::cli::auth::provider_by_id(provider.credential_provider())
+        .ok_or_else(|| "selected account is unavailable".to_string())?;
     #[cfg(test)]
     let definition = {
         let mut definition = definition;
@@ -1059,16 +1046,19 @@ async fn complete_code_login(
             }
         }
     } else {
-        let models =
-            crate::core::cli::auth::providers::discover_models(&definition, &token.access_token, true)
-                .await
-                .map_err(|error| {
-                    debug_log(&format!(
-                        "model discovery: {} rejected the token: {error:?}",
-                        definition.id
-                    ));
-                    "could not discover account models".to_string()
-                })?;
+        let models = crate::core::cli::auth::providers::discover_models(
+            &definition,
+            &token.access_token,
+            true,
+        )
+        .await
+        .map_err(|error| {
+            debug_log(&format!(
+                "model discovery: {} rejected the token: {error:?}",
+                definition.id
+            ));
+            "could not discover account models".to_string()
+        })?;
         (
             models,
             matches!(
@@ -1246,7 +1236,6 @@ mod tests {
         .expect("account completion thread must not panic")
     }
 
-
     /// A Claude-specific completion helper. Claude OAuth keeps the real
     /// `/v1/models` discovery path, so these tests exercise discovery failure
     /// semantics against a plain account token (Claude's token is not a JWT).
@@ -1282,16 +1271,18 @@ mod tests {
         models_base_url: String,
     ) -> Result<AccountProvider, String> {
         std::thread::spawn(move || {
-            tokio::runtime::Runtime::new().unwrap().block_on(async move {
-                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-                let mut login = begin(AccountProvider::Codex).unwrap();
-                login.token_endpoint = codex_token_server("account-321");
-                login.model_base_url = Some(models_base_url);
-                let manual_input = format!("authorization-code#{}", login.state);
-                let (manual, receiver) = tokio::sync::mpsc::unbounded_channel();
-                manual.send(manual_input).unwrap();
-                complete_callback_login_with_manual(listener.into(), login, receiver).await
-            })
+            tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(async move {
+                    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                    let mut login = begin(AccountProvider::Codex).unwrap();
+                    login.token_endpoint = codex_token_server("account-321");
+                    login.model_base_url = Some(models_base_url);
+                    let manual_input = format!("authorization-code#{}", login.state);
+                    let (manual, receiver) = tokio::sync::mpsc::unbounded_channel();
+                    manual.send(manual_input).unwrap();
+                    complete_callback_login_with_manual(listener.into(), login, receiver).await
+                })
         })
         .join()
         .expect("manual account completion thread must not panic")
@@ -1452,13 +1443,12 @@ mod tests {
         );
         // Anthropic accepts only `state == code_verifier`, so Claude's state
         // must equal its verifier (not be an independent random value).
-        assert_eq!(login.state, login.verifier, "Claude state must equal verifier");
+        assert_eq!(
+            login.state, login.verifier,
+            "Claude state must equal verifier"
+        );
         assert!(
-            url.query_pairs()
-                .find(|(key, _)| key == "state")
-                .unwrap()
-                .1
-                == login.verifier,
+            url.query_pairs().find(|(key, _)| key == "state").unwrap().1 == login.verifier,
             "authorize URL state must be the verifier"
         );
     }
@@ -1469,10 +1459,7 @@ mod tests {
         let url = url::Url::parse(&login.authorization_url).unwrap();
 
         assert_eq!(
-            url.query_pairs()
-                .find(|(key, _)| key == "scope")
-                .unwrap()
-                .1,
+            url.query_pairs().find(|(key, _)| key == "scope").unwrap().1,
             "openid profile email offline_access"
         );
         assert_eq!(
@@ -1482,7 +1469,13 @@ mod tests {
                 .1,
             "jan"
         );
-        assert_eq!(url.query_pairs().find(|(key, _)| key == "client_id").unwrap().1, "app_EMoamEEZ73f0CkXaXp7hrann");
+        assert_eq!(
+            url.query_pairs()
+                .find(|(key, _)| key == "client_id")
+                .unwrap()
+                .1,
+            "app_EMoamEEZ73f0CkXaXp7hrann"
+        );
         assert_eq!(login.token_endpoint, "https://auth.openai.com/oauth/token");
     }
 
@@ -1642,10 +1635,7 @@ mod tests {
                     }
                 }
                 let request = String::from_utf8_lossy(&request);
-                assert!(
-                    request.starts_with("POST /token HTTP/1.1\r\n"),
-                    "{request}"
-                );
+                assert!(request.starts_with("POST /token HTTP/1.1\r\n"), "{request}");
                 let lower = request.to_ascii_lowercase();
                 assert!(
                     lower.contains(&expected.to_ascii_lowercase()),
@@ -1730,7 +1720,8 @@ mod tests {
                 "missing chatgpt-account-id in: {request}"
             );
             assert!(
-                request.to_ascii_lowercase()
+                request
+                    .to_ascii_lowercase()
                     .contains("openai-beta: responses=experimental"),
                 "missing OpenAI-Beta in: {request}"
             );
@@ -1833,7 +1824,6 @@ mod tests {
         });
     }
 
-
     #[test]
     fn account_model_discovery_unauthorized_leaves_no_account_state() {
         let _tmp = TempSecrets::new();
@@ -1843,9 +1833,11 @@ mod tests {
 
             assert!(!error.contains("exchanged-account-token"), "{error}");
             assert!(!error.contains("authorization-code"), "{error}");
-            assert!(CredentialStore::load(AccountProvider::Claude.credential_provider())
-                .unwrap()
-                .is_none());
+            assert!(
+                CredentialStore::load(AccountProvider::Claude.credential_provider())
+                    .unwrap()
+                    .is_none()
+            );
             assert!(!load_global_config().unwrap().contains_key("anthropic"));
         });
     }
@@ -1861,9 +1853,11 @@ mod tests {
             assert!(!error.contains("not-json-without-secret"), "{error}");
             assert!(!error.contains("exchanged-account-token"), "{error}");
             assert!(!error.contains("authorization-code"), "{error}");
-            assert!(CredentialStore::load(AccountProvider::Claude.credential_provider())
-                .unwrap()
-                .is_none());
+            assert!(
+                CredentialStore::load(AccountProvider::Claude.credential_provider())
+                    .unwrap()
+                    .is_none()
+            );
             assert!(!load_global_config().unwrap().contains_key("anthropic"));
         });
     }
@@ -1876,9 +1870,11 @@ mod tests {
 
             assert!(!error.contains("exchanged-account-token"), "{error}");
             assert!(!error.contains("authorization-code"), "{error}");
-            assert!(CredentialStore::load(AccountProvider::Claude.credential_provider())
-                .unwrap()
-                .is_none());
+            assert!(
+                CredentialStore::load(AccountProvider::Claude.credential_provider())
+                    .unwrap()
+                    .is_none()
+            );
             assert!(!load_global_config().unwrap().contains_key("anthropic"));
         });
     }
@@ -1935,7 +1931,6 @@ mod tests {
         assert!(!fields.contains_key("access_token"));
     }
 
-
     #[test]
     fn claude_plan_message_heavy_access_names_premium() {
         let text = claude_plan_message(true, None);
@@ -1991,7 +1986,10 @@ mod tests {
             Some("sk-ant-oat01-abc")
         );
         // A missing/empty access token must not come through as Some("").
-        assert_eq!(parse_claude_code_secret(r#"{"claudeAiOauth":{"accessToken":""}}"#), None);
+        assert_eq!(
+            parse_claude_code_secret(r#"{"claudeAiOauth":{"accessToken":""}}"#),
+            None
+        );
         assert_eq!(
             parse_claude_code_secret(r#"{"claudeAiOauth":{"refreshToken":"sk-ant-ort01-x"}}"#),
             None

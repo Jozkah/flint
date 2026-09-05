@@ -37,6 +37,7 @@ export const localStorageKey = {
   coworkSessions: 'code-sessions',
   coworkActivity: 'cowork-activity',
   claudeCompat: 'claude-compat',
+  coworkCheckpoints: 'cowork-checkpoints',
 }
 
 export const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24

@@ -95,7 +95,11 @@ pub(crate) fn catalog(root: &Path, enabled: &[String]) -> Vec<CommandEntry> {
 /// through the `[skills].enabled` whitelist so disabled commands are not
 /// resolvable.
 #[cfg(any(feature = "cli", test))]
-pub(crate) fn resolve_from(root: &Path, name: &str, enabled: &[String]) -> Result<CommandEntry, String> {
+pub(crate) fn resolve_from(
+    root: &Path,
+    name: &str,
+    enabled: &[String],
+) -> Result<CommandEntry, String> {
     let commands = catalog(root, enabled);
     if let Some((plugin, plain)) = name.split_once(':') {
         if let Some(entry) = commands
@@ -192,24 +196,21 @@ pub(crate) fn template_hints(body: &str) -> Vec<String> {
     let mut out: Vec<String> = (1..=9)
         .filter(|n| {
             let needle = format!("${n}");
-            body.match_indices(&needle)
-                .any(|(i, _)| {
-                    body[i + needle.len()..]
-                        .chars()
-                        .next()
-                        .is_none_or(|c| !c.is_ascii_digit())
-                })
+            body.match_indices(&needle).any(|(i, _)| {
+                body[i + needle.len()..]
+                    .chars()
+                    .next()
+                    .is_none_or(|c| !c.is_ascii_digit())
+            })
         })
         .map(|n| format!("${n}"))
         .collect();
-    let arguments_needed = body
-        .match_indices("$ARGUMENTS")
-        .any(|(i, _)| {
-            body[i + "$ARGUMENTS".len()..]
-                .chars()
-                .next()
-                .is_none_or(|c| !c.is_alphanumeric())
-        });
+    let arguments_needed = body.match_indices("$ARGUMENTS").any(|(i, _)| {
+        body[i + "$ARGUMENTS".len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| !c.is_alphanumeric())
+    });
     if arguments_needed {
         out.push("$ARGUMENTS".to_string());
     }
@@ -376,7 +377,10 @@ mod tests {
         // they must not be advertised as hints. Only the real $1..$9 show.
         assert_eq!(template_hints("cost $10 per $1"), vec!["$1"]);
         assert_eq!(template_hints("$10 $11"), Vec::<String>::new());
-        assert_eq!(template_hints("$ARGUMENTATION is like $ARGUMENTS"), vec!["$ARGUMENTS"]);
+        assert_eq!(
+            template_hints("$ARGUMENTATION is like $ARGUMENTS"),
+            vec!["$ARGUMENTS"]
+        );
     }
 
     #[test]

@@ -410,14 +410,12 @@ fn build_claude_code_env_vars(
     small_model: Option<String>,
     custom_env_vars: Vec<serde_json::Value>,
 ) -> Result<Vec<(String, String)>, String> {
-    let token = api_key
-        .filter(|k| !k.trim().is_empty())
-        .ok_or_else(|| {
-            "No local API key is set. Open Settings > Local API Server, set an API key, \
+    let token = api_key.filter(|k| !k.trim().is_empty()).ok_or_else(|| {
+        "No local API key is set. Open Settings > Local API Server, set an API key, \
              and try again: Claude Code needs a real key to authenticate with the local \
              server and reach remote models."
-                .to_string()
-        })?;
+            .to_string()
+    })?;
 
     let mut env_vars: Vec<(String, String)> = Vec::with_capacity(8);
     env_vars.push(("ANTHROPIC_BASE_URL".to_string(), api_url));
@@ -450,9 +448,7 @@ fn build_claude_code_env_vars(
 
 /// Persist the Claude Code environment variables to the user's shell config
 /// (macOS/Linux) or the Windows registry, then return the result.
-fn write_claude_code_env_vars(
-    env_vars: &[(String, String)],
-) -> Result<(), String> {
+fn write_claude_code_env_vars(env_vars: &[(String, String)]) -> Result<(), String> {
     // Build the command environment
     // Export environment variables to the user's shell config file
 
@@ -1187,10 +1183,10 @@ mod tests {
             .map(|(_, v)| v.as_str())
             .unwrap();
         assert_eq!(token, "sk-real-secret");
-        assert!(env
-            .iter()
-            .all(|(_, v)| v != "jan"),
-            "placeholder must never be shipped as a token");
+        assert!(
+            env.iter().all(|(_, v)| v != "jan"),
+            "placeholder must never be shipped as a token"
+        );
     }
 
     #[test]

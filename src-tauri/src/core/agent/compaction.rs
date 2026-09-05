@@ -172,7 +172,11 @@ fn clamp_middle(text: &str, max: usize) -> String {
 /// the caller must block rather than fabricate a fallback note for a
 /// smaller-window model. Every other failure and empty/unreadable completion
 /// stays recoverable and returns [`FALLBACK_NOTE`].
-async fn summarize(dropped: &[Value], model_id: &str, model: &dyn ModelInvoker) -> Result<String, String> {
+async fn summarize(
+    dropped: &[Value],
+    model_id: &str,
+    model: &dyn ModelInvoker,
+) -> Result<String, String> {
     let transcript = clamp_middle(&render_transcript(dropped), SUMMARY_INPUT_CHARS);
     if transcript.trim().is_empty() {
         return Ok(FALLBACK_NOTE.to_string());
@@ -470,7 +474,9 @@ mod tests {
         let error = compact_conversation(&input, "m", &OverflowingModel, 4)
             .await
             .expect_err("a summarizer context overflow must not be swallowed");
-        assert!(crate::core::agent::upstream::is_context_overflow_error(&error));
+        assert!(crate::core::agent::upstream::is_context_overflow_error(
+            &error
+        ));
     }
 
     /// One prompt driving a long agentic run is the normal shape here: a single

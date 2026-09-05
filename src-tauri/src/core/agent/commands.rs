@@ -6,6 +6,7 @@
 //! the tool plugin directly; `core::agent::r#loop` stays for the headless CLI
 //! and the OpenAI-compatible API server, which still orchestrate in Rust.
 
+use crate::core::agent::checkpoint;
 use crate::core::agent::git;
 use crate::core::agent::plugins;
 use crate::core::agent::project::{
@@ -319,6 +320,68 @@ pub fn agent_worktree_list(data_folder: String, project: String) -> Vec<worktree
     // that left Git's record behind does not show a worktree that is not there.
     let _ = worktree::prune(repo);
     worktree::list(repo, &roots)
+}
+
+/// Take a checkpoint of the tree a run is about to change.
+///
+/// The snapshot is a commit object off to one side: the user's branch, HEAD,
+/// index and working tree are untouched, and only the paths named in `changed`
+/// are staged, so the cost is proportional to the turn rather than to the
+/// repository.
+///
+/// `destination` is not a hint. It is what decides, later, whether a rewind may
+/// discard anything — so it is recorded with the checkpoint rather than
+/// supplied at rewind time by whoever happens to be asking.
+#[tauri::command]
+pub fn agent_checkpoint_capture(
+    root: String,
+    thread_id: String,
+    parent: Option<String>,
+    label: String,
+    changed: Vec<String>,
+    destination: checkpoint::Destination,
+) -> Result<checkpoint::Checkpoint, String> {
+    let changed: Vec<std::path::PathBuf> =
+        changed.into_iter().map(std::path::PathBuf::from).collect();
+    checkpoint::capture(
+        std::path::Path::new(&root),
+        &thread_id,
+        parent.as_deref(),
+        &label,
+        &changed,
+        destination,
+    )
+}
+
+/// What rewinding to a checkpoint would do, without doing it.
+///
+/// In a managed tree, a restore. In the user's own checkout, a patch and never
+/// anything else — there is no argument to this that turns it into one.
+#[tauri::command]
+pub fn agent_checkpoint_plan(
+    checkpoint: checkpoint::Checkpoint,
+    latest: String,
+) -> Result<checkpoint::RewindPlan, String> {
+    checkpoint::plan(&checkpoint, &latest)
+}
+
+/// Roll a Jan-owned tree back to a checkpoint.
+///
+/// Refuses a checkpoint taken in the user's checkout, whatever the caller
+/// says: that path leads to deleting work whose only sin was being in the same
+/// directory as the run.
+#[tauri::command]
+pub fn agent_checkpoint_restore(
+    checkpoint: checkpoint::Checkpoint,
+    latest: String,
+) -> Result<(), String> {
+    checkpoint::restore(&checkpoint, &latest)
+}
+
+/// Forget a session's snapshot chain.
+#[tauri::command]
+pub fn agent_checkpoint_forget(root: String, thread_id: String) {
+    checkpoint::forget(std::path::Path::new(&root), &thread_id)
 }
 
 /// A record as it comes back from the renderer.

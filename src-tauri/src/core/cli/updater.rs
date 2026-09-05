@@ -447,7 +447,12 @@ fn clean_stale_files(exe: &Path) {
         return;
     };
     for entry in entries.flatten() {
-        if entry.file_name().to_string_lossy().starts_with(STAGING_PREFIX) && is_stale(&entry) {
+        if entry
+            .file_name()
+            .to_string_lossy()
+            .starts_with(STAGING_PREFIX)
+            && is_stale(&entry)
+        {
             let _ = fs::remove_file(entry.path());
         }
     }
@@ -734,7 +739,10 @@ mod tests {
         clean_stale_files(&exe);
 
         assert!(!stale.exists(), "an abandoned download must be removed");
-        assert!(live.exists(), "a download still in flight must be left alone");
+        assert!(
+            live.exists(),
+            "a download still in flight must be left alone"
+        );
         assert!(unrelated.exists());
         assert!(exe.exists(), "the binary itself is never swept");
     }

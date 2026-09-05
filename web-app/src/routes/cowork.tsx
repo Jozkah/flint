@@ -76,6 +76,7 @@ import { CoworkModeSelector } from '@/containers/CoworkModeSelector'
 import { CoworkAccessSelector } from '@/containers/CoworkAccessSelector'
 import { authorizeDirectEdit as runAuthorizeDirectEdit } from '@/lib/coworkDirectEdit'
 import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
+import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import type { Binding } from '@/lib/coworkReadiness'
 import {
   acceptBaseline,
@@ -117,6 +118,7 @@ import { artifactsFromParts } from '@/lib/coworkArtifacts'
 import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
+import { CoworkRewind } from '@/containers/CoworkRewind'
 import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
 import type { LiveJob } from '@/lib/coworkTasks'
@@ -1507,6 +1509,32 @@ function CoworkPage() {
     useCoworkOrigins.getState().begin(sid, origins)
 
     /**
+     * A point this run can be taken back to.
+     *
+     * Only where Jan is about to change something: a review run writes
+     * nothing, so there would be nothing to undo, and a checkpoint of the
+     * user's checkout taken for a run that cannot touch it is a promise with
+     * no work behind it.
+     *
+     * Whose tree it is is decided here, at capture, rather than at rewind
+     * time by whoever is asking — which is what stops a rewind in the user's
+     * own checkout from ever becoming a hard restore. A failure to take one is
+     * not a reason to refuse the run the user asked for; it shows up as there
+     * being no point to go back to.
+     */
+    if (carried.readRoot && effective.writeRoot) {
+      void useCoworkCheckpoints.getState().capture({
+        sessionId: sid,
+        root: carried.readRoot,
+        label: (text ?? '').trim().slice(0, 80) || 'run',
+        changed: [],
+        destination:
+          origins.destination === 'managed' ? 'managed' : 'user-checkout',
+        access: effective.access,
+      })
+    }
+
+    /**
      * The compatibility manifest this run carries, frozen with everything
      * else.
      *
@@ -2711,6 +2739,32 @@ function CoworkPage() {
         )}
         {rail?.kind === 'diff' && (
           <CoworkDiffPanel
+            // Going back to how things were belongs where what changed is
+            // shown: the two questions are asked in the same breath.
+            header={
+              <CoworkRewind
+                points={
+                  session?.id
+                    ? useCoworkCheckpoints
+                        .getState()
+                        .usable(session.id, treeRoot)
+                    : []
+                }
+                onPlan={(sha) =>
+                  useCoworkCheckpoints.getState().plan(session?.id ?? '', sha)
+                }
+                onRestore={async (sha) => {
+                  const done = await useCoworkCheckpoints
+                    .getState()
+                    .restore(session?.id ?? '', sha)
+                  // The tree changed underneath every surface that describes
+                  // it, so the diff is re-read rather than left showing what
+                  // was there a moment ago.
+                  if (done.ok) git.refresh()
+                  return done
+                }}
+              />
+            }
             sandboxFiles={fileDiffs}
             onOpenFile={openToolPath}
             // The tree the changes are in, not the one the session is

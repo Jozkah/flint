@@ -73,8 +73,10 @@ fn write_config(data_folder: &std::path::Path, cfg: &Value) -> Result<(), String
         serde_json::json!({})
     };
     let obj = doc.as_object_mut().ok_or("mcp_config is not an object")?;
-    obj.entry("mcpServers").or_insert_with(|| serde_json::json!({}));
-    obj.entry("mcpSettings").or_insert_with(|| serde_json::json!({}));
+    obj.entry("mcpServers")
+        .or_insert_with(|| serde_json::json!({}));
+    obj.entry("mcpSettings")
+        .or_insert_with(|| serde_json::json!({}));
 
     let body = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("json.tmp");
@@ -157,10 +159,7 @@ pub fn validate_config(config: &Value) -> Result<(), String> {
     let obj = config
         .as_object()
         .ok_or_else(|| "server config must be a JSON object".to_string())?;
-    let transport = obj
-        .get("type")
-        .and_then(Value::as_str)
-        .unwrap_or("stdio");
+    let transport = obj.get("type").and_then(Value::as_str).unwrap_or("stdio");
     match transport {
         "http" | "sse" => {
             if obj.get("url").and_then(Value::as_str).is_none() {
@@ -344,7 +343,10 @@ pub fn parse_pairs(s: &str, what: &str) -> Result<serde_json::Map<String, Value>
 pub enum ConnectError {
     /// The server advertises OAuth and there are no usable credentials for it.
     /// `/mcp` turns this into an `Authenticate` action.
-    NeedsAuth { server: String, detail: String },
+    NeedsAuth {
+        server: String,
+        detail: String,
+    },
     Failed(String),
 }
 
@@ -401,83 +403,81 @@ async fn connect_in(
     let params = extract_command_args(config)
         .ok_or_else(|| ConnectError::Failed(format!("invalid MCP config for '{name}'")))?;
 
-    let service = match (params.transport_type.as_deref(), params.url.as_deref()) {
-        (Some(transport @ ("http" | "sse")), Some(url)) => {
-            let base = http_client(&params.headers)?;
-            // A credential problem we can already name (expired with no refresh
-            // token, or issued for a different url) is `NeedsAuth` outright --
-            // there is no point attempting a connect we know is unauthorized.
-            let auth = oauth::authorized_client(data_folder, name, url, config, base.clone())
-                .await
-                .map_err(|detail| ConnectError::NeedsAuth {
-                    server: name.to_string(),
-                    detail,
-                })?;
-            let authorized = auth.is_some();
-            let result = match (transport, auth) {
-                ("http", Some(client)) => serve_http(client, url, name).await,
-                ("http", None) => serve_http(base, url, name).await,
-                (_, Some(client)) => serve_sse(client, url, name).await,
-                (_, None) => serve_sse(base, url, name).await,
-            };
-            match result {
-                Ok(service) => service,
-                // Only worth probing when we did not already send a token: a
-                // failure *with* credentials is either a real outage or tokens
-                // the provider revoked, and `advertises_oauth` cannot tell the
-                // difference. Re-authenticating is offered from `/mcp` anyway.
-                Err(e) if !authorized && oauth::advertises_oauth(url).await => {
-                    // The transport error is kept: a server can advertise OAuth
-                    // *and* have failed for an unrelated reason, and dropping
-                    // the cause would report that as "needs authentication".
-                    return Err(ConnectError::NeedsAuth {
-                        server: name.to_string(),
-                        detail: format!("no credentials are stored ({e})"),
-                    });
-                }
-                Err(e) => return Err(ConnectError::Failed(e)),
-            }
-        }
-        _ => {
-            // The CLI shares `extract_command_args` with the desktop, so an
-            // imported definition can reach here too. It goes through the same
-            // capability: there is no second, unconfined way to start a local
-            // MCP server.
-            let build = || {
-                let mut cmd = Command::new(&params.command);
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-            }
-            #[cfg(unix)]
-            {
-                cmd.process_group(0);
-            }
-            cmd.kill_on_drop(true);
-            for arg in params.args.iter().filter_map(Value::as_str) {
-                cmd.arg(arg);
-            }
-            for (k, v) in params.envs.iter() {
-                if let Some(v) = v.as_str() {
-                    cmd.env(k, v);
-                }
-            }
-                cmd
-            };
-            let launch = crate::core::mcp::launch::ConfinedMcpLaunch::prepare(&params, build)
-                .map_err(ConnectError::Failed)?;
-            let (process, _stderr) = launch
-                .spawn(Stdio::null())
-                .map_err(|e| ConnectError::Failed(format!("failed to spawn '{name}': {e}")))?;
-            RunningServiceEnum::NoInit(
-                ()
-                    .serve(process)
+    let service =
+        match (params.transport_type.as_deref(), params.url.as_deref()) {
+            (Some(transport @ ("http" | "sse")), Some(url)) => {
+                let base = http_client(&params.headers)?;
+                // A credential problem we can already name (expired with no refresh
+                // token, or issued for a different url) is `NeedsAuth` outright --
+                // there is no point attempting a connect we know is unauthorized.
+                let auth = oauth::authorized_client(data_folder, name, url, config, base.clone())
                     .await
-                    .map_err(|e| ConnectError::Failed(format!("failed to connect to '{name}': {e}")))?,
-            )
-        }
-    };
+                    .map_err(|detail| ConnectError::NeedsAuth {
+                        server: name.to_string(),
+                        detail,
+                    })?;
+                let authorized = auth.is_some();
+                let result = match (transport, auth) {
+                    ("http", Some(client)) => serve_http(client, url, name).await,
+                    ("http", None) => serve_http(base, url, name).await,
+                    (_, Some(client)) => serve_sse(client, url, name).await,
+                    (_, None) => serve_sse(base, url, name).await,
+                };
+                match result {
+                    Ok(service) => service,
+                    // Only worth probing when we did not already send a token: a
+                    // failure *with* credentials is either a real outage or tokens
+                    // the provider revoked, and `advertises_oauth` cannot tell the
+                    // difference. Re-authenticating is offered from `/mcp` anyway.
+                    Err(e) if !authorized && oauth::advertises_oauth(url).await => {
+                        // The transport error is kept: a server can advertise OAuth
+                        // *and* have failed for an unrelated reason, and dropping
+                        // the cause would report that as "needs authentication".
+                        return Err(ConnectError::NeedsAuth {
+                            server: name.to_string(),
+                            detail: format!("no credentials are stored ({e})"),
+                        });
+                    }
+                    Err(e) => return Err(ConnectError::Failed(e)),
+                }
+            }
+            _ => {
+                // The CLI shares `extract_command_args` with the desktop, so an
+                // imported definition can reach here too. It goes through the same
+                // capability: there is no second, unconfined way to start a local
+                // MCP server.
+                let build = || {
+                    let mut cmd = Command::new(&params.command);
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+                    }
+                    #[cfg(unix)]
+                    {
+                        cmd.process_group(0);
+                    }
+                    cmd.kill_on_drop(true);
+                    for arg in params.args.iter().filter_map(Value::as_str) {
+                        cmd.arg(arg);
+                    }
+                    for (k, v) in params.envs.iter() {
+                        if let Some(v) = v.as_str() {
+                            cmd.env(k, v);
+                        }
+                    }
+                    cmd
+                };
+                let launch = crate::core::mcp::launch::ConfinedMcpLaunch::prepare(&params, build)
+                    .map_err(ConnectError::Failed)?;
+                let (process, _stderr) = launch
+                    .spawn(Stdio::null())
+                    .map_err(|e| ConnectError::Failed(format!("failed to spawn '{name}': {e}")))?;
+                RunningServiceEnum::NoInit(().serve(process).await.map_err(|e| {
+                    ConnectError::Failed(format!("failed to connect to '{name}': {e}"))
+                })?)
+            }
+        };
 
     servers.lock().await.insert(name.to_string(), service);
     Ok(())
@@ -543,9 +543,7 @@ fn client_info() -> ClientInfo {
 
 /// Build a reqwest client that sends the configured `headers` on every request
 /// (http/sse auth). Non-string header names/values are skipped.
-fn http_client(
-    headers: &serde_json::Map<String, Value>,
-) -> Result<reqwest::Client, String> {
+fn http_client(headers: &serde_json::Map<String, Value>) -> Result<reqwest::Client, String> {
     let mut map = reqwest::header::HeaderMap::new();
     for (key, value) in headers.iter() {
         if let Some(v) = value.as_str() {
@@ -656,7 +654,10 @@ pub async fn describe(name: &str, servers: &SharedMcpServers) -> Option<ServerDe
             format!("{command} {}", args.join(" "))
         }
     } else {
-        cfg.get("url").and_then(Value::as_str).unwrap_or("").to_string()
+        cfg.get("url")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
     };
 
     // The lock is held only for the cached `initialize` response; nothing here
@@ -812,27 +813,21 @@ mod tests {
         // Missing command.
         assert!(upsert_server_in(folder, "x", &serde_json::json!({ "args": [] })).is_err());
         // Missing args.
-        assert!(
-            upsert_server_in(folder, "x", &serde_json::json!({ "command": "npx" })).is_err()
-        );
+        assert!(upsert_server_in(folder, "x", &serde_json::json!({ "command": "npx" })).is_err());
         // Unknown transport.
-        assert!(
-            upsert_server_in(
-                folder,
-                "x",
-                &serde_json::json!({ "type": "bogus", "url": "http://x" })
-            )
-            .is_err()
-        );
+        assert!(upsert_server_in(
+            folder,
+            "x",
+            &serde_json::json!({ "type": "bogus", "url": "http://x" })
+        )
+        .is_err());
         // Desktop-only browser bridge.
-        assert!(
-            upsert_server_in(
-                folder,
-                BROWSER_MCP_NAME,
-                &serde_json::json!({ "command": "npx", "args": [] })
-            )
-            .is_err()
-        );
+        assert!(upsert_server_in(
+            folder,
+            BROWSER_MCP_NAME,
+            &serde_json::json!({ "command": "npx", "args": [] })
+        )
+        .is_err());
     }
 
     #[test]

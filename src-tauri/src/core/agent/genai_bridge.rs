@@ -71,9 +71,7 @@ fn build_http_client() -> reqwest13::Client {
 /// silently dropping `/v1` -- so the slash is not cosmetic.
 pub(crate) fn endpoint_base_from_chat_url(upstream_url: &str) -> String {
     let trimmed = upstream_url.trim_end_matches('/');
-    let base = trimmed
-        .strip_suffix("/chat/completions")
-        .unwrap_or(trimmed);
+    let base = trimmed.strip_suffix("/chat/completions").unwrap_or(trimmed);
     format!("{base}/")
 }
 
@@ -284,10 +282,7 @@ fn messages_from_body(
             // Everything else is a user turn. Multimodal content-part arrays are
             // flattened to their text; images are not yet forwarded (see below).
             _ => {
-                out.push(ChatMessage::new(
-                    ChatRole::User,
-                    content_text(content),
-                ));
+                out.push(ChatMessage::new(ChatRole::User, content_text(content)));
             }
         }
     }
@@ -437,7 +432,13 @@ fn provider_retry_after(headers: &reqwest13::header::HeaderMap) -> Option<Durati
 /// Pull the HTTP status, response body, and headers out of whichever error shape
 /// `genai` used. Kept in one place because the same failure arrives as
 /// `HttpError`, `WebModelCall`, or `WebAdapterCall` depending on the call stage.
-fn http_parts(err: &genai::Error) -> (Option<u16>, Option<&str>, Option<&reqwest13::header::HeaderMap>) {
+fn http_parts(
+    err: &genai::Error,
+) -> (
+    Option<u16>,
+    Option<&str>,
+    Option<&reqwest13::header::HeaderMap>,
+) {
     use genai::webc::Error as WebcError;
     match err {
         genai::Error::HttpError {
@@ -916,9 +917,9 @@ mod tests {
         let parts: Vec<&ContentPart> = req.messages[0].content.iter().collect();
 
         assert!(
-            parts
-                .iter()
-                .any(|p| matches!(p, ContentPart::ReasoningContent(r) if r == "i should look it up")),
+            parts.iter().any(
+                |p| matches!(p, ContentPart::ReasoningContent(r) if r == "i should look it up")
+            ),
             "reasoning is carried so the adapter can resend it: {parts:?}"
         );
         let call = parts
@@ -1128,8 +1129,11 @@ mod tests {
         json!({ "model": "m", "messages": [{ "role": "user", "content": "hi" }] })
     }
 
-    async fn run(url: &str, keys: &[String], events: &mpsc::UnboundedSender<StreamEvent>)
-        -> Result<serde_json::Value, String> {
+    async fn run(
+        url: &str,
+        keys: &[String],
+        events: &mpsc::UnboundedSender<StreamEvent>,
+    ) -> Result<serde_json::Value, String> {
         stream_chat_completions(&build_http_client(), url, keys, None, &body(), events).await
     }
 
@@ -1178,8 +1182,7 @@ mod tests {
 
         assert_eq!(completion["choices"][0]["message"]["content"], "391");
         assert_eq!(
-            completion["choices"][0]["message"]["reasoning_content"],
-            "We need 391",
+            completion["choices"][0]["message"]["reasoning_content"], "We need 391",
             "normalized onto the canonical spelling: {completion}"
         );
 
@@ -1226,8 +1229,11 @@ mod tests {
                 _ => {}
             }
         }
-        assert_eq!(started, vec![("call_1".to_string(), "grep".to_string())],
-            "announced exactly once");
+        assert_eq!(
+            started,
+            vec![("call_1".to_string(), "grep".to_string())],
+            "announced exactly once"
+        );
         // Deltas, not prefixes: concatenating them must rebuild the arguments
         // rather than repeating them.
         assert_eq!(args, r#"{"q":"x"}"#);
@@ -1249,7 +1255,9 @@ mod tests {
         .await;
 
         let (tx, mut rx) = sink();
-        let completion = run(&url, &[], &tx).await.expect("the retry carries the turn");
+        let completion = run(&url, &[], &tx)
+            .await
+            .expect("the retry carries the turn");
         assert_eq!(completion["choices"][0]["message"]["content"], "hi");
 
         drop(tx);
@@ -1268,7 +1276,11 @@ mod tests {
     #[tokio::test]
     async fn an_unauthorized_key_falls_through_to_the_next_key() {
         let (url, server) = serve(vec![
-            Some(status_response(401, "Unauthorized", r#"{"error":"bad key"}"#)),
+            Some(status_response(
+                401,
+                "Unauthorized",
+                r#"{"error":"bad key"}"#,
+            )),
             Some(sse_response(&[
                 r#"{"choices":[{"delta":{"content":"ok"}}]}"#,
                 r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
@@ -1330,7 +1342,11 @@ mod tests {
     fn backoff_grows_then_holds_at_the_ceiling() {
         assert_eq!(next_delay(0, None), BASE_RETRY_DELAY);
         assert_eq!(next_delay(1, None), BASE_RETRY_DELAY * 2);
-        assert_eq!(next_delay(20, None), MAX_RETRY_DELAY, "capped, not overflowing");
+        assert_eq!(
+            next_delay(20, None),
+            MAX_RETRY_DELAY,
+            "capped, not overflowing"
+        );
     }
 
     #[test]
@@ -1339,13 +1355,19 @@ mod tests {
         assert_eq!(next_delay(0, Some(long)), long);
         // A provider asking for less than our backoff does not get to make us
         // hammer it faster than we would have.
-        assert_eq!(next_delay(5, Some(Duration::from_millis(1))), MAX_RETRY_DELAY);
+        assert_eq!(
+            next_delay(5, Some(Duration::from_millis(1))),
+            MAX_RETRY_DELAY
+        );
     }
 
     #[test]
     fn the_retry_budget_clamps_and_then_gives_up() {
         assert_eq!(
-            budgeted(Duration::from_secs(10), RETRY_BUDGET - Duration::from_secs(2)),
+            budgeted(
+                Duration::from_secs(10),
+                RETRY_BUDGET - Duration::from_secs(2)
+            ),
             Some(Duration::from_secs(2)),
             "clamped to what is left"
         );

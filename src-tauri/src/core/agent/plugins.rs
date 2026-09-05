@@ -319,11 +319,7 @@ fn find_plugin_dirs(root: &Path) -> Vec<PathBuf> {
             if !is_dir {
                 continue;
             }
-            if entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with('.')
-            {
+            if entry.file_name().to_string_lossy().starts_with('.') {
                 continue;
             }
             if plugin_has_content(&path) {
@@ -352,8 +348,12 @@ fn prompt_multi_choice(
     input: &mut dyn io::BufRead,
 ) -> Result<Vec<usize>, String> {
     let mut stdout = io::stdout().lock();
-    writeln!(stdout, "'{url}' is a plugin collection ({n} plugins):", n = paths.len())
-        .map_err(|e| format!("ERROR: {e}"))?;
+    writeln!(
+        stdout,
+        "'{url}' is a plugin collection ({n} plugins):",
+        n = paths.len()
+    )
+    .map_err(|e| format!("ERROR: {e}"))?;
     let width = paths.len().to_string().len();
     for (i, (path, inst)) in paths.iter().zip(already).enumerate() {
         let mark = if *inst { "  [installed]" } else { "" };
@@ -612,10 +612,7 @@ fn install_git(
         };
         for idx in picked {
             let dir = candidates[idx].clone();
-            let fallback = dir
-                .file_name()
-                .and_then(|n| n.to_str())
-                .map(str::to_string);
+            let fallback = dir.file_name().and_then(|n| n.to_str()).map(str::to_string);
             targets.push((dir, fallback, true));
         }
     }
@@ -690,7 +687,11 @@ fn install_payload_dir(
     let name = match (manifest.name.as_deref(), fallback_name) {
         (Some(name), _) if !name.is_empty() => name.to_string(),
         (_, Some(dir)) => dir.to_string(),
-        _ => return Err(format!("ERROR: cannot determine plugin name from '{source_url}'")),
+        _ => {
+            return Err(format!(
+                "ERROR: cannot determine plugin name from '{source_url}'"
+            ))
+        }
     };
     let stem = match skills::safe_stem(&name) {
         Ok(stem) if stem == name => stem,
@@ -787,10 +788,7 @@ pub(crate) async fn install_interactive(
 /// one nested plugin) installs directly, so it's already done.
 // (cli-only)
 #[cfg(feature = "cli")]
-pub(crate) async fn list_collection(
-    root: &Path,
-    spec: &str,
-) -> Result<GitInstall, String> {
+pub(crate) async fn list_collection(root: &Path, spec: &str) -> Result<GitInstall, String> {
     install_with(root, spec, CollectionChoice::List).await
 }
 
@@ -1161,10 +1159,8 @@ mod tests {
     /// is its own plugin. Multiple children -> an actionable error naming them.
     #[tokio::test]
     async fn install_collection_lists_plugin_choices() {
-        let repo = std::env::temp_dir().join(format!(
-            "jan_plugin_collection_{}",
-            std::process::id()
-        ));
+        let repo =
+            std::env::temp_dir().join(format!("jan_plugin_collection_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&repo);
         for name in ["alpha", "beta"] {
             let d = repo.join(name).join("skills").join("prepare");
@@ -1182,14 +1178,7 @@ mod tests {
         }
         git(&["init", repo.to_str().unwrap()]).unwrap();
         git(&["-C", repo.to_str().unwrap(), "add", "-A"]).unwrap();
-        git(&[
-            "-C",
-            repo.to_str().unwrap(),
-            "commit",
-            "-m",
-            "collection",
-        ])
-        .unwrap();
+        git(&["-C", repo.to_str().unwrap(), "commit", "-m", "collection"]).unwrap();
 
         let root = unique_root("collection1");
         let err = install(&root, &format!("file://{}", repo.display()))
@@ -1211,15 +1200,16 @@ mod tests {
     /// A collection with a single plugin child auto-installs that one.
     #[tokio::test]
     async fn install_collection_with_single_plugin_installs_it() {
-        let repo = std::env::temp_dir().join(format!(
-            "jan_plugin_singleton_{}",
-            std::process::id()
-        ));
+        let repo =
+            std::env::temp_dir().join(format!("jan_plugin_singleton_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&repo);
         let d = repo.join("only").join("skills").join("prepare");
         std::fs::create_dir_all(&d).unwrap();
-        std::fs::write(d.join("SKILL.md"), "---\ndescription: only\n---\n\n# only\n\nBody.\n")
-            .unwrap();
+        std::fs::write(
+            d.join("SKILL.md"),
+            "---\ndescription: only\n---\n\n# only\n\nBody.\n",
+        )
+        .unwrap();
         std::fs::write(
             repo.join("only").join("plugin.toml"),
             "name = \"only\"\ndescription = \"only\"\n",
@@ -1227,14 +1217,7 @@ mod tests {
         .unwrap();
         git(&["init", repo.to_str().unwrap()]).unwrap();
         git(&["-C", repo.to_str().unwrap(), "add", "-A"]).unwrap();
-        git(&[
-            "-C",
-            repo.to_str().unwrap(),
-            "commit",
-            "-m",
-            "singleton",
-        ])
-        .unwrap();
+        git(&["-C", repo.to_str().unwrap(), "commit", "-m", "singleton"]).unwrap();
 
         let root = unique_root("singleton1");
         let p = install(&root, &format!("file://{}", repo.display()))
@@ -1252,16 +1235,21 @@ mod tests {
     /// list of relative paths and installs nothing by default.
     #[tokio::test]
     async fn install_nested_collection_lists_plugin_choices() {
-        let repo = std::env::temp_dir().join(format!(
-            "jan_nested_collection_{}",
-            std::process::id()
-        ));
+        let repo =
+            std::env::temp_dir().join(format!("jan_nested_collection_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&repo);
         for name in ["alpha", "beta"] {
-            let d = repo.join("plugins").join(name).join("skills").join("prepare");
+            let d = repo
+                .join("plugins")
+                .join(name)
+                .join("skills")
+                .join("prepare");
             std::fs::create_dir_all(&d).unwrap();
-            std::fs::write(d.join("SKILL.md"), format!("---\ndescription: {name}\n---\n\n# {name}\n\nBody.\n"))
-                .unwrap();
+            std::fs::write(
+                d.join("SKILL.md"),
+                format!("---\ndescription: {name}\n---\n\n# {name}\n\nBody.\n"),
+            )
+            .unwrap();
             std::fs::write(
                 repo.join("plugins").join(name).join("plugin.toml"),
                 format!("name = \"{name}\"\ndescription = \"{name}\"\n"),
@@ -1289,7 +1277,10 @@ mod tests {
         let err = install(&root, &format!("file://{}", repo.display()))
             .await
             .unwrap_err();
-        assert!(err.contains("plugins/alpha") && err.contains("plugins/beta"), "{err}");
+        assert!(
+            err.contains("plugins/alpha") && err.contains("plugins/beta"),
+            "{err}"
+        );
         assert!(err.contains("external_plugins/gamma"), "{err}");
         assert!(err.contains("plugin collection"), "{err}");
         assert!(
@@ -1310,15 +1301,20 @@ mod tests {
     /// A nested collection with a single plugin auto-installs it.
     #[tokio::test]
     async fn install_nested_collection_with_single_plugin_installs_it() {
-        let repo = std::env::temp_dir().join(format!(
-            "jan_nested_singleton_{}",
-            std::process::id()
-        ));
+        let repo =
+            std::env::temp_dir().join(format!("jan_nested_singleton_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&repo);
-        let d = repo.join("plugins").join("only").join("skills").join("prepare");
+        let d = repo
+            .join("plugins")
+            .join("only")
+            .join("skills")
+            .join("prepare");
         std::fs::create_dir_all(&d).unwrap();
-        std::fs::write(d.join("SKILL.md"), "---\ndescription: only\n---\n\n# only\n\nBody.\n")
-            .unwrap();
+        std::fs::write(
+            d.join("SKILL.md"),
+            "---\ndescription: only\n---\n\n# only\n\nBody.\n",
+        )
+        .unwrap();
         std::fs::write(
             repo.join("plugins").join("only").join("plugin.toml"),
             "name = \"only\"\ndescription = \"only\"\n",
@@ -1326,7 +1322,14 @@ mod tests {
         .unwrap();
         git(&["init", repo.to_str().unwrap()]).unwrap();
         git(&["-C", repo.to_str().unwrap(), "add", "-A"]).unwrap();
-        git(&["-C", repo.to_str().unwrap(), "commit", "-m", "nested singleton"]).unwrap();
+        git(&[
+            "-C",
+            repo.to_str().unwrap(),
+            "commit",
+            "-m",
+            "nested singleton",
+        ])
+        .unwrap();
 
         let root = unique_root("nestedsingleton1");
         let p = install(&root, &format!("file://{}", repo.display()))
@@ -1447,8 +1450,16 @@ mod tests {
 
         // A second payload claiming an installed name is skipped, not an error.
         let again = stage("alpha");
-        match install_payload_dir(&root, &plugins, &tmp, &again, true, Some("alpha"), "http://x")
-            .unwrap()
+        match install_payload_dir(
+            &root,
+            &plugins,
+            &tmp,
+            &again,
+            true,
+            Some("alpha"),
+            "http://x",
+        )
+        .unwrap()
         {
             PayloadOutcome::AlreadyInstalled(stem) => assert_eq!(stem, "alpha"),
             PayloadOutcome::Installed(p) => panic!("reinstalled {}", p.name),
@@ -1460,7 +1471,8 @@ mod tests {
     /// A local git repo fixture that is a collection of two plugins, `alpha`
     /// and `beta`, at its root.
     fn make_collection(tag: &str) -> PathBuf {
-        let repo = std::env::temp_dir().join(format!("jan_plugin_coll_{tag}_{}", std::process::id()));
+        let repo =
+            std::env::temp_dir().join(format!("jan_plugin_coll_{tag}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&repo);
         for name in ["alpha", "beta"] {
             let d = repo.join(name).join("skills").join("prepare");
@@ -1508,7 +1520,9 @@ mod tests {
         }
         // Listing must not have installed or left anything behind.
         assert_eq!(
-            std::fs::read_dir(skills::plugins_dir(&root)).unwrap().count(),
+            std::fs::read_dir(skills::plugins_dir(&root))
+                .unwrap()
+                .count(),
             1,
             "only the pre-install should be present"
         );
@@ -1533,13 +1547,10 @@ mod tests {
         assert!(!skills::plugins_dir(&root).join("alpha").exists());
 
         // Re-selecting beta alongside alpha skips beta, installs alpha.
-        let installed = install_selected(
-            &root,
-            &spec,
-            vec!["alpha".to_string(), "beta".to_string()],
-        )
-        .await
-        .unwrap();
+        let installed =
+            install_selected(&root, &spec, vec!["alpha".to_string(), "beta".to_string()])
+                .await
+                .unwrap();
         assert_eq!(installed.len(), 1);
         assert_eq!(installed[0].name, "alpha");
 
@@ -1559,10 +1570,18 @@ mod tests {
         std::fs::create_dir_all(root.join("plugins").join("a")).unwrap();
         std::fs::create_dir_all(root.join("plugins").join("b")).unwrap();
         // Real plugin payloads at two levels.
-        std::fs::write(root.join("plugins").join("a").join("plugin.toml"), "name=\"a\"").unwrap();
+        std::fs::write(
+            root.join("plugins").join("a").join("plugin.toml"),
+            "name=\"a\"",
+        )
+        .unwrap();
         std::fs::create_dir_all(root.join("plugins").join("b").join("skills").join("s")).unwrap();
         std::fs::write(
-            root.join("plugins").join("b").join("skills").join("s").join("SKILL.md"),
+            root.join("plugins")
+                .join("b")
+                .join("skills")
+                .join("s")
+                .join("SKILL.md"),
             "# s\n",
         )
         .unwrap();
@@ -1590,7 +1609,10 @@ mod tests {
             .collect();
         assert!(names.contains(&"a".to_string()));
         assert!(names.contains(&"b".to_string()));
-        assert!(!names.contains(&"out".to_string()), "symlinked dir was followed: {names:?}");
+        assert!(
+            !names.contains(&"out".to_string()),
+            "symlinked dir was followed: {names:?}"
+        );
         assert_eq!(names.len(), 2, "unexpected dirs: {names:?}");
 
         let _ = std::fs::remove_dir_all(&root);

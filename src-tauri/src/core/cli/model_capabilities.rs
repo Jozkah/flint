@@ -55,21 +55,16 @@ fn strip_provider_qualifier(model_id: &str) -> &str {
 fn catalog_window(model_id: &str) -> Option<u64> {
     // Claude family: the two newest releases get 1M, everything else claude 200K.
     if model_id.starts_with("claude-") {
-        let is_new = ["haiku", "sonnet", "opus"]
-            .iter()
-            .any(|family| {
-                let prefix = format!("claude-{family}-4-6");
-                let prefix7 = format!("claude-{family}-4-7");
-                model_id.starts_with(&prefix) || model_id.starts_with(&prefix7)
-            });
+        let is_new = ["haiku", "sonnet", "opus"].iter().any(|family| {
+            let prefix = format!("claude-{family}-4-6");
+            let prefix7 = format!("claude-{family}-4-7");
+            model_id.starts_with(&prefix) || model_id.starts_with(&prefix7)
+        });
         return Some(if is_new { 1_000_000 } else { 200_000 });
     }
 
     // Codex variants are matched before the base gpt-5.x rows they contain.
-    if model_id == "gpt-5.1-codex"
-        || model_id == "gpt-5.2-codex"
-        || model_id == "gpt-5.3-codex"
-    {
+    if model_id == "gpt-5.1-codex" || model_id == "gpt-5.2-codex" || model_id == "gpt-5.3-codex" {
         return Some(272_000);
     }
     if model_id == "gpt-5.1" || model_id == "gpt-5.2" {

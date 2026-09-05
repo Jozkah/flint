@@ -238,8 +238,17 @@ export function CoworkDiffPanel({
   origins,
   onClose,
   onOpenFile,
+  header,
 }: {
   sandboxFiles: CoworkFileDiff[]
+  /**
+   * Rendered above the file list.
+   *
+   * Where "go back to how it was" lives, because it is asked in the same
+   * breath as "what changed" and answering it anywhere else would mean
+   * looking at one panel while acting on another.
+   */
+  header?: React.ReactNode
   /** Show a changed file in the Code panel. */
   onOpenFile?: (path: string) => void
   folder: string | null
@@ -282,7 +291,8 @@ export function CoworkDiffPanel({
     ],
     [gitFiles, sandboxFiles]
   )
-  const allExpanded = allIds.length > 0 && allIds.every((id) => expanded.has(id))
+  const allExpanded =
+    allIds.length > 0 && allIds.every((id) => expanded.has(id))
 
   const toggle = (id: string) =>
     setExpanded((current) => {
@@ -296,7 +306,9 @@ export function CoworkDiffPanel({
     setExpanded(() => (allExpanded ? new Set() : new Set(allIds)))
 
   const name = repoName(git.status)
-  const title = showProject ? (name ?? t('common:changes.title')) : t('common:changes.title')
+  const title = showProject
+    ? (name ?? t('common:changes.title'))
+    : t('common:changes.title')
 
   return (
     <CoworkSidePanel
@@ -309,6 +321,7 @@ export function CoworkDiffPanel({
       onClose={onClose}
     >
       <div className="flex h-full flex-col">
+        {header}
         {showProject ? (
           <div className="flex shrink-0 items-center gap-2 border-b px-3 py-1.5">
             {git.status?.branch ? (
@@ -418,7 +431,9 @@ export function CoworkDiffPanel({
                       <FileRow
                         key={id}
                         path={file.path}
-                        onOpen={onOpenFile ? () => onOpenFile(file.path) : undefined}
+                        onOpen={
+                          onOpenFile ? () => onOpenFile(file.path) : undefined
+                        }
                         subtitle={
                           file.origPath
                             ? t('common:changes.renamedFrom', {
@@ -481,7 +496,9 @@ export function CoworkDiffPanel({
                     <FileRow
                       key={id}
                       path={file.path}
-                      onOpen={onOpenFile ? () => onOpenFile(file.path) : undefined}
+                      onOpen={
+                        onOpenFile ? () => onOpenFile(file.path) : undefined
+                      }
                       additions={file.additions}
                       deletions={file.deletions}
                       isExpanded={isExpanded}

@@ -163,4 +163,3 @@ impl Default for AppState {
         }
     }
 }
-

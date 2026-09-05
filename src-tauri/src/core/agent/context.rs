@@ -51,9 +51,8 @@ pub(crate) fn load_context_files(project_root: &Path) -> Option<String> {
     // Ancestors are collected nearest-first; reverse so the nearest (most
     // specific) instructions appear last and take precedence.
     files.reverse();
-    let mut block = String::from(
-        "<project_context>\n\nProject-specific instructions and guidelines:\n\n",
-    );
+    let mut block =
+        String::from("<project_context>\n\nProject-specific instructions and guidelines:\n\n");
     for (path, content) in files {
         block.push_str(&format!(
             "<project_instructions path=\"{}\">\n{}\n</project_instructions>\n\n",
@@ -150,7 +149,8 @@ targeted tasks where delegating would cost more than it saves.";
 /// and its caller), so this is a real requirement, not a suggestion the model
 /// can silently skip -- the imperative wording matches that guarantee. Normal
 /// turns never get it: there the model decides when a list is worth keeping.
-pub(crate) const EAGER_TODO_PROMPT_ADDENDUM: &str = "Before substantial work on this request, create a \
+pub(crate) const EAGER_TODO_PROMPT_ADDENDUM: &str =
+    "Before substantial work on this request, create a \
 phased todo. You MUST call `todo` first in this turn with a single `init` op covering \
 investigation through implementation and verification, not just the next step. Keep each task \
 to a concise, specific 5-10 word label; `init` only accepts phase names and task-label strings, \
@@ -164,7 +164,8 @@ top-level `phase`/`task` strings, which are for later ops (start/done/drop), not
 /// session would otherwise carry a list the model was never told to maintain --
 /// which is exactly how a run ends reading 0/N with every task finished but
 /// still marked pending.
-pub(crate) const TODO_UPKEEP_PROMPT_ADDENDUM: &str = "You have an active todo list. Keep it honest as you \
+pub(crate) const TODO_UPKEEP_PROMPT_ADDENDUM: &str =
+    "You have an active todo list. Keep it honest as you \
 work: the moment you finish a task call `todo` with `done` for it (or `drop` if you are skipping \
 it), before moving on to the next one. Do not leave finished work sitting as pending, and do not \
 batch the close-out to the end of the turn.";
@@ -182,11 +183,7 @@ fn display_path(path: &Path) -> String {
 fn runtime_environment_block(project_root: &Path, scratch: Option<&Path>) -> String {
     let cwd = display_path(project_root);
 
-    let os = format!(
-        "{} {}",
-        std::env::consts::OS,
-        std::env::consts::ARCH
-    );
+    let os = format!("{} {}", std::env::consts::OS, std::env::consts::ARCH);
 
     let now = Local::now();
     let date = now.format("%Y-%m-%d").to_string();
@@ -357,7 +354,11 @@ mod tests {
     #[test]
     fn memory_catalog_advertises_summary_not_full_body() {
         let root = scratch_project("memcatalog");
-        write_memory(&root, "decisions.md", "We use Yarn not npm.\nSECRET_BODY_MARKER follow-up detail.");
+        write_memory(
+            &root,
+            "decisions.md",
+            "We use Yarn not npm.\nSECRET_BODY_MARKER follow-up detail.",
+        );
         write_memory(&root, "prefs.md", "Keep it minimal.");
         write_memory(&root, "ignored.txt", "not markdown");
 
@@ -427,12 +428,18 @@ mod tests {
         assert!(out.contains("web_search"));
         assert!(out.contains("web_fetch"));
         // Provider-neutral: the model must not be told to call a branded tool.
-        assert!(out.contains("exa_search"), "guide names the anti-pattern to avoid");
+        assert!(
+            out.contains("exa_search"),
+            "guide names the anti-pattern to avoid"
+        );
         // Teaches how to call the tools, not just that they exist.
         assert!(out.contains("query"), "documents the web_search query arg");
         assert!(out.contains("count"), "documents the web_search count arg");
         assert!(out.contains("url"), "documents the web_fetch url arg");
-        assert!(out.contains("Workflow"), "describes the search->fetch->cite flow");
+        assert!(
+            out.contains("Workflow"),
+            "describes the search->fetch->cite flow"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -516,7 +523,11 @@ mod tests {
         let block = runtime_environment_block(&root, None);
         // Must be a handful of lines, not a wall of text.
         let lines: Vec<_> = block.lines().filter(|l| !l.is_empty()).collect();
-        assert!(lines.len() <= 15, "env block is too large: {} lines", lines.len());
+        assert!(
+            lines.len() <= 15,
+            "env block is too large: {} lines",
+            lines.len()
+        );
         // Must contain the key sections.
         assert!(block.contains("# Runtime Environment"));
         assert!(block.contains("Work directory:"));
@@ -540,7 +551,10 @@ mod tests {
         // The block sits right after the Working Directory section.
         let work_dir_pos = out.find("# Working Directory").unwrap();
         let env_pos = out.find("# Runtime Environment").unwrap();
-        assert!(work_dir_pos < env_pos, "env block must come after working directory");
+        assert!(
+            work_dir_pos < env_pos,
+            "env block must come after working directory"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -625,7 +639,10 @@ mod tests {
             .lines()
             .find(|l| l.starts_with("Work directory:"))
             .expect("work directory line");
-        assert!(!line.contains('\\'), "path should be slash-normalised: {line}");
+        assert!(
+            !line.contains('\\'),
+            "path should be slash-normalised: {line}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }

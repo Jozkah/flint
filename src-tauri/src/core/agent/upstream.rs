@@ -2186,28 +2186,36 @@ mod tests {
     /// were accepted by the earlier code.
     #[test]
     fn arguments_must_decode_to_a_plain_object() {
-        let call_with = |args: serde_json::Value| {
-            json!({ "type": "function", "function": { "name": "edit", "arguments": args } })
-        };
+        let call_with = |args: serde_json::Value| json!({ "type": "function", "function": { "name": "edit", "arguments": args } });
         let decodes_to_object = json!("{\"path\":\"a.rs\",\"content\":\"fn main() {}\"}");
         assert!(arguments_are_executable(&call_with(decodes_to_object)));
         // A plain object in the field is off-wire but semantically valid.
-        assert!(arguments_are_executable(&call_with(json!({ "path": "a.rs" }))));
+        assert!(arguments_are_executable(&call_with(
+            json!({ "path": "a.rs" })
+        )));
         // Absent, null, and empty are the "no arguments" spelling.
         assert!(arguments_are_executable(&call_with(json!(""))));
         assert!(arguments_are_executable(&call_with(json!("   "))));
-        assert!(arguments_are_executable(&call_with(serde_json::Value::Null)));
-        assert!(arguments_are_executable(&json!({ "type": "function", "function": { "name": "now" } })));
+        assert!(arguments_are_executable(&call_with(
+            serde_json::Value::Null
+        )));
+        assert!(arguments_are_executable(
+            &json!({ "type": "function", "function": { "name": "now" } })
+        ));
 
         // The reported poison: a JSON string literal whose decoding is another
         // string. JSON.parse succeeds; typeof parsed === "string". The same
         // family covers every other scalar, arrays, and truncated JSON.
-        assert!(!arguments_are_executable(&call_with(json!("\"{\\\"path\\\":\\\"a.rs\\\"}\""))));
+        assert!(!arguments_are_executable(&call_with(json!(
+            "\"{\\\"path\\\":\\\"a.rs\\\"}\""
+        ))));
         assert!(!arguments_are_executable(&call_with(json!("[1,2,3]"))));
         assert!(!arguments_are_executable(&call_with(json!("42"))));
         assert!(!arguments_are_executable(&call_with(json!("true"))));
         assert!(!arguments_are_executable(&call_with(json!("null"))));
-        assert!(!arguments_are_executable(&call_with(json!("{\"path\":\"a.rs\",\"co"))));
+        assert!(!arguments_are_executable(&call_with(json!(
+            "{\"path\":\"a.rs\",\"co"
+        ))));
         // Off-wire non-string shapes: lists and scalars are poison.
         assert!(!arguments_are_executable(&call_with(json!(["a"]))));
         assert!(!arguments_are_executable(&call_with(json!(7))));
