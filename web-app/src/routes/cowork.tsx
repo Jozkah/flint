@@ -1574,7 +1574,8 @@ function CoworkPage() {
     const dispatchChild = async (
       callId: string,
       req: SubagentRequest,
-      teamSignal?: AbortSignal
+      teamSignal?: AbortSignal,
+      parentTaskId?: string
     ): Promise<ToolOutcome> => {
     const resolved = resolveSubagent(
       req,
@@ -1600,6 +1601,9 @@ function CoworkPage() {
       agentName: resolved.name,
       description: req.description,
       model: selectedModel.id,
+      // A team's children hang under the team's own row, so the panel shows
+      // one piece of work with parts rather than several unrelated errands.
+      parentTaskId,
       anchorMessageId: anchorMessageId(),
     })
     // Its own controller, chained to the run's, so this one child
@@ -1927,15 +1931,29 @@ function CoworkPage() {
                 if (typeof tasks === 'string') {
                   return { output: `ERROR: ${tasks}`, isError: true }
                 }
+                // The team is itself a unit of work: without a record of its
+                // own, its progress would have nowhere to land and its children
+                // would appear in the panel as unrelated errands.
+                const teamTaskId = taskIdFor(sid, runId, callId)
+                recordAgentDispatch(run, {
+                  callId,
+                  agentName: 'team',
+                  description: `${tasks.length} tasks`,
+                  model: selectedModel.id,
+                  anchorMessageId: anchorMessageId(),
+                })
+                useCoworkActivity.getState().patchTask(teamTaskId, {
+                  status: 'running',
+                  startedAt: Date.now(),
+                })
                 const outcome = await runTeam(tasks, {
                   // The turn's controller: stopping the run stops the team,
                   // and every child hangs off a signal chained to this one.
                   signal: controller.signal,
                   onState: (state: TeamState) =>
-                    useCoworkActivity.getState().patchTask(
-                      taskIdFor(sid, runId, callId),
-                      { detail: teamProgress(state) }
-                    ),
+                    useCoworkActivity
+                      .getState()
+                      .patchTask(teamTaskId, { detail: teamProgress(state) }),
                   runTask: async (one: TeamTask, signal: AbortSignal) => {
                     // One call id per task, so each child gets its own
                     // transcript lane and its own entry in the Tasks panel.
@@ -1946,7 +1964,8 @@ function CoworkPage() {
                         subagent_name: one.subagentName ?? '',
                         description: one.description,
                       },
-                      signal
+                      signal,
+                      teamTaskId
                     )
                     return {
                       taskId: one.id,
@@ -1957,10 +1976,28 @@ function CoworkPage() {
                   },
                 })
                 if (!outcome.ok) {
+                  useCoworkActivity.getState().patchTask(teamTaskId, {
+                    status: 'error',
+                    output: outcome.refusal,
+                    endedAt: Date.now(),
+                  })
                   return { output: `ERROR: ${outcome.refusal}`, isError: true }
                 }
+                const rendered = renderTeamReport(outcome.report)
+                useCoworkActivity.getState().patchTask(teamTaskId, {
+                  // The team's own row settles on what actually happened, so a
+                  // partial run cannot read as a finished one at a glance.
+                  status: controller.signal.aborted
+                    ? ('cancelled' as const)
+                    : outcome.report.allDone
+                      ? ('done' as const)
+                      : ('error' as const),
+                  output: rendered,
+                  detail: teamProgress(outcome.state),
+                  endedAt: Date.now(),
+                })
                 return {
-                  output: renderTeamReport(outcome.report),
+                  output: rendered,
                   // A team where something failed is an error result, so the
                   // agent cannot read a partial run as a finished one.
                   isError: !outcome.report.allDone,
