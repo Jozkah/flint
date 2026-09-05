@@ -594,23 +594,44 @@ Measured in this container:
 | ESLint, Prettier | **Green** on every file this work touches |
 | `cargo test --lib` (app + plugin) | **Green** after installing GTK/WebKit headers |
 | `cargo fmt` | **Green** on every file this work touches; pre-existing drift elsewhere is left alone |
-| `scripts/cowork-compat-smoke.sh` | **Green** (macOS-only steps skip) |
+| `scripts/cowork-compat-smoke.sh` | **Green** — 10 checks (macOS-only steps skip) |
+| Route integration harness | **Green** — 22 checks through the real route |
+| `cargo clippy --all-targets` (app + plugin) | **Green** |
 | macOS native / WebView smoke | Impossible here (Linux container) |
 | Windows fail-closed runtime | Impossible here |
 | Linux bubblewrap runtime | Possible in principle; needs `bwrap` present |
 | Any CI job | **No runners allocated** — see 6.3 |
 
-**GUI coverage, stated exactly.** The Cowork route (`routes/cowork.tsx`) has no
-component test and cannot get a meaningful one here: it is a Tauri surface, and
-this container has no WebView, no display and no packaged app. What that costs
-is real and worth naming — nothing proves the wiring inside that file end to
-end. What compensates is that the decisions it makes are not in it: the roots
-and authority a run carries (`runCarries`), where an isolated child writes
-(`planDestinations`), what a rewind may do (`checkpoint::plan`), which agents
-are dispatchable (`importedAgents`) and what the summary says (`summarizeRun`)
-are all pure functions with their own tests, and the route is the wiring that
-passes values between them. Every container it renders — the readiness card,
-the recovery list, the rewind surface, the diff panel — is tested on its own.
+**Route coverage, and what is still native-only.**
+`src/routes/__tests__/cowork.route.test.tsx` drives the real route: the real
+access decision, dispatcher, team orchestrator, destination planner, checkpoint
+chain, compatibility resolver and every container it renders. Only the boundary
+is replaced — Tauri commands, the model, the file picker — because a Linux
+container has no way to provide them. The assertions are deliberately about
+*what crossed the boundary*: which root a tool call carried, which grant, which
+owner id. That is where all three inert features lived, and none of them was
+visible from either side alone.
+
+It found two more:
+
+- **A team's default child could never run.** A task naming no saved subagent
+  resolved to no definition and no prompt, and the dispatcher refused it as
+  unknown — so the ordinary case was the one that could not be dispatched.
+- **The second gate was inert.** `dispatchCoworkTool` re-decides every mutation
+  from the access mode, the capability, the consent and the worktree, and the
+  route handed it none of them: it judged every call as an unconfigured
+  review-only session, so its own refusals could never fire. The write boundary
+  is the backend grant, so nothing escaped — what was missing was the second
+  opinion that exists to disagree when the first one is wrong.
+
+Still native-only, and not claimed anywhere as verified: the Tauri WebView
+itself (layout, focus order, where a control sits), the real OS sandbox
+backends, and the real `git` invocations behind the worktree commands. The
+first has no substitute in this container. The second and third are covered by
+`scripts/cowork-compat-smoke.sh` (which runs the Rust worktree, checkpoint and
+grant suites against real repositories) and by the platform workflows, whose
+macOS and Windows jobs have not executed here — this is Linux, and the smoke
+script skips its macOS steps rather than reporting them as passed.
 
 **Install is not out of the box.** `corepack` cannot fetch Yarn 4.5.3:
 `repo.yarnpkg.com` returns 403 through this environment's proxy (confirmed via

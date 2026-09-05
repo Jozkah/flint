@@ -77,6 +77,25 @@ export type TeamTask = {
 /** The most extra attempts a task may ask for. */
 export const MAX_TASK_RETRIES = 2
 
+/**
+ * The brief a team's default child runs under.
+ *
+ * A task may name a saved subagent, and most do not — the coordination is the
+ * point, not which persona does the work. Without this, a task that names none
+ * resolves to no definition and no inline prompt, and the dispatcher refuses it
+ * as an unknown subagent: the ordinary case would be the one that could never
+ * run. Deliberately plain, because the task's own description is the brief; this
+ * only says how to behave while carrying it out.
+ */
+export const TEAM_DEFAULT_PROMPT =
+  'You are one member of a team working on one piece of work. Carry out the ' +
+  'task you were given, and nothing beyond it: another member is handling the ' +
+  'rest, and work you were not asked for will collide with theirs. You cannot ' +
+  'see the conversation that dispatched you, so do not refer to it. Report ' +
+  'what you did and what you found, including anything you could not do — a ' +
+  'task reported as done that was not is worse to the person reading your ' +
+  'team’s report than one reported as failed.'
+
 export type TaskStatus =
   | 'pending'
   | 'running'

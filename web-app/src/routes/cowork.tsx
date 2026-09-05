@@ -198,6 +198,7 @@ import {
   renderTeamReport,
   runTeam,
   teamProgress,
+  TEAM_DEFAULT_PROMPT,
   type TeamState,
   type TeamTask,
 } from '@/lib/coworkTeam'
@@ -1653,6 +1654,24 @@ function CoworkPage() {
      * platform.
      */
     const canIsolate = capabilityState.known && capabilityState.directEdit
+    /**
+     * The second gate's inputs, frozen with the first.
+     *
+     * The dispatcher re-decides every mutation from the access mode, the
+     * capability, the consent and the worktree — and it was being handed none
+     * of them, so it decided every call as an unconfigured review-only session
+     * and its own refusals could never fire. The write boundary itself is the
+     * backend grant, so nothing escaped; what was missing was the second
+     * opinion that exists to disagree when the first one is wrong.
+     */
+    const runCapability = {
+      managedWorktree: canIsolate,
+      directEdit: canIsolate,
+    }
+    const runConsent = liveGrant
+      ? { sessionId: liveGrant.sessionId, folder: liveGrant.folder }
+      : undefined
+    const runWorktreePath = worktree?.path ?? null
     const transport = new CoworkChatTransport(sid, {
       planMode: isReadOnly(runMode),
       subagentNames: runAgents.map((d) => d.name),
@@ -1880,6 +1899,16 @@ function CoworkPage() {
               readOnlyFolder: childFolder,
               mode: runMode,
               writeGrant: childGrant,
+              // A child in its own checkout is a managed-worktree run of its
+              // own, consented to under its own owner id. Inheriting the
+              // parent's answers here would have the gate check a tree the
+              // child is not in.
+              access: destination ? 'managed-worktree' : effective.access,
+              accessCapability: runCapability,
+              editConsent: destination
+                ? { sessionId: destination.ownerId, folder: destination.path }
+                : runConsent,
+              worktreePath: destination ? destination.path : runWorktreePath,
               // Snapshotted with the run: a skill the user asked for and did
               // not get stops changes. Inspection still proceeds.
               unresolvedSkills: unresolvedSkills(runSkills),
@@ -2034,6 +2063,12 @@ function CoworkPage() {
               readOnlyFolder: runReadRoot,
               mode: runMode,
               writeGrant: runGrant,
+              // The same frozen answers the first gate used, so the two cannot
+              // disagree about what this run may change.
+              access: effective.access,
+              accessCapability: runCapability,
+              editConsent: runConsent,
+              worktreePath: runWorktreePath,
               // Snapshotted with the run: a skill the user asked for and did
               // not get stops changes. Inspection still proceeds.
               unresolvedSkills: unresolvedSkills(runSkills),
@@ -2212,8 +2247,15 @@ function CoworkPage() {
                       const result = await dispatchChild(
                         childId,
                         {
-                          subagent_name: one.subagentName ?? '',
+                          subagent_name: one.subagentName ?? 'worker',
                           description: one.description,
+                          // A task that names no saved agent still has to be
+                          // runnable: without a prompt it resolves to nothing
+                          // and is refused as unknown, which would make the
+                          // ordinary case the one that cannot run. A named
+                          // agent ignores this, as `resolveSubagent` prefers
+                          // the saved definition.
+                          system_prompt: TEAM_DEFAULT_PROMPT,
                         },
                         signal,
                         teamTaskId,

@@ -423,3 +423,48 @@ impl From<WorktreeRecordInput> for worktree::WorktreeRecord {
         }
     }
 }
+
+#[cfg(test)]
+mod worktree_command_tests {
+    use super::*;
+
+    fn record(path: &str) -> WorktreeRecordInput {
+        WorktreeRecordInput {
+            path: path.to_string(),
+            branch: "jan/cowork/x".to_string(),
+            base_sha: "a".repeat(40),
+            source_root: "/repo".to_string(),
+            identity: RepoIdentityInput {
+                root: "/repo".to_string(),
+                first_commit: None,
+            },
+            uncommitted_at_creation: Vec::new(),
+        }
+    }
+
+    /// The record arrives over IPC, so it is input. A wrong one — a bug, a
+    /// stale value, anything — must not be a request to delete an arbitrary
+    /// directory and its branch.
+    #[test]
+    fn refuses_to_remove_anything_outside_the_folder_jan_owns() {
+        let data = std::env::temp_dir().join(format!("jan_wt_cmd_{}", std::process::id()));
+        for path in ["/etc", "/home/someone/important-project", "../../elsewhere"] {
+            let err =
+                agent_worktree_discard(data.to_string_lossy().to_string(), record(path), true)
+                    .expect_err("must refuse");
+            assert!(err.contains("not a worktree Jan manages"), "{err}");
+        }
+    }
+
+    /// And a listing for a folder that is not a repository is empty rather
+    /// than an error the UI would have to interpret.
+    #[test]
+    fn lists_nothing_for_a_folder_that_is_not_a_repository() {
+        let data = std::env::temp_dir().join(format!("jan_wt_list_{}", std::process::id()));
+        let listed = agent_worktree_list(
+            data.to_string_lossy().to_string(),
+            std::env::temp_dir().to_string_lossy().to_string(),
+        );
+        assert!(listed.is_empty());
+    }
+}
