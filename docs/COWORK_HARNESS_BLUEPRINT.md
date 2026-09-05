@@ -490,7 +490,7 @@ Measured at `adfd071` in this container:
 |---|---|
 | Dependency install | Works, but **not out of the box** — see below |
 | `yarn test:web` | Runs; baseline recorded in §6.1 |
-| Rust plugin tests | **Blocked** on missing system libraries |
+| Rust plugin tests | Runs after installing GTK/WebKit headers; 2 container-specific failures |
 | macOS native / WebView smoke | Impossible here (Linux container) |
 | Windows fail-closed runtime | Impossible here |
 | Linux bubblewrap runtime | Possible in principle; needs `bwrap` present |
@@ -509,12 +509,11 @@ packages are unbuilt. `yarn workspace @janhq/core build` plus the plugin
 `workspaces foreach run build` fixes it. Any CI job added in Phase 8 must
 order these, or it will report a false baseline.
 
-**Rust tests are blocked here, not broken.** `cargo test --lib` in
-`tauri-plugin-agent-tools` fails building `atk-sys` and `gdk-sys` — GTK/WebKit
-development headers are absent. crates.io itself is reachable (the dependency
-graph compiled up to those two). Installing `libgtk-3-dev` and
-`libwebkit2gtk-4.1-dev` is the fix; whether that succeeded in this session is
-recorded in §6.1.
+**Rust tests need system headers.** A first `cargo test --lib` in
+`tauri-plugin-agent-tools` failed building `atk-sys` and `gdk-sys` — GTK/WebKit
+development headers absent. crates.io itself is reachable (the dependency graph
+compiled up to those two). Installing `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`
+fixed it and the suite then ran; results in §6.1.
 
 **Two of the 22 verification steps in the request cannot be satisfied from any
 Linux container** — macOS native/WebView smoke and Windows fail-closed runtime.
@@ -523,12 +522,42 @@ construction-only by definition.
 
 ### 6.1 Baseline results at `adfd071`
 
-- **Web suite, cold (packages unbuilt):** 305 test files — 241 passed, 64
-  failed; 2,770 tests — 2,727 passed, 43 failed. Failures are module-resolution,
-  not assertions.
-- **Web suite, after building workspace packages:** see the commit message /
-  PR description accompanying this document for the re-run figures.
-- **Rust plugin tests:** blocked on system libraries as described above.
+Web suite (`yarn test:web`), three runs, each adding one build step:
+
+| Build state | Test files | Tests |
+|---|---|---|
+| Cold, nothing built | 241 passed, **64 failed** (305) | 2,727 passed, 43 failed (2,770) |
+| + `@janhq/core` and plugin API packages built | 304 passed, **1 failed** (305) | **3,850 passed, 0 failed** |
+| + `yarn build:extensions` | **305 passed, 0 failed** | **3,860 passed, 0 failed** |
+
+The whole of the cold-run failure is module resolution — `Failed to resolve
+entry for package "@janhq/core"`, `"@janhq/tauri-plugin-agent-tools-api"`, then
+`"@janhq/assistant-extension"` — and none of it is an assertion. **The clean
+baseline is green: 305/305 files, 3,860/3,860 tests.** Note the test *count*
+rises with each build step (2,770 → 3,850 → 3,860): unresolved imports were
+costing whole files, so a cold run silently under-reports coverage by roughly a
+thousand tests. Any CI job added in Phase 8 must order the builds first, or it
+will measure a baseline that is both red and short.
+
+Rust plugin suite (`cargo test --lib` in `tauri-plugin-agent-tools`), after
+installing `libgtk-3-dev` / `libwebkit2gtk-4.1-dev` (without them the build
+fails at `atk-sys` and `gdk-sys` and no test runs):
+
+**319 passed, 2 failed, 1 ignored.** Both failures are artifacts of this
+container rather than defects:
+
+- `project_browse::tests::reports_a_permission_denial_distinctly` — asserts a
+  chmod-000 directory is refused, but the container runs as **root** (uid 0),
+  for whom the mode bits do not apply, so the listing succeeds and the
+  `unwrap_err()` panics. It would pass as any non-root user.
+- `commands::tests::bash_runs_only_when_the_sandbox_can_enforce` — `bwrap`
+  reports `Can't find source path /tmp/jan-agent-thread-one`; the bubblewrap
+  bind this test depends on cannot be set up here.
+
+Both are worth knowing for Phase 8: a CI runner that executes as root will
+report the first as a real failure, and the second is a genuine signal that
+bubblewrap runtime coverage needs a runner where the bind works. Neither is a
+baseline to carry forward as "known failing" without that context.
 
 ---
 
