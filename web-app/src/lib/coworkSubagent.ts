@@ -12,6 +12,7 @@ import type { SubagentDefinition } from '@/lib/coworkSubagentRegistry'
 import {
   ASK_TOOL_NAME,
   TASK_TOOL_NAME,
+  TEAM_TOOL_NAME,
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
@@ -60,13 +61,18 @@ const SUBAGENT_SKILL_TOOLS = ['skill_list', 'skill_read']
 /**
  * Never offered to a child, whatever the allowlist says.
  *
- * `task` is the depth cap: a subagent cannot spawn subagents. `ask` and `todo`
- * belong to the parent's conversation — no card is rendered for a child, and the
- * todo list is the session's, not the errand's. Matches the Rust child args,
- * which null out `ask_requests` and `todo_registry`.
+ * `task` and `team` are the depth cap: a subagent cannot spawn subagents, alone
+ * or in a graph. `ask` and `todo` belong to the parent's conversation — no card
+ * is rendered for a child, and the todo list is the session's, not the errand's.
+ * Matches the Rust child args, which null out `ask_requests` and
+ * `todo_registry`.
+ *
+ * Withholding is only half of it: the dispatcher refuses these by name as well,
+ * because a model can emit a call to a tool that was never advertised.
  */
 const WITHHELD_FROM_SUBAGENTS = new Set([
   TASK_TOOL_NAME,
+  TEAM_TOOL_NAME,
   ASK_TOOL_NAME,
   TODO_TOOL_NAME,
 ])

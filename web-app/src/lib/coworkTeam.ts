@@ -24,6 +24,14 @@ export type TeamTask = {
   id: string
   /** What to do, stated so a child that sees none of this conversation can act. */
   description: string
+  /**
+   * Which saved subagent runs it, when the caller named one.
+   *
+   * Absent means the run's default child. Resolution stays where it already
+   * is — a team does not get its own way of choosing an agent, or the tool
+   * intersection that resolution performs would have two implementations.
+   */
+  subagentName?: string
   /** Ids that must be `completed` before this may start. */
   dependsOn: string[]
   /**
@@ -298,4 +306,257 @@ export function assembleReport(
     unfinished,
     allDone: completed.length === tasks.length,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Running the graph
+
+/** The name a model calls to dispatch a team. */
+export const TEAM_TOOL_NAME = 'team'
+
+/** How many children a team runs at once, matching the subagent gate. */
+export const MAX_TEAM_PARALLEL = 3
+
+/** Tasks in one team. Enough to be worth coordinating, few enough to follow. */
+export const MAX_TEAM_TASKS = 12
+
+/**
+ * Read a team request from what the model emitted.
+ *
+ * Returns the tasks, or a sentence saying what is wrong with them. A string
+ * rather than a thrown error because it goes back to the model as a tool
+ * result: it has to be able to read the problem and try again.
+ */
+export function parseTeamRequest(raw: unknown): TeamTask[] | string {
+  if (!raw || typeof raw !== 'object') return 'team needs a `tasks` array'
+  const input = raw as Record<string, unknown>
+  if (!Array.isArray(input.tasks) || input.tasks.length === 0) {
+    return 'team needs a non-empty `tasks` array'
+  }
+  if (input.tasks.length > MAX_TEAM_TASKS) {
+    return `a team is at most ${MAX_TEAM_TASKS} tasks; split the work`
+  }
+
+  const tasks: TeamTask[] = []
+  const seen = new Set<string>()
+  for (const entry of input.tasks) {
+    if (!entry || typeof entry !== 'object') return 'each task must be an object'
+    const one = entry as Record<string, unknown>
+    const id = typeof one.id === 'string' ? one.id.trim() : ''
+    const description =
+      typeof one.description === 'string' ? one.description.trim() : ''
+    if (!id) return 'each task needs an `id`'
+    if (!description) {
+      // A child sees none of this conversation, so an empty brief is a
+      // guaranteed-useless run rather than a recoverable one.
+      return `task '${id}' needs a description the child can act on alone`
+    }
+    if (seen.has(id)) return `task id '${id}' appears twice`
+    seen.add(id)
+    const subagentName =
+      typeof one.subagent_name === 'string' && one.subagent_name.trim()
+        ? one.subagent_name.trim()
+        : undefined
+    tasks.push({
+      id,
+      description,
+      ...(subagentName ? { subagentName } : {}),
+      dependsOn: stringList(one.depends_on),
+      writes: stringList(one.writes),
+    })
+  }
+  return tasks
+}
+
+const stringList = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter((one): one is string => typeof one === 'string' && one !== '')
+    : []
+
+/**
+ * Why a graph was refused, phrased for the model that sent it.
+ *
+ * Checked before anything runs. Every one of these means the graph cannot
+ * finish, and starting it anyway would burn children on work that is already
+ * known to be unreachable.
+ */
+export function refuseGraph(tasks: readonly TeamTask[]): string | null {
+  const missing = danglingDependencies(tasks)
+  if (missing.length > 0) {
+    return `these tasks are waiting on ids that no task provides: ${missing.join(', ')}`
+  }
+  const cycle = findCycle(tasks)
+  if (cycle) {
+    return `these tasks depend on each other in a loop: ${cycle.join(' -> ')}`
+  }
+  const clashes = conflicts(tasks)
+  if (clashes.length > 0) {
+    const described = clashes
+      .map((one) => `${one.path} (${one.tasks.join(', ')})`)
+      .join('; ')
+    return (
+      `these tasks would change the same files with nothing ordering them: ${described}. ` +
+      'Add a `depends_on` so one runs after the other, or give them separate files.'
+    )
+  }
+  return null
+}
+
+export type TeamRunDeps = {
+  /** Runs one task as a child. The only thing here that touches a model. */
+  runTask: (task: TeamTask, signal: AbortSignal) => Promise<TaskResult>
+  /** Stops the whole team. Children get a signal chained to it. */
+  signal?: AbortSignal
+  maxParallel?: number
+  /** Called whenever a task changes state, for the Tasks panel. */
+  onState?: (state: TeamState) => void
+}
+
+export type TeamOutcome =
+  /** The graph could not run at all; nothing was dispatched. */
+  | { ok: false; refusal: string }
+  | { ok: true; report: TeamReport; state: TeamState }
+
+/**
+ * Run a task graph to completion, or to the first thing that stops it.
+ *
+ * Dispatches ready tasks up to `maxParallel`, waits for the first to settle,
+ * and looks again — so a task becomes runnable the moment its last dependency
+ * finishes rather than at the end of a batch. A failure blocks its dependents
+ * through [`settle`] and the loop simply finds fewer ready tasks next time.
+ *
+ * Cancellation stops dispatch immediately. Children already running are
+ * cancelled through their own signal and settle as `cancelled`; tasks never
+ * dispatched stay unfinished, because that is what they are — reporting them
+ * as cancelled would claim a decision nobody made about them.
+ */
+export async function runTeam(
+  tasks: readonly TeamTask[],
+  deps: TeamRunDeps
+): Promise<TeamOutcome> {
+  const refusal = refuseGraph(tasks)
+  if (refusal) return { ok: false, refusal }
+
+  const limit = Math.max(1, deps.maxParallel ?? MAX_TEAM_PARALLEL)
+  let state = initialState(tasks)
+  const results: TaskResult[] = []
+  const running = new Map<string, Promise<void>>()
+
+  const publish = () => deps.onState?.(state)
+  publish()
+
+  const start = (task: TeamTask) => {
+    state = { ...state, [task.id]: { status: 'running' } }
+    const child = new AbortController()
+    // Chained rather than shared: stopping the team stops every child, and a
+    // child can still be stopped on its own without touching the others.
+    const stop = () => child.abort('cancelled')
+    if (deps.signal) {
+      if (deps.signal.aborted) child.abort('cancelled')
+      else deps.signal.addEventListener('abort', stop, { once: true })
+    }
+
+    const work = deps
+      .runTask(task, child.signal)
+      .then(
+        (result) => {
+          results.push(result)
+          state = settle(tasks, state, task.id, result.ok ? 'completed' : 'failed')
+        },
+        (error: unknown) => {
+          // A child that threw is a failed task, not a crashed team: the point
+          // of running several is that one going wrong does not take the rest.
+          const message = error instanceof Error ? error.message : String(error)
+          const cancelled = child.signal.aborted
+          results.push({
+            taskId: task.id,
+            ok: false,
+            output: cancelled ? 'cancelled' : message,
+            producedBy: task.id,
+          })
+          state = settle(tasks, state, task.id, cancelled ? 'cancelled' : 'failed')
+        }
+      )
+      .finally(() => {
+        deps.signal?.removeEventListener('abort', stop)
+        running.delete(task.id)
+        publish()
+      })
+
+    running.set(task.id, work)
+  }
+
+  while (!deps.signal?.aborted) {
+    for (const task of readyTasks(tasks, state)) {
+      if (running.size >= limit) break
+      start(task)
+    }
+    publish()
+    if (running.size === 0) break
+    // The first to finish, not all of them: a dependent should start as soon
+    // as its last dependency lands.
+    await Promise.race(running.values())
+  }
+
+  // Let whatever is still in flight settle, so the report describes finished
+  // children rather than a snapshot taken while they were still writing.
+  if (running.size > 0) await Promise.all(running.values())
+  publish()
+
+  return { ok: true, report: assembleReport(tasks, results), state }
+}
+
+/**
+ * The team's outcome, as the dispatching agent reads it.
+ *
+ * Every task is named with what happened to it, including the ones that never
+ * ran. A summary that listed only successes would let the agent carry on as
+ * though the rest had happened.
+ */
+export function renderTeamReport(report: TeamReport): string {
+  const lines: string[] = []
+  lines.push(
+    report.allDone
+      ? `All ${report.completed.length} tasks completed.`
+      : `${report.completed.length} completed, ${report.failed.length} failed, ${report.unfinished.length} did not run.`
+  )
+  for (const one of report.completed) {
+    lines.push('', `## ${one.taskId} — completed`, one.output)
+  }
+  for (const one of report.failed) {
+    lines.push('', `## ${one.taskId} — FAILED`, one.output)
+  }
+  if (report.unfinished.length > 0) {
+    lines.push(
+      '',
+      `## did not run: ${report.unfinished.join(', ')}`,
+      'A task these depended on did not complete, or the team was stopped.'
+    )
+  }
+  return lines.join('\n')
+}
+
+/**
+ * A one-line summary of where a team is, for the Tasks panel.
+ *
+ * Counts rather than a list: a panel row has one line, and "3 done, 1 running,
+ * 2 waiting" is what someone glancing at it needs. The detail is in the
+ * children's own rows, which already exist.
+ */
+export function teamProgress(state: TeamState): string {
+  const tally: Record<string, number> = {}
+  for (const one of Object.values(state)) {
+    tally[one.status] = (tally[one.status] ?? 0) + 1
+  }
+  const parts: string[] = []
+  const say = (status: TaskStatus, label: string) => {
+    if (tally[status]) parts.push(`${tally[status]} ${label}`)
+  }
+  say('completed', 'done')
+  say('running', 'running')
+  say('pending', 'waiting')
+  say('failed', 'failed')
+  say('blocked', 'blocked')
+  say('cancelled', 'cancelled')
+  return parts.join(', ')
 }

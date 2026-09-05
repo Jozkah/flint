@@ -6,6 +6,7 @@
  * transcribed from their Rust counterparts (`todo.rs`, `interaction.rs`,
  * `subagent.rs`) so the CLI and the desktop advertise the same contract.
  */
+import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
 import {
@@ -27,7 +28,9 @@ export const PLAN_DENIED_TOOLS = new Set([
 
 /** Named `todo` to match the Rust tool: the plan-mode addendum instructs the
  * model to call `todo` by name, so renaming it here breaks that prompt. */
+export { TEAM_TOOL_NAME }
 export const TODO_TOOL_NAME = 'todo'
+
 export const ASK_TOOL_NAME = 'ask'
 export const TASK_TOOL_NAME = 'task'
 
@@ -36,6 +39,7 @@ export const CLIENT_TOOL_NAMES = new Set([
   TODO_TOOL_NAME,
   ASK_TOOL_NAME,
   TASK_TOOL_NAME,
+  TEAM_TOOL_NAME,
 ])
 
 const todoTool: Tool = {
@@ -113,6 +117,63 @@ const askTool: Tool = {
     additionalProperties: false,
   }),
 } as Tool
+
+/**
+ * Several children on one piece of work, with an order between them.
+ *
+ * Separate from `task` rather than an option on it, because the interesting
+ * part is the graph: what waits for what, and which tasks would collide. A
+ * single call carrying the whole plan is what makes those answerable before
+ * anything runs — asked one `task` at a time, they cannot be.
+ */
+function teamTool(subagentNames: string[]): Tool {
+  const known = subagentNames.length
+    ? ` Saved subagents: ${subagentNames.join(', ')}.`
+    : ''
+  return {
+    description:
+      'Run several subagents on one piece of work, respecting an order you ' +
+      'declare. Use it when the work splits into parts that can go at once, ' +
+      'or where one part must finish before another starts. Each task is run ' +
+      'by a child that cannot see this conversation, so describe it in full. ' +
+      'Declare in `writes` the files a task will change: two tasks that would ' +
+      'change the same file with nothing ordering them are refused before ' +
+      'anything runs.' +
+      known,
+    inputSchema: jsonSchema({
+      type: 'object',
+      properties: {
+        tasks: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Short, unique in this team.' },
+              description: {
+                type: 'string',
+                description: 'The whole brief; the child sees nothing else.',
+              },
+              subagent_name: { type: 'string' },
+              depends_on: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Task ids that must complete before this starts.',
+              },
+              writes: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Files this task expects to change.',
+              },
+            },
+            required: ['id', 'description'],
+          },
+        },
+      },
+      required: ['tasks'],
+    }),
+  } as Tool
+}
 
 function taskTool(subagentNames: string[]): Tool {
   const known = subagentNames.length
@@ -216,6 +277,7 @@ export async function buildCoworkTools(
   tools[ASK_TOOL_NAME] = askTool
   if (opts.allowSubagents && !opts.planMode) {
     tools[TASK_TOOL_NAME] = taskTool(opts.subagentNames)
+    tools[TEAM_TOOL_NAME] = teamTool(opts.subagentNames)
   }
   return tools
 }

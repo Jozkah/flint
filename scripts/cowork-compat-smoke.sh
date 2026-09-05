@@ -74,6 +74,13 @@ check "coordination: a failed child never becomes a finished task" \
   web-app/node_modules/.bin/vitest run --root web-app \
   src/lib/__tests__/coworkTeam.test.ts
 
+# The graph rules proved against a table say nothing about the wiring. This
+# drives a team through the real subagent runner and the real dispatcher, with
+# only the model replaced, because the bugs live in the seams.
+check "team dispatch: children inherit the run's tools and none of its own" \
+  web-app/node_modules/.bin/vitest run --root web-app \
+  src/lib/__tests__/coworkTeamDispatch.test.ts
+
 if [[ "$IS_MACOS" -eq 0 ]]; then
   step "Seatbelt, and what needs a real one"
   skip "Seatbelt confinement and the MCP runtime suites" "not macOS"
@@ -171,6 +178,9 @@ Covered by an executing runtime, on any platform:
   - context measured from the payload the run actually sends
   - an ambiguous opening request answered with a proposal rather than an edit
   - a failed child staying failed in the parent's report
+  - a team dispatched through the real subagent runner: ordering honoured,
+    tools inherited, `team` and `task` withheld from children, a cancelled
+    team reaching the child already in flight
 
 Covered by an executing runtime, on macOS:
   - Seatbelt confining a real child process, on this host

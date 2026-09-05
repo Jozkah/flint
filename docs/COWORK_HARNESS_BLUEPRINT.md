@@ -25,7 +25,7 @@ production code is changed by this document.**
 | 2 — context measurement | **Built.** Measured from the run's own payload; per-category breakdown. |
 | 3 — first-turn inspect → propose | **Built.** Classifier widens only; review mode is the enforcement. |
 | 4 — compatibility ingestion | Largely pre-existing on `main`; the envelope is now sealed so ingested text cannot escape it. |
-| 5 — coordinated agent teams | **Coordination layer built.** `lib/coworkTeam.ts`: dependencies, conflicts, deterministic reports. |
+| 5 — coordinated agent teams | **Built and wired.** `lib/coworkTeam.ts` + a `team` tool dispatching through the real subagent runner. |
 | 6 — checkpoints and rewind | **Built.** `core/agent/checkpoint.rs`; a managed tree restores, a user's checkout gets a patch. |
 | 7 — parity UX review | **Smoke harness extended** and now runs off macOS. |
 | 8 — verification and platform evidence | Largely pre-existing (5.8); blocked on runners (6.3). |

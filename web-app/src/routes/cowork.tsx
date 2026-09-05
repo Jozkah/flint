@@ -184,6 +184,14 @@ import {
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
 import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
+import {
+  parseTeamRequest,
+  renderTeamReport,
+  runTeam,
+  teamProgress,
+  type TeamState,
+  type TeamTask,
+} from '@/lib/coworkTeam'
 import { dispatchCoworkTool } from '@/lib/coworkDispatch'
 import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
 import { parseAskRequest, renderAskResult } from '@/lib/coworkAsk'
@@ -214,6 +222,7 @@ import {
   resolveSubagent,
   parentToolNames,
   runSubagent,
+  type SubagentRequest,
 } from '@/lib/coworkSubagent'
 
 /** How often the backend's background-job list is re-read. Slower than the
@@ -1553,6 +1562,220 @@ function CoworkPage() {
     // selected source). Only content the user explicitly selected travels.
     const modelText = text ? expandCodeRefs(text, pendingRefs.current) : text
     pendingRefs.current = []
+    /**
+     * Run one child, and record it.
+     *
+     * Shared by `task` and `team` rather than written twice: a team's children
+     * are this run's children, and they must inherit exactly the same frozen
+     * authority, the same dispatcher, the same cancellation and the same
+     * activity records. A second copy of this would be a second set of rules,
+     * and the one that drifted would be the one nobody was watching.
+     */
+    const dispatchChild = async (
+      callId: string,
+      req: SubagentRequest,
+      teamSignal?: AbortSignal
+    ): Promise<ToolOutcome> => {
+    const resolved = resolveSubagent(
+      req,
+      subagentDefs,
+      parentToolNames(transport.advertisedTools)
+    )
+    if ('error' in resolved) {
+      return { output: `ERROR: ${resolved.error}`, isError: true }
+    }
+    if (!transport.model) {
+      return {
+        output:
+          'ERROR: no model is loaded for this run, so no subagent can start',
+        isError: true,
+      }
+    }
+    // Recorded before the child starts: the dispatch is the only
+    // moment the agent name, description and model are known
+    // together, and the record has to exist for the queue position
+    // that arrives next to land on something.
+    recordAgentDispatch(run, {
+      callId,
+      agentName: resolved.name,
+      description: req.description,
+      model: selectedModel.id,
+      anchorMessageId: anchorMessageId(),
+    })
+    // Its own controller, chained to the run's, so this one child
+    // can be stopped without stopping the turn.
+    const childTaskId = taskIdFor(sid, runId, callId)
+    const childAbort = registerSubagent(sid, childTaskId)
+    const stopChild = () => childAbort.abort('cancelled')
+    controller.signal.addEventListener('abort', stopChild, {
+      once: true,
+    })
+    // A team cancels its children through their own signals, so one task can be
+    // stopped without stopping the turn. Chained rather than replacing the
+    // run's: both must be able to end this child.
+    if (teamSignal) {
+      if (teamSignal.aborted) childAbort.abort('cancelled')
+      else teamSignal.addEventListener('abort', stopChild, { once: true })
+    }
+    const activity = useCoworkActivity.getState()
+    /**
+     * Record how this child actually ended.
+     *
+     * A child stopped by the run's own Stop is cancelled, not
+     * failed: the abort is why it ended. Anything already settled
+     * — the panel's per-task Stop writes `cancelled` first — keeps
+     * the status it has, because the guard in `updateTask` refuses
+     * to overwrite a finished one.
+     */
+    const settleChild = (isError: boolean, output?: string) => {
+      const aborted = childAbort.signal.aborted
+      useCoworkActivity.getState().patchTask(childTaskId, {
+        ...(output != null ? { output } : {}),
+        status: aborted
+          ? ('cancelled' as const)
+          : isError
+            ? ('error' as const)
+            : ('done' as const),
+        endedAt: Date.now(),
+        ...(aborted ? { detail: CANCELLED_BY_USER } : {}),
+      })
+    }
+    try {
+      const child = await runSubagent({
+      resolved,
+      description: req.description,
+      // The parent's instance: a second one would mean a second
+      // llama-server load for the same model.
+      model: transport.model,
+      parentTools: transport.advertisedTools,
+      system: {
+        workspacePath,
+        readOnlyFolder: current?.folder ?? null,
+        bashAvailable: sandboxEnforces(),
+        // The parent's frozen answers, handed down unchanged: a
+        // child never resolves its own access or its own
+        // instructions.
+        folderAccess: promptFolderAccess(origins),
+        projectInstructions,
+        compatInstructions: compatInstructionBlocks(runCompat),
+      },
+      signal: childAbort.signal,
+      sessionTokens: 0,
+      // A child never gets `todo`/`ask`/`task`, so these refuse
+      // rather than execute: a model can still emit a call to a
+      // tool that was never advertised.
+      dispatch: (call) =>
+        dispatchCoworkTool(call, {
+          sessionId: sid,
+          readOnlyFolder: current?.folder ?? null,
+          mode: runMode,
+          writeGrant: runGrant,
+          // Snapshotted with the run: a skill the user asked for and did
+          // not get stops changes. Inspection still proceeds.
+          unresolvedSkills: unresolvedSkills(runSkills),
+  // The root this run is bound to, re-checked before every
+  // filesystem call: detaching or switching folders mid-run must
+  // not leave the run reading the folder that was taken away.
+  bindingIntact: () =>
+    (useCoworkSessions
+      .getState()
+      .sessions.find((one) => one.id === sid)?.folder ?? null) ===
+    (current?.folder ?? null),
+          webSearch,
+          // A subagent's mutations are the session's mutations, so
+          // they go through the same prompt rather than around it.
+          onApprove: (callId, toolName) =>
+            useToolApprovalRequests
+              .getState()
+              .requestApproval(callId, toolName, sid),
+          trackShell: () =>
+            useCoworkActiveWork.getState().acquire({
+              sessionId: sid,
+              kind: 'shell',
+              authority: runAuthority,
+            }),
+          // The same resolver and the same tracker the parent
+          // uses: one repository, one manifest, one set of rules.
+          scopedInstructions: scopedInstructionsFor,
+          onTodo: async () => ({
+            output:
+              'The todo list belongs to the agent that dispatched you.',
+            isError: true,
+          }),
+          onAsk: async () => ({
+            output:
+              'You cannot ask the user questions. Decide, and say what you assumed.',
+            isError: true,
+          }),
+          onTask: async () => ({
+            output: 'A subagent cannot dispatch subagents.',
+            isError: true,
+          }),
+        }),
+      events: {
+        onQueued: (waiting) => {
+          useCoworkRun
+            .getState()
+            .queueSubagent(sid, callId, resolved.name, waiting)
+          activity.patchTask(childTaskId, {
+            status: 'queued',
+            waiting,
+          })
+        },
+        onStart: () => {
+          useCoworkRun
+            .getState()
+            .startSubagent(sid, callId, resolved.name)
+          activity.patchTask(childTaskId, {
+            status: 'running',
+            waiting: undefined,
+            startedAt: Date.now(),
+          })
+        },
+        onInner: (event) => {
+          useCoworkRun
+            .getState()
+            .routeIntoSubagent(sid, callId, event)
+          // Mirrored onto the record so the panel can show the
+          // child's own trace without reaching into the run store.
+          const turns = (
+            useCoworkRun.getState().subagents[sid] ?? []
+          ).find((one) => one.runId === callId)?.turns
+          if (turns) {
+            activity.patchTask(childTaskId, {
+              transcript: turns,
+              toolCount: countToolCalls(turns),
+            })
+          }
+        },
+        onEnd: (usage) => {
+          useCoworkRun.getState().endSubagent(sid, callId, usage)
+          // Usage only. `onEnd` fires for *every* ending — an
+          // abort before the child even starts, a failed model
+          // step, an exhausted step budget — so writing a terminal
+          // status here would record every one of them as success,
+          // and the finished-status guard would then refuse the
+          // real outcome that arrives a moment later.
+          activity.patchTask(childTaskId, {
+            usage: usage ?? undefined,
+          })
+        },
+      },
+    })
+    useCoworkRun
+      .getState()
+      .attachSubagentOutput(sid, callId, child.output)
+    settleChild(Boolean(child.isError), child.output)
+    return { output: child.output, isError: child.isError }
+    } finally {
+      controller.signal.removeEventListener('abort', stopChild)
+      unregisterSubagent(sid, childTaskId)
+      // A throw from the dispatch would otherwise leave the record
+      // running with nothing left to finish it.
+      settleChild(true)
+    }
+    }
+
     const messages = text
       ? [
           ...baseMessages,
@@ -1697,196 +1920,50 @@ function CoworkPage() {
                 if (typeof req === 'string') {
                   return { output: `ERROR: ${req}`, isError: true }
                 }
-                const resolved = resolveSubagent(
-                  req,
-                  subagentDefs,
-                  parentToolNames(transport.advertisedTools)
-                )
-                if ('error' in resolved) {
-                  return { output: `ERROR: ${resolved.error}`, isError: true }
+                return dispatchChild(callId, req)
+              },
+              onTeam: async (callId, input) => {
+                const tasks = parseTeamRequest(input)
+                if (typeof tasks === 'string') {
+                  return { output: `ERROR: ${tasks}`, isError: true }
                 }
-                if (!transport.model) {
-                  return {
-                    output:
-                      'ERROR: no model is loaded for this run, so no subagent can start',
-                    isError: true,
-                  }
-                }
-                // Recorded before the child starts: the dispatch is the only
-                // moment the agent name, description and model are known
-                // together, and the record has to exist for the queue position
-                // that arrives next to land on something.
-                recordAgentDispatch(run, {
-                  callId,
-                  agentName: resolved.name,
-                  description: req.description,
-                  model: selectedModel.id,
-                  anchorMessageId: anchorMessageId(),
-                })
-                // Its own controller, chained to the run's, so this one child
-                // can be stopped without stopping the turn.
-                const childTaskId = taskIdFor(sid, runId, callId)
-                const childAbort = registerSubagent(sid, childTaskId)
-                const stopChild = () => childAbort.abort('cancelled')
-                controller.signal.addEventListener('abort', stopChild, {
-                  once: true,
-                })
-                const activity = useCoworkActivity.getState()
-                /**
-                 * Record how this child actually ended.
-                 *
-                 * A child stopped by the run's own Stop is cancelled, not
-                 * failed: the abort is why it ended. Anything already settled
-                 * — the panel's per-task Stop writes `cancelled` first — keeps
-                 * the status it has, because the guard in `updateTask` refuses
-                 * to overwrite a finished one.
-                 */
-                const settleChild = (isError: boolean, output?: string) => {
-                  const aborted = childAbort.signal.aborted
-                  useCoworkActivity.getState().patchTask(childTaskId, {
-                    ...(output != null ? { output } : {}),
-                    status: aborted
-                      ? ('cancelled' as const)
-                      : isError
-                        ? ('error' as const)
-                        : ('done' as const),
-                    endedAt: Date.now(),
-                    ...(aborted ? { detail: CANCELLED_BY_USER } : {}),
-                  })
-                }
-                try {
-                  const child = await runSubagent({
-                  resolved,
-                  description: req.description,
-                  // The parent's instance: a second one would mean a second
-                  // llama-server load for the same model.
-                  model: transport.model,
-                  parentTools: transport.advertisedTools,
-                  system: {
-                    workspacePath,
-                    readOnlyFolder: current?.folder ?? null,
-                    bashAvailable: sandboxEnforces(),
-                    // The parent's frozen answers, handed down unchanged: a
-                    // child never resolves its own access or its own
-                    // instructions.
-                    folderAccess: promptFolderAccess(origins),
-                    projectInstructions,
-                    compatInstructions: compatInstructionBlocks(runCompat),
-                  },
-                  signal: childAbort.signal,
-                  sessionTokens: 0,
-                  // A child never gets `todo`/`ask`/`task`, so these refuse
-                  // rather than execute: a model can still emit a call to a
-                  // tool that was never advertised.
-                  dispatch: (call) =>
-                    dispatchCoworkTool(call, {
-                      sessionId: sid,
-                      readOnlyFolder: current?.folder ?? null,
-                      mode: runMode,
-                      writeGrant: runGrant,
-                      // Snapshotted with the run: a skill the user asked for and did
-                      // not get stops changes. Inspection still proceeds.
-                      unresolvedSkills: unresolvedSkills(runSkills),
-              // The root this run is bound to, re-checked before every
-              // filesystem call: detaching or switching folders mid-run must
-              // not leave the run reading the folder that was taken away.
-              bindingIntact: () =>
-                (useCoworkSessions
-                  .getState()
-                  .sessions.find((one) => one.id === sid)?.folder ?? null) ===
-                (current?.folder ?? null),
-                      webSearch,
-                      // A subagent's mutations are the session's mutations, so
-                      // they go through the same prompt rather than around it.
-                      onApprove: (callId, toolName) =>
-                        useToolApprovalRequests
-                          .getState()
-                          .requestApproval(callId, toolName, sid),
-                      trackShell: () =>
-                        useCoworkActiveWork.getState().acquire({
-                          sessionId: sid,
-                          kind: 'shell',
-                          authority: runAuthority,
-                        }),
-                      // The same resolver and the same tracker the parent
-                      // uses: one repository, one manifest, one set of rules.
-                      scopedInstructions: scopedInstructionsFor,
-                      onTodo: async () => ({
-                        output:
-                          'The todo list belongs to the agent that dispatched you.',
-                        isError: true,
-                      }),
-                      onAsk: async () => ({
-                        output:
-                          'You cannot ask the user questions. Decide, and say what you assumed.',
-                        isError: true,
-                      }),
-                      onTask: async () => ({
-                        output: 'A subagent cannot dispatch subagents.',
-                        isError: true,
-                      }),
-                    }),
-                  events: {
-                    onQueued: (waiting) => {
-                      useCoworkRun
-                        .getState()
-                        .queueSubagent(sid, callId, resolved.name, waiting)
-                      activity.patchTask(childTaskId, {
-                        status: 'queued',
-                        waiting,
-                      })
-                    },
-                    onStart: () => {
-                      useCoworkRun
-                        .getState()
-                        .startSubagent(sid, callId, resolved.name)
-                      activity.patchTask(childTaskId, {
-                        status: 'running',
-                        waiting: undefined,
-                        startedAt: Date.now(),
-                      })
-                    },
-                    onInner: (event) => {
-                      useCoworkRun
-                        .getState()
-                        .routeIntoSubagent(sid, callId, event)
-                      // Mirrored onto the record so the panel can show the
-                      // child's own trace without reaching into the run store.
-                      const turns = (
-                        useCoworkRun.getState().subagents[sid] ?? []
-                      ).find((one) => one.runId === callId)?.turns
-                      if (turns) {
-                        activity.patchTask(childTaskId, {
-                          transcript: turns,
-                          toolCount: countToolCalls(turns),
-                        })
-                      }
-                    },
-                    onEnd: (usage) => {
-                      useCoworkRun.getState().endSubagent(sid, callId, usage)
-                      // Usage only. `onEnd` fires for *every* ending — an
-                      // abort before the child even starts, a failed model
-                      // step, an exhausted step budget — so writing a terminal
-                      // status here would record every one of them as success,
-                      // and the finished-status guard would then refuse the
-                      // real outcome that arrives a moment later.
-                      activity.patchTask(childTaskId, {
-                        usage: usage ?? undefined,
-                      })
-                    },
+                const outcome = await runTeam(tasks, {
+                  // The turn's controller: stopping the run stops the team,
+                  // and every child hangs off a signal chained to this one.
+                  signal: controller.signal,
+                  onState: (state: TeamState) =>
+                    useCoworkActivity.getState().patchTask(
+                      taskIdFor(sid, runId, callId),
+                      { detail: teamProgress(state) }
+                    ),
+                  runTask: async (one: TeamTask, signal: AbortSignal) => {
+                    // One call id per task, so each child gets its own
+                    // transcript lane and its own entry in the Tasks panel.
+                    const childId = `${callId}:${one.id}`
+                    const result = await dispatchChild(
+                      childId,
+                      {
+                        subagent_name: one.subagentName ?? '',
+                        description: one.description,
+                      },
+                      signal
+                    )
+                    return {
+                      taskId: one.id,
+                      ok: !result.isError,
+                      output: result.output,
+                      producedBy: childId,
+                    }
                   },
                 })
-                useCoworkRun
-                  .getState()
-                  .attachSubagentOutput(sid, callId, child.output)
-                settleChild(Boolean(child.isError), child.output)
-                return { output: child.output, isError: child.isError }
-                } finally {
-                  controller.signal.removeEventListener('abort', stopChild)
-                  unregisterSubagent(sid, childTaskId)
-                  // A throw from the dispatch would otherwise leave the record
-                  // running with nothing left to finish it.
-                  settleChild(true)
+                if (!outcome.ok) {
+                  return { output: `ERROR: ${outcome.refusal}`, isError: true }
+                }
+                return {
+                  output: renderTeamReport(outcome.report),
+                  // A team where something failed is an error result, so the
+                  // agent cannot read a partial run as a finished one.
+                  isError: !outcome.report.allDone,
                 }
               },
             }),
