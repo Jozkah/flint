@@ -579,11 +579,12 @@ export type McpProbe = {
 /**
  * Can this platform confine a local MCP server?
  *
- * Today, nowhere: Jan launches a stdio server as an ordinary child process
- * with the parent's environment and no filesystem restriction. That is fine
- * for a server the user configured themselves — they chose it — and not fine
- * for one a repository asked for. Passed in rather than assumed so that a
- * launcher that gains confinement flips this without touching the classifier.
+ * Asked of the sandbox backend, never assumed. An imported stdio server runs
+ * through the same confinement the agent's own shell runs under — one
+ * implementation of the boundary, so a second MCP-shaped imitation of it
+ * cannot drift from the real one — and a platform with no backend refuses the
+ * import rather than launching it unconfined. A server the user configured
+ * themselves keeps the behaviour it has always had: they chose the program.
  */
 export type ConfinementSupport = { stdio: boolean }
 
