@@ -2,7 +2,9 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { modeLabelKey } from '@/lib/coworkMode'
 import {
   accountedTotal,
+  CONTEXT_CATEGORIES,
   type InstructionFile,
+  type ContextAccounting,
   type ReadinessManifest,
   type ResolvedSkill,
 } from '@/lib/coworkReadiness'
@@ -41,6 +43,35 @@ function Row({
       <dd className="min-w-0 truncate">{children}</dd>
     </div>
   )
+}
+
+/** Which of the four honest phrasings this total needs. */
+function contextKey(total: {
+  complete: boolean
+  estimated: boolean
+}): string {
+  if (total.estimated) {
+    return total.complete
+      ? 'common:readiness.tokensEstimated'
+      : 'common:readiness.tokensEstimatedPartial'
+  }
+  return total.complete
+    ? 'common:readiness.tokens'
+    : 'common:readiness.tokensPartial'
+}
+
+/**
+ * The method behind the derived numbers, for the reader to judge.
+ *
+ * Categories are measured the same way, so the first method found stands for
+ * the total; naming one is what stops "~12,000 tokens" from reading as a count.
+ */
+function estimateMethod(accounting: ContextAccounting): string {
+  for (const category of CONTEXT_CATEGORIES) {
+    const value = accounting.categories[category]
+    if (value.known === 'estimated') return value.method
+  }
+  return ''
 }
 
 export function CoworkReadinessCard({
@@ -136,12 +167,15 @@ export function CoworkReadinessCard({
             : ` · ${t('common:readiness.noMcp')}`}
         </Row>
         <Row label={t('common:readiness.context')}>
-          {/* Deliberately says "at least" when a category could not be
-              measured. A total that silently omits something reads as a
-              complete one. */}
-          {total.complete
-            ? t('common:readiness.tokens', { count: total.tokens })
-            : t('common:readiness.tokensPartial', { count: total.tokens })}
+          {/* Two separate admissions, and the wording keeps them separate.
+              "At least" covers a category that could not be measured at all;
+              the tilde and the named method cover a number that was derived
+              rather than counted. A total that silently omitted either would
+              read as an exact and complete one. */}
+          {t(contextKey(total), {
+            count: total.tokens,
+            method: estimateMethod(manifest.context),
+          })}
         </Row>
       </dl>
     </section>

@@ -3,6 +3,7 @@ import {
   CONTEXT_CATEGORIES,
   MAX_INSTRUCTION_BYTES,
   accountedTotal,
+  estimated,
   activeInstructions,
   classifyInstruction,
   manifestMatches,
@@ -297,7 +298,11 @@ describe('what the context cost', () => {
     accounting.categories.instructions = measured(100)
     accounting.categories.skills = measured(50)
 
-    expect(accountedTotal(accounting)).toEqual({ tokens: 150, complete: false })
+    expect(accountedTotal(accounting)).toEqual({
+      tokens: 150,
+      complete: false,
+      estimated: false,
+    })
   })
 
   it('is complete only when every category was measured', () => {
@@ -306,7 +311,40 @@ describe('what the context cost', () => {
       accounting.categories[category] = measured(10)
     }
 
-    expect(accountedTotal(accounting)).toEqual({ tokens: 50, complete: true })
+    expect(accountedTotal(accounting)).toEqual({
+      tokens: 50,
+      complete: true,
+      estimated: false,
+    })
+  })
+
+  it('counts a derived value, and says the total contains one', () => {
+    const accounting = emptyContext()
+    for (const category of CONTEXT_CATEGORIES) {
+      accounting.categories[category] = measured(10)
+    }
+    accounting.categories.instructions = estimated(100, '~4 chars per token')
+
+    // Complete and estimated are separate admissions: nothing is missing, but
+    // the number is approximate. One flag could not say both.
+    expect(accountedTotal(accounting)).toEqual({
+      tokens: 140,
+      complete: true,
+      estimated: true,
+    })
+  })
+
+  it('reports a derived value with the method that produced it', () => {
+    expect(estimated(12.4, 'method')).toEqual({
+      known: 'estimated',
+      tokens: 12,
+      method: 'method',
+    })
+  })
+
+  it('refuses to derive a value from a non-number', () => {
+    expect(estimated(undefined, 'method')).toEqual({ known: false })
+    expect(estimated(Number.NaN, 'method')).toEqual({ known: false })
   })
 })
 

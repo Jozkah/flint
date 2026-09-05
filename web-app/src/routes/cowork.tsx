@@ -167,14 +167,15 @@ import {
   NATIVE_INSTRUCTION_FILE,
   bindingKey,
   classifyInstruction,
-  measured,
   parseSkillRequests,
   resolveSkills,
   unresolvedSkills,
+  type ContextAccounting,
   type InstructionFile,
   type InstructionProbe,
   type ReadinessManifest,
 } from '@/lib/coworkReadiness'
+import { measureContextPack } from '@/lib/coworkContext'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
 import { dispatchCoworkTool } from '@/lib/coworkDispatch'
 import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
@@ -218,6 +219,29 @@ export const Route = createFileRoute(route.cowork as any)({
 })
 
 /** Same shape the other Cowork surfaces use; kept local, as they do. */
+/**
+ * The model's configured context size, when it has one.
+ *
+ * Configured, not live: llama.cpp's `--fit` can pick a runtime `n_ctx` far from
+ * this, and that is only knowable once the model is loaded. The measurement
+ * layer labels it as an estimate for exactly that reason, so what is wanted
+ * here is the honest configured number or nothing at all.
+ */
+const configuredContextTokens = (model: {
+  settings?: Record<string, { controller_props?: { value?: unknown } }>
+} | null | undefined): number | null => {
+  const value = model?.settings?.ctx_len?.controller_props?.value
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return value
+  }
+  // Some providers store it as a string from a number input.
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  }
+  return null
+}
+
 const messageOf = (e: unknown): string =>
   e instanceof Error ? e.message : String(e)
 
@@ -294,6 +318,15 @@ function CoworkPage() {
    * rather than discovered when a call is refused mid-run.
    */
   const [advertisedToolNames, setAdvertisedToolNames] = useState<string[]>([])
+  /**
+   * What the last run actually sent, by category.
+   *
+   * Null until a run has built its payload, because before that the categories
+   * that depend on it are genuinely unknown — and an unknown must not be shown
+   * as a zero. Measured by the transport rather than here, so the card cannot
+   * describe a payload the run did not build.
+   */
+  const [runContext, setRunContext] = useState<ContextAccounting | null>(null)
 
   const access = accessOf(session ?? {})
   // Asked of the backend rather than assumed here: whether a folder can be
@@ -392,18 +425,17 @@ function CoworkPage() {
       // From the run's own snapshot when there is one, so the card and the
       // summary cannot disagree about whether anything is attributable.
       evidence: evidenceLimit(runOrigins?.context.baseline ?? null),
-      // Nothing here is measured yet. A plausible number would be worse than
-      // an honest blank to someone deciding whether to trust the run.
-      context: {
-        categories: {
-          instructions: measured(null),
-          skills: measured(null),
-          repositoryMap: measured(null),
-          conversation: measured(null),
-          tools: measured(null),
-        },
-        budget: measured(null),
-      },
+      // From the run's own payload once there is one. Before that the
+      // categories that depend on it stay unknown rather than zero: a run that
+      // has not been built has not sent nothing, it has sent nothing *yet*.
+      context:
+        runContext ??
+        measureContextPack({
+          systemPrompt: null,
+          toolSchemas: null,
+          messages: null,
+          configuredContextTokens: configuredContextTokens(selectedModel),
+        }),
     }
   }, [
     session?.id,
@@ -415,6 +447,7 @@ function CoworkPage() {
     compat,
     runOrigins?.context.baseline,
     advertisedToolCount,
+    runContext,
     availableSkills,
     enabledSkills,
     composerPrompt,
@@ -1433,6 +1466,14 @@ function CoworkPage() {
           } as any,
         ]
       : [...baseMessages]
+
+    // Measured here rather than at tool-refresh time because this is where the
+    // payload exists: `messages` is what the request carries, and the transport
+    // adds the system prompt and the advertised tools to it. Measuring earlier
+    // would report a conversation one turn short of the one being sent.
+    setRunContext(
+      transport.measureContext(messages, configuredContextTokens(selectedModel))
+    )
 
     let outcome: RunOutcome | null = null
     let thrown: Pick<RunOutcome, 'stoppedBy' | 'errorText'> | null = null

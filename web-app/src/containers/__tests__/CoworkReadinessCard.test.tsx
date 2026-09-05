@@ -11,6 +11,7 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
 import { CoworkReadinessCard } from '../CoworkReadinessCard'
 import {
   classifyInstruction,
+  estimated,
   measured,
   resolveSkills,
   type ReadinessManifest,
@@ -227,5 +228,52 @@ describe('what the card states about context', () => {
     )
 
     expect(card()).toHaveTextContent('common:readiness.tokens#150')
+  })
+
+  it('never shows a derived total as a counted one', () => {
+    // The whole point of the third state. "12,000 tokens" and "~12,000 tokens
+    // (~4 chars per token)" are different claims, and only one of them is true.
+    render(
+      <CoworkReadinessCard
+        manifest={manifest({
+          context: {
+            categories: {
+              instructions: estimated(10, '~4 chars per token'),
+              skills: measured(20),
+              repositoryMap: measured(30),
+              conversation: measured(40),
+              tools: measured(50),
+            },
+            budget: measured(8000),
+          },
+        })}
+      />
+    )
+
+    expect(card()).toHaveTextContent('common:readiness.tokensEstimated')
+    expect(card()).not.toHaveTextContent('common:readiness.tokens#150')
+  })
+
+  it('says both when a total is derived and incomplete', () => {
+    render(
+      <CoworkReadinessCard
+        manifest={manifest({
+          context: {
+            categories: {
+              instructions: estimated(10, '~4 chars per token'),
+              skills: measured(20),
+              repositoryMap: measured(30),
+              conversation: measured(40),
+              tools: measured(null),
+            },
+            budget: measured(null),
+          },
+        })}
+      />
+    )
+
+    // Missing and approximate are different failures; the card owes the reader
+    // both rather than collapsing them into one hedge.
+    expect(card()).toHaveTextContent('common:readiness.tokensEstimatedPartial')
   })
 })

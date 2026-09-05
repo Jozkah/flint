@@ -121,3 +121,60 @@ describe('CoworkChatTransport.advertisedTools', () => {
     expect(t.advertisedTools).toEqual({})
   })
 })
+
+describe('what the run reports it is sending', () => {
+  beforeEach(() => {
+    buildCoworkTools.mockReset()
+    buildCoworkTools.mockResolvedValue({ read: {}, write: {} })
+    sandboxEnforces.mockReturnValue(true)
+  })
+
+  const message = (text: string) =>
+    ({ id: 'm', role: 'user', parts: [{ type: 'text', text }] }) as never
+
+  // The reason measurement lives on the transport at all. If the card built its
+  // own idea of the payload, the two would drift and the card would describe a
+  // run that is not happening.
+  it('measures the prompt the transport itself would send', () => {
+    const t = new CoworkChatTransport('s1', config({ readOnlyFolder: '/repo' }))
+    const sent = (
+      t as unknown as { buildSystemPrompt: (m: unknown[]) => string }
+    ).buildSystemPrompt([])
+    const measured = t.measureContext([])
+
+    const instructions = measured.categories.instructions
+    expect(instructions.known).toBe('estimated')
+    // Same text, so same size: derived from the payload, not reconstructed.
+    const expected = Math.round(new TextEncoder().encode(sent).length / 4)
+    expect(
+      instructions.known !== false ? instructions.tokens : null
+    ).toBe(expected)
+  })
+
+  it('counts the conversation it is handed', () => {
+    const t = new CoworkChatTransport('s1', config())
+    const empty = t.measureContext([])
+    const full = t.measureContext([message('x'.repeat(4000))])
+
+    const tokensOf = (v: { known: unknown; tokens?: number }) =>
+      v.known === false ? 0 : (v.tokens ?? 0)
+    expect(tokensOf(full.categories.conversation)).toBeGreaterThan(
+      tokensOf(empty.categories.conversation)
+    )
+  })
+
+  it('measures the frozen tool set, not a rebuilt one', async () => {
+    // A run's advertised set is frozen so the KV prefix survives. The reported
+    // tool cost has to follow that same frozen set, or the card would report a
+    // payload the model never received.
+    const t = new CoworkChatTransport('s1', config())
+    await t.refreshTools()
+    const before = t.measureContext([])
+
+    buildCoworkTools.mockResolvedValue({ read: {}, write: {}, bash: {}, edit: {} })
+    await t.refreshTools()
+    const after = t.measureContext([])
+
+    expect(after.categories.tools).toEqual(before.categories.tools)
+  })
+})

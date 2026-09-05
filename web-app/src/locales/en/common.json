@@ -986,6 +986,8 @@
     "context": "Context",
     "tokens": "{{count}} tokens",
     "tokensPartial": "at least {{count}} tokens; some parts could not be measured",
+    "tokensEstimated": "~{{count}} tokens ({{method}})",
+    "tokensEstimatedPartial": "at least ~{{count}} tokens ({{method}}); some parts could not be measured",
     "builtinsUnknown": "Tool set not built yet",
     "evidence": {
       "label": "Change attribution",

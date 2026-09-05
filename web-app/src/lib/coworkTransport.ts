@@ -8,6 +8,8 @@ import {
   type CoworkToolOptions,
 } from '@/lib/coworkTools'
 import { buildCoworkSystemPrompt } from '@/lib/coworkPrompt'
+import { measureContextPack } from '@/lib/coworkContext'
+import type { ContextAccounting } from '@/lib/coworkReadiness'
 
 export type CoworkRunConfig = CoworkToolOptions & {
   workspacePath: string | null
@@ -107,6 +109,28 @@ export class CoworkChatTransport extends CustomChatTransport {
     })
     const files = this.buildFilesSystemInstruction(messages)
     return files.trim().length > 0 ? `${base}\n\n${files}` : base
+  }
+
+  /**
+   * What this run will actually send, measured by category.
+   *
+   * Deliberately a method on the transport rather than a calculation the card
+   * does for itself. The card and the run would otherwise each assemble their
+   * own idea of the payload and drift apart, which is the failure the readiness
+   * manifest exists to prevent — so the number comes from the same
+   * `buildSystemPrompt` and the same `advertisedTools` that the request is
+   * built from, and cannot describe a run that is not happening.
+   */
+  measureContext(
+    messages: UIMessage[],
+    configuredContextTokens?: number | null
+  ): ContextAccounting {
+    return measureContextPack({
+      systemPrompt: this.buildSystemPrompt(messages),
+      toolSchemas: this.advertisedTools,
+      messages,
+      configuredContextTokens,
+    })
   }
 
   /**
