@@ -273,9 +273,52 @@ pub fn agent_worktree_state(record: WorktreeRecordInput) -> worktree::WorktreeSt
 ///
 /// Only ever called because someone asked: this is the one operation here that
 /// destroys work, so it is never cleanup on a path doing something else.
+///
+/// The record arrives over IPC, so the path is checked against the folder Jan
+/// owns before anything is removed. Without that, a wrong record — a bug, a
+/// stale value, anything — would be a request to delete an arbitrary directory
+/// and its branch.
 #[tauri::command]
-pub fn agent_worktree_discard(record: WorktreeRecordInput) -> Result<(), String> {
-    worktree::discard(&record.into())
+pub fn agent_worktree_discard(
+    data_folder: String,
+    record: WorktreeRecordInput,
+    force: bool,
+) -> Result<(), String> {
+    let roots = workspace::worktrees_dir(std::path::Path::new(&data_folder));
+    let record: worktree::WorktreeRecord = record.into();
+    if !std::path::Path::new(&record.path).starts_with(&roots) {
+        return Err(format!(
+            "{} is not a worktree Jan manages, so Jan will not remove it",
+            record.path
+        ));
+    }
+    worktree::discard(&record, force)
+}
+
+/// What a worktree holds that removing it would destroy.
+///
+/// Asked before offering to remove one, so the confirmation names the work
+/// rather than asking about a path.
+#[tauri::command]
+pub fn agent_worktree_pending(record: WorktreeRecordInput) -> Vec<String> {
+    worktree::pending(&record.into())
+}
+
+/// Every Jan-owned worktree of this repository that is on disk.
+///
+/// The recovery surface. A session's own record dies with the process, so
+/// after a crash this is the only truthful answer to "where is the work that
+/// run was doing" — and it is only that. Nothing here authorizes anything: a
+/// listed worktree is a place, and writing to one still requires the user to
+/// authorize it again.
+#[tauri::command]
+pub fn agent_worktree_list(data_folder: String, project: String) -> Vec<worktree::WorktreeRecord> {
+    let roots = workspace::worktrees_dir(std::path::Path::new(&data_folder));
+    let repo = std::path::Path::new(&project);
+    // Bookkeeping for directories that are gone is dropped first, so a crash
+    // that left Git's record behind does not show a worktree that is not there.
+    let _ = worktree::prune(repo);
+    worktree::list(repo, &roots)
 }
 
 /// A record as it comes back from the renderer.

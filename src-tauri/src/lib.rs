@@ -101,6 +101,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_worktree_ensure,
         core::agent::commands::agent_worktree_state,
         core::agent::commands::agent_worktree_discard,
+        core::agent::commands::agent_worktree_pending,
+        core::agent::commands::agent_worktree_list,
         core::agent::commands::agent_git_status,
         core::agent::commands::agent_git_file_diff,
         core::agent::commands::agent_subagent_list,

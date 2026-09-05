@@ -222,7 +222,7 @@ fn slug(owner_id: &str) -> String {
 /// than starting a second branch beside it, and namespaced so it is obvious in
 /// `git branch` who made it and why.
 pub fn branch_name(session_id: &str) -> String {
-    format!("jan/cowork/{}", slug(session_id))
+    format!("{BRANCH_PREFIX}{}", slug(session_id))
 }
 
 /// Where a session's worktree lives, under Jan's own data directory.
@@ -268,6 +268,60 @@ fn is_worktree_of(path: &Path, repo: &Path) -> bool {
         return false;
     };
     same(&a, &PathBuf::from(b))
+}
+
+/// Whether `path` really sits inside `root`, after both are resolved.
+///
+/// Resolved rather than compared as strings, because the interesting cases are
+/// the ones a string comparison gets wrong: a symlink in Jan's worktrees
+/// directory pointing at the user's home, a path with `..` in it, a directory
+/// that was replaced between the check and the use. A path that cannot be
+/// resolved is not contained — an answer nobody can verify is not a yes.
+fn contained(path: &Path, root: &Path) -> bool {
+    let (Ok(path), Ok(root)) = (
+        // The worktree may not exist yet, so resolve the nearest existing
+        // ancestor and re-append the rest: canonicalizing a path that is about
+        // to be created would fail for every first-time creation.
+        resolve_lexically(path),
+        root.canonicalize(),
+    ) else {
+        return false;
+    };
+    path.starts_with(&root) && path != root
+}
+
+/// Canonicalize as much of `path` as exists, keeping the rest.
+fn resolve_lexically(path: &Path) -> Result<PathBuf, ()> {
+    let mut existing = path;
+    let mut rest: Vec<&std::ffi::OsStr> = Vec::new();
+    loop {
+        if existing.exists() {
+            let base = existing.canonicalize().map_err(|_| ())?;
+            return Ok(rest.iter().rev().fold(base, |acc, part| acc.join(part)));
+        }
+        let Some(parent) = existing.parent() else {
+            return Err(());
+        };
+        let Some(name) = existing.file_name() else {
+            return Err(());
+        };
+        // `..` cannot be re-appended to a resolved base and still mean what it
+        // said, so a path that climbs is refused rather than guessed at.
+        if name == std::ffi::OsStr::new("..") {
+            return Err(());
+        }
+        rest.push(name);
+        existing = parent;
+    }
+}
+
+/// What a worktree has that is not committed.
+///
+/// Asked before discarding one. The whole point of a managed worktree is that
+/// a run's work lives somewhere; removing it without saying what is in it is
+/// how that work disappears without anyone deciding it should.
+pub fn pending(record: &WorktreeRecord) -> Vec<String> {
+    uncommitted(Path::new(&record.path))
 }
 
 /// Check a recorded worktree against what is on disk.
@@ -334,6 +388,28 @@ pub fn ensure(
     let path = worktree_path(worktrees_root, &identity, session_id);
     let branch = branch_name(session_id);
 
+    // Where the worktree will actually be, not where the name says. A symlink
+    // in Jan's own worktrees directory — or one someone put there — would
+    // otherwise make "under the data folder" a statement about the string
+    // rather than about the disk, and the run would be editing whatever it
+    // points at.
+    std::fs::create_dir_all(worktrees_root)
+        .map_err(|e| format!("could not create {}: {e}", worktrees_root.display()))?;
+    if !contained(&path, worktrees_root) {
+        return Err(format!(
+            "{} would resolve outside the folder Jan owns",
+            path.display()
+        ));
+    }
+    // And never inside the checkout it exists to protect: a worktree there
+    // would show up in the user's editor, their search and their next commit.
+    if contained(&path, repo) {
+        return Err(format!(
+            "{} is inside the repository it would be isolated from",
+            path.display()
+        ));
+    }
+
     if let Some(found) = existing(repo, worktrees_root, session_id) {
         if found.branch == branch {
             return Ok(found);
@@ -387,7 +463,21 @@ pub fn ensure(
 /// Deliberately not called anywhere automatically. Discarding is the one
 /// operation here that destroys work, so it happens because someone asked for
 /// it, never as cleanup on a path that was doing something else.
-pub fn discard(record: &WorktreeRecord) -> Result<(), String> {
+///
+/// A worktree with uncommitted changes refuses unless `force` says otherwise,
+/// and the refusal names the files. That is the difference between "the user
+/// chose to throw this away" and "the changes are gone and nobody was told":
+/// the caller has to have seen the list to pass `force`.
+pub fn discard(record: &WorktreeRecord, force: bool) -> Result<(), String> {
+    let dirty = pending(record);
+    if !force && !dirty.is_empty() {
+        return Err(format!(
+            "{} has {} uncommitted change(s) that removing it would destroy: {}",
+            record.path,
+            dirty.len(),
+            dirty.join(", ")
+        ));
+    }
     let source = PathBuf::from(&record.source_root);
     // `--force` covers a dirty worktree, which is the normal state of one that
     // is being discarded on purpose.
@@ -400,6 +490,66 @@ pub fn discard(record: &WorktreeRecord) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// Every Jan-owned worktree of this repository that is actually on disk.
+///
+/// Read from Git rather than from anything Jan persisted, and that is the
+/// point: the renderer's record of its worktrees dies with the process, so
+/// after a crash the only truthful source is the repository itself. What comes
+/// back is a list of places work might be sitting — never authority. Nothing
+/// here issues a grant, and a recovered worktree is written only after someone
+/// authorizes it again, so recovery can restore work without restoring access.
+pub fn list(repo: &Path, worktrees_root: &Path) -> Vec<WorktreeRecord> {
+    let Ok(identity) = identity(repo) else {
+        return Vec::new();
+    };
+    let Ok(out) = run(repo, &["worktree", "list", "--porcelain"]) else {
+        return Vec::new();
+    };
+
+    let mut found = Vec::new();
+    let mut path: Option<String> = None;
+    let mut head: Option<String> = None;
+    let mut branch: Option<String> = None;
+    let mut flush = |path: &mut Option<String>,
+                     head: &mut Option<String>,
+                     branch: &mut Option<String>,
+                     found: &mut Vec<WorktreeRecord>| {
+        let (Some(p), Some(h), Some(b)) = (path.take(), head.take(), branch.take()) else {
+            return;
+        };
+        // Ours, and where we put them: a worktree the user made themselves is
+        // not Jan's to list, offer to delete, or reason about.
+        if !b.starts_with(BRANCH_PREFIX) || !contained(Path::new(&p), worktrees_root) {
+            return;
+        }
+        found.push(WorktreeRecord {
+            path: p,
+            branch: b,
+            base_sha: h,
+            source_root: identity.root.clone(),
+            identity: identity.clone(),
+            uncommitted_at_creation: Vec::new(),
+        });
+    };
+
+    for line in out.lines() {
+        if let Some(rest) = line.strip_prefix("worktree ") {
+            flush(&mut path, &mut head, &mut branch, &mut found);
+            path = Some(rest.to_string());
+        } else if let Some(rest) = line.strip_prefix("HEAD ") {
+            head = Some(rest.to_string());
+        } else if let Some(rest) = line.strip_prefix("branch refs/heads/") {
+            branch = Some(rest.to_string());
+        }
+    }
+    flush(&mut path, &mut head, &mut branch, &mut found);
+    found.sort_by(|a, b| a.path.cmp(&b.path));
+    found
+}
+
+/// The namespace every branch Jan creates lives under.
+pub const BRANCH_PREFIX: &str = "jan/cowork/";
 
 /// Drop the bookkeeping for worktrees whose directories are gone.
 ///
@@ -630,7 +780,7 @@ mod tests {
         let record = ensure(&f.repo, &f.worktrees, "session-1").expect("create");
         std::fs::write(PathBuf::from(&record.path).join("a.txt"), "dirty").unwrap();
 
-        discard(&record).expect("discard");
+        discard(&record, true).expect("discard");
 
         assert!(!PathBuf::from(&record.path).exists());
         assert!(run(
@@ -673,6 +823,108 @@ mod tests {
         assert!(branch_name("../../main").starts_with("jan/cowork/"));
         assert!(branch_name("").starts_with("jan/cowork/"));
         assert!(!branch_name("a/b").contains("a/b"));
+    }
+
+    #[test]
+    fn lists_only_the_worktrees_jan_made_here() {
+        let f = fixture();
+        let mine = ensure(&f.repo, &f.worktrees, "session-1").expect("create");
+        // One the user made themselves, in a place of their own.
+        let theirs = f._dir.path().join("their-worktree");
+        git_in(
+            &f.repo,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "their-branch",
+                &theirs.to_string_lossy(),
+            ],
+        );
+
+        let found = list(&f.repo, &f.worktrees);
+
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].path, mine.path);
+        assert_eq!(found[0].branch, mine.branch);
+        assert_eq!(found[0].base_sha, mine.base_sha);
+        // A worktree Jan did not make is not Jan's to list, offer to delete, or
+        // reason about.
+        assert!(!found.iter().any(|one| one.branch == "their-branch"));
+    }
+
+    #[test]
+    fn a_listed_worktree_carries_no_authority() {
+        // Recovery finds work; it does not restore access to it. The record is
+        // a place and a branch — there is nowhere in it for a grant to be, so
+        // a recovered worktree cannot be written until someone authorizes it
+        // again.
+        let f = fixture();
+        ensure(&f.repo, &f.worktrees, "session-1").expect("create");
+        let found = list(&f.repo, &f.worktrees);
+        let json = serde_json::to_string(&found[0]).expect("serialize");
+        assert!(!json.contains("grant"), "{json}");
+    }
+
+    #[test]
+    fn refuses_to_discard_work_nobody_has_seen() {
+        let f = fixture();
+        let record = ensure(&f.repo, &f.worktrees, "session-1").expect("create");
+        std::fs::write(PathBuf::from(&record.path).join("new.txt"), "work").unwrap();
+
+        let err = discard(&record, false).expect_err("must refuse");
+        assert!(err.contains("new.txt"), "{err}");
+        assert!(
+            PathBuf::from(&record.path).exists(),
+            "the worktree must still be there"
+        );
+        assert_eq!(pending(&record), vec!["new.txt".to_string()]);
+
+        // Forced is the same operation, chosen: the caller had to have been
+        // told what it holds to get here.
+        discard(&record, true).expect("forced discard");
+        assert!(!PathBuf::from(&record.path).exists());
+    }
+
+    #[test]
+    fn a_clean_worktree_needs_no_forcing() {
+        let f = fixture();
+        let record = ensure(&f.repo, &f.worktrees, "session-1").expect("create");
+        assert!(pending(&record).is_empty());
+        discard(&record, false).expect("nothing to lose");
+    }
+
+    #[test]
+    fn refuses_a_worktrees_root_that_leads_somewhere_else() {
+        // The check has to be on the disk, not the string: a symlink where Jan
+        // keeps its worktrees would otherwise make "under the data folder"
+        // true of the name and false of the place.
+        let f = fixture();
+        let elsewhere = f._dir.path().join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        let linked = f._dir.path().join("linked");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&elsewhere, &linked).unwrap();
+        #[cfg(not(unix))]
+        return;
+
+        // The root itself resolving elsewhere is fine — it is still one place
+        // Jan owns. What must not happen is a *child* escaping it.
+        let inside = linked.join("sub");
+        assert!(contained(&inside, &linked));
+        assert!(!contained(&elsewhere.join(".."), &linked));
+        assert!(
+            !contained(&linked, &linked),
+            "the root is not inside itself"
+        );
+    }
+
+    #[test]
+    fn refuses_a_worktree_inside_the_checkout_it_protects() {
+        let f = fixture();
+        let inside = f.repo.join(".jan-worktrees");
+        let err = ensure(&f.repo, &inside, "session-1").expect_err("must refuse");
+        assert!(err.contains("inside the repository"), "{err}");
     }
 
     #[test]

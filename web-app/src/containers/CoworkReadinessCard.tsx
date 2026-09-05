@@ -46,10 +46,7 @@ function Row({
 }
 
 /** Which of the four honest phrasings this total needs. */
-function contextKey(total: {
-  complete: boolean
-  estimated: boolean
-}): string {
+function contextKey(total: { complete: boolean; estimated: boolean }): string {
   if (total.estimated) {
     return total.complete
       ? 'common:readiness.tokensEstimated'
@@ -104,6 +101,36 @@ export function CoworkReadinessCard({
         <Row label={t('common:readiness.writesGo')}>
           {t(`common:readiness.destination.${manifest.writeDestination}`)}
         </Row>
+        {manifest.worktree ? (
+          <>
+            {/* Which checkout, not merely that there is one: this is the row
+                someone reads before letting a run change anything, and "an
+                isolated worktree" is the same sentence for all of them. */}
+            <Row label={t('common:readiness.worktree.path')}>
+              <span title={manifest.worktree.path}>
+                {manifest.worktree.path}
+              </span>
+            </Row>
+            <Row label={t('common:readiness.worktree.branch')}>
+              {manifest.worktree.branch} (
+              {t('common:readiness.worktree.from', {
+                sha: manifest.worktree.baseSha.slice(0, 8),
+              })}
+              )
+            </Row>
+            {manifest.worktree.uncommittedAtCreation.length > 0 ? (
+              // Said before the work, not discovered after it: the run cannot
+              // see these, so anything it concludes about them is wrong.
+              <Row label={t('common:readiness.worktree.unseen.label')}>
+                <span className="text-destructive">
+                  {t('common:readiness.worktree.unseen.value', {
+                    count: manifest.worktree.uncommittedAtCreation.length,
+                  })}
+                </span>
+              </Row>
+            ) : null}
+          </>
+        ) : null}
         {manifest.evidence ? (
           // Said before the run, not only in the summary after it: whether
           // anything this agent does will be attributable is part of deciding
@@ -161,7 +188,9 @@ export function CoworkReadinessCard({
         <Row label={t('common:readiness.tools')}>
           {manifest.tools.builtins == null
             ? t('common:readiness.builtinsUnknown')
-            : t('common:readiness.builtins', { count: manifest.tools.builtins })}
+            : t('common:readiness.builtins', {
+                count: manifest.tools.builtins,
+              })}
           {manifest.tools.mcpServers.length > 0
             ? ` · ${manifest.tools.mcpServers.join(', ')}`
             : ` · ${t('common:readiness.noMcp')}`}

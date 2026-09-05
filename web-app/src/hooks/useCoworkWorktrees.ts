@@ -57,8 +57,38 @@ type WorktreesState = {
     dataFolder: string
   ) => Promise<EnsureOutcome>
   check: (sessionId: string) => Promise<WorktreeState | null>
-  discard: (sessionId: string) => Promise<boolean>
-  recordFor: (sessionId: string | null | undefined) => WorktreeRecord | undefined
+  /**
+   * Remove a session's worktree.
+   *
+   * `force` is what the user chose after being shown [`pending`]. Without it
+   * the backend refuses a worktree that holds uncommitted work, so a stray
+   * call cannot be the reason a run's output disappeared.
+   */
+  discard: (
+    sessionId: string,
+    dataFolder: string,
+    force?: boolean
+  ) => Promise<{ ok: true } | { ok: false; reason: string }>
+  /** What a worktree holds that removing it would destroy. */
+  pending: (record: WorktreeRecord) => Promise<string[]>
+  /**
+   * Every Jan-owned worktree of this project that is on disk.
+   *
+   * The recovery surface, and only that: a listed worktree is a place work
+   * might be sitting. Nothing here authorizes writing to one — that still
+   * takes the user confirming it, exactly as it did the first time.
+   */
+  list: (project: string, dataFolder: string) => Promise<WorktreeRecord[]>
+  /**
+   * Bind a session to a worktree that already exists.
+   *
+   * Local bookkeeping only. Adopting does not make the worktree writable: the
+   * access mode still has to be switched, which is what issues a grant.
+   */
+  adopt: (sessionId: string, record: WorktreeRecord) => void
+  recordFor: (
+    sessionId: string | null | undefined
+  ) => WorktreeRecord | undefined
   forget: (sessionId: string) => void
 }
 
@@ -104,23 +134,54 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
     }
   },
 
-  discard: async (sessionId) => {
+  discard: async (sessionId, dataFolder, force = false) => {
     const record = get().bySession[sessionId]
-    if (!record) return true
+    if (!record) return { ok: true }
     try {
-      await invoke('agent_worktree_discard', { record })
-    } catch {
-      return false
+      await invoke('agent_worktree_discard', { dataFolder, record, force })
+    } catch (e) {
+      // The refusal names what would have been destroyed, and that is the
+      // whole value of it: a caller that only learned "it failed" would have
+      // nothing to put in front of the user.
+      return { ok: false, reason: messageOf(e) }
     }
     set((s) => {
       const next = { ...s.bySession }
       delete next[sessionId]
       return { bySession: next }
     })
-    return true
+    return { ok: true }
   },
 
-  recordFor: (sessionId) => (sessionId ? get().bySession[sessionId] : undefined),
+  pending: async (record) => {
+    try {
+      return await invoke<string[]>('agent_worktree_pending', { record })
+    } catch {
+      // An unanswerable question is not "nothing to lose". Reporting empty
+      // here would turn a failed check into a silent forced removal.
+      return ['(could not be listed)']
+    }
+  },
+
+  list: async (project, dataFolder) => {
+    try {
+      return await invoke<WorktreeRecord[]>('agent_worktree_list', {
+        dataFolder,
+        project,
+      })
+    } catch {
+      return []
+    }
+  },
+
+  adopt: (sessionId, record) =>
+    set((s) => ({
+      bySession: { ...s.bySession, [sessionId]: record },
+      errorBySession: { ...s.errorBySession, [sessionId]: '' },
+    })),
+
+  recordFor: (sessionId) =>
+    sessionId ? get().bySession[sessionId] : undefined,
 
   forget: (sessionId) =>
     set((s) => {

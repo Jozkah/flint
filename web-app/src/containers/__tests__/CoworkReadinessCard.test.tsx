@@ -46,6 +46,35 @@ const card = () =>
   screen.getByRole('region', { name: 'common:readiness.title' })
 
 describe('what the card states about the run', () => {
+  it('names which checkout a managed destination means', () => {
+    render(
+      <CoworkReadinessCard
+        manifest={manifest({
+          writeDestination: 'managed',
+          worktree: {
+            path: '/data/worktrees/abc/session1',
+            branch: 'jan/cowork/session1',
+            baseSha: 'abcdef1234567890',
+            uncommittedAtCreation: ['src/edited.ts', 'notes.md'],
+          },
+        })}
+      />
+    )
+
+    // "A managed worktree" is the same sentence for every one of them; the
+    // path and the branch are what someone actually checks.
+    expect(card()).toHaveTextContent('/data/worktrees/abc/session1')
+    expect(card()).toHaveTextContent('jan/cowork/session1')
+    expect(card()).toHaveTextContent('abcdef12')
+    // And what the checkout could not see, before the run rather than after.
+    expect(card()).toHaveTextContent('common:readiness.worktree.unseen.value#2')
+  })
+
+  it('describes no worktree when writes do not go to one', () => {
+    render(<CoworkReadinessCard manifest={manifest({ worktree: null })} />)
+    expect(card()).not.toHaveTextContent('common:readiness.worktree.path')
+  })
+
   it('names the exact repository and branch', () => {
     render(<CoworkReadinessCard manifest={manifest()} />)
 
@@ -62,7 +91,9 @@ describe('what the card states about the run', () => {
 
   it('says so when no repository is attached', () => {
     render(
-      <CoworkReadinessCard manifest={manifest({ folder: null, branch: null })} />
+      <CoworkReadinessCard
+        manifest={manifest({ folder: null, branch: null })}
+      />
     )
 
     expect(card()).toHaveTextContent('common:readiness.noRepository')
@@ -175,7 +206,9 @@ describe('what the card states about the model and tools', () => {
   it('does not guess when tool support is unknown', () => {
     render(
       <CoworkReadinessCard
-        manifest={manifest({ model: { id: 'local/tiny', supportsTools: null } })}
+        manifest={manifest({
+          model: { id: 'local/tiny', supportsTools: null },
+        })}
       />
     )
 

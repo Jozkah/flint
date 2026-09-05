@@ -942,6 +942,18 @@
       "description": "Changes files and runs commands without asking."
     }
   },
+  "worktreeRecovery": {
+    "title": "Worktrees from earlier runs",
+    "found": "{{count}} worktree(s) here from an earlier run",
+    "use": "Use",
+    "remove": "Remove",
+    "noAuthority": "Using one tells this session where the work is. It does not make it writable — choose an access mode for that.",
+    "confirmTitle": "Remove this worktree",
+    "confirmDirty": "Removing this destroys {{count}} uncommitted file(s): {{files}}",
+    "confirmClean": "Removing this deletes the worktree and its branch {{branch}}. Nothing is uncommitted in it.",
+    "confirmRemove": "Remove it",
+    "cancel": "Cancel"
+  },
   "readiness": {
     "title": "Before this run",
     "repository": "Repository",
@@ -954,6 +966,15 @@
       "sandbox": "This session's workspace, not your repository",
       "managed": "A managed worktree",
       "repository": "The attached repository"
+    },
+    "worktree": {
+      "path": "Worktree",
+      "branch": "Worktree branch",
+      "from": "from {{sha}}",
+      "unseen": {
+        "label": "Not in the worktree",
+        "value": "{{count}} uncommitted file(s) from your checkout"
+      }
     },
     "instructions": "Instructions",
     "noInstructions": "None found",

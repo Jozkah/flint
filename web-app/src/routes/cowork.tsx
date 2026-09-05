@@ -147,6 +147,8 @@ import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskCard } from '@/containers/CoworkAskCard'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
+import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
+import { orphans as orphanWorktrees } from '@/lib/coworkWorktrees'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
 import { ClaudeSkillRootsSettings } from '@/containers/ClaudeSkillRootsSettings'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
@@ -183,7 +185,10 @@ import {
   recordFor,
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
-import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
+import {
+  useCoworkWorktrees,
+  type WorktreeRecord,
+} from '@/hooks/useCoworkWorktrees'
 import {
   parseTeamRequest,
   refuseGraph,
@@ -349,6 +354,15 @@ function CoworkPage() {
    */
   const [advertisedToolNames, setAdvertisedToolNames] = useState<string[]>([])
   /**
+   * Jan-owned worktrees of this project that are on disk right now.
+   *
+   * Read from Git, not from anything persisted: the session's own record dies
+   * with the process, so after a crash this is the only truthful answer to
+   * where an interrupted run's work went. Listing is not authorization —
+   * nothing here becomes writable.
+   */
+  const [foundWorktrees, setFoundWorktrees] = useState<WorktreeRecord[]>([])
+  /**
    * What the last run actually sent, by category.
    *
    * Null until a run has built its payload, because before that the categories
@@ -393,6 +407,28 @@ function CoworkPage() {
     binding: { sessionId: session?.id ?? null, folder },
     worktreePath: worktree?.path ?? null,
   })
+  useEffect(() => {
+    let cancelled = false
+    if (!folder) {
+      setFoundWorktrees([])
+      return
+    }
+    void (async () => {
+      const dataFolder = await serviceHub
+        .app()
+        .getJanDataFolder()
+        .catch(() => '')
+      if (!dataFolder) return
+      const found = await useCoworkWorktrees.getState().list(folder, dataFolder)
+      // The folder may have changed during the round trip; a list from the
+      // previous repository would offer the wrong work to recover.
+      if (!cancelled) setFoundWorktrees(found)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [folder, serviceHub])
+
   /**
    * This session's origin ledger, if a run has produced one.
    *
@@ -453,6 +489,18 @@ function CoworkPage() {
       // remembers "edit this folder" but holds no live grant writes to its
       // sandbox, and the card has to say so.
       writeDestination: effective.destination,
+      // Only when that is where writes actually go. A session holding a
+      // worktree record but running in Review must not be shown a destination
+      // it is not using.
+      worktree:
+        effective.destination === 'managed' && worktree
+          ? {
+              path: worktree.path,
+              branch: worktree.branch,
+              baseSha: worktree.baseSha,
+              uncommittedAtCreation: worktree.uncommittedAtCreation,
+            }
+          : null,
       instructions: instructionFiles,
       // The same merged registry the run resolves against, so the card cannot
       // call a skill available that the run will report missing.
@@ -488,6 +536,7 @@ function CoworkPage() {
     mode,
     instructionFiles,
     effective.destination,
+    worktree,
     compat,
     runOrigins?.context.baseline,
     advertisedToolCount,
@@ -2443,6 +2492,41 @@ function CoworkPage() {
               {folder && (session?.turns.length ?? 0) === 0 && (
                 <div className="px-1 pb-2">
                   <CoworkReadinessCard manifest={readiness} />
+                  {/* Work a crashed or closed run left behind. Shown where the
+                      session is about to start, because that is the moment
+                      someone would otherwise start a second one beside it. */}
+                  <CoworkWorktreeRecovery
+                    orphans={orphanWorktrees(foundWorktrees, worktree)}
+                    onAdopt={(record) => {
+                      if (session?.id)
+                        useCoworkWorktrees.getState().adopt(session.id, record)
+                    }}
+                    onPending={(record) =>
+                      useCoworkWorktrees.getState().pending(record)
+                    }
+                    onRemove={async (record, force) => {
+                      const dataFolder = await serviceHub
+                        .app()
+                        .getJanDataFolder()
+                      if (!dataFolder) return
+                      // Removed under a temporary binding rather than through
+                      // the session's own record: this checkout belongs to no
+                      // session, and adopting it first to delete it would put
+                      // the session on a worktree that is about to be gone.
+                      const key = `recovery:${record.path}`
+                      useCoworkWorktrees.getState().adopt(key, record)
+                      const done = await useCoworkWorktrees
+                        .getState()
+                        .discard(key, dataFolder, force)
+                      useCoworkWorktrees.getState().forget(key)
+                      if (!done.ok) toast.error(done.reason)
+                      setFoundWorktrees(
+                        await useCoworkWorktrees
+                          .getState()
+                          .list(folder, dataFolder)
+                      )
+                    }}
+                  />
                   <CoworkCompatSection
                     manifest={compat}
                     hasFolder={Boolean(folder)}
