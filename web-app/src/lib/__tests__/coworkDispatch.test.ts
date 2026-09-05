@@ -474,3 +474,131 @@ describe('what holds a session in place while it works', () => {
     expect((await dispatchCoworkTool(call('task'), c)).output).toBe('task ok')
   })
 })
+
+/**
+ * Delivering a subtree's instructions before changing anything in it.
+ *
+ * A nested `CLAUDE.md` governs the change, so the change has to happen after
+ * it has been read. A mutation that lands and *then* reports the rules it
+ * should have followed has already not followed them.
+ */
+describe('instructions that govern a subtree', () => {
+  const nested = [
+    { scope: 'packages/api', name: 'CLAUDE.md', content: 'Never edit generated files.' },
+  ]
+
+  /** Delivers each scope once, as the run's tracker does. */
+  const tracker = (owed: typeof nested) => {
+    const delivered = new Set<string>()
+    return {
+      delivered,
+      scopedInstructions: (path: string) => {
+        if (!path.startsWith('packages/api')) return []
+        const fresh = owed.filter((one) => !delivered.has(one.scope))
+        fresh.forEach((one) => delivered.add(one.scope))
+        return fresh
+      },
+    }
+  }
+
+  beforeEach(() => {
+    executeAgentTool.mockReset()
+    executeAgentTool.mockResolvedValue({ content: 'ok' })
+  })
+
+  it('does not run the first change in a scope it has not delivered', async () => {
+    const t = tracker(nested)
+    const result = await dispatchCoworkTool(
+      call('write', { path: 'packages/api/server.ts' }),
+      ctx({ scopedInstructions: t.scopedInstructions })
+    )
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('Never edit generated files.')
+    expect(result.output).toContain('make the same call again')
+    // The whole point: nothing was written.
+    expect(executeAgentTool).not.toHaveBeenCalled()
+  })
+
+  it('runs the retry, now that the instructions have been delivered', async () => {
+    const t = tracker(nested)
+    const c = ctx({ scopedInstructions: t.scopedInstructions })
+
+    await dispatchCoworkTool(call('write', { path: 'packages/api/server.ts' }), c)
+    const retry = await dispatchCoworkTool(
+      call('write', { path: 'packages/api/server.ts' }),
+      c
+    )
+
+    expect(retry.isError).toBeUndefined()
+    expect(executeAgentTool).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not pause again for another file in the same scope', async () => {
+    const t = tracker(nested)
+    const c = ctx({ scopedInstructions: t.scopedInstructions })
+
+    await dispatchCoworkTool(call('write', { path: 'packages/api/a.ts' }), c)
+    const other = await dispatchCoworkTool(
+      call('write', { path: 'packages/api/b.ts' }),
+      c
+    )
+
+    expect(other.isError).toBeUndefined()
+  })
+
+  it('does not pause for a path no nested file governs', async () => {
+    const t = tracker(nested)
+    const result = await dispatchCoworkTool(
+      call('write', { path: 'src/a.ts' }),
+      ctx({ scopedInstructions: t.scopedInstructions })
+    )
+
+    expect(result.isError).toBeUndefined()
+    expect(executeAgentTool).toHaveBeenCalled()
+  })
+
+  // Reading is not changing: the rules govern what is written.
+  it('does not pause a read', async () => {
+    const t = tracker(nested)
+    const result = await dispatchCoworkTool(
+      call('read', { path: 'packages/api/server.ts' }),
+      ctx({ scopedInstructions: t.scopedInstructions })
+    )
+
+    expect(result.isError).toBeUndefined()
+  })
+
+  // A shell's scope is its working directory. Guessing at paths inside the
+  // command text would be a parser pretending to know what it will touch.
+  it('scopes a shell by its declared working directory', async () => {
+    const t = tracker(nested)
+    const result = await dispatchCoworkTool(
+      call('bash', { command: 'ls', cwd: 'packages/api' }),
+      ctx({ scopedInstructions: t.scopedInstructions })
+    )
+
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('Never edit generated files.')
+  })
+
+  it('does nothing special when the folder has no nested files', async () => {
+    const result = await dispatchCoworkTool(
+      call('write', { path: 'packages/api/server.ts' }),
+      ctx({ scopedInstructions: () => [] })
+    )
+
+    expect(result.isError).toBeUndefined()
+  })
+
+  it('says the scoped file ranks below JAN.md and the system prompt', async () => {
+    const t = tracker(nested)
+    const result = await dispatchCoworkTool(
+      call('write', { path: 'packages/api/server.ts' }),
+      ctx({ scopedInstructions: t.scopedInstructions })
+    )
+
+    expect(result.output).toContain('rank below')
+    expect(result.output).toContain('JAN.md')
+  })
+})

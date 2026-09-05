@@ -3,7 +3,7 @@ use rmcp::{
     transport::{
         sse_client::SseClient, streamable_http_client::StreamableHttpClient,
         streamable_http_client::StreamableHttpClientTransportConfig, SseClientTransport,
-        StreamableHttpClientTransport, TokioChildProcess,
+        StreamableHttpClientTransport,
     },
     ServiceExt,
 };
@@ -515,10 +515,10 @@ async fn schedule_mcp_start_task<R: Runtime>(
             && can_override_npx(bun_x_path.display().to_string()))
             || (config_params.command == "uvx" && can_override_uvx(uv_path.display().to_string()));
 
-        // Returns the command as it will actually be spawned, confinement
-        // included: there is no intermediate unconfined value for an imported
-        // server that a later edit could reach past.
-        let build_cmd = |use_override: bool| -> Result<Command, String> {
+        // Builds the command as the caller would otherwise have spawned it.
+        // What confines it is `ConfinedMcpLaunch::prepare`, which is the only
+        // way to reach the process builder for a local server.
+        let build_cmd = |use_override: bool| -> Command {
             let mut cmd = Command::new(config_params.command.clone());
             if use_override
                 && config_params.command == "npx"
@@ -565,22 +565,24 @@ async fn schedule_mcp_start_task<R: Runtime>(
                     cmd.env(k, v_str);
                 }
             });
-            ready_to_spawn(cmd, &config_params)
+            cmd
         };
 
         let mut use_override = true;
         let (server, stderr) = loop {
             // An imported server is a program the repository chose, so it
             // runs under the session's own sandbox or it does not run.
-            // Confinement failing is the server not starting: falling back to
-            // an unconfined spawn is the exact bypass this prevents.
-            let (process, stderr) = TokioChildProcess::builder(build_cmd(use_override)?)
-                .stderr(Stdio::piped())
-                .spawn()
-                .map_err(|e| {
-                    log::error!("Failed to run command {name}: {e}");
-                    format!("Failed to run command {name}: {e}")
+            // Confinement failing is the server not starting, and `prepare`
+            // is the only constructor of a launchable command, so there is no
+            // unconfined path to fall back to.
+            let launch =
+                crate::core::mcp::launch::ConfinedMcpLaunch::prepare(&config_params, || {
+                    build_cmd(use_override)
                 })?;
+            let (process, stderr) = launch.spawn(Stdio::piped()).map_err(|e| {
+                log::error!("Failed to run command {name}: {e}");
+                format!("Failed to run command {name}: {e}")
+            })?;
 
             if let Some(pid) = process.id() {
                 log::info!("MCP server {name} spawned with PID {pid}");
@@ -783,36 +785,7 @@ fn log_mcp_stderr_line(server_name: &str, line: &str) {
 /// The environment is rebuilt rather than filtered. `Command` inherits the
 /// parent's environment by default, and Jan's process holds the user's whole
 /// session — so `env_clear` first, then exactly the names the user approved.
-/// Apply confinement if this server needs it.
-///
-/// Folded into the one place a command is built, so no unconfined `Command`
-/// for an imported server exists as a value that something could go on to
-/// spawn. That is construction discipline, not a compile-time guarantee: the
-/// spawn takes an ordinary `Command`, so a future edit could still build one
-/// another way. The guard against that is that there is exactly one builder.
-pub(crate) fn ready_to_spawn(
-    cmd: Command,
-    params: &crate::core::mcp::models::McpServerConfig,
-) -> Result<Command, String> {
-    match params.confinement.as_ref() {
-        // A server the user configured themselves keeps the behaviour it has
-        // always had: they chose the program.
-        None if !params.imported => Ok(cmd),
-        // Imported, and nothing said how to confine it. Every path that starts
-        // a server comes through here — including the restart loop, which
-        // replays a stored config — so this is where an imported server with
-        // no confinement stops, rather than starting unconfined because some
-        // caller forgot to attach one.
-        None => Err(
-            "an imported MCP server was started without a confinement; refusing to run it \
-             unconfined"
-                .to_string(),
-        ),
-        Some(confinement) => confined_mcp_command(cmd, params, confinement),
-    }
-}
-
-pub(crate) fn confined_mcp_command(
+pub(super) fn confined_mcp_command(
     cmd: Command,
     params: &crate::core::mcp::models::McpServerConfig,
     confinement: &crate::core::mcp::models::McpConfinement,

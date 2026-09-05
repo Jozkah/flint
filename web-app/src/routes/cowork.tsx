@@ -19,6 +19,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import {
   bashJobsList,
+  projectListDir,
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { cn } from '@/lib/utils'
@@ -146,12 +147,14 @@ import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskCard } from '@/containers/CoworkAskCard'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
+import { ClaudeSkillRootsSettings } from '@/containers/ClaudeSkillRootsSettings'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCompatManifest } from '@/hooks/useCompatManifest'
 import { useImportedMcp } from '@/hooks/useImportedMcp'
 import {
   compatInstructionBlocks,
   mergeSkillRegistry,
+  nestedChainFor,
   manifestMatches as compatMatches,
   emptyManifest as emptyCompatManifest,
 } from '@/lib/claudeCompat'
@@ -338,12 +341,16 @@ function CoworkPage() {
    * scans at three moments is three different answers to "what is in force",
    * and the user is shown one of them while another is used.
    */
-  const { manifest: compat, mcpProbes } = useCompatManifest({
+  const skillRoots = useClaudeCompat((s) => s.skillRoots)
+  const { manifest: compat, mcpProbes, rescan: rescanCompat } = useCompatManifest({
     binding: { sessionId: session?.id ?? null, folder },
     enabledSkills: new Set(
       effectiveEnabled(enabledSkills, availableSkills.map((s) => s.name))
     ),
     availableTools: advertisedToolNames,
+    // Only what the user approved through the picker. Never anything a
+    // repository named.
+    approvedUserSkillRoots: skillRoots,
   })
 
   const readiness = useMemo<ReadinessManifest>(() => {
@@ -1280,6 +1287,26 @@ function CoworkPage() {
       ? compat
       : emptyCompatManifest(baselineBinding)
 
+    /**
+     * Instructions a subtree owes this run, delivered once each.
+     *
+     * One tracker for the whole run, shared by the main agent and every
+     * subagent: they are working in one repository under one manifest, and a
+     * child that had to be told again — or worse, was never told — would be
+     * following different rules from its parent in the same directory.
+     */
+    const deliveredScopes = new Set<string>()
+    const scopedInstructionsFor = (path: string) => {
+      const folder = current?.folder ?? null
+      // Nested scopes are repository-relative; a tool may name either form.
+      const relative = folder ? relativeToRoot(folder, path) : path
+      const owed = nestedChainFor(runCompat, relative).filter(
+        (one) => !deliveredScopes.has(one.scope)
+      )
+      for (const one of owed) deliveredScopes.add(one.scope)
+      return owed
+    }
+
     // Warm the sandbox probe: the transport's prompt and tool set read it
     // synchronously via sandboxEnforces().
     await getSandboxStatus()
@@ -1469,6 +1496,7 @@ function CoworkPage() {
                   kind: 'subagent',
                   authority: runAuthority,
                 }),
+              scopedInstructions: scopedInstructionsFor,
               onTodo: async (input) => {
                 const result = applyTodoOp(
                   useCoworkSessions
@@ -1611,6 +1639,9 @@ function CoworkPage() {
                           kind: 'shell',
                           authority: runAuthority,
                         }),
+                      // The same resolver and the same tracker the parent
+                      // uses: one repository, one manifest, one set of rules.
+                      scopedInstructions: scopedInstructionsFor,
                       onTodo: async () => ({
                         output:
                           'The todo list belongs to the agent that dispatched you.',
@@ -2036,6 +2067,32 @@ function CoworkPage() {
                     onMcpConsent={(server, allowed) => {
                       const probe = mcpProbes.find((one) => one.name === server)
                       if (probe) void setMcpConsent(probe, allowed)
+                    }}
+                  />
+                  <ClaudeSkillRootsSettings
+                    roots={skillRoots}
+                    onChange={(next) =>
+                      useClaudeCompat.getState().setSkillRoots(next)
+                    }
+                    janData={janDataFolder}
+                    onRescan={rescanCompat}
+                    pickFolder={async () => {
+                      const picked = await serviceHub
+                        .dialog()
+                        .open({ directory: true })
+                      return typeof picked === 'string' ? picked : null
+                    }}
+                    // The backend is the only thing that can tell a directory
+                    // from a file, or from a path that has since gone.
+                    confirmDirectory={async (path) => {
+                      const dataFolder = janDataFolder
+                      if (!dataFolder) return false
+                      try {
+                        await projectListDir(dataFolder, path, '.')
+                        return true
+                      } catch {
+                        return false
+                      }
                     }}
                   />
                 </div>

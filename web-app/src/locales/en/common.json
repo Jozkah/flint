@@ -1133,6 +1133,24 @@
     "mcpWithdraw": "Withdraw",
     "mcpEnv": "Environment variables requested",
     "mcpNoEnv": "No environment variables requested",
-    "inertNote": "Detected and never executed."
+    "inertNote": "Detected and never executed.",
+    "roots": {
+      "title": "Claude skill folders",
+      "description": "Jan can read Claude-compatible skills from folders you choose here. It reads SKILL.md files and their resources; it never runs scripts it finds, and this grants no access to any repository.",
+      "add": "Add folder…",
+      "remove": "Remove",
+      "rescan": "Rescan",
+      "none": "No folders added.",
+      "reject": {
+        "too-broad": "Too broad to scan. Choose a folder, not a drive.",
+        "jan-data": "That is Jan’s own storage, not your skills.",
+        "duplicate": "Already covered by a folder you added.",
+        "overlaps": "Contains a folder you already added.",
+        "missing": "That folder is not there any more."
+      },
+      "unreadable": "Could not be read",
+      "discovered": "Skills found",
+      "noneFound": "No skills in this folder"
+    }
   }
 }

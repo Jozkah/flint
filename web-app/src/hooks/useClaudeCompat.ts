@@ -61,6 +61,16 @@ type CompatState = {
   runtimeFor: (
     folder: string | null | undefined
   ) => Record<string, McpRuntimeRecord>
+  /**
+   * Directories the user approved as user-level skill sources.
+   *
+   * Persisted, because approving one grants nothing: Jan reads `SKILL.md`
+   * files and their resources, and never executes anything it finds. A
+   * repository cannot add one — these arrive only from the native picker, by
+   * the user's own hand.
+   */
+  skillRoots: string[]
+  setSkillRoots: (roots: string[]) => void
 }
 
 export const useClaudeCompat = create<CompatState>()(
@@ -70,6 +80,7 @@ export const useClaudeCompat = create<CompatState>()(
       mcpConsent: {},
       mcpFingerprints: {},
       mcpRuntime: {},
+      skillRoots: [],
 
       enabledFor: (folder) => (folder ? Boolean(get().folders[folder]) : false),
 
@@ -118,6 +129,8 @@ export const useClaudeCompat = create<CompatState>()(
         }),
 
       runtimeFor: (folder) => (folder ? (get().mcpRuntime[folder] ?? {}) : {}),
+
+      setSkillRoots: (roots) => set({ skillRoots: roots }),
     }),
     {
       name: localStorageKey.claudeCompat,
@@ -125,8 +138,12 @@ export const useClaudeCompat = create<CompatState>()(
       // Async storage requires skipHydration + explicit rehydrate in
       // hydrateBackendStores() once the ServiceHub is ready.
       skipHydration: true,
-      // The opt-in, and nothing else. Consent is absent here on purpose.
-      partialize: (state) => ({ folders: state.folders }),
+      // The opt-in and the approved roots. Consent is absent on purpose:
+      // allowing a server means allowing a process, and that is not restored.
+      partialize: (state) => ({
+        folders: state.folders,
+        skillRoots: state.skillRoots,
+      }),
     }
   )
 )

@@ -271,7 +271,7 @@ describe('nested CLAUDE.md files', () => {
     ])
   })
 
-  it('reports each one as scoped rather than applying it', async () => {
+  it('records the subtree each one governs', async () => {
     const probes = await discoverCompatibility(nested, ROOT)
     const manifest = resolveCompatibility(probes, {
       binding,
@@ -284,14 +284,19 @@ describe('nested CLAUDE.md files', () => {
       confinement: NO_LOCAL_CONFINEMENT,
     })
     const scoped = manifest.components.filter(
-      (one) => one.state === 'unsupported-scoping'
+      (one) => one.type === 'instructions' && one.scope
     )
 
+    // Named by where they are, and carrying the subtree they govern — which
+    // is what lets a path resolve its own chain later.
     expect(scoped.map((one) => one.name)).toEqual([
       'packages/api/CLAUDE.md',
       'packages/web/CLAUDE.md',
     ])
-    expect(scoped.every((one) => one.content === undefined)).toBe(true)
+    expect(scoped.map((one) => one.scope)).toEqual([
+      'packages/api',
+      'packages/web',
+    ])
   })
 
   // The failure this prevents: every subtree's rules applied to every file.

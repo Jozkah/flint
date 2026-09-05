@@ -110,6 +110,12 @@ export type CompatComponent = {
   /** Tools, skills or servers this needs, once resolved. */
   dependencies?: string[]
   /**
+   * The subtree this component governs, for a nested instruction file.
+   *
+   * Absent means it applies to the whole repository.
+   */
+  scope?: string
+  /**
    * The part safe to put in front of the model.
    *
    * Present only for components whose text is meant to be read as
@@ -247,21 +253,83 @@ export function classifyCompatInstruction(
   if (probe.content.trim().length === 0) {
     return { ...base, state: 'unsupported', reason: 'empty' }
   }
-  if (probe.scope) {
-    // Reported with its scope so the inventory is complete and honest, and
-    // never ingested: see `unsupported-scoping`.
-    return {
-      ...base,
-      state: 'unsupported-scoping',
-      reason: `applies to ${probe.scope}/ only, which Jan cannot reproduce`,
-    }
-  }
   return {
     ...base,
     state: opts.enabled ? 'active' : 'available',
     content: opts.enabled ? probe.content : undefined,
+    // Carried so every consumer can tell a repository-wide file from one that
+    // governs a subtree. Absent means the whole repository.
+    ...(probe.scope ? { scope: probe.scope } : {}),
   }
 }
+
+// ---------------------------------------------------------------------------
+// Directory-scoped instructions
+
+/**
+ * One instruction file, and the subtree it governs.
+ *
+ * A nested `CLAUDE.md` applies to work under its own directory and nowhere
+ * else. Jan builds one system prompt per run, so the nested files cannot all
+ * be poured into it — that would apply each subtree's rules to every file,
+ * which is the opposite of what the file means. Instead the applicable chain
+ * is resolved per path, at the moment a path is actually touched.
+ */
+export type ScopedInstruction = {
+  /** Repository-relative directory. Empty for the repository-wide file. */
+  scope: string
+  name: string
+  content: string
+}
+
+/** Is `dir` this path's own directory or one of its ancestors? */
+const governs = (dir: string, path: string): boolean => {
+  if (dir === '') return true
+  const scope = dir.replace(/\/+$/, '')
+  // Component-wise: `packages/api` must not govern `packages/api-legacy`.
+  return path === scope || path.startsWith(`${scope}/`)
+}
+
+/**
+ * The instruction chain that applies to one repository-relative path.
+ *
+ * Shallowest first, so a deeper file is read after — and therefore overrides —
+ * the one above it. The repository-wide file is always first when there is
+ * one; a sibling subtree's file never appears at all.
+ */
+export function scopedInstructionChain(
+  manifest: CompatibilityManifest,
+  relPath: string
+): ScopedInstruction[] {
+  const path = relPath.replace(/^\/+/, '').replace(/\\/g, '/')
+  return activeComponents(manifest, 'instructions')
+    .filter(
+      (one): one is CompatComponent & { content: string } =>
+        Boolean(one.content) && governs(one.scope ?? '', path)
+    )
+    .map((one) => ({
+      scope: one.scope ?? '',
+      name: one.name,
+      content: one.content,
+    }))
+    .sort(
+      (a, b) =>
+        (a.scope === '' ? 0 : a.scope.split('/').length) -
+        (b.scope === '' ? 0 : b.scope.split('/').length)
+    )
+}
+
+/**
+ * The nested part of that chain: what the prompt has not already said.
+ *
+ * The repository-wide file is in the system prompt from the first token. Only
+ * the subtree files have to be delivered when work reaches their subtree.
+ */
+export const nestedChainFor = (
+  manifest: CompatibilityManifest,
+  relPath: string
+): ScopedInstruction[] =>
+  scopedInstructionChain(manifest, relPath).filter((one) => one.scope !== '')
 
 /**
  * Which instruction file wins where they disagree.
@@ -837,8 +905,11 @@ export function compatInstructionBlocks(
   manifest: CompatibilityManifest
 ): { name: string; content: string }[] {
   return activeComponents(manifest, 'instructions')
-    .filter((one): one is CompatComponent & { content: string } =>
-      Boolean(one.content)
+    .filter(
+      (one): one is CompatComponent & { content: string } =>
+        // Repository-wide only. A subtree's file is delivered when work
+        // reaches that subtree; putting it here would apply it everywhere.
+        Boolean(one.content) && !one.scope
     )
     .map((one) => ({ name: one.name, content: one.content }))
 }

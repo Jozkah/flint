@@ -5,7 +5,9 @@ const ROOT = '/home/dev/obs-forwarder'
 const SIBLING = '/home/dev/note-py'
 const store = () => useClaudeCompat.getState()
 
-beforeEach(() => useClaudeCompat.setState({ folders: {}, mcpConsent: {} }))
+beforeEach(() =>
+  useClaudeCompat.setState({ folders: {}, mcpConsent: {}, skillRoots: [] })
+)
 
 describe('switching compatibility on', () => {
   // Detection is not activation: a repository full of Claude configuration is
@@ -65,7 +67,9 @@ describe('allowing an MCP server', () => {
       useClaudeCompat.getState()
     )
 
-    expect(persisted).toEqual({ folders: { [ROOT]: true } })
+    // The opt-in and the approved skill folders survive a restart, because
+    // neither grants anything. The consent does not appear at all.
+    expect(persisted).toEqual({ folders: { [ROOT]: true }, skillRoots: [] })
     expect(JSON.stringify(persisted)).not.toContain('docs')
   })
 })

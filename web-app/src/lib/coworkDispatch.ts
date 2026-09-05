@@ -77,6 +77,21 @@ export type DispatchContext = {
   /** Runs a nested subagent to completion. */
   onTask: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
   /**
+   * Instructions that govern one path's subtree and have not been delivered.
+   *
+   * A nested `CLAUDE.md` applies under its own directory. There is one system
+   * prompt per run, so a subtree's rules cannot be in it from the start
+   * without also applying everywhere else — which is the opposite of what the
+   * file says. Instead they are handed over the first time work reaches that
+   * subtree, before anything there is changed.
+   *
+   * Returns the chain still owed for `path`, and records it as delivered.
+   * Absent when there are no nested files, which is the ordinary case.
+   */
+  scopedInstructions?: (
+    path: string
+  ) => { scope: string; name: string; content: string }[]
+  /**
    * Registers a shell that is running right now, and returns its release.
    *
    * A run releases its own hold when its stream ends, and cancelling a run
@@ -141,6 +156,59 @@ function skillRefusal(
       `\`${toolName}\` was not run: you were asked to use ${named}, and ` +
       'that is not in effect. Do not work around it. Say which skill is ' +
       'unavailable and what the user can do about it, then stop.',
+    isError: true,
+  }
+}
+
+/**
+ * The path a tool call is about to act on, where it names one.
+ *
+ * Deliberately only the declared argument. Guessing at paths inside a shell
+ * command would be a parser pretending to know what a command will touch; the
+ * sandbox is what actually bounds that, and a shell's scope comes from its
+ * working directory instead.
+ */
+function pathFromInput(input: unknown): string | null {
+  if (!input || typeof input !== 'object') return null
+  const record = input as Record<string, unknown>
+  for (const key of ['path', 'file_path', 'file', 'target', 'cwd']) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value
+  }
+  return null
+}
+
+/**
+ * Hand over a subtree's instructions and ask for the call again.
+ *
+ * A refusal rather than a warning attached to a completed write: the whole
+ * point of a scoped instruction file is that it governs the change, so the
+ * change has to happen after it has been read. The retry is explicit so the
+ * model does not treat this as a failure to work around.
+ */
+function scopedInstructionsOwed(
+  toolName: string,
+  path: string,
+  owed: { scope: string; name: string; content: string }[]
+): ToolOutcome {
+  const blocks = owed
+    .map((one) =>
+      [
+        `<project_instructions path="${one.scope}/${one.name}" applies_to="${one.scope}/">`,
+        one.content.trim(),
+        '</project_instructions>',
+      ].join('\n')
+    )
+    .join('\n\n')
+
+  return {
+    output:
+      `\`${toolName}\` was not run yet: \`${path}\` is under a directory with ` +
+      'its own instructions, which you had not been given. They are below, ' +
+      'they apply to everything under that directory, and they rank below ' +
+      '`JAN.md` and this system prompt where they disagree. Read them, then ' +
+      'make the same call again.\n\n' +
+      blocks,
     isError: true,
   }
 }
@@ -220,6 +288,16 @@ export async function dispatchCoworkTool(
         allowed = false
       }
       if (!allowed) return deniedByUser(toolName)
+    }
+  }
+
+  // Before the change, not after it: a mutation that lands and *then* reports
+  // the rules it should have followed has already not followed them.
+  if (PLAN_DENIED_TOOLS.has(toolName) && ctx.scopedInstructions) {
+    const target = pathFromInput(call.input)
+    if (target) {
+      const owed = ctx.scopedInstructions(target)
+      if (owed.length > 0) return scopedInstructionsOwed(toolName, target, owed)
     }
   }
 

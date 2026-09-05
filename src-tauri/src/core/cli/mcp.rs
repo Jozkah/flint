@@ -439,7 +439,12 @@ async fn connect_in(
             }
         }
         _ => {
-            let mut cmd = Command::new(&params.command);
+            // The CLI shares `extract_command_args` with the desktop, so an
+            // imported definition can reach here too. It goes through the same
+            // capability: there is no second, unconfined way to start a local
+            // MCP server.
+            let build = || {
+                let mut cmd = Command::new(&params.command);
             #[cfg(windows)]
             {
                 use std::os::windows::process::CommandExt;
@@ -458,9 +463,12 @@ async fn connect_in(
                     cmd.env(k, v);
                 }
             }
-            let (process, _stderr) = TokioChildProcess::builder(cmd)
-                .stderr(Stdio::null())
-                .spawn()
+                cmd
+            };
+            let launch = crate::core::mcp::launch::ConfinedMcpLaunch::prepare(&params, build)
+                .map_err(ConnectError::Failed)?;
+            let (process, _stderr) = launch
+                .spawn(Stdio::null())
                 .map_err(|e| ConnectError::Failed(format!("failed to spawn '{name}': {e}")))?;
             RunningServiceEnum::NoInit(
                 ()
