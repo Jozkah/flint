@@ -1053,6 +1053,12 @@
     "needsFolder": "Attach a folder first",
     "capabilityLoading": "Checking what this platform can enforce…",
     "capabilityFailed": "Couldn’t check whether this platform can enforce it",
+    "worktreeState": {
+      "missing": "This session's worktree is gone from disk. Access has returned to Review only; choose a mode again to make a new one.",
+      "corrupt": "This session's worktree is no longer a worktree of the attached repository. Access has returned to Review only.",
+      "branch-moved": "Someone moved this session's worktree onto another branch. Access has returned to Review only rather than writing into it.",
+      "identity-changed": "The attached folder is not the repository this worktree came from. Access has returned to Review only."
+    },
     "unsupportedPlatform": "This platform can’t confine changes to one folder",
     "busy": {
       "authorizing": "Finishing an authorization…",

@@ -7,6 +7,7 @@ import {
   decideMutation,
   effectiveAccess,
   rootsFor,
+  runCarries,
   supports,
   type AccessCapability,
   type AccessMode,
@@ -193,9 +194,9 @@ describe('editing the selected folder', () => {
   it.each(['review-only', 'managed-worktree'] as const)(
     'is not required by %s',
     (access) => {
-      expect(decideMutation(input({ access, consent: undefined })).allowed).toBe(
-        true
-      )
+      expect(
+        decideMutation(input({ access, consent: undefined })).allowed
+      ).toBe(true)
     }
   )
 })
@@ -376,5 +377,87 @@ describe('a managed worktree in force', () => {
     expect(effective.access).toBe('review-only')
     expect(effective.downgradedFrom).toBe('managed-worktree')
     expect(effective.reason).toBe('capability-unknown')
+  })
+})
+
+describe('what a run actually carries', () => {
+  const grant = { grantId: 'grant-1' }
+
+  it('reads the worktree, not the checkout, in a managed session', () => {
+    const effective = effectiveAccess({
+      persisted: 'managed-worktree',
+      capability: ALL,
+      capabilityKnown: true,
+      grant: { sessionId: 's1', folder: WORKTREE, grantId: 'grant-1' },
+      binding: BINDING,
+      worktreePath: WORKTREE,
+    })
+
+    const carried = runCarries(effective, {
+      folder: BINDING.folder,
+      grantId: grant.grantId,
+    })
+    // The worktree is the run's whole world. Reading the source alongside it
+    // would have the agent reasoning about one tree and changing another.
+    expect(carried.readRoot).toBe(WORKTREE)
+    expect(carried.writeGrant).toBe('grant-1')
+  })
+
+  it('carries no authority in review only, whatever grant exists', () => {
+    const effective = effectiveAccess({
+      persisted: 'review-only',
+      capability: ALL,
+      capabilityKnown: true,
+      grant: { sessionId: 's1', folder: BINDING.folder, grantId: 'grant-1' },
+      binding: BINDING,
+      worktreePath: null,
+    })
+
+    const carried = runCarries(effective, {
+      folder: BINDING.folder,
+      grantId: grant.grantId,
+    })
+    expect(carried.readRoot).toBe(BINDING.folder)
+    expect(carried.writeGrant).toBeNull()
+  })
+
+  it('carries no authority when the mode was downgraded', () => {
+    // The downgrade has to mean something rather than merely display
+    // something: a session whose worktree is gone must not still be handing
+    // its grant to every tool call.
+    const effective = effectiveAccess({
+      persisted: 'managed-worktree',
+      capability: ALL,
+      capabilityKnown: true,
+      grant: { sessionId: 's1', folder: WORKTREE, grantId: 'grant-1' },
+      binding: BINDING,
+      worktreePath: null,
+    })
+
+    expect(effective.destination).toBe('sandbox')
+    expect(
+      runCarries(effective, { folder: BINDING.folder, grantId: 'grant-1' })
+        .writeGrant
+    ).toBeNull()
+  })
+
+  it('writes the attached folder only when that is the destination', () => {
+    const effective = effectiveAccess({
+      persisted: 'edit-folder',
+      capability: ALL,
+      capabilityKnown: true,
+      grant: { sessionId: 's1', folder: BINDING.folder, grantId: 'grant-1' },
+      binding: BINDING,
+      worktreePath: null,
+    })
+
+    const carried = runCarries(effective, {
+      folder: BINDING.folder,
+      grantId: 'grant-1',
+    })
+    expect(carried.readRoot).toBe(BINDING.folder)
+    expect(carried.writeGrant).toBe('grant-1')
+    // And the three destinations stay distinct all the way through.
+    expect(effective.destination).toBe('repository')
   })
 })

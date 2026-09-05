@@ -157,6 +157,30 @@ export function rootsFor(
   return { readRoot: input.folder, writeRoot: null, destination: 'sandbox' }
 }
 
+/**
+ * What a run carries: the tree it reads, and the authority it holds.
+ *
+ * Derived from the effective access in one place, so every destination is
+ * distinct wherever it is read. The mistake this exists to prevent is subtle
+ * and was real: a run that read the attached folder while its access said
+ * "managed worktree" wrote to a sandbox and reported an isolated checkout, and
+ * every part of that is a sentence someone would believe.
+ *
+ * The grant travels only when there is somewhere to write. A session holding a
+ * live grant whose access has been downgraded — capability lost, binding
+ * changed, worktree gone — carries none, which is what makes the downgrade
+ * mean something rather than merely display something.
+ */
+export function runCarries(
+  effective: Pick<EffectiveAccess, 'readRoot' | 'writeRoot' | 'destination'>,
+  input: { folder: string | null; grantId: string | null }
+): { readRoot: string | null; writeGrant: string | null } {
+  return {
+    readRoot: effective.readRoot ?? input.folder,
+    writeGrant: effective.writeRoot ? input.grantId : null,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The decision
 
@@ -346,7 +370,8 @@ export function effectiveAccess(input: {
     }
   }
 
-  if (!input.capability.directEdit) return sandbox('edit-folder', 'no-capability')
+  if (!input.capability.directEdit)
+    return sandbox('edit-folder', 'no-capability')
   if (!input.grant) return sandbox('edit-folder', 'no-grant')
   // A grant belongs to one session and one folder. Anything else is a grant
   // for a run that is not this one.

@@ -162,7 +162,7 @@ import {
   emptyManifest as emptyCompatManifest,
 } from '@/lib/claudeCompat'
 import { effectiveEnabled, useSkills } from '@/hooks/useSkills'
-import { accessOf, effectiveAccess } from '@/lib/coworkAccess'
+import { accessOf, effectiveAccess, runCarries } from '@/lib/coworkAccess'
 import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
 import {
   COMPATIBILITY_INSTRUCTION_FILES,
@@ -1366,6 +1366,29 @@ function CoworkPage() {
     if (text && current?.title === 'New session')
       store.setTitle(sid, text.slice(0, 40))
 
+    /**
+     * A managed worktree still being the thing this session recorded.
+     *
+     * Checked before the run rather than trusted from the record, because
+     * everything that invalidates one happens outside Jan: the directory
+     * deleted, the branch moved by someone working in it, the repository
+     * re-cloned at the same path. Writing into a stale binding is how a run
+     * edits a checkout nobody thinks it is editing, so a worktree that is not
+     * `ready` ends the session's authority and the run does not start. The
+     * user is told which of those happened, because the right response differs
+     * for each.
+     */
+    if (effective.destination === 'managed') {
+      const health = await useCoworkWorktrees.getState().check(sid)
+      if (health && health !== 'ready') {
+        await useDirectEditGrants.getState().revokeSession(sid)
+        useCoworkWorktrees.getState().forget(sid)
+        useCoworkSessions.getState().setAccess(sid, 'review-only')
+        toast.error(t(`common:coworkAccess.worktreeState.${health}`))
+        return
+      }
+    }
+
     setStoppedBy(null)
     setRunError(undefined)
     setLiveUsage(null)
@@ -1525,8 +1548,22 @@ function CoworkPage() {
      * The id is authority-bearing and goes only to the backend command: never
      * into a prompt, a message, an activity row, or anything shown to anyone.
      */
-    const runGrant =
-      effective.access === 'edit-folder' ? (liveGrant?.grantId ?? null) : null
+    const carried = runCarries(effective, {
+      folder: current?.folder ?? null,
+      grantId: liveGrant?.grantId ?? null,
+    })
+    const runGrant = carried.writeGrant
+    /**
+     * The tree this run reads, frozen with everything else.
+     *
+     * From the effective access rather than the attached folder, because they
+     * are not always the same tree: a managed worktree is the run's whole
+     * world — read and written — and reading the source checkout alongside it
+     * would let the agent reason about one tree while changing another.
+     * Review and Ask read the attached folder and write nowhere, which is the
+     * same value with no grant beside it.
+     */
+    const runReadRoot = carried.readRoot
     /**
      * Whether a team may give a task a checkout of its own, frozen with the
      * rest of the run.
@@ -1544,7 +1581,7 @@ function CoworkPage() {
       allowSubagents: true,
       webSearch,
       workspacePath,
-      readOnlyFolder: current?.folder ?? null,
+      readOnlyFolder: runReadRoot,
       // Read from the run's frozen snapshot, not re-derived here: the model
       // must be told exactly what the gate and the ledger will act on.
       folderAccess: promptFolderAccess(origins),
@@ -1660,7 +1697,7 @@ function CoworkPage() {
        */
       destination?: Destination
     ): Promise<ToolOutcome> => {
-      const childFolder = destination?.path ?? current?.folder ?? null
+      const childFolder = destination?.path ?? runReadRoot
       const childGrant = destination ? destination.grantId : runGrant
       const childOwner = destination?.ownerId ?? sid
       const resolved = resolveSubagent(
@@ -1914,7 +1951,7 @@ function CoworkPage() {
           dispatch: (call) =>
             dispatchCoworkTool(call, {
               sessionId: sid,
-              readOnlyFolder: current?.folder ?? null,
+              readOnlyFolder: runReadRoot,
               mode: runMode,
               writeGrant: runGrant,
               // Snapshotted with the run: a skill the user asked for and did
