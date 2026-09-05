@@ -58,7 +58,24 @@ export type TeamTask = {
    * refused before anything starts.
    */
   isolate?: boolean
+  /**
+   * How many extra attempts this task may have if it fails.
+   *
+   * Bounded and opt-in. A child that failed because the model refused, or
+   * because a tool was denied, will fail the same way every time — so retrying
+   * by default would burn a run's budget reproducing one answer. It is worth
+   * having for the failures that are not deterministic (a flaky command, a
+   * truncated stream), and worth capping because nothing here can tell the two
+   * apart.
+   *
+   * Never applied to a cancellation: stopping a team is a decision, and
+   * retrying past it would be ignoring it.
+   */
+  retries?: number
 }
+
+/** The most extra attempts a task may ask for. */
+export const MAX_TASK_RETRIES = 2
 
 export type TaskStatus =
   | 'pending'
@@ -391,6 +408,9 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
       dependsOn: stringList(one.depends_on),
       writes: stringList(one.writes),
       ...(one.isolate === true ? { isolate: true } : {}),
+      ...(typeof one.retries === 'number' && one.retries > 0
+        ? { retries: Math.min(Math.floor(one.retries), MAX_TASK_RETRIES) }
+        : {}),
     })
   }
   return tasks
@@ -519,8 +539,19 @@ export async function runTeam(
       else deps.signal.addEventListener('abort', stop, { once: true })
     }
 
-    const work = deps
-      .runTask(task, child.signal)
+    /**
+     * Run it, and try again if it failed and asked to be retried.
+     *
+     * Only a failure, and only while the team is still going: a cancelled
+     * child is a decision, and a retry past it would be ignoring the decision.
+     */
+    const attempt = async (left: number): Promise<TaskResult> => {
+      const result = await deps.runTask(task, child.signal)
+      if (result.ok || left <= 0 || child.signal.aborted) return result
+      return attempt(left - 1)
+    }
+
+    const work = attempt(Math.min(task.retries ?? 0, MAX_TASK_RETRIES))
       .then(
         (result) => {
           results.push(result)

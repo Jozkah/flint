@@ -147,6 +147,14 @@ describe('every surface describing the same run', () => {
     expect(entries.find((one) => one.path === 'mine.ts')?.destination).toBe(
       'managed'
     )
+    // And the completion summary names which worktree, because "in the
+    // worktree" is true of a specific one.
+    expect(summarizeRun(entries, managed.baseline, managed).tree).toBe(WORKTREE)
+  })
+
+  it('does not name a tree when the changes are in the attached folder', () => {
+    const { entries } = describeRun(editing)
+    expect(summarizeRun(entries, editing.baseline, editing).tree).toBeNull()
   })
 
   it('says read-only for a managed session whose worktree is gone', () => {

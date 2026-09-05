@@ -356,6 +356,15 @@ export type CompletionSummary = {
   /** Differences with no Git evidence either way. */
   unknown: string[]
   baseline: BaselineState | 'none'
+  /**
+   * The tree these paths are relative to, when it is not the attached folder.
+   *
+   * A managed run's "Jan changed in the worktree" is true of a specific
+   * worktree, and someone reading the summary has to be able to go and look at
+   * it. Null for a run whose changes are in the folder the session is attached
+   * to, where naming it again would add nothing.
+   */
+  tree: string | null
 }
 
 const DESTINATION_ORDER: ChangeDestination[] = [
@@ -376,7 +385,9 @@ const DESTINATION_ORDER: ChangeDestination[] = [
  */
 export function summarizeRun(
   entries: readonly OriginEntry[],
-  baseline: GitBaseline | null
+  baseline: GitBaseline | null,
+  /** The run's frozen snapshot, when the summary is for a live run. */
+  origins?: Pick<RunOrigins, 'tree' | 'destination'>
 ): CompletionSummary {
   const writes = entries.filter((one) => one.evidence === 'jan-write')
   const janWrites = DESTINATION_ORDER.map((destination) => ({
@@ -398,6 +409,10 @@ export function summarizeRun(
     observed: by('observed-in-run'),
     unknown: by('no-evidence'),
     baseline: baseline?.state ?? 'none',
+    // Only where it differs from the attached folder: a repository or sandbox
+    // run naming its tree again would be noise, and a managed one not naming
+    // it leaves the reader with nowhere to look.
+    tree: origins?.destination === 'managed' ? (origins.tree ?? null) : null,
   }
 }
 

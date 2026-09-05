@@ -1129,6 +1129,7 @@
       "sandbox": "Jan changed in the session workspace",
       "external": "Jan changed outside the attached folder"
     },
+    "inTree": "These paths are in {{tree}}, not in the folder this session is attached to.",
     "overExisting": "Already had uncommitted changes before this run, so only Jan’s edit is Jan’s:",
     "preExisting": "Already changed before this run. Not Jan’s:",
     "observed": "Appeared during this run. Nothing shows Jan caused these:",

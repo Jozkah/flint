@@ -544,6 +544,76 @@ describe('a team, through the real dispatch path', () => {
     expect(revoke.mock.calls.map((call) => call[0]).sort()).toEqual(owners)
   })
 
+  it('tries a failed task again when it asked to be retried', async () => {
+    let attempts = 0
+    streamText.mockImplementation(() => {
+      attempts += 1
+      return {
+        toUIMessageStream: () =>
+          chunkStream(
+            attempts === 1
+              ? [{ type: 'error', errorText: 'the connection dropped' }]
+              : textStep('worked the second time')
+          ),
+      }
+    })
+
+    const outcome = await runTeam([task('a', { retries: 1 })], {
+      runTask: runOne(),
+    })
+
+    expect(attempts).toBe(2)
+    expect(outcome.ok && outcome.report.allDone).toBe(true)
+  })
+
+  it('does not retry past a cancellation', async () => {
+    // Stopping a team is a decision. Retrying past it would be ignoring it.
+    const control = new AbortController()
+    let attempts = 0
+    streamText.mockImplementation(() => {
+      attempts += 1
+      control.abort()
+      return {
+        toUIMessageStream: () =>
+          chunkStream([{ type: 'error', errorText: 'stopped' }]),
+      }
+    })
+
+    await runTeam([task('a', { retries: 2 })], {
+      signal: control.signal,
+      runTask: runOne(),
+    })
+
+    expect(attempts).toBe(1)
+  })
+
+  it('caps how many times a task may be retried', () => {
+    const parsed = parseTeamRequest({
+      tasks: [{ id: 'a', description: 'x', retries: 99 }],
+    }) as TeamTask[]
+    expect(parsed[0].retries).toBe(2)
+  })
+
+  it('keeps a crashed child from taking the team with it', async () => {
+    // A child that throws is a failed task, not a failed team: the point of
+    // running several is that one going wrong does not take the rest.
+    modelSaying({ 'brief for b': [textStep('b carried on')] })
+    const outcome = await runTeam([task('a'), task('b')], {
+      runTask: async (one, signal) => {
+        if (one.id === 'a') throw new Error('the child crashed')
+        return runOne()(one, signal)
+      },
+    })
+
+    expect(outcome.ok).toBe(true)
+    if (!outcome.ok) return
+    expect(outcome.report.failed.map((r) => r.taskId)).toEqual(['a'])
+    expect(outcome.report.failed[0].output).toContain('the child crashed')
+    expect(outcome.report.completed.map((r) => r.taskId)).toEqual(['b'])
+    // And the report says so rather than reporting two of two done.
+    expect(outcome.report.allDone).toBe(false)
+  })
+
   it('accepts the shape the tool actually advertises', async () => {
     // The bridge from what a model emits to what the orchestrator runs, so the
     // schema and the parser cannot drift apart unnoticed.

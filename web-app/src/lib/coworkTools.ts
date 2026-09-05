@@ -170,6 +170,13 @@ function teamTool(subagentNames: string[]): Tool {
                 items: { type: 'string' },
                 description: 'Files this task expects to change.',
               },
+              retries: {
+                type: 'number',
+                description:
+                  'Extra attempts if this task fails, at most 2. Only worth ' +
+                  'setting for work that can fail transiently; a refusal fails ' +
+                  'the same way every time.',
+              },
               isolate: {
                 type: 'boolean',
                 description:

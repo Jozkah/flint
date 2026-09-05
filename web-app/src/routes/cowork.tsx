@@ -750,7 +750,7 @@ function CoworkPage() {
       })
       useCoworkOrigins.getState().record(sessionId, {
         entries,
-        summary: summarizeRun(entries, baseline),
+        summary: summarizeRun(entries, baseline, origins),
         at: Date.now(),
       })
     },
