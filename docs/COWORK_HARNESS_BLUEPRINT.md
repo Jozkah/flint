@@ -24,10 +24,10 @@ production code is changed by this document.**
 | 1 — managed worktree enforcement | **Built.** `core/agent/worktree.rs`, grant names the worktree, capability follows the backend. |
 | 2 — context measurement | **Built.** Measured from the run's own payload; per-category breakdown. |
 | 3 — first-turn inspect → propose | **Built.** Classifier widens only; review mode is the enforcement. |
-| 4 — compatibility ingestion | Policy decided (5.4). Not implemented. |
-| 5 — coordinated agent teams | Not started. |
+| 4 — compatibility ingestion | Largely pre-existing on `main`; the envelope is now sealed so ingested text cannot escape it. |
+| 5 — coordinated agent teams | **Coordination layer built.** `lib/coworkTeam.ts`: dependencies, conflicts, deterministic reports. |
 | 6 — checkpoints and rewind | **Built.** `core/agent/checkpoint.rs`; a managed tree restores, a user's checkout gets a patch. |
-| 7 — parity UX review | Not started. |
+| 7 — parity UX review | **Smoke harness extended** and now runs off macOS. |
 | 8 — verification and platform evidence | Largely pre-existing (5.8); blocked on runners (6.3). |
 
 Each built phase turned out smaller than this document first estimated, and
@@ -635,7 +635,9 @@ the three lines that loaded it into the desktop branch of the hub, and removing
 two dangling `vi.mock` calls. `yarn build:web` goes from failing to exit 0, and
 `services/updater/__tests__/tauri.test.ts` stops being a third failing file.
 
-**b. Two tests cannot pass under the default runner.**
+**b. Two tests cannot pass under the default runner.** *(Fixed: the specs now
+skip themselves when `JAN_RESTART_FIXTURE` is unset, so `yarn test:web` is
+green and the smoke script still runs them.)*
 `web-app/src/hooks/__tests__/restart/processA.spec.ts` and `processB.spec.ts`
 are a two-process fixture: they require `JAN_RESTART_FIXTURE` to name a shared
 file, and are driven by `scripts/cowork-compat-smoke.sh`, which sets it and runs
