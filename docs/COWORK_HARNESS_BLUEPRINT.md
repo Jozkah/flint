@@ -509,12 +509,35 @@ claims about what a person sees, and no headless check can settle them.
 
 **Effort:** 2–3 days.
 
-### 5.8 Phase 8 — verification and platform evidence
+### 5.8 Phase 8 -- verification and platform evidence
 
-See §6. The classification scheme from the request —
-runtime-verified / unit-tested-only / construction-only / detected-but-unsupported /
-externally-blocked — should be applied per claim and recorded in the phase's
+See section 6. The classification scheme -- runtime-verified /
+unit-tested-only / construction-only / detected-but-unsupported /
+externally-blocked -- should be applied per claim and recorded in the phase's
 report. The rule that matters: a skipped test is never reported as support.
+
+**Much less of this phase is outstanding than the epic implies.**
+`.github/workflows/cowork-sandbox-runtime.yml` already exists and is written to
+the standard this phase is asking for:
+
+- **Linux (bubblewrap)** installs `bwrap`, then *verifies the backend is really
+  there* before running any confinement check -- `command -v bwrap`, a version
+  probe, and a real `bwrap --ro-bind / / --unshare-all` execution -- with the
+  comment noting that without it "a runner missing bubblewrap would pass every
+  confinement" test vacuously. Then it exercises sandbox policy against real
+  confined processes and a confined MCP launch with a real handshake.
+- **Windows** is titled "refusal is the outcome": it records what the platform
+  can enforce, asserts edit-folder is reported unsupported and imports fail
+  closed, and checks path handling under Windows separators, casing and
+  **prefix siblings**.
+- **macOS (Seatbelt)** likewise confirms the backend before claiming it.
+
+That is the fail-closed, prove-the-backend-first discipline this phase exists to
+establish, already in place. What remains for Phase 8 is extending these jobs to
+cover the new surfaces each phase adds -- worktree lifecycle, context
+measurement, the first-turn gate -- not building the platform harness. The one
+genuine blocker is runner allocation (6.3), which is an infrastructure problem,
+not a coverage gap.
 
 ---
 
@@ -646,8 +669,18 @@ Every check on this PR fails 1–4 seconds after starting, with no runner assign
 (`runner_id: 0`, `runner_name: ""`). The same is true of `main`'s own pushes —
 `Rust Check` on `bdbf078` and `Cowork sandbox runtime` both fail the same way.
 This is runner allocation in this fork, not a code failure, and no re-run fixes
-it. Until it is resolved, the Linux/Windows platform evidence Phase 8 wants
-cannot be produced by CI here at all.
+it.
+
+The point is worth stating precisely, because it is easy to mistake for a
+missing-CI problem. The per-platform jobs Phase 8 wants **already exist and are
+correctly written** (5.8): `Cowork sandbox runtime` defines Linux-bubblewrap,
+Windows-fail-closed and macOS-Seatbelt jobs, and `Linter & Test` defines
+`test-on-ubuntu`, `test-on-macos` and `test-on-windows-pr`. Every one of them
+fails without a runner ever being assigned, across `ubuntu-latest`,
+`macos-latest` and `windows-latest` alike. So the platform evidence cannot be
+produced here today, but nothing needs to be built for it to be produced the
+moment runners are available -- this is an Actions availability or billing
+question for whoever owns the fork, not work for this epic.
 
 ## 7. Recommended sequence
 
