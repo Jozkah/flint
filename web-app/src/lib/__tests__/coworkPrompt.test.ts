@@ -224,3 +224,42 @@ describe('describing the attached folder', () => {
     }
   })
 })
+
+describe('the opening turn', () => {
+  const base = {
+    workspacePath: '/ws',
+    readOnlyFolder: '/repo',
+    planMode: false,
+    bashAvailable: true,
+    subagentNames: [],
+    webSearch: false,
+  }
+
+  it('tells the model to inspect and propose rather than act', () => {
+    const prompt = buildCoworkSystemPrompt({ ...base, openingInspection: true })
+
+    expect(prompt).toContain('OPENING TURN (read only)')
+    expect(prompt).toContain('continue_proposal')
+  })
+
+  it('says nothing about it on an ordinary turn', () => {
+    // The posture is one turn's, not a mode: it must not leak into the next
+    // request once the user has answered.
+    const prompt = buildCoworkSystemPrompt({ ...base, openingInspection: false })
+
+    expect(prompt).not.toContain('OPENING TURN')
+  })
+
+  it('puts the opening instruction after plan mode when both apply', () => {
+    // The more specific instruction is the one the model should read last.
+    const prompt = buildCoworkSystemPrompt({
+      ...base,
+      planMode: true,
+      openingInspection: true,
+    })
+
+    expect(prompt.indexOf('OPENING TURN')).toBeGreaterThan(
+      prompt.indexOf('PLAN MODE')
+    )
+  })
+})

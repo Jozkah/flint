@@ -32,6 +32,13 @@ export type CoworkRunConfig = CoworkToolOptions & {
    * a run is going applies to the next one.
    */
   compatInstructions?: readonly { name: string; content: string }[]
+  /**
+   * The opening turn reads and proposes rather than acting.
+   *
+   * Decided per request from what the user typed, and frozen with the run like
+   * everything else here.
+   */
+  openingInspection?: boolean
 }
 
 /**
@@ -103,6 +110,7 @@ export class CoworkChatTransport extends CustomChatTransport {
       projectInstructions: this.config.projectInstructions,
       compatInstructions: this.config.compatInstructions,
       planMode: this.config.planMode,
+      openingInspection: this.config.openingInspection,
       bashAvailable: sandboxEnforces(),
       subagentNames: this.config.allowSubagents ? this.config.subagentNames : [],
       webSearch: this.config.webSearch,

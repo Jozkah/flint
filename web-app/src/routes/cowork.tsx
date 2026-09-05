@@ -177,6 +177,11 @@ import {
   type ReadinessManifest,
 } from '@/lib/coworkReadiness'
 import { measureContextPack } from '@/lib/coworkContext'
+import {
+  CONTINUE_QUESTION_ID,
+  decideOpening,
+  recordFor,
+} from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
 import { dispatchCoworkTool } from '@/lib/coworkDispatch'
 import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
@@ -1349,7 +1354,30 @@ function CoworkPage() {
     const webSearch = useWebSearchConfig.getState().webSearchEnabled
     // Read once, with the session this run is bound to: a mode flipped
     // mid-run would leave the advertised tools and the dispatcher disagreeing.
-    const runMode = modeOf(current ?? {})
+    const storedMode = modeOf(current ?? {})
+    /**
+     * How to treat this turn.
+     *
+     * Decided from what the user typed plus where the session already is, so a
+     * plain instruction is followed and an opening remark is answered with a
+     * proposal instead of an edit.
+     */
+    const opening = decideOpening({
+      folder: current?.folder ?? null,
+      priorTurns: current?.turns.length ?? 0,
+      text: text ?? '',
+      record: recordFor(current?.continuity ?? null, current?.folder ?? null),
+    })
+    const inspecting = opening === 'inspect-and-propose'
+    /**
+     * Review for an inspecting turn, whatever the session is set to.
+     *
+     * The classifier decides what to *ask* for; this is what makes the answer
+     * unable to write. Both halves are needed: a classifier that misreads a
+     * request must not be able to turn into an edit, which is the same doubling
+     * plan mode uses when it both withholds a tool and refuses it by name.
+     */
+    const runMode = inspecting ? 'review' : storedMode
     /**
      * The write authority this run carries, frozen with everything else.
      *
@@ -1379,6 +1407,7 @@ function CoworkPage() {
       // switched on, oversized, or pointing outside the folder contributes
       // nothing here.
       compatInstructions: compatInstructionBlocks(runCompat),
+      openingInspection: inspecting,
     })
     await transport.refreshTools()
     // Now the count is a fact rather than a guess, so the readiness card can
@@ -1476,6 +1505,15 @@ function CoworkPage() {
       transport.measureContext(messages, configuredContextTokens(selectedModel))
     )
 
+    // Recorded before the turn runs, so a crash mid-inspection is resumed as an
+    // inspection rather than as work nobody authorised.
+    if (current?.folder) {
+      useCoworkSessions.getState().setContinuity(sid, {
+        state: inspecting ? 'inspecting' : 'executing',
+        folder: current.folder,
+      })
+    }
+
     let outcome: RunOutcome | null = null
     let thrown: Pick<RunOutcome, 'stoppedBy' | 'errorText'> | null = null
     try {
@@ -1560,8 +1598,30 @@ function CoworkPage() {
                     return
                   }
                   setAsk({ requestId: callId, request: parsed })
+                  // The opening turn ends on a named question. Recording the
+                  // wait is what makes a session reopened at this point restore
+                  // an unanswered proposal rather than resume into work.
+                  const proposal = parsed.questions.find(
+                    (one) => one.id === CONTINUE_QUESTION_ID
+                  )
+                  if (proposal && current?.folder) {
+                    useCoworkSessions.getState().setContinuity(sid, {
+                      state: 'awaiting-continuation',
+                      folder: current.folder,
+                      proposal: proposal.question,
+                    })
+                  }
                   askResolvers.current.set(callId, (answers) => {
                     setAsk(null)
+                    // An answered proposal is no longer outstanding. Declining
+                    // is recorded as a decision, not as work to pick up later.
+                    if (proposal && current?.folder) {
+                      useCoworkSessions.getState().setContinuity(sid, {
+                        state: answers ? 'executing' : 'cancelled',
+                        folder: current.folder,
+                        proposal: proposal.question,
+                      })
+                    }
                     resolve(renderAskResult(answers))
                   })
                 }),

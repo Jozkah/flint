@@ -7,6 +7,8 @@
  * budget runs out.
  */
 
+import { INSPECT_AND_PROPOSE_ADDENDUM } from '@/lib/coworkContinuity'
+
 const IDENTITY =
   'You are Jan, an agent working on the user’s behalf inside the Jan desktop app. ' +
   'Work autonomously: investigate with your tools before answering, and prefer ' +
@@ -64,6 +66,14 @@ export type CoworkPromptOptions = {
   /** The attached project's current git branch, when one could be read. */
   gitBranch?: string | null
   planMode: boolean
+  /**
+   * This is the opening turn of a repository-bound session and the request did
+   * not say what to change, so the turn reads and proposes rather than acting.
+   *
+   * Separate from `planMode`: plan mode is a mode the user chose and stays in,
+   * this is one turn's posture, decided per request and gone once they answer.
+   */
+  openingInspection?: boolean
   /** False when no OS sandbox enforces, in which case `bash` is not offered. */
   bashAvailable: boolean
   subagentNames: string[]
@@ -212,6 +222,9 @@ export function buildCoworkSystemPrompt(opts: CoworkPromptOptions): string {
     )
   }
   if (opts.planMode) blocks.push(PLAN_ADDENDUM)
+  // After plan mode, so that when both apply the opening instruction is the
+  // more specific one the model reads last.
+  if (opts.openingInspection) blocks.push(INSPECT_AND_PROPOSE_ADDENDUM)
   // Last, so the project's own instructions are the final word the model
   // reads before the conversation starts.
   const compat = (opts.compatInstructions ?? []).filter((one) =>
