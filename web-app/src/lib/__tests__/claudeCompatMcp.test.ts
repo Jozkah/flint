@@ -219,3 +219,80 @@ describe('what readiness is told', () => {
     )
   })
 })
+
+/**
+ * An imported definition is marked as imported.
+ *
+ * The backend refuses to start an imported server that carries no
+ * confinement, so this mark is what turns a missing one into a refusal
+ * instead of a program a repository chose running with the user's whole
+ * filesystem in reach.
+ */
+describe('what the backend is told about an import', () => {
+  const local: McpProbe = {
+    name: 'files',
+    source: 'project',
+    path: `${ROOT}/.mcp.json`,
+    transport: 'stdio',
+    command: 'npx',
+    args: ['-y', 'server'],
+    envNames: ['API_TOKEN'],
+  }
+
+  const confinement = {
+    workspace: '/jan/sessions/session-a',
+    repository: ROOT,
+    allowedEnv: ['API_TOKEN'],
+  }
+
+  it('marks every imported definition, local or remote', async () => {
+    const rt = runtime()
+    await startImportedMcp(local, rt, track().on, confinement)
+    await startImportedMcp({ ...remote, name: 'files' }, rt, track().on)
+
+    for (const call of (rt.activate as ReturnType<typeof vi.fn>).mock.calls) {
+      expect(call[1]).toMatchObject({ janImported: true })
+    }
+  })
+
+  it('sends the confinement the session built', async () => {
+    const rt = runtime()
+    await startImportedMcp(local, rt, track().on, confinement)
+
+    expect((rt.activate as ReturnType<typeof vi.fn>).mock.calls[0][1]).toMatchObject({
+      janConfinement: confinement,
+    })
+  })
+
+  // Without one the backend refuses, which is the point: the mark travels
+  // even when the confinement does not.
+  it('still marks it imported when no confinement could be built', async () => {
+    const rt = runtime()
+    await startImportedMcp(local, rt, track().on)
+
+    const config = (rt.activate as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(config).toMatchObject({ janImported: true })
+    expect(config).not.toHaveProperty('janConfinement')
+  })
+
+  // Names only, and only the approved ones. Values are supplied through Jan's
+  // own handling and never travel in the config.
+  it('carries environment names and no values', async () => {
+    const rt = runtime()
+    await startImportedMcp(local, rt, track().on, confinement)
+
+    const config = (rt.activate as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    expect(config.janConfinement.allowedEnv).toEqual(['API_TOKEN'])
+    expect(config.env).toEqual({})
+    expect(JSON.stringify(config)).not.toMatch(/sk-|secret/i)
+  })
+
+  it('gives an imported server no write root unless the session holds one', async () => {
+    const rt = runtime()
+    await startImportedMcp(local, rt, track().on, confinement)
+
+    expect(
+      (rt.activate as ReturnType<typeof vi.fn>).mock.calls[0][1].janConfinement
+    ).not.toHaveProperty('writableRepository')
+  })
+})

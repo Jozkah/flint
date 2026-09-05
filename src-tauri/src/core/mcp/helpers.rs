@@ -797,7 +797,17 @@ pub(crate) fn ready_to_spawn(
     match params.confinement.as_ref() {
         // A server the user configured themselves keeps the behaviour it has
         // always had: they chose the program.
-        None => Ok(cmd),
+        None if !params.imported => Ok(cmd),
+        // Imported, and nothing said how to confine it. Every path that starts
+        // a server comes through here — including the restart loop, which
+        // replays a stored config — so this is where an imported server with
+        // no confinement stops, rather than starting unconfined because some
+        // caller forgot to attach one.
+        None => Err(
+            "an imported MCP server was started without a confinement; refusing to run it \
+             unconfined"
+                .to_string(),
+        ),
         Some(confinement) => confined_mcp_command(cmd, params, confinement),
     }
 }

@@ -346,20 +346,6 @@ function CoworkPage() {
     availableTools: advertisedToolNames,
   })
 
-  const { setConsent: setMcpConsent, revalidate: revalidateMcp } =
-    useImportedMcp(folder)
-
-  /**
-   * A definition edited after it was allowed is a different program.
-   *
-   * Checked whenever the scan produces new definitions: the consent is
-   * withdrawn and the running server stopped, rather than left up under a
-   * permission that was given for something else.
-   */
-  useEffect(() => {
-    void revalidateMcp(mcpProbes)
-  }, [mcpProbes, revalidateMcp])
-
   const readiness = useMemo<ReadinessManifest>(() => {
     const registry = mergeSkillRegistry(compat, {
       available: availableSkills.map((skill) => ({ name: skill.name })),
@@ -437,6 +423,45 @@ function CoworkPage() {
   sessionIdRef.current = session?.id ?? null
   const [subagentDefs, setSubagentDefs] = useState<SubagentDefinition[]>([])
   const workspacePath = useSessionWorkspacePath(session?.id)
+
+  /**
+   * Jan's own data folder, so an imported MCP server can be kept out of it.
+   *
+   * Read once: it does not change while the app is running, and an imported
+   * server has no business in the app's storage whatever the repository that
+   * named it would like.
+   */
+  const [janDataFolder, setJanDataFolder] = useState<string | null>(null)
+  useEffect(() => {
+    void serviceHub
+      .app()
+      .getJanDataFolder()
+      .then((path) => setJanDataFolder(path ?? null))
+      .catch(() => setJanDataFolder(null))
+  }, [serviceHub])
+
+  const { setConsent: setMcpConsent, revalidate: revalidateMcp } =
+    useImportedMcp({
+      folder,
+      workspacePath,
+      dataFolder: janDataFolder,
+      // A write root only where the session actually holds one: an imported
+      // server never gets authority the run itself does not have.
+      writableRepository:
+        effective.access === 'edit-folder' ? effective.writeRoot : null,
+    })
+
+  /**
+   * A definition edited after it was allowed is a different program.
+   *
+   * Checked whenever the scan produces new definitions: the consent is
+   * withdrawn and the running server stopped, rather than left up under a
+   * permission that was given for something else.
+   */
+  useEffect(() => {
+    void revalidateMcp(mcpProbes)
+  }, [mcpProbes, revalidateMcp])
+
   // The step just finished, so the counter tracks a run instead of jumping once
   // at the end. Falls back to the committed usage between runs.
   const [liveUsage, setLiveUsage] = useState<Usage | null>(null)

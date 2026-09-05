@@ -39,6 +39,12 @@ pub struct McpServerConfig {
     pub headers: serde_json::Map<String, Value>,
     /// Set for an imported server; `None` for one the user configured.
     pub confinement: Option<McpConfinement>,
+    /// Did this definition come from a repository rather than from the user?
+    ///
+    /// Carried separately from [`Self::confinement`] so the two can disagree,
+    /// which is the whole point: an imported server with no confinement is a
+    /// programming error, and it must fail closed rather than start.
+    pub imported: bool,
 }
 
 /// Parse a raw `mcp_config.json` server entry into typed connection params.
@@ -70,11 +76,44 @@ pub fn extract_command_args(config: &Value) -> Option<McpServerConfig> {
         args,
         envs,
         headers,
-        // Parsed configuration never carries it: confinement is decided by
-        // the session that imported the server, not by the file that
-        // described it. A repository that could put this in its own JSON
-        // would be choosing its own sandbox.
-        confinement: None,
+        // Not read from the repository's own file: Jan writes these onto the
+        // config it builds when a session activates an imported server. A
+        // `.mcp.json` never reaches this function verbatim — the importer
+        // emits only command, args, env, type and url — so a repository
+        // cannot describe its own sandbox or declare itself trusted.
+        confinement: parse_confinement(obj),
+        imported: obj
+            .get("janImported")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+    })
+}
+
+/// Read the confinement Jan attached when a session activated this server.
+fn parse_confinement(obj: &serde_json::Map<String, Value>) -> Option<McpConfinement> {
+    let value = obj.get("janConfinement")?.as_object()?;
+    let path = |key: &str| {
+        value
+            .get(key)
+            .and_then(Value::as_str)
+            .map(std::path::PathBuf::from)
+    };
+    Some(McpConfinement {
+        workspace: path("workspace")?,
+        repository: path("repository"),
+        writable_repository: path("writableRepository"),
+        jan_data: path("janData"),
+        allowed_env: value
+            .get("allowedEnv")
+            .and_then(Value::as_array)
+            .map(|names| {
+                names
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default(),
     })
 }
 

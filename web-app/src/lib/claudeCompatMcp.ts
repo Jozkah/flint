@@ -1,6 +1,7 @@
 import {
   toJanMcpConfig,
   type CompatState,
+  type McpConfinementRequest,
   type McpProbe,
 } from '@/lib/claudeCompat'
 
@@ -93,10 +94,18 @@ export const consentStillMatches = (
 export async function startImportedMcp(
   probe: McpProbe,
   runtime: McpRuntime,
-  onState: (record: McpRuntimeRecord) => void
+  onState: (record: McpRuntimeRecord) => void,
+  /**
+   * How the backend must confine this server, for a local one.
+   *
+   * Absent for a remote server, which starts no process here. Absent for a
+   * local one means the backend refuses it: an imported server with no
+   * confinement fails closed rather than running unconfined.
+   */
+  confinement?: McpConfinementRequest
 ): Promise<McpRuntimeRecord> {
   const fingerprint = fingerprintMcp(probe)
-  const config = toJanMcpConfig(probe)
+  const config = toJanMcpConfig(probe, confinement)
   if (!config) {
     const record: McpRuntimeRecord = {
       state: 'unsupported',

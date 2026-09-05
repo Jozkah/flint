@@ -587,14 +587,45 @@ export function classifyCompatMcp(
  * only the names, so the user can see what the server will be given and supply
  * the values through Jan's own secret handling.
  */
-export function toJanMcpConfig(probe: McpProbe): {
+export type McpConfinementRequest = {
+  /** The session workspace: readable and writable. */
+  workspace: string
+  /** The attached repository, readable. */
+  repository?: string
+  /** Writable, only where a live direct-edit grant says so. */
+  writableRepository?: string
+  /** Jan's data folder, hidden from the server. */
+  janData?: string
+  /** Environment names the user approved. Nothing else is passed through. */
+  allowedEnv: string[]
+}
+
+export function toJanMcpConfig(
+  probe: McpProbe,
+  confinement?: McpConfinementRequest
+): {
   command: string
   args: string[]
   env: Record<string, string>
   type: 'stdio' | 'http' | 'sse'
   url?: string
+  /**
+   * Marks this as a definition a repository supplied.
+   *
+   * The backend refuses to start an imported server that carries no
+   * confinement, so this is what makes a missing one fail closed instead of
+   * launching with the user's whole filesystem in reach. Written by Jan, never
+   * copied from the repository's file — the fields below are the only ones
+   * this function emits, so a `.mcp.json` cannot declare itself trusted.
+   */
+  janImported: true
+  janConfinement?: McpConfinementRequest
 } | null {
   const transport = probe.transport ?? (probe.command ? 'stdio' : null)
+  const marks = {
+    janImported: true as const,
+    ...(confinement ? { janConfinement: confinement } : {}),
+  }
   if (transport === 'stdio') {
     if (!probe.command) return null
     return {
@@ -602,11 +633,19 @@ export function toJanMcpConfig(probe: McpProbe): {
       args: [...(probe.args ?? [])],
       env: {},
       type: 'stdio',
+      ...marks,
     }
   }
   if (transport === 'http' || transport === 'sse') {
     if (!probe.url) return null
-    return { command: '', args: [], env: {}, type: transport, url: probe.url }
+    return {
+      command: '',
+      args: [],
+      env: {},
+      type: transport,
+      url: probe.url,
+      ...marks,
+    }
   }
   return null
 }

@@ -1068,6 +1068,7 @@ mod mcp_confinement_tests {
             timeout: None,
             headers: serde_json::Map::new(),
             confinement: None,
+            imported: false,
         }
     }
 
@@ -1212,5 +1213,89 @@ mod mcp_confinement_tests {
             text.contains("approved-value"),
             "an approved variable must still reach the server: {text}"
         );
+    }
+
+    /// Fail closed at the launcher, not at the caller.
+    ///
+    /// Every path that starts a server comes through `ready_to_spawn` —
+    /// including the restart loop, which replays a stored config. An imported
+    /// server whose confinement was never attached stops here rather than
+    /// starting with the user's whole filesystem in reach because some caller
+    /// forgot.
+    #[test]
+    fn an_imported_server_with_no_confinement_is_refused() {
+        use super::super::helpers::ready_to_spawn;
+
+        let mut p = params(&[]);
+        p.imported = true;
+        p.confinement = None;
+
+        let err =
+            ready_to_spawn(plain(), &p).expect_err("an imported server must not start unconfined");
+
+        assert!(err.contains("unconfined"), "{err}");
+    }
+
+    #[test]
+    fn a_user_configured_server_still_starts_unchanged() {
+        use super::super::helpers::ready_to_spawn;
+
+        let mut p = params(&[]);
+        p.imported = false;
+        p.confinement = None;
+
+        let cmd = ready_to_spawn(plain(), &p).expect("a user's own server is untouched");
+
+        assert_eq!(
+            cmd.as_std().get_program(),
+            std::ffi::OsStr::new("/usr/bin/node")
+        );
+    }
+
+    /// The confinement is read from what Jan attached, never from the
+    /// repository's own file.
+    #[test]
+    fn confinement_is_parsed_from_the_configuration_jan_builds() {
+        use super::super::models::extract_command_args;
+
+        let config = serde_json::json!({
+            "command": "node",
+            "args": [],
+            "janImported": true,
+            "janConfinement": {
+                "workspace": "/tmp/jan-session",
+                "repository": "/home/dev/obs-forwarder",
+                "allowedEnv": ["API_TOKEN"]
+            }
+        });
+
+        let parsed = extract_command_args(&config).expect("parse");
+
+        assert!(parsed.imported);
+        let confinement = parsed.confinement.expect("confinement");
+        assert_eq!(
+            confinement.workspace,
+            std::path::PathBuf::from("/tmp/jan-session")
+        );
+        assert_eq!(confinement.allowed_env, vec!["API_TOKEN".to_string()]);
+        assert!(
+            confinement.writable_repository.is_none(),
+            "no write root unless one was granted"
+        );
+    }
+
+    /// An ordinary server carries neither, and is unaffected.
+    #[test]
+    fn an_ordinary_configuration_is_neither_imported_nor_confined() {
+        use super::super::models::extract_command_args;
+
+        let parsed = extract_command_args(&serde_json::json!({
+            "command": "node",
+            "args": []
+        }))
+        .expect("parse");
+
+        assert!(!parsed.imported);
+        assert!(parsed.confinement.is_none());
     }
 }

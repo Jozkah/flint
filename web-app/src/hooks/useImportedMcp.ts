@@ -32,7 +32,16 @@ const janRuntime = (): McpRuntime => {
   }
 }
 
-export function useImportedMcp(folder: string | null) {
+export function useImportedMcp(input: {
+  folder: string | null
+  /** The session workspace an imported server would run in. */
+  workspacePath: string | null
+  /** Jan's data folder, hidden from any server started here. */
+  dataFolder: string | null
+  /** The repository, writable, only where a live grant says so. */
+  writableRepository: string | null
+}) {
+  const { folder, workspacePath, dataFolder, writableRepository } = input
   /**
    * Allow one server and bring it up, or withdraw it and take it down.
    *
@@ -60,11 +69,40 @@ export function useImportedMcp(folder: string | null) {
       const fingerprint = fingerprintMcp(probe)
       store.setMcpConsent(folder, probe.name, true)
       store.setMcpFingerprint(folder, probe.name, fingerprint)
-      await startImportedMcp(probe, janRuntime(), (record) =>
-        useClaudeCompat.getState().setMcpRuntime(folder, probe.name, record)
+
+      /**
+       * How the backend must confine a local server.
+       *
+       * Built here, from the session's own authority — never from the
+       * repository's file. Without a workspace there is nothing to confine it
+       * to, so none is sent and the backend refuses to start it, which is the
+       * right outcome: an imported server with no confinement must fail closed.
+       */
+      const local = (probe.transport ?? (probe.command ? 'stdio' : null)) === 'stdio'
+      const confinement =
+        local && workspacePath
+          ? {
+              workspace: workspacePath,
+              ...(folder ? { repository: folder } : {}),
+              // Only where the session actually holds direct-edit authority.
+              ...(writableRepository
+                ? { writableRepository }
+                : {}),
+              ...(dataFolder ? { janData: dataFolder } : {}),
+              // Names only. Values are supplied through Jan's own handling.
+              allowedEnv: [...(probe.envNames ?? [])],
+            }
+          : undefined
+
+      await startImportedMcp(
+        probe,
+        janRuntime(),
+        (record) =>
+          useClaudeCompat.getState().setMcpRuntime(folder, probe.name, record),
+        confinement
       )
     },
-    [folder]
+    [folder, workspacePath, dataFolder, writableRepository]
   )
 
   /**
