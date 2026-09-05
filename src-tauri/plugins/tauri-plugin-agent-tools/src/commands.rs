@@ -145,6 +145,49 @@ pub async fn session_workspace_path(
     Ok(dir.to_string_lossy().to_string())
 }
 
+/// Can this platform confine both file tools and the shell to a project folder?
+///
+/// The UI asks before offering to edit a folder directly, so an option that
+/// could not be enforced is never shown rather than failing after the user
+/// confirms it.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub fn direct_edit_capability() -> bool {
+    crate::grants::capability()
+}
+
+/// Authorize this session to edit `folder`, returning an opaque grant id.
+///
+/// The id is what later runs carry. A path is never accepted at tool time, so
+/// nothing a model emits can widen or redirect what a run may write.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub async fn direct_edit_authorize(
+    data_folder: String,
+    session_id: String,
+    folder: String,
+) -> Result<String, AgentToolsError> {
+    // The session's own workspace, which the folder must not overlap.
+    let workspace =
+        workspace::ensure_session_workspace(Path::new(&data_folder), &session_id).await?;
+    Ok(crate::grants::authorize(
+        &session_id,
+        &folder,
+        &workspace,
+        Path::new(&data_folder),
+    )?)
+}
+
+/// Withdraw one grant. Succeeds whether or not it was still live.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub fn direct_edit_revoke(grant_id: String) -> bool {
+    crate::grants::revoke(&grant_id)
+}
+
+/// Withdraw every grant a session holds — detaching, switching, deleting.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub fn direct_edit_revoke_session(session_id: String) -> usize {
+    crate::grants::revoke_session(&session_id)
+}
+
 /// Delete a Cowork session's sandbox, with its scratch.
 #[cfg_attr(feature = "tauri", tauri::command)]
 pub async fn session_workspace_delete(
@@ -364,6 +407,7 @@ pub async fn execute_tool(
     enabled_skills: Option<Vec<String>>,
     allow_network: Option<bool>,
     read_only_project: Option<String>,
+    write_grant: Option<String>,
     scope: Option<WorkspaceScope>,
     call_id: Option<String>,
 ) -> Result<ToolResult, AgentToolsError> {
@@ -376,6 +420,7 @@ pub async fn execute_tool(
         enabled_skills,
         allow_network,
         read_only_project,
+        write_grant,
         scope,
         call_id,
         None,
@@ -399,6 +444,7 @@ pub async fn execute_tool_streaming(
     enabled_skills: Option<Vec<String>>,
     allow_network: Option<bool>,
     read_only_project: Option<String>,
+    write_grant: Option<String>,
     scope: Option<WorkspaceScope>,
     call_id: Option<String>,
     on_output: tauri::ipc::Channel<ToolOutputChunk>,
@@ -413,6 +459,7 @@ pub async fn execute_tool_streaming(
         enabled_skills,
         allow_network,
         read_only_project,
+        write_grant,
         scope,
         call_id,
         Some(sink),
@@ -430,6 +477,13 @@ async fn execute_tool_inner(
     enabled_skills: Option<Vec<String>>,
     allow_network: Option<bool>,
     read_only_project: Option<String>,
+    // An opaque grant id from `direct_edit_authorize`, naming a folder the user
+    // confirmed for this session. Not a path: a path arriving here could be
+    // anything the caller chose, whereas an id only resolves to the folder the
+    // grant was issued for, and only in the session it was issued to. `None` is
+    // every run that has not been authorized, which is the unchanged
+    // sandbox-only behaviour.
+    write_grant: Option<String>,
     scope: Option<WorkspaceScope>,
     call_id: Option<String>,
     sink: Option<crate::tools::OutputSink>,
@@ -454,6 +508,17 @@ async fn execute_tool_inner(
         )?],
         None => Vec::new(),
     };
+    // Resolved against this thread, so a grant issued to another session — or
+    // one already revoked — authorizes nothing and the run simply writes to its
+    // own workspace. Validation happened when the grant was issued; what
+    // matters here is that it is still live and still ours.
+    let write_roots: Vec<PathBuf> = write_grant
+        .as_deref()
+        .and_then(|id| crate::grants::resolve(id, &thread_id))
+        .into_iter()
+        .collect();
+    let grants = SessionGrants::default().with_write_roots(write_roots.clone());
+
     let tool = lookup(&name)
         .ok_or_else(|| AgentToolsError::from(format!("unknown built-in tool '{name}'")))?;
 
@@ -464,7 +529,7 @@ async fn execute_tool_inner(
         Some(&scratch),
         &read_roots,
         &ToolPermissions::default(),
-        &SessionGrants::default(),
+        &grants,
         true,
     ) {
         Decision::Allow => {}
@@ -528,7 +593,8 @@ async fn execute_tool_inner(
         .with_confined_writes(true)
         .with_mask_root(Path::new(&data_folder))
         .with_scratch_root(&scratch)
-        .with_read_roots(&read_roots);
+        .with_read_roots(&read_roots)
+        .with_write_roots(&write_roots);
     if let Some(id) = call_id.as_deref() {
         ctx = ctx.with_call_id(id);
     }
@@ -758,6 +824,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("a write inside the sandbox is allowed");
@@ -786,6 +853,7 @@ mod tests {
             None,
             "edit".into(),
             json!({"path": "a.txt", "edits": [{"old_string": "before", "new_string": "after"}]}),
+            None,
             None,
             None,
             None,
@@ -826,6 +894,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect_err("an escaping read must be refused");
@@ -855,6 +924,7 @@ mod tests {
                 None,
                 "write".into(),
                 json!({"path": path, "content": "x"}),
+                None,
                 None,
                 None,
                 None,
@@ -899,6 +969,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("a scratch write is the session scratch and must succeed");
@@ -916,6 +987,7 @@ mod tests {
             None,
             "write".into(),
             json!({"path": "ok.txt", "content": "x"}),
+            None,
             None,
             None,
             None,
@@ -953,6 +1025,7 @@ mod tests {
             None,
             "bash".into(),
             json!({"command": "echo hi"}),
+            None,
             None,
             None,
             None,
@@ -1000,6 +1073,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1032,6 +1106,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1053,6 +1128,7 @@ mod tests {
             None,
             "read".to_string(),
             json!({"path": "a.txt"}),
+            None,
             None,
             None,
             None,
@@ -1097,6 +1173,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect_err("a relative climb-out to a sibling thread must be refused");
@@ -1106,16 +1183,38 @@ mod tests {
             err.message
         );
 
-        // `/tmp` is the per-thread scratch: t1's scratch (written by its shell)
-        // is not visible to t2, whose own scratch is empty.
+        // `/tmp` is the per-thread scratch on Linux, where the bash sandbox binds
+        // it. Elsewhere it stays an ordinary host path outside every root this
+        // session may reach. Both are the same property from t2's side — it
+        // cannot read what t1 wrote — but they refuse differently: Linux serves
+        // an empty scratch and reports a missing file, while macOS and Windows
+        // refuse the path outright as a read escape. The assertion is therefore
+        // on the secret never arriving, not on which refusal was used.
         let one_scratch = crate::workspace::ensure_scratch_dir(t1).await.unwrap();
         std::fs::write(one_scratch.join("secret.txt"), b"classified").unwrap();
-        let out = execute_tool(
+        // Which spelling actually probes the isolation differs by platform.
+        // On Linux `/tmp` *is* the per-session scratch, so t2 asking for
+        // `/tmp/secret.txt` asks for its own empty one. Elsewhere there is no
+        // bind, and `/tmp` is refused as an escape whatever it holds — which
+        // would pass whether or not the sessions were isolated. So off Linux
+        // the test names t1's real scratch: correct code refuses it as an
+        // escape, and code that let sessions share a scratch would hand it
+        // over.
+        #[cfg(target_os = "linux")]
+        let target = "/tmp/secret.txt".to_string();
+        #[cfg(not(target_os = "linux"))]
+        let target = one_scratch
+            .join("secret.txt")
+            .to_string_lossy()
+            .into_owned();
+
+        let refusal = match execute_tool(
             df.clone(),
             t2.into(),
             None,
             "read".into(),
-            json!({"path": "/tmp/secret.txt"}),
+            json!({"path": target}),
+            None,
             None,
             None,
             None,
@@ -1123,11 +1222,20 @@ mod tests {
             None,
         )
         .await
-        .unwrap();
+        {
+            Ok(out) => {
+                assert!(
+                    out.is_error,
+                    "t2 must not read t1's scratch, got: {}",
+                    out.content
+                );
+                out.content
+            }
+            Err(e) => e.message,
+        };
         assert!(
-            out.is_error,
-            "t2 sees an empty scratch, got: {}",
-            out.content
+            !refusal.contains("classified"),
+            "t1's scratch leaked to t2: {refusal}"
         );
         let _ = std::fs::remove_dir_all(&data);
         let _ = crate::workspace::remove_scratch_dir(t1).await;
@@ -1152,6 +1260,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1168,6 +1277,7 @@ mod tests {
             None,
             "memory_read".into(),
             json!({"name": "prefs"}),
+            None,
             None,
             None,
             None,
@@ -1199,6 +1309,7 @@ mod tests {
             None,
             "read".into(),
             json!({"path": "../../memory/prefs.md"}),
+            None,
             None,
             None,
             None,
@@ -1259,7 +1370,8 @@ mod tests {
                     None,
                     None,
                     None,
-                    None
+                    None,
+                    None,
                 )
                 .await
                 .is_err(),
@@ -1286,6 +1398,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect_err("agent config must be hard-denied");
@@ -1307,6 +1420,7 @@ mod tests {
             None,
             "rm_rf".to_string(),
             json!({}),
+            None,
             None,
             None,
             None,
@@ -1388,6 +1502,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1401,6 +1516,7 @@ mod tests {
             None,
             "skill_read".into(),
             json!({"name": "deploy"}),
+            None,
             None,
             None,
             None,
@@ -1435,6 +1551,7 @@ mod tests {
             attached.clone(),
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1450,6 +1567,7 @@ mod tests {
             None,
             None,
             attached,
+            None,
             None,
             None,
         )
@@ -1486,6 +1604,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await;
         assert!(out.is_err() || out.unwrap().is_error);
@@ -1515,6 +1634,7 @@ mod tests {
             None,
             None,
             Some(inside.to_string_lossy().to_string()),
+            None,
             None,
             None,
         )

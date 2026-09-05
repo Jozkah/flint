@@ -33,8 +33,10 @@ export const localStorageKey = {
   pausedDownloads: 'paused-downloads',
   modelOverrides: 'model-overrides',
   // Value predates the Cowork rename; changing it would orphan saved sessions.
+  fileActivity: 'file-activity',
   coworkSessions: 'code-sessions',
   coworkActivity: 'cowork-activity',
+  claudeCompat: 'claude-compat',
 }
 
 export const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24

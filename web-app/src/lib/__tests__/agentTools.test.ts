@@ -135,6 +135,7 @@ describe('agentTools', () => {
       undefined,
       false,
       undefined,
+      undefined,
       'thread'
     )
 
@@ -148,6 +149,7 @@ describe('agentTools', () => {
       undefined,
       undefined,
       true,
+      undefined,
       undefined,
       'thread'
     )
@@ -183,6 +185,7 @@ describe('agentTools', () => {
       undefined,
       false,
       undefined,
+      undefined,
       'thread'
     )
   })
@@ -196,7 +199,9 @@ describe('agentTools', () => {
       diff: null,
     } as never)
     const { executeAgentTool } = await import('../agentTools')
-    await executeAgentTool('read', { path: 'a.txt' }, 'thread-1', '/home/u/repo')
+    await executeAgentTool('read', { path: 'a.txt' }, 'thread-1', {
+      readOnlyProject: '/home/u/repo',
+    })
     expect(executeTool).toHaveBeenLastCalledWith(
       '/data',
       'thread-1',
@@ -206,6 +211,7 @@ describe('agentTools', () => {
       undefined,
       false,
       '/home/u/repo',
+      undefined,
       'thread'
     )
   })
@@ -262,6 +268,7 @@ describe('agentTools', () => {
       undefined,
       false,
       undefined,
+      undefined,
       'thread'
     )
   })
@@ -291,5 +298,90 @@ describe('agentTools', () => {
     threadWorkspaceSweep.mockRejectedValue(new Error('nope'))
     const { sweepThreadWorkspaces } = await import('../agentTools')
     await expect(sweepThreadWorkspaces(['a'])).resolves.toBe(0)
+  })
+})
+
+/**
+ * The backend command takes its arguments positionally through the guest
+ * binding, and several of them are optional strings. `WorkspaceScope` is a
+ * string union, so a scope handed to the wrong slot type-checks and is
+ * silently accepted — which is exactly how the Cowork session scope once ended
+ * up in the write-grant position, leaving sessions running under the thread
+ * sweep that deletes their work.
+ *
+ * These assert the slots by name rather than trusting the order to stay right.
+ */
+describe('what reaches the backend command', () => {
+  const PARAMS = [
+    'dataFolder',
+    'threadId',
+    'name',
+    'args',
+    'project',
+    'enabledSkills',
+    'allowNetwork',
+    'readOnlyProject',
+    'writeGrant',
+    'scope',
+  ] as const
+
+  const callArgs = () => {
+    const args = executeTool.mock.calls.at(-1) ?? []
+    return Object.fromEntries(
+      PARAMS.map((name, i) => [name, args[i]])
+    ) as Record<(typeof PARAMS)[number], unknown>
+  }
+
+  beforeEach(() => {
+    vi.resetModules()
+    executeTool.mockReset().mockResolvedValue({
+      content: 'ok',
+      diff: null,
+      isError: false,
+    })
+    getJanDataFolder.mockReset().mockResolvedValue('/jan/data')
+  })
+
+  it('puts the session scope in the scope slot, not the grant slot', async () => {
+    const { executeAgentTool } = await import('@/lib/agentTools')
+
+    await executeAgentTool('read', { path: 'a' }, 's1', {
+      readOnlyProject: '/repo',
+      scope: 'session',
+    })
+
+    const args = callArgs()
+    expect(args.scope).toBe('session')
+    expect(args.writeGrant).toBeUndefined()
+  })
+
+  it('forwards a write grant in its own slot, leaving the scope intact', async () => {
+    const { executeAgentTool } = await import('@/lib/agentTools')
+
+    await executeAgentTool('write', { path: 'a', content: 'x' }, 's1', {
+      readOnlyProject: '/repo',
+      scope: 'session',
+      writeGrant: 'grant-1',
+    })
+
+    const args = callArgs()
+    expect(args.writeGrant).toBe('grant-1')
+    expect(args.scope).toBe('session')
+    expect(args.readOnlyProject).toBe('/repo')
+    expect(args.threadId).toBe('s1')
+  })
+
+  // A run that was never authorized must send nothing at all, rather than an
+  // empty string the backend would have to interpret.
+  it('sends no grant when the run holds none', async () => {
+    const { executeAgentTool } = await import('@/lib/agentTools')
+
+    await executeAgentTool('write', { path: 'a' }, 's1', {
+      readOnlyProject: '/repo',
+      scope: 'session',
+      writeGrant: null,
+    })
+
+    expect(callArgs().writeGrant).toBeUndefined()
   })
 })

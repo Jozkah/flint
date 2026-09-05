@@ -56,7 +56,69 @@ describe('CoworkWorkspacePill', () => {
       screen.getAllByText('common:workspace.readOnly').length
     ).toBeGreaterThan(0)
     expect(screen.getByText('dev')).toBeInTheDocument()
-    expect(screen.getByText('common:workspace.footnote')).toBeInTheDocument()
+    // The read-only contract is the badge's tooltip now that the popover is
+    // grouped; the badge itself carries the visible word.
+    expect(
+      screen.getByTitle('common:workspace.footnote')
+    ).toBeInTheDocument()
+  })
+
+  // The folder is read-only and writes land in the session sandbox. Saying
+  // otherwise — or saying nothing — is how a user comes to believe the agent
+  // is editing their project in place.
+  it('says where the agent’s changes actually go', async () => {
+    render(
+      <CoworkWorkspacePill
+        folder="/home/u/Projects/jan-app"
+        workspacePath="/var/sessions/abc"
+        onAttach={vi.fn()}
+        onDetach={vi.fn()}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /a11yWithFolder/ }))
+
+    expect(screen.getByText('common:workspace.writesTo')).toBeInTheDocument()
+    expect(screen.getByText('common:workspace.sandbox')).toBeInTheDocument()
+    expect(
+      screen.getByText('common:workspace.sandboxNote')
+    ).toBeInTheDocument()
+  })
+
+  it('says the sandbox does not exist yet before anything is written', async () => {
+    render(
+      <CoworkWorkspacePill
+        folder="/home/u/Projects/jan-app"
+        workspacePath={null}
+        onAttach={vi.fn()}
+        onDetach={vi.fn()}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /a11yWithFolder/ }))
+
+    expect(
+      screen.getByText('common:workspace.sandboxPending')
+    ).toBeInTheDocument()
+  })
+
+  it('keeps detaching apart from the other actions', async () => {
+    const onDetach = vi.fn()
+    render(
+      <CoworkWorkspacePill
+        folder="/home/u/Projects/jan-app"
+        onAttach={vi.fn()}
+        onDetach={onDetach}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /a11yWithFolder/ }))
+
+    const detach = screen.getByRole('button', {
+      name: 'common:workspace.detach',
+    })
+    // Destructive styling, not just position: it must not read as a peer of
+    // Open and Reveal.
+    expect(detach.className).toMatch(/destructive/)
+    await userEvent.click(detach)
+    expect(onDetach).toHaveBeenCalledTimes(1)
   })
 
   it('opens the folder and reveals it through the right opener calls', async () => {

@@ -19,6 +19,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import {
   bashJobsList,
+  projectListDir,
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { cn } from '@/lib/utils'
@@ -71,9 +72,46 @@ import {
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
 import { CoworkWorkspacePill } from '@/containers/CoworkWorkspacePill'
-import { CoworkPlanToggle } from '@/containers/CoworkPlanToggle'
+import { CoworkModeSelector } from '@/containers/CoworkModeSelector'
+import { CoworkAccessSelector } from '@/containers/CoworkAccessSelector'
+import { authorizeDirectEdit as runAuthorizeDirectEdit } from '@/lib/coworkDirectEdit'
+import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
+import type { Binding } from '@/lib/coworkReadiness'
+import {
+  acceptBaseline,
+  baselineFromStatus,
+  buildOriginLedger,
+  destinationOfOrigin,
+  evidenceLimit,
+  promptFolderAccess,
+  summarizeRun,
+  unavailableBaseline,
+  type GitBaseline,
+  type JanFileCall,
+  type RunOrigins,
+} from '@/lib/coworkOrigins'
+import {
+  authorityMayChange,
+  useCoworkActiveWork,
+  type WorkKind,
+} from '@/hooks/useCoworkActiveWork'
+import {
+  DirectEditConfirmDialog,
+  type DirectEditFacts,
+} from '@/containers/dialogs/DirectEditConfirmDialog'
+import { isReadOnly, modeOf } from '@/lib/coworkMode'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
 import { usePrompt } from '@/hooks/usePrompt'
+import { useFileActivity } from '@/hooks/useFileActivity'
+import {
+  deriveFromSubagent,
+  deriveFromTurns,
+  isChange,
+  type FileActivityEvent,
+  type FileOrigin,
+} from '@/lib/fileActivity'
+import { loadGitStatus } from '@/lib/coworkGit'
 import { awaitsModel } from '@/lib/agentActivity'
 import { artifactsFromParts } from '@/lib/coworkArtifacts'
 import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
@@ -104,8 +142,39 @@ import { useCoworkGitStatus } from '@/hooks/useCoworkGitStatus'
 import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
 import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
+import { CoworkRunSummary } from '@/containers/CoworkRunSummary'
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskCard } from '@/containers/CoworkAskCard'
+import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
+import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
+import { ClaudeSkillRootsSettings } from '@/containers/ClaudeSkillRootsSettings'
+import { useClaudeCompat } from '@/hooks/useClaudeCompat'
+import { useCompatManifest } from '@/hooks/useCompatManifest'
+import { useImportedMcp } from '@/hooks/useImportedMcp'
+import {
+  compatInstructionBlocks,
+  mergeSkillRegistry,
+  nestedChainFor,
+  manifestMatches as compatMatches,
+  emptyManifest as emptyCompatManifest,
+} from '@/lib/claudeCompat'
+import { effectiveEnabled, useSkills } from '@/hooks/useSkills'
+import { accessOf, effectiveAccess } from '@/lib/coworkAccess'
+import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
+import {
+  COMPATIBILITY_INSTRUCTION_FILES,
+  MAX_INSTRUCTION_BYTES,
+  NATIVE_INSTRUCTION_FILE,
+  bindingKey,
+  classifyInstruction,
+  measured,
+  parseSkillRequests,
+  resolveSkills,
+  unresolvedSkills,
+  type InstructionFile,
+  type InstructionProbe,
+  type ReadinessManifest,
+} from '@/lib/coworkReadiness'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
 import { dispatchCoworkTool } from '@/lib/coworkDispatch'
 import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
@@ -148,6 +217,10 @@ export const Route = createFileRoute(route.cowork as any)({
   component: CoworkPage,
 })
 
+/** Same shape the other Cowork surfaces use; kept local, as they do. */
+const messageOf = (e: unknown): string =>
+  e instanceof Error ? e.message : String(e)
+
 function CoworkPage() {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
@@ -160,9 +233,37 @@ function CoworkPage() {
     [sessions, currentId]
   )
   const folder = session?.folder ?? null
-  const planMode = session?.planMode ?? false
+  const mode = modeOf(session ?? {})
+
+  /**
+   * The one description of this run.
+   *
+   * Both the readiness card and the prompt are built from this, so they cannot
+   * end up describing different runs. It carries its binding, so a manifest
+   * left over from another folder or session is recognisable rather than
+   * merely stale-looking.
+   */
+  const [confirmDirectEdit, setConfirmDirectEdit] = useState(false)
+  /**
+   * The binding as it stands right now.
+   *
+   * A ref rather than the closure's copy: an authorization started before a
+   * folder switch has to compare against where the user *is*, not where they
+   * were when they pressed the button.
+   */
+  const bindingRef = useRef<{ sessionId: string | null; folder: string | null }>(
+    { sessionId: null, folder: null }
+  )
+  bindingRef.current = { sessionId: session?.id ?? null, folder }
+
+  // A confirmation is about one folder in one session. If either changes while
+  // it is open, the question no longer means what it said.
+  useEffect(() => {
+    setConfirmDirectEdit(false)
+  }, [session?.id, folder])
 
   const [running, setRunning] = useState(false)
+
   const [liveTurns, setLiveTurns] = useState<CoworkTurn[]>([])
   const liveTurnsRef = useRef<CoworkTurn[]>([])
   const [stoppedBy, setStoppedBy] = useState<RunOutcome['stoppedBy'] | null>(
@@ -173,8 +274,201 @@ function CoworkPage() {
   const [projectInstructions, setProjectInstructions] = useState<string | null>(
     null
   )
+  const [instructionFiles, setInstructionFiles] = useState<InstructionFile[]>([])
+  const { skills: availableSkills, enabled: enabledSkills } = useSkills(folder)
+  const composerPrompt = usePrompt((s) => s.prompt)
+  /**
+   * How many tools the last run advertised.
+   *
+   * Set when a run builds its tool set. Null before that, so the readiness
+   * card says the set has not been built rather than reporting a count.
+   */
+  const [advertisedToolCount, setAdvertisedToolCount] = useState<number | null>(
+    null
+  )
+  /**
+   * The names, not just the count.
+   *
+   * An imported agent's requested tools are intersected against these, so
+   * whether a definition is usable can be answered before it is launched
+   * rather than discovered when a call is refused mid-run.
+   */
+  const [advertisedToolNames, setAdvertisedToolNames] = useState<string[]>([])
+
+  const access = accessOf(session ?? {})
+  // Asked of the backend rather than assumed here: whether a folder can be
+  // edited depends on what the sandbox can confine, which only it knows.
+  const capabilityState = useDirectEditGrants((s) => s.capability)
+  const liveGrant = useDirectEditGrants((s) =>
+    session?.id ? s.bySession[session.id] : undefined
+  )
+  useEffect(() => {
+    void useDirectEditGrants.getState().refreshCapability()
+  }, [])
+
+  /**
+   * What this session may actually do — the stored preference reconciled with
+   * the backend's capability and the grant it is really holding.
+   *
+   * One derivation, read by the readiness card and the prompt, so the screen
+   * cannot describe a destination the dispatcher would not use.
+   */
+  const effective = effectiveAccess({
+    persisted: access,
+    capability: {
+      managedWorktree: false,
+      directEdit: capabilityState.known && capabilityState.directEdit,
+    },
+    capabilityKnown: capabilityState.known,
+    grant: liveGrant ?? null,
+    binding: { sessionId: session?.id ?? null, folder },
+  })
+  /**
+   * This session's origin ledger, if a run has produced one.
+   *
+   * Keyed by session, so switching sessions shows that session's record and
+   * never the last run's. Withdrawing access does not touch it: a grant handed
+   * back changes what Jan may do next, not what already happened.
+   */
+  const runOrigins = useCoworkOrigins((s) =>
+    session?.id ? (s.bySession[session.id] ?? null) : null
+  )
+
+  /**
+   * This folder's Claude configuration, resolved for the binding on screen.
+   *
+   * Readiness shows it and the run freezes it; nothing scans for itself. Three
+   * scans at three moments is three different answers to "what is in force",
+   * and the user is shown one of them while another is used.
+   */
+  const skillRoots = useClaudeCompat((s) => s.skillRoots)
+  const { manifest: compat, mcpProbes, rescan: rescanCompat } = useCompatManifest({
+    binding: { sessionId: session?.id ?? null, folder },
+    enabledSkills: new Set(
+      effectiveEnabled(enabledSkills, availableSkills.map((s) => s.name))
+    ),
+    availableTools: advertisedToolNames,
+    // Only what the user approved through the picker. Never anything a
+    // repository named.
+    approvedUserSkillRoots: skillRoots,
+  })
+
+  const readiness = useMemo<ReadinessManifest>(() => {
+    const registry = mergeSkillRegistry(compat, {
+      available: availableSkills.map((skill) => ({ name: skill.name })),
+      enabled: new Set(
+        effectiveEnabled(
+          enabledSkills,
+          availableSkills.map((skill) => skill.name)
+        )
+      ),
+    })
+    const requested = parseSkillRequests(
+      composerPrompt,
+      registry.available.map((skill) => skill.name)
+    )
+    return {
+      binding: { sessionId: session?.id ?? null, folder },
+      folder,
+      branch: gitBranch,
+      mode,
+      // From the effective access, not the stored preference: a session that
+      // remembers "edit this folder" but holds no live grant writes to its
+      // sandbox, and the card has to say so.
+      writeDestination: effective.destination,
+      instructions: instructionFiles,
+      // The same merged registry the run resolves against, so the card cannot
+      // call a skill available that the run will report missing.
+      skills: resolveSkills(requested, registry),
+      // Null until a run has built its tool set: before that nothing knows
+      // the number, and stating one would be inventing it.
+      tools: { builtins: advertisedToolCount, mcpServers: [] },
+      model: {
+        id: selectedModel?.id ?? null,
+        supportsTools: selectedModel
+          ? Boolean(selectedModel.capabilities?.includes('tools'))
+          : null,
+      },
+      // From the run's own snapshot when there is one, so the card and the
+      // summary cannot disagree about whether anything is attributable.
+      evidence: evidenceLimit(runOrigins?.context.baseline ?? null),
+      // Nothing here is measured yet. A plausible number would be worse than
+      // an honest blank to someone deciding whether to trust the run.
+      context: {
+        categories: {
+          instructions: measured(null),
+          skills: measured(null),
+          repositoryMap: measured(null),
+          conversation: measured(null),
+          tools: measured(null),
+        },
+        budget: measured(null),
+      },
+    }
+  }, [
+    session?.id,
+    folder,
+    gitBranch,
+    mode,
+    instructionFiles,
+    effective.destination,
+    compat,
+    runOrigins?.context.baseline,
+    advertisedToolCount,
+    availableSkills,
+    enabledSkills,
+    composerPrompt,
+    selectedModel,
+  ])
+
+  // Read inside the instruction effect without making the session a dependency:
+  // the effect keys on the folder, and the ref is only used to notice that the
+  // session changed underneath a read that was already in flight.
+  /** The last run's resolved skills, so a retake does not lose them. */
+  const runSkillsRef = useRef<ReturnType<typeof resolveSkills>>([])
+  const sessionIdRef = useRef<string | null>(null)
+  sessionIdRef.current = session?.id ?? null
   const [subagentDefs, setSubagentDefs] = useState<SubagentDefinition[]>([])
   const workspacePath = useSessionWorkspacePath(session?.id)
+
+  /**
+   * Jan's own data folder, so an imported MCP server can be kept out of it.
+   *
+   * Read once: it does not change while the app is running, and an imported
+   * server has no business in the app's storage whatever the repository that
+   * named it would like.
+   */
+  const [janDataFolder, setJanDataFolder] = useState<string | null>(null)
+  useEffect(() => {
+    void serviceHub
+      .app()
+      .getJanDataFolder()
+      .then((path) => setJanDataFolder(path ?? null))
+      .catch(() => setJanDataFolder(null))
+  }, [serviceHub])
+
+  const { setConsent: setMcpConsent, revalidate: revalidateMcp } =
+    useImportedMcp({
+      folder,
+      workspacePath,
+      dataFolder: janDataFolder,
+      // A write root only where the session actually holds one: an imported
+      // server never gets authority the run itself does not have.
+      writableRepository:
+        effective.access === 'edit-folder' ? effective.writeRoot : null,
+    })
+
+  /**
+   * A definition edited after it was allowed is a different program.
+   *
+   * Checked whenever the scan produces new definitions: the consent is
+   * withdrawn and the running server stopped, rather than left up under a
+   * permission that was given for something else.
+   */
+  useEffect(() => {
+    void revalidateMcp(mcpProbes)
+  }, [mcpProbes, revalidateMcp])
+
   // The step just finished, so the counter tracks a run instead of jumping once
   // at the end. Falls back to the committed usage between runs.
   const [liveUsage, setLiveUsage] = useState<Usage | null>(null)
@@ -231,6 +525,81 @@ function CoworkPage() {
       }
     },
     [folder, workspacePath, openCode, session?.id]
+  )
+
+  /**
+   * Which root a path belongs to. The activity record needs this to separate
+   * the read-only project from the sandbox the agent writes into.
+   */
+  const originOfPath = useCallback(
+    (path: string): FileOrigin => {
+      if (folder && relativeToRoot(folder, path) !== path) return 'project'
+      if (workspacePath && relativeToRoot(workspacePath, path) !== path)
+        return 'sandbox'
+      return 'external'
+    },
+    [folder, workspacePath]
+  )
+
+  /**
+   * Write the run's origin ledger, from evidence rather than from the model.
+   *
+   * Successful Jan file calls are the only thing claimed outright. Everything
+   * else found differing at the end is either proved pre-existing by the
+   * baseline, reported as merely observed during the run, or — with no usable
+   * baseline — reported as unknown. A file being inside the repository is
+   * never itself treated as evidence of anything.
+   */
+  const recordOrigins = useCallback(
+    async (input: {
+      sessionId: string
+      origins: RunOrigins
+      events: readonly FileActivityEvent[]
+    }) => {
+      const { sessionId, origins, events } = input
+      const { baseline, binding, destination } = origins
+
+      const janCalls: JanFileCall[] = events
+        .filter((event) => isChange(event.operation) && event.ok)
+        .map((event) => ({
+          // Compared against Git's repo-relative paths, so a project path has
+          // to be expressed the same way before the two can be matched.
+          path:
+            event.origin === 'project' && binding.folder
+              ? relativeToRoot(binding.folder, event.path)
+              : event.path,
+          destination: destinationOfOrigin(event.origin, destination),
+          ok: true,
+        }))
+
+      let endDifferences: string[] = []
+      if (binding.folder) {
+        try {
+          const status = await loadGitStatus(binding.folder, 'all')
+          endDifferences = (status?.files ?? []).map((file) => file.path)
+        } catch {
+          // Nothing found is nothing claimed: a failed read leaves the ledger
+          // with Jan's own calls and no assertions about anything else.
+        }
+      }
+
+      const entries = buildOriginLedger({
+        baseline,
+        janCalls,
+        endDifferences,
+        destinationOf: (path) =>
+          destinationOfOrigin(
+            originOfPath(binding.folder ? `${binding.folder}/${path}` : path),
+            destination
+          ),
+      })
+      useCoworkOrigins.getState().record(sessionId, {
+        entries,
+        summary: summarizeRun(entries, baseline),
+        at: Date.now(),
+      })
+    },
+    [originOfPath]
   )
 
   // Source artifacts open as code, not as a plain-text preview dump.
@@ -310,29 +679,69 @@ function CoworkPage() {
       .catch(() => setGitBranch(null))
   }, [folder])
 
-  // `JAN.md` at the attached root: the one instructions file Jan reads. Read
-  // through the same root-contained reader the code panel uses, so it cannot
-  // become a way to pull in a file from outside the attached folder. A missing
-  // file is the normal case and simply leaves the prompt without the block.
+  // Every instruction file at the attached root, in one pass.
+  //
+  // `JAN.md` is Jan's own and the only one whose text reaches the model.
+  // `AGENTS.md` and `CLAUDE.md` are recognised and reported so a repository
+  // written for another harness does not look instruction-less — detected is
+  // not the same as ingested, and nothing here reads them into the prompt.
+  //
+  // Read through the same root-contained reader the code panel uses, so this
+  // cannot become a way to pull in a file from outside the attached folder.
   useEffect(() => {
     if (!folder) {
+      setInstructionFiles([])
       setProjectInstructions(null)
       return
     }
+    // The binding this read belongs to. A result for the previous folder must
+    // not land on the current one, so it is compared before anything is set.
+    const startedFor = bindingKey({ sessionId: sessionIdRef.current, folder })
     let alive = true
     void (async () => {
-      try {
-        const dataFolder = await serviceHub.app().getJanDataFolder()
-        if (!dataFolder || !alive) return
-        const file = await projectReadFile(dataFolder, folder, 'JAN.md', false)
-        if (!alive) return
-        setProjectInstructions(
-          file.oversized || file.binary ? null : file.content
-        )
-      } catch {
-        // No JAN.md is the ordinary case; the prompt simply omits the block.
-        if (alive) setProjectInstructions(null)
+      const probe = async (
+        name: string,
+        role: 'native' | 'compatibility'
+      ): Promise<InstructionProbe> => {
+        try {
+          const dataFolder = await serviceHub.app().getJanDataFolder()
+          if (!dataFolder) return { name, role, error: 'data folder unavailable' }
+          const file = await projectReadFile(dataFolder, folder, name, false)
+          if (file.binary) return { name, role, error: 'not text' }
+          if (file.oversized) {
+            return { name, role, content: 'x'.repeat(MAX_INSTRUCTION_BYTES + 1) }
+          }
+          return { name, role, content: file.content }
+        } catch (e) {
+          const message = messageOf(e)
+          // Absent is the ordinary case and is not a failure.
+          return /not found|no such file|ENOENT/i.test(message)
+            ? { name, role }
+            : { name, role, error: message }
+        }
       }
+
+      const probes = await Promise.all([
+        probe(NATIVE_INSTRUCTION_FILE, 'native'),
+        ...COMPATIBILITY_INSTRUCTION_FILES.map((name) =>
+          probe(name, 'compatibility')
+        ),
+      ])
+      if (!alive) return
+      if (bindingKey({ sessionId: sessionIdRef.current, folder }) !== startedFor) {
+        return
+      }
+      const files = probes.map(classifyInstruction)
+      setInstructionFiles(files)
+      // The prompt gets exactly what the card calls active, from the same
+      // list, so the two cannot describe different runs.
+      const native = files.find(
+        (file) => file.role === 'native' && file.active
+      )
+      const nativeProbe = probes.find(
+        (one) => one.name === NATIVE_INSTRUCTION_FILE
+      )
+      setProjectInstructions(native ? (nativeProbe?.content ?? null) : null)
     })()
     return () => {
       alive = false
@@ -365,16 +774,40 @@ function CoworkPage() {
     }
   }, [])
 
+  /**
+   * Refuse a folder change while something is still writing, and say why.
+   *
+   * Asked of the one active-work model rather than of a run flag: a subagent,
+   * a foreground shell and a background job can each still touch the old root
+   * after the turn that started them has ended.
+   */
+  const folderHeld = useCallback(
+    (sessionId: string | null | undefined) => {
+      if (authorityMayChange(sessionId)) return false
+      const kind = useCoworkActiveWork.getState().blockingKind(sessionId)
+      toast.error(t('common:coworkAccess.folderHeld'), {
+        description: kind ? t(`common:coworkAccess.busy.${kind}`) : undefined,
+      })
+      return true
+    },
+    [t]
+  )
+
   const attachFolder = useCallback(async () => {
+    // Checked before the dialog and again after it: the picker is modal to
+    // Jan, but a run started before it opened is still going behind it.
+    if (folderHeld(session?.id)) return
     const picked = await serviceHub.dialog().open({ directory: true })
     if (typeof picked !== 'string') return
+    if (folderHeld(session?.id)) return
     const sid = ensureCurrentSession()
     useCoworkSessions.getState().setFolder(sid, picked)
-  }, [serviceHub])
+  }, [serviceHub, session?.id, folderHeld])
 
   const detachFolder = useCallback(() => {
-    if (session?.id) useCoworkSessions.getState().setFolder(session.id, null)
-  }, [session?.id])
+    if (!session?.id || folderHeld(session.id)) return
+    useCoworkSessions.getState().setFolder(session.id, null)
+  }, [session?.id, folderHeld])
 
   // `liveTurns` holds only the rows this run has produced — `commitTurns`
   // appends them — so the committed transcript has to be shown alongside it or
@@ -423,6 +856,103 @@ function CoworkPage() {
   // strictly separate from the sandbox diffs above. The chip's counts combine
   // both sources so it appears whenever either has changes.
   const git = useCoworkGitStatus(folder)
+
+  /**
+   * Ask the backend to authorize this folder, then switch the session.
+   *
+   * In that order, and only in that order: switching first would show
+   * "editable" for however long the round trip takes, which is exactly the
+   * claim-without-authority this model exists to prevent. A refusal leaves the
+   * session where it was.
+   */
+  const authorizeDirectEdit = useCallback(async (): Promise<boolean> => {
+    const sid = session?.id ?? null
+    const done = useCoworkActiveWork.getState().acquire({
+      sessionId: sid ?? 'none',
+      kind: 'authorizing',
+      authority: {
+        folder,
+        access: effective.access,
+        destination: effective.destination,
+      },
+    })
+    try {
+      const dataFolder = await serviceHub.app().getJanDataFolder()
+      const result = await runAuthorizeDirectEdit({
+        binding: { sessionId: sid, folder },
+        dataFolder: dataFolder ?? null,
+        authorize: (sessionId, target, data) =>
+          useDirectEditGrants.getState().authorize(sessionId, target, data),
+        revokeSession: (sessionId) =>
+          useDirectEditGrants.getState().revokeSession(sessionId),
+        // Read after the await, so it sees where the user actually is.
+        currentBinding: () => bindingRef.current,
+        setAccess: (sessionId) =>
+          useCoworkSessions.getState().setAccess(sessionId, 'edit-folder'),
+      })
+      if (result === 'granted') setConfirmDirectEdit(false)
+      return result === 'granted'
+    } finally {
+      done()
+    }
+  }, [
+    session?.id,
+    folder,
+    serviceHub,
+    effective.access,
+    effective.destination,
+  ])
+
+  /**
+   * Withdraw first, then downgrade.
+   *
+   * If revocation fails the session is left saying what is true — the backend
+   * may still hold authority — rather than showing read-only over a grant that
+   * is still live.
+   */
+  const returnToReviewOnly = useCallback(async () => {
+    const sid = session?.id
+    if (!sid) return
+    const done = useCoworkActiveWork.getState().acquire({
+      sessionId: sid,
+      kind: 'revoking',
+      authority: {
+        folder,
+        access: effective.access,
+        destination: effective.destination,
+      },
+    })
+    try {
+      const revoked = await useDirectEditGrants.getState().revokeSession(sid)
+      useCoworkSessions.getState().setAccess(sid, 'review-only')
+      if (!revoked) {
+        toast.error(t('common:coworkAccess.confirm.revokeFailed'))
+      }
+    } finally {
+      done()
+    }
+  }, [session?.id, folder, t, effective.access, effective.destination])
+
+  /** What the confirmation states, gathered before the question is asked. */
+  const directEditFacts: DirectEditFacts = {
+    folder: folder ?? '',
+    name: folder?.split(/[\\/]/).pop() ?? '',
+    branch: gitBranch,
+    git: git.error
+      ? 'unknown'
+      : git.status
+        ? git.status.files.length > 0
+          ? 'dirty'
+          : 'clean'
+        : 'not-a-repo',
+    runMode: mode,
+    shellAvailable: sandboxEnforces(),
+    backend: capabilityState.known
+      ? capabilityState.directEdit
+        ? t('common:coworkAccess.confirm.shellYes')
+        : t('common:coworkAccess.unsupportedPlatform')
+      : t('common:coworkAccess.capabilityLoading'),
+  }
   const changeCounts = useMemo(() => {
     const sandboxAdds = fileDiffs.reduce((s, f) => s + f.additions, 0)
     const sandboxDels = fileDiffs.reduce((s, f) => s + f.deletions, 0)
@@ -458,6 +988,34 @@ function CoworkPage() {
       clearInterval(id)
     }
   }, [])
+
+  /**
+   * What is holding this session's authority in place, if anything.
+   *
+   * Runs, subagents, shells and transitions register themselves while they can
+   * still write. Background jobs are polled rather than lifecycle-driven, so
+   * they are folded in here rather than pretending to be acquired.
+   */
+  const activeWorkItems = useCoworkActiveWork((s) => s.items)
+  const blockingKind: WorkKind | null = useMemo(() => {
+    const sid = session?.id
+    if (!sid) return null
+    const order: WorkKind[] = [
+      'run',
+      'subagent',
+      'shell',
+      'job',
+      'authorizing',
+      'revoking',
+    ]
+    const mine = Object.values(activeWorkItems).filter(
+      (one) => one.sessionId === sid
+    )
+    return (
+      order.find((kind) => mine.some((one) => one.kind === kind)) ??
+      (liveJobs.some((job) => !job.finished) ? 'job' : null)
+    )
+  }, [session?.id, activeWorkItems, liveJobs])
 
   // The one activity record. The panel, the chip and every inline workflow
   // card select from this, so none of them can disagree about the same work.
@@ -588,6 +1146,34 @@ function CoworkPage() {
     const sid = ensureCurrentSession()
     const store = useCoworkSessions.getState()
     const current = store.sessions.find((s) => s.id === sid)
+    /**
+     * Skills asked for by *this* turn, frozen for the whole run.
+     *
+     * Resolved from the text actually submitted rather than from whatever is
+     * in the composer when something happens to re-render: a follow-up like
+     * "use the superpowers skill for this change" arrives on turn five, and
+     * the composer is empty by the time the run reads it. A retake (`text` is
+     * null) keeps the previous turn's answer rather than deciding that the
+     * request was withdrawn because there is no new message to find it in.
+     */
+    // Jan's own skills and this folder's compatible ones, resolved as one
+    // registry: a request names a skill, not a source, and a name claimed by
+    // both lands as ambiguous rather than one silently winning.
+    const runRegistry = mergeSkillRegistry(compat, {
+      available: availableSkills.map((skill) => ({ name: skill.name })),
+      enabled: new Set(
+        effectiveEnabled(
+          enabledSkills,
+          availableSkills.map((skill) => skill.name)
+        )
+      ),
+    })
+    const skillNames = runRegistry.available.map((skill) => skill.name)
+    const runSkills =
+      text == null
+        ? runSkillsRef.current
+        : resolveSkills(parseSkillRequests(text, skillNames), runRegistry)
+    runSkillsRef.current = runSkills
     if (!text && !(current?.messages?.length ?? 0)) return
     if (!selectedModel?.id) {
       toast.error(t('common:selectModel'))
@@ -610,6 +1196,23 @@ function CoworkPage() {
     setLiveTurns(liveTurnsRef.current)
     useCoworkRun.getState().resetSubagents(sid)
     setRunning(true)
+    /**
+     * The authority this run holds, taken once and kept for its lifetime.
+     *
+     * Registered before the first await: the model probe and the sandbox probe
+     * below are both awaits, and the folder must not be swapped between
+     * pressing send and the run actually starting.
+     */
+    const runAuthority = {
+      folder: current?.folder ?? null,
+      access: effective.access,
+      destination: effective.destination,
+    }
+    const runWorkDone = useCoworkActiveWork.getState().acquire({
+      sessionId: sid,
+      kind: 'run',
+      authority: runAuthority,
+    })
 
     // Local models load before the first token, but only on a cold start. Probe
     // the engine so the load card shows on a real load, not on every warm run.
@@ -625,14 +1228,107 @@ function CoworkPage() {
       }
     }
 
+    /**
+     * What the working tree looked like before this run touched anything.
+     *
+     * Taken here, before the first tool call, because it is the only moment
+     * that can answer "was this already different?" — and that question is
+     * what stops the run's own report from handing the user their existing
+     * uncommitted work back as something Jan did. Bound to the session and
+     * folder it describes, and discarded outright if the user has moved on by
+     * the time it arrives.
+     */
+    const baselineBinding: Binding = {
+      sessionId: sid,
+      folder: current?.folder ?? null,
+    }
+    let runBaseline: GitBaseline | null = null
+    if (baselineBinding.folder) {
+      let captured: GitBaseline
+      try {
+        captured = baselineFromStatus(
+          await loadGitStatus(baselineBinding.folder, 'all'),
+          baselineBinding
+        )
+      } catch {
+        // Git failing is not the same as a folder having no Git: with no
+        // before-state, nothing found later can be dated at all.
+        captured = unavailableBaseline(baselineBinding)
+      }
+      runBaseline = acceptBaseline(captured, bindingRef.current)
+    }
+
+    /**
+     * One snapshot, read by every surface that describes this run.
+     *
+     * Published before the prompt is built, because the prompt is the first
+     * consumer: what the model is told about the folder has to come from the
+     * same frozen answer the gate, readiness and the ledger use, or the run
+     * describes itself wrongly from its first token.
+     */
+    const origins: RunOrigins = {
+      binding: baselineBinding,
+      access: effective.access,
+      destination: runAuthority.destination,
+      baseline: runBaseline,
+    }
+    useCoworkOrigins.getState().begin(sid, origins)
+
+    /**
+     * The compatibility manifest this run carries, frozen with everything
+     * else.
+     *
+     * Discarded outright if it was resolved for a different binding: a scan of
+     * the previous folder must not activate that folder's instructions against
+     * this one. Configuration edited while the run is going applies to the
+     * next run, not this one.
+     */
+    const runCompat = compatMatches(compat, baselineBinding)
+      ? compat
+      : emptyCompatManifest(baselineBinding)
+
+    /**
+     * Instructions a subtree owes this run, delivered once each.
+     *
+     * One tracker for the whole run, shared by the main agent and every
+     * subagent: they are working in one repository under one manifest, and a
+     * child that had to be told again — or worse, was never told — would be
+     * following different rules from its parent in the same directory.
+     */
+    const deliveredScopes = new Set<string>()
+    const scopedInstructionsFor = (path: string) => {
+      const folder = current?.folder ?? null
+      // Nested scopes are repository-relative; a tool may name either form.
+      const relative = folder ? relativeToRoot(folder, path) : path
+      const owed = nestedChainFor(runCompat, relative).filter(
+        (one) => !deliveredScopes.has(one.scope)
+      )
+      for (const one of owed) deliveredScopes.add(one.scope)
+      return owed
+    }
+
     // Warm the sandbox probe: the transport's prompt and tool set read it
     // synchronously via sandboxEnforces().
     await getSandboxStatus()
     // Read once per run, not subscribed: the advertised set is frozen for the
     // run anyway, so a mid-run flip in Settings would only desync the prompt.
     const webSearch = useWebSearchConfig.getState().webSearchEnabled
+    // Read once, with the session this run is bound to: a mode flipped
+    // mid-run would leave the advertised tools and the dispatcher disagreeing.
+    const runMode = modeOf(current ?? {})
+    /**
+     * The write authority this run carries, frozen with everything else.
+     *
+     * Only sent when the effective access is actually direct editing — a
+     * session whose stored preference says so but whose grant is missing,
+     * revoked or issued elsewhere sends nothing and writes to its sandbox.
+     * The id is authority-bearing and goes only to the backend command: never
+     * into a prompt, a message, an activity row, or anything shown to anyone.
+     */
+    const runGrant =
+      effective.access === 'edit-folder' ? (liveGrant?.grantId ?? null) : null
     const transport = new CoworkChatTransport(sid, {
-      planMode: current?.planMode ?? false,
+      planMode: isReadOnly(runMode),
       subagentNames: subagentDefs.map((d) => d.name),
       // Always on at depth 0, even with nothing saved: a one-off subagent with
       // an inline `system_prompt` is first-class, as it is in Rust.
@@ -640,10 +1336,22 @@ function CoworkPage() {
       webSearch,
       workspacePath,
       readOnlyFolder: current?.folder ?? null,
+      // Read from the run's frozen snapshot, not re-derived here: the model
+      // must be told exactly what the gate and the ledger will act on.
+      folderAccess: promptFolderAccess(origins),
       gitBranch,
       projectInstructions,
+      // Only what the resolver made active: a file that is present but not
+      // switched on, oversized, or pointing outside the folder contributes
+      // nothing here.
+      compatInstructions: compatInstructionBlocks(runCompat),
     })
     await transport.refreshTools()
+    // Now the count is a fact rather than a guess, so the readiness card can
+    // stop saying the tool set has not been built.
+    const advertised = Object.keys(transport.advertisedTools)
+    setAdvertisedToolCount(advertised.length)
+    setAdvertisedToolNames(advertised)
 
     const controller = new AbortController()
     abortRef.current = controller
@@ -750,8 +1458,45 @@ function CoworkPage() {
             dispatchCoworkTool(call, {
               sessionId: sid,
               readOnlyFolder: current?.folder ?? null,
-              planMode: current?.planMode ?? false,
+              mode: runMode,
+              writeGrant: runGrant,
+              // Snapshotted with the run: a skill the user asked for and did
+              // not get stops changes. Inspection still proceeds.
+              unresolvedSkills: unresolvedSkills(runSkills),
+              // The root this run is bound to, re-checked before every
+              // filesystem call: detaching or switching folders mid-run must
+              // not leave the run reading the folder that was taken away.
+              bindingIntact: () =>
+                (useCoworkSessions
+                  .getState()
+                  .sessions.find((one) => one.id === sid)?.folder ?? null) ===
+                (current?.folder ?? null),
               webSearch,
+              // The prompt the chat surface already uses for tool approval,
+              // not a second one: it honours grants the user has already made
+              // and renders in the tool card the call is reported in.
+              onApprove: (callId, toolName) =>
+                useToolApprovalRequests
+                  .getState()
+                  .requestApproval(callId, toolName, sid),
+              // A shell handed to the backend outlives a cancelled run, so it
+              // holds the authority it started with until the process is done.
+              trackShell: () =>
+                useCoworkActiveWork.getState().acquire({
+                  sessionId: sid,
+                  kind: 'shell',
+                  authority: runAuthority,
+                }),
+              // The child inherits this run's frozen authority and holds it
+              // for as long as it runs. It cannot widen it: this is the only
+              // authority handed down.
+              trackSubagent: () =>
+                useCoworkActiveWork.getState().acquire({
+                  sessionId: sid,
+                  kind: 'subagent',
+                  authority: runAuthority,
+                }),
+              scopedInstructions: scopedInstructionsFor,
               onTodo: async (input) => {
                 const result = applyTodoOp(
                   useCoworkSessions
@@ -852,6 +1597,12 @@ function CoworkPage() {
                     workspacePath,
                     readOnlyFolder: current?.folder ?? null,
                     bashAvailable: sandboxEnforces(),
+                    // The parent's frozen answers, handed down unchanged: a
+                    // child never resolves its own access or its own
+                    // instructions.
+                    folderAccess: promptFolderAccess(origins),
+                    projectInstructions,
+                    compatInstructions: compatInstructionBlocks(runCompat),
                   },
                   signal: childAbort.signal,
                   sessionTokens: 0,
@@ -862,8 +1613,35 @@ function CoworkPage() {
                     dispatchCoworkTool(call, {
                       sessionId: sid,
                       readOnlyFolder: current?.folder ?? null,
-                      planMode: current?.planMode ?? false,
+                      mode: runMode,
+                      writeGrant: runGrant,
+                      // Snapshotted with the run: a skill the user asked for and did
+                      // not get stops changes. Inspection still proceeds.
+                      unresolvedSkills: unresolvedSkills(runSkills),
+              // The root this run is bound to, re-checked before every
+              // filesystem call: detaching or switching folders mid-run must
+              // not leave the run reading the folder that was taken away.
+              bindingIntact: () =>
+                (useCoworkSessions
+                  .getState()
+                  .sessions.find((one) => one.id === sid)?.folder ?? null) ===
+                (current?.folder ?? null),
                       webSearch,
+                      // A subagent's mutations are the session's mutations, so
+                      // they go through the same prompt rather than around it.
+                      onApprove: (callId, toolName) =>
+                        useToolApprovalRequests
+                          .getState()
+                          .requestApproval(callId, toolName, sid),
+                      trackShell: () =>
+                        useCoworkActiveWork.getState().acquire({
+                          sessionId: sid,
+                          kind: 'shell',
+                          authority: runAuthority,
+                        }),
+                      // The same resolver and the same tracker the parent
+                      // uses: one repository, one manifest, one set of rules.
+                      scopedInstructions: scopedInstructionsFor,
                       onTodo: async () => ({
                         output:
                           'The todo list belongs to the agent that dispatched you.',
@@ -954,6 +1732,12 @@ function CoworkPage() {
                 !(turn.role === 'assistant' && turn.content === result.text)
             )
             pushLive(turns)
+            // Record this step's file work now. Ids are keyed on the tool
+            // call, so the commit below re-recording the same rows is a
+            // no-op rather than a duplicate.
+            useFileActivity
+              .getState()
+              .record(sid, deriveFromTurns(turns, originOfPath, Date.now()))
             for (const [callId, outcome] of outcomes) {
               if (outcome.diff) {
                 useToolCallRuntime.getState().recordDiff(callId, outcome.diff)
@@ -1006,9 +1790,26 @@ function CoworkPage() {
           useCoworkRun.getState().subagents[sid] ?? [],
           outcome?.usage ?? undefined
         )
+      // The transcript's tool rows are structured: name, arguments, error
+      // flag, diff. That is the only thing the file record is built from.
+      // A final sweep: anything the steps missed, plus every subagent's own
+      // file work, which only exists on the runs themselves.
+      const settledAt = Date.now()
+      const subagentRuns = useCoworkRun.getState().subagents[sid] ?? []
+      const fileEvents = [
+        ...deriveFromTurns(liveTurnsRef.current, originOfPath, settledAt),
+        ...subagentRuns.flatMap((run) =>
+          deriveFromSubagent(run.name, run.turns, originOfPath, settledAt)
+        ),
+      ]
+      useFileActivity.getState().record(sid, fileEvents)
+      // The run's own account of what changed, generated from evidence rather
+      // than written by the model that did the changing.
+      void recordOrigins({ sessionId: sid, origins, events: fileEvents })
       liveTurnsRef.current = []
       setLiveTurns([])
       setRunning(false)
+      runWorkDone()
       abortRef.current = null
       askResolvers.current.clear()
       setAsk(null)
@@ -1070,6 +1871,32 @@ function CoworkPage() {
     setRail({ kind: 'preview', path: pendingPreview.path })
     useCoworkRun.getState().clearPendingPreview()
   }, [pendingPreview, session?.id])
+
+  // The file-activity view parks a request the same way, for a path it wants
+  // shown but cannot open itself. Consumed once.
+  // An entry point outside Cowork asked for a folder. The picker lives here
+  // because this is where a session can be bound to what it returns.
+  const attachFolderRequested = useCoworkRun((s) => s.attachFolderRequested)
+  useEffect(() => {
+    if (!attachFolderRequested) return
+    // Cleared before the picker opens, not after: the dialog is awaited, and a
+    // request left standing would reopen it on the next render.
+    useCoworkRun.getState().clearAttachFolderRequest()
+    void attachFolder()
+  }, [attachFolderRequested, attachFolder])
+
+  const pendingCodeOpen = useCoworkRun((s) => s.pendingCodeOpen)
+  useEffect(() => {
+    if (!pendingCodeOpen || !session?.id) return
+    if (pendingCodeOpen.sessionId !== session.id) return
+    if (pendingCodeOpen.as === 'diff') {
+      setRail({ kind: 'diff' })
+    } else {
+      setRail({ kind: 'code' })
+      openToolPath(pendingCodeOpen.path)
+    }
+    useCoworkRun.getState().clearPendingCodeOpen()
+  }, [pendingCodeOpen, session?.id, openToolPath])
 
   // Nothing to show once the session changes: every panel describes the session
   // it was opened from.
@@ -1164,6 +1991,12 @@ function CoworkPage() {
                       />
                     </div>
                   )}
+                  {!running && runOrigins?.summary && (
+                    // After the transcript, never inside it: the model's own
+                    // account of the run and Jan's record of it must not read
+                    // as one voice.
+                    <CoworkRunSummary summary={runOrigins.summary} />
+                  )}
                   {stoppedBy === 'steps' && (
                     <CoworkBudgetNotice
                       kind="steps"
@@ -1185,9 +2018,17 @@ function CoworkPage() {
                     <CoworkBudgetNotice
                       kind="tokens"
                       onCompact={() => toast.info(t('common:budget.compact'))}
-                      onNewSession={() =>
-                        useCoworkSessions.getState().createSession()
-                      }
+                      onNewSession={() => {
+                        // Same rule as the sidebar's entry point: one press,
+                        // at most one session.
+                        const store = useCoworkSessions.getState()
+                        const id = store.startSession({
+                          running,
+                          hasDraft:
+                            usePrompt.getState().prompt.trim().length > 0,
+                        })
+                        store.selectSession(id)
+                      }}
                     />
                   )}
                 </ConversationContent>
@@ -1207,6 +2048,55 @@ function CoworkPage() {
                   />
                 </div>
               )}
+              {/* Before the first run of a repository-bound session: the
+                  moment where knowing which repository, which mode and which
+                  instructions are in play actually changes what someone
+                  types. It disappears once the session has run. */}
+              {folder && (session?.turns.length ?? 0) === 0 && (
+                <div className="px-1 pb-2">
+                  <CoworkReadinessCard manifest={readiness} />
+                  <CoworkCompatSection
+                    manifest={compat}
+                    hasFolder={Boolean(folder)}
+                    onToggle={(on) =>
+                      folder && useClaudeCompat.getState().setEnabled(folder, on)
+                    }
+                    // Drives Jan's own MCP subsystem, against the definition
+                    // as it stands on disk: consent is permission to run
+                    // *this* server, not whatever the file says later.
+                    onMcpConsent={(server, allowed) => {
+                      const probe = mcpProbes.find((one) => one.name === server)
+                      if (probe) void setMcpConsent(probe, allowed)
+                    }}
+                  />
+                  <ClaudeSkillRootsSettings
+                    roots={skillRoots}
+                    onChange={(next) =>
+                      useClaudeCompat.getState().setSkillRoots(next)
+                    }
+                    janData={janDataFolder}
+                    onRescan={rescanCompat}
+                    pickFolder={async () => {
+                      const picked = await serviceHub
+                        .dialog()
+                        .open({ directory: true })
+                      return typeof picked === 'string' ? picked : null
+                    }}
+                    // The backend is the only thing that can tell a directory
+                    // from a file, or from a path that has since gone.
+                    confirmDirectory={async (path) => {
+                      const dataFolder = janDataFolder
+                      if (!dataFolder) return false
+                      try {
+                        await projectListDir(dataFolder, path, '.')
+                        return true
+                      } catch {
+                        return false
+                      }
+                    }}
+                  />
+                </div>
+              )}
               <ChatInput
                 showSpeedToken={false}
                 initialMessage={true}
@@ -1218,17 +2108,28 @@ function CoworkPage() {
                 tokenSource={tokenSource}
                 surfaceControls={
                   <>
-                    <CoworkPlanToggle
-                      planMode={planMode}
+                    <CoworkModeSelector
+                      mode={mode}
                       onChange={(next) => {
                         if (session?.id)
-                          useCoworkSessions
-                            .getState()
-                            .setPlanMode(session.id, next)
+                          useCoworkSessions.getState().setMode(session.id, next)
                       }}
+                    />
+                    <CoworkAccessSelector
+                      effective={effective}
+                      capability={capabilityState}
+                      hasFolder={Boolean(folder)}
+                      // Authority must not move under work already running.
+                      // A background shell job outlives its run and can still
+                      // write, so it holds authority in place just as a live
+                      // turn does.
+                      busyReason={blockingKind}
+                      onRequestDirectEdit={() => setConfirmDirectEdit(true)}
+                      onReviewOnly={() => void returnToReviewOnly()}
                     />
                     <CoworkWorkspacePill
                       folder={folder}
+                      workspacePath={workspacePath}
                       gitBranch={gitBranch}
                       onAttach={() => void attachFolder()}
                       onDetach={detachFolder}
@@ -1262,8 +2163,10 @@ function CoworkPage() {
         {rail?.kind === 'diff' && (
           <CoworkDiffPanel
             sandboxFiles={fileDiffs}
+            onOpenFile={openToolPath}
             folder={folder}
             git={git}
+            origins={runOrigins?.entries}
             onClose={() => setRail(null)}
           />
         )}
@@ -1290,6 +2193,7 @@ function CoworkPage() {
         )}
         {rail?.kind === 'code' && session?.id && (
           <CoworkCodePanel
+                onOfferFolder={() => void attachFolder()}
             folder={folder}
             workspacePath={workspacePath}
             sessionKey={session.id}
@@ -1304,6 +2208,14 @@ function CoworkPage() {
           />
         )}
       </div>
+      {/* Mounted outside the panels so it survives a rail change while the
+          authorization is in flight. */}
+      <DirectEditConfirmDialog
+        open={confirmDirectEdit}
+        facts={directEditFacts}
+        onConfirm={authorizeDirectEdit}
+        onCancel={() => setConfirmDirectEdit(false)}
+      />
     </div>
   )
 }

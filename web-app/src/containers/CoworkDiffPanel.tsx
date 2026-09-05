@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { OriginEntry } from '@/lib/coworkOrigins'
 import {
   ChevronDown,
   ChevronsDownUp,
@@ -126,8 +127,10 @@ function FileRow({
   badge,
   badgeColor,
   indicator,
+  note,
   isExpanded,
   onToggle,
+  onOpen,
   children,
 }: {
   path: string
@@ -137,12 +140,19 @@ function FileRow({
   badge?: string
   badgeColor?: string
   indicator?: string
+  /** What is known about who caused this change, when anything is. */
+  note?: string
   isExpanded: boolean
   onToggle: () => void
+  /** Show this file in the Code panel. Absent where it cannot be opened. */
+  onOpen?: () => void
   children: React.ReactNode
 }) {
+  const { t } = useTranslation()
+  const openLabel = t('common:changes.openFile')
+
   return (
-    <div>
+    <div className="group/row relative">
       <button
         type="button"
         onClick={onToggle}
@@ -175,6 +185,9 @@ function FileRow({
             </span>
           ) : null}
         </span>
+        {note ? (
+          <span className="shrink-0 text-xs text-main-view-fg/60">{note}</span>
+        ) : null}
         {indicator ? (
           <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-main-view-fg/60">
             {indicator}
@@ -187,6 +200,15 @@ function FileRow({
           -{deletions}
         </span>
       </button>
+      {onOpen ? (
+        <button
+          type="button"
+          onClick={onOpen}
+          className="absolute right-2 top-1.5 rounded px-1.5 py-0.5 text-[10px] text-main-view-fg/60 opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover/row:opacity-100"
+        >
+          {openLabel}
+        </button>
+      ) : null}
       {isExpanded ? (
         <div className="border-t bg-background">{children}</div>
       ) : null}
@@ -213,17 +235,35 @@ export function CoworkDiffPanel({
   sandboxFiles,
   folder,
   git,
+  origins,
   onClose,
+  onOpenFile,
 }: {
   sandboxFiles: CoworkFileDiff[]
+  /** Show a changed file in the Code panel. */
+  onOpenFile?: (path: string) => void
   folder: string | null
   git: CoworkGitState
   onClose: () => void
+  /**
+   * What is known about how each of these files came to differ.
+   *
+   * A file being here means Git sees it as changed — not that Jan changed it.
+   * Without the ledger every row reads as the agent's work, which is exactly
+   * how someone's own uncommitted changes get handed back to them as Jan's.
+   * Absent for a session that has not run yet: then nothing is labelled,
+   * rather than everything being labelled wrongly.
+   */
+  origins?: readonly OriginEntry[]
 }): React.ReactElement {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
 
   const gitFiles = useMemo(() => git.status?.files ?? [], [git.status])
+  const originByPath = useMemo(
+    () => new Map((origins ?? []).map((one) => [one.path, one])),
+    [origins]
+  )
   const showProject = !!folder
   const showSandbox = sandboxFiles.length > 0
   const labelled = showProject && showSandbox
@@ -365,6 +405,7 @@ export function CoworkDiffPanel({
                   {gitFiles.map((file) => {
                     const id = `git:${file.path}`
                     const isExpanded = expanded.has(id)
+                    const origin = originByPath.get(file.path)
                     const indicator =
                       git.scope === 'all' || (file.staged && file.unstaged)
                         ? file.staged && file.unstaged
@@ -377,6 +418,7 @@ export function CoworkDiffPanel({
                       <FileRow
                         key={id}
                         path={file.path}
+                        onOpen={onOpenFile ? () => onOpenFile(file.path) : undefined}
                         subtitle={
                           file.origPath
                             ? t('common:changes.renamedFrom', {
@@ -389,6 +431,20 @@ export function CoworkDiffPanel({
                         badge={statusBadge(file.status)}
                         badgeColor={statusColor(file.status)}
                         indicator={indicator}
+                        // Says what is known, and nothing more: a row with no
+                        // ledger entry is left unlabelled rather than assumed.
+                        note={
+                          origin
+                            ? t(
+                                `common:coworkOrigins.row.${
+                                  origin.evidence === 'jan-write' &&
+                                  origin.alsoPreExisting
+                                    ? 'jan-write-over'
+                                    : origin.evidence
+                                }`
+                              )
+                            : undefined
+                        }
                         isExpanded={isExpanded}
                         onToggle={() => toggle(id)}
                       >
@@ -425,6 +481,7 @@ export function CoworkDiffPanel({
                     <FileRow
                       key={id}
                       path={file.path}
+                      onOpen={onOpenFile ? () => onOpenFile(file.path) : undefined}
                       additions={file.additions}
                       deletions={file.deletions}
                       isExpanded={isExpanded}

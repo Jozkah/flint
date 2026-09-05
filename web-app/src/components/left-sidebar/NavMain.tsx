@@ -20,6 +20,8 @@ import {
   FolderPlusIcon,
   type FolderPlusIconHandle,
 } from '@/components/animated-icon/folder-plus'
+import { FolderOpenIcon } from '@/components/animated-icon/folder-open'
+import { useCoworkRun } from '@/hooks/useCoworkRun'
 import {
   MessageCircleIcon,
   type MessageCircleIconHandle,
@@ -69,7 +71,8 @@ const getNavMainItems = (
   onNewProject: () => void,
   onSearch: () => void,
   onNewChat: () => void,
-  onJanClaw: () => void
+  onJanClaw: () => void,
+  onOpenCodeFolder: () => void
 ): NavMainItem[] => [
   {
     title: 'common:newChat',
@@ -109,6 +112,14 @@ const getNavMainItems = (
         <Kbd className="bg-transparent size-3 uppercase">{PlatformShortcuts[ShortcutAction.NEW_PROJECT].key}</Kbd>
       </KbdGroup>
     ),
+  },
+  // Distinct from a collection on purpose: this is the entry point that
+  // actually opens a folder, and until it existed the only thing that looked
+  // like one was the collection dialog, which does not.
+  {
+    title: 'common:projects.openCodeFolder',
+    animatedIcon: FolderOpenIcon,
+    onClick: onOpenCodeFolder,
   },
   {
     title: 'common:search',
@@ -185,6 +196,12 @@ export function NavMain() {
     () => {
       useAgentMode.getState().setAgentMode(TEMPORARY_CHAT_ID, true)
       navigate({ to: route.home })
+    },
+    () => {
+      // The picker itself lives in the Cowork route, where a session can be
+      // bound to whatever it returns.
+      useCoworkRun.getState().requestAttachFolder()
+      navigate({ to: route.cowork })
     }
   ).filter((item) => item.title !== 'common:newAgentChat')
 

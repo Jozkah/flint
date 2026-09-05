@@ -3,6 +3,7 @@ import { memo, useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import type { UIMessage, ChatStatus } from 'ai'
 import { RenderMarkdown } from './RenderMarkdown'
 import { cn } from '@/lib/utils'
+import { TONE_CLASSES } from '@/lib/semanticTone'
 import { formatDuration } from '@/lib/utils'
 import {
   activeToolPart,
@@ -361,7 +362,14 @@ export const MessageItem = memo(
                   'relative p-2 rounded-md inline-block max-w-[80%]',
                   coloredUserBubble
                     ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary text-foreground'
+                    : // Faint primary rather than flat grey, so the user's own
+                      // turns are findable when scanning back. The setting
+                      // above still gives the solid treatment.
+                      cn(
+                        'border text-foreground',
+                        TONE_CLASSES.user.surface,
+                        TONE_CLASSES.user.border
+                      )
                 )}
               >
                 {/* Show attached files if any */}

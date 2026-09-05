@@ -70,8 +70,26 @@ export type CoworkSession = {
   goal?: CoworkGoal
   /** Canonical session todo list, updated by the `todo_write` tool. */
   todos?: TodoList
-  /** Plan mode: the agent reads and proposes, without writing. Absent means off. */
+  /**
+   * @deprecated Superseded by `mode`. Kept so sessions saved before modes
+   * existed keep their meaning; read through `modeOf`, never directly.
+   */
   planMode?: boolean
+  /**
+   * What this session is allowed to do. Absent on sessions from before modes
+   * existed, which `modeOf` reads from `planMode` instead.
+   */
+  mode?: CoworkMode
+  /**
+   * Where this session may write. Absent means Review only — silence from a
+   * session saved before access modes existed is not permission.
+   */
+  access?: AccessMode
+  /**
+   * Confirmation to edit the attached folder, naming the session and folder it
+   * was given for so it cannot follow the user to another repository.
+   */
+  editConsent?: EditConsent
   /** Code panel state: open tabs, active tab, explorer expansion, word wrap.
    * Absent on sessions from before the code workspace existed. */
   codePanel?: CodePanelState
@@ -82,10 +100,18 @@ type CoworkSessionsState = {
   sessions: CoworkSession[]
   currentId: string | null
   createSession: () => string
+  /**
+   * What "New session" does: create one, or stay put when this session is
+   * already blank or holds an unsent draft. Returns the session to show.
+   */
+  startSession: (input: { running: boolean; hasDraft: boolean }) => string
   selectSession: (id: string) => void
   deleteSession: (id: string) => void
   setFolder: (id: string, folder: string | null) => void
-  setPlanMode: (id: string, planMode: boolean) => void
+  setMode: (id: string, mode: CoworkMode) => void
+  setAccess: (id: string, access: AccessMode) => void
+  /** Record the user's confirmation to edit `folder` in this session. */
+  grantEditConsent: (id: string, folder: string) => void
   /** Replace the session's code-panel state (tabs, expansion, word wrap). */
   setCodePanel: (id: string, codePanel: CodePanelState) => void
   setTitle: (id: string, title: string) => void
@@ -115,11 +141,16 @@ type CoworkSessionsState = {
   clearSession: (id: string) => void
 }
 
+import { decideSessionStart } from '@/lib/coworkSessionStart'
+import { defaultModeFor, type CoworkMode } from '@/lib/coworkMode'
+import type { AccessMode, EditConsent } from '@/lib/coworkAccess'
+import { useFileActivity } from '@/hooks/useFileActivity'
+
 const now = () => Date.now()
 
 export const useCoworkSessions = create<CoworkSessionsState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       sessions: [],
       currentId: null,
 
@@ -135,6 +166,28 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         }
         set((s) => ({ sessions: [session, ...s.sessions], currentId: id }))
         return id
+      },
+
+      startSession: ({ running, hasDraft }) => {
+        const state = get()
+        const current = state.sessions.find((s) => s.id === state.currentId)
+        // Asked here rather than at each call site so every entry point to
+        // "New session" judges emptiness the same way.
+        const hasFileActivity = current
+          ? useFileActivity.getState().eventsFor(current.id).length > 0
+          : false
+        if (
+          decideSessionStart({
+            current,
+            running,
+            hasDraft,
+            hasFileActivity,
+          }) === 'reuse' &&
+          current
+        ) {
+          return current.id
+        }
+        return get().createSession()
       },
 
       selectSession: (id) => set({ currentId: id }),
@@ -157,6 +210,29 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               ? {
                   ...x,
                   folder,
+                  // Attaching a repository to a session that has not run yet
+                  // puts it in Review first: the turn that binds a repository
+                  // must not be the turn that edits it. A mode the user chose,
+                  // or one a legacy session already implies, is left alone —
+                  // and so is detaching, which must not stamp a mode that
+                  // would then suppress this default on the next attach.
+                  mode: folder
+                    ? (x.mode ??
+                      (x.turns.length === 0 &&
+                      x.messages.length === 0 &&
+                      x.planMode === undefined
+                        ? defaultModeFor(folder)
+                        : undefined))
+                    : x.mode,
+                  // Changing the repository withdraws everything that was
+                  // agreed about the previous one. Consent named that folder,
+                  // and an access mode chosen for it says nothing about this
+                  // one, so both return to the safe default.
+                  access: folder === x.folder ? x.access : 'review-only',
+                  editConsent:
+                    folder === x.folder && x.editConsent?.folder === folder
+                      ? x.editConsent
+                      : undefined,
                   codePanel: pruneTabsForProject(
                     x.codePanel ?? emptyCodePanelState(),
                     projectKeyOf(folder)
@@ -186,10 +262,30 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           sessions: s.sessions.map((x) => (x.id === id ? { ...x, todos } : x)),
         })),
 
-      setPlanMode: (id, planMode) =>
+      setAccess: (id, access) =>
         set((s) => ({
           sessions: s.sessions.map((x) =>
-            x.id === id ? { ...x, planMode, updated: now() } : x
+            x.id === id ? { ...x, access, updated: now() } : x
+          ),
+        })),
+
+      grantEditConsent: (id, folder) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id
+              ? { ...x, editConsent: { sessionId: id, folder }, updated: now() }
+              : x
+          ),
+        })),
+
+      setMode: (id, mode) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            // `planMode` is cleared as well, so the legacy field can never
+            // disagree with the explicit choice just made.
+            x.id === id
+              ? { ...x, mode, planMode: undefined, updated: now() }
+              : x
           ),
         })),
 

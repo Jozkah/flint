@@ -227,8 +227,14 @@ export type FileOrigin =
   | { kind: 'sandbox'; sessionKey: string }
   /** A file the agent generated, which lives in that session's sandbox. */
   | { kind: 'artifact'; sessionKey: string }
-  /** Readable, but outside every root. Always read-only. */
-  | { kind: 'external' }
+  /**
+   * Readable, but outside every root. Always read-only.
+   *
+   * Session-scoped like the sandbox origins: a file dropped into one session
+   * is that session's, and must not appear in the next one. The key is absent
+   * on tabs persisted before external files could be opened.
+   */
+  | { kind: 'external'; sessionKey?: string }
 
 /**
  * The identity a tab is scoped to: the project for a project file, the session
@@ -250,7 +256,7 @@ export function originScope(origin: FileOrigin): string {
     case 'artifact':
       return origin.sessionKey ?? ''
     case 'external':
-      return ''
+      return origin.sessionKey ?? ''
   }
 }
 
@@ -319,6 +325,15 @@ export const artifactTab = (path: string, sessionKey: string): CodeTab => ({
 })
 
 /**
+ * A file opened from outside every root — dropped in, or chosen from the
+ * picker. Read-only, and scoped to the session it was opened in.
+ */
+export const externalTab = (path: string, sessionKey: string): CodeTab => ({
+  path,
+  origin: { kind: 'external', sessionKey },
+})
+
+/**
  * Does this tab belong to `sessionKey`?
  *
  * Project and external tabs are not session-scoped; a sandbox or artifact tab
@@ -328,10 +343,19 @@ export function tabBelongsToSession(
   tab: CodeTab,
   sessionKey: string | null
 ): boolean {
-  return (
-    (tab.origin.kind !== 'sandbox' && tab.origin.kind !== 'artifact') ||
-    tab.origin.sessionKey === sessionKey
-  )
+  const origin = tab.origin
+  switch (origin.kind) {
+    case 'project':
+      // Not session-scoped: a project file is the same file in every session.
+      return true
+    case 'sandbox':
+    case 'artifact':
+      return origin.sessionKey === sessionKey
+    case 'external':
+      // Tabs persisted before external files carried a session are shown
+      // rather than hidden; anything stamped since belongs to its session.
+      return origin.sessionKey === undefined || origin.sessionKey === sessionKey
+  }
 }
 
 /** Does this tab belong to the project currently attached? */

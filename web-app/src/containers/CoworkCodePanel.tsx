@@ -22,9 +22,18 @@ import { getServiceHub, useServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { resolveInRoot } from '@/lib/coworkPreview'
+import { toast } from 'sonner'
+import {
+  decideDrop,
+  dragHasFiles,
+  DROP_ZONE_CLASS,
+  dropLabelKey,
+  isTypingTarget,
+} from '@/lib/fileDrop'
 import {
   MAX_CODE_FILE_BYTES,
   closeTab,
+  externalTab,
   emptyCodePanelState,
   isSourcePath,
   isTabStale,
@@ -45,6 +54,7 @@ import {
   type CodeTab,
 } from '@/lib/coworkCode'
 import type { CoworkTurn } from '@/types/coworkSession'
+import { readFileAsText } from '@/lib/fileSafety'
 
 type DirState =
   | { status: 'loading' }
@@ -62,6 +72,11 @@ type FileState =
   | { status: 'binary' }
   | { status: 'denied' }
   | { status: 'sensitive' }
+  /**
+   * An external tab whose handle did not survive. Tab metadata persists;
+   * the capability to read the file does not.
+   */
+  | { status: 'external-gone' }
   | { status: 'error'; message: string }
 
 type Props = {
@@ -83,6 +98,8 @@ type Props = {
   onAddToChat: (ref: CodeRef) => void
   onAttach: () => void
   onClose: () => void
+  /** A folder was dropped; offer to attach it as the project. */
+  onOfferFolder?: (name: string) => void
 }
 
 /**
@@ -103,10 +120,28 @@ export function CoworkCodePanel({
   onAddToChat,
   onAttach,
   onClose,
+  onOfferFolder,
 }: Props): React.ReactElement {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const state = stateProp ?? emptyCodePanelState()
+
+  const [dragOver, setDragOver] = useState(false)
+  const pickerRef = useRef<HTMLInputElement>(null)
+  /**
+   * External files, held for this panel's lifetime only.
+   *
+   * The `File` is kept beside the text so Reload can re-read the same handle
+   * the user already granted. It is memory, not storage: nothing about an
+   * external file is persisted, so no filesystem access survives a restart,
+   * and a handle opened in one session is never visible to another because
+   * the map dies with the panel and the tab id carries the session.
+   */
+  const [externalFiles, setExternalFiles] = useState<
+    Record<string, { file: File; content: string }>
+  >({})
+  /** Latest selection number per external tab; see `openExternalFiles`. */
+  const externalReadSeq = useRef(new Map<string, number>())
 
   const [dataFolder, setDataFolder] = useState<string | null>(null)
   const [dirs, setDirs] = useState<Map<string, DirState>>(new Map())
@@ -121,6 +156,82 @@ export function CoworkCodePanel({
   const turnsRef = useRef(turns)
   turnsRef.current = turns
   const writeCounts = useMemo(() => writeCountsByPath(turns), [turns])
+
+  /**
+   * Open dropped or picked files as read-only External tabs.
+   *
+   * Scoped to this session: a file opened here belongs to the session it was
+   * opened in and must not surface under the next one. Oversized and
+   * unreadable files are reported rather than silently skipped.
+   */
+  const openExternalFiles = useCallback(
+    async (picked: File[]) => {
+      if (!sessionKey) return
+      for (const file of picked) {
+        // Selections for the same tab are numbered, so a read that resolves
+        // late cannot overwrite the bytes of a newer one.
+        const target = tabId(externalTab(file.name, sessionKey))
+        const seq = (externalReadSeq.current.get(target) ?? 0) + 1
+        externalReadSeq.current.set(target, seq)
+        if (file.size > MAX_CODE_FILE_BYTES) {
+          toast.error(t('common:codePanel.tooLargeToOpen', { name: file.name }))
+          continue
+        }
+        try {
+          const read = await readFileAsText(file)
+          if (!read.ok) {
+            toast.error(
+              read.reason === 'sensitive'
+                ? t('common:codePanel.sensitiveRefused', { name: file.name })
+                : t('common:codePanel.binaryRefused', { name: file.name })
+            )
+            continue
+          }
+          if (externalReadSeq.current.get(target) !== seq) continue
+          const content = read.text
+          const tab = externalTab(file.name, sessionKey)
+          setExternalFiles((prev) => ({
+            ...prev,
+            [tabId(tab)]: { file, content },
+          }))
+          // An already-open file is focused rather than opened twice.
+          onStateChange(openTab(state, tab))
+        } catch {
+          toast.error(t('common:codePanel.unreadable', { name: file.name }))
+        }
+      }
+    },
+    [sessionKey, state, onStateChange, t]
+  )
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      if (!dragHasFiles(e.dataTransfer)) return
+      e.preventDefault()
+      e.stopPropagation()
+      setDragOver(false)
+      const intent = decideDrop('code', Array.from(e.dataTransfer.files))
+      if (intent.action === 'open') void openExternalFiles(intent.files)
+      else if (intent.action === 'offer-folder') onOfferFolder?.(intent.name)
+    },
+    [openExternalFiles, onOfferFolder]
+  )
+
+  // Cmd+O / Ctrl+O while this panel is mounted, which is while Cowork's code
+  // rail is open.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'o' || !(e.metaKey || e.ctrlKey)) return
+      // Not while the user is typing, and not over an open dialog or menu:
+      // a global shortcut that interrupts a sentence is a bug.
+      if (isTypingTarget(e.target)) return
+      if (e.altKey || e.shiftKey) return
+      e.preventDefault()
+      pickerRef.current?.click()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const [explorerOpen, setExplorerOpen] = useState(
     () => state.tabs.length === 0
   )
@@ -222,6 +333,14 @@ export function CoworkCodePanel({
         setFile(gen, id, { status: 'detached' })
         return
       }
+      // An external file lives outside every root this panel can resolve
+      // against, and the handle that made it readable is held in memory only.
+      // Reaching here means that handle is gone — a restart, or a tab restored
+      // from persisted state — so there is nothing to read. Falling through
+      // would resolve its bare name against the session workspace and open a
+      // different file that happens to share the name.
+      if (tab.origin.kind === 'external') return
+
       // The roots resolve asynchronously on mount. Record nothing until they
       // are known, so the effect retries once they are — writing a state here
       // would cache a verdict reached before the panel could read anything.
@@ -329,6 +448,15 @@ export function CoworkCodePanel({
     void loadFile(active)
   }, [active, activeId, files, loadFile])
 
+  // Handles are granted to a session, so they end with it. Keyed ids alone
+  // would leave the previous session's bytes reachable from the next one's
+  // restored tabs.
+  const lastHandleSession = useRef(sessionKey)
+  if (lastHandleSession.current !== sessionKey) {
+    lastHandleSession.current = sessionKey
+    if (Object.keys(externalFiles).length > 0) setExternalFiles({})
+  }
+
   const openPath = useCallback(
     (rel: string) => {
       if (!projectKey) return
@@ -338,7 +466,40 @@ export function CoworkCodePanel({
     [onStateChange, state, projectKey]
   )
 
-  const activeFile = activeId ? files.get(activeId) : undefined
+  // External files were read into memory when they were opened; there is no
+  // path on disk to re-read them from, and they are read-only regardless.
+  //
+  // The session check is not redundant with the map's keys: a tab stamped to
+  // another session can arrive in this session's restored state, and its id
+  // would find that session's handle. Without this, one session's bytes
+  // render under another.
+  const activeFile: FileState | undefined =
+    activeId && active && tabBelongsToSession(active, sessionKey)
+      && activeId in externalFiles
+      ? { status: 'ready', content: externalFiles[activeId].content }
+      : // Held in no map on purpose. Whether an external tab still has its
+        // handle is known right here, synchronously, and the `files` map is
+        // emptied whenever the roots change — which would blink this state
+        // out and back as the data folder resolves on mount.
+        activeId && active?.origin.kind === 'external'
+        ? { status: 'external-gone' }
+        : activeId
+        ? files.get(activeId)
+        : undefined
+
+  /**
+   * Offer the file again, because re-reading it is not possible.
+   *
+   * A `File` from a drop or the picker carries a snapshot of the file as it
+   * was when it was handed over. Reading it later cannot return newer bytes:
+   * if the file on disk has changed the read fails outright, and if it has
+   * not, the bytes are the ones already shown. So there is no "reload" to
+   * offer here — only re-selection, which is what this does. The picker's
+   * own handler runs the same size and content gates as any other open.
+   */
+  const chooseExternalAgain = useCallback(() => {
+    pickerRef.current?.click()
+  }, [])
 
   const renderTree = (rel: string, depth: number): React.ReactNode => {
     const dir = dirs.get(rel)
@@ -612,6 +773,28 @@ export function CoworkCodePanel({
             <div className="flex h-full min-h-0 flex-col">
               {/* Announced, not swapped: replacing the bytes under someone
                   mid-read is what the preview pane deliberately avoids. */}
+              {/* An external file has no path to watch, so staleness cannot
+                  be detected for it — and the handle cannot be re-read for
+                  newer bytes either. The honest offer is to choose the file
+                  again, which goes through the same gates as a fresh open. */}
+              {active.origin.kind === 'external' && (
+                <div
+                  role="status"
+                  className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs text-main-view-fg/70"
+                >
+                  <span className="min-w-0 flex-1">
+                    {t('common:codePanel.externalNote')}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 shrink-0 px-2 text-xs"
+                    onClick={chooseExternalAgain}
+                  >
+                    {t('common:codePanel.chooseAgainAction')}
+                  </Button>
+                </div>
+              )}
               {isTabStale(active, loadedAt.get(activeId), writeCounts) && (
                 <div
                   role="status"
@@ -672,6 +855,24 @@ export function CoworkCodePanel({
                 </Button>
               </span>
             </Notice>
+          ) : activeFile.status === 'external-gone' ? (
+            // Nothing to reload from: say so, and offer the only thing that
+            // can actually produce the file again.
+            <Notice>
+              <span className="block">{t('common:codePanel.externalGone')}</span>
+              <span className="mt-2 flex justify-center gap-2">
+                <Button size="sm" onClick={chooseExternalAgain}>
+                  {t('common:codePanel.chooseAgainAction')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onStateChange(closeTab(state, activeId))}
+                >
+                  {t('common:codePanel.closeMissing')}
+                </Button>
+              </span>
+            </Notice>
           ) : activeFile.status === 'sensitive' ? (
             <Notice>
               <span className="block">{t('common:codePanel.sensitive')}</span>
@@ -712,7 +913,49 @@ export function CoworkCodePanel({
 
   return (
     <CoworkSidePanel title={t('common:codePanel.title')} onClose={onClose}>
-      {body}
+      <div
+        data-testid="code-drop-zone"
+        className={cn(
+          'relative flex h-full flex-col',
+          dragOver && DROP_ZONE_CLASS.code
+        )}
+        onDragOver={(e) => {
+          if (!dragHasFiles(e.dataTransfer)) return
+          // Claim the drop here. The document-level handler only stops the
+          // browser navigating to the file; it does not stop propagation, so
+          // this runs first on the way up.
+          e.preventDefault()
+          e.stopPropagation()
+          setDragOver(true)
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+          setDragOver(false)
+        }}
+        onDrop={onDrop}
+      >
+        {dragOver && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center p-2">
+            <span className="rounded-full border bg-background/95 px-3 py-1 text-xs shadow-sm">
+              {t(dropLabelKey('code'))}
+            </span>
+          </div>
+        )}
+        <input
+          ref={pickerRef}
+          type="file"
+          multiple
+          className="hidden"
+          data-testid="code-file-picker"
+          onChange={(e) => {
+            const picked = Array.from(e.target.files ?? [])
+            if (picked.length) void openExternalFiles(picked)
+            // Reset, so choosing the same file again still fires a change.
+            e.target.value = ''
+          }}
+        />
+        {body}
+      </div>
     </CoworkSidePanel>
   )
 }

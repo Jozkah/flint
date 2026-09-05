@@ -11,6 +11,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -28,6 +29,8 @@ import { route } from '@/constants/routes'
 import {
   Box,
   SlidersHorizontal,
+  Copy,
+  FileClock,
   MoreHorizontal,
   Trash2,
   type LucideIcon,
@@ -37,8 +40,15 @@ import {
   type MessageCircleIconHandle,
 } from '@/components/animated-icon/message-circle'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
+import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { usePrompt } from '@/hooks/usePrompt'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { memo, useCallback, useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { useCoworkActiveWork } from '@/hooks/useCoworkActiveWork'
+import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
+import { useFileActivity } from '@/hooks/useFileActivity'
+import { FileActivityDialog } from '@/containers/dialogs/FileActivityDialog'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
 
 type CoworkNavItem = {
@@ -64,15 +74,39 @@ const SessionItem = memo(function SessionItem({
   onRequestDelete: (pending: { id: string; title: string }) => void
 }) {
   const { t } = useTranslation()
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [activityOpen, setActivityOpen] = useState(false)
+  // Subscribed, not read once: the ledger is written when a run ends, and a
+  // snapshot taken at render time would leave the dialog describing the run
+  // before last.
+  const ledger = useCoworkOrigins((state) => state.bySession[session.id])
+  const activity = useFileActivity((s) => s.byConversation[session.id])
+
+  /**
+   * Open this row's own menu from right-click or the keyboard — the same
+   * `DropdownMenu` the button opens, so the two cannot drift apart.
+   */
+  const openRowMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setMenuOpen(true)
+  }
+
+  const onRowKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+      openRowMenu(e)
+    }
+  }
+
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem onContextMenu={openRowMenu} onKeyDown={onRowKeyDown}>
       <SidebarMenuButton
         isActive={isCurrent}
         onClick={() => onSelect(session.id)}
       >
         <span className="truncate">{session.title}</span>
       </SidebarMenuButton>
-      <DropdownMenu>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <SidebarMenuAction
             showOnHover
@@ -87,6 +121,21 @@ const SessionItem = memo(function SessionItem({
           side={isMobile ? 'bottom' : 'right'}
           align={isMobile ? 'end' : 'start'}
         >
+          <DropdownMenuItem onSelect={() => setActivityOpen(true)}>
+            <FileClock />
+            <span>{t('common:fileActivity.menuItem')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={() => {
+              void navigator.clipboard?.writeText(session.id)
+              toast.success(t('common:copiedConversationId'))
+            }}
+          >
+            <Copy />
+            <span>{t('common:copyConversationId')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
             onSelect={() =>
@@ -98,6 +147,28 @@ const SessionItem = memo(function SessionItem({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <FileActivityDialog
+        open={activityOpen}
+        onOpenChange={setActivityOpen}
+        events={activity ?? []}
+        // The same ledger the Changes panel and the completion summary read,
+        // so one file cannot be described three different ways.
+        origins={ledger?.entries}
+        title={session.title}
+        // The rows were inert without these: the dialog disables a row it
+        // cannot act on, so every row was disabled. Selecting the session
+        // first means the request lands on the session it came from.
+        onOpenFile={(path) => {
+          setActivityOpen(false)
+          onSelect(session.id)
+          useCoworkRun.getState().requestCodeOpen(session.id, path, 'code')
+        }}
+        onOpenDiff={(path) => {
+          setActivityOpen(false)
+          onSelect(session.id)
+          useCoworkRun.getState().requestCodeOpen(session.id, path, 'diff')
+        }}
+      />
     </SidebarMenuItem>
   )
 })
@@ -118,7 +189,17 @@ export function NavCowork() {
   const goCowork = useCallback(() => navigate({ to: route.cowork }), [navigate])
   const newSessionIconRef = useRef<MessageCircleIconHandle>(null)
   const newSession = () => {
-    useCoworkSessions.getState().createSession()
+    // Idempotent: on a blank session this returns the same one, so a second
+    // press cannot leave a trail of empty sessions behind. An unsent draft
+    // keeps the user where they are rather than stranding it.
+    const store = useCoworkSessions.getState()
+    const id = store.startSession({
+      running: Boolean(
+        store.currentId && useCoworkRun.getState().liveTurns[store.currentId]?.length
+      ),
+      hasDraft: usePrompt.getState().prompt.trim().length > 0,
+    })
+    store.selectSession(id)
     goCowork()
   }
   const selectSession = useCallback(
@@ -148,6 +229,16 @@ export function NavCowork() {
       // The activity record is keyed by session; leaving it behind would keep
       // a deleted session's workflows in the store forever.
       useCoworkActivity.getState().dropSession(pendingDelete.id)
+      // The file record is keyed by session too; leaving it behind would keep
+      // a deleted session's paths in storage indefinitely.
+      useFileActivity.getState().forget(pendingDelete.id)
+      // Teardown, not completion: the session is gone, so nothing is left to
+      // hold its authority in place. Its work items would otherwise keep a
+      // deleted session marked busy for the life of the app session.
+      useCoworkActiveWork.getState().clearSession(pendingDelete.id)
+      // The origin ledger is keyed by session too, and describes a run whose
+      // transcript is about to be gone.
+      useCoworkOrigins.getState().forget(pendingDelete.id)
     }
     setPendingDelete(null)
   }

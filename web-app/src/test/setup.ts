@@ -209,3 +209,24 @@ afterEach(() => {
   vi.useRealTimers()
   vi.clearAllMocks()
 })
+
+/**
+ * jsdom's `Blob`/`File` have no `text()`, which every browser and both
+ * webviews provide. Without it a component test that reads a dropped or
+ * picked file fails on the environment rather than on the code — hiding the
+ * production read path instead of exercising it.
+ *
+ * `FileReader` decodes the way the platform does: UTF-8, substituting U+FFFD
+ * for undecodable bytes rather than throwing, so a binary file still reads
+ * back as one and the binary check is tested for real.
+ */
+if (typeof Blob !== 'undefined' && typeof Blob.prototype.text !== 'function') {
+  Blob.prototype.text = function text(this: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onerror = () => reject(reader.error)
+      reader.onload = () => resolve(String(reader.result))
+      reader.readAsText(this)
+    })
+  }
+}

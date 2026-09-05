@@ -27,6 +27,10 @@ vi.mock('shiki', () => ({
   codeToHtml: vi.fn(async (c: string) => `<pre>${c}</pre>`),
 }))
 
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() },
+}))
+
 vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
   projectListDir: vi.fn(),
   projectReadFile: vi.fn(),
@@ -36,10 +40,12 @@ import {
   projectListDir,
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
+import { toast } from 'sonner'
 import { CoworkCodePanel } from '../CoworkCodePanel'
 import {
   emptyCodePanelState,
   openTab,
+  externalTab,
   projectKeyOf,
   projectTab,
   sandboxTab,
@@ -702,5 +708,240 @@ describe('CoworkCodePanel — session isolation', () => {
     expect(
       (await screen.findAllByText('workspace bytes')).length
     ).toBeGreaterThan(0)
+  })
+})
+
+describe('CoworkCodePanel — external files', () => {
+  const SESSION_A = 'session-a'
+  const SESSION_B = 'session-b'
+  const WS_A = '/data/agent-workspace/sessions/session-a'
+
+  /**
+   * A file the way the browser hands one over: bytes plus a name, with the
+   * snapshot semantics that matter here. `size` is overridable so the
+   * oversize path can be exercised without allocating a megabyte.
+   */
+  const pickedFile = (
+    name: string,
+    content: string | Uint8Array,
+    over: { size?: number; unreadable?: boolean } = {}
+  ) => {
+    const file = new File([content as BlobPart], name)
+    if (over.size !== undefined) {
+      Object.defineProperty(file, 'size', { value: over.size })
+    }
+    if (over.unreadable) {
+      // What a browser does when the file moved or permission was revoked
+      // between selection and read.
+      Object.defineProperty(file, 'text', {
+        value: () => Promise.reject(new DOMException('gone', 'NotReadableError')),
+      })
+    }
+    return file
+  }
+
+  const pick = async (...files: File[]) =>
+    userEvent.upload(screen.getByTestId('code-file-picker'), files)
+
+  const externalState = (name: string, sessionKey: string) =>
+    openTab(emptyCodePanelState(), externalTab(name, sessionKey))
+
+  const errorKeys = () =>
+    vi.mocked(toast.error).mock.calls.map((c) => String(c[0]))
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getJanDataFolder.mockResolvedValue(DATA_FOLDER)
+    listDir.mockResolvedValue(listing())
+    readFile.mockResolvedValue(projectFile())
+  })
+  afterEach(() => {
+    fetchMock.mockReset()
+  })
+
+  it('opens a picked file as its own tab and shows its bytes', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+
+    await pick(pickedFile('notes.ts', 'export const a = 1'))
+
+    expect(await screen.findByTestId('code-viewer-body')).toHaveTextContent(
+      'export const a = 1'
+    )
+  })
+
+  it('refuses a credentials file without opening a tab', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+
+    await pick(pickedFile('.env', 'TOKEN=hunter2'))
+
+    expect(errorKeys().join()).toContain('codePanel.sensitiveRefused')
+    expect(screen.queryByTestId('code-viewer-body')).not.toBeInTheDocument()
+    expect(screen.queryByText('TOKEN=hunter2')).not.toBeInTheDocument()
+  })
+
+  it('refuses a binary renamed to a text extension', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+    await pick(pickedFile('image.ts', png))
+
+    expect(errorKeys().join()).toContain('codePanel.binaryRefused')
+    expect(screen.queryByTestId('code-viewer-body')).not.toBeInTheDocument()
+  })
+
+  it('refuses a file too large to open, before reading it', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+
+    await pick(pickedFile('big.ts', 'x', { size: 4 * 1024 * 1024 }))
+
+    expect(errorKeys().join()).toContain('codePanel.tooLargeToOpen')
+    expect(screen.queryByTestId('code-viewer-body')).not.toBeInTheDocument()
+  })
+
+  it('reports a file that cannot be read and opens no tab', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+
+    await pick(pickedFile('gone.ts', 'never read', { unreadable: true }))
+
+    expect(errorKeys().join()).toContain('codePanel.unreadable')
+    expect(screen.queryByTestId('code-viewer-body')).not.toBeInTheDocument()
+  })
+
+  it('offers re-selection rather than a reload it cannot perform', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+    await pick(pickedFile('notes.ts', 'first'))
+    await screen.findByTestId('code-viewer-body')
+
+    // The banner offers "Choose again". It must not offer "Reload": the
+    // handle is a snapshot and cannot produce newer bytes.
+    expect(
+      screen.getByRole('button', { name: 'common:codePanel.chooseAgainAction' })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'common:codePanel.reload' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('replaces the content when the same name is chosen again', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+    await pick(pickedFile('notes.ts', 'first'))
+    expect(await screen.findByTestId('code-viewer-body')).toHaveTextContent(
+      'first'
+    )
+
+    // The same name selected from somewhere else: one tab, new bytes.
+    await pick(pickedFile('notes.ts', 'second'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('code-viewer-body')).toHaveTextContent('second')
+    )
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
+  })
+
+  it('keeps the old content when the replacement is sensitive', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+    await pick(pickedFile('notes.ts', 'safe content'))
+    await screen.findByTestId('code-viewer-body')
+
+    await pick(pickedFile('.env', 'TOKEN=hunter2'))
+
+    expect(errorKeys().join()).toContain('codePanel.sensitiveRefused')
+    expect(screen.getByTestId('code-viewer-body')).toHaveTextContent(
+      'safe content'
+    )
+    expect(screen.queryByText('TOKEN=hunter2')).not.toBeInTheDocument()
+  })
+
+  it('keeps the old content when the replacement turns binary', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+    await pick(pickedFile('notes.ts', 'safe content'))
+    await screen.findByTestId('code-viewer-body')
+
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02, 0x03])
+    await pick(pickedFile('notes.ts', png))
+
+    expect(errorKeys().join()).toContain('codePanel.binaryRefused')
+    expect(screen.getByTestId('code-viewer-body')).toHaveTextContent(
+      'safe content'
+    )
+  })
+
+  it('does not read an external tab against the workspace after a restart', async () => {
+    // Tab metadata is persisted; the handle is memory only. Nothing may be
+    // read here — resolving the bare name against the session workspace
+    // would open a different file that happens to share it.
+    render(
+      <Harness
+        sessionKey={SESSION_A}
+        workspacePath={WS_A}
+        initial={externalState('notes.ts', SESSION_A)}
+      />
+    )
+
+    // `findByText` returns the node that is actually mounted; asserting
+    // attachment separately races the re-render that resolving the roots
+    // causes, and tests the harness rather than the panel.
+    expect(
+      await screen.findByText('common:codePanel.externalGone')
+    ).toBeTruthy()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(readFile).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('button', { name: 'common:codePanel.chooseAgainAction' })
+    ).toBeInTheDocument()
+  })
+
+  it('never shows one session’s picked file under another', async () => {
+    const { rerender } = render(
+      <Harness sessionKey={SESSION_A} workspacePath={WS_A} />
+    )
+    await pick(pickedFile('notes.ts', 'session A bytes'))
+    await screen.findByTestId('code-viewer-body')
+
+    // Switching sessions re-seeds the panel with B's stored state, which
+    // happens to carry a tab for the same file name stamped to A.
+    rerender(
+      <Harness
+        sessionKey={SESSION_B}
+        workspacePath="/data/agent-workspace/sessions/session-b"
+        initial={externalState('notes.ts', SESSION_A)}
+      />
+    )
+
+    await waitFor(() =>
+      expect(screen.queryByText('session A bytes')).not.toBeInTheDocument()
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('gives the same file name a different tab in each session', () => {
+    expect(tabId(externalTab('notes.ts', SESSION_A))).not.toBe(
+      tabId(externalTab('notes.ts', SESSION_B))
+    )
+  })
+
+  it('settles on the last selection when two reads resolve out of order', async () => {
+    render(<Harness sessionKey={SESSION_A} workspacePath={WS_A} />)
+
+    // The first selection's read finishes after the second's.
+    let releaseFirst!: (value: string) => void
+    const slow = new File(['ignored'], 'notes.ts')
+    Object.defineProperty(slow, 'text', {
+      value: () => new Promise<string>((r) => (releaseFirst = r)),
+    })
+
+    await pick(slow)
+    await pick(pickedFile('notes.ts', 'second'))
+    await waitFor(() =>
+      expect(screen.getByTestId('code-viewer-body')).toHaveTextContent('second')
+    )
+
+    await act(async () => {
+      releaseFirst('first')
+    })
+
+    // The stale read must not overwrite the newer content.
+    expect(screen.getByTestId('code-viewer-body')).toHaveTextContent('second')
+    expect(screen.getAllByRole('tab')).toHaveLength(1)
   })
 })

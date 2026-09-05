@@ -58,6 +58,10 @@ import { createMistral } from '@ai-sdk/mistral'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { invoke } from '@tauri-apps/api/core'
 import { findSessionByModel } from '@janhq/tauri-plugin-llamacpp-api'
+import {
+  originOf,
+  useProviderReachability,
+} from '@/hooks/useProviderReachability'
 import { SessionInfo } from '@janhq/core'
 import { fetch as httpFetch } from '@tauri-apps/plugin-http'
 import { hasAudioSentinel, splitAudioSentinels } from './audio-sentinel'
@@ -523,14 +527,25 @@ export function createCustomFetch(
       init = { ...init, body: JSON.stringify(buildBody(rawBody!, true)) }
     }
 
+    const origin = originOf(requestUrlOf(input))
     let res: Response
     try {
       res = await baseFetch(input, init)
     } catch (err) {
       const friendly = describeTransportError(err)
       if (!friendly) throw err
+      // A real request just failed at the transport layer. That, and only
+      // that, is what marks a provider offline — nothing probes for it.
+      if (origin) {
+        useProviderReachability
+          .getState()
+          .markUnreachable(origin, friendly)
+      }
       throw new Error(`${friendly} (${requestUrlOf(input)})`)
     }
+    // Answered at all: whatever was wrong with the endpoint is over. A 4xx is
+    // still an answer, so it clears the offline mark too.
+    if (origin) useProviderReachability.getState().markReachable(origin)
     if (res.ok) {
       // OpenAI-compatible servers may interleave custom named SSE events (e.g.
       // tool-progress) with chat.completion.chunk data; the AI SDK validates

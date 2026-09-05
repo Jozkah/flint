@@ -17,8 +17,10 @@ import { useJanModelPromptDismissed } from '@/hooks/useJanModelPrompt'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
+import { useFileActivity } from '@/hooks/useFileActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 
@@ -52,7 +54,9 @@ const secondaryStores = [
   useAgentMode,
   useWebSearchConfig,
   useCoworkSessions,
+  useClaudeCompat,
   useCoworkActivity,
+  useFileActivity,
   useAgentToolsConfig,
   useModelOverrides,
 ] as const

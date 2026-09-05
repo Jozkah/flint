@@ -284,6 +284,22 @@ export type RunSubagentOptions = {
     workspacePath: string | null
     readOnlyFolder: string | null
     bashAvailable: boolean
+    /**
+     * The run's frozen access, so the child is told the same thing the parent
+     * was. A child that believes the folder is editable when it is not writes
+     * into refusals and reports work it did not do.
+     */
+    folderAccess?: 'read-only' | 'editable'
+    /** The parent's `JAN.md`, handed down for the same reason. */
+    projectInstructions?: string | null
+    /**
+     * The parent's compatibility instructions, verbatim.
+     *
+     * The same frozen manifest, not a fresh scan: a child resolving its own
+     * would be following a different set of instructions from the agent that
+     * dispatched it, in the same repository, in the same run.
+     */
+    compatInstructions?: readonly { name: string; content: string }[]
   }
   /** Runs one of the child's tool calls. Same sandbox as the parent. */
   dispatch: (call: PendingToolCall, signal: AbortSignal) => Promise<ToolOutcome>
@@ -369,6 +385,9 @@ export async function runSubagent(
       workspacePath: opts.system.workspacePath,
       readOnlyFolder: opts.system.readOnlyFolder,
       bashAvailable: opts.system.bashAvailable && 'bash' in tools,
+      folderAccess: opts.system.folderAccess,
+      projectInstructions: opts.system.projectInstructions,
+      compatInstructions: opts.system.compatInstructions,
       // Derived, not passed: the intersection above may have dropped them.
       webSearch: 'web_search' in tools,
     })

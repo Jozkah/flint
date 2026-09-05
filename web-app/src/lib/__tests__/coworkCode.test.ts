@@ -1,35 +1,36 @@
 import { describe, expect, it } from 'vitest'
 import {
+  activeTab,
+  artifactTab,
   closeAllTabs,
   closeOtherTabs,
   closeTab,
-  activeTab,
-  neighbourTabId,
-  originLabel,
-  projectKeyOf,
-  projectTab,
-  pruneTabsForProject,
-  sandboxTab,
-  artifactTab,
-  originScope,
-  tabBelongsToProject,
-  tabBelongsToSession,
-  tabId,
-  isWritableOrigin,
   codeRefBlock,
   codeRefToken,
   detectLanguage,
   emptyCodePanelState,
   expandCodeRefs,
+  externalTab,
   focusTab,
   isSourcePath,
   isTabStale,
+  isWritableOrigin,
   lineRangeOfSlice,
+  neighbourTabId,
   openTab,
-  writeCountsByPath,
+  originLabel,
+  originScope,
+  projectKeyOf,
+  projectTab,
+  pruneTabsForProject,
   relativeToRoot,
+  sandboxTab,
   shouldOpenInCode,
+  tabBelongsToProject,
+  tabBelongsToSession,
+  tabId,
   toggleDir,
+  writeCountsByPath,
 } from '@/lib/coworkCode'
 
 /** The session a sandbox tab belongs to; its identity is part of the tab id. */
@@ -467,5 +468,82 @@ describe('session identity', () => {
     expect(pruneTabsForProject(state, '/other').tabs).toEqual([
       sandboxTab('out.ts', SESSION),
     ])
+  })
+})
+
+describe('external files', () => {
+  it('belong to the session they were opened in', () => {
+    // A file dropped into one session must not appear in the next.
+    const tab = externalTab('notes.md', 'session-a')
+    expect(tabBelongsToSession(tab, 'session-a')).toBe(true)
+    expect(tabBelongsToSession(tab, 'session-b')).toBe(false)
+  })
+
+  it('take the session into their id, so two sessions never share a tab', () => {
+    expect(tabId(externalTab('notes.md', 'a'))).not.toBe(
+      tabId(externalTab('notes.md', 'b'))
+    )
+  })
+
+  it('stay read-only', () => {
+    expect(isWritableOrigin(externalTab('notes.md', 'a').origin)).toBe(false)
+  })
+
+  it('still show for tabs persisted before they carried a session', () => {
+    // Migration: an older tab has no session key and is shown rather than
+    // hidden, since hiding it would look like data loss.
+    const legacy = { path: 'old.md', origin: { kind: 'external' as const } }
+    expect(tabBelongsToSession(legacy, 'anything')).toBe(true)
+  })
+
+  it('opens an already-open file by focusing its tab, not duplicating it', () => {
+    const tab = externalTab('notes.md', 'a')
+    const once = openTab(emptyCodePanelState(), tab)
+    const twice = openTab(once, tab)
+    expect(twice.tabs).toHaveLength(1)
+    expect(twice.activeTabId).toBe(tabId(tab))
+  })
+})
+
+/**
+ * A tab's origin is recorded when it is opened, and never recomputed.
+ *
+ * The failure this prevents: deriving origin from the path at render time.
+ * Withdrawing direct-edit access, or attaching a different folder, would then
+ * silently relabel tabs that are already open — a sandbox file would start
+ * claiming to be a repository file, or a repository file would go external
+ * while its bytes stayed on screen. What a tab is was settled when it opened.
+ */
+describe('a tab’s recorded origin', () => {
+  it('is fixed at open time, not derived from the path', () => {
+    // Same path, three origins. Nothing about the text decides which.
+    const project = projectTab('src/a.ts', 'repo-key')
+    const sandbox = sandboxTab('src/a.ts', 'session-a')
+    const external = externalTab('src/a.ts', 'session-a')
+
+    expect([project.origin.kind, sandbox.origin.kind, external.origin.kind]).toEqual([
+      'project',
+      'sandbox',
+      'external',
+    ])
+    expect(new Set([tabId(project), tabId(sandbox), tabId(external)]).size).toBe(3)
+  })
+
+  // Access is a property of the run, not of a tab that is already open.
+  it('does not change when the session’s access does', () => {
+    const before = projectTab('src/a.ts', 'repo-key')
+    // Nothing in the tab model takes access, so revoking it cannot reach here.
+    const after = projectTab('src/a.ts', 'repo-key')
+
+    expect(after).toEqual(before)
+    expect(isWritableOrigin(after.origin)).toBe(isWritableOrigin(before.origin))
+  })
+
+  it('survives being restored under the same identity', () => {
+    const tab = sandboxTab('out/report.md', 'session-a')
+    const restored = JSON.parse(JSON.stringify(tab))
+
+    expect(tabId(restored)).toBe(tabId(tab))
+    expect(restored.origin).toEqual(tab.origin)
   })
 })
