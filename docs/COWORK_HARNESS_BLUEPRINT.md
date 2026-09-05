@@ -21,14 +21,35 @@ production code is changed by this document.**
 
 | Phase | State |
 |---|---|
-| 1 — managed worktree enforcement | **Built.** `core/agent/worktree.rs`, grant names the worktree, capability follows the backend. |
+| 1 — managed worktree enforcement | **Built and in force.** `core/agent/worktree.rs` — create, validate, name, use, list, recover, discard; the run reads and writes the worktree, checked for staleness before it starts. |
 | 2 — context measurement | **Built.** Measured from the run's own payload; per-category breakdown. |
 | 3 — first-turn inspect → propose | **Built.** Classifier widens only; review mode is the enforcement. |
-| 4 — compatibility ingestion | Largely pre-existing on `main`; the envelope is now sealed so ingested text cannot escape it. |
-| 5 — coordinated agent teams | **Built and wired.** `lib/coworkTeam.ts` + a `team` tool dispatching through the real subagent runner. |
-| 6 — checkpoints and rewind | **Built.** `core/agent/checkpoint.rs`; a managed tree restores, a user's checkout gets a patch. |
+| 4 — compatibility ingestion | **Built.** Instructions, skills, agents and MCP; imported agents are dispatchable, stdio servers run through the shell's own confinement. |
+| 5 — coordinated agent teams | **Built and wired.** `lib/coworkTeam.ts` + a `team` tool dispatching through the real subagent runner; an isolated task gets a worktree and a grant of its own. |
+| 6 — checkpoints and rewind | **Built and wired.** `core/agent/checkpoint.rs` behind Tauri commands, a persisted chain per session, and a rewind surface in Changes. |
 | 7 — parity UX review | **Smoke harness extended** and now runs off macOS. |
-| 8 — verification and platform evidence | Largely pre-existing (5.8); blocked on runners (6.3). |
+| 8 — verification and platform evidence | Local verification green (section 6); GitHub runners still unallocated (6.3). |
+
+### What changed after the first pass
+
+Three things were declared and inert rather than missing, and each was the
+same shape of defect: a mode the screen reported and the run did not use.
+
+- **The managed worktree was not the tree the run used.** The mode was chosen,
+  the worktree created and the grant issued, and then the run read the attached
+  folder and carried the grant only in `edit-folder`. A run now takes its read
+  root and its authority from the effective access in one place
+  (`runCarries`), so a downgrade removes authority rather than only displaying
+  a downgrade.
+- **Every surface reported the wrong tree.** The baseline, the origin ledger,
+  Changes and Code all read the attached folder, so a managed run showed an
+  empty diff and filed its real changes as external. `RunOrigins` now carries
+  the tree the run works in, and every surface reads that one answer.
+- **A team's children shared one write root.** Collisions were prevented by
+  refusing colliding `writes` declarations — a promise, not a boundary. A task
+  that asks to be isolated now gets its own worktree and its own grant, and a
+  team that cannot isolate every task that asked is refused whole rather than
+  falling back silently.
 
 Each built phase turned out smaller than this document first estimated, and
 always for the same reason: `main` already carried the types, the vocabulary and
@@ -567,13 +588,29 @@ Measured in this container:
 | Check | Status |
 |---|---|
 | Dependency install | Works, but **not out of the box** — see below |
-| `yarn test:web` | Runs; baseline in 6.1. Red by 2 files after 6.1(a) |
-| `yarn build:web` | Fixed on this branch; was failing on `main` — 6.1(a) |
-| Rust plugin tests | Runs after installing GTK/WebKit headers; 2 container-specific failures |
+| `yarn test:web` | **Green** |
+| `yarn build:web` | **Green.** Was failing on `main`; fixed on this branch — 6.1(a) |
+| `tsc -b` (project references) | **Green** |
+| ESLint, Prettier | **Green** on every file this work touches |
+| `cargo test --lib` (app + plugin) | **Green** after installing GTK/WebKit headers |
+| `cargo fmt` | **Green** on every file this work touches; pre-existing drift elsewhere is left alone |
+| `scripts/cowork-compat-smoke.sh` | **Green** (macOS-only steps skip) |
 | macOS native / WebView smoke | Impossible here (Linux container) |
 | Windows fail-closed runtime | Impossible here |
 | Linux bubblewrap runtime | Possible in principle; needs `bwrap` present |
 | Any CI job | **No runners allocated** — see 6.3 |
+
+**GUI coverage, stated exactly.** The Cowork route (`routes/cowork.tsx`) has no
+component test and cannot get a meaningful one here: it is a Tauri surface, and
+this container has no WebView, no display and no packaged app. What that costs
+is real and worth naming — nothing proves the wiring inside that file end to
+end. What compensates is that the decisions it makes are not in it: the roots
+and authority a run carries (`runCarries`), where an isolated child writes
+(`planDestinations`), what a rewind may do (`checkpoint::plan`), which agents
+are dispatchable (`importedAgents`) and what the summary says (`summarizeRun`)
+are all pure functions with their own tests, and the route is the wiring that
+passes values between them. Every container it renders — the readiness card,
+the recovery list, the rewind surface, the diff panel — is tested on its own.
 
 **Install is not out of the box.** `corepack` cannot fetch Yarn 4.5.3:
 `repo.yarnpkg.com` returns 403 through this environment's proxy (confirmed via

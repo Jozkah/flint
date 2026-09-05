@@ -81,6 +81,27 @@ check "team dispatch: children inherit the run's tools and none of its own" \
   web-app/node_modules/.bin/vitest run --root web-app \
   src/lib/__tests__/coworkTeamDispatch.test.ts
 
+# Isolation has to be a boundary rather than a declaration: two children asking
+# for their own checkout must get two roots, two grants and two owners, and a
+# team that cannot isolate every task that asked must be refused whole.
+check "isolated children: separate roots, or the team does not start" \
+  web-app/node_modules/.bin/vitest run --root web-app \
+  src/lib/__tests__/coworkTeamDestinations.test.ts
+
+# One session's grant used to be one grant. A team of three isolated children
+# needs three live ones, and none of them usable under another's id.
+check "grants: children of one session hold separate roots" \
+  cargo test --quiet \
+  --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml \
+  --lib grants
+
+# What the run reads and what authority it carries, and the surfaces that
+# report where the changes went. The failure this catches is a mode the screen
+# names and the run does not use.
+check "destinations: the run uses the tree it says it uses" \
+  web-app/node_modules/.bin/vitest run --root web-app \
+  src/lib/__tests__/coworkOriginAgreement.test.ts
+
 if [[ "$IS_MACOS" -eq 0 ]]; then
   step "Seatbelt, and what needs a real one"
   skip "Seatbelt confinement and the MCP runtime suites" "not macOS"
