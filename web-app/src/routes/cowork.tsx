@@ -158,6 +158,7 @@ import { useCompatManifest } from '@/hooks/useCompatManifest'
 import { useImportedMcp } from '@/hooks/useImportedMcp'
 import {
   compatInstructionBlocks,
+  importedAgents,
   mergeSkillRegistry,
   nestedChainFor,
   manifestMatches as compatMatches,
@@ -461,6 +462,15 @@ function CoworkPage() {
    * and the user is shown one of them while another is used.
    */
   const skillRoots = useClaudeCompat((s) => s.skillRoots)
+  /**
+   * The subagents saved in Jan.
+   *
+   * Declared before the compatibility scan because the scan needs them: an
+   * imported agent that reuses one of these names is a duplicate, and it is
+   * reported as one rather than quietly losing.
+   */
+  const [subagentDefs, setSubagentDefs] = useState<SubagentDefinition[]>([])
+
   const {
     manifest: compat,
     mcpProbes,
@@ -474,6 +484,9 @@ function CoworkPage() {
       )
     ),
     availableTools: advertisedToolNames,
+    // So an imported agent reusing a saved name is reported as a duplicate
+    // rather than quietly losing to it.
+    savedAgentNames: subagentDefs.map((one) => one.name),
     // Only what the user approved through the picker. Never anything a
     // repository named.
     approvedUserSkillRoots: skillRoots,
@@ -567,7 +580,6 @@ function CoworkPage() {
   const runSkillsRef = useRef<ReturnType<typeof resolveSkills>>([])
   const sessionIdRef = useRef<string | null>(null)
   sessionIdRef.current = session?.id ?? null
-  const [subagentDefs, setSubagentDefs] = useState<SubagentDefinition[]>([])
   const workspacePath = useSessionWorkspacePath(session?.id)
 
   /**
@@ -1548,6 +1560,18 @@ function CoworkPage() {
       : emptyCompatManifest(baselineBinding)
 
     /**
+     * The agents this run can dispatch: Jan's own, plus the repository's.
+     *
+     * Frozen with the manifest, so an agent file edited mid-run applies to the
+     * next one. Jan's saved definitions win a name collision — a repository
+     * must not be able to redefine an agent the user configured by choosing
+     * its name — and the shadowed ones are named in the prompt rather than
+     * silently dropped.
+     */
+    const imported = importedAgents(runCompat, subagentDefs)
+    const runAgents = [...subagentDefs, ...imported.definitions]
+
+    /**
      * Instructions a subtree owes this run, delivered once each.
      *
      * One tracker for the whole run, shared by the main agent and every
@@ -1631,7 +1655,7 @@ function CoworkPage() {
     const canIsolate = capabilityState.known && capabilityState.directEdit
     const transport = new CoworkChatTransport(sid, {
       planMode: isReadOnly(runMode),
-      subagentNames: subagentDefs.map((d) => d.name),
+      subagentNames: runAgents.map((d) => d.name),
       // Always on at depth 0, even with nothing saved: a one-off subagent with
       // an inline `system_prompt` is first-class, as it is in Rust.
       allowSubagents: true,
@@ -1758,7 +1782,7 @@ function CoworkPage() {
       const childOwner = destination?.ownerId ?? sid
       const resolved = resolveSubagent(
         req,
-        subagentDefs,
+        runAgents,
         parentToolNames(transport.advertisedTools)
       )
       if ('error' in resolved) {

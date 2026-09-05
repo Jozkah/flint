@@ -7,12 +7,15 @@ import {
   classifyInert,
   compatInstructionBlocks,
   emptyManifest,
+  importedAgents,
   instructionOrder,
   intersectAgentTools,
   isContained,
   manifestMatches,
   resolveCompatibility,
   toJanMcpConfig,
+  type CompatComponent,
+  type CompatibilityManifest,
   type CompatProbes,
   type ResolveOptions,
   MAX_COMPAT_BYTES,
@@ -277,6 +280,22 @@ describe('imported agent definitions', () => {
     expect(result.reason).toContain('browse')
   })
 
+  it('refuses to redefine an agent the user saved in Jan', () => {
+    // A repository must not be able to take over a name the user configured
+    // for themselves by choosing it.
+    const result = classifyCompatAgent(agent, {
+      enabled: true,
+      root: ROOT,
+      availableTools: ['read', 'write'],
+      savedAgentNames: [agent.name],
+    })
+
+    expect(result.state).toBe('duplicate')
+    expect(result.reason).toContain('saved in Jan')
+    // And nothing dispatchable comes out of it.
+    expect(result.content).toBeUndefined()
+  })
+
   it('is active with its granted tools when everything resolves', () => {
     const result = classifyCompatAgent(agent, {
       enabled: true,
@@ -493,7 +512,9 @@ describe('the resolved manifest', () => {
     )
 
     expect(manifest.enabled).toBe(false)
-    expect(manifest.components.every((one) => one.state !== 'active')).toBe(true)
+    expect(manifest.components.every((one) => one.state !== 'active')).toBe(
+      true
+    )
     expect(compatInstructionBlocks(manifest)).toEqual([])
   })
 
@@ -550,9 +571,9 @@ describe('the resolved manifest', () => {
     expect(
       manifestMatches(manifest, { sessionId: SESSION, folder: SIBLING })
     ).toBe(false)
-    expect(manifestMatches(manifest, { sessionId: 'other', folder: ROOT })).toBe(
-      false
-    )
+    expect(
+      manifestMatches(manifest, { sessionId: 'other', folder: ROOT })
+    ).toBe(false)
   })
 
   it('gives an unattached session nothing to activate', () => {
@@ -567,7 +588,11 @@ describe('the resolved manifest', () => {
     const manifest = resolveCompatibility(
       probes({
         instructions: [
-          { name: 'CLAUDE.md', path: `${ROOT}/CLAUDE.md`, content: 'Be brief.' },
+          {
+            name: 'CLAUDE.md',
+            path: `${ROOT}/CLAUDE.md`,
+            content: 'Be brief.',
+          },
         ],
         skills: [
           {
@@ -641,5 +666,70 @@ describe('the resolved manifest', () => {
     const serialized = JSON.stringify(manifest)
     expect(serialized).not.toMatch(/grant/i)
     expect(serialized).toContain('API_TOKEN')
+  })
+})
+
+describe('imported agents, as things the run can dispatch', () => {
+  const manifestWith = (
+    components: CompatComponent[]
+  ): CompatibilityManifest => ({
+    binding: { sessionId: 's1', folder: ROOT },
+    enabled: true,
+    components,
+    scannedAt: 1,
+  })
+
+  const active = (name: string): CompatComponent => ({
+    id: `agent:${name}`,
+    type: 'agent',
+    name,
+    source: 'project',
+    path: `${ROOT}/.claude/agents/${name}.md`,
+    enabled: true,
+    state: 'active',
+    description: 'reviews the parser',
+    dependencies: ['read', 'grep'],
+    content: 'You review parsers.',
+  })
+
+  it('turns an active agent into a definition the task tool can run', () => {
+    const { definitions } = importedAgents(
+      manifestWith([active('reviewer')]),
+      []
+    )
+
+    expect(definitions).toEqual([
+      {
+        name: 'reviewer',
+        description: 'reviews the parser',
+        system_prompt: 'You review parsers.',
+        // Already intersected at classification; null would mean "everything
+        // the parent has", which a definition naming tools did not ask for.
+        allowed_tools: ['read', 'grep'],
+        // Never the model the file named: choosing a model is the user's.
+        model: null,
+      },
+    ])
+  })
+
+  it('offers nothing for an agent Jan refused', () => {
+    // A request for it must fail as unknown rather than launch something that
+    // is not what the repository described.
+    const refused: CompatComponent = {
+      ...active('escaper'),
+      state: 'path-escape',
+      content: undefined,
+    }
+    expect(importedAgents(manifestWith([refused]), []).definitions).toEqual([])
+  })
+
+  it('lets a saved definition keep its name', () => {
+    const { definitions, shadowed } = importedAgents(
+      manifestWith([active('reviewer')]),
+      [{ name: 'reviewer' }]
+    )
+
+    expect(definitions).toEqual([])
+    expect(shadowed).toEqual(['reviewer'])
   })
 })
