@@ -79,6 +79,32 @@ check "compatibility suites" \
   src/containers/__tests__/ClaudeSkillRootsSettings.test.tsx \
   src/hooks/__tests__/useClaudeCompat.test.ts
 
+step "MCP over a real remote transport"
+# A loopback server, Jan's real streamable-HTTP transport, and the failure
+# shapes a client has to survive.
+check "loopback HTTP: handshake, list, call, refusal, malformed init" \
+  cargo test --quiet --manifest-path src-tauri/Cargo.toml --lib mcp_http_integration
+
+step "Restart, in two real processes"
+# One process writes what Jan persists and exits; a second starts fresh and
+# reads it. Clearing a store inside one process would test the clearing, not
+# the restart.
+restart_across_processes() {
+  local fixture
+  fixture="$(mktemp -t janrestart)".json
+  JAN_RESTART_FIXTURE="$fixture" web-app/node_modules/.bin/vitest run --root web-app \
+    src/hooks/__tests__/restart/processA.spec.ts >/dev/null 2>&1 || {
+    rm -f "$fixture"
+    return 1
+  }
+  JAN_RESTART_FIXTURE="$fixture" web-app/node_modules/.bin/vitest run --root web-app \
+    src/hooks/__tests__/restart/processB.spec.ts >/dev/null 2>&1
+  local status=$?
+  rm -f "$fixture"
+  return "$status"
+}
+check "consent and running servers do not survive a restart" restart_across_processes
+
 printf '\n'
 if [[ "$FAILED" -eq 0 ]]; then
   printf '\033[32mAll runtime checks passed.\033[0m\n'
@@ -95,6 +121,8 @@ Covered by an executing runtime:
   - a confined MCP server: handshake, tools/list, tools/call, shutdown
   - refusal to launch an import that carries no confinement
   - the environment a confined server is given
+  - a real remote MCP handshake, tool call, and failure handling on loopback
+  - a restart, across two separate processes
 
 Not covered here:
   - the Tauri window: layout, focus order, where a control sits

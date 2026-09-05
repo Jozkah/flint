@@ -71,6 +71,22 @@ impl JanClientHandler {
         });
         Self { info, server, emit }
     }
+
+    /// The same handler, without a Tauri app behind it.
+    ///
+    /// The only thing the app is used for is emitting progress to the UI. A
+    /// test has no window to emit into, and substituting that sink is what
+    /// lets an integration test drive the *real* transport and the *real*
+    /// client rather than a stand-in for them — which is the part worth
+    /// testing.
+    #[cfg(test)]
+    pub(crate) fn for_test(info: ClientInfo, server: String) -> Self {
+        Self {
+            info,
+            server,
+            emit: Arc::new(|_| {}),
+        }
+    }
 }
 
 impl ClientHandler for JanClientHandler {
