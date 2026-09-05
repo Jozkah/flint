@@ -497,16 +497,18 @@ report. The rule that matters: a skipped test is never reported as support.
 
 ## 6. Verification: what this environment can and cannot prove
 
-Measured at `adfd071` in this container:
+Measured in this container:
 
 | Check | Status |
 |---|---|
 | Dependency install | Works, but **not out of the box** — see below |
-| `yarn test:web` | Runs; baseline recorded in §6.1 |
+| `yarn test:web` | Runs; baseline in 6.1. Red on `main` by 3 files |
+| `yarn build:web` | **Fails on `main`** — see 6.1(a) |
 | Rust plugin tests | Runs after installing GTK/WebKit headers; 2 container-specific failures |
 | macOS native / WebView smoke | Impossible here (Linux container) |
 | Windows fail-closed runtime | Impossible here |
 | Linux bubblewrap runtime | Possible in principle; needs `bwrap` present |
+| Any CI job | **No runners allocated** — see 6.3 |
 
 **Install is not out of the box.** `corepack` cannot fetch Yarn 4.5.3:
 `repo.yarnpkg.com` returns 403 through this environment's proxy (confirmed via
@@ -533,46 +535,94 @@ Linux container** — macOS native/WebView smoke and Windows fail-closed runtime
 They belong in CI on those runners, and any claim about them made from here is
 construction-only by definition.
 
-### 6.1 Baseline results at `adfd071` (pre-merge)
+### 6.1 Baseline results on the merged tree
 
-Web suite (`yarn test:web`), three runs, each adding one build step:
+`yarn test:web`, with `@janhq/core`, the plugin API packages and the extensions
+built first: **367 test files, 5,008 tests — 364 files and 5,006 tests pass.**
+
+The three failures are all `main`'s, not this branch's (the branch's only diff
+from `main` is this document), and two of them are worth acting on:
+
+**a. `yarn build:web` does not build on `main`.** Two TypeScript errors, both in
+`web-app/src/services/updater/tauri.ts`:
+
+```
+src/services/updater/tauri.ts(10,31): error TS2307:
+  Cannot find module '@tauri-apps/plugin-updater'
+src/services/updater/tauri.ts(151,40): error TS7006:
+  Parameter 'event' implicitly has an 'any' type
+```
+
+Commit `3be8879` ("refactor(privacy): remove telemetry and update checking")
+removed `@tauri-apps/plugin-updater` from `web-app/package.json` — deliberately,
+and `web-app/src/__tests__/localOnly.test.ts` asserts the removal ("ships no
+updater plugin"). But it left `services/updater/tauri.ts` importing the removed
+package and `services/index.ts:145` dynamically importing that module into the
+service hub. `services/updater/__tests__/tauri.test.ts` fails to resolve for the
+same reason, which is the third failing test file.
+
+The fix is small and already scaffolded: `DefaultUpdaterService`
+(`services/updater/default.ts`) is a no-op returning `null`, which *is* the
+intended local-only behaviour, and the hub already defaults to it
+(`services/index.ts:96`). Deleting `updater/tauri.ts` plus its test and dropping
+the two lines that load it in `services/index.ts` finishes the removal that
+`3be8879` started.
+
+**b. Two tests cannot pass under the default runner.**
+`web-app/src/hooks/__tests__/restart/processA.spec.ts` and `processB.spec.ts`
+are a two-process fixture: they require `JAN_RESTART_FIXTURE` to name a shared
+file, and are driven by `scripts/cowork-compat-smoke.sh`, which sets it and runs
+the two specs in sequence. `web-app/vitest.config.ts` has no test-file `exclude`
+— only a *coverage* exclude — so `yarn test:web` picks them up, `processA`
+throws on the missing variable, and `processB` then fails because `processA`
+never wrote the state.
+
+The effect is that `yarn test:web` is permanently red on `main` by two tests
+that are working as designed. Either exclude the `restart/` directory from the
+default project and leave it to the smoke script, or have the specs skip
+themselves when `JAN_RESTART_FIXTURE` is unset. The second is preferable: a
+self-skipping spec still reports its own absence, where an exclude hides it.
+
+Both findings are `main`'s and outside this epic's scope, recorded here because
+a Phase 0 baseline that does not say "the tree does not currently build" is not
+a baseline.
+
+### 6.2 Pre-merge results at `adfd071`
+
+Kept because they show how much of a cold-run failure is build ordering. Web
+suite, three runs, each adding one build step:
 
 | Build state | Test files | Tests |
 |---|---|---|
-| Cold, nothing built | 241 passed, **64 failed** (305) | 2,727 passed, 43 failed (2,770) |
-| + `@janhq/core` and plugin API packages built | 304 passed, **1 failed** (305) | **3,850 passed, 0 failed** |
-| + `yarn build:extensions` | **305 passed, 0 failed** | **3,860 passed, 0 failed** |
+| Cold, nothing built | 241 passed, 64 failed (305) | 2,727 passed, 43 failed |
+| + `@janhq/core` and plugin API packages | 304 passed, 1 failed | 3,850 passed, 0 failed |
+| + `yarn build:extensions` | 305 passed, 0 failed | 3,860 passed, 0 failed |
 
-The whole of the cold-run failure is module resolution — `Failed to resolve
-entry for package "@janhq/core"`, `"@janhq/tauri-plugin-agent-tools-api"`, then
-`"@janhq/assistant-extension"` — and none of it is an assertion. **The clean
-baseline is green: 305/305 files, 3,860/3,860 tests.** Note the test *count*
-rises with each build step (2,770 → 3,850 → 3,860): unresolved imports were
-costing whole files, so a cold run silently under-reports coverage by roughly a
-thousand tests. Any CI job added in Phase 8 must order the builds first, or it
-will measure a baseline that is both red and short.
+Every cold-run failure is module resolution, not an assertion. The test *count*
+climbs 2,770 → 3,850 → 3,860: unresolved imports cost whole files, so a cold run
+under-reports coverage by roughly a thousand tests as well as reporting red. A
+CI job that does not order the builds first measures a baseline that is both red
+and short.
 
 Rust plugin suite (`cargo test --lib` in `tauri-plugin-agent-tools`), after
-installing `libgtk-3-dev` / `libwebkit2gtk-4.1-dev` (without them the build
-fails at `atk-sys` and `gdk-sys` and no test runs):
+installing `libgtk-3-dev`/`libwebkit2gtk-4.1-dev` — without them the build dies
+at `atk-sys`/`gdk-sys` and no test runs: **319 passed, 2 failed, 1 ignored**.
+Both failures are container artifacts, recorded with that context so neither is
+carried forward as "known failing":
 
-**319 passed, 2 failed, 1 ignored.** Both failures are artifacts of this
-container rather than defects:
+- `reports_a_permission_denial_distinctly` asserts a chmod-000 directory is
+  refused, which cannot hold for **uid 0** — this container runs as root.
+- `bash_runs_only_when_the_sandbox_can_enforce` needs a bubblewrap bind this
+  container cannot set up.
 
-- `project_browse::tests::reports_a_permission_denial_distinctly` — asserts a
-  chmod-000 directory is refused, but the container runs as **root** (uid 0),
-  for whom the mode bits do not apply, so the listing succeeds and the
-  `unwrap_err()` panics. It would pass as any non-root user.
-- `commands::tests::bash_runs_only_when_the_sandbox_can_enforce` — `bwrap`
-  reports `Can't find source path /tmp/jan-agent-thread-one`; the bubblewrap
-  bind this test depends on cannot be set up here.
+### 6.3 CI is red for a reason unrelated to any diff
 
-Both are worth knowing for Phase 8: a CI runner that executes as root will
-report the first as a real failure, and the second is a genuine signal that
-bubblewrap runtime coverage needs a runner where the bind works. Neither is a
-baseline to carry forward as "known failing" without that context.
-
----
+Every check on this PR fails 1–4 seconds after starting, with no runner assigned
+(`runner_id: 0`, `runner_name: ""`). The same is true of `main`'s own pushes —
+`Rust Check` on `bdbf078` and `Cowork sandbox runtime` both fail the same way.
+This is runner allocation in this fork, not a code failure, and no re-run fixes
+it. Until it is resolved, the Linux/Windows platform evidence Phase 8 wants
+cannot be produced by CI here at all.
 
 ## 7. Recommended sequence
 
