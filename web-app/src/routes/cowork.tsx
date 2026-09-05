@@ -407,6 +407,17 @@ function CoworkPage() {
     binding: { sessionId: session?.id ?? null, folder },
     worktreePath: worktree?.path ?? null,
   })
+  /**
+   * The working tree this session's changes land in.
+   *
+   * The attached folder for a sandbox or direct-edit session, the worktree for
+   * a managed one. Every surface that describes changes — the Changes panel,
+   * the origin ledger, which root a path belongs to — reads this rather than
+   * the attached folder, or a managed run would show an empty diff of a tree
+   * nothing touched.
+   */
+  const treeRoot = effective.readRoot ?? folder
+
   useEffect(() => {
     let cancelled = false
     if (!folder) {
@@ -656,12 +667,15 @@ function CoworkPage() {
    */
   const originOfPath = useCallback(
     (path: string): FileOrigin => {
-      if (folder && relativeToRoot(folder, path) !== path) return 'project'
+      // Against the tree the run works in, not the attached folder: in a
+      // managed session every project path is under the worktree, and matching
+      // on the folder would file all of them as external.
+      if (treeRoot && relativeToRoot(treeRoot, path) !== path) return 'project'
       if (workspacePath && relativeToRoot(workspacePath, path) !== path)
         return 'sandbox'
       return 'external'
     },
-    [folder, workspacePath]
+    [treeRoot, workspacePath]
   )
 
   /**
@@ -681,6 +695,10 @@ function CoworkPage() {
     }) => {
       const { sessionId, origins, events } = input
       const { baseline, binding, destination } = origins
+      // Where the changes are, which is not always where the session is
+      // attached. Falling back to the folder keeps a ledger recorded before
+      // this distinction existed readable.
+      const tree = origins.tree ?? binding.folder
 
       const janCalls: JanFileCall[] = events
         .filter((event) => isChange(event.operation) && event.ok)
@@ -688,17 +706,17 @@ function CoworkPage() {
           // Compared against Git's repo-relative paths, so a project path has
           // to be expressed the same way before the two can be matched.
           path:
-            event.origin === 'project' && binding.folder
-              ? relativeToRoot(binding.folder, event.path)
+            event.origin === 'project' && tree
+              ? relativeToRoot(tree, event.path)
               : event.path,
           destination: destinationOfOrigin(event.origin, destination),
           ok: true,
         }))
 
       let endDifferences: string[] = []
-      if (binding.folder) {
+      if (tree) {
         try {
-          const status = await loadGitStatus(binding.folder, 'all')
+          const status = await loadGitStatus(tree, 'all')
           endDifferences = (status?.files ?? []).map((file) => file.path)
         } catch {
           // Nothing found is nothing claimed: a failed read leaves the ledger
@@ -712,7 +730,7 @@ function CoworkPage() {
         endDifferences,
         destinationOf: (path) =>
           destinationOfOrigin(
-            originOfPath(binding.folder ? `${binding.folder}/${path}` : path),
+            originOfPath(tree ? `${tree}/${path}` : path),
             destination
           ),
       })
@@ -982,7 +1000,7 @@ function CoworkPage() {
   // Read-only working-tree status for the attached repo, loaded lazily and kept
   // strictly separate from the sandbox diffs above. The chip's counts combine
   // both sources so it appears whenever either has changes.
-  const git = useCoworkGitStatus(folder)
+  const git = useCoworkGitStatus(treeRoot)
 
   /**
    * Ask the backend to authorize this folder, then switch the session.
@@ -1442,12 +1460,23 @@ function CoworkPage() {
       sessionId: sid,
       folder: current?.folder ?? null,
     }
+    /**
+     * What this run reads and what authority it carries, decided once.
+     *
+     * Before the baseline, because the baseline has to be taken in the tree
+     * the run will actually change: a managed session works in a worktree, and
+     * a baseline of the attached folder would describe a tree nothing touched.
+     */
+    const carried = runCarries(effective, {
+      folder: current?.folder ?? null,
+      grantId: liveGrant?.grantId ?? null,
+    })
     let runBaseline: GitBaseline | null = null
-    if (baselineBinding.folder) {
+    if (carried.readRoot) {
       let captured: GitBaseline
       try {
         captured = baselineFromStatus(
-          await loadGitStatus(baselineBinding.folder, 'all'),
+          await loadGitStatus(carried.readRoot, 'all'),
           baselineBinding
         )
       } catch {
@@ -1470,6 +1499,9 @@ function CoworkPage() {
       binding: baselineBinding,
       access: effective.access,
       destination: runAuthority.destination,
+      // The tree the changes land in, frozen with the rest: every surface that
+      // reports what happened reads this one answer.
+      tree: carried.readRoot,
       baseline: runBaseline,
     }
     useCoworkOrigins.getState().begin(sid, origins)
@@ -1548,10 +1580,6 @@ function CoworkPage() {
      * The id is authority-bearing and goes only to the backend command: never
      * into a prompt, a message, an activity row, or anything shown to anyone.
      */
-    const carried = runCarries(effective, {
-      folder: current?.folder ?? null,
-      grantId: liveGrant?.grantId ?? null,
-    })
     const runGrant = carried.writeGrant
     /**
      * The tree this run reads, frozen with everything else.
@@ -2685,7 +2713,9 @@ function CoworkPage() {
           <CoworkDiffPanel
             sandboxFiles={fileDiffs}
             onOpenFile={openToolPath}
-            folder={folder}
+            // The tree the changes are in, not the one the session is
+            // attached to: a managed run's diff lives in its worktree.
+            folder={treeRoot}
             git={git}
             origins={runOrigins?.entries}
             onClose={() => setRail(null)}
@@ -2715,7 +2745,10 @@ function CoworkPage() {
         {rail?.kind === 'code' && session?.id && (
           <CoworkCodePanel
             onOfferFolder={() => void attachFolder()}
-            folder={folder}
+            // The tree the run reads. Browsing the attached folder while the
+            // agent works in a worktree would show two different repositories
+            // under one name.
+            folder={treeRoot}
             workspacePath={workspacePath}
             sessionKey={session.id}
             state={session.codePanel}

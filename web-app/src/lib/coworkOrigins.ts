@@ -280,6 +280,17 @@ export type RunOrigins = {
   access: AccessMode
   destination: ChangeDestination
   /**
+   * The working tree this run's changes actually land in.
+   *
+   * Not the same as `binding.folder`, and the difference is the whole reason
+   * this field exists: a managed-worktree run reads and writes a checkout of
+   * its own, so a baseline taken in the attached folder would describe a tree
+   * nothing touched, and every change would come back unattributable. Equal to
+   * the attached folder for repository and sandbox runs, null when there is no
+   * folder at all.
+   */
+  tree: string | null
+  /**
    * The working tree as it was before the run, when it could be captured.
    *
    * Null is itself a fact — it means nothing later can be dated — and is why
@@ -299,7 +310,14 @@ export type RunOrigins = {
 export const promptFolderAccess = (
   origins: RunOrigins
 ): 'read-only' | 'editable' =>
-  origins.access === 'edit-folder' && origins.destination === 'repository'
+  // Both writing destinations, because both are true: a managed worktree is
+  // the run's whole world, read and written, and telling the model it is
+  // read-only would have it spend the run proposing changes it could have
+  // made. The pairing of access and destination is what keeps a downgraded
+  // session honest — either half alone would say editable for a session
+  // holding no grant.
+  (origins.access === 'edit-folder' && origins.destination === 'repository') ||
+  (origins.access === 'managed-worktree' && origins.destination === 'managed')
     ? 'editable'
     : 'read-only'
 
