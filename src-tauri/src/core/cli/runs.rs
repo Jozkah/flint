@@ -20,7 +20,7 @@ use jan_agent_harness::envelope::EventLog;
 use jan_agent_harness::error::{ErrorKind, HarnessError};
 use jan_agent_harness::event::{EventPayload, HarnessEvent};
 use jan_agent_harness::identity::RunId;
-use jan_agent_harness::state::{RunRecord, StateStore};
+use jan_agent_harness::state::{RunRecord, RunStatus, StateStore};
 
 use crate::core::agent::recorder::STATE_DIR;
 
@@ -243,6 +243,72 @@ pub(crate) fn load(run: &str) -> Result<(RunRecord, Vec<HarnessEvent>), HarnessE
     load_from(&store(), run)
 }
 
+/// The most recent run left interrupted on a surface thread, if any.
+///
+/// Scans the run store rather than keeping an index: a store holds one small
+/// record per run, and this runs once when a conversation is resumed. If that
+/// ever stops being true the answer is an index, not a cache.
+pub(crate) fn last_interrupted_on_thread(
+    store: &StateStore,
+    external_thread: &str,
+) -> Option<(RunRecord, Vec<HarnessEvent>)> {
+    // `list` is creation-ordered, so the last match is the most recent.
+    store
+        .list()
+        .ok()?
+        .into_iter()
+        .rev()
+        .filter_map(|run| {
+            let record = store.load_for_resume(&run).ok()?;
+            (record.status == RunStatus::Interrupted
+                && record.external_thread.as_deref() == Some(external_thread))
+            .then_some(record)
+        })
+        .find_map(|record| {
+            let events = EventLog::read(store.events_path(&record.identity.run)).ok()?;
+            Some((record, events))
+        })
+}
+
+/// The note handed to a run resuming a thread whose last run was interrupted.
+///
+/// Addressed to the model, because it is the party that has to act on it. The
+/// point is not that a previous run stopped -- it is that some of its tool
+/// calls have no recorded outcome, so the workspace may or may not carry their
+/// effects, and re-running them blindly is how a resumed session applies a
+/// mutation twice.
+pub(crate) fn interrupted_handoff(store: &StateStore, external_thread: &str) -> Option<String> {
+    let (record, events) = last_interrupted_on_thread(store, external_thread)?;
+    let state = recovery(&events);
+
+    let mut note = format!(
+        "[resumed after an interrupted run] Run {} stopped without finishing.",
+        record.identity.run
+    );
+    if let Some(turn) = state.last_turn_started {
+        note.push_str(&format!(" Turn {turn} was in flight."));
+    }
+    if state.unfinished.is_empty() {
+        note.push_str(
+            " Every tool call it dispatched recorded an outcome, so the workspace is in a \
+             known state.",
+        );
+        return Some(note);
+    }
+    note.push_str(&format!(
+        " {} tool call(s) were dispatched with no recorded outcome, so their effects may or may \
+         not have landed. Verify before repeating them:",
+        state.unfinished.len()
+    ));
+    for call in &state.unfinished {
+        match &call.resource {
+            Some(resource) => note.push_str(&format!("\n  - {} {resource}", call.tool)),
+            None => note.push_str(&format!("\n  - {}", call.tool)),
+        }
+    }
+    Some(note)
+}
+
 pub fn cli_runs_list() -> Result<(), String> {
     let store = store();
     let runs = store.list().map_err(|e| e.to_string())?;
@@ -265,7 +331,7 @@ pub fn cli_runs_show(run: &str) -> Result<(), String> {
     for line in replay_lines(&record, &events) {
         println!("{line}");
     }
-    if record.status == jan_agent_harness::state::RunStatus::Interrupted {
+    if record.status == RunStatus::Interrupted {
         for line in recovery_lines(&recovery(&events)) {
             println!("{line}");
         }
@@ -595,6 +661,78 @@ mod tests {
                 resource: Some("make install".into())
             }]
         );
+    }
+
+    /// Recording a run, killing the process, then resuming its thread: the new
+    /// run has to be told what the old one left in doubt.
+    #[test]
+    fn a_resumed_thread_is_handed_the_calls_that_never_came_back() {
+        use crate::core::agent::recorder::RunRecorder;
+        use jan_agent_harness::fixtures::TempDir;
+
+        let data = TempDir::new("runs-handoff");
+        let thread = "6f1b8c2e-0000-4000-8000-000000000000";
+        let recorder =
+            RunRecorder::open(data.path(), Some(thread), None, "m", false).expect("opens");
+        recorder.emit(EventPayload::TurnStarted { turn: 4 });
+        recorder.emit(EventPayload::ToolCalled {
+            call_id: "c1".into(),
+            tool: "write".into(),
+            resource: Some("src/main.rs".into()),
+            fingerprint: "f".into(),
+        });
+        recorder.persist();
+        drop(recorder); // the process dies mid-turn
+
+        let store = StateStore::new(data.path().join(STATE_DIR));
+        let note = interrupted_handoff(&store, thread).expect("a handoff note");
+
+        assert!(note.contains("interrupted run"), "{note}");
+        assert!(note.contains("Turn 4 was in flight"), "{note}");
+        assert!(note.contains("may or may not have landed"), "{note}");
+        assert!(note.contains("write src/main.rs"), "{note}");
+        assert!(note.contains("Verify before repeating"), "{note}");
+    }
+
+    #[test]
+    fn a_thread_with_no_interrupted_run_gets_no_note() {
+        use crate::core::agent::recorder::RunRecorder;
+        use jan_agent_harness::fixtures::TempDir;
+
+        let data = TempDir::new("runs-handoff-clean");
+        let thread = "clean-thread";
+        let recorder =
+            RunRecorder::open(data.path(), Some(thread), None, "m", false).expect("opens");
+        recorder.finish(RunStatus::Completed);
+
+        let store = StateStore::new(data.path().join(STATE_DIR));
+        assert!(interrupted_handoff(&store, thread).is_none());
+        // ...and a thread that has never run gets nothing either.
+        assert!(interrupted_handoff(&store, "never-seen").is_none());
+    }
+
+    /// An interrupted run on someone else's conversation must not leak into
+    /// this one -- it would describe files this thread never touched.
+    #[test]
+    fn an_interrupted_run_on_another_thread_is_not_handed_over() {
+        use crate::core::agent::recorder::RunRecorder;
+        use jan_agent_harness::fixtures::TempDir;
+
+        let data = TempDir::new("runs-handoff-isolation");
+        let other =
+            RunRecorder::open(data.path(), Some("thread-a"), None, "m", false).expect("opens");
+        other.emit(EventPayload::ToolCalled {
+            call_id: "c1".into(),
+            tool: "bash".into(),
+            resource: Some("rm -rf /tmp/a".into()),
+            fingerprint: "f".into(),
+        });
+        other.persist();
+        drop(other);
+
+        let store = StateStore::new(data.path().join(STATE_DIR));
+        assert!(interrupted_handoff(&store, "thread-b").is_none());
+        assert!(interrupted_handoff(&store, "thread-a").is_some());
     }
 
     #[test]

@@ -726,6 +726,9 @@ fn build_cli_orchestration_args(
         // `--sandbox` only when passed; unset falls through to the project's
         // `[tools].sandbox` and then the user's global `sandbox`.
         sandbox,
+        // Filled in per run by the caller, which knows the thread it is
+        // continuing; a fresh conversation has none until it is saved.
+        thread_id: None,
         // A CLI invocation is always a top-level run; it opens its own record.
         inherited_recorder: None,
     }
@@ -1103,6 +1106,21 @@ fn prepare_agent_run(
         .as_ref()
         .map(|r| r.history.clone())
         .unwrap_or_default();
+
+    // A run that died mid-turn leaves tool calls with no recorded outcome. The
+    // conversation cannot show that -- it records what the model said, not what
+    // the harness dispatched -- so the resumed run is told, before its own task,
+    // which effects are in doubt. Without this a resumed session's most likely
+    // first move is to repeat a mutation that already applied.
+    if let Some(resumed) = resumed.as_ref() {
+        if let Some(note) =
+            crate::core::cli::runs::interrupted_handoff(&runs::store(), &resumed.thread_id)
+        {
+            eprintln!("(the previous run on this session was interrupted; carrying it forward)");
+            history.push(serde_json::json!({ "role": "system", "content": note }));
+        }
+    }
+
     history.push(serde_json::json!({ "role": "user", "content": final_task }));
     let mut body = session.body(serde_json::json!(history.clone()));
     if single_turn {
@@ -1112,8 +1130,12 @@ fn prepare_agent_run(
     if !injected.is_empty() {
         eprintln!("(resolved @path references)");
     }
+    let mut args = session.args;
+    // So the *next* resume can find this run if it too is interrupted.
+    args.thread_id = resumed.as_ref().map(|r| r.thread_id.clone());
+
     Ok(PreparedRun {
-        args: session.args,
+        args,
         body,
         permission_requests: session.permission_requests,
         mcp_task: session.mcp_task,

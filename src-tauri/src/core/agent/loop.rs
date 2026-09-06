@@ -108,6 +108,11 @@ pub(crate) struct OrchestrationArgs {
     /// by dispatched subagents via the cloned parent args, so a child shell is
     /// confined exactly as its parent's was.
     pub sandbox: Option<bool>,
+    /// The surface's own identifier for this conversation, when it has one.
+    ///
+    /// Recorded beside the run so a resumed thread can find the run that was
+    /// interrupted on it. `None` on a path with no thread of its own.
+    pub thread_id: Option<String>,
     /// The parent's recorder, set only when this is a subagent's args.
     ///
     /// A child records into its parent's run under a fresh agent id rather than
@@ -1385,6 +1390,7 @@ pub(crate) async fn run_server_side_openai_orchestration(
         run_mode: crate::core::agent::plan::RunMode::Normal,
         session_id: None,
         sandbox: None,
+        thread_id: None,
         inherited_recorder: None,
     };
     let body = match json_body.get("max_turns") {
@@ -1784,6 +1790,7 @@ async fn orchestrate_inner(
         run_mode,
         session_id,
         sandbox,
+        thread_id,
         inherited_recorder,
     } = args;
 
@@ -2033,7 +2040,7 @@ async fn orchestrate_inner(
         Some(parent) => Some(Arc::new(parent.child())),
         None => crate::core::agent::recorder::RunRecorder::open(
             std::path::Path::new(jan_data_folder.as_str()),
-            None,
+            thread_id.as_deref(),
             session_id.as_deref(),
             &model_id,
             run_mode == crate::core::agent::plan::RunMode::Plan,

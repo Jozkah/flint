@@ -58,6 +58,15 @@ pub struct RunRecord {
     pub updated_at_ms: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finished_at_ms: Option<u64>,
+    /// The surface's own thread identifier, when it has one.
+    ///
+    /// Surfaces predate this crate and key their storage by their own ids --
+    /// the CLI writes `threads/<uuid>/`. Those are not harness ids and must not
+    /// be coerced into one, so the harness id stays the correlation key and
+    /// this records what the surface calls the same conversation. Without it a
+    /// resumed thread cannot find the run that was interrupted on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_thread: Option<String>,
     /// Sequence number of the last event durably appended for this run.
     ///
     /// Resume compares this against the event log to find what the previous
@@ -80,9 +89,16 @@ impl RunRecord {
             started_at_ms: now,
             updated_at_ms: now,
             finished_at_ms: None,
+            external_thread: None,
             last_event_seq: 0,
             checkpoints: Vec::new(),
         }
+    }
+
+    /// Records the surface's own identifier for this conversation.
+    pub fn with_external_thread(mut self, thread: Option<impl Into<String>>) -> Self {
+        self.external_thread = thread.map(Into::into).filter(|id| !id.is_empty());
+        self
     }
 
     /// Closes the record in a terminal state.
@@ -278,6 +294,33 @@ mod tests {
         assert!(loaded.finished_at_ms.is_some());
         // The temporary file must not survive the rename.
         assert!(!store.record_path(&record.identity.run).with_extension("json.tmp").exists());
+    }
+
+    #[test]
+    fn a_surface_thread_id_survives_a_round_trip() {
+        let dir = TempDir::new("state-external-thread");
+        let store = store(&dir);
+        let record = RunRecord::started(identity(), "m", false)
+            .with_external_thread(Some("6f1b8c2e-0000-4000-8000-000000000000"));
+
+        store.save(&record).unwrap();
+        let loaded = store.load(&record.identity.run).unwrap();
+        assert_eq!(
+            loaded.external_thread.as_deref(),
+            Some("6f1b8c2e-0000-4000-8000-000000000000")
+        );
+        // The harness id is still the correlation key, not the surface's.
+        assert_ne!(loaded.identity.thread.as_str(), "6f1b8c2e-0000-4000-8000-000000000000");
+    }
+
+    #[test]
+    fn an_absent_or_empty_surface_thread_is_recorded_as_absent() {
+        for thread in [None, Some(String::new())] {
+            let record = RunRecord::started(identity(), "m", false).with_external_thread(thread);
+            assert_eq!(record.external_thread, None);
+        }
+        let json = serde_json::to_string(&RunRecord::started(identity(), "m", false)).unwrap();
+        assert!(!json.contains("external_thread"), "{json}");
     }
 
     #[test]

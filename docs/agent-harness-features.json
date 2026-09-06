@@ -823,6 +823,7 @@
       "owner": "lane-02-execution-runtime",
       "files": [
         "src-tauri/src/core/cli/runs.rs",
+        "src-tauri/src/core/cli/mod.rs",
         "src-tauri/harness/src/state.rs",
         "src-tauri/src/core/agent/recorder.rs"
       ],
@@ -836,12 +837,13 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/src/core/cli/runs.rs::tests::a_run_that_never_closed_reads_back_as_interrupted",
-        "src-tauri/src/core/cli/runs.rs::tests::a_call_without_an_outcome_is_the_one_reported"
+        "src-tauri/src/core/cli/runs.rs::tests::a_resumed_thread_is_handed_the_calls_that_never_came_back",
+        "src-tauri/src/core/cli/runs.rs::tests::an_interrupted_run_on_another_thread_is_not_handed_over",
+        "src-tauri/harness/src/state.rs::tests::a_surface_thread_id_survives_a_round_trip"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "An interrupted run is now detectable and diagnosable: the record reads back as Interrupted, and `jan cli agent runs show` reports which turn was in flight and which tool calls were dispatched with no recorded outcome -- the calls whose side effects may or may not have landed, which is the question a transcript cannot answer. Automatic resumption of the in-flight turn is still not built, which is what the criterion asks for."
+      "auditNote": "A resumed conversation is now handed what its interrupted run left in doubt: the run record keeps the surface's own thread id beside the harness one, and `--resume` injects a system note naming the tool calls dispatched with no recorded outcome before the new task. The in-flight turn is therefore carried forward rather than lost. Two boundaries remain: a conversation interrupted on its very first run has no saved thread to resume (threads persist only on success, which predates this work) though `runs show` still reports it, and the TUI does not yet set its thread id on the run, so the handoff is CLI-only."
     },
     {
       "id": "AH-027",

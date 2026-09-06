@@ -78,6 +78,9 @@ impl RunRecorder {
         plan_mode: bool,
     ) -> Result<Self, HarnessError> {
         let store = StateStore::new(jan_data_folder.join(STATE_DIR));
+        // Kept before the shadowing parse below: the surface's own id is what a
+        // resumed conversation searches by, and it is usually not a harness id.
+        let external_thread = thread.map(str::to_string);
         let thread = thread
             .and_then(|raw| ThreadId::parse(raw).ok())
             .unwrap_or_default();
@@ -86,7 +89,10 @@ impl RunRecorder {
             .unwrap_or_default();
         let identity = RunIdentity::root(thread, session);
 
-        let record = RunRecord::started(identity.clone(), model, plan_mode);
+        let record = RunRecord::started(identity.clone(), model, plan_mode)
+            // Kept whether or not it parsed as a harness id: it is how a
+            // resumed conversation finds the run that was interrupted on it.
+            .with_external_thread(external_thread);
         store.save(&record)?;
         let log = EventLog::open(store.events_path(&identity.run))?;
 
@@ -295,6 +301,26 @@ mod tests {
         )
         .unwrap();
         assert!(rec.identity().thread.as_str().starts_with("thr_"));
+    }
+
+    #[test]
+    fn the_surfaces_own_thread_id_is_kept_alongside_the_harness_one() {
+        let dir = TempDir::new("recorder-external");
+        let rec = RunRecorder::open(
+            dir.path(),
+            Some("6f1b8c2e-0000-4000-8000-000000000000"),
+            None,
+            "m",
+            false,
+        )
+        .unwrap();
+
+        let store = StateStore::new(dir.path().join(STATE_DIR));
+        let record = store.load(&rec.identity().run).unwrap();
+        assert_eq!(
+            record.external_thread.as_deref(),
+            Some("6f1b8c2e-0000-4000-8000-000000000000")
+        );
     }
 
     #[test]
