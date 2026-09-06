@@ -85,6 +85,7 @@ pub fn write_journal(path: &Path, entries: &[DisplayEntry]) -> Result<(), String
     }
     let mut body = String::new();
     for entry in entries {
+        let entry = &redacted(entry);
         let line = serde_json::to_string(entry).map_err(|e| e.to_string())?;
         body.push_str(&line);
         body.push('\n');
@@ -92,6 +93,94 @@ pub fn write_journal(path: &Path, entries: &[DisplayEntry]) -> Result<(), String
     let tmp = path.with_extension("jsonl.tmp");
     std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+}
+
+/// The entry as it may be written to disk: credentials removed (AH-045).
+///
+/// The journal is durable, is replayed into a later session, and is included in
+/// an audit export, so a credential that reached a tool result once would
+/// otherwise be on disk for as long as the thread exists. Redacting here rather
+/// than at each call site is deliberate: `write_journal` is the only way an
+/// entry becomes a file, so there is no second path to forget.
+///
+/// What is redacted is what the machine produced or echoed -- tool arguments,
+/// tool output, its diff, and the assistant's prose. `User` text is left as
+/// typed: rewriting the operator's own prompt would make a resumed transcript
+/// disagree with what they wrote, and it is the one part of the journal they
+/// authored knowingly.
+fn redacted(entry: &DisplayEntry) -> DisplayEntry {
+    use jan_agent_harness::secrets::{redact, redact_command_line};
+
+    match entry {
+        DisplayEntry::ToolCall { id, name, args } => DisplayEntry::ToolCall {
+            id: id.clone(),
+            name: name.clone(),
+            // Arguments are structured, so redact the leaf strings and leave the
+            // shape alone: a replay still renders `write(path=...)`.
+            args: redact_json(args),
+        },
+        DisplayEntry::ToolResult {
+            id,
+            content,
+            is_error,
+            diff,
+        } => DisplayEntry::ToolResult {
+            id: id.clone(),
+            content: redact(content),
+            is_error: *is_error,
+            diff: diff.as_deref().map(redact),
+        },
+        DisplayEntry::Assistant { text, reasoning } => DisplayEntry::Assistant {
+            text: redact(text),
+            reasoning: reasoning
+                .iter()
+                .map(|seg| ReasoningSeg {
+                    at: seg.at,
+                    text: redact(&seg.text),
+                })
+                .collect(),
+        },
+        DisplayEntry::Subagent {
+            name,
+            calls,
+            finished,
+        } => DisplayEntry::Subagent {
+            name: name.clone(),
+            calls: calls.iter().map(|c| redact_command_line(c)).collect(),
+            finished: *finished,
+        },
+        DisplayEntry::User { .. } => entry.clone(),
+    }
+}
+
+/// `redact` applied to every string in a JSON value, keys untouched.
+///
+/// A key is a field name the tool schema defines, not content; redacting keys
+/// would produce an object no replay could render. Command-line rules are used
+/// for a `command` field, which is the one place a bare `--token value` appears.
+fn redact_json(value: &serde_json::Value) -> serde_json::Value {
+    use jan_agent_harness::secrets::{redact, redact_command_line};
+    use serde_json::Value;
+
+    match value {
+        Value::String(text) => Value::String(redact(text)),
+        Value::Array(items) => Value::Array(items.iter().map(redact_json).collect()),
+        Value::Object(fields) => Value::Object(
+            fields
+                .iter()
+                .map(|(key, val)| {
+                    let redacted = match (key.as_str(), val) {
+                        ("command", Value::String(text)) => {
+                            Value::String(redact_command_line(text))
+                        }
+                        _ => redact_json(val),
+                    };
+                    (key.clone(), redacted)
+                })
+                .collect(),
+        ),
+        other => other.clone(),
+    }
 }
 
 /// Read a journal, skipping any line that no longer parses (a truncated tail, or
@@ -221,6 +310,77 @@ mod tests {
 
     fn tmp_dir() -> tempfile::TempDir {
         tempfile::tempdir().unwrap()
+    }
+
+    /// A credential in tool output must not reach the file, and the entry it was
+    /// in must still be there: redaction that drops the row loses the transcript.
+    #[test]
+    fn a_credential_in_tool_output_never_reaches_the_file() {
+        let dir = tmp_dir();
+        let path = dir.path().join(JOURNAL_FILE);
+        let key = "AKIAIOSFODNN7EXAMPLE";
+        let entries = vec![
+            DisplayEntry::ToolCall {
+                id: "c1".into(),
+                name: "bash".into(),
+                args: serde_json::json!({ "command": format!("aws configure --token {key}") }),
+            },
+            DisplayEntry::ToolResult {
+                id: "c1".into(),
+                content: format!("AWS_ACCESS_KEY_ID={key}
+ok"),
+                is_error: false,
+                diff: Some(format!("+AWS_ACCESS_KEY_ID={key}")),
+            },
+        ];
+        write_journal(&path, &entries).unwrap();
+
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(!raw.contains(key), "credential on disk: {raw}");
+        assert!(raw.contains("[redacted:"), "no marker written: {raw}");
+
+        let replayed = read_journal(&path);
+        assert_eq!(replayed.len(), 2, "both rows survive redaction");
+        match &replayed[1] {
+            DisplayEntry::ToolResult { content, diff, .. } => {
+                assert!(content.contains("ok"), "surrounding output kept: {content}");
+                assert!(diff.as_deref().unwrap().starts_with('+'), "diff shape kept");
+            }
+            other => panic!("wrong entry kind: {other:?}"),
+        }
+    }
+
+    /// The operator's own prompt is not rewritten, and a clean transcript is
+    /// byte-identical: redaction must not be a silent reformatter.
+    #[test]
+    fn what_the_operator_typed_is_left_alone() {
+        let dir = tmp_dir();
+        let path = dir.path().join(JOURNAL_FILE);
+        let entries = vec![user("check AWS_PROFILE and max_tokens=4096")];
+        write_journal(&path, &entries).unwrap();
+        assert_eq!(read_journal(&path), entries);
+    }
+
+    /// The redactor runs on every durable path, so a second write of an already
+    /// redacted journal must be a no-op rather than nesting markers.
+    #[test]
+    fn rewriting_a_redacted_journal_changes_nothing() {
+        let dir = tmp_dir();
+        let path = dir.path().join(JOURNAL_FILE);
+        write_journal(
+            &path,
+            &[DisplayEntry::ToolResult {
+                id: "c1".into(),
+                content: "API_KEY=aabbccddeeff00112233".into(),
+                is_error: false,
+                diff: None,
+            }],
+        )
+        .unwrap();
+        let once = std::fs::read_to_string(&path).unwrap();
+        let replayed = read_journal(&path);
+        write_journal(&path, &replayed).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), once);
     }
 
     #[test]

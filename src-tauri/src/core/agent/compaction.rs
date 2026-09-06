@@ -177,7 +177,14 @@ async fn summarize(
     model_id: &str,
     model: &dyn ModelInvoker,
 ) -> Result<String, String> {
-    let transcript = clamp_middle(&render_transcript(dropped), SUMMARY_INPUT_CHARS);
+    // The dropped span is tool output as much as prose, and the summary that
+    // replaces it is persisted and re-sent every later turn. Redact before the
+    // summarizer sees it, so a credential in dropped output cannot be carried
+    // forward into every subsequent request (AH-045).
+    let transcript = jan_agent_harness::secrets::redact(&clamp_middle(
+        &render_transcript(dropped),
+        SUMMARY_INPUT_CHARS,
+    ));
     if transcript.trim().is_empty() {
         return Ok(FALLBACK_NOTE.to_string());
     }
@@ -295,6 +302,35 @@ mod tests {
         // Last four originals are kept verbatim.
         assert_eq!(out[out.len() - 1]["content"], "msg19");
         assert_eq!(out[out.len() - 4]["content"], "msg16");
+    }
+
+    /// The summary replaces the dropped span for the rest of the run and is
+    /// re-sent on every later turn, so a credential in dropped tool output must
+    /// not reach the summarizer at all (AH-045).
+    #[tokio::test]
+    async fn a_credential_in_the_dropped_span_never_reaches_the_summarizer() {
+        let model = StubModel {
+            summary: "CONDENSED".into(),
+            calls: StdMutex::new(0),
+            requests: tokio::sync::Mutex::new(Vec::new()),
+        };
+        let mut input = convo(20);
+        input[1] = json!({
+            "role": "user",
+            "content": "msg0 AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI-K7MDENG",
+        });
+
+        compact_conversation(&input, "m", &model, 4)
+            .await
+            .expect("successful summary must not fail");
+
+        let requests = model.requests.lock().await;
+        let transcript = requests[0]["messages"][1]["content"].as_str().unwrap();
+        assert!(
+            !transcript.contains("wJalrXUtnFEMI-K7MDENG"),
+            "credential reached the summarizer: {transcript}"
+        );
+        assert!(transcript.contains("msg0"), "surrounding text kept: {transcript}");
     }
 
     /// Compaction runs after an overflow, so the summarizer request must be

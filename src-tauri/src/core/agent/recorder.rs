@@ -212,7 +212,13 @@ pub(crate) fn redacted_resource(args: &serde_json::Value) -> Option<String> {
     if flattened.is_empty() {
         return None;
     }
-    Some(truncate(&flattened, MAX_RESOURCE_LEN))
+    // Field discipline is not enough on its own: the field we *do* keep is the
+    // one most likely to carry a credential, because a command line is where a
+    // token gets passed (`curl -H 'Authorization: Bearer ...'`, `PGPASSWORD=...
+    // psql`). Redact before truncating, so a secret cannot survive by sitting
+    // past the truncation point of an untruncated value (AH-045).
+    let redacted = jan_agent_harness::secrets::redact_command_line(&flattened);
+    Some(truncate(&redacted, MAX_RESOURCE_LEN))
 }
 
 /// Truncates on a character boundary, marking that it happened.
@@ -400,6 +406,47 @@ mod tests {
         let dir = TempDir::new("recorder-depth");
         let parent = recorder(&dir);
         assert_eq!(parent.child().child().identity().depth, 2);
+    }
+
+    /// A credential passed on a command line must not reach the event log, which
+    /// is durable and exported. Truncation is not protection: a short command
+    /// keeps every character it had (AH-045).
+    #[test]
+    fn a_credential_on_a_command_line_is_redacted_not_truncated() {
+        for (command, secret) in [
+            (
+                "curl -H 'Authorization: Bearer abcdefghijklmnopqrst' https://api.example.com",
+                "abcdefghijklmnopqrst",
+            ),
+            ("PGPASSWORD=hunter2-really psql -h db", "hunter2-really"),
+            ("gh auth login --with-token ghp_1234567890abcdefghijklmnopqrstuvwx", "ghp_1234567890abcdefghijklmnopqrstuvwx"),
+            ("git clone https://alice:s3cr3t-p4ss@example.com/r.git", "s3cr3t-p4ss"),
+        ] {
+            let resource = redacted_resource(&json!({ "command": command })).unwrap();
+            assert!(
+                !resource.contains(secret),
+                "credential survived into the event log: {resource}"
+            );
+            assert!(resource.contains("[redacted:"), "no marker: {resource}");
+        }
+    }
+
+    /// Redaction must not eat the part of the command that makes the audit entry
+    /// useful: which program ran, against what.
+    #[test]
+    fn redaction_keeps_the_shape_of_the_command() {
+        let resource =
+            redacted_resource(&json!({ "command": "curl -H 'Authorization: Bearer abcdefghijklmnopqrst' https://api.example.com" }))
+                .unwrap();
+        assert!(resource.starts_with("curl -H"), "{resource}");
+        assert!(resource.ends_with("https://api.example.com"), "{resource}");
+    }
+
+    /// A command with nothing secret in it is recorded exactly as it ran.
+    #[test]
+    fn a_clean_command_is_recorded_unchanged() {
+        let resource = redacted_resource(&json!({ "command": "cargo test -p jan-agent-harness" })).unwrap();
+        assert_eq!(resource, "cargo test -p jan-agent-harness");
     }
 
     #[test]

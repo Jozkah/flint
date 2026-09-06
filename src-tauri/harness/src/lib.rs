@@ -7,6 +7,7 @@
 //! - [`error`] -- a typed error taxonomy that decides retryability and audience.
 //! - [`event`] -- the canonical event stream every surface renders from.
 //! - [`envelope`] -- the versioned, forward-compatible wire format for those events.
+//! - [`secrets`] -- credential detection and redaction for anything durable.
 //! - [`state`] -- the versioned on-disk schema and its atomic writer.
 //! - [`fixtures`] -- builders so harness tests do not hand-roll any of the above.
 //!
@@ -21,10 +22,12 @@ pub mod error;
 pub mod event;
 pub mod fixtures;
 pub mod identity;
+pub mod secrets;
 pub mod state;
 
 pub use envelope::{Envelope, ENVELOPE_VERSION};
 pub use error::{Audience, ErrorKind, HarnessError, Retry};
 pub use event::{EventPayload, HarnessEvent, ToolOutcome};
 pub use identity::{AgentId, RunId, RunIdentity, SessionId, ThreadId};
+pub use secrets::{redact, scan, Finding, SecretKind};
 pub use state::{RunRecord, RunStatus, StateStore, STATE_SCHEMA_VERSION};
