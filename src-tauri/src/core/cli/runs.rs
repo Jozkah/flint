@@ -157,9 +157,85 @@ pub(crate) fn load_from(
     run: &str,
 ) -> Result<(RunRecord, Vec<HarnessEvent>), HarnessError> {
     let run = RunId::parse(run)?;
-    let record = store.load(&run)?;
+    // `load_for_resume`, not `load`: a CLI invocation is by definition not the
+    // run's own process, so a record still reading `Running` means that process
+    // never closed it. Showing such a run as running would be a lie with a
+    // consequence -- it is exactly the run whose side effects are in doubt.
+    let record = store.load_for_resume(&run)?;
     let events = EventLog::read(store.events_path(&run))?;
     Ok((record, events))
+}
+
+/// A tool call that was dispatched with no recorded outcome.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct UnfinishedCall {
+    pub tool: String,
+    pub resource: Option<String>,
+}
+
+/// What an interrupted run left behind.
+///
+/// The event log records a call before it runs and again when it ends, so a
+/// call with no ending is one whose side effects may or may not have landed.
+/// That set is the whole question when deciding what to do about an interrupted
+/// run, and it is not answerable from a transcript.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct Recovery {
+    pub last_turn_started: Option<u32>,
+    pub last_turn_finished: Option<u32>,
+    pub unfinished: Vec<UnfinishedCall>,
+}
+
+pub(crate) fn recovery(events: &[HarnessEvent]) -> Recovery {
+    let mut state = Recovery::default();
+    let mut open: Vec<(String, UnfinishedCall)> = Vec::new();
+
+    for event in events {
+        match &event.payload {
+            EventPayload::TurnStarted { turn } => state.last_turn_started = Some(*turn),
+            EventPayload::TurnFinished { turn, .. } => state.last_turn_finished = Some(*turn),
+            EventPayload::ToolCalled { call_id, tool, resource, .. } => open.push((
+                call_id.clone(),
+                UnfinishedCall { tool: tool.clone(), resource: resource.clone() },
+            )),
+            EventPayload::ToolFinished { call_id, .. } => {
+                open.retain(|(id, _)| id != call_id);
+            }
+            _ => {}
+        }
+    }
+    state.unfinished = open.into_iter().map(|(_, call)| call).collect();
+    state
+}
+
+/// The recovery section appended to an interrupted run's replay.
+pub(crate) fn recovery_lines(state: &Recovery) -> Vec<String> {
+    let mut lines = vec![String::new(), "-- interrupted --".to_string()];
+    match (state.last_turn_started, state.last_turn_finished) {
+        (Some(started), Some(finished)) if started > finished => {
+            lines.push(format!("turn {started} was in flight; turn {finished} was the last to finish"));
+        }
+        (Some(started), None) => lines.push(format!("turn {started} was in flight; none finished")),
+        (Some(_), Some(finished)) => lines.push(format!("turn {finished} finished; no turn was in flight")),
+        _ => lines.push("no turn had started".to_string()),
+    }
+
+    if state.unfinished.is_empty() {
+        lines.push("every dispatched tool call recorded an outcome".to_string());
+        return lines;
+    }
+    lines.push(format!(
+        "{} tool call(s) were dispatched with no recorded outcome. Their effects may or may \
+         not have landed -- check before re-running them:",
+        state.unfinished.len()
+    ));
+    for call in &state.unfinished {
+        match &call.resource {
+            Some(resource) => lines.push(format!("    {}  {resource}", call.tool)),
+            None => lines.push(format!("    {}", call.tool)),
+        }
+    }
+    lines
 }
 
 /// Loads a run's record and events, or says why it could not.
@@ -176,7 +252,7 @@ pub fn cli_runs_list() -> Result<(), String> {
     }
     for run in runs {
         // One unreadable record must not hide every other run.
-        match store.load(&run) {
+        match store.load_for_resume(&run) {
             Ok(record) => println!("{}", summarize(&record)),
             Err(error) => println!("{run}  <unreadable: {error}>"),
         }
@@ -188,6 +264,11 @@ pub fn cli_runs_show(run: &str) -> Result<(), String> {
     let (record, events) = load(run).map_err(describe)?;
     for line in replay_lines(&record, &events) {
         println!("{line}");
+    }
+    if record.status == jan_agent_harness::state::RunStatus::Interrupted {
+        for line in recovery_lines(&recovery(&events)) {
+            println!("{line}");
+        }
     }
     Ok(())
 }
@@ -394,6 +475,126 @@ mod tests {
         let error = load_from(&store, "run_doesnotexist").expect_err("no such run");
         assert_eq!(error.kind(), ErrorKind::NotFound);
         assert!(describe(error).contains("runs list"));
+    }
+
+    fn called(seq: u64, call_id: &str, tool: &str, resource: Option<&str>) -> HarnessEvent {
+        event(
+            seq,
+            EventPayload::ToolCalled {
+                call_id: call_id.into(),
+                tool: tool.into(),
+                resource: resource.map(str::to_string),
+                fingerprint: "f".into(),
+            },
+        )
+    }
+
+    fn finished(seq: u64, call_id: &str, tool: &str) -> HarnessEvent {
+        event(
+            seq,
+            EventPayload::ToolFinished {
+                call_id: call_id.into(),
+                tool: tool.into(),
+                outcome: ToolOutcome::Ok,
+                duration_ms: Some(3),
+            },
+        )
+    }
+
+    /// The question an interrupted run poses: which calls went out without
+    /// coming back. A transcript cannot answer it; the event log can.
+    #[test]
+    fn a_call_without_an_outcome_is_the_one_reported() {
+        let events = vec![
+            event(0, EventPayload::TurnStarted { turn: 0 }),
+            called(1, "c1", "read", Some("a.txt")),
+            finished(2, "c1", "read"),
+            called(3, "c2", "bash", Some("rm -rf build")),
+            // ...and here the process died.
+        ];
+        let state = recovery(&events);
+        assert_eq!(
+            state.unfinished,
+            vec![UnfinishedCall {
+                tool: "bash".into(),
+                resource: Some("rm -rf build".into())
+            }]
+        );
+        assert_eq!(state.last_turn_started, Some(0));
+        assert_eq!(state.last_turn_finished, None);
+    }
+
+    #[test]
+    fn a_run_where_every_call_came_back_reports_nothing_outstanding() {
+        let events = vec![
+            event(0, EventPayload::TurnStarted { turn: 0 }),
+            called(1, "c1", "read", Some("a.txt")),
+            finished(2, "c1", "read"),
+            event(
+                3,
+                EventPayload::TurnFinished { turn: 0, usage: Usage::default() },
+            ),
+        ];
+        let state = recovery(&events);
+        assert!(state.unfinished.is_empty());
+        assert_eq!(state.last_turn_finished, Some(0));
+
+        let lines = recovery_lines(&state).join("\n");
+        assert!(lines.contains("every dispatched tool call recorded an outcome"), "{lines}");
+    }
+
+    #[test]
+    fn the_recovery_section_warns_that_effects_may_have_landed() {
+        let events = vec![
+            event(0, EventPayload::TurnStarted { turn: 2 }),
+            called(1, "c1", "write", Some("src/main.rs")),
+        ];
+        let lines = recovery_lines(&recovery(&events)).join("\n");
+        assert!(lines.contains("interrupted"), "{lines}");
+        assert!(lines.contains("turn 2 was in flight"), "{lines}");
+        assert!(lines.contains("may or may not have landed"), "{lines}");
+        assert!(lines.contains("write  src/main.rs"), "{lines}");
+    }
+
+    #[test]
+    fn a_run_that_died_before_any_turn_says_so() {
+        let lines = recovery_lines(&recovery(&[])).join("\n");
+        assert!(lines.contains("no turn had started"), "{lines}");
+    }
+
+    /// A CLI invocation is never the run's own process, so a record still
+    /// reading `Running` means that process never closed it.
+    #[test]
+    fn a_run_that_never_closed_reads_back_as_interrupted() {
+        use crate::core::agent::recorder::RunRecorder;
+        use jan_agent_harness::fixtures::TempDir;
+
+        let data = TempDir::new("runs-interrupted");
+        let recorder =
+            RunRecorder::open(data.path(), None, None, "test-model", false).expect("opens");
+        recorder.emit(EventPayload::TurnStarted { turn: 0 });
+        recorder.emit(EventPayload::ToolCalled {
+            call_id: "c1".into(),
+            tool: "bash".into(),
+            resource: Some("make install".into()),
+            fingerprint: "f".into(),
+        });
+        recorder.persist();
+        let run_id = recorder.identity().run.to_string();
+        drop(recorder); // the process dies without finishing
+
+        let store = StateStore::new(data.path().join(STATE_DIR));
+        let (record, events) = load_from(&store, &run_id).expect("reads back");
+        assert_eq!(record.status, RunStatus::Interrupted);
+
+        let state = recovery(&events);
+        assert_eq!(
+            state.unfinished,
+            vec![UnfinishedCall {
+                tool: "bash".into(),
+                resource: Some("make install".into())
+            }]
+        );
     }
 
     #[test]

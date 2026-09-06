@@ -818,6 +818,7 @@
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
+        "src-tauri/src/core/cli/runs.rs",
         "src-tauri/harness/src/state.rs",
         "src-tauri/src/core/agent/recorder.rs"
       ],
@@ -831,11 +832,12 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/src/core/agent/recorder.rs::tests::a_run_that_never_closed_is_recovered_as_interrupted"
+        "src-tauri/src/core/cli/runs.rs::tests::a_run_that_never_closed_reads_back_as_interrupted",
+        "src-tauri/src/core/cli/runs.rs::tests::a_call_without_an_outcome_is_the_one_reported"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "A run interrupted mid-turn is now detectable: the record stays Running and a later process reads it as Interrupted. Resuming from that point is not built."
+      "auditNote": "An interrupted run is now detectable and diagnosable: the record reads back as Interrupted, and `jan cli agent runs show` reports which turn was in flight and which tool calls were dispatched with no recorded outcome -- the calls whose side effects may or may not have landed, which is the question a transcript cannot answer. Automatic resumption of the in-flight turn is still not built, which is what the criterion asks for."
     },
     {
       "id": "AH-027",
