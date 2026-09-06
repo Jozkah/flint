@@ -99,7 +99,157 @@ before this was committed; the re-audit is recorded with the Phase 0 report.
 | macOS, Windows and WebView validation | Not executed. No Phase 0 code is platform-specific; the first items needing it are the process jail and worktree work in Phases 2 and 5. |
 | Golden-repository and security-corpus suites | Not built yet -- `AH-197` and `AH-198` are `missing` in the registry. |
 
-### Phases 1-8
+### Phase 1 -- Core execution (in progress)
+
+Executed on Linux (`x86_64`, rustc 1.94.1) on `feat/agent-harness-phase-1`.
+Both mutually exclusive configurations of the app crate are run for every
+change, because neither proves the other -- and in this phase the desktop
+configuration twice caught a mistake the CLI one could not see.
+
+| Command | Result |
+| --- | --- |
+| `cargo test --no-default-features --features cli --lib` | 1492 passed, 0 failed |
+| `cargo test --no-default-features --features cli --bins` | 15 passed, 0 failed |
+| `cargo test --no-default-features --features test-tauri --lib` | 802 passed, 0 failed |
+| `cargo clippy --no-default-features --features cli --all-targets -- -D warnings` | clean |
+| `cargo clippy --no-default-features --features test-tauri --all-targets -- -D warnings` | clean |
+| `cargo test --manifest-path src-tauri/harness/Cargo.toml` | 54 passed |
+| `jan cli agent runs list` / `runs show` | run against the built binary |
+
+The suite was **1425 passed / 1 failed** when the phase opened. The failure was
+pre-existing, confirmed by re-running with the branch's changes stashed:
+`agent::global_config`'s tests repoint `HOME` process-wide, and a parallel
+`git commit` in the plugin test could then not resolve a committer identity.
+
+#### Defects found by the work itself
+
+Recorded because each was caught by a check rather than by reading:
+
+- The fixture temporary directory collided within a millisecond, and its
+  create-time cleanup would delete a live sibling's directory (Phase 0).
+- Three mid-run-nudge tests issued thirteen byte-identical tool calls -- which
+  is the doom loop the new detector stops. The fixture was unrealistic, not the
+  detector.
+- A `#[cfg(feature = "cli")]` was displaced from the test below it by an
+  insertion. Only the desktop configuration failed, because `[budget]` is
+  CLI-only. The same class of mistake -- inserting between an attribute and its
+  item -- happened three times in this phase and was caught by a build each
+  time, never by review.
+- The headless CLI leaked backgrounded shell trees on every exit. The desktop
+  app reaps on graceful exit; the CLI had no equivalent, and
+  `std::process::exit` runs no destructors.
+
+#### Not run in Phase 1, and why
+
+| Not run | Reason |
+| --- | --- |
+| JavaScript suites (`yarn test:*`) | No file under `web-app` is touched. The Cowork harness is unaffected because it never reaches `run_orchestration_streamed`. |
+| macOS, Windows, WebView | Not executed. Nothing in this phase is platform-specific; the process-group and reaping behaviour is exercised by the plugin's own tests on Linux only. |
+| Any CI job | Structurally unavailable -- see below. |
+
+#### CI produced no evidence for this phase
+
+Two independent reasons, both verified against the API rather than assumed:
+
+1. `rust-check.yml` triggers on `pull_request` only for base `main` or `dev`.
+   The Phase 1 pull request is stacked on `feat/cowork-background-tasks`, so
+   the Rust jobs never trigger for it at all. This resolves when Phase 0 merges
+   and the branch is retargeted.
+2. The one workflow that does run -- docs, because the registry lives under
+   `docs/` -- fails with `runner_id: 0`, an empty runner name, and no executed
+   steps, on every head. Per the execution rules above that is an
+   infrastructure failure, recorded and not treated as a red build. No re-run
+   was spent: the signature is established across many heads and both pull
+   requests, so another attempt produces another phantom failure, not evidence.
+
+Local verification is therefore the only evidence for this phase, which is why
+it is listed in full above and in each commit message.
+
+### Phase 3 -- Repository intelligence (in progress)
+
+Executed on Linux (`x86_64`, rustc 1.94.1) on `feat/cowork-background-tasks`.
+Both configurations of the app crate are run for every change, per the rule
+above.
+
+| Command | Result |
+| --- | --- |
+| `cargo test --no-default-features --features cli --lib` | 1625 passed, 0 failed |
+| `cargo test --no-default-features --features cli --bins` | 15 passed, 0 failed |
+| `cargo test --no-default-features --features test-tauri --lib` | 932 passed, 0 failed |
+| `cargo test --manifest-path src-tauri/harness/Cargo.toml` | 56 passed, 0 failed |
+| `cargo clippy --no-default-features --features cli --all-targets -- -D warnings` | clean |
+| `cargo clippy --no-default-features --features test-tauri --all-targets -- -D warnings` | clean |
+| `node --test "scripts/agent-harness/*.test.mjs"` | 26 passed |
+| `node scripts/agent-harness/validate-registry.mjs` | 200 features OK |
+
+#### Output inspected by hand, not only asserted
+
+Every tool in this phase renders prose the model reads, and an assertion proves
+a substring is present without proving the whole message reads honestly. So
+`code_search` was run against this repository through a throwaway harness and
+its output read directly, then the harness deleted -- it is not part of the
+diff. What was checked, and found:
+
+- `envelope` -- 4 ranked hits: two exact at confidence 100, two token at 75,
+  each carrying its own evidence line. No hit claimed a relationship the index
+  cannot show.
+- `authentication` -- 3 metadata hits, all from doc comments, all at confidence
+  30. The low number and the `metadata` label both appear; neither is inferable
+  from the other alone.
+- `zzzznotathing` -- a miss that names what was searched (7,687 declarations, by
+  name, doc comment and path) and says a differently-spelled related name will
+  not appear, suggesting grep. It does not claim the name is absent from the
+  repository, only from the index's reach.
+- `a` -- refused for length, with the limit stated.
+
+Every non-empty result ends with the same sentence: matching is lexical, over
+names, the words in them, paths and doc comments, and does not relate one word
+to another. No output claimed semantic understanding.
+
+`repo_health` was read the same way, against this repository, with and without
+an index, and the harness deleted afterwards. **The first reading found four
+defects, two of them in the tool itself**, which is the whole reason this step
+exists -- every one of the four passed its unit tests:
+
+| Found | Was it real |
+| --- | --- |
+| `src-tauri/src/core/cli/tui.rs` and `swagger-ui-bundle.js` reported as "added since the index was built" | **False positive.** Both exceed the index's 1 MiB per-file ceiling, so the index correctly omits them and the walk did not. Every rebuild would have re-reported them: a stale-index warning no action could ever clear. Fixed by mirroring the ceiling in the walk and reporting oversized files as their own note. |
+| `tauri-plugin-hardware/src/vendor/*.rs` reported as vendored code | **False positive.** Hand-written GPU-vendor source. The check matched `vendor/` as a substring; a diagnostic that tells the reader not to edit real source is worse than no diagnostic. Fixed by matching directory names as whole path segments and dropping `vendor` from the list entirely. |
+| `AH-012 (implemented)` claims a test in `src-tauri/harness/src/worktree.rs` | **Real.** That module was deleted in Phase 0 rather than reconciled with `core/agent/worktree.rs`, and the registry entry still cited it. Repointed at the three real tests. |
+| `AH-199 (implemented)` names `web-app/src/containers/analytics/AnalyticConsent.tsx` | **Real, and worse than a stale path.** The file does not exist; nor does the `@/providers/AnalyticProvider` that `__root.test.tsx` mocks; `__root.tsx` references neither. What exists is `DefaultAnalyticService`, which reads and writes a distinct id and has no consent gate. The acceptance criterion -- telemetry is consent-gated and can be disabled -- is unmet, so the status is corrected from `implemented` to `missing`. |
+
+Both code defects now have regression tests
+(`a_file_above_the_index_ceiling_is_not_reported_as_stale`,
+`a_source_directory_named_vendor_is_not_mistaken_for_vendored_code`). After the
+fixes the same scan reports 0 errors, 0 warnings and 5 notes, and each of the
+five is a true statement about a real limit rather than a defect.
+
+Also checked in that reading, and found correct: the skipped-check list names
+all eight index-dependent checks when no index exists; the counts of run and
+skipped checks add up to the check list; and no rendering of the report
+contains the word "healthy".
+
+#### Not run in Phase 3, and why
+
+| Not run | Reason |
+| --- | --- |
+| JavaScript suites (`yarn test:*`) | No file under `web-app` is touched. |
+| macOS, Windows, WebView | Not executed. Nothing in this phase is platform-specific: it reads files and compares strings. Path handling is the one platform-sensitive part and is exercised on Linux only. |
+| Any CI job | Structurally unavailable -- same two reasons recorded for Phase 1, re-checked against the API on this branch's heads and unchanged. |
+
+#### Delivered short of the registry's criterion
+
+`AH-071` is `in-progress`, not `implemented`. Its acceptance criterion asks for
+embedding search; `code_search` is lexical. Marking it done would record a
+capability the code does not have, and the next reader would plan against it.
+
+`AH-072` is `in-progress`, not `implemented`, for the same reason. Its
+criterion asks for build, test, lint and dependency health; `repo_health`
+reports none of those four. It reports on the index and the project metadata,
+and running the build or the tests is a separate capability that stays open
+under this id.
+
+### Phases 2, 4-8
 
 Recorded here as each phase closes, in the same shape: commands executed with
 their results, then commands not executed with the reason.
@@ -112,10 +262,15 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 | Area | Linux | macOS | Windows | WebView |
 | --- | --- | --- | --- | --- |
 | Harness foundation crate (Phase 0) | passed | not run | not run | n/a |
+| Run recording, budgets, loop detection (Phase 1) | passed | not run | not run | n/a |
 | Process jail (`bubblewrap` / Seatbelt / AppContainer) | not run | not run | not run | n/a |
 | Per-agent worktrees | not run | not run | not run | n/a |
 | Desktop agent surfaces | not run | not run | not run | not run |
 
 ## Known blockers
 
-None recorded for Phase 0.
+| Blocker | Effect | Status |
+| --- | --- | --- |
+| GitHub runners are never allocated on this fork | No CI evidence for any change | Recorded, not worked around. Verification is local and listed per phase. |
+| `rust-check.yml` does not trigger for a pull request based on a feature branch | The Phase 1 pull request gets no Rust checks | Resolves when Phase 0 merges and Phase 1 is retargeted to `main`. Not fixed by widening the filter, which is deliberate. |
+| No macOS or Windows machine in this environment | Per-OS behaviour cannot be validated | Recorded. The platform matrix keeps those cells empty rather than assuming them. |

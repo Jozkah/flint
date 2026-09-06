@@ -211,13 +211,23 @@ fn runtime_environment_block(project_root: &Path, scratch: Option<&Path>) -> Str
         None => String::new(),
     };
 
+    // What kind of project this is, when its manifests say so. Without it the
+    // model's first move in an unfamiliar repository is to guess a test command
+    // or spend turns reading manifests to learn what every contributor knows.
+    // Absent rather than speculative when nothing is recognised.
+    let project_line = crate::core::agent::project_kind::project_block(
+        &crate::core::agent::project_kind::detect(project_root),
+    )
+    .map(|block| format!("\n\n{block}"))
+    .unwrap_or_default();
+
     format!(
         "# Runtime Environment\n\n\
 Work directory: `{cwd}`\n\
 OS: `{os}`\n\
 Date: `{date}`\n\
 Shell: `{shell}`\n\
-{git_line}{scratch_line}"
+{git_line}{scratch_line}{project_line}"
     )
 }
 
@@ -515,6 +525,31 @@ mod tests {
     }
 
     // ── Runtime environment block ────────────────────────────────────────
+
+    /// The detected project reaches the model, and says where it came from.
+    #[test]
+    fn the_runtime_block_carries_the_detected_project() {
+        let root = scratch_project("env_project");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+
+        let block = runtime_environment_block(&root, None);
+        assert!(block.contains("Ecosystem: `Rust` (from Cargo.toml)"), "{block}");
+        assert!(block.contains("`cargo test` (from Cargo.toml)"), "{block}");
+    }
+
+    /// An unrecognised repository must add nothing at all -- a "Project:"
+    /// heading with no content reads as a failed detection, and a guessed
+    /// command reads as a fact.
+    #[test]
+    fn an_unrecognised_project_adds_nothing_to_the_runtime_block() {
+        let root = scratch_project("env_unknown");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("README.md"), "# hi").unwrap();
+
+        let block = runtime_environment_block(&root, None);
+        assert!(!block.contains("Project"), "{block}");
+    }
 
     #[test]
     fn runtime_environment_block_is_compact() {

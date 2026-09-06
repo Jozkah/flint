@@ -5,8 +5,12 @@ pub mod commands;
 pub mod constants;
 #[cfg(not(feature = "cli"))]
 pub mod helpers;
-#[cfg(not(feature = "cli"))]
+// Confinement-as-a-type for stdio servers: Tauri-free, and the CLI's own
+// connect path spawns through it, so it must exist in both configurations.
 pub mod launch;
+// The lock file is written against an `AppHandle`'s data directory; every
+// caller is a desktop command surface, and the CLI does not link `tauri`.
+#[cfg(not(feature = "cli"))]
 pub mod lockfile;
 pub mod models;
 // OAuth for remote MCP servers: Tauri-free so the CLI drives it today and the

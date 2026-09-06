@@ -12,6 +12,7 @@ pub mod mcp;
 mod model_capabilities;
 mod path_refs;
 pub mod providers;
+pub mod runs;
 pub mod run_report;
 mod secret_input;
 pub mod terminal_setup;
@@ -529,6 +530,9 @@ pub fn cli_agent_status(
         "data_folder": resolve_jan_data_folder().to_string_lossy(),
         "model": cfg.agent.model,
         "max_session_tokens": cfg.budget.max_tokens.unwrap_or(DEFAULT_MAX_SESSION_TOKENS),
+        "max_duration_secs": cfg.budget.max_duration_secs.unwrap_or(0),
+        "max_turns": cfg.budget.max_turns.unwrap_or(0),
+        "on_exhausted": cfg.budget.on_exhausted,
         "tools": {
             "default": cfg.tools.default,
             "allow": cfg.tools.allow,
@@ -721,6 +725,11 @@ fn build_cli_orchestration_args(
         // `--sandbox` only when passed; unset falls through to the project's
         // `[tools].sandbox` and then the user's global `sandbox`.
         sandbox,
+        // Filled in per run by the caller, which knows the thread it is
+        // continuing; a fresh conversation has none until it is saved.
+        thread_id: None,
+        // A CLI invocation is always a top-level run; it opens its own record.
+        inherited_recorder: None,
     }
 }
 
@@ -766,6 +775,14 @@ pub(crate) struct SessionLimits {
     /// `[budget].max_tokens`: marginal token-spend ceiling for one run, the
     /// only cap on run length. `0` is unbounded.
     pub max_session_tokens: u64,
+    /// `[budget].max_duration_secs`: wall-clock ceiling for one run. `0` or
+    /// unset is unbounded.
+    pub max_run_seconds: u64,
+    /// `[budget].on_exhausted`: whether crossing a ceiling ends the run.
+    pub on_exhausted: crate::core::agent::session::ExhaustionPolicy,
+    /// `[budget].max_turns`: hard cap on orchestration turns. `0` is unbounded,
+    /// which is the default.
+    pub max_turns_cap: u64,
 }
 
 /// Resolved engine handle for a chat session: the args are built once and the
@@ -803,6 +820,9 @@ impl AgentSession {
             "model": self.model,
             "messages": messages,
             "max_session_tokens": self.limits.max_session_tokens,
+            "max_run_seconds": self.limits.max_run_seconds,
+            "budget_on_exhausted": self.limits.on_exhausted,
+            "max_turns": self.limits.max_turns_cap,
             "stream": true,
         });
         // Forward the per-request output cap only when configured; it flows to
@@ -993,6 +1013,9 @@ fn prepare_agent_session(
             reserve_tokens: cfg.agent.compaction_reserve_tokens.unwrap_or(16_384),
             max_tokens: cfg.agent.max_tokens,
             max_session_tokens: cfg.budget.max_tokens.unwrap_or(DEFAULT_MAX_SESSION_TOKENS),
+            max_run_seconds: cfg.budget.max_duration_secs.unwrap_or(0),
+            on_exhausted: cfg.budget.on_exhausted,
+            max_turns_cap: cfg.budget.max_turns.unwrap_or(0),
         },
         show_reasoning: cfg.agent.show_reasoning.unwrap_or(false),
         stream_reasoning: crate::core::agent::global_config::stream_reasoning_enabled(),
@@ -1082,6 +1105,21 @@ fn prepare_agent_run(
         .as_ref()
         .map(|r| r.history.clone())
         .unwrap_or_default();
+
+    // A run that died mid-turn leaves tool calls with no recorded outcome. The
+    // conversation cannot show that -- it records what the model said, not what
+    // the harness dispatched -- so the resumed run is told, before its own task,
+    // which effects are in doubt. Without this a resumed session's most likely
+    // first move is to repeat a mutation that already applied.
+    if let Some(resumed) = resumed.as_ref() {
+        if let Some(note) =
+            crate::core::cli::runs::interrupted_handoff(&runs::store(), &resumed.thread_id)
+        {
+            eprintln!("(the previous run on this session was interrupted; carrying it forward)");
+            history.push(serde_json::json!({ "role": "system", "content": note }));
+        }
+    }
+
     history.push(serde_json::json!({ "role": "user", "content": final_task }));
     let mut body = session.body(serde_json::json!(history.clone()));
     if single_turn {
@@ -1091,8 +1129,12 @@ fn prepare_agent_run(
     if !injected.is_empty() {
         eprintln!("(resolved @path references)");
     }
+    let mut args = session.args;
+    // So the *next* resume can find this run if it too is interrupted.
+    args.thread_id = resumed.as_ref().map(|r| r.thread_id.clone());
+
     Ok(PreparedRun {
-        args: session.args,
+        args,
         body,
         permission_requests: session.permission_requests,
         mcp_task: session.mcp_task,

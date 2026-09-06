@@ -26,15 +26,15 @@ and the latter two require a recorded `blockedReason`.
 | Phase | Name | `missing` | `planned` | `in-progress` | `implemented` | `verified` | `platform-blocked` | `rejected-with-decision` | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Foundation | 0 | 0 | 2 | 10 | 0 | 0 | 0 | 12 |
-| 1 | Core execution | 3 | 0 | 9 | 8 | 0 | 0 | 0 | 20 |
-| 2 | Security and permissions | 5 | 0 | 9 | 6 | 0 | 0 | 0 | 20 |
-| 3 | Repository intelligence | 18 | 0 | 2 | 0 | 0 | 0 | 0 | 20 |
+| 1 | Core execution | 0 | 0 | 5 | 15 | 0 | 0 | 0 | 20 |
+| 2 | Security and permissions | 3 | 0 | 9 | 8 | 0 | 0 | 0 | 20 |
+| 3 | Repository intelligence | 7 | 0 | 2 | 11 | 0 | 0 | 0 | 20 |
 | 4 | Context and memory | 6 | 0 | 7 | 3 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 8 | 0 | 6 | 11 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 23 | 0 | 2 | 1 | 0 | 0 | 0 | 26 |
-| 8 | UX, automation and operations | 18 | 0 | 8 | 3 | 0 | 0 | 0 | 29 |
-| **all** | | **92** | **0** | **51** | **57** | **0** | **0** | **0** | **200** |
+| 8 | UX, automation and operations | 17 | 0 | 9 | 3 | 0 | 0 | 0 | 29 |
+| **all** | | **75** | **0** | **48** | **77** | **0** | **0** | **0** | **200** |
 
 ## Ownership lanes
 
@@ -79,11 +79,11 @@ per-OS evidence log rather than backlog items.
 | `AH-014` | Plan approval gate | 1 | execution | P0 | `implemented` | medium | `AH-013` |
 | `AH-015` | Todo/task state machine | 1 | execution | P0 | `implemented` | none | `AH-004` |
 | `AH-016` | Task board persistence | 1 | execution | P1 | `implemented` | none | `AH-015`, `AH-010` |
-| `AH-017` | Token budget enforcement | 1 | execution | P0 | `in-progress` | medium | `AH-008` |
+| `AH-017` | Token budget enforcement | 1 | execution | P0 | `implemented` | medium | `AH-008` |
 | `AH-018` | Step and iteration budget enforcement | 1 | execution | P0 | `in-progress` | medium | `AH-017` |
-| `AH-019` | Wall-clock budget enforcement | 1 | execution | P1 | `missing` | medium | `AH-017` |
-| `AH-020` | Per-tool timeouts | 1 | execution | P0 | `in-progress` | medium | `AH-009` |
-| `AH-021` | Per-run timeout | 1 | execution | P1 | `missing` | medium | `AH-019` |
+| `AH-019` | Wall-clock budget enforcement | 1 | execution | P1 | `implemented` | medium | `AH-017` |
+| `AH-020` | Per-tool timeouts | 1 | execution | P0 | `implemented` | medium | `AH-009` |
+| `AH-021` | Per-run timeout | 1 | execution | P1 | `implemented` | medium | `AH-019` |
 | `AH-022` | Cancellation propagation | 1 | execution | P0 | `implemented` | high | `AH-008` |
 | `AH-023` | In-flight tool-call cancellation | 1 | execution | P0 | `in-progress` | high | `AH-022` |
 | `AH-024` | Retry policy with backoff | 1 | execution | P1 | `in-progress` | low | `AH-009` |
@@ -91,10 +91,10 @@ per-OS evidence log rather than backlog items.
 | `AH-026` | Run resume after restart | 1 | execution | P1 | `in-progress` | medium | `AH-010` |
 | `AH-027` | Run checkpoints | 1 | execution | P1 | `implemented` | medium | `AH-010` |
 | `AH-028` | Checkpoint rollback | 1 | execution | P1 | `implemented` | high | `AH-027` |
-| `AH-029` | Stuck-loop detection | 1 | execution | P1 | `in-progress` | medium | `AH-004` |
-| `AH-030` | Doom-loop detection | 1 | execution | P1 | `missing` | medium | `AH-029` |
+| `AH-029` | Stuck-loop detection | 1 | execution | P1 | `implemented` | medium | `AH-004` |
+| `AH-030` | Doom-loop detection | 1 | execution | P1 | `implemented` | medium | `AH-029` |
 | `AH-031` | Human takeover mid-run | 1 | execution | P1 | `implemented` | medium | `AH-022` |
-| `AH-032` | Run replay from the event log | 1 | execution | P1 | `in-progress` | low | `AH-005` |
+| `AH-032` | Run replay from the event log | 1 | execution | P1 | `implemented` | low | `AH-005` |
 | `AH-033` | Ordered allow/deny/ask evaluation | 2 | security | P0 | `implemented` | critical | `AH-007` |
 | `AH-034` | Rule resource matching | 2 | security | P0 | `in-progress` | critical | `AH-033` |
 | `AH-035` | Rule precedence and specificity | 2 | security | P0 | `implemented` | critical | `AH-033` |
@@ -107,34 +107,34 @@ per-OS evidence log rather than backlog items.
 | `AH-042` | Network egress permissions | 2 | security | P0 | `in-progress` | critical | `AH-006` |
 | `AH-043` | Network domain allow/deny lists | 2 | security | P1 | `missing` | high | `AH-042` |
 | `AH-044` | Secret-file protections | 2 | security | P0 | `in-progress` | critical | `AH-036` |
-| `AH-045` | Secret redaction in logs and transcripts | 2 | security | P0 | `missing` | critical | `AH-044` |
+| `AH-045` | Secret redaction in logs and transcripts | 2 | security | P0 | `in-progress` | critical | `AH-044` |
 | `AH-046` | Git destructive-operation protections | 2 | security | P0 | `missing` | critical | `AH-038` |
 | `AH-047` | Temporary session-scoped approvals | 2 | security | P0 | `implemented` | high | `AH-033` |
 | `AH-048` | Approval prompt contract | 2 | security | P0 | `implemented` | high | `AH-033` |
-| `AH-049` | Permission decision audit log | 2 | security | P0 | `missing` | critical | `AH-005`, `AH-033` |
-| `AH-050` | Tool invocation audit log | 2 | security | P0 | `in-progress` | high | `AH-049` |
+| `AH-049` | Permission decision audit log | 2 | security | P0 | `implemented` | critical | `AH-005`, `AH-033` |
+| `AH-050` | Tool invocation audit log | 2 | security | P0 | `implemented` | high | `AH-049` |
 | `AH-051` | Emergency kill switch | 2 | security | P0 | `in-progress` | critical | `AH-022` |
 | `AH-052` | Permission policy import and export | 2 | security | P2 | `missing` | high | `AH-007` |
-| `AH-053` | Repository index store | 3 | repo-intelligence | P1 | `in-progress` | medium | `AH-010` |
-| `AH-054` | Initial index build | 3 | repo-intelligence | P1 | `in-progress` | low | `AH-053` |
-| `AH-055` | Incremental index updates | 3 | repo-intelligence | P1 | `missing` | low | `AH-053` |
-| `AH-056` | Index invalidation on branch change | 3 | repo-intelligence | P2 | `missing` | low | `AH-055` |
+| `AH-053` | Repository index store | 3 | repo-intelligence | P1 | `implemented` | medium | `AH-010` |
+| `AH-054` | Initial index build | 3 | repo-intelligence | P1 | `implemented` | low | `AH-053` |
+| `AH-055` | Incremental index updates | 3 | repo-intelligence | P1 | `implemented` | low | `AH-053` |
+| `AH-056` | Index invalidation on branch change | 3 | repo-intelligence | P2 | `implemented` | low | `AH-055` |
 | `AH-057` | LSP client integration | 3 | repo-intelligence | P1 | `missing` | medium | `AH-053` |
 | `AH-058` | LSP server lifecycle management | 3 | repo-intelligence | P1 | `missing` | medium | `AH-057` |
-| `AH-059` | Symbol search | 3 | repo-intelligence | P1 | `missing` | low | `AH-057` |
+| `AH-059` | Symbol search | 3 | repo-intelligence | P1 | `implemented` | low | `AH-057` |
 | `AH-060` | Find references | 3 | repo-intelligence | P1 | `missing` | low | `AH-059` |
 | `AH-061` | Go to definition | 3 | repo-intelligence | P1 | `missing` | low | `AH-059` |
 | `AH-062` | Call hierarchy | 3 | repo-intelligence | P2 | `missing` | low | `AH-060` |
 | `AH-063` | Diagnostics collection | 3 | repo-intelligence | P1 | `missing` | low | `AH-057` |
 | `AH-064` | Diagnostics surfaced to the agent | 3 | repo-intelligence | P1 | `missing` | low | `AH-063` |
-| `AH-065` | Dependency graph extraction | 3 | repo-intelligence | P2 | `missing` | low | `AH-053` |
-| `AH-066` | Test-to-source mapping | 3 | repo-intelligence | P1 | `missing` | low | `AH-065` |
-| `AH-067` | Changed-file impact analysis | 3 | repo-intelligence | P1 | `missing` | low | `AH-065` |
-| `AH-068` | Framework detection | 3 | repo-intelligence | P2 | `missing` | none | `AH-053` |
-| `AH-069` | Build-system detection | 3 | repo-intelligence | P1 | `missing` | none | `AH-068` |
-| `AH-070` | Test-runner detection | 3 | repo-intelligence | P1 | `missing` | none | `AH-068` |
-| `AH-071` | Semantic code search | 3 | repo-intelligence | P2 | `missing` | medium | `AH-053` |
-| `AH-072` | Repository health scan | 3 | repo-intelligence | P2 | `missing` | low | `AH-069`, `AH-070` |
+| `AH-065` | Dependency graph extraction | 3 | repo-intelligence | P2 | `implemented` | low | `AH-053` |
+| `AH-066` | Test-to-source mapping | 3 | repo-intelligence | P1 | `implemented` | low | `AH-065` |
+| `AH-067` | Changed-file impact analysis | 3 | repo-intelligence | P1 | `implemented` | low | `AH-065` |
+| `AH-068` | Framework detection | 3 | repo-intelligence | P2 | `implemented` | none | `AH-053` |
+| `AH-069` | Build-system detection | 3 | repo-intelligence | P1 | `implemented` | none | `AH-068` |
+| `AH-070` | Test-runner detection | 3 | repo-intelligence | P1 | `implemented` | none | `AH-068` |
+| `AH-071` | Semantic code search | 3 | repo-intelligence | P2 | `in-progress` | medium | `AH-053` |
+| `AH-072` | Repository health scan | 3 | repo-intelligence | P2 | `in-progress` | low | `AH-069`, `AH-070` |
 | `AH-073` | Exact dispatched-payload accounting | 4 | context-memory | P0 | `in-progress` | low | `AH-078` |
 | `AH-074` | Per-segment token attribution | 4 | context-memory | P1 | `implemented` | low | `AH-073` |
 | `AH-075` | Compaction visibility | 4 | context-memory | P0 | `implemented` | low | `AH-004` |
@@ -239,7 +239,7 @@ per-OS evidence log rather than backlog items.
 | `AH-174` | Resource usage monitor | 8 | ux-operations | P2 | `in-progress` | low | `AH-173` |
 | `AH-175` | Token and cost dashboard | 8 | ux-operations | P1 | `in-progress` | low | `AH-073` |
 | `AH-176` | Event replay UI | 8 | ux-operations | P2 | `in-progress` | low | `AH-032` |
-| `AH-177` | Event export | 8 | ux-operations | P1 | `missing` | medium | `AH-005` |
+| `AH-177` | Event export | 8 | ux-operations | P1 | `implemented` | medium | `AH-005` |
 | `AH-178` | Searchable transcripts | 8 | ux-operations | P2 | `in-progress` | low | `AH-010` |
 | `AH-179` | Screen-reader accessibility | 8 | ux-operations | P1 | `missing` | none | - |
 | `AH-180` | Keyboard navigation | 8 | ux-operations | P1 | `missing` | none | `AH-179` |
@@ -261,33 +261,36 @@ per-OS evidence log rather than backlog items.
 | `AH-196` | Benchmark harness | 8 | ux-operations | P2 | `missing` | none | `AH-011` |
 | `AH-197` | Golden-repository regression suite | 8 | ux-operations | P1 | `missing` | medium | `AH-011`, `AH-196` |
 | `AH-198` | Security regression corpus | 8 | ux-operations | P0 | `missing` | critical | `AH-011`, `AH-049` |
-| `AH-199` | Telemetry controls | 8 | ux-operations | P1 | `implemented` | high | - |
-| `AH-200` | Full audit export | 8 | ux-operations | P1 | `missing` | critical | `AH-049`, `AH-177` |
+| `AH-199` | Telemetry controls | 8 | ux-operations | P1 | `missing` | high | - |
+| `AH-200` | Full audit export | 8 | ux-operations | P1 | `in-progress` | critical | `AH-049`, `AH-177` |
 
 ## Audit notes
 
 Recorded during the Phase 0 audit of `main`. Each note says why an item is not already
 `implemented`, so later phases start from evidence rather than a re-audit.
 
-- **`AH-004` Canonical harness event model** - Canonical model landed in jan-agent-harness. StreamEvent is still never persisted, so replay, audit and export have no source; migrating the emitters is Phase 1 work (lane-02).
-- **`AH-005` Event serialization and schema versioning** - Versioned envelope, forward-compatible reader and a crash-tolerant JSONL log. Adopted by the run store in Phase 1.
+- **`AH-004` Canonical harness event model** - Run lifecycle, turn boundaries, tool calls, permission decisions and budget crossings are all produced and persisted. Covers the Rust harness only; the Cowork desktop harness orchestrates in TypeScript and is not recorded yet.
+- **`AH-005` Event serialization and schema versioning** - In real use: every run appends versioned envelopes to its own events.jsonl.
 - **`AH-006` Tool capability model** - Capability{Read,Write,Exec,Net} covers the 16 built-ins; MCP tools carry no capability and are name-gated only. Extending the model to MCP is Phase 2 work under AH-041.
 - **`AH-007` Permission model core types** - Rules are glob patterns over tool names; arguments and resources are never pattern-matched. The (subject, capability, resource) redesign is Phase 2 work under AH-034.
-- **`AH-008` Run and session identity** - RunIdentity ties run, thread, session and agent together. The three existing ids are migrated onto it in Phase 1 (lane-02).
+- **`AH-008` Run and session identity** - A run mints one RunIdentity in orchestrate_inner and every event carries it. A subagent inherits the parent's run and records under a fresh agent id rather than opening a run of its own. The legacy thread_id and session_id are still minted separately; folding them in is the remaining work.
 - **`AH-009` Harness error taxonomy** - HarnessError classifies kind, retryability and audience, and preserves the existing `ERROR [tag]:` shape so migrating a call site does not change what the model sees.
-- **`AH-010` Persistent state schema** - Versioned run record with an atomic writer, strict version reads and interrupted-run detection. The existing thread.json and messages.jsonl remain unversioned until Phase 1 migrates them.
-- **`AH-012` Agent worktree conventions** - Convention is `jan/cowork/<slug>` branches under a data-directory worktree root keyed by RepoIdentity (the repo's first commit). Owned by core/agent/worktree.rs; nothing else may add a second scheme.
-- **`AH-017` Token budget enforcement** - Documented in loop.rs as advisory: crossing the budget records a note and the run carries on, tool calls included. User cancellation is the only remaining bound on a run's spend.
-- **`AH-018` Step and iteration budget enforcement** - max_turns == 0 (unlimited) is the documented normal case, so unattended runs have no ceiling.
-- **`AH-020` Per-tool timeouts** - Only bash has a timeout, and on expiry it backgrounds the job instead of killing it; read/edit/web/MCP have none.
-- **`AH-023` In-flight tool-call cancellation** - Teardown is drop/abort-based with no cancellation token; in-flight children rely on process-group kill.
+- **`AH-010` Persistent state schema** - Each run writes a versioned record under <jan_data>/agent-state/runs/<run_id>/. thread.json and messages.jsonl remain unversioned.
+- **`AH-012` Agent worktree conventions** - Convention is `jan/cowork/<slug>` branches under a data-directory worktree root keyed by RepoIdentity (the repo's first commit). Owned by core/agent/worktree.rs; nothing else may add a second scheme. The test reference previously pointed at src-tauri/harness/src/worktree.rs, a second worktree module that was deleted rather than reconciled with this one; the repo_health registry check (AH-072) found the dangling claim.
+- **`AH-017` Token budget enforcement** - Crossing [budget] max_tokens now ends the run at the next turn boundary instead of appending a note and carrying on. on_exhausted = "continue" restores the old behaviour deliberately.
+- **`AH-018` Step and iteration budget enforcement** - [budget] max_turns is configurable and enforced, completing the ceiling trio with max_tokens and max_duration_secs. It stays in-progress against its own criterion, which asks for a ceiling enforced by default: the default remains unbounded, because the config states the agent takes as many turns as the task needs and the token and wall-clock ceilings now genuinely bound a run. Choosing a non-zero default would cut off legitimate long tasks and is a product decision, not one to make silently.
+- **`AH-019` Wall-clock budget enforcement** - [budget] max_duration_secs bounds a run that is cheap in tokens but stuck in a slow tool. Checked before the turn that would cross it, so no work is paid for past the deadline.
+- **`AH-020` Per-tool timeouts** - Every dispatched built-in now runs under a timeout chosen by its capability class, on both the sequential and the concurrent-read paths. A timed-out call is classified as timed out rather than failed, and the model is told the call may still be running so it does not reissue a mutation still in flight. bash keeps its own inner timeout and backgrounding behaviour; this is the outer bound on the handler.
+- **`AH-021` Per-run timeout** - One deadline bounds the whole orchestration: a dispatched subagent inherits what is left of it, rounded up to a second, so spawning a child is not a way around the run's deadline.
+- **`AH-023` In-flight tool-call cancellation** - Foreground tool processes are killed on drop and run in their own process group, and a hung call is now abandoned on a timeout. The headless CLI leaked backgrounded bash trees on every exit -- the desktop app reaps on graceful exit, the CLI never did -- so every exit path now goes through a reaping helper, guarded by a source-level test. Still outstanding: no cancellation token, so an abandoned call is not itself killed, and a signal-terminated CLI still leaks because agent shells sit outside the terminal's process group.
 - **`AH-024` Retry policy with backoff** - Retry exists for upstream HTTP only, and only before the first streamed event; tool failures are never retried.
 - **`AH-025` Retryable-error classification** - Classification is local to the HTTP client.
-- **`AH-026` Run resume after restart** - State is written at turn boundaries only, so an interrupted turn is unrecoverable; resume lives in the CLI layer.
+- **`AH-026` Run resume after restart** - A resumed conversation is now handed what its interrupted run left in doubt: the run record keeps the surface's own thread id beside the harness one, and `--resume` injects a system note naming the tool calls dispatched with no recorded outcome before the new task. The in-flight turn is therefore carried forward rather than lost. Two boundaries remain: a conversation interrupted on its very first run has no saved thread to resume (threads persist only on success, which predates this work) though `runs show` still reports it, and the TUI does not yet set its thread id on the run, so the handoff is CLI-only.
 - **`AH-027` Run checkpoints** - Capture, plan, restore and forget behind Tauri commands with a persisted chain; snapshot commits stay off the user's branch. The TUI is no longer the only driver.
 - **`AH-028` Checkpoint rollback** - RewindPlan::{Restore,Patch}; restore refuses a UserCheckout destination, so a rewind can never rewrite the user's own checkout.
-- **`AH-029` Stuck-loop detection** - Only a mutation-count nudge that injects a reminder; nothing measures progress or halts the run.
-- **`AH-032` Run replay from the event log** - display.jsonl is a rendering journal; StreamEvent is never persisted, so runs cannot be replayed or audited.
+- **`AH-029` Stuck-loop detection** - A turn that asks for exactly what the previous turn asked for is treated as no progress: the model is told once, and the run is stopped if it keeps going. Deliberately narrow -- a turn of plain text, or any change to the calls, ends the streak.
+- **`AH-030` Doom-loop detection** - Tool calls are fingerprinted by name and canonicalised arguments, so the same batch in a different order counts as a repeat and a partly-changed batch does not. Both the warning and the stop are recorded.
+- **`AH-032` Run replay from the event log** - `jan cli agent runs show` replays a run from its persisted canonical events. An event written by a newer build is named rather than skipped, and an unmeasured duration prints as untimed rather than as zero.
 - **`AH-034` Rule resource matching** - Globs match tool names only; arguments are never pattern-matched, so bash(git:*)-style rules are inexpressible.
 - **`AH-036` Per-path permissions** - Path control is structural containment only; there are no user-authorable per-path allow/deny lists.
 - **`AH-037` Per-command permissions** - Grants are session-scoped and per base command, so granting `git status` also permits `git push`.
@@ -295,12 +298,23 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-041` Per-MCP-server permissions** - advertises_mcp keys on tool name; server-level trust lives in renderer localStorage, outside the Rust gate.
 - **`AH-042` Network egress permissions** - Shell egress is jailed, but Capability::Net web tools are allowed unconditionally even when allow_network is false.
 - **`AH-044` Secret-file protections** - is_sensitive_name covers dotenv files, private keys and credential files, and is reachable only from the UI browse, repo-map and read commands. The model's own read/edit/bash path in tools/handlers.rs has no such check.
-- **`AH-050` Tool invocation audit log** - display.jsonl records calls for rendering; it is CLI-only and documents permission prompts as transient by design.
+- **`AH-045` Secret redaction in logs and transcripts** - The event log records a redacted, truncated resource and a fingerprint, never raw arguments, so file contents and credentials cannot reach it. Transcripts, the display journal and tool output itself are still unredacted.
+- **`AH-049` Permission decision audit log** - Prompts and decisions are recorded, auto-approval included -- previously the one case that converted every prompt to an allow with no trace. Covers the Rust harness only -- the CLI, the TUI, subagents and the API-server proxy, every surface reaching run_orchestration_streamed. The Cowork desktop harness orchestrates in TypeScript and is not recorded yet.
+- **`AH-050` Tool invocation audit log** - Every dispatched call is recorded before it runs and again when it ends, in call order, with a duration measured around each call individually. Covers the Rust harness only; the Cowork desktop harness orchestrates in TypeScript and is not recorded yet.
 - **`AH-051` Emergency kill switch** - Cancellation is per-run only; nothing halts background subagents and detached bash jobs application-wide.
-- **`AH-053` Repository index store** - build_map produces a bounded breadth-first ProjectMap that is embedded in the run's prompt. It is an orientation blob, not an index: no symbols, no cache, no persistence.
-- **`AH-054` Initial index build** - The breadth-first walk is bounded by entry and depth caps and honours ignore rules, but produces no stored index.
-- **`AH-055` Incremental index updates** - The repository map is re-walked in full on each use; there is no cache to update.
-- **`AH-071` Semantic code search** - Two RAG stacks exist (rag-extension, vector-db) but neither is wired to the agent harness; one is dead code.
+- **`AH-053` Repository index store** - Persistent, versioned, one index per project under <jan_data>/agent-state/index/. An index from another schema is rebuilt rather than reinterpreted. A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed.
+- **`AH-054` Initial index build** - Built on first use and refreshed at run start. Measured on this repository: 298ms cold for 1425 files and 7608 symbols, bounded by a file ceiling that is reported when hit. A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed.
+- **`AH-055` Incremental index updates** - A file whose size and modification time are unchanged is not re-read; a deleted file's symbols are dropped rather than left pointing at a path that no longer exists. Measured on this repository: 81ms warm against 298ms cold.
+- **`AH-056` Index invalidation on branch change** - Falls out of keying entries on size and modification time: a branch switch rewrites the files that differ, so exactly those are re-read and files absent on the new branch are dropped. A schema change discards the whole index rather than reading it as though the new fields were empty.
+- **`AH-059` Symbol search** - A `symbol_search` tool, advertised on every run with a project root and in plan mode too since it is read-only. Exact matches rank before prefix before substring. A miss reports what the index does not cover and says to fall back to grep, so the model cannot read it as "this does not exist". A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed.
+- **`AH-065` Dependency graph extraction** - File-level import edges, resolved only where resolution is sound: Rust `mod x;` to x.rs or x/mod.rs, relative TypeScript/JavaScript specifiers to a file or its index, relative Python imports. A bare specifier names a package rather than a file here and is deliberately left unresolved; Go imports are package-level and yield no file edge. Trustworthy in a way find-references would not be, because an import is unambiguous syntax at the top of a file.
+- **`AH-066` Test-to-source mapping** - Conventions for Rust (an inline #[cfg(test)] module means the file tests itself, plus tests/<stem>.rs), TypeScript/JavaScript (.test./.spec./__tests__), Python (test_x.py, x_test.py, tests/) and Go (x_test.go). Only candidates that exist are offered. Mapping is by filename convention, not coverage: it does not know which tests exercise which code. A file with no conventionally-named test is reported as unmapped rather than omitted, because silence would read as covered, and every rendered report repeats that passing these tests does not prove a change safe.
+- **`AH-067` Changed-file impact analysis** - A diff now resolves to both the tests that conventionally cover it and the files that import it one hop out, whose tests are included too -- so a change to a file with no test of its own still reaches the tests of its dependents. One hop, not a closure: further out, "affected by" stops meaning much. Still not coverage, and every report says so.
+- **`AH-068` Framework detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. Frameworks: React, Next.js, Vue, Svelte, Vitest, Jest, Playwright, Django, Flask, FastAPI, Tauri, and a Cargo workspace -- which matters because `cargo test` at a workspace root means every member.
+- **`AH-069` Build-system detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. The lockfile, not the manifest, decides the package manager: running the wrong one rewrites the other's lockfile.
+- **`AH-070` Test-runner detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. Only test commands with evidence behind them: a package.json `test` script that exists, a declared Makefile target, pytest named in a Python manifest.
+- **`AH-071` Semantic code search** - Delivered as the `code_search` tool: a lexical multi-signal search over the declaration index -- symbol names, the words inside them (snake, kebab, dot, slash and camelCase), file paths and doc comments -- returning file, line, symbol, kind, match type and a confidence derived from the match type (exact 100, token 75, fuzzy 45, metadata 30). Ranking is deterministic: match type, then symbol name length, then path, then line, over a BTreeMap so the scan cap always falls in the same place. Query length (2..=128), result count (<=50) and scan cost (<=20000 symbols) are all bounded, and a refusal names its reason. An empty index, a capped scan and a genuine miss are three distinct outcomes, never one message. STATUS IS in-progress, NOT implemented: the registry's acceptance criterion asks for embedding search, and this is not that. No embedding model, vector store or conceptual similarity is involved, so a differently-named equivalent will not be found. Every rendered result and the tool description say so in those words rather than letting the model infer otherwise. Wiring embeddings (the rag-extension / vector-db stacks noted in the original audit) remains open work under this id. Index schema version bumped 2 -> 3 to carry the doc-comment field the metadata match reads; a version-2 index on disk is discarded and rebuilt rather than read.
+- **`AH-072` Repository health scan** - Delivered as the `repo_health` tool: fourteen checks over the index and the tree -- missing index, schema mismatch, staleness (added/changed/removed), indexed files that cannot be read back, import edges whose target is gone, missing build or test command, names declared in more than one file, languages the indexer does not parse, files above the index's size ceiling, build output that reached the index, files with no conventionally-named test, feature-registry claims not backed by the tree, modules gated to one build configuration, and an unreadable scan root. Every check that could not run is listed with its reason, because a check that silently did not run reads exactly like one that passed. Findings that are usually deliberate (duplicate names, unsupported languages, configuration gates) are notes, not errors, so a report full of correct-but-uninteresting errors does not teach the reader to skip it. The report never says the repository is healthy: it runs no compiler, type checker, linter or test, and says so in every rendering. STATUS IS in-progress, NOT implemented: the registry's acceptance criterion asks for build, test, lint and dependency health, and this reports none of those four. Running them is a separate capability and stays open under this id. The scan found four real defects on its first run against this repository, two in its own code (files above the 1 MiB index ceiling reported as permanently 'added since the index was built', and a hand-written tauri-plugin-hardware/src/vendor/ directory flagged as vendored code) and two in this registry (AH-012 citing a deleted module, AH-199 claiming a file that does not exist). All four are fixed; the two code defects have regression tests.
 - **`AH-073` Exact dispatched-payload accounting** - Now measures the payload actually dispatched: onPayloadShaped freezes prompt, tools, repository map and messages, and measurement reads only that record. Still no tokenizer -- it is UTF-8 bytes divided by 4, so the numbers are approximations of the right thing rather than counts.
 - **`AH-074` Per-segment token attribution** - Per-category breakdown taken from the frozen dispatch; unmeasured categories report {known:false} rather than zero. Figures remain estimates until AH-073 lands a tokenizer.
 - **`AH-075` Compaction visibility** - ContextShaping records what trimming and compaction removed and reports it beside the total. The Rust and TypeScript implementations are still separate (AH-076).
@@ -320,7 +334,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-107` Per-agent git worktrees** - Real git worktrees exist and Cowork team dispatch gives each isolated child its own worktree and write grant. The Rust dispatch_subagent path in loop.rs is not wired to them, so the fan-out of up to ten children there still shares one tree.
 - **`AH-108` Worktree lifecycle management** - ensure/state/discard/list/prune over real `git worktree` invocations; WorktreeState reports Missing, Corrupt, BranchMoved and IdentityChanged and refuses rather than rebinding.
 - **`AH-109` Conflict-aware merge of agent output** - Pre-flight conflict detection exists: conflicts() reports a shared write target between two tasks with no ordering between them. Merging an agent's worktree back is absent -- output is a branch and a diff the user lands manually.
-- **`AH-110` Agent provenance on changes** - Provenance exists at the event level only; file changes carry no agent attribution.
+- **`AH-110` Agent provenance on changes** - Events carry the agent that produced them, and a child's agent id names its parent. File changes still carry no agent attribution.
 - **`AH-111` Agent restart and replacement** - MAX_TASK_RETRIES bounds automatic re-runs of a failed task; an agent cannot be restarted or replaced individually.
 - **`AH-115` CLAUDE.md compatibility** - Ingested only after the user switches compatibility on for a folder, wrapped and labelled with its source file, ranked below JAN.md, and capped at 64 KiB.
 - **`AH-116` AGENTS.md compatibility** - Same opt-in, labelling, ranking and size cap as CLAUDE.md.
@@ -340,10 +354,13 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-174` Resource usage monitor** - Only host-level CPU and RAM; nothing is attributed per run or per agent.
 - **`AH-175` Token and cost dashboard** - Tokens are tracked; there is no pricing model or cost figure anywhere in the product.
 - **`AH-176` Event replay UI** - The CLI replays a rendering journal; there is no event-level replay UI.
-- **`AH-178` Searchable transcripts** - Search exists in the desktop app; there is no transcript export or CLI search.
+- **`AH-177` Event export** - `jan cli agent runs export` emits the run record and every event as JSON, round-tripping back into the same types.
+- **`AH-178` Searchable transcripts** - `jan cli agent runs list` makes past runs enumerable from the CLI and `show` renders one. Content search across runs is still absent; the desktop app searches threads, not runs.
 - **`AH-179` Screen-reader accessibility** - Not audited in depth during Phase 0; status to be confirmed by an accessibility pass in Phase 8.
 - **`AH-180` Keyboard navigation** - Not audited in depth during Phase 0; the CLI is keyboard-driven by nature, the desktop surfaces are unverified.
 - **`AH-182` Headless JSON API** - --output-format json emits a single terminal object, not a machine API surface.
 - **`AH-183` Headless event-stream API** - StreamEvent is already Tauri-free but is never exposed over stdout or a socket.
 - **`AH-194` Provider routing rules** - Resolution prefers a credentialed provider and supports a small-model role; there are no user-authored rules.
 - **`AH-195` Local and offline model support** - Local inference ships on the desktop app; the headless CLI is remote-only.
+- **`AH-199` Telemetry controls** - Reverted from implemented to missing. The entry named web-app/src/containers/analytics/AnalyticConsent.tsx, which does not exist in this tree; the repo_health registry check (AH-072) found the claim, and reading the code confirmed it. What exists is DefaultAnalyticService (web-app/src/services/analytic/default.ts), which reads and writes a distinct id and has no consent gate. web-app/src/routes/__tests__/__root.test.tsx mocks an @/providers/AnalyticProvider that is absent from web-app/src/providers/, and __root.tsx does not reference it. So telemetry here is neither consent-gated nor disableable, and the acceptance criterion is unmet.
+- **`AH-200` Full audit export** - Permission decisions, tool calls and run events export together as one reviewable record per run, auto-approvals included. Still per-run rather than across runs, and it covers the Rust harness only -- the Cowork desktop harness records nothing to export.

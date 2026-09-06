@@ -693,12 +693,16 @@ impl Drop for AbortOnDrop {
 }
 
 /// What a child inherits from the run that dispatched it: the model to fall back
-/// on when the definition names none, the parent's remaining token budget, and
-/// its `send_reasoning` answer.
+/// on when the definition names none, the parent's remaining token budget and
+/// remaining time, and its `send_reasoning` answer.
 #[derive(Clone)]
 pub(crate) struct ParentRun {
     pub(crate) model: String,
     pub(crate) budget_remaining: Option<u64>,
+    /// The parent's remaining wall-clock time. A child inherits what is left,
+    /// not a fresh window -- otherwise dispatching a subagent would be a way to
+    /// walk around the run's deadline.
+    pub(crate) time_remaining: Option<std::time::Duration>,
     pub(crate) send_reasoning: bool,
 }
 
@@ -729,6 +733,15 @@ fn child_body(
         body.insert(
             "max_session_tokens".to_string(),
             serde_json::json!(remaining),
+        );
+    }
+    if let Some(remaining) = parent.time_remaining {
+        // Rounded up, so a child with a fraction of a second left is given that
+        // second rather than a deadline that has already passed -- which would
+        // read as a failure rather than as the parent running out of time.
+        body.insert(
+            "max_run_seconds".to_string(),
+            serde_json::json!(remaining.as_secs().max(1)),
         );
     }
     // A child's own tool-call turns carry `reasoning_content`, so the parent's
@@ -1500,6 +1513,7 @@ mod tests {
         ParentRun {
             model: "m".to_string(),
             budget_remaining: None,
+            time_remaining: None,
             send_reasoning: true,
         }
     }
@@ -1527,6 +1541,43 @@ mod tests {
             },
         );
         assert_eq!(off["send_reasoning"], serde_json::json!(false));
+    }
+
+    /// A run's deadline has to reach its children, or dispatching a subagent
+    /// would be a way around it.
+    #[test]
+    fn a_child_inherits_what_is_left_of_the_run_deadline() {
+        let reg = registry_with("reviewer", None);
+        let p = ToolPermissions::allow_all();
+        let resolved = resolve_dispatch(&reg, &req("reviewer", None), &p).expect("resolves");
+
+        let none = child_body(&resolved, "task", &parent_run());
+        assert!(
+            none.get("max_run_seconds").is_none(),
+            "a run with no deadline imposes none: {none}"
+        );
+
+        let inherited = child_body(
+            &resolved,
+            "task",
+            &ParentRun {
+                time_remaining: Some(std::time::Duration::from_secs(42)),
+                ..parent_run()
+            },
+        );
+        assert_eq!(inherited["max_run_seconds"], serde_json::json!(42));
+
+        // A parent with a sliver left grants a second, not a fresh window and
+        // not a deadline that has already passed.
+        let nearly_done = child_body(
+            &resolved,
+            "task",
+            &ParentRun {
+                time_remaining: Some(std::time::Duration::from_millis(5)),
+                ..parent_run()
+            },
+        );
+        assert_eq!(nearly_done["max_run_seconds"], serde_json::json!(1));
     }
 
     #[test]
@@ -1904,6 +1955,8 @@ mod tests {
             run_mode: crate::core::agent::plan::RunMode::Normal,
             session_id: None,
             sandbox: None,
+            thread_id: None,
+            inherited_recorder: None,
         }
     }
 

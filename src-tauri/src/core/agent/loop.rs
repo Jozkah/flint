@@ -108,6 +108,18 @@ pub(crate) struct OrchestrationArgs {
     /// by dispatched subagents via the cloned parent args, so a child shell is
     /// confined exactly as its parent's was.
     pub sandbox: Option<bool>,
+    /// The surface's own identifier for this conversation, when it has one.
+    ///
+    /// Recorded beside the run so a resumed thread can find the run that was
+    /// interrupted on it. `None` on a path with no thread of its own.
+    pub thread_id: Option<String>,
+    /// The parent's recorder, set only when this is a subagent's args.
+    ///
+    /// A child records into its parent's run under a fresh agent id rather than
+    /// opening a run of its own, so one run is one audit trail and a reader can
+    /// still tell which agent did what. `None` means "this is a top-level run",
+    /// which is what makes [`orchestrate_inner`] open a new record.
+    pub inherited_recorder: Option<Arc<crate::core::agent::recorder::RunRecorder>>,
 }
 
 #[async_trait]
@@ -243,6 +255,9 @@ struct SubagentContext {
     parent_args: OrchestrationArgs,
     model_id: String,
     max_session_tokens: Option<u64>,
+    /// What is left of the run's wall-clock deadline when a child is
+    /// dispatched, so a subagent cannot outlive the run that spawned it.
+    run_time_remaining: Option<std::time::Duration>,
     /// The parent's `send_reasoning`, forwarded to every child body: a child
     /// resends the reasoning of its own tool-call turns, so an opt-out that
     /// stopped at the parent would still break a strict provider.
@@ -286,6 +301,13 @@ struct CompositeToolInvoker {
     subagents: Option<SubagentContext>,
     auto_approve: bool,
     run_mode: crate::core::agent::plan::RunMode,
+    /// The run's declaration index, refreshed once at run start. `None` when
+    /// the run has no project root to index.
+    index: Option<Arc<crate::core::agent::index::RepoIndex>>,
+    /// The run's durable record. `None` only when a run has nowhere to write
+    /// (no data folder), which is a degraded mode, not a normal one: without it
+    /// nothing this dispatcher does can be replayed or audited afterwards.
+    recorder: Option<Arc<crate::core::agent::recorder::RunRecorder>>,
 }
 
 /// Default for the sandboxed shell's network namespace, used when
@@ -539,6 +561,7 @@ impl CompositeToolInvoker {
                     &crate::core::agent::subagent::ParentRun {
                         model: ctx.model_id.clone(),
                         budget_remaining: ctx.max_session_tokens,
+                        time_remaining: ctx.run_time_remaining,
                         send_reasoning: ctx.send_reasoning,
                     },
                     &self.events,
@@ -808,6 +831,121 @@ fn hard_deny_msg(name: &str, reason: DenyReason, project_root: &std::path::Path)
     }
 }
 
+/// How long a single tool call may run, by what it is allowed to do.
+///
+/// Only `bash` had a timeout, and on expiry it *backgrounds* the job rather
+/// than killing it -- deliberate, so a long build survives, but it means a
+/// runaway command outlives its own timeout. Everything else -- reads, writes,
+/// web fetches -- could hang forever and take the run with it.
+///
+/// The values are generous on purpose: this is a stuck-call guard, not a
+/// performance budget, and a timeout that fires on slow-but-working calls
+/// teaches users to raise it until it never fires at all.
+fn tool_timeout(capability: tauri_plugin_agent_tools::tools::Capability) -> std::time::Duration {
+    use std::time::Duration;
+    use tauri_plugin_agent_tools::tools::Capability;
+    match capability {
+        // Local filesystem work. Slow only when something is wrong.
+        Capability::Read | Capability::Write => Duration::from_secs(120),
+        // Someone else's server decides how long this takes.
+        Capability::Net => Duration::from_secs(180),
+        // `bash` runs its own timeout first and backgrounds the job; this is the
+        // outer bound on the handler itself, well clear of that.
+        Capability::Exec => Duration::from_secs(600),
+    }
+}
+
+/// Message for a tool call that ran past [`tool_timeout`].
+///
+/// Model-facing, and explicit that the call may still be running: a model told
+/// only "timed out" will cheerfully reissue a mutation that is still in flight.
+fn tool_timed_out_msg(
+    name: &str,
+    capability: tauri_plugin_agent_tools::tools::Capability,
+) -> String {
+    format!(
+        "ERROR [timeout]: tool '{name}' did not finish within {}s and was abandoned. It may still \
+         be running; do not simply reissue it. Check the result another way, or try a narrower \
+         call.",
+        tool_timeout(capability).as_secs()
+    )
+}
+
+/// Terminal message for a run that hit a ceiling.
+///
+/// Phrased as a limit that was reached rather than as a failure, because it is
+/// the configured behaviour working: a caller that cannot tell "the budget
+/// stopped this" from "the model broke" will retry the wrong one.
+fn stopped_by_budget_msg(
+    cause: crate::core::agent::session::StopCause,
+    spent: u64,
+) -> String {
+    use crate::core::agent::session::StopCause;
+    match cause {
+        StopCause::TokenBudget => format!(
+            "ERROR [{}]: run stopped after {spent} tokens, at the configured [budget] max_tokens \
+             ceiling. Raise it, or set [budget] on_exhausted = \"continue\" to let a run pass it.",
+            cause.tag()
+        ),
+        StopCause::TimeLimit => format!(
+            "ERROR [{}]: run stopped at the configured [budget] max_duration_secs deadline after \
+             spending {spent} tokens.",
+            cause.tag()
+        ),
+    }
+}
+
+/// How a tool call ended, read back from the result the dispatcher produced.
+///
+/// A stopgap, and a deliberately cohesive one: every string it matches on is
+/// built by a function in *this* file, and the tests feed those builders'
+/// output straight into it, so a reworded refusal fails a test rather than
+/// silently downgrading a denial to a failure in the audit log. It goes away
+/// when a tool result carries a `HarnessError` instead of a `String`.
+fn classify_tool_outcome(content: &str) -> jan_agent_harness::event::ToolOutcome {
+    use jan_agent_harness::event::ToolOutcome as Recorded;
+    const REFUSALS: [&str; 4] = [
+        "denied by user",
+        "denied by project policy",
+        "plan_mode_read_only",
+        "is the agent's own state directory",
+    ];
+    if REFUSALS.iter().any(|marker| content.contains(marker)) {
+        return Recorded::Denied;
+    }
+    if content.starts_with("ERROR [timeout]") {
+        return Recorded::TimedOut;
+    }
+    if content.starts_with("ERROR") {
+        return Recorded::Failed;
+    }
+    Recorded::Ok
+}
+
+/// The `id`, tool name and parsed arguments of one OpenAI tool call.
+///
+/// The dispatcher already re-derives these per branch; the recorder needs them
+/// for every call including the branches that never parse arguments at all.
+fn tool_call_parts(tc: &serde_json::Value) -> (String, String, serde_json::Value) {
+    let id = tc
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let function = tc.get("function");
+    let name = function
+        .and_then(|f| f.get("name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let args = function
+        .and_then(|f| f.get("arguments"))
+        .and_then(|v| v.as_str())
+        .and_then(|raw| serde_json::from_str(raw).ok())
+        .unwrap_or(serde_json::Value::Object(Default::default()));
+    (id, name, args)
+}
+
 /// Rejection message for a mutation-capable tool call attempted in
 /// `RunMode::Plan`. Authoritative: the tool never actually runs.
 fn plan_mode_read_only_msg(name: &str) -> String {
@@ -829,12 +967,129 @@ impl ToolInvoker for CompositeToolInvoker {
         // that prompts, writes, execs, or dispatches stays sequential so
         // permission prompts don't interleave and writes can't race.
         let mut read_futures = Vec::new();
+
+        // Every call the model asked for, recorded before any of them run, so
+        // the audit trail shows what was attempted even if the process dies
+        // part-way through the batch.
+        let mut tool_of_call: HashMap<String, String> = HashMap::new();
+        // Measured per call, so a batch no longer has to report one shared
+        // number or nothing at all.
+        let mut duration_of_call: HashMap<String, u64> = HashMap::new();
+        for tc in tool_calls {
+            let (id, name, args) = tool_call_parts(tc);
+            tool_of_call.insert(id.clone(), name.clone());
+            if let Some(recorder) = self.recorder.as_ref() {
+                recorder.emit(jan_agent_harness::event::EventPayload::ToolCalled {
+                    call_id: id,
+                    resource: crate::core::agent::recorder::redacted_resource(&args),
+                    fingerprint: crate::core::agent::recorder::call_fingerprint(&name, &args),
+                    tool: name,
+                });
+            }
+        }
+
         for tc in tool_calls {
             let name = tc
                 .get("function")
                 .and_then(|f| f.get("name"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
+            if name == "impact" {
+                let (id, _, args) = tool_call_parts(tc);
+                let requested: Vec<String> = args
+                    .get("paths")
+                    .and_then(|v| v.as_array())
+                    .map(|paths| {
+                        paths
+                            .iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                let content = if requested.is_empty() {
+                    // No paths given: ask git what changed. A repository-less
+                    // project is told so rather than reported as "no changes",
+                    // which would read as "your edits are not there".
+                    match crate::core::agent::git::status(
+                        &self.project_root,
+                        crate::core::agent::git::DiffScope::All,
+                    ) {
+                        Ok(status) => {
+                            let changed: Vec<String> =
+                                status.files.into_iter().map(|f| f.path).collect();
+                            let kind =
+                                crate::core::agent::project_kind::detect(&self.project_root);
+                            let impact = crate::core::agent::impact::analyse(
+                                &self.project_root,
+                                &changed,
+                                self.index.as_deref(),
+                            );
+                            crate::core::agent::impact::render(&impact, &changed, &kind)
+                        }
+                        Err(error) => format!(
+                            "Could not read changed files from git ({error}). Pass `paths` \
+                             explicitly to map specific files."
+                        ),
+                    }
+                } else {
+                    let kind = crate::core::agent::project_kind::detect(&self.project_root);
+                    let impact = crate::core::agent::impact::analyse(
+                        &self.project_root,
+                        &requested,
+                        self.index.as_deref(),
+                    );
+                    crate::core::agent::impact::render(&impact, &requested, &kind)
+                };
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
+            if name == "repo_health" {
+                let (id, _, _) = tool_call_parts(tc);
+                let report = crate::core::agent::health::scan(
+                    &self.project_root,
+                    self.index.as_deref(),
+                );
+                out.push(ToolOutcome::plain(id, crate::core::agent::health::render(&report)));
+                continue;
+            }
+            if name == "code_search" {
+                let (id, _, args) = tool_call_parts(tc);
+                let query = args.get("query").and_then(|v| v.as_str()).unwrap_or_default();
+                let limit = args
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(20)
+                    .min(u32::MAX as u64) as usize;
+                let content = match self.index.as_ref() {
+                    Some(index) => {
+                        let outcome = crate::core::agent::search::search(index, query, limit);
+                        crate::core::agent::search::render(query, &outcome)
+                    }
+                    None => "No index for this run (no project root).".to_string(),
+                };
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
+            if name == "symbol_search" {
+                let (id, _, args) = tool_call_parts(tc);
+                let query = args.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+                let limit = args
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(20)
+                    .clamp(1, 100) as usize;
+                let content = match self.index.as_ref() {
+                    Some(index) => crate::core::agent::index::render_results(
+                        query,
+                        &index.search(query, limit),
+                        index,
+                    ),
+                    None => "No symbol index for this run (no project root).".to_string(),
+                };
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
             if name == "ask" {
                 let id = tc
                     .get("id")
@@ -969,7 +1224,22 @@ impl ToolInvoker for CompositeToolInvoker {
             // still honors HardDeny, so the hidden `.jan` invariant (while the shell
             // is sandboxed) and explicit agent.toml denies hold.
             let decision = match decision {
-                Decision::Prompt(_) if self.auto_approve => Decision::Allow,
+                Decision::Prompt(_) if self.auto_approve => {
+                    // The most important line in the audit log: a prompt the
+                    // user never saw. Recorded as its own decision so a reader
+                    // can tell an approval from a suppression.
+                    if let Some(recorder) = self.recorder.as_ref() {
+                        recorder.emit(
+                            jan_agent_harness::event::EventPayload::PermissionDecided {
+                                call_id: id.clone(),
+                                tool: name.to_string(),
+                                decision:
+                                    jan_agent_harness::event::PermissionDecision::AutoAllowed,
+                            },
+                        );
+                    }
+                    Decision::Allow
+                }
                 other => other,
             };
             // Read and Net tools are non-mutating and safe to run concurrently
@@ -986,25 +1256,47 @@ impl ToolInvoker for CompositeToolInvoker {
                 let allow_home_read = self.allow_home_read;
                 let sandbox = self.sandbox;
                 let scratch = self.scratch_root.clone();
+                let capability = tool.capability;
                 read_futures.push(async move {
                     let ctx = ToolContext::new(&root, &store, &enabled)
                         .with_network(allow_network)
                         .with_home_readonly(allow_home_read)
                         .with_sandbox(sandbox)
                         .with_scratch_root(&scratch);
-                    let (text, diff, images) = execute_builtin_with_diff(tool, &args, &ctx).await;
-                    ToolOutcome {
-                        id,
-                        content: text,
-                        diff,
-                        images: images.unwrap_or_default(),
-                    }
+                    let started = std::time::Instant::now();
+                    let (text, diff, images) = match tokio::time::timeout(
+                        tool_timeout(capability),
+                        execute_builtin_with_diff(tool, &args, &ctx),
+                    )
+                    .await
+                    {
+                        Ok(result) => result,
+                        Err(_) => (tool_timed_out_msg(tool.name, capability), None, None),
+                    };
+                    (
+                        ToolOutcome {
+                            id,
+                            content: text,
+                            diff,
+                            images: images.unwrap_or_default(),
+                        },
+                        started.elapsed().as_millis() as u64,
+                    )
                 });
                 continue;
             }
+            let call_started = std::time::Instant::now();
             let (text, diff, images) = match decision {
                 Decision::Allow => {
-                    execute_builtin_with_diff(tool, &args, &self.streaming_tool_context(&id)).await
+                    match tokio::time::timeout(
+                        tool_timeout(tool.capability),
+                        execute_builtin_with_diff(tool, &args, &self.streaming_tool_context(&id)),
+                    )
+                    .await
+                    {
+                        Ok(result) => result,
+                        Err(_) => (tool_timed_out_msg(name, tool.capability), None, None),
+                    }
                 }
                 Decision::HardDeny(reason) => {
                     (hard_deny_msg(name, reason, &self.project_root), None, None)
@@ -1041,6 +1333,15 @@ impl ToolInvoker for CompositeToolInvoker {
                         .flatten()
                         .map(String::from);
                     let diff = preview_diff(tool, &args, &self.tool_context()).await;
+                    if let Some(recorder) = self.recorder.as_ref() {
+                        recorder.emit(
+                            jan_agent_harness::event::EventPayload::PermissionRequested {
+                                call_id: id.clone(),
+                                tool: name.to_string(),
+                                resource: crate::core::agent::recorder::redacted_resource(&args),
+                            },
+                        );
+                    }
                     let _ = self.events.send(StreamEvent::PermissionRequest {
                         request_id: request_id.clone(),
                         tool_name: name.to_string(),
@@ -1054,6 +1355,20 @@ impl ToolInvoker for CompositeToolInvoker {
                     // Sender dropped (client gone / run cancelled) => Deny. No timeout:
                     // the run is cancellable via agent_cancel, which drops this future.
                     let decision = rx.await.unwrap_or(PermissionDecision::Deny);
+                    if let Some(recorder) = self.recorder.as_ref() {
+                        use jan_agent_harness::event::PermissionDecision as Recorded;
+                        recorder.emit(
+                            jan_agent_harness::event::EventPayload::PermissionDecided {
+                                call_id: id.clone(),
+                                tool: name.to_string(),
+                                decision: match decision {
+                                    PermissionDecision::AllowOnce => Recorded::AllowOnce,
+                                    PermissionDecision::AllowAlways => Recorded::AllowAlways,
+                                    PermissionDecision::Deny => Recorded::Deny,
+                                },
+                            },
+                        );
+                    }
                     // Best-effort cleanup if the respond command didn't consume it.
                     self.permission_requests.lock().await.remove(&request_id);
                     match decision {
@@ -1090,6 +1405,7 @@ impl ToolInvoker for CompositeToolInvoker {
                     }
                 }
             };
+            duration_of_call.insert(id.clone(), call_started.elapsed().as_millis() as u64);
             out.push(ToolOutcome {
                 id,
                 content: text,
@@ -1098,7 +1414,10 @@ impl ToolInvoker for CompositeToolInvoker {
             });
         }
         if !read_futures.is_empty() {
-            out.extend(futures::future::join_all(read_futures).await);
+            for (outcome, elapsed_ms) in futures::future::join_all(read_futures).await {
+                duration_of_call.insert(outcome.id.clone(), elapsed_ms);
+                out.push(outcome);
+            }
         }
         if !mcp_calls.is_empty() {
             out.extend(self.mcp.invoke(&mcp_calls).await?);
@@ -1109,6 +1428,23 @@ impl ToolInvoker for CompositeToolInvoker {
             .filter_map(|(i, tc)| tc.get("id").and_then(|v| v.as_str()).map(|id| (id, i)))
             .collect();
         out.sort_by_key(|o| *order.get(o.id.as_str()).unwrap_or(&usize::MAX));
+
+        if let Some(recorder) = self.recorder.as_ref() {
+            for outcome in &out {
+                recorder.emit(jan_agent_harness::event::EventPayload::ToolFinished {
+                    call_id: outcome.id.clone(),
+                    tool: tool_of_call
+                        .get(&outcome.id)
+                        .cloned()
+                        .unwrap_or_default(),
+                    outcome: classify_tool_outcome(&outcome.content),
+                    // Measured around each call individually. Absent for a call
+                    // the dispatcher handed elsewhere (MCP, `ask`) rather than
+                    // timing itself -- unknown must read as unknown.
+                    duration_ms: duration_of_call.get(&outcome.id).copied(),
+                });
+            }
+        }
         Ok(out)
     }
 }
@@ -1153,6 +1489,8 @@ pub(crate) async fn run_server_side_openai_orchestration(
         run_mode: crate::core::agent::plan::RunMode::Normal,
         session_id: None,
         sandbox: None,
+        thread_id: None,
+        inherited_recorder: None,
     };
     let body = match json_body.get("max_turns") {
         Some(_) => std::borrow::Cow::Borrowed(json_body),
@@ -1318,6 +1656,39 @@ fn advertise_local_tools(
     // gate above.
     if ask_enabled && allowed_names.is_none_or(|allowed| allowed.contains("ask")) {
         openai_tools.push(crate::core::agent::interaction::ask_tool_schema());
+    }
+    // Read-only, so it is advertised in plan mode too: locating a declaration
+    // is exactly the work a plan is made of.
+    if project_root.is_some()
+        && !permissions.is_denied("symbol_search")
+        && allowed_names.is_none_or(|allowed| allowed.contains("symbol_search"))
+    {
+        openai_tools.push(crate::core::agent::index::symbol_search_tool_schema());
+    }
+    // Also read-only, and also useful while planning: knowing what a change
+    // would oblige you to run is part of deciding whether to make it.
+    if project_root.is_some()
+        && !permissions.is_denied("impact")
+        && allowed_names.is_none_or(|allowed| allowed.contains("impact"))
+    {
+        openai_tools.push(crate::core::agent::impact::impact_tool_schema());
+    }
+    // Read-only like the other two, and the broadest of them: it is the tool
+    // to reach for when the exact name is half-remembered.
+    if project_root.is_some()
+        && !permissions.is_denied("code_search")
+        && allowed_names.is_none_or(|allowed| allowed.contains("code_search"))
+    {
+        openai_tools.push(crate::core::agent::search::search_tool_schema());
+    }
+    // The one tool here that reports on the others: whether the index they all
+    // read is current, and what it cannot see. Read-only, and most useful
+    // before trusting the first answer of a run.
+    if project_root.is_some()
+        && !permissions.is_denied("repo_health")
+        && allowed_names.is_none_or(|allowed| allowed.contains("repo_health"))
+    {
+        openai_tools.push(crate::core::agent::health::health_tool_schema());
     }
     // Todo bookkeeping is session metadata, not filesystem access, so like
     // `ask` it's advertised independent of the project_root gate above.
@@ -1551,6 +1922,8 @@ async fn orchestrate_inner(
         run_mode,
         session_id,
         sandbox,
+        thread_id,
+        inherited_recorder,
     } = args;
 
     // Per-turn override: the TUI toggles plan mode live via the request body
@@ -1781,13 +2154,46 @@ async fn orchestrate_inner(
     };
 
     let max_session_tokens = body_session_budget(json_body);
-    let mut budget = SessionBudget::new(max_session_tokens);
+    let mut budget = SessionBudget::new(max_session_tokens)
+        .with_time_limit(body_run_time_limit(json_body))
+        .with_policy(body_exhaustion_policy(json_body));
 
     // Top-level runs index their final assistant answer into project memory;
     // isolated child (subagent) runs skip it to keep history independent.
     let index_memory = system_prompt_override.is_none();
 
-    if let Some(root) = project_root {
+    // One run, one durable record. Created here rather than threaded in through
+    // `OrchestrationArgs`, so every surface that reaches this function -- the
+    // CLI, the TUI, the desktop app and the API-server proxy -- records what its
+    // run did without four constructors having to remember to. A run that has
+    // nowhere to write proceeds unrecorded rather than failing: the record is
+    // evidence about the run, not a precondition for doing it.
+    let recorder = match inherited_recorder {
+        Some(parent) => Some(Arc::new(parent.child())),
+        None => crate::core::agent::recorder::RunRecorder::open(
+            std::path::Path::new(jan_data_folder.as_str()),
+            thread_id.as_deref(),
+            session_id.as_deref(),
+            &model_id,
+            run_mode == crate::core::agent::plan::RunMode::Plan,
+        )
+        .inspect_err(|error| log::warn!("agent: this run will not be recorded: {error}"))
+        .ok()
+        .map(Arc::new),
+    };
+    if let Some(recorder) = recorder.as_ref() {
+        log::debug!(
+            "agent run {} recording to {}",
+            recorder.identity().run,
+            recorder.run_dir().display()
+        );
+        recorder.emit(jan_agent_harness::event::EventPayload::RunStarted {
+            model: model_id.clone(),
+            plan_mode: run_mode == crate::core::agent::plan::RunMode::Plan,
+        });
+    }
+
+    let outcome = if let Some(root) = project_root {
         // Background subagents are scoped to this run: `_bg_guard` aborts any
         // still-running child when `orchestrate_inner` returns or is cancelled.
         // The cap (`max_parallel_subagents`) is snapshotted here, at run start.
@@ -1796,9 +2202,16 @@ async fn orchestrate_inner(
         ));
         let _bg_guard = crate::core::agent::subagent::AbortOnDrop(bg.clone());
         let subagents = args.subagents_enabled.then(|| SubagentContext {
-            parent_args: args.clone(),
+            parent_args: {
+                // The child inherits everything about this run, including where
+                // its events go.
+                let mut inherited = args.clone();
+                inherited.inherited_recorder = recorder.clone();
+                inherited
+            },
             model_id: model_id.clone(),
             max_session_tokens,
+            run_time_remaining: budget.time_remaining(),
             send_reasoning: body_send_reasoning(json_body),
             bg: bg.clone(),
         });
@@ -1817,6 +2230,41 @@ async fn orchestrate_inner(
         if settings.sandbox {
             tauri_plugin_agent_tools::workspace::ensure_scratch_dir_path(&scratch_root).await?;
         }
+        // Refresh the declaration index for this project. Incremental after the
+        // first build: an unchanged file costs a stat, not a read. A failure is
+        // not fatal -- the run proceeds without `symbol_search` rather than
+        // refusing to start over an index.
+        let index = {
+            let state_root = std::path::Path::new(jan_data_folder.as_str())
+                .join(crate::core::agent::recorder::STATE_DIR);
+            let path = crate::core::agent::index::index_path(
+                &state_root,
+                &crate::core::agent::index::repo_key(root),
+            );
+            let mut loaded = crate::core::agent::index::load(&path);
+            match crate::core::agent::index::refresh(root, &mut loaded) {
+                Ok(delta) => {
+                    if !delta.is_noop() {
+                        if let Err(error) = crate::core::agent::index::save(&path, &loaded) {
+                            log::warn!("agent: could not persist the symbol index: {error}");
+                        }
+                    }
+                    log::debug!(
+                        "agent: symbol index {} symbols, {} file(s) added, {} updated, {} removed",
+                        loaded.symbol_count(),
+                        delta.added,
+                        delta.updated,
+                        delta.removed
+                    );
+                    Some(Arc::new(loaded))
+                }
+                Err(error) => {
+                    log::warn!("agent: symbol index unavailable: {error}");
+                    None
+                }
+            }
+        };
+
         let tools = CompositeToolInvoker {
             mcp: mcp_tools,
             store_root: tauri_plugin_agent_tools::workspace::project_store(root),
@@ -1837,6 +2285,8 @@ async fn orchestrate_inner(
             subagents,
             auto_approve: *auto_approve,
             run_mode,
+            index: index.clone(),
+            recorder: recorder.clone(),
         };
         let result = run_turn_cycle(
             events,
@@ -1851,6 +2301,7 @@ async fn orchestrate_inner(
             run_mode,
             todo_registry.as_ref(),
             force_first_tool,
+            recorder.as_ref(),
         )
         .await;
         // On a clean exit, wait for any subagents the model dispatched but never
@@ -1885,9 +2336,36 @@ async fn orchestrate_inner(
             run_mode,
             todo_registry.as_ref(),
             force_first_tool,
+            recorder.as_ref(),
         )
         .await
+    };
+
+    // A cancelled run never reaches here: its future is dropped, `finish` is
+    // never called, and the record stays `Running` -- which is exactly how a
+    // later process learns the run was interrupted rather than that it failed.
+    if let Some(recorder) = recorder.as_ref() {
+        let (status, ended) = match &outcome {
+            Ok(_) => (
+                jan_agent_harness::state::RunStatus::Completed,
+                jan_agent_harness::event::ToolOutcome::Ok,
+            ),
+            Err(_) => (
+                jan_agent_harness::state::RunStatus::Failed,
+                jan_agent_harness::event::ToolOutcome::Failed,
+            ),
+        };
+        recorder.emit(jan_agent_harness::event::EventPayload::RunFinished { outcome: ended });
+        recorder.finish(status);
+        let dropped = recorder.dropped_events();
+        if dropped > 0 {
+            log::warn!(
+                "agent run {}: {dropped} event(s) could not be recorded; its audit trail is incomplete",
+                recorder.identity().run
+            );
+        }
     }
+    outcome
 }
 
 /// Upper bound on compaction retries per model call, so a persistently
@@ -2076,6 +2554,27 @@ fn body_session_budget(json_body: &serde_json::Value) -> Option<u64> {
         .filter(|v| *v > 0)
 }
 
+/// `[budget].max_duration_secs`, as a duration. Zero and absent both mean no
+/// deadline, matching how `max_session_tokens` treats zero.
+fn body_run_time_limit(json_body: &serde_json::Value) -> Option<std::time::Duration> {
+    json_body
+        .get("max_run_seconds")
+        .and_then(|v| v.as_u64())
+        .filter(|v| *v > 0)
+        .map(std::time::Duration::from_secs)
+}
+
+/// `[budget].on_exhausted`. An unreadable value falls back to the default
+/// rather than to the permissive option: a typo must not silently unbound a run.
+fn body_exhaustion_policy(
+    json_body: &serde_json::Value,
+) -> crate::core::agent::session::ExhaustionPolicy {
+    json_body
+        .get("budget_on_exhausted")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default()
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_turn_cycle(
     events: &mpsc::UnboundedSender<StreamEvent>,
@@ -2093,6 +2592,10 @@ async fn run_turn_cycle(
     // named tool -- used to make the eager-todo nudge actually reliable
     // instead of an easily-ignored suggestion. `None` for every later turn.
     force_first_tool: Option<&str>,
+    // The run's durable record, so turn boundaries and budget crossings reach
+    // the same log the dispatcher writes tool calls to. `None` in tests and on
+    // a run with nowhere to write.
+    recorder: Option<&Arc<crate::core::agent::recorder::RunRecorder>>,
 ) -> Result<serde_json::Value, String> {
     // `max_turns == 0` is the normal case: the session token budget and user
     // cancellation are the real guards, so a run isn't cut off mid-task by a
@@ -2115,12 +2618,36 @@ async fn run_turn_cycle(
     let mut mid_run_nudge_count: u32 = 0;
     // One-shot: asked the model to close out its todos before handing back.
     let mut closeout_nudged = false;
+    // Watches for a run that has settled into asking for the same thing over
+    // and over. With turns unbounded by design, nothing else notices.
+    let mut loop_watch = crate::core::agent::progress::LoopWatch::default();
 
     while unlimited || turn < max_turns {
+        // A ceiling is checked before the turn that would cross it, not after:
+        // stopping a run means not starting more work, and a deadline that only
+        // fires once the next upstream call has already been paid for is not a
+        // deadline.
+        if let Some(cause) = budget.stop_cause() {
+            if let Some(recorder) = recorder {
+                recorder.emit(jan_agent_harness::event::EventPayload::BudgetCrossed {
+                    budget: cause.tag().to_string(),
+                    spent: budget.spent(),
+                    limit: budget.max_tokens().unwrap_or(0),
+                    exhausted: true,
+                });
+            }
+            return Err(stopped_by_budget_msg(cause, budget.spent()));
+        }
+
         let _ = events.send(StreamEvent::Step {
             index: (turn as u32) + 1,
             max: max_turns as u32,
         });
+        if let Some(recorder) = recorder {
+            recorder.emit(jan_agent_harness::event::EventPayload::TurnStarted {
+                turn: turn as u32,
+            });
+        }
 
         // A turn this run just produced can carry poison of its own: a
         // length-truncated tool call, or an argument string that decodes to a
@@ -2213,8 +2740,76 @@ async fn run_turn_cycle(
             let _ = events.send(StreamEvent::TurnUsage { usage });
         }
         budget.record(&turn_usage);
+        if let Some(recorder) = recorder {
+            recorder.emit(jan_agent_harness::event::EventPayload::TurnFinished {
+                turn: turn as u32,
+                usage: jan_agent_harness::event::Usage {
+                    prompt_tokens: turn_usage
+                        .as_ref()
+                        .and_then(|u| u.prompt_tokens)
+                        .unwrap_or(0),
+                    completion_tokens: turn_usage
+                        .as_ref()
+                        .and_then(|u| u.completion_tokens)
+                        .unwrap_or(0),
+                },
+            });
+            // The record only has to be recent enough for a later process to
+            // find its place, so it is flushed at turn boundaries rather than
+            // per event: the log is the source of truth for what happened.
+            recorder.persist();
+        }
 
         let tool_calls = extract_tool_calls(&completion);
+
+        // Repeating a request verbatim cannot produce a different answer. Say
+        // so once, and stop the run if it keeps happening -- the cheap
+        // intervention usually works, and the expensive one has to exist for
+        // when it does not.
+        {
+            use crate::core::agent::progress::Progress;
+            let fingerprints = tool_calls
+                .iter()
+                .map(|tc| {
+                    let (_, name, args) = tool_call_parts(tc);
+                    crate::core::agent::progress::LoopWatch::fingerprint_of(&name, &args)
+                })
+                .collect();
+            match loop_watch.observe(fingerprints) {
+                Progress::Fine => {}
+                Progress::Repeating { turns } => {
+                    if let Some(recorder) = recorder {
+                        recorder.emit(
+                            jan_agent_harness::event::EventPayload::ProgressStalled {
+                                repeats: turns,
+                                stopped: false,
+                            },
+                        );
+                    }
+                    // System voice, like the budget notice and for the same
+                    // reason: an assistant turn saying this teaches the model
+                    // to write status markers of its own.
+                    conversation_messages.push(serde_json::json!({
+                        "role": "system",
+                        "content": crate::core::agent::progress::repeating_notice(turns),
+                    }));
+                    let _ = events.send(StreamEvent::MessagesUpdated {
+                        messages: conversation_messages.clone(),
+                    });
+                }
+                Progress::Stalled { turns } => {
+                    if let Some(recorder) = recorder {
+                        recorder.emit(
+                            jan_agent_harness::event::EventPayload::ProgressStalled {
+                                repeats: turns,
+                                stopped: true,
+                            },
+                        );
+                    }
+                    return Err(crate::core::agent::progress::stalled_msg(turns));
+                }
+            }
+        }
 
         if tool_calls.is_empty() {
             // The model is about to hand control back. If it finished the work
@@ -2254,11 +2849,12 @@ async fn run_turn_cycle(
             }
             // Every turn is finished and the run passed its token ceiling, so
             // the conversation is both complete and oversized. Compact it here,
-            // while nothing is waiting on the result: the ceiling no longer
-            // stops a run, so without this the thread only grows, and the next
-            // run resumes it by sending the whole oversized history upstream.
-            // The reactive path above cannot help with that -- it only fires
-            // once an upstream has already rejected a request.
+            // while nothing is waiting on the result. Still worth doing now that
+            // a crossing ends the run: under `on_exhausted = "continue"` a run
+            // carries on past the ceiling exactly as before, and either way the
+            // thread is left oversized for whatever resumes it. The reactive
+            // path above cannot help -- it only fires once an upstream has
+            // already rejected a request.
             //
             // Only when it actually shrinks: `compact_conversation` returns the
             // input untouched when there is too little to drop, and publishing
@@ -2292,11 +2888,10 @@ async fn run_turn_cycle(
             return Ok(completion);
         }
 
-        // Crossing the session budget is advisory: it is recorded and the run
-        // carries on, tool calls included. Note what this costs -- `max_turns
-        // == 0` is the normal case (see above), so with the budget no longer
-        // stopping anything, user cancellation is the only remaining bound on a
-        // run's spend.
+        // A crossing is always recorded. Whether it ends the run is the
+        // policy's call, checked at the top of the next turn -- the tool calls
+        // this turn already produced still run, so a run stops at a turn
+        // boundary rather than half-applied.
         //
         // Recorded as a system note rather than an assistant turn: the model
         // never wrote it, and putting a bracketed status marker in the
@@ -2304,12 +2899,28 @@ async fn run_turn_cycle(
         // is the shape a model will imitate unprompted on later turns.
         if budget.exhausted() && !budget_notice_recorded {
             budget_notice_recorded = true;
+            if let Some(recorder) = recorder {
+                recorder.emit(jan_agent_harness::event::EventPayload::BudgetCrossed {
+                    budget: crate::core::agent::session::StopCause::TokenBudget
+                        .tag()
+                        .to_string(),
+                    spent: budget.spent(),
+                    limit: budget.max_tokens().unwrap_or(0),
+                    exhausted: true,
+                });
+            }
+            let continuing = budget.stop_cause().is_none();
             conversation_messages.push(serde_json::json!({
                 "role": "system",
                 "content": format!(
-                    "[session token budget exhausted ({} tokens)] The configured \
-                     ceiling has been passed; this run is continuing past it.",
-                    budget.spent()
+                    "[session token budget exhausted ({} tokens)] The configured ceiling has \
+                     been passed; {}.",
+                    budget.spent(),
+                    if continuing {
+                        "this run is continuing past it"
+                    } else {
+                        "this run will stop after the current turn"
+                    }
                 ),
             }));
             let _ = events.send(StreamEvent::MessagesUpdated {
@@ -2741,6 +3352,316 @@ mod tests {
         })
     }
 
+    /// A tool-call turn that also reports token usage, so a test can drive the
+    /// budget the way a real provider does.
+    fn tool_call_completion_costing(total_tokens: u64) -> serde_json::Value {
+        let mut completion = tool_call_completion();
+        completion["usage"] = json!({ "total_tokens": total_tokens });
+        completion
+    }
+
+    fn final_completion() -> serde_json::Value {
+        json!({ "choices": [{ "message": { "content": "done" }, "finish_reason": "stop" }] })
+    }
+
+    /// The ceiling `[budget]` documents itself as. Before this it appended a
+    /// note and carried on, tool calls included.
+    /// A model that settles into one tool call had nothing stopping it: turns
+    /// are unbounded by design, and the only counterweight was a reminder.
+    #[tokio::test]
+    async fn a_run_repeating_one_tool_call_is_nudged_then_stopped() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        // The same tool call, forever.
+        let model = MockModel::new(vec![tool_call_completion(); 12]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+
+        let error = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0, // unbounded: loop detection is what has to stop this
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("a looping run must be stopped");
+
+        assert!(error.contains("doom_loop"), "{error}");
+
+        // The model was told before it was cut off, exactly once.
+        let requests = model.requests.lock().unwrap();
+        let last = requests.last().expect("at least one request");
+        let notices: Vec<&serde_json::Value> = last["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|m| {
+                m.get("content")
+                    .and_then(|c| c.as_str())
+                    .is_some_and(|c| c.contains("[no progress]"))
+            })
+            .collect();
+        assert_eq!(notices.len(), 1, "nudged once, not every turn");
+        assert_eq!(notices[0]["role"], "system", "system voice, not assistant");
+
+        // It stopped well short of the twelve turns the model was willing to
+        // spend: the point is not burning the budget first.
+        assert!(requests.len() <= 6, "stopped after {} turns", requests.len());
+    }
+
+    #[tokio::test]
+    async fn a_run_doing_new_work_each_turn_is_never_stopped() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut turns: Vec<serde_json::Value> = (0..6)
+            .map(|n| {
+                let mut completion = tool_call_completion();
+                completion["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] =
+                    json!(format!("{{\"query\":\"step {n}\"}}"));
+                completion
+            })
+            .collect();
+        turns.push(final_completion());
+        let model = MockModel::new(turns);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+
+        let result = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("distinct calls are ordinary work");
+
+        assert_eq!(result["choices"][0]["message"]["content"], "done");
+        let requests = model.requests.lock().unwrap();
+        assert!(
+            requests.last().unwrap()["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|m| !m["content"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("[no progress]")),
+            "a run doing new work must never be told it is repeating"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stall_is_recorded_as_the_reason_the_run_stopped() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let data = jan_agent_harness::fixtures::TempDir::new("stall-record");
+        let recorder = Arc::new(
+            crate::core::agent::recorder::RunRecorder::open(data.path(), None, None, "m", false)
+                .expect("recorder opens"),
+        );
+        let model = MockModel::new(vec![tool_call_completion(); 12]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+
+        let _ = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            Some(&recorder),
+        )
+        .await;
+
+        let stalls: Vec<bool> = jan_agent_harness::envelope::EventLog::read(
+            recorder.run_dir().join("events.jsonl"),
+        )
+        .expect("event log reads")
+        .into_iter()
+        .filter_map(|e| match e.payload {
+            jan_agent_harness::event::EventPayload::ProgressStalled { stopped, .. } => {
+                Some(stopped)
+            }
+            _ => None,
+        })
+        .collect();
+
+        assert_eq!(
+            stalls,
+            vec![false, true],
+            "the warning and the stop are both in the record"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_run_stops_once_it_crosses_its_token_ceiling() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = MockModel::new(vec![
+            tool_call_completion_costing(500),
+            final_completion(),
+        ]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(Some(100));
+
+        let error = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0, // unbounded turns: the budget is what has to stop this
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("crossing the ceiling must end the run");
+
+        assert!(error.contains("token_budget"), "{error}");
+        assert!(error.contains("on_exhausted"), "must say how to opt out: {error}");
+        // The first turn's tools still ran; the run stops at a turn boundary,
+        // not half-applied.
+        assert_eq!(tool.calls.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn the_continue_policy_still_lets_a_run_pass_its_ceiling() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = MockModel::new(vec![
+            tool_call_completion_costing(500),
+            final_completion(),
+        ]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(Some(100))
+            .with_policy(crate::core::agent::session::ExhaustionPolicy::Continue);
+
+        let result = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("the opt-out must still work");
+
+        assert_eq!(result["choices"][0]["message"]["content"], "done");
+        assert!(budget.exhausted(), "the crossing is still a fact");
+    }
+
+    /// A run can be cheap in tokens and still be stuck in a slow tool.
+    #[tokio::test]
+    async fn a_run_whose_deadline_has_passed_does_no_work() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = MockModel::new(vec![final_completion()]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None)
+            .with_time_limit(Some(std::time::Duration::from_nanos(1)));
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        let error = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("an expired deadline must stop the run");
+
+        assert!(error.contains("time_limit"), "{error}");
+        assert_eq!(tool.calls.lock().unwrap().len(), 0, "no tool may run past the deadline");
+    }
+
+    #[tokio::test]
+    async fn a_crossing_is_recorded_even_when_the_run_is_allowed_to_continue() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let data = jan_agent_harness::fixtures::TempDir::new("budget-record");
+        let recorder = Arc::new(
+            crate::core::agent::recorder::RunRecorder::open(data.path(), None, None, "m", false)
+                .expect("recorder opens"),
+        );
+        let model = MockModel::new(vec![
+            tool_call_completion_costing(500),
+            final_completion(),
+        ]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(Some(100))
+            .with_policy(crate::core::agent::session::ExhaustionPolicy::Continue);
+
+        run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            Some(&recorder),
+        )
+        .await
+        .expect("continue policy runs to completion");
+
+        let events = jan_agent_harness::envelope::EventLog::read(
+            recorder.run_dir().join("events.jsonl"),
+        )
+        .expect("event log reads");
+        let kinds: Vec<String> = events.iter().map(|e| e.kind()).collect();
+        assert!(kinds.contains(&"turn_started".to_string()), "{kinds:?}");
+        assert!(kinds.contains(&"turn_finished".to_string()), "{kinds:?}");
+        assert!(
+            kinds.contains(&"budget_crossed".to_string()),
+            "a crossing must be recorded even when it does not stop the run: {kinds:?}"
+        );
+    }
+
     #[tokio::test]
     async fn turn_cycle_executes_tool_then_returns_final() {
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -2763,6 +3684,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -2848,6 +3770,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -2905,6 +3828,7 @@ mod tests {
             &tool,
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
+            None,
             None,
         )
         .await
@@ -3021,6 +3945,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .expect("sanitized history must be accepted so the session can continue");
@@ -3056,6 +3981,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             Some("todo"),
+            None,
         )
         .await
         .unwrap();
@@ -3165,6 +4091,12 @@ mod tests {
         );
     }
 
+    /// A mutating tool call whose *arguments* differ per call, not just its id.
+    ///
+    /// A run that mutates thirteen times mutates thirteen different things.
+    /// Identical arguments every turn is a doom loop, and `progress::LoopWatch`
+    /// stops one -- so a fixture that repeated itself verbatim would be testing
+    /// the mutation counter against a run the harness now refuses to let happen.
     fn mutating_tool_call_completion(id: &str, name: &str) -> serde_json::Value {
         json!({
             "choices": [{
@@ -3173,7 +4105,10 @@ mod tests {
                     "tool_calls": [{
                         "id": id,
                         "type": "function",
-                        "function": { "name": name, "arguments": "{}" }
+                        "function": {
+                            "name": name,
+                            "arguments": format!("{{\"command\":\"touch {id}\"}}")
+                        }
                     }]
                 },
                 "finish_reason": "tool_calls"
@@ -3249,6 +4184,7 @@ mod tests {
             &tool,
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
+            None,
             None,
         )
         .await
@@ -3326,6 +4262,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3370,6 +4307,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3404,6 +4342,7 @@ mod tests {
             &tool,
             crate::core::agent::plan::RunMode::Plan,
             Some(&registry),
+            None,
             None,
         )
         .await
@@ -3455,6 +4394,7 @@ mod tests {
             &tool,
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
+            None,
             None,
         )
         .await
@@ -3532,6 +4472,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3558,7 +4499,12 @@ mod tests {
     /// Crossing the session token budget is advisory: it is announced once, as
     /// a system note, and the run carries on -- tool calls included.
     #[tokio::test]
-    async fn an_exhausted_budget_is_announced_once_and_the_run_continues() {
+    /// The announcement latch, the system voice and the no-imitation property
+    /// all still matter under `on_exhausted = "continue"` -- which is now what
+    /// makes a run pass its ceiling, rather than that being the default.
+    /// Stopping at the ceiling is covered by
+    /// `a_run_stops_once_it_crosses_its_token_ceiling`.
+    async fn an_exhausted_budget_is_announced_once_when_the_run_may_continue() {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let mut over_budget = tool_call_completion();
         over_budget["usage"] = json!({ "total_tokens": 100 });
@@ -3571,7 +4517,8 @@ mod tests {
         still_over["usage"] = json!({ "total_tokens": 200 });
         let model = MockModel::new(vec![over_budget, still_over, done]);
         let tool = MockTool::default();
-        let mut budget = SessionBudget::new(Some(50));
+        let mut budget = SessionBudget::new(Some(50))
+            .with_policy(crate::core::agent::session::ExhaustionPolicy::Continue);
         let convo = vec![json!({ "role": "user", "content": "hi" })];
 
         let result = run_turn_cycle(
@@ -3585,6 +4532,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -3646,10 +4594,10 @@ mod tests {
         );
     }
 
-    /// Passing the ceiling no longer stops a run, so a long thread only grows.
-    /// Once every turn is finished, the oversized conversation is compacted
-    /// before it is published -- otherwise the next run resumes this thread by
-    /// sending the whole thing upstream.
+    /// Under `on_exhausted = "continue"` a run carries on past its ceiling, so
+    /// a long thread only grows. Once every turn is finished, the oversized
+    /// conversation is compacted before it is published -- otherwise the next
+    /// run resumes this thread by sending the whole thing upstream.
     #[tokio::test]
     async fn an_exhausted_budget_compacts_the_conversation_once_turns_are_done() {
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -3688,6 +4636,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -3754,6 +4703,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -3834,6 +4784,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3879,6 +4830,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -3931,6 +4883,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -3996,6 +4949,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await;
 
@@ -4052,6 +5006,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await;
 
@@ -4102,6 +5057,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4137,6 +5093,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -4249,6 +5206,8 @@ mod tests {
             subagents: None,
             auto_approve: false,
             run_mode: crate::core::agent::plan::RunMode::Normal,
+            index: None,
+            recorder: None,
         }
     }
 
@@ -4521,6 +5480,515 @@ mod tests {
             "type": "function",
             "function": { "name": name, "arguments": "{}" }
         })
+    }
+
+    /// Attaches a recorder to a dispatcher, and hands back both so a test can
+    /// read the run's event log after invoking.
+    fn recording_invoker(
+        root: std::path::PathBuf,
+        data: &jan_agent_harness::fixtures::TempDir,
+    ) -> (
+        CompositeToolInvoker,
+        Arc<crate::core::agent::recorder::RunRecorder>,
+    ) {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let permissions: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root, tx, permissions);
+        let recorder = Arc::new(
+            crate::core::agent::recorder::RunRecorder::open(
+                data.path(),
+                None,
+                None,
+                "test-model",
+                false,
+            )
+            .expect("recorder opens"),
+        );
+        invoker.recorder = Some(recorder.clone());
+        (invoker, recorder)
+    }
+
+    fn recorded_events(
+        recorder: &crate::core::agent::recorder::RunRecorder,
+    ) -> Vec<jan_agent_harness::event::HarnessEvent> {
+        jan_agent_harness::envelope::EventLog::read(recorder.run_dir().join("events.jsonl"))
+            .expect("event log reads")
+    }
+
+    /// The classifier is fed by the same builders the dispatcher uses, so a
+    /// reworded refusal fails here rather than quietly turning a denial into a
+    /// failure in the audit log.
+    #[test]
+    fn refusals_are_classified_from_the_messages_the_dispatcher_actually_builds() {
+        use jan_agent_harness::event::ToolOutcome as Recorded;
+        let root = std::path::Path::new("/tmp/project");
+
+        for message in [
+            denied_by_policy_msg("bash", root),
+            hidden_path_msg("read"),
+            plan_mode_read_only_msg("write"),
+            hard_deny_msg("bash", DenyReason::Policy, root),
+            hard_deny_msg("read", DenyReason::Hidden, root),
+            format!("ERROR: tool '{}' denied by user", "write"),
+        ] {
+            assert_eq!(
+                classify_tool_outcome(&message),
+                Recorded::Denied,
+                "should read as a refusal: {message}"
+            );
+        }
+
+        assert_eq!(classify_tool_outcome("ERROR: no such file"), Recorded::Failed);
+        assert_eq!(classify_tool_outcome("wrote 3 lines"), Recorded::Ok);
+
+        // A timeout is its own outcome: it says the call may still be running,
+        // which "failed" does not.
+        assert_eq!(
+            classify_tool_outcome(&tool_timed_out_msg(
+                "bash",
+                tauri_plugin_agent_tools::tools::Capability::Exec
+            )),
+            Recorded::TimedOut
+        );
+    }
+
+    /// A stuck-call guard, not a performance budget: the values have to be
+    /// generous enough that a slow-but-working call never trips one, and
+    /// ordered by how long the work legitimately takes.
+    #[test]
+    fn every_capability_has_a_timeout_and_exec_is_the_most_generous() {
+        use tauri_plugin_agent_tools::tools::Capability;
+        let read = tool_timeout(Capability::Read);
+        let write = tool_timeout(Capability::Write);
+        let net = tool_timeout(Capability::Net);
+        let exec = tool_timeout(Capability::Exec);
+
+        for (label, value) in [("read", read), ("write", write), ("net", net), ("exec", exec)] {
+            assert!(value.as_secs() >= 60, "{label} timeout is too tight to be a stuck-call guard");
+        }
+        // Someone else's server decides how long a fetch takes.
+        assert!(net > read);
+        // `bash` runs its own timeout first and backgrounds the job; the outer
+        // bound has to sit well clear of that.
+        assert!(exec > net);
+    }
+
+    #[test]
+    fn the_timeout_message_warns_against_reissuing_the_call() {
+        use tauri_plugin_agent_tools::tools::Capability;
+        let message = tool_timed_out_msg("bash", Capability::Exec);
+        assert!(message.contains("may still be running"));
+        assert!(message.contains("do not simply reissue"));
+        assert!(
+            message.contains(&tool_timeout(Capability::Exec).as_secs().to_string()),
+            "must name the limit it hit: {message}"
+        );
+    }
+
+    /// Calls used to share one batch duration or report none at all. Each is
+    /// timed around itself now, so a batch reports a real number per call.
+    #[tokio::test]
+    async fn every_call_in_a_batch_reports_its_own_duration() {
+        let root = unique_project_root();
+        std::fs::write(root.join("a.txt"), "aaa").unwrap();
+        std::fs::write(root.join("b.txt"), "bbb").unwrap();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-durations");
+        let (invoker, recorder) = recording_invoker(root.clone(), &data);
+
+        let calls = vec![
+            json!({
+                "id": "c1",
+                "type": "function",
+                "function": { "name": "read", "arguments": "{\"path\":\"a.txt\"}" }
+            }),
+            json!({
+                "id": "c2",
+                "type": "function",
+                "function": { "name": "read", "arguments": "{\"path\":\"b.txt\"}" }
+            }),
+        ];
+        let out = invoker.invoke(&calls).await.unwrap();
+        assert_eq!(out.len(), 2);
+
+        let finished: Vec<(String, Option<u64>)> = recorded_events(&recorder)
+            .into_iter()
+            .filter_map(|e| match e.payload {
+                jan_agent_harness::event::EventPayload::ToolFinished {
+                    call_id,
+                    duration_ms,
+                    ..
+                } => Some((call_id, duration_ms)),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(finished.len(), 2);
+        for (call_id, duration) in &finished {
+            assert!(
+                duration.is_some(),
+                "{call_id} reported no duration in a two-call batch"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The tool has to actually reach the model, and actually answer.
+    #[tokio::test]
+    async fn symbol_search_is_dispatched_against_the_run_index() {
+        let root = unique_project_root();
+        std::fs::write(root.join("lib.rs"), "\n\npub fn find_me() {}\n").unwrap();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-symbols");
+        let (mut invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let mut index = crate::core::agent::index::RepoIndex::default();
+        crate::core::agent::index::refresh(&root, &mut index).expect("indexes");
+        invoker.index = Some(Arc::new(index));
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "symbol_search", "arguments": "{\"name\":\"find_me\"}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+
+        assert_eq!(out.len(), 1);
+        assert!(out[0].content.contains("lib.rs:3"), "{}", out[0].content);
+        assert!(out[0].content.contains("find_me"), "{}", out[0].content);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A run with no index must say so rather than reporting an empty result,
+    /// which the model would read as "this symbol does not exist".
+    #[tokio::test]
+    async fn symbol_search_without_an_index_says_so() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-symbols-none");
+        let (invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "symbol_search", "arguments": "{\"name\":\"anything\"}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+        assert!(out[0].content.contains("No symbol index"), "{}", out[0].content);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn impact_maps_explicit_paths_to_their_tests() {
+        let root = unique_project_root();
+        std::fs::create_dir_all(root.join("pkg")).unwrap();
+        std::fs::write(root.join("pkg/server.go"), "package pkg\n").unwrap();
+        std::fs::write(root.join("pkg/server_test.go"), "package pkg\n").unwrap();
+        std::fs::write(root.join("go.mod"), "module x\n").unwrap();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-impact");
+        let (invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": {
+                "name": "impact",
+                "arguments": "{\"paths\":[\"pkg/server.go\"]}"
+            }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+
+        let content = &out[0].content;
+        assert!(content.contains("pkg/server_test.go"), "{content}");
+        // Composed with detection: the report says how to run them.
+        assert!(content.contains("`go test ./...`"), "{content}");
+        // And never without the caveat.
+        assert!(content.contains("not by coverage"), "{content}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// "No changed files" would read as "your edits are not there".
+    #[tokio::test]
+    async fn impact_outside_a_git_repository_says_why_rather_than_reporting_no_changes() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-impact-nogit");
+        let (invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "impact", "arguments": "{}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+
+        let content = &out[0].content;
+        assert!(
+            content.contains("Could not read changed files") || content.contains("changed file"),
+            "{content}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn repo_health_is_dispatched_against_the_run_index() {
+        let root = unique_project_root();
+        std::fs::write(root.join("lib.rs"), "pub fn only_thing() {}\n").unwrap();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-health");
+        let (mut invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let mut index = crate::core::agent::index::RepoIndex::default();
+        crate::core::agent::index::refresh(&root, &mut index).expect("indexes");
+        invoker.index = Some(Arc::new(index));
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "repo_health", "arguments": "{}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+
+        let content = &out[0].content;
+        assert!(content.contains("Repository scan:"), "{content}");
+        // The limits travel with the report, not with the documentation.
+        assert!(content.contains("no compiler"), "{content}");
+    }
+
+    #[tokio::test]
+    async fn repo_health_without_an_index_reports_that_as_the_finding() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-health-none");
+        let (invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "repo_health", "arguments": "{}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+        let content = &out[0].content;
+        assert!(content.contains("index-missing"), "{content}");
+        // A check that could not run must not read as a check that passed.
+        assert!(content.contains("Not checked"), "{content}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn code_search_is_dispatched_against_the_run_index() {
+        let root = unique_project_root();
+        std::fs::write(
+            root.join("lib.rs"),
+            "/// Decodes the wire envelope.\npub fn decode_frame() {}\n",
+        )
+        .unwrap();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-code-search");
+        let (mut invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let mut index = crate::core::agent::index::RepoIndex::default();
+        crate::core::agent::index::refresh(&root, &mut index).expect("indexes");
+        invoker.index = Some(Arc::new(index));
+
+        // Matches the doc comment, not the name: the reach `symbol_search`
+        // does not have.
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "code_search", "arguments": "{\"query\":\"envelope\"}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+
+        let content = &out[0].content;
+        assert!(content.contains("lib.rs:2"), "{content}");
+        assert!(content.contains("decode_frame"), "{content}");
+        assert!(content.contains("Matching is lexical"), "{content}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn code_search_without_an_index_says_so() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-code-search-none");
+        let (invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "code_search", "arguments": "{\"query\":\"anything\"}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+        assert!(out[0].content.contains("No index"), "{}", out[0].content);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn symbol_search_is_advertised_including_in_plan_mode() {
+        let root = unique_project_root();
+        for mode in [
+            crate::core::agent::plan::RunMode::Normal,
+            crate::core::agent::plan::RunMode::Plan,
+        ] {
+            let mut tools = Vec::new();
+            advertise_local_tools(
+                &mut tools,
+                None,
+                &ToolPermissions::allow_all(),
+                Some(root.as_path()),
+                mode,
+                false,
+                1,
+                false,
+                false,
+            );
+            let names: Vec<&str> = tools
+                .iter()
+                .filter_map(|t| t["function"]["name"].as_str())
+                .collect();
+            assert!(
+                names.contains(&"symbol_search"),
+                "read-only search belongs in {mode:?}: {names:?}"
+            );
+            assert!(
+                names.contains(&"impact"),
+                "knowing what to run belongs in {mode:?}: {names:?}"
+            );
+            assert!(
+                names.contains(&"code_search"),
+                "read-only search belongs in {mode:?}: {names:?}"
+            );
+            assert!(
+                names.contains(&"repo_health"),
+                "knowing whether the index can be trusted belongs in {mode:?}: {names:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_dispatched_call_and_its_outcome_are_recorded() {
+        let root = unique_project_root();
+        std::fs::write(root.join("hello.txt"), "contents").unwrap();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-record");
+        let (invoker, recorder) = recording_invoker(root.clone(), &data);
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "read", "arguments": "{\"path\":\"hello.txt\"}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+        assert_eq!(out.len(), 1);
+
+        let events = recorded_events(&recorder);
+        let kinds: Vec<String> = events.iter().map(|e| e.kind()).collect();
+        assert_eq!(kinds, vec!["tool_called", "tool_finished"], "{kinds:?}");
+
+        match &events[0].payload {
+            jan_agent_harness::event::EventPayload::ToolCalled {
+                call_id,
+                tool,
+                resource,
+                fingerprint,
+            } => {
+                assert_eq!(call_id, "c1");
+                assert_eq!(tool, "read");
+                assert_eq!(resource.as_deref(), Some("hello.txt"));
+                assert!(!fingerprint.is_empty());
+            }
+            other => panic!("expected tool_called, got {other:?}"),
+        }
+        match &events[1].payload {
+            jan_agent_harness::event::EventPayload::ToolFinished {
+                tool,
+                outcome,
+                duration_ms,
+                ..
+            } => {
+                assert_eq!(tool, "read");
+                assert_eq!(*outcome, jan_agent_harness::event::ToolOutcome::Ok);
+                // One call in the batch, so its duration is honestly measurable.
+                assert!(duration_ms.is_some());
+            }
+            other => panic!("expected tool_finished, got {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_refused_call_is_recorded_as_denied_rather_than_failed() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-record-deny");
+        let (mut invoker, recorder) = recording_invoker(root.clone(), &data);
+        invoker.run_mode = crate::core::agent::plan::RunMode::Plan;
+        invoker.auto_approve = true;
+
+        let out = invoker.invoke(&[write_call()]).await.unwrap();
+        assert!(out[0].content.contains("plan_mode_read_only"));
+
+        let finished = recorded_events(&recorder)
+            .into_iter()
+            .find_map(|e| match e.payload {
+                jan_agent_harness::event::EventPayload::ToolFinished { outcome, .. } => {
+                    Some(outcome)
+                }
+                _ => None,
+            })
+            .expect("a tool_finished event");
+        assert_eq!(finished, jan_agent_harness::event::ToolOutcome::Denied);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Auto-approval turns every prompt into an allow without the user seeing
+    /// it. That is precisely the thing an audit log exists to make visible.
+    #[tokio::test]
+    async fn auto_approval_is_recorded_as_a_decision_the_user_never_saw() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-record-auto");
+        let (mut invoker, recorder) = recording_invoker(root.clone(), &data);
+        invoker.auto_approve = true;
+
+        let _ = invoker.invoke(&[write_call()]).await.unwrap();
+
+        let decisions: Vec<_> = recorded_events(&recorder)
+            .into_iter()
+            .filter_map(|e| match e.payload {
+                jan_agent_harness::event::EventPayload::PermissionDecided { decision, .. } => {
+                    Some(decision)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            decisions,
+            vec![jan_agent_harness::event::PermissionDecision::AutoAllowed],
+            "an auto-approved write must leave a decision in the record"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The event log is written to disk and exported. Arguments carry file
+    /// contents, credentials and command lines, so none of them may reach it.
+    #[tokio::test]
+    async fn tool_arguments_never_reach_the_event_log() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-record-secret");
+        let (mut invoker, recorder) = recording_invoker(root.clone(), &data);
+        invoker.auto_approve = true;
+
+        const SECRET: &str = "sk-live-51H8ThisMustNeverBeLogged";
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": {
+                "name": "write",
+                "arguments": format!("{{\"path\":\"config.env\",\"content\":\"API_KEY={SECRET}\"}}")
+            }
+        });
+        let _ = invoker.invoke(&[call]).await.unwrap();
+
+        let raw = std::fs::read_to_string(recorder.run_dir().join("events.jsonl")).unwrap();
+        assert!(
+            !raw.contains(SECRET),
+            "the written file's contents leaked into the event log:\n{raw}"
+        );
+        // The path is recorded, because that is what an auditor needs.
+        assert!(raw.contains("config.env"), "{raw}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[tokio::test]
@@ -4919,7 +6387,8 @@ mod tests {
                     crate::core::agent::plan::RunMode::Normal,
                     None,
                     None,
-                )
+            None,
+        )
                 .await
             }
         });

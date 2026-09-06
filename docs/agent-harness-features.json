@@ -127,7 +127,8 @@
       "owner": "lane-01-architecture-registry",
       "files": [
         "src-tauri/harness/src/event.rs",
-        "src-tauri/src/core/agent/events.rs"
+        "src-tauri/src/core/agent/recorder.rs",
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -139,11 +140,12 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/harness/src/event.rs::tests"
+        "src-tauri/src/core/agent/recorder.rs::tests",
+        "src-tauri/src/core/agent/loop.rs::tests::a_crossing_is_recorded_even_when_the_run_is_allowed_to_continue"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Canonical model landed in jan-agent-harness. StreamEvent is still never persisted, so replay, audit and export have no source; migrating the emitters is Phase 1 work (lane-02)."
+      "auditNote": "Run lifecycle, turn boundaries, tool calls, permission decisions and budget crossings are all produced and persisted. Covers the Rust harness only; the Cowork desktop harness orchestrates in TypeScript and is not recorded yet."
     },
     {
       "id": "AH-005",
@@ -158,7 +160,8 @@
       ],
       "owner": "lane-01-architecture-registry",
       "files": [
-        "src-tauri/harness/src/envelope.rs"
+        "src-tauri/harness/src/envelope.rs",
+        "src-tauri/src/core/agent/recorder.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -170,11 +173,12 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/harness/src/envelope.rs::tests"
+        "src-tauri/harness/src/envelope.rs::tests",
+        "src-tauri/src/core/agent/recorder.rs::tests::events_are_numbered_densely_from_zero"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Versioned envelope, forward-compatible reader and a crash-tolerant JSONL log. Adopted by the run store in Phase 1."
+      "auditNote": "In real use: every run appends versioned envelopes to its own events.jsonl."
     },
     {
       "id": "AH-006",
@@ -250,7 +254,9 @@
       ],
       "owner": "lane-01-architecture-registry",
       "files": [
-        "src-tauri/harness/src/identity.rs"
+        "src-tauri/harness/src/identity.rs",
+        "src-tauri/src/core/agent/recorder.rs",
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -262,11 +268,12 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/harness/src/identity.rs::tests"
+        "src-tauri/harness/src/identity.rs::tests",
+        "src-tauri/src/core/agent/recorder.rs::tests::a_child_records_into_its_parents_run_under_its_own_agent_id"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "RunIdentity ties run, thread, session and agent together. The three existing ids are migrated onto it in Phase 1 (lane-02)."
+      "auditNote": "A run mints one RunIdentity in orchestrate_inner and every event carries it. A subagent inherits the parent's run and records under a fresh agent id rather than opening a run of its own. The legacy thread_id and session_id are still minted separately; folding them in is the remaining work."
     },
     {
       "id": "AH-009",
@@ -313,7 +320,7 @@
       "owner": "lane-01-architecture-registry",
       "files": [
         "src-tauri/harness/src/state.rs",
-        "src-tauri/src/core/threads/constants.rs"
+        "src-tauri/src/core/agent/recorder.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -325,11 +332,12 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/harness/src/state.rs::tests"
+        "src-tauri/harness/src/state.rs::tests",
+        "src-tauri/src/core/agent/recorder.rs::tests::the_record_tracks_how_far_the_log_got"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Versioned run record with an atomic writer, strict version reads and interrupted-run detection. The existing thread.json and messages.jsonl remain unversioned until Phase 1 migrates them."
+      "auditNote": "Each run writes a versioned record under <jan_data>/agent-state/runs/<run_id>/. thread.json and messages.jsonl remain unversioned."
     },
     {
       "id": "AH-011",
@@ -388,13 +396,15 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/harness/src/worktree.rs::tests"
+        "src-tauri/src/core/agent/worktree.rs::tests::identifies_a_repository_by_its_first_commit",
+        "src-tauri/src/core/agent/worktree.rs::tests::creates_a_worktree_outside_the_source_checkout",
+        "src-tauri/src/core/agent/worktree.rs::tests::reuses_the_same_worktree_across_restarts"
       ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": "Convention is `jan/cowork/<slug>` branches under a data-directory worktree root keyed by RepoIdentity (the repo's first commit). Owned by core/agent/worktree.rs; nothing else may add a second scheme."
+      "auditNote": "Convention is `jan/cowork/<slug>` branches under a data-directory worktree root keyed by RepoIdentity (the repo's first commit). Owned by core/agent/worktree.rs; nothing else may add a second scheme. The test reference previously pointed at src-tauri/harness/src/worktree.rs, a second worktree module that was deleted rather than reconciled with this one; the repo_health registry check (AH-072) found the dangling claim."
     },
     {
       "id": "AH-013",
@@ -517,7 +527,7 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-008"
@@ -525,7 +535,8 @@
       "owner": "lane-02-execution-runtime",
       "files": [
         "src-tauri/src/core/agent/session.rs",
-        "src-tauri/src/core/agent/loop.rs"
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/project.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -536,10 +547,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/session.rs::tests::a_crossed_ceiling_stops_the_run_by_default",
+        "src-tauri/src/core/agent/loop.rs::tests::a_run_stops_once_it_crosses_its_token_ceiling"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Documented in loop.rs as advisory: crossing the budget records a note and the run carries on, tool calls included. User cancellation is the only remaining bound on a run's spend."
+      "auditNote": "Crossing [budget] max_tokens now ends the run at the next turn boundary instead of appending a note and carrying on. on_exhausted = \"continue\" restores the old behaviour deliberately."
     },
     {
       "id": "AH-018",
@@ -554,6 +568,8 @@
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
+        "src-tauri/src/core/agent/project.rs",
+        "src-tauri/src/core/cli/mod.rs",
         "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "medium",
@@ -565,10 +581,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/project.rs::tests::every_budget_ceiling_parses_and_defaults_to_unbounded"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "max_turns == 0 (unlimited) is the documented normal case, so unattended runs have no ceiling."
+      "auditNote": "[budget] max_turns is configurable and enforced, completing the ceiling trio with max_tokens and max_duration_secs. It stays in-progress against its own criterion, which asks for a ceiling enforced by default: the default remains unbounded, because the config states the agent takes as many turns as the task needs and the token and wall-clock ceilings now genuinely bound a run. Choosing a non-zero default would cut off legitimate long tasks and is a product decision, not one to make silently."
     },
     {
       "id": "AH-019",
@@ -576,13 +594,17 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-017"
       ],
       "owner": "lane-02-execution-runtime",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/session.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/project.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A run carries a deadline and terminates cleanly when it expires.",
@@ -592,9 +614,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/session.rs::tests::an_elapsed_time_limit_stops_the_run",
+        "src-tauri/src/core/agent/loop.rs::tests::a_run_whose_deadline_has_passed_does_no_work"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "[budget] max_duration_secs bounds a run that is cheap in tokens but stuck in a slow tool. Checked before the turn that would cross it, so no work is paid for past the deadline."
     },
     {
       "id": "AH-020",
@@ -602,14 +628,14 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-009"
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -620,10 +646,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::tests::every_capability_has_a_timeout_and_exec_is_the_most_generous",
+        "src-tauri/src/core/agent/loop.rs::tests::the_timeout_message_warns_against_reissuing_the_call"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Only bash has a timeout, and on expiry it backgrounds the job instead of killing it; read/edit/web/MCP have none."
+      "auditNote": "Every dispatched built-in now runs under a timeout chosen by its capability class, on both the sequential and the concurrent-read paths. A timed-out call is classified as timed out rather than failed, and the model is told the call may still be running so it does not reissue a mutation still in flight. bash keeps its own inner timeout and backgrounding behaviour; this is the outer bound on the handler."
     },
     {
       "id": "AH-021",
@@ -631,13 +660,17 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-019"
       ],
       "owner": "lane-02-execution-runtime",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/session.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/subagent.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A single deadline bounds the whole orchestration including subagents.",
@@ -647,9 +680,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/subagent.rs::tests::a_child_inherits_what_is_left_of_the_run_deadline"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "One deadline bounds the whole orchestration: a dispatched subagent inherits what is left of it, rounded up to a second, so spawning a child is not a way around the run's deadline."
     },
     {
       "id": "AH-022",
@@ -694,7 +730,9 @@
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs"
+        "src-tauri/src/bin/jan.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs",
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -706,10 +744,13 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/bin/jan.rs::exit_path_tests::no_exit_bypasses_the_process_reaper",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs::tests::kill_tree_reaps_backgrounded_grandchild"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Teardown is drop/abort-based with no cancellation token; in-flight children rely on process-group kill."
+      "auditNote": "Foreground tool processes are killed on drop and run in their own process group, and a hung call is now abandoned on a timeout. The headless CLI leaked backgrounded bash trees on every exit -- the desktop app reaps on graceful exit, the CLI never did -- so every exit path now goes through a reaping helper, guarded by a source-level test. Still outstanding: no cancellation token, so an abandoned call is not itself killed, and a signal-terminated CLI still leaks because agent shells sit outside the terminal's process group."
     },
     {
       "id": "AH-024",
@@ -783,7 +824,10 @@
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/src/core/cli/mod.rs"
+        "src-tauri/src/core/cli/runs.rs",
+        "src-tauri/src/core/cli/mod.rs",
+        "src-tauri/harness/src/state.rs",
+        "src-tauri/src/core/agent/recorder.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -794,10 +838,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/cli/runs.rs::tests::a_resumed_thread_is_handed_the_calls_that_never_came_back",
+        "src-tauri/src/core/cli/runs.rs::tests::an_interrupted_run_on_another_thread_is_not_handed_over",
+        "src-tauri/harness/src/state.rs::tests::a_surface_thread_id_survives_a_round_trip"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "State is written at turn boundaries only, so an interrupted turn is unrecoverable; resume lives in the CLI layer."
+      "auditNote": "A resumed conversation is now handed what its interrupted run left in doubt: the run record keeps the surface's own thread id beside the harness one, and `--resume` injects a system note naming the tool calls dispatched with no recorded outcome before the new task. The in-flight turn is therefore carried forward rather than lost. Two boundaries remain: a conversation interrupted on its very first run has no saved thread to resume (threads persist only on success, which predates this work) though `runs show` still reports it, and the TUI does not yet set its thread id on the run, so the handoff is CLI-only."
     },
     {
       "id": "AH-027",
@@ -871,13 +919,14 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-004"
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
+        "src-tauri/src/core/agent/progress.rs",
         "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "medium",
@@ -889,10 +938,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/progress.rs::tests",
+        "src-tauri/src/core/agent/loop.rs::tests::a_run_repeating_one_tool_call_is_nudged_then_stopped"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Only a mutation-count nudge that injects a reminder; nothing measures progress or halts the run."
+      "auditNote": "A turn that asks for exactly what the previous turn asked for is treated as no progress: the model is told once, and the run is stopped if it keeps going. Deliberately narrow -- a turn of plain text, or any change to the calls, ends the streak."
     },
     {
       "id": "AH-030",
@@ -900,13 +952,16 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-029"
       ],
       "owner": "lane-02-execution-runtime",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/progress.rs",
+        "src-tauri/harness/src/event.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Repeated identical tool calls are fingerprinted and broken out of.",
@@ -916,9 +971,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/progress.rs::tests::the_same_calls_in_a_different_order_are_the_same_request",
+        "src-tauri/src/core/agent/loop.rs::tests::a_stall_is_recorded_as_the_reason_the_run_stopped"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Tool calls are fingerprinted by name and canonicalised arguments, so the same batch in a different order counts as a repeat and a partly-changed batch does not. Both the warning and the stop are recorded."
     },
     {
       "id": "AH-031",
@@ -954,14 +1013,15 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-005"
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/src/core/cli/journal.rs"
+        "src-tauri/src/core/cli/runs.rs",
+        "src-tauri/src/bin/jan.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -972,10 +1032,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/cli/runs.rs::tests::a_recorded_run_reads_back_as_a_replay_and_an_export",
+        "src-tauri/src/core/cli/runs.rs::tests::every_event_renders_on_one_line"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "display.jsonl is a rendering journal; StreamEvent is never persisted, so runs cannot be replayed or audited."
+      "auditNote": "`jan cli agent runs show` replays a run from its persisted canonical events. An event written by a newer build is named rather than skipped, and an unmeasured duration prints as untimed rather than as zero."
     },
     {
       "id": "AH-033",
@@ -1341,13 +1404,15 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P0",
       "dependencies": [
         "AH-044"
       ],
       "owner": "lane-03-permission-security",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/recorder.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "Secrets that do enter tool output are redacted before they reach logs, journals or the model.",
@@ -1358,9 +1423,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::tests::tool_arguments_never_reach_the_event_log"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "The event log records a redacted, truncated resource and a fingerprint, never raw arguments, so file contents and credentials cannot reach it. Transcripts, the display journal and tool output itself are still unredacted."
     },
     {
       "id": "AH-046",
@@ -1453,14 +1521,17 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-005",
         "AH-033"
       ],
       "owner": "lane-03-permission-security",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/recorder.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "Every allow, deny and auto-approval is written to a durable append-only record.",
@@ -1471,9 +1542,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::tests::auto_approval_is_recorded_as_a_decision_the_user_never_saw"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Prompts and decisions are recorded, auto-approval included -- previously the one case that converted every prompt to an allow with no trace. Covers the Rust harness only -- the CLI, the TUI, subagents and the API-server proxy, every surface reaching run_orchestration_streamed. The Cowork desktop harness orchestrates in TypeScript and is not recorded yet."
     },
     {
       "id": "AH-050",
@@ -1481,14 +1555,15 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-049"
       ],
       "owner": "lane-03-permission-security",
       "files": [
-        "src-tauri/src/core/cli/journal.rs"
+        "src-tauri/src/core/agent/recorder.rs",
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -1500,10 +1575,13 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::tests::a_dispatched_call_and_its_outcome_are_recorded",
+        "src-tauri/src/core/agent/loop.rs::tests::every_call_in_a_batch_reports_its_own_duration"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "display.jsonl records calls for rendering; it is CLI-only and documents permission prompts as transient by design."
+      "auditNote": "Every dispatched call is recorded before it runs and again when it ends, in call order, with a duration measured around each call individually. Covers the Rust harness only; the Cowork desktop harness orchestrates in TypeScript and is not recorded yet."
     },
     {
       "id": "AH-051",
@@ -1570,15 +1648,15 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-010"
       ],
       "owner": "lane-04-repo-index-lsp",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/project_browse.rs",
-        "web-app/src/lib/coworkRepoMap.ts"
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -1588,10 +1666,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs::tests::an_index_round_trips_through_disk",
+        "src-tauri/src/core/agent/index.rs::tests::an_index_from_another_schema_is_discarded"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "build_map produces a bounded breadth-first ProjectMap that is embedded in the run's prompt. It is an orientation blob, not an index: no symbols, no cache, no persistence."
+      "auditNote": "Persistent, versioned, one index per project under <jan_data>/agent-state/index/. An index from another schema is rebuilt rather than reinterpreted. A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed."
     },
     {
       "id": "AH-054",
@@ -1599,14 +1680,14 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/project_browse.rs"
+        "src-tauri/src/core/agent/index.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -1616,10 +1697,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs::tests::declarations_are_found_across_the_supported_languages",
+        "src-tauri/src/core/agent/index.rs::tests::gitignored_and_unsupported_files_are_not_indexed"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The breadth-first walk is bounded by entry and depth caps and honours ignore rules, but produces no stored index."
+      "auditNote": "Built on first use and refreshed at run start. Measured on this repository: 298ms cold for 1425 files and 7608 symbols, bounded by a file ceiling that is reported when hit. A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed."
     },
     {
       "id": "AH-055",
@@ -1627,13 +1711,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "File changes update the index without a full rebuild.",
@@ -1642,10 +1729,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs::tests::an_unchanged_file_is_not_re_read",
+        "src-tauri/src/core/agent/index.rs::tests::a_deleted_file_leaves_no_symbols_behind"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The repository map is re-walked in full on each use; there is no cache to update."
+      "auditNote": "A file whose size and modification time are unchanged is not re-read; a deleted file's symbols are dropped rather than left pointing at a path that no longer exists. Measured on this repository: 81ms warm against 298ms cold."
     },
     {
       "id": "AH-056",
@@ -1653,13 +1743,15 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-055"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Switching branches or rewinding a checkpoint reconciles the index with the new tree.",
@@ -1668,9 +1760,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs::tests::a_changed_file_is_re_read_and_its_symbols_replaced",
+        "src-tauri/src/core/agent/index.rs::tests::a_deleted_file_leaves_no_symbols_behind",
+        "src-tauri/src/core/agent/index.rs::tests::an_index_predating_the_import_graph_is_discarded"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Falls out of keying entries on size and modification time: a branch switch rewrites the files that differ, so exactly those are re-read and files absent on the new branch are dropped. A schema change discards the whole index rather than reading it as though the new fields were empty."
     },
     {
       "id": "AH-057",
@@ -1732,13 +1829,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-057"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "The agent can look up a symbol by name instead of grepping for it.",
@@ -1747,11 +1847,16 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::tests::symbol_search_is_dispatched_against_the_run_index",
+        "src-tauri/src/core/agent/loop.rs::tests::symbol_search_is_advertised_including_in_plan_mode",
+        "src-tauri/src/core/agent/index.rs::tests::a_miss_says_what_the_index_does_not_cover"
+      ],
       "platformRequirements": [
         "a language server for the target language available on PATH"
       ],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "A `symbol_search` tool, advertised on every run with a project root and in plan mode too since it is read-only. Exact matches rank before prefix before substring. A miss reports what the index does not cover and says to fall back to grep, so the model cannot read it as \"this does not exist\". A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed."
     },
     {
       "id": "AH-060",
@@ -1894,13 +1999,15 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Module and package import edges are derivable from the index.",
@@ -1909,9 +2016,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs::tests::a_rust_module_declaration_resolves_to_the_file_it_names",
+        "src-tauri/src/core/agent/index.rs::tests::importers_are_found_in_both_directions",
+        "src-tauri/src/core/agent/index.rs::tests::an_import_escaping_the_repository_resolves_to_nothing"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "File-level import edges, resolved only where resolution is sound: Rust `mod x;` to x.rs or x/mod.rs, relative TypeScript/JavaScript specifiers to a file or its index, relative Python imports. A bare specifier names a package rather than a file here and is deliberately left unresolved; Go imports are package-level and yield no file edge. Trustworthy in a way find-references would not be, because an import is unambiguous syntax at the top of a file."
     },
     {
       "id": "AH-066",
@@ -1919,13 +2031,15 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-065"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/impact.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "The harness can name the tests that cover a given source file.",
@@ -1934,9 +2048,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/impact.rs::tests::a_typescript_file_maps_to_its_sibling_test",
+        "src-tauri/src/core/agent/impact.rs::tests::a_rust_file_with_an_inline_test_module_tests_itself",
+        "src-tauri/src/core/agent/impact.rs::tests::a_file_with_no_test_is_reported_not_omitted"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Conventions for Rust (an inline #[cfg(test)] module means the file tests itself, plus tests/<stem>.rs), TypeScript/JavaScript (.test./.spec./__tests__), Python (test_x.py, x_test.py, tests/) and Go (x_test.go). Only candidates that exist are offered. Mapping is by filename convention, not coverage: it does not know which tests exercise which code. A file with no conventionally-named test is reported as unmapped rather than omitted, because silence would read as covered, and every rendered report repeats that passing these tests does not prove a change safe."
     },
     {
       "id": "AH-067",
@@ -1944,13 +2063,17 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-065"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/impact.rs",
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "A diff resolves to the set of modules and tests it can affect.",
@@ -1959,9 +2082,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/impact.rs::tests::a_dependents_tests_are_pulled_in_by_the_import_graph",
+        "src-tauri/src/core/agent/impact.rs::tests::a_file_with_no_test_is_reported_not_omitted",
+        "src-tauri/src/core/agent/loop.rs::tests::impact_maps_explicit_paths_to_their_tests"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "A diff now resolves to both the tests that conventionally cover it and the files that import it one hop out, whose tests are included too -- so a change to a file with no test of its own still reaches the tests of its dependents. One hop, not a closure: further out, \"affected by\" stops meaning much. Still not coverage, and every report says so."
     },
     {
       "id": "AH-068",
@@ -1969,13 +2097,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/project_kind.rs",
+        "src-tauri/src/core/agent/context.rs"
+      ],
       "securityImpact": "none",
       "acceptanceCriteria": [
         "The harness recognises the project's frameworks and tells the model.",
@@ -1984,9 +2115,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/project_kind.rs::tests::node_frameworks_are_named_once_each",
+        "src-tauri/src/core/agent/project_kind.rs::tests::a_cargo_workspace_is_named_as_one"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. Frameworks: React, Next.js, Vue, Svelte, Vitest, Jest, Playwright, Django, Flask, FastAPI, Tauri, and a Cargo workspace -- which matters because `cargo test` at a workspace root means every member."
     },
     {
       "id": "AH-069",
@@ -1994,13 +2129,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-068"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/project_kind.rs",
+        "src-tauri/src/core/agent/context.rs"
+      ],
       "securityImpact": "none",
       "acceptanceCriteria": [
         "The harness recognises how the project builds and tells the model.",
@@ -2009,9 +2147,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/project_kind.rs::tests::the_lockfile_decides_the_package_manager",
+        "src-tauri/src/core/agent/project_kind.rs::tests::a_makefile_target_is_only_offered_when_it_is_declared"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. The lockfile, not the manifest, decides the package manager: running the wrong one rewrites the other's lockfile."
     },
     {
       "id": "AH-070",
@@ -2019,13 +2161,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-068"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/project_kind.rs",
+        "src-tauri/src/core/agent/context.rs"
+      ],
       "securityImpact": "none",
       "acceptanceCriteria": [
         "The harness recognises how the project tests and tells the model.",
@@ -2034,9 +2179,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/project_kind.rs::tests::a_script_that_does_not_exist_is_never_offered",
+        "src-tauri/src/core/agent/context.rs::tests::the_runtime_block_carries_the_detected_project"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. Only test commands with evidence behind them: a package.json `test` script that exists, a declared Makefile target, pytest named in a Python manifest."
     },
     {
       "id": "AH-071",
@@ -2044,13 +2193,17 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P2",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/search.rs",
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Embedding search over repository content is available to the agent loop.",
@@ -2059,10 +2212,26 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/search.rs::tests::an_identical_name_is_an_exact_match",
+        "src-tauri/src/core/agent/search.rs::tests::a_word_of_a_name_is_a_token_match_not_an_exact_one",
+        "src-tauri/src/core/agent/search.rs::tests::a_subsequence_is_a_fuzzy_match_ranked_below_a_token",
+        "src-tauri/src/core/agent/search.rs::tests::a_doc_comment_is_a_metadata_match_and_says_so",
+        "src-tauri/src/core/agent/search.rs::tests::results_are_ranked_exact_then_token_then_fuzzy_then_metadata",
+        "src-tauri/src/core/agent/search.rs::tests::the_same_query_returns_the_same_order_every_time",
+        "src-tauri/src/core/agent/search.rs::tests::a_query_that_is_too_short_is_refused_with_a_reason",
+        "src-tauri/src/core/agent/search.rs::tests::a_query_that_is_too_long_is_refused_with_a_reason",
+        "src-tauri/src/core/agent/search.rs::tests::the_scan_is_capped_and_says_when_it_stopped_early",
+        "src-tauri/src/core/agent/search.rs::tests::an_empty_index_is_distinguished_from_no_matches",
+        "src-tauri/src/core/agent/search.rs::tests::a_miss_never_claims_the_name_does_not_exist",
+        "src-tauri/src/core/agent/search.rs::tests::nothing_in_the_output_claims_to_understand_meaning",
+        "src-tauri/src/core/agent/search.rs::tests::the_tool_description_states_that_matching_is_lexical",
+        "src-tauri/src/core/agent/loop.rs::tests::code_search_is_dispatched_against_the_run_index",
+        "src-tauri/src/core/agent/loop.rs::tests::code_search_without_an_index_says_so"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Two RAG stacks exist (rag-extension, vector-db) but neither is wired to the agent harness; one is dead code."
+      "auditNote": "Delivered as the `code_search` tool: a lexical multi-signal search over the declaration index -- symbol names, the words inside them (snake, kebab, dot, slash and camelCase), file paths and doc comments -- returning file, line, symbol, kind, match type and a confidence derived from the match type (exact 100, token 75, fuzzy 45, metadata 30). Ranking is deterministic: match type, then symbol name length, then path, then line, over a BTreeMap so the scan cap always falls in the same place. Query length (2..=128), result count (<=50) and scan cost (<=20000 symbols) are all bounded, and a refusal names its reason. An empty index, a capped scan and a genuine miss are three distinct outcomes, never one message. STATUS IS in-progress, NOT implemented: the registry's acceptance criterion asks for embedding search, and this is not that. No embedding model, vector store or conceptual similarity is involved, so a differently-named equivalent will not be found. Every rendered result and the tool description say so in those words rather than letting the model infer otherwise. Wiring embeddings (the rag-extension / vector-db stacks noted in the original audit) remains open work under this id. Index schema version bumped 2 -> 3 to carry the doc-comment field the metadata match reads; a version-2 index on disk is discarded and rebuilt rather than read."
     },
     {
       "id": "AH-072",
@@ -2070,14 +2239,18 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P2",
       "dependencies": [
         "AH-069",
         "AH-070"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/health.rs",
+        "src-tauri/src/core/agent/impact.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "A one-shot scan reports build, test, lint and dependency health for the project.",
@@ -2086,9 +2259,33 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/health.rs::tests::a_missing_index_is_an_error_not_a_clean_bill_of_health",
+        "src-tauri/src/core/agent/health.rs::tests::without_an_index_the_checks_that_need_one_are_skipped_with_a_reason",
+        "src-tauri/src/core/agent/health.rs::tests::a_file_added_since_the_index_was_built_is_reported_as_stale",
+        "src-tauri/src/core/agent/health.rs::tests::an_index_from_an_older_schema_is_reported_as_a_mismatch",
+        "src-tauri/src/core/agent/health.rs::tests::an_indexed_file_that_can_no_longer_be_read_is_reported",
+        "src-tauri/src/core/agent/health.rs::tests::an_import_whose_target_was_deleted_is_a_broken_edge",
+        "src-tauri/src/core/agent/health.rs::tests::a_project_with_no_recognised_manifest_is_reported",
+        "src-tauri/src/core/agent/health.rs::tests::a_name_declared_in_two_files_is_reported_as_ambiguous",
+        "src-tauri/src/core/agent/health.rs::tests::files_in_a_language_the_indexer_cannot_read_are_named_with_their_count",
+        "src-tauri/src/core/agent/health.rs::tests::a_generated_file_that_reached_the_index_is_reported",
+        "src-tauri/src/core/agent/health.rs::tests::an_indexed_file_with_no_conventional_test_is_reported",
+        "src-tauri/src/core/agent/health.rs::tests::a_registry_claiming_a_file_that_does_not_exist_is_an_error",
+        "src-tauri/src/core/agent/health.rs::tests::a_registry_claiming_a_test_that_is_not_in_the_file_is_an_error",
+        "src-tauri/src/core/agent/health.rs::tests::a_malformed_registry_is_reported_rather_than_silently_passing",
+        "src-tauri/src/core/agent/health.rs::tests::a_module_gated_to_one_build_configuration_is_reported_as_drift",
+        "src-tauri/src/core/agent/health.rs::tests::a_skipped_check_is_never_also_listed_as_run",
+        "src-tauri/src/core/agent/health.rs::tests::a_file_above_the_index_ceiling_is_not_reported_as_stale",
+        "src-tauri/src/core/agent/health.rs::tests::a_source_directory_named_vendor_is_not_mistaken_for_vendored_code",
+        "src-tauri/src/core/agent/health.rs::tests::a_clean_report_does_not_claim_the_repository_is_healthy",
+        "src-tauri/src/core/agent/health.rs::tests::the_tool_description_does_not_promise_build_or_lint_results",
+        "src-tauri/src/core/agent/loop.rs::tests::repo_health_is_dispatched_against_the_run_index",
+        "src-tauri/src/core/agent/loop.rs::tests::repo_health_without_an_index_reports_that_as_the_finding"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Delivered as the `repo_health` tool: fourteen checks over the index and the tree -- missing index, schema mismatch, staleness (added/changed/removed), indexed files that cannot be read back, import edges whose target is gone, missing build or test command, names declared in more than one file, languages the indexer does not parse, files above the index's size ceiling, build output that reached the index, files with no conventionally-named test, feature-registry claims not backed by the tree, modules gated to one build configuration, and an unreadable scan root. Every check that could not run is listed with its reason, because a check that silently did not run reads exactly like one that passed. Findings that are usually deliberate (duplicate names, unsupported languages, configuration gates) are notes, not errors, so a report full of correct-but-uninteresting errors does not teach the reader to skip it. The report never says the repository is healthy: it runs no compiler, type checker, linter or test, and says so in every rendering. STATUS IS in-progress, NOT implemented: the registry's acceptance criterion asks for build, test, lint and dependency health, and this reports none of those four. Running them is a separate capability and stays open under this id. The scan found four real defects on its first run against this repository, two in its own code (files above the 1 MiB index ceiling reported as permanently 'added since the index was built', and a hand-written tauri-plugin-hardware/src/vendor/ directory flagged as vendored code) and two in this registry (AH-012 citing a deleted module, AH-199 claiming a file that does not exist). All four are fixed; the two code defects have regression tests."
     },
     {
       "id": "AH-073",
@@ -3145,7 +3342,7 @@
       ],
       "owner": "lane-06-agents-worktrees",
       "files": [
-        "src-tauri/src/core/agent/events.rs"
+        "src-tauri/src/core/agent/recorder.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -3156,12 +3353,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/recorder.rs::tests::parent_and_child_events_interleave_in_one_ordered_log"
+      ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": "Provenance exists at the event level only; file changes carry no agent attribution."
+      "auditNote": "Events carry the agent that produced them, and a child's agent id names its parent. File changes still carry no agent attribution."
     },
     {
       "id": "AH-111",
@@ -4988,13 +5187,16 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-005"
       ],
       "owner": "lane-09-ux-observability",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/cli/runs.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A run's canonical events export to a file for external analysis.",
@@ -5003,9 +5205,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/cli/runs.rs::tests::the_export_carries_the_record_and_every_event_verbatim"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "`jan cli agent runs export` emits the run record and every event as JSON, round-tripping back into the same types."
     },
     {
       "id": "AH-178",
@@ -5020,6 +5225,7 @@
       ],
       "owner": "lane-09-ux-observability",
       "files": [
+        "src-tauri/src/core/cli/runs.rs",
         "web-app/src/containers/dialogs/SearchDialog.tsx"
       ],
       "securityImpact": "low",
@@ -5033,7 +5239,7 @@
       "tests": [],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Search exists in the desktop app; there is no transcript export or CLI search."
+      "auditNote": "`jan cli agent runs list` makes past runs enumerable from the CLI and `show` renders one. Content search across runs is still absent; the desktop app searches threads, not runs."
     },
     {
       "id": "AH-179",
@@ -5566,13 +5772,11 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "implemented",
+      "status": "missing",
       "priority": "P1",
       "dependencies": [],
       "owner": "lane-09-ux-observability",
-      "files": [
-        "web-app/src/containers/analytics/AnalyticConsent.tsx"
-      ],
+      "files": [],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "Telemetry is consent-gated and can be disabled.",
@@ -5584,7 +5788,8 @@
       ],
       "tests": [],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Reverted from implemented to missing. The entry named web-app/src/containers/analytics/AnalyticConsent.tsx, which does not exist in this tree; the repo_health registry check (AH-072) found the claim, and reading the code confirmed it. What exists is DefaultAnalyticService (web-app/src/services/analytic/default.ts), which reads and writes a distinct id and has no consent gate. web-app/src/routes/__tests__/__root.test.tsx mocks an @/providers/AnalyticProvider that is absent from web-app/src/providers/, and __root.tsx does not reference it. So telemetry here is neither consent-gated nor disableable, and the acceptance criterion is unmet."
     },
     {
       "id": "AH-200",
@@ -5592,14 +5797,16 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P1",
       "dependencies": [
         "AH-049",
         "AH-177"
       ],
       "owner": "lane-09-ux-observability",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/cli/runs.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "Every permission decision, tool call and run event exports as one reviewable record.",
@@ -5609,9 +5816,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/cli/runs.rs::tests::a_recorded_run_reads_back_as_a_replay_and_an_export"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Permission decisions, tool calls and run events export together as one reviewable record per run, auto-approvals included. Still per-run rather than across runs, and it covers the Rust harness only -- the Cowork desktop harness records nothing to export."
     }
   ]
 }

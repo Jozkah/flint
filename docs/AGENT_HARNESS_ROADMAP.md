@@ -121,6 +121,49 @@ a button, a config parser or a mock does not make an item complete.
 - `lane-12-security-regression-review` owns no production module and reviews every
   lane's output independently.
 
+## Phase 1 status (in progress)
+
+Nine commits on `feat/agent-harness-phase-1`. What moved, and what did not:
+
+| Item | Status | What landed |
+| --- | --- | --- |
+| `AH-017` Token budget enforcement | `implemented` | Crossing ends the run; `on_exhausted = "continue"` is the opt-out |
+| `AH-019` Wall-clock budget | `implemented` | `[budget] max_duration_secs`, checked before the turn that would cross it |
+| `AH-020` Per-tool timeouts | `implemented` | Every built-in, by capability class, on both dispatch paths |
+| `AH-021` Per-run timeout | `implemented` | Subagents inherit what is left, so a child cannot outlive the run |
+| `AH-029` Stuck-loop detection | `implemented` | A turn identical to the last is no progress; nudge then stop |
+| `AH-030` Doom-loop detection | `implemented` | Fingerprinted by name and canonicalised arguments |
+| `AH-032` Run replay | `implemented` | `jan cli agent runs show` |
+| `AH-049` Permission decision audit log | `implemented` | Auto-approval included -- previously untraceable |
+| `AH-050` Tool invocation audit log | `implemented` | Per-call durations, redacted resources, never raw arguments |
+| `AH-177` Event export | `implemented` | `jan cli agent runs export`, round-trips into the same types |
+| `AH-004`/`AH-005`/`AH-008`/`AH-010` | `implemented` | Now consumed by real call sites, not just defined |
+| `AH-018` Step budget | `in-progress` | Configurable; the default stays unbounded, which its criterion does not accept |
+| `AH-023` In-flight cancellation | `in-progress` | Hangs bounded, CLI process leak closed; no cancellation token yet |
+| `AH-026` Resume after restart | `in-progress` | Interruption detectable and diagnosable; resumption not built |
+| `AH-045` Secret redaction | `in-progress` | Event log only; transcripts and tool output still unredacted |
+| `AH-110` Agent provenance | `in-progress` | Events carry their agent; file changes do not |
+
+Three items are deliberately short of their own acceptance criteria rather than
+marked done at a weaker standard:
+
+- **`AH-018`** asks for a turn ceiling enforced by default. The mechanism is
+  built and configurable, but the default stays unbounded: the config states
+  that the agent takes as many turns as the task needs, and the token and
+  wall-clock ceilings now bound a run that will not end. Choosing a non-zero
+  default would cut off legitimate long tasks, which is a product decision.
+- **`AH-023`** asks for a cancelled run to kill the processes its tools
+  started. Every deterministic exit now reaps, and foreground children die on
+  drop, but there is no cancellation token and a signal-terminated CLI still
+  leaks -- agent shells sit outside the terminal's process group by design.
+- **`AH-026`** asks for a run to resume without losing the in-flight turn. An
+  interrupted run is now detectable and reports which calls were dispatched
+  with no recorded outcome; resuming from that point is not built.
+
+One behaviour change is worth restating outside the pull request: a configured
+token budget now stops a run, and every CLI run carries the 128k default, so it
+binds where it previously did not.
+
 ## Phase 0 status
 
 Delivered in this pass:

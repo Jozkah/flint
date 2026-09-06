@@ -60,7 +60,16 @@ pub enum EventPayload {
     /// A tool call was dispatched. `resource` is the redacted path, command or
     /// server the call touches; `fingerprint` identifies repeats (`AH-030`).
     ToolCalled { call_id: String, tool: String, resource: Option<String>, fingerprint: String },
-    ToolFinished { call_id: String, tool: String, outcome: ToolOutcome, duration_ms: u64 },
+    /// A tool call ended. `duration_ms` is absent when the dispatcher did not
+    /// measure this call individually -- an unknown duration must read as
+    /// unknown, not as zero, in a record someone audits.
+    ToolFinished {
+        call_id: String,
+        tool: String,
+        outcome: ToolOutcome,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        duration_ms: Option<u64>,
+    },
 
     PermissionRequested { call_id: String, tool: String, resource: Option<String> },
     PermissionDecided { call_id: String, tool: String, decision: PermissionDecision },
@@ -77,6 +86,12 @@ pub enum EventPayload {
     BudgetCrossed { budget: String, spent: u64, limit: u64, exhausted: bool },
 
     ErrorRaised { kind: ErrorKind, message: String, audience: Audience },
+
+    /// The run repeated the same tool calls without making progress.
+    ///
+    /// `repeats` counts consecutive turns that asked for nothing new;
+    /// `stopped` says whether this was the escalation that ended the run.
+    ProgressStalled { repeats: u32, stopped: bool },
 
     /// An event written by a newer build than the one reading it.
     ///
@@ -107,6 +122,7 @@ impl EventPayload {
             Self::CheckpointCreated { .. } => "checkpoint_created".into(),
             Self::BudgetCrossed { .. } => "budget_crossed".into(),
             Self::ErrorRaised { .. } => "error_raised".into(),
+            Self::ProgressStalled { .. } => "progress_stalled".into(),
             Self::Unknown { kind, .. } => kind.clone(),
         }
     }
@@ -162,7 +178,11 @@ impl HarnessEvent {
     }
 }
 
-pub(crate) fn now_ms() -> u64 {
+/// Milliseconds since the Unix epoch.
+///
+/// Shared rather than re-derived: several places need to stamp a record, and
+/// three subtly different clock readings in one log is a debugging trap.
+pub fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -239,7 +259,7 @@ mod tests {
                 call_id: "c".into(),
                 tool: "read".into(),
                 outcome: ToolOutcome::Ok,
-                duration_ms: 1,
+                duration_ms: Some(1),
             },
             EventPayload::PermissionRequested { call_id: "c".into(), tool: "bash".into(), resource: None },
             EventPayload::PermissionDecided {
@@ -265,6 +285,7 @@ mod tests {
                 message: "x".into(),
                 audience: Audience::Internal,
             },
+            EventPayload::ProgressStalled { repeats: 3, stopped: true },
         ];
         let kinds: std::collections::HashSet<_> = payloads.iter().map(|p| p.kind()).collect();
         assert_eq!(kinds.len(), payloads.len());

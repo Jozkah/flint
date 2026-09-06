@@ -16278,6 +16278,9 @@ mod tests {
             reserve_tokens: 16_384,
             max_tokens: None,
             max_session_tokens: 128_000,
+            max_run_seconds: 0,
+            on_exhausted: crate::core::agent::session::ExhaustionPolicy::default(),
+            max_turns_cap: 0,
         };
         let app = App::new(
             "m".into(),
@@ -16329,6 +16332,9 @@ mod tests {
                     reserve_tokens: 16_384,
                     max_tokens: None,
                     max_session_tokens: 128_000,
+            max_run_seconds: 0,
+            on_exhausted: crate::core::agent::session::ExhaustionPolicy::default(),
+            max_turns_cap: 0,
                 },
                 false,
                 agent_dir,
@@ -20775,6 +20781,8 @@ mod tests {
                 run_mode: crate::core::agent::plan::RunMode::Normal,
                 session_id: None,
                 sandbox: None,
+                thread_id: None,
+                inherited_recorder: None,
             });
             app.args = Some(args.clone());
 
@@ -29160,14 +29168,25 @@ mod tests {
             .status()
             .unwrap();
         assert!(st.success());
+        // Identity is supplied on the command line, not read from the ambient
+        // git config. `--author` alone does not settle the *committer*, which
+        // git resolves through `$HOME/.gitconfig` -- and `agent::global_config`
+        // tests repoint `HOME` process-wide, so a parallel run of this test
+        // would otherwise fail to commit for reasons that have nothing to do
+        // with plugins. Signing is off for the same reason.
         let st = std::process::Command::new("git")
             .args([
                 "-C",
                 repo.to_str().unwrap(),
+                "-c",
+                "user.name=Jan Test",
+                "-c",
+                "user.email=test@jan.ai",
+                "-c",
+                "commit.gpgsign=false",
                 "commit",
                 "-m",
                 "init",
-                "--author=Jan Test <test@jan.ai>",
             ])
             .status()
             .unwrap();
