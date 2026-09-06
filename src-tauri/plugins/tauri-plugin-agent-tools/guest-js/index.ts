@@ -3,6 +3,7 @@ import {
   BashJobStatus,
   ProjectFile,
   ProjectListing,
+  ProjectMap,
   SkillMeta,
   ToolOutputChunk,
   ToolResult,
@@ -15,6 +16,8 @@ export {
   ProjectEntry,
   ProjectFile,
   ProjectListing,
+  ProjectMap,
+  ProjectMapEntry,
   SkillMeta,
   ToolOutputChunk,
   ToolResult,
@@ -278,6 +281,24 @@ export async function projectListDir(
     dataFolder,
     root,
     rel,
+  })
+}
+
+/**
+ * Walk the attached project into one bounded repository map.
+ *
+ * Same root validation and the same read-only browsing filters as
+ * `projectListDir` — the map cannot name anything the code panel would refuse
+ * to show — but walked whole in one call rather than a level at a time, so the
+ * result can be rendered into a run's system prompt.
+ */
+export async function projectMap(
+  dataFolder: string,
+  root: string
+): Promise<ProjectMap> {
+  return await invoke('plugin:agent-tools|project_map', {
+    dataFolder,
+    root,
   })
 }
 

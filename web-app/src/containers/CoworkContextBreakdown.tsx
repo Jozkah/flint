@@ -43,8 +43,18 @@ function value(
 
 export function CoworkContextBreakdown({
   context,
+  repositoryMapNotice,
 }: {
   context: ContextAccounting
+  /**
+   * Why the repository-map row is zero, when it is zero because something
+   * failed rather than because the tree is empty.
+   *
+   * A zero on its own is honest but not actionable — "nothing sent" reads the
+   * same whether the repository is empty or the walk was refused. This is the
+   * difference, and it is only ever shown when there is one.
+   */
+  repositoryMapNotice?: string | null
 }) {
   const { t } = useTranslation()
   const total = accountedTotal(context)
@@ -95,6 +105,13 @@ export function CoworkContextBreakdown({
           </dd>
         </div>
       </dl>
+      {repositoryMapNotice ? (
+        <p role="status" className="mt-1 text-main-view-fg/70">
+          {t('common:readiness.repositoryMapFailed', {
+            reason: repositoryMapNotice,
+          })}
+        </p>
+      ) : null}
     </section>
   )
 }

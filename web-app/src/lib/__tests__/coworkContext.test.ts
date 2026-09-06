@@ -116,6 +116,54 @@ describe('the context pack', () => {
     expect(accounting.categories.skills).toEqual({ known: true, tokens: 0 })
   })
 
+  it('bills the map to its own category and not to instructions twice', () => {
+    // The map is a block *of* the system prompt. Counting the whole prompt as
+    // instructions and the map again beside it would make the categories sum
+    // past what the run actually sends, which is the one thing this accounting
+    // exists to prevent.
+    const map = '# Repository map\n\nsrc/'
+    const system = `You are Jan.\n\n${map}\n\nBe careful.`
+    const accounting = measureContextPack({
+      systemPrompt: system,
+      toolSchemas: {},
+      messages: [],
+      repositoryMap: map,
+    })
+    const bytes = (text: string) => new TextEncoder().encode(text).length
+    expect(accounting.categories.repositoryMap).toEqual({
+      known: 'estimated',
+      tokens: Math.round(bytes(map) / 4),
+      method: ESTIMATE_METHOD,
+    })
+    expect(accounting.categories.instructions).toEqual({
+      known: 'estimated',
+      tokens: Math.round((bytes(system) - bytes(map)) / 4),
+      method: ESTIMATE_METHOD,
+    })
+    const instructions = accounting.categories.instructions
+    const repositoryMap = accounting.categories.repositoryMap
+    const sum =
+      (instructions.known === false ? 0 : instructions.tokens) +
+      (repositoryMap.known === false ? 0 : repositoryMap.tokens)
+    // Within rounding of the whole prompt: the two categories partition it.
+    expect(Math.abs(sum - bytes(system) / 4)).toBeLessThanOrEqual(1)
+  })
+
+  it('never reports a negative instruction budget', () => {
+    // A caller passing a block the prompt does not contain is a bug, not a
+    // reason to show the user a negative number.
+    const accounting = measureContextPack({
+      systemPrompt: 'short',
+      toolSchemas: {},
+      messages: [],
+      repositoryMap: 'a much longer block than the prompt itself',
+    })
+    expect(accounting.categories.instructions).toEqual({
+      known: true,
+      tokens: 0,
+    })
+  })
+
   it('says unknown before a run exists, rather than claiming zero', () => {
     const accounting = measureContextPack({
       systemPrompt: null,

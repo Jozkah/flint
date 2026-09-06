@@ -24,6 +24,7 @@ const COMMANDS: &[&str] = &[
     "execute_tool_streaming",
     "project_list_dir",
     "project_read_file",
+    "project_map",
     "bash_jobs_list",
     "bash_job_kill",
 ];

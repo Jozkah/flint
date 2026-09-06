@@ -25,6 +25,21 @@ pub const MAX_LIST_ENTRIES: usize = 1000;
 /// comfortable reading.
 pub const MAX_READ_BYTES: u64 = 1024 * 1024;
 
+/// How many entries a repository map may name.
+///
+/// A cap, not a target: the map is walked breadth-first so that hitting it
+/// costs the deepest, least orienting part of the tree rather than a random
+/// subtree. Whether it was hit is reported, because a map that quietly stops
+/// short is worse than no map at all.
+pub const MAX_MAP_ENTRIES: usize = 2000;
+
+/// How deep a repository map descends.
+///
+/// Eight levels reaches the leaves of ordinary source layouts and stops a
+/// generated tree that escaped the filters from consuming the entry budget on
+/// one branch. Directories left undescended are reported, not dropped.
+pub const MAX_MAP_DEPTH: usize = 8;
+
 /// Directories that are never listed: VCS internals, dependency stores and
 /// generated output. `.git` is also a security matter — its objects can contain
 /// anything ever committed, including secrets since removed from the tree.
@@ -65,6 +80,44 @@ pub struct ProjectListing {
     pub entries: Vec<ProjectEntry>,
     /// True when the directory held more than [`MAX_LIST_ENTRIES`] entries.
     pub truncated: bool,
+}
+
+/// One line of a repository map.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMapEntry {
+    /// Path relative to the project root, always `/`-separated.
+    pub rel_path: String,
+    pub is_dir: bool,
+    /// How many path segments deep, with a root entry at 1.
+    pub depth: usize,
+}
+
+/// A whole attached project's shape, walked once under explicit caps.
+///
+/// Every field that describes what is *missing* is carried alongside the
+/// entries, because the map is put in front of a model as a description of a
+/// repository: one that stops at a cap without saying so invites the model to
+/// conclude a file does not exist.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectMap {
+    /// Breadth-first, and within each level directories before files, both
+    /// case-insensitively by name. Stable across runs by construction.
+    pub entries: Vec<ProjectMapEntry>,
+    /// The [`MAX_MAP_ENTRIES`] budget ran out before the walk finished.
+    pub truncated: bool,
+    /// At least one directory was left undescended at [`MAX_MAP_DEPTH`].
+    pub depth_limited: bool,
+    /// Files skipped by [`is_sensitive_name`]. Counted rather than named: the
+    /// path of a credentials file is itself a pointer, and this map is prompt
+    /// text. A zero here is a real "there were none".
+    pub sensitive_omitted: usize,
+    /// Directories whose contents could not be read at all — a permission
+    /// denial, a race with a delete. Their own entry is still in `entries`.
+    pub unreadable_dirs: usize,
+    pub files: usize,
+    pub dirs: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -227,18 +280,22 @@ fn denial_aware(rel: &str, error: std::io::Error, verb: &str) -> String {
     format!("cannot {verb} {rel}: {error}")
 }
 
-/// List one directory level of an attached project, lazily and filtered.
-pub fn list_dir(root: &str, rel: &str) -> Result<ProjectListing, String> {
-    let root_canon = canonical_root(root)?;
-    let dir = resolve_rel(&root_canon, rel)?;
-    if !dir.is_dir() {
-        return Err(format!("{rel} is not a directory"));
-    }
-    let ignores = gitignore_chain(&root_canon, &dir);
-
+/// Every admissible entry of one directory, unsorted.
+///
+/// The single place the project-browsing filters live: containment (a symlink
+/// resolving outside the root is dropped, name and all), the never-listed
+/// directories, and the `.gitignore` chain. `list_dir` and `build_map` both
+/// go through here so a repository map can never see something the code panel
+/// would refuse to show — one implementation, so one mutation test covers both.
+fn read_level(
+    root_canon: &Path,
+    dir: &Path,
+    rel: &str,
+) -> Result<(Vec<ProjectEntry>, bool), String> {
+    let ignores = gitignore_chain(root_canon, dir);
     let mut entries: Vec<ProjectEntry> = Vec::new();
     let mut truncated = false;
-    let read = std::fs::read_dir(&dir).map_err(|e| denial_aware(rel, e, "list"))?;
+    let read = std::fs::read_dir(dir).map_err(|e| denial_aware(rel, e, "list"))?;
     for entry in read.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         let path = dir.join(&name);
@@ -248,7 +305,7 @@ pub fn list_dir(root: &str, rel: &str) -> Result<ProjectListing, String> {
         let Ok(resolved) = path.canonicalize() else {
             continue;
         };
-        if !resolved.starts_with(&root_canon) {
+        if !resolved.starts_with(root_canon) {
             continue;
         }
         let is_dir = resolved.is_dir();
@@ -271,7 +328,7 @@ pub fn list_dir(root: &str, rel: &str) -> Result<ProjectListing, String> {
         if is_ignored(&ignores, &path, is_dir) || is_ignored(&ignores, &resolved, is_dir) {
             continue;
         }
-        let rel_path = match path.strip_prefix(&root_canon) {
+        let rel_path = match path.strip_prefix(root_canon) {
             Ok(p) => p.to_string_lossy().replace('\\', "/"),
             Err(_) => continue,
         };
@@ -285,13 +342,126 @@ pub fn list_dir(root: &str, rel: &str) -> Result<ProjectListing, String> {
             is_dir,
         });
     }
+    Ok((entries, truncated))
+}
 
+/// Directories first, then case-insensitively by name. Deterministic, because
+/// a map whose order moves between runs discards the model's prompt prefix on
+/// every turn for no gain.
+fn sort_level(entries: &mut [ProjectEntry]) {
     entries.sort_by(|a, b| {
         b.is_dir
             .cmp(&a.is_dir)
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
+}
+
+/// List one directory level of an attached project, lazily and filtered.
+pub fn list_dir(root: &str, rel: &str) -> Result<ProjectListing, String> {
+    let root_canon = canonical_root(root)?;
+    let dir = resolve_rel(&root_canon, rel)?;
+    if !dir.is_dir() {
+        return Err(format!("{rel} is not a directory"));
+    }
+    let (mut entries, truncated) = read_level(&root_canon, &dir, rel)?;
+    sort_level(&mut entries);
     Ok(ProjectListing { entries, truncated })
+}
+
+/// Walk a whole attached project into a bounded, deterministic map.
+///
+/// Breadth-first, one level at a time, through the same [`read_level`] the code
+/// panel uses — so containment, the never-listed directories and the
+/// `.gitignore` chain all hold here without being restated. Three things bound
+/// it, and each is reported rather than silently applied: the entry budget, the
+/// depth limit, and files whose names look like credentials.
+///
+/// Breadth-first is the point. A depth-first walk that runs out of budget
+/// describes one subtree in detail and leaves the rest of the repository
+/// unmentioned; breadth-first spends the budget on the levels that actually
+/// orient a reader, and truncates the deep tail.
+pub fn build_map(root: &str) -> Result<ProjectMap, String> {
+    let root_canon = canonical_root(root)?;
+    let mut entries: Vec<ProjectMapEntry> = Vec::new();
+    let mut truncated = false;
+    let mut depth_limited = false;
+    let mut sensitive_omitted = 0usize;
+    let mut unreadable_dirs = 0usize;
+    let mut files = 0usize;
+    let mut dirs = 0usize;
+
+    // (path, rel, depth of the directory's *contents*).
+    let mut frontier: Vec<(PathBuf, String, usize)> = vec![(root_canon.clone(), String::new(), 1)];
+    while !frontier.is_empty() {
+        let mut next: Vec<(PathBuf, String, usize)> = Vec::new();
+        for (dir, rel, depth) in frontier.drain(..) {
+            let level = match read_level(&root_canon, &dir, if rel.is_empty() { "." } else { &rel })
+            {
+                Ok((mut found, level_truncated)) => {
+                    if level_truncated {
+                        truncated = true;
+                    }
+                    sort_level(&mut found);
+                    found
+                }
+                // One unreadable directory must not fail the whole map: the
+                // rest of the repository is still worth describing, and the
+                // count says the description is incomplete.
+                Err(_) => {
+                    unreadable_dirs += 1;
+                    continue;
+                }
+            };
+            for entry in level {
+                if !entry.is_dir && is_sensitive_name(&entry.name) {
+                    sensitive_omitted += 1;
+                    continue;
+                }
+                if entries.len() >= MAX_MAP_ENTRIES {
+                    truncated = true;
+                    // Every remaining sibling and every queued directory is
+                    // also unreported, so stop the whole walk rather than
+                    // filling the map with whichever entries happened to sort
+                    // early on later levels.
+                    return Ok(ProjectMap {
+                        entries,
+                        truncated,
+                        depth_limited,
+                        sensitive_omitted,
+                        unreadable_dirs,
+                        files,
+                        dirs,
+                    });
+                }
+                if entry.is_dir {
+                    dirs += 1;
+                    if depth < MAX_MAP_DEPTH {
+                        next.push((dir.join(&entry.name), entry.rel_path.clone(), depth + 1));
+                    } else {
+                        depth_limited = true;
+                    }
+                } else {
+                    files += 1;
+                }
+                entries.push(ProjectMapEntry {
+                    rel_path: entry.rel_path,
+                    is_dir: entry.is_dir,
+                    depth,
+                });
+            }
+        }
+        frontier = next;
+    }
+
+    Ok(ProjectMap {
+        entries,
+        truncated,
+        depth_limited,
+        sensitive_omitted,
+        unreadable_dirs,
+        files,
+        dirs,
+    })
 }
 
 /// Read one project file for display.
@@ -572,6 +742,121 @@ mod tests {
             assert!(!is_sensitive_name(name), "{name} should not be sensitive");
         }
     }
+    #[test]
+    fn map_walks_breadth_first_and_counts_what_it_found() {
+        let root = temp_project();
+        std::fs::create_dir_all(root.join("src/deep")).unwrap();
+        std::fs::write(root.join("README.md"), "x").unwrap();
+        std::fs::write(root.join("src/main.rs"), "x").unwrap();
+        std::fs::write(root.join("src/deep/inner.rs"), "x").unwrap();
+        let map = build_map(root.to_str().unwrap()).unwrap();
+        let paths: Vec<&str> = map.entries.iter().map(|e| e.rel_path.as_str()).collect();
+        // Level 1 whole, then level 2, then level 3 — directories before files
+        // within each level.
+        assert_eq!(
+            paths,
+            vec![
+                "src",
+                "README.md",
+                "src/deep",
+                "src/main.rs",
+                "src/deep/inner.rs"
+            ]
+        );
+        assert_eq!(map.files, 3);
+        assert_eq!(map.dirs, 2);
+        assert!(!map.truncated);
+        assert!(!map.depth_limited);
+        assert_eq!(map.sensitive_omitted, 0);
+    }
+
+    #[test]
+    fn map_omits_credentials_by_name_and_says_how_many() {
+        let root = temp_project();
+        std::fs::write(root.join(".env"), "SECRET=1").unwrap();
+        std::fs::write(root.join("id_rsa"), "x").unwrap();
+        std::fs::write(root.join("app.ts"), "x").unwrap();
+        let map = build_map(root.to_str().unwrap()).unwrap();
+        let paths: Vec<&str> = map.entries.iter().map(|e| e.rel_path.as_str()).collect();
+        assert_eq!(paths, vec!["app.ts"]);
+        assert_eq!(map.sensitive_omitted, 2);
+        assert_eq!(map.files, 1);
+    }
+
+    #[test]
+    fn map_honours_gitignore_and_the_never_listed_directories() {
+        let root = temp_project();
+        std::fs::create_dir_all(root.join("node_modules/pkg")).unwrap();
+        std::fs::write(root.join("node_modules/pkg/index.js"), "x").unwrap();
+        std::fs::create_dir(root.join("generated")).unwrap();
+        std::fs::write(root.join("generated/out.js"), "x").unwrap();
+        std::fs::write(root.join(".gitignore"), "generated/\n").unwrap();
+        std::fs::write(root.join("keep.ts"), "x").unwrap();
+        let map = build_map(root.to_str().unwrap()).unwrap();
+        let paths: Vec<&str> = map.entries.iter().map(|e| e.rel_path.as_str()).collect();
+        assert!(paths.contains(&"keep.ts"));
+        assert!(paths.contains(&".gitignore"));
+        assert!(!paths.iter().any(|p| p.starts_with("node_modules")));
+        assert!(!paths.iter().any(|p| p.starts_with("generated")));
+    }
+
+    #[test]
+    fn map_stops_at_the_depth_limit_and_reports_it() {
+        let root = temp_project();
+        let mut deep = root.clone();
+        for i in 0..(MAX_MAP_DEPTH + 3) {
+            deep = deep.join(format!("d{i}"));
+        }
+        std::fs::create_dir_all(&deep).unwrap();
+        std::fs::write(deep.join("buried.rs"), "x").unwrap();
+        let map = build_map(root.to_str().unwrap()).unwrap();
+        assert!(map.depth_limited);
+        assert!(map.entries.iter().all(|e| e.depth <= MAX_MAP_DEPTH));
+        assert!(!map
+            .entries
+            .iter()
+            .any(|e| e.rel_path.ends_with("buried.rs")));
+    }
+
+    #[test]
+    fn map_truncates_at_the_entry_budget_and_reports_it() {
+        let root = temp_project();
+        for i in 0..(MAX_MAP_ENTRIES + 10) {
+            std::fs::write(root.join(format!("f{i:05}.txt")), "x").unwrap();
+        }
+        let map = build_map(root.to_str().unwrap()).unwrap();
+        assert!(map.truncated);
+        assert!(map.entries.len() <= MAX_MAP_ENTRIES);
+    }
+
+    #[test]
+    fn map_drops_a_symlink_that_leaves_the_root() {
+        let root = temp_project();
+        let outside = temp_project();
+        std::fs::write(outside.join("secret.txt"), "x").unwrap();
+        std::fs::write(root.join("inside.txt"), "x").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, root.join("escape")).unwrap();
+        #[cfg(unix)]
+        {
+            let map = build_map(root.to_str().unwrap()).unwrap();
+            let paths: Vec<&str> = map.entries.iter().map(|e| e.rel_path.as_str()).collect();
+            assert_eq!(paths, vec!["inside.txt"]);
+        }
+        #[cfg(not(unix))]
+        let _ = root;
+    }
+
+    #[test]
+    fn map_is_stable_across_runs() {
+        let root = temp_project();
+        std::fs::create_dir_all(root.join("b/c")).unwrap();
+        std::fs::write(root.join("b/c/z.rs"), "x").unwrap();
+        std::fs::write(root.join("a.rs"), "x").unwrap();
+        let first = build_map(root.to_str().unwrap()).unwrap();
+        let second = build_map(root.to_str().unwrap()).unwrap();
+        assert_eq!(first.entries, second.entries);
+    }
 }
 
 #[cfg(all(test, unix))]
@@ -637,4 +922,5 @@ mod symlink_laundering_tests {
         assert!(names.contains(&"lib"), "expected lib in {names:?}");
         let _ = std::fs::remove_dir_all(&root);
     }
+
 }

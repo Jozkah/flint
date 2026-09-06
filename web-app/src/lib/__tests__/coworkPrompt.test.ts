@@ -62,6 +62,44 @@ describe('buildCoworkSystemPrompt', () => {
   })
 })
 
+describe('the repository map block', () => {
+  const MAP = '# Repository map\n\n1 directory, 0 files found.\n\nsrc/'
+
+  it('is embedded verbatim, so what is measured is what is sent', () => {
+    const p = buildCoworkSystemPrompt(opts({ repositoryMap: MAP }))
+    expect(p).toContain(MAP)
+  })
+
+  it('sits before the behavioural addenda, so instructions stay last', () => {
+    const p = buildCoworkSystemPrompt(
+      opts({
+        repositoryMap: MAP,
+        planMode: true,
+        projectInstructions: 'Always run the tests.',
+      })
+    )
+    expect(p.indexOf(MAP)).toBeLessThan(p.indexOf('Always run the tests.'))
+  })
+
+  it('adds nothing at all when no map was built', () => {
+    const withOut = buildCoworkSystemPrompt(opts())
+    expect(withOut).toBe(buildCoworkSystemPrompt(opts({ repositoryMap: null })))
+    expect(withOut).toBe(buildCoworkSystemPrompt(opts({ repositoryMap: '  ' })))
+    expect(withOut).not.toContain('# Repository map')
+  })
+
+  it('reaches a child, so parent and child read the same tree', () => {
+    const out = buildSubagentSystemPrompt('You review Rust.', {
+      workspacePath: '/ws/s1',
+      readOnlyFolder: '/home/me/repo',
+      bashAvailable: true,
+      webSearch: false,
+      repositoryMap: MAP,
+    })
+    expect(out).toContain(MAP)
+  })
+})
+
 describe('buildSubagentSystemPrompt', () => {
   const opts = {
     workspacePath: '/ws/s1',

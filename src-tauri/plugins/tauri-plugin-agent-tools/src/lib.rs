@@ -60,6 +60,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::execute_tool_streaming,
             commands::project_list_dir,
             commands::project_read_file,
+            commands::project_map,
             commands::bash_jobs_list,
             commands::bash_job_kill
         ])

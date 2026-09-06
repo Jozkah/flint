@@ -1028,6 +1028,7 @@
       "tools": "Tool definitions"
     },
     "categoryNothing": "nothing sent",
+    "repositoryMapFailed": "No repository map was built for this run: {{reason}}",
     "categoryUnknown": "not known yet",
     "categoryCounted": "{{count}} tokens",
     "categoryEstimated": "~{{count}} tokens",

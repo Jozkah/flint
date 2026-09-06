@@ -106,10 +106,16 @@ export type ContextPackInput = {
   /** The conversation so far, as it will be sent. */
   messages: readonly UIMessage[] | null
   /**
-   * The repository map, when one is in the payload.
+   * The repository map block, exactly as it was embedded in `systemPrompt`.
    *
-   * Absent means no map is sent, which measures zero rather than unknown —
-   * Cowork does not build one today, and saying so plainly is the point.
+   * Passed separately because it is *inside* the system prompt: counting it on
+   * its own and leaving `instructions` alone would report the same bytes twice,
+   * and the two categories would sum to more than the run sends. So the map's
+   * bytes are subtracted from `instructions` below, and the categories still
+   * add up to the payload.
+   *
+   * Absent means no map was built for this run, which measures zero: the
+   * repository-map share of the prompt really is nothing.
    */
   repositoryMap?: string | null
   /**
@@ -131,6 +137,29 @@ export type ContextPackInput = {
   configuredContextTokens?: number | null
 }
 
+/**
+ * The system prompt's own share, with the repository map's bytes taken out.
+ *
+ * The map is a block of the system prompt, so measuring both from the whole
+ * string would double-count it and the categories would sum past the payload.
+ * Subtracting bytes rather than deleting a substring keeps this exact even if
+ * the block appears with different surrounding whitespace than the caller
+ * expects — and it can never go negative, because the map is a substring of the
+ * prompt it came from. A map that somehow is not (a caller passing a block the
+ * prompt did not embed) clamps at zero rather than reporting a negative
+ * instruction budget.
+ */
+function instructionsWithoutMap(
+  systemPrompt: string | null | undefined,
+  map: string
+): Measured {
+  if (systemPrompt == null) return measured(null)
+  if (map === '') return estimateTokens(systemPrompt)
+  const rest = Math.max(0, utf8Bytes(systemPrompt) - utf8Bytes(map))
+  if (rest === 0) return measured(0)
+  return estimated(rest / CHARS_PER_TOKEN, ESTIMATE_METHOD)
+}
+
 /** Why a configured window is not the same as the window in force. */
 export const BUDGET_METHOD = 'configured context size; the loaded model may differ'
 
@@ -143,11 +172,12 @@ export const BUDGET_METHOD = 'configured context size; the loaded model may diff
  * honest answer for those is that nobody knows yet — not zero.
  */
 export function measureContextPack(input: ContextPackInput): ContextAccounting {
+  const map = input.repositoryMap ?? ''
   return {
     categories: {
-      instructions: estimateTokens(input.systemPrompt),
+      instructions: instructionsWithoutMap(input.systemPrompt, map),
       skills: estimateTokens(input.skillsInPrompt ?? ''),
-      repositoryMap: estimateTokens(input.repositoryMap ?? ''),
+      repositoryMap: estimateTokens(map),
       conversation: input.messages
         ? estimateTokens(conversationText(input.messages))
         : measured(null),

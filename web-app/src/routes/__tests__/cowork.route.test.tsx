@@ -38,6 +38,20 @@ const h = vi.hoisted(() => ({
   directEditRevokeSession: vi.fn(async () => true),
   projectListDir: vi.fn(async () => []),
   projectReadFile: vi.fn(async () => ''),
+  projectMap: vi.fn(async () => ({
+    entries: [
+      { relPath: 'src', isDir: true, depth: 1 },
+      { relPath: 'src/index.ts', isDir: false, depth: 2 },
+    ],
+    truncated: false,
+    depthLimited: false,
+    sensitiveOmitted: 0,
+    unreadableDirs: 0,
+    files: 1,
+    dirs: 1,
+  })),
+  /** Every transport the route built, so a run's frozen config can be read. */
+  transports: [] as any[],
   bashJobsList: vi.fn(async () => []),
   executeAgentTool: vi.fn(async () => ({ content: 'ok' })),
   loadGitStatus: vi.fn(async () => ({
@@ -93,6 +107,7 @@ vi.mock('@janhq/tauri-plugin-agent-tools-api', async (orig) => ({
   directEditRevokeSession: h.directEditRevokeSession,
   projectListDir: h.projectListDir,
   projectReadFile: h.projectReadFile,
+  projectMap: h.projectMap,
   bashJobsList: h.bashJobsList,
 }))
 
@@ -168,7 +183,9 @@ vi.mock('@/lib/coworkTransport', () => ({
     constructor(
       public sessionId: string,
       public config: any
-    ) {}
+    ) {
+      h.transports.push(this)
+    }
     setConfig(config: any) {
       this.config = config
     }
@@ -375,6 +392,7 @@ beforeEach(() => {
     inert: [],
   })
   h.executeAgentTool.mockResolvedValue({ content: 'ok' })
+  h.transports.length = 0
   h.text = 'do the thing'
   useDirectEditGrants.setState({
     capability: { known: false, reason: 'loading' },
@@ -508,6 +526,52 @@ describe('what a run carries, decided by the route', () => {
         writeGrant: 'grant-1',
       })
     )
+  })
+
+  it('maps the tree it reads, and hands the block to the model', async () => {
+    // The repository-map category existed on the readiness card from the start
+    // and measured zero for every run, because no map was ever built. The
+    // assertion that matters is not that a map exists but that the block the
+    // run *dispatched* came from the tree the run reads.
+    seedSession({ turns: PRIOR_TURNS })
+    await renderRoute()
+    await runOneTurn()
+
+    expect(h.projectMap).toHaveBeenCalledWith('/data', FOLDER)
+    const config = h.transports.at(-1).config
+    expect(config.repositoryMap).toContain('# Repository map')
+    expect(config.repositoryMap).toContain('src/')
+    expect(config.repositoryMap).toContain('index.ts')
+  })
+
+  it('maps the worktree, not the checkout, in managed mode', async () => {
+    // Same defect shape as the read root and the origin ledger: a surface that
+    // describes the attached folder while the run works somewhere else.
+    seedSession({ turns: PRIOR_TURNS })
+    await renderRoute()
+    await chooseAccess('managed-worktree')
+    await waitFor(() => expect(h.directEditAuthorize).toHaveBeenCalled())
+    await runOneTurn()
+
+    expect(h.projectMap).toHaveBeenLastCalledWith('/data', WORKTREE)
+  })
+
+  it('runs without a map, and says why, when the walk is refused', async () => {
+    // Orientation is an aid. Refusing to start a run because one could not be
+    // built would trade a real capability for a cosmetic one — but going ahead
+    // silently would leave a zero on the card that reads like an empty folder.
+    seedSession({ turns: PRIOR_TURNS })
+    h.projectMap.mockRejectedValueOnce(new Error('folder vanished'))
+    await renderRoute()
+    const deps = await runOneTurn()
+
+    expect(h.transports.at(-1).config.repositoryMap).toBeNull()
+    // The run still happened and still carries its authority.
+    await deps.dispatch(call('read', { path: 'src/index.ts' }))
+    expect(h.executeAgentTool).toHaveBeenCalled()
+    expect(
+      await screen.findByText(/readiness.repositoryMapFailed/)
+    ).toBeInTheDocument()
   })
 
   it('does not start a run against a worktree that is no longer there', async () => {

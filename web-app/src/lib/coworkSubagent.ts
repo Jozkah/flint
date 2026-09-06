@@ -306,6 +306,11 @@ export type RunSubagentOptions = {
      * dispatched it, in the same repository, in the same run.
      */
     compatInstructions?: readonly { name: string; content: string }[]
+    /**
+     * The parent's rendered repository map, handed down for the same reason as
+     * its instructions: one picture of the tree per run, not one per agent.
+     */
+    repositoryMap?: string | null
   }
   /** Runs one of the child's tool calls. Same sandbox as the parent. */
   dispatch: (call: PendingToolCall, signal: AbortSignal) => Promise<ToolOutcome>
@@ -394,6 +399,7 @@ export async function runSubagent(
       folderAccess: opts.system.folderAccess,
       projectInstructions: opts.system.projectInstructions,
       compatInstructions: opts.system.compatInstructions,
+      repositoryMap: opts.system.repositoryMap,
       // Derived, not passed: the intersection above may have dropped them.
       webSearch: 'web_search' in tools,
     })

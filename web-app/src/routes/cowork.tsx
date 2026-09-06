@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute } from '@tanstack/react-router'
+import { walkRepositoryMap } from '@/lib/coworkRepoMap'
 import ChatInput from '@/containers/ChatInput'
 import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
 import HeaderPage from '@/containers/HeaderPage'
@@ -375,6 +376,33 @@ function CoworkPage() {
    * describe a payload the run did not build.
    */
   const [runContext, setRunContext] = useState<ContextAccounting | null>(null)
+  /**
+   * Why the last run had no repository map, when it had none for a reason.
+   *
+   * Null covers both "there is one" and "there was nothing to map"; a string
+   * here is a failure the user can act on, and it is shown rather than
+   * swallowed. The run itself is never blocked by it.
+   */
+  const [repositoryMapNotice, setRepositoryMapNotice] = useState<string | null>(
+    null
+  )
+
+  /**
+   * Walk the tree a run is about to read, for its system prompt.
+   *
+   * A route-level wrapper only: the data folder is the app's to know, and the
+   * walk, the render and every cap belong to `coworkRepoMap`.
+   */
+  const buildRunRepositoryMap = useCallback(
+    async (root: string | null) => {
+      const dataFolder = await serviceHub
+        .app()
+        .getJanDataFolder()
+        .catch(() => null)
+      return await walkRepositoryMap(dataFolder, root)
+    },
+    [serviceHub]
+  )
 
   const access = accessOf(session ?? {})
   // Asked of the backend rather than assumed here: whether a folder can be
@@ -1672,6 +1700,23 @@ function CoworkPage() {
       ? { sessionId: liveGrant.sessionId, folder: liveGrant.folder }
       : undefined
     const runWorktreePath = worktree?.path ?? null
+    /**
+     * The repository map for the tree this run reads, walked now.
+     *
+     * Built at run start rather than when a folder is attached, for the same
+     * reason `runReadRoot` is: a managed run reads its worktree, not the
+     * checkout, and a map of the wrong tree is worse than none. Walked fresh
+     * each run so it describes the repository as it stands, then frozen — a
+     * file created mid-run reaches the model through the tools, not through a
+     * map that moved underneath the prompt prefix.
+     *
+     * A failure is reported, never guessed around: the run goes ahead with no
+     * map and the readiness card says the category is zero, because a run that
+     * refuses to start over an orientation aid would be worse than one that
+     * says it did without.
+     */
+    const runRepositoryMap = await buildRunRepositoryMap(runReadRoot)
+    setRepositoryMapNotice(runRepositoryMap.error ?? null)
     const transport = new CoworkChatTransport(sid, {
       planMode: isReadOnly(runMode),
       subagentNames: runAgents.map((d) => d.name),
@@ -1690,6 +1735,7 @@ function CoworkPage() {
       // switched on, oversized, or pointing outside the folder contributes
       // nothing here.
       compatInstructions: compatInstructionBlocks(runCompat),
+      repositoryMap: runRepositoryMap.text,
       openingInspection: inspecting,
     })
     await transport.refreshTools()
@@ -1884,6 +1930,11 @@ function CoworkPage() {
             folderAccess: promptFolderAccess(origins),
             projectInstructions,
             compatInstructions: compatInstructionBlocks(runCompat),
+            // Only when the child reads the same tree. An isolated task gets
+            // a checkout of its own, and handing it the parent's map would
+            // describe a different directory with the same confidence.
+            repositoryMap:
+              childFolder === runReadRoot ? runRepositoryMap.text : null,
           },
           signal: childAbort.signal,
           sessionTokens: 0,
@@ -2736,7 +2787,10 @@ function CoworkPage() {
                   someone is deciding what to say next. */}
               {runContext && (
                 <div className="px-1 pb-2">
-                  <CoworkContextBreakdown context={runContext} />
+                  <CoworkContextBreakdown
+                    context={runContext}
+                    repositoryMapNotice={repositoryMapNotice}
+                  />
                 </div>
               )}
               <ChatInput

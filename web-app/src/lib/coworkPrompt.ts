@@ -98,6 +98,16 @@ export type CoworkPromptOptions = {
    * it is phrased.
    */
   compatInstructions?: readonly { name: string; content: string }[]
+  /**
+   * The repository map block, already rendered and already budgeted.
+   *
+   * A string rather than the walked tree, so the prompt cannot re-render it
+   * differently from what the run measured — the block that reaches the model
+   * and the block that is counted are the same characters. Null means no map
+   * was built for this run, which is not the same as a repository with nothing
+   * in it: an empty repository renders a map that says so.
+   */
+  repositoryMap?: string | null
 }
 
 /**
@@ -245,6 +255,10 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
 
 export function buildCoworkSystemPrompt(opts: CoworkPromptOptions): string {
   const blocks = [IDENTITY, GUIDELINES, workspaceBlock(opts)]
+  // Straight after the workspace facts: it is one of them, and putting it
+  // before the behavioural addenda keeps the last thing the model reads the
+  // project's own instructions.
+  if (opts.repositoryMap?.trim()) blocks.push(opts.repositoryMap.trim())
   if (opts.webSearch) blocks.push(WEB_BLOCK)
   if (opts.subagentNames.length > 0 && !opts.planMode) {
     blocks.push(
@@ -291,6 +305,13 @@ export function buildSubagentSystemPrompt(
   return [
     definitionPrompt.trim(),
     workspaceBlock({ ...opts, planMode: false, subagentNames: [] }),
+    // The parent's map, handed down like its instructions rather than walked
+    // again. A child that has to discover the repository's shape with `ls`
+    // spends more of its window doing that than the map costs, and a child
+    // working from a *different* picture of the same tree is the disagreement
+    // this whole module exists to prevent. It is the same characters the
+    // parent's run measured, so nothing here is unaccounted for.
+    ...(opts.repositoryMap?.trim() ? [opts.repositoryMap.trim()] : []),
     ...(opts.webSearch ? [WEB_BLOCK] : []),
     [
       '# Scope',

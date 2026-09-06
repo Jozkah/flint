@@ -681,6 +681,31 @@ pub async fn project_list_dir(
     .map_err(AgentToolsError::from)
 }
 
+/// Walk the attached read-only project into a bounded repository map.
+///
+/// Same root validation as every other project command — the map cannot
+/// describe a tree the session was not bound to — and the same read-only
+/// browsing filters underneath, so it never names something the code panel
+/// would refuse to open.
+#[tauri::command]
+pub async fn project_map(
+    data_folder: String,
+    root: String,
+) -> Result<crate::project_browse::ProjectMap, AgentToolsError> {
+    let workspace_root = workspace::permanent_store(Path::new(&data_folder));
+    let canonical = workspace::validate_read_root(
+        Path::new(&root),
+        &workspace_root,
+        Some(Path::new(&data_folder)),
+    )?;
+    tokio::task::spawn_blocking(move || {
+        crate::project_browse::build_map(&canonical.to_string_lossy())
+    })
+    .await
+    .map_err(|e| AgentToolsError::from(e.to_string()))?
+    .map_err(AgentToolsError::from)
+}
+
 /// Read one file of the attached read-only project for display in the code
 /// viewer. Verbatim content, no model-facing truncation footer; size caps and
 /// binary/sensitive refusal happen in `project_browse`.

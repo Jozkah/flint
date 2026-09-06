@@ -39,6 +39,14 @@ export type CoworkRunConfig = CoworkToolOptions & {
    * everything else here.
    */
   openingInspection?: boolean
+  /**
+   * The repository map block for the tree this run reads, already rendered.
+   *
+   * Frozen with the run like everything else here, and measured as its own
+   * context category from these same characters — so the number the readiness
+   * card shows is the number the prompt spends.
+   */
+  repositoryMap?: string | null
 }
 
 /**
@@ -109,6 +117,7 @@ export class CoworkChatTransport extends CustomChatTransport {
       gitBranch: this.config.gitBranch,
       projectInstructions: this.config.projectInstructions,
       compatInstructions: this.config.compatInstructions,
+      repositoryMap: this.config.repositoryMap,
       planMode: this.config.planMode,
       openingInspection: this.config.openingInspection,
       bashAvailable: sandboxEnforces(),
@@ -137,6 +146,10 @@ export class CoworkChatTransport extends CustomChatTransport {
       systemPrompt: this.buildSystemPrompt(messages),
       toolSchemas: this.advertisedTools,
       messages,
+      // The same string `buildSystemPrompt` just embedded, so the map's tokens
+      // are counted under `repositoryMap` and subtracted from `instructions`
+      // rather than counted twice.
+      repositoryMap: this.config.repositoryMap ?? null,
       configuredContextTokens,
     })
   }
