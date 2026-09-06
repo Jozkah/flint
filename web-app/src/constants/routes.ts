@@ -24,10 +24,6 @@ export const route = {
     assistant: '/settings/assistant',
     claude_code: '/settings/claude-code',
   },
-  hub: {
-    index: '/hub/',
-    model: '/hub/$modelId',
-  },
   localApiServerlogs: '/local-api-server/logs',
   systemMonitor: '/system-monitor',
   threadsDetail: '/threads/$threadId',

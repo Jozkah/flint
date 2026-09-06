@@ -224,36 +224,21 @@ describe('llamacpp_extension', () => {
         .rejects.toThrow('Model test-model already exists')
     })
 
-    it('should import model from URL', async () => {
+    it('refuses to import a model from a URL', async () => {
       const { getJanDataFolderPath, joinPath, fs } = await import('@janhq/core')
-      const { invoke } = await import('@tauri-apps/api/core')
-      const apiModule = await import('@janhq/tauri-plugin-llamacpp-api')
-      vi.mocked(apiModule.readGgufMetadata).mockResolvedValue({
-        version: 3,
-        tensor_count: 1,
-        metadata: { 'general.architecture': 'llama' },
-      } as any)
-      
-      const mockDownloadManager = {
-        downloadFiles: vi.fn().mockResolvedValue(undefined)
-      }
-      
-      window.core.extensionManager.getByName = vi.fn().mockReturnValue(mockDownloadManager)
-      
+
       vi.mocked(getJanDataFolderPath).mockResolvedValue('/path/to/jan')
-      vi.mocked(joinPath).mockImplementation((paths) => Promise.resolve(paths.join('/')))
+      vi.mocked(joinPath).mockImplementation((paths) =>
+        Promise.resolve(paths.join('/'))
+      )
       vi.mocked(fs.existsSync).mockResolvedValue(false)
-      vi.mocked(fs.fileStat).mockResolvedValue({ size: 1000000 })
-      vi.mocked(fs.mkdir).mockResolvedValue(undefined)
-      vi.mocked(invoke).mockResolvedValue(undefined)
 
-      await extension.import('test-model', { 
-        modelPath: 'https://example.com/model.gguf' 
-      })
-
-      expect(mockDownloadManager.downloadFiles).toHaveBeenCalled()
-      expect(fs.mkdir).toHaveBeenCalled()
-      expect(invoke).toHaveBeenCalledWith('write_yaml', expect.any(Object))
+      // This build has no downloader: a remote path is an error, not a fetch.
+      await expect(
+        extension.import('test-model', {
+          modelPath: 'https://example.com/model.gguf',
+        })
+      ).rejects.toThrow(/does not download models/)
     })
   })
 

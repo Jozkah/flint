@@ -971,10 +971,10 @@ mod tests {
 
     #[test]
     fn link_styles_the_anchor_text_and_dims_the_url() {
-        let lines = super::format_markdown_lines("see [the docs](https://jan.ai)", 60);
+        let lines = super::format_markdown_lines("see [the docs](https://example.com)", 60);
         let text = joined(&lines);
         assert!(text.contains("the docs"), "anchor text lost: {text:?}");
-        assert!(text.contains("https://jan.ai"), "url lost: {text:?}");
+        assert!(text.contains("https://example.com"), "url lost: {text:?}");
         let anchor = style_of(&lines, "the docs");
         assert!(
             anchor
@@ -986,9 +986,9 @@ mod tests {
 
     #[test]
     fn autolink_does_not_repeat_the_url_twice() {
-        let lines = super::format_markdown_lines("[https://jan.ai](https://jan.ai)", 60);
+        let lines = super::format_markdown_lines("[https://example.com](https://example.com)", 60);
         let text = joined(&lines);
-        assert_eq!(text.matches("https://jan.ai").count(), 1, "{text:?}");
+        assert_eq!(text.matches("https://example.com").count(), 1, "{text:?}");
     }
 
     /// Syntax-highlight colours only: the panel frame and the language label are
@@ -1119,7 +1119,7 @@ mod tests {
 
     #[test]
     fn link_text_in_a_cell_is_underlined() {
-        let md = "| ref |\n|---|\n| [docs](https://jan.ai) |";
+        let md = "| ref |\n|---|\n| [docs](https://example.com) |";
         let lines = format_markdown_lines(md, 40);
         assert!(cell_style(&lines, "docs")
             .add_modifier
@@ -1186,7 +1186,7 @@ mod tests {
 
     #[test]
     fn a_link_in_a_cell_keeps_its_anchor_text() {
-        let md = "| ref |\n|---|\n| [the docs](https://jan.ai) |";
+        let md = "| ref |\n|---|\n| [the docs](https://example.com) |";
         let text = joined(&format_markdown_lines(md, 60));
         assert!(text.contains("the docs"), "anchor text lost: {text}");
         assert!(
@@ -1199,7 +1199,7 @@ mod tests {
     fn a_cell_link_url_does_not_escape_the_table() {
         // The URL suffix is written to the span buffer, which a table cell does
         // not use -- it would otherwise surface as a stray line after the grid.
-        let md = "| ref |\n|---|\n| [the docs](https://jan.ai) |";
+        let md = "| ref |\n|---|\n| [the docs](https://example.com) |";
         let lines = format_markdown_lines(md, 60);
         let after_grid: Vec<String> = lines
             .iter()
@@ -1280,9 +1280,10 @@ mod tests {
     #[test]
     fn autolink_inside_a_blockquote_is_not_duplicated() {
         // The gutter prefix must not be mistaken for part of the anchor text.
-        let lines = super::format_markdown_lines("> [https://jan.ai](https://jan.ai)", 60);
+        let lines =
+            super::format_markdown_lines("> [https://example.com](https://example.com)", 60);
         let text = joined(&lines);
-        assert_eq!(text.matches("https://jan.ai").count(), 1, "{text:?}");
+        assert_eq!(text.matches("https://example.com").count(), 1, "{text:?}");
     }
 
     #[test]

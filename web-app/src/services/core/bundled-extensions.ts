@@ -41,13 +41,6 @@ const ENTRIES: BundledEntry[] = [
     mobile: true,
   },
   {
-    load: () => import('@janhq/download-extension'),
-    name: '@janhq/download-extension',
-    productName: 'Download Manager',
-    version: '1.0.0',
-    description: 'Download and manage files and AI models in Jan.',
-  },
-  {
     load: () => import('@janhq/llamacpp-extension'),
     name: '@janhq/llamacpp-extension',
     productName: 'llama.cpp Inference Engine',

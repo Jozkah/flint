@@ -64,9 +64,6 @@ vi.mock('@/providers/AnalyticProvider', () => ({
 vi.mock('@/providers/GlobalEventHandler', () => ({
   GlobalEventHandler: () => <div data-testid="global-event" />,
 }))
-vi.mock('@/providers/DownloadEventListener', () => ({
-  DownloadEventListener: () => <div data-testid="download-events" />,
-}))
 vi.mock('@/providers/ServiceHubProvider', () => ({
   ServiceHubProvider: ({ children }: any) => (
     <div data-testid="service-hub">{children}</div>
@@ -172,13 +169,6 @@ describe('__root route', () => {
     expect(screen.getByTestId('attach-ingest')).toBeInTheDocument()
     expect(screen.getByTestId('error-dialog')).toBeInTheDocument()
     expect(screen.getByTestId('oocp')).toBeInTheDocument()
-  })
-
-  // Mounted here rather than beside the download popover, which is absent on
-  // some screens -- including first-run setup.
-  it('listens for download events for the whole app lifetime', () => {
-    renderComponent()
-    expect(screen.getByTestId('download-events')).toBeInTheDocument()
   })
 
 

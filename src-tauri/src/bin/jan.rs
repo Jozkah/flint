@@ -181,16 +181,6 @@ enum Commands {
         #[command(subcommand)]
         cmd: PluginCommands,
     },
-    /// Update this binary to the latest build of the channel it was built for
-    #[command(display_order = 6)]
-    Update {
-        /// Report whether an update exists without installing it
-        #[arg(long)]
-        check: bool,
-        /// Reinstall even when already on the latest version
-        #[arg(long, conflicts_with = "check")]
-        force: bool,
-    },
 }
 
 /// Tokamak sign-in inspection and control.
@@ -514,7 +504,7 @@ async fn main() {
     // Inject the logo at runtime so we can use ANSI styling.
     let logo = make_logo();
     let matches = Cli::command()
-        .version(app_lib::core::cli::updater::build_version())
+        .version(app_lib::core::cli::version::build_version())
         .before_help(logo.clone())
         .before_long_help(logo)
         .get_matches();
@@ -548,13 +538,6 @@ async fn main() {
         return;
     };
 
-    // `jan update` reports the same thing itself, in more detail. The check
-    // doubles as the usage record (see `updater::fetch_manifest`), so there is
-    // no separate ping to fire here; `JAN_CLI_NO_UPDATE_CHECK` opts out of both.
-    if !matches!(command, Commands::Update { .. }) {
-        app_lib::core::cli::updater::print_update_notice_if_available().await;
-    }
-
     match command {
         Commands::Cli { cmd } => handle_cli(cmd).await,
         Commands::Login { paste_token } => {
@@ -576,40 +559,6 @@ async fn main() {
             }
         }
         Commands::Plugin { cmd } => handle_plugin(cmd).await,
-        Commands::Update { check, force } => handle_update(check, force).await,
-    }
-}
-
-// ── Update handler ─────────────────────────────────────────────────────────
-
-async fn handle_update(check: bool, force: bool) {
-    use app_lib::core::cli::updater::{self, UpdateOutcome};
-
-    let result = if check {
-        updater::check_for_update(std::time::Duration::from_secs(10))
-            .await
-            .map(|u| {
-                if u.is_newer() {
-                    println!("{}", u.summary());
-                } else {
-                    println!("Already on the latest {} build ({})", u.channel, u.current);
-                }
-            })
-    } else {
-        updater::self_update(force)
-            .await
-            .map(|outcome| match outcome {
-                UpdateOutcome::UpToDate { version } => {
-                    println!("Already up to date ({version})");
-                }
-                UpdateOutcome::Installed { from, to, path } => {
-                    println!("Updated {} from {from} to {to}", path.display());
-                }
-            })
-    };
-    if let Err(e) = result {
-        eprintln!("Error: {e}");
-        std::process::exit(1);
     }
 }
 
@@ -1147,24 +1096,6 @@ mod tests {
             "yaml"
         ])
         .is_err());
-    }
-
-    #[test]
-    fn update_command_parses() {
-        let cli = Cli::parse_from(["jan", "update"]);
-        assert!(matches!(
-            cli.command,
-            Some(Commands::Update {
-                check: false,
-                force: false
-            })
-        ));
-        let cli = Cli::parse_from(["jan", "update", "--check"]);
-        assert!(matches!(
-            cli.command,
-            Some(Commands::Update { check: true, .. })
-        ));
-        assert!(Cli::try_parse_from(["jan", "update", "--check", "--force"]).is_err());
     }
 
     #[test]
