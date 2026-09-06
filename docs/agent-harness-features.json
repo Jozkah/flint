@@ -622,14 +622,14 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-009"
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -640,10 +640,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::tests::every_capability_has_a_timeout_and_exec_is_the_most_generous",
+        "src-tauri/src/core/agent/loop.rs::tests::the_timeout_message_warns_against_reissuing_the_call"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Only bash has a timeout, and on expiry it backgrounds the job instead of killing it; read/edit/web/MCP have none."
+      "auditNote": "Every dispatched built-in now runs under a timeout chosen by its capability class, on both the sequential and the concurrent-read paths. A timed-out call is classified as timed out rather than failed, and the model is told the call may still be running so it does not reissue a mutation still in flight. bash keeps its own inner timeout and backgrounding behaviour; this is the outer bound on the handler."
     },
     {
       "id": "AH-021",
@@ -721,6 +724,7 @@
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
+        "src-tauri/src/core/agent/loop.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs"
       ],
       "securityImpact": "high",
@@ -736,7 +740,7 @@
       "tests": [],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Teardown is drop/abort-based with no cancellation token; in-flight children rely on process-group kill."
+      "auditNote": "A tool call that hangs is now abandoned on a timeout rather than holding the run forever. True cancellation is still drop/abort-based with no cancellation token, so an in-flight child process relies on process-group kill and an abandoned call is not itself killed."
     },
     {
       "id": "AH-024",
@@ -1555,11 +1559,11 @@
       ],
       "tests": [
         "src-tauri/src/core/agent/loop.rs::tests::a_dispatched_call_and_its_outcome_are_recorded",
-        "src-tauri/src/core/agent/loop.rs::tests::a_refused_call_is_recorded_as_denied_rather_than_failed"
+        "src-tauri/src/core/agent/loop.rs::tests::every_call_in_a_batch_reports_its_own_duration"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Every dispatched call is recorded before it runs and again when it ends, in call order, built-in and MCP alike. Outcome classification still reads the dispatcher's own message strings; it becomes typed when tool results carry a HarnessError. Covers the Rust harness only -- the CLI, the TUI, subagents and the API-server proxy, every surface reaching run_orchestration_streamed. The Cowork desktop harness orchestrates in TypeScript and is not recorded yet."
+      "auditNote": "Every dispatched call is recorded before it runs and again when it ends, in call order, with a duration measured around each call individually. Covers the Rust harness only; the Cowork desktop harness orchestrates in TypeScript and is not recorded yet."
     },
     {
       "id": "AH-051",

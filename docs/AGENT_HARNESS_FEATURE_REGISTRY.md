@@ -26,7 +26,7 @@ and the latter two require a recorded `blockedReason`.
 | Phase | Name | `missing` | `planned` | `in-progress` | `implemented` | `verified` | `platform-blocked` | `rejected-with-decision` | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Foundation | 0 | 0 | 2 | 10 | 0 | 0 | 0 | 12 |
-| 1 | Core execution | 0 | 0 | 7 | 13 | 0 | 0 | 0 | 20 |
+| 1 | Core execution | 0 | 0 | 6 | 14 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 3 | 0 | 9 | 8 | 0 | 0 | 0 | 20 |
 | 3 | Repository intelligence | 18 | 0 | 2 | 0 | 0 | 0 | 0 | 20 |
 | 4 | Context and memory | 6 | 0 | 7 | 3 | 0 | 0 | 0 | 16 |
@@ -34,7 +34,7 @@ and the latter two require a recorded `blockedReason`.
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 23 | 0 | 2 | 1 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 18 | 0 | 8 | 3 | 0 | 0 | 0 | 29 |
-| **all** | | **87** | **0** | **49** | **64** | **0** | **0** | **0** | **200** |
+| **all** | | **87** | **0** | **48** | **65** | **0** | **0** | **0** | **200** |
 
 ## Ownership lanes
 
@@ -82,7 +82,7 @@ per-OS evidence log rather than backlog items.
 | `AH-017` | Token budget enforcement | 1 | execution | P0 | `implemented` | medium | `AH-008` |
 | `AH-018` | Step and iteration budget enforcement | 1 | execution | P0 | `in-progress` | medium | `AH-017` |
 | `AH-019` | Wall-clock budget enforcement | 1 | execution | P1 | `implemented` | medium | `AH-017` |
-| `AH-020` | Per-tool timeouts | 1 | execution | P0 | `in-progress` | medium | `AH-009` |
+| `AH-020` | Per-tool timeouts | 1 | execution | P0 | `implemented` | medium | `AH-009` |
 | `AH-021` | Per-run timeout | 1 | execution | P1 | `implemented` | medium | `AH-019` |
 | `AH-022` | Cancellation propagation | 1 | execution | P0 | `implemented` | high | `AH-008` |
 | `AH-023` | In-flight tool-call cancellation | 1 | execution | P0 | `in-progress` | high | `AH-022` |
@@ -280,9 +280,9 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-017` Token budget enforcement** - Crossing [budget] max_tokens now ends the run at the next turn boundary instead of appending a note and carrying on. on_exhausted = "continue" restores the old behaviour deliberately.
 - **`AH-018` Step and iteration budget enforcement** - max_turns still defaults to unbounded, which is the documented intent -- the token and wall-clock ceilings are what stop a run now. A configurable turn ceiling is the remaining work.
 - **`AH-019` Wall-clock budget enforcement** - [budget] max_duration_secs bounds a run that is cheap in tokens but stuck in a slow tool. Checked before the turn that would cross it, so no work is paid for past the deadline.
-- **`AH-020` Per-tool timeouts** - Only bash has a timeout, and on expiry it backgrounds the job instead of killing it; read/edit/web/MCP have none.
+- **`AH-020` Per-tool timeouts** - Every dispatched built-in now runs under a timeout chosen by its capability class, on both the sequential and the concurrent-read paths. A timed-out call is classified as timed out rather than failed, and the model is told the call may still be running so it does not reissue a mutation still in flight. bash keeps its own inner timeout and backgrounding behaviour; this is the outer bound on the handler.
 - **`AH-021` Per-run timeout** - One deadline bounds the whole orchestration: a dispatched subagent inherits what is left of it, rounded up to a second, so spawning a child is not a way around the run's deadline.
-- **`AH-023` In-flight tool-call cancellation** - Teardown is drop/abort-based with no cancellation token; in-flight children rely on process-group kill.
+- **`AH-023` In-flight tool-call cancellation** - A tool call that hangs is now abandoned on a timeout rather than holding the run forever. True cancellation is still drop/abort-based with no cancellation token, so an in-flight child process relies on process-group kill and an abandoned call is not itself killed.
 - **`AH-024` Retry policy with backoff** - Retry exists for upstream HTTP only, and only before the first streamed event; tool failures are never retried.
 - **`AH-025` Retryable-error classification** - Classification is local to the HTTP client.
 - **`AH-026` Run resume after restart** - A run interrupted mid-turn is now detectable: the record stays Running and a later process reads it as Interrupted. Resuming from that point is not built.
@@ -300,7 +300,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-044` Secret-file protections** - is_sensitive_name covers dotenv files, private keys and credential files, and is reachable only from the UI browse, repo-map and read commands. The model's own read/edit/bash path in tools/handlers.rs has no such check.
 - **`AH-045` Secret redaction in logs and transcripts** - The event log records a redacted, truncated resource and a fingerprint, never raw arguments, so file contents and credentials cannot reach it. Transcripts, the display journal and tool output itself are still unredacted.
 - **`AH-049` Permission decision audit log** - Prompts and decisions are recorded, auto-approval included -- previously the one case that converted every prompt to an allow with no trace. Covers the Rust harness only -- the CLI, the TUI, subagents and the API-server proxy, every surface reaching run_orchestration_streamed. The Cowork desktop harness orchestrates in TypeScript and is not recorded yet.
-- **`AH-050` Tool invocation audit log** - Every dispatched call is recorded before it runs and again when it ends, in call order, built-in and MCP alike. Outcome classification still reads the dispatcher's own message strings; it becomes typed when tool results carry a HarnessError. Covers the Rust harness only -- the CLI, the TUI, subagents and the API-server proxy, every surface reaching run_orchestration_streamed. The Cowork desktop harness orchestrates in TypeScript and is not recorded yet.
+- **`AH-050` Tool invocation audit log** - Every dispatched call is recorded before it runs and again when it ends, in call order, with a duration measured around each call individually. Covers the Rust harness only; the Cowork desktop harness orchestrates in TypeScript and is not recorded yet.
 - **`AH-051` Emergency kill switch** - Cancellation is per-run only; nothing halts background subagents and detached bash jobs application-wide.
 - **`AH-053` Repository index store** - build_map produces a bounded breadth-first ProjectMap that is embedded in the run's prompt. It is an orientation blob, not an index: no symbols, no cache, no persistence.
 - **`AH-054` Initial index build** - The breadth-first walk is bounded by entry and depth caps and honours ignore rules, but produces no stored index.

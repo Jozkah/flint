@@ -823,6 +823,46 @@ fn hard_deny_msg(name: &str, reason: DenyReason, project_root: &std::path::Path)
     }
 }
 
+/// How long a single tool call may run, by what it is allowed to do.
+///
+/// Only `bash` had a timeout, and on expiry it *backgrounds* the job rather
+/// than killing it -- deliberate, so a long build survives, but it means a
+/// runaway command outlives its own timeout. Everything else -- reads, writes,
+/// web fetches -- could hang forever and take the run with it.
+///
+/// The values are generous on purpose: this is a stuck-call guard, not a
+/// performance budget, and a timeout that fires on slow-but-working calls
+/// teaches users to raise it until it never fires at all.
+fn tool_timeout(capability: tauri_plugin_agent_tools::tools::Capability) -> std::time::Duration {
+    use std::time::Duration;
+    use tauri_plugin_agent_tools::tools::Capability;
+    match capability {
+        // Local filesystem work. Slow only when something is wrong.
+        Capability::Read | Capability::Write => Duration::from_secs(120),
+        // Someone else's server decides how long this takes.
+        Capability::Net => Duration::from_secs(180),
+        // `bash` runs its own timeout first and backgrounds the job; this is the
+        // outer bound on the handler itself, well clear of that.
+        Capability::Exec => Duration::from_secs(600),
+    }
+}
+
+/// Message for a tool call that ran past [`tool_timeout`].
+///
+/// Model-facing, and explicit that the call may still be running: a model told
+/// only "timed out" will cheerfully reissue a mutation that is still in flight.
+fn tool_timed_out_msg(
+    name: &str,
+    capability: tauri_plugin_agent_tools::tools::Capability,
+) -> String {
+    format!(
+        "ERROR [timeout]: tool '{name}' did not finish within {}s and was abandoned. It may still \
+         be running; do not simply reissue it. Check the result another way, or try a narrower \
+         call.",
+        tool_timeout(capability).as_secs()
+    )
+}
+
 /// Terminal message for a run that hit a ceiling.
 ///
 /// Phrased as a limit that was reached rather than as a failure, because it is
@@ -864,6 +904,9 @@ fn classify_tool_outcome(content: &str) -> jan_agent_harness::event::ToolOutcome
     ];
     if REFUSALS.iter().any(|marker| content.contains(marker)) {
         return Recorded::Denied;
+    }
+    if content.starts_with("ERROR [timeout]") {
+        return Recorded::TimedOut;
     }
     if content.starts_with("ERROR") {
         return Recorded::Failed;
@@ -920,8 +963,10 @@ impl ToolInvoker for CompositeToolInvoker {
         // Every call the model asked for, recorded before any of them run, so
         // the audit trail shows what was attempted even if the process dies
         // part-way through the batch.
-        let dispatched_at = std::time::Instant::now();
         let mut tool_of_call: HashMap<String, String> = HashMap::new();
+        // Measured per call, so a batch no longer has to report one shared
+        // number or nothing at all.
+        let mut duration_of_call: HashMap<String, u64> = HashMap::new();
         for tc in tool_calls {
             let (id, name, args) = tool_call_parts(tc);
             tool_of_call.insert(id.clone(), name.clone());
@@ -1107,25 +1152,47 @@ impl ToolInvoker for CompositeToolInvoker {
                 let allow_home_read = self.allow_home_read;
                 let sandbox = self.sandbox;
                 let scratch = self.scratch_root.clone();
+                let capability = tool.capability;
                 read_futures.push(async move {
                     let ctx = ToolContext::new(&root, &store, &enabled)
                         .with_network(allow_network)
                         .with_home_readonly(allow_home_read)
                         .with_sandbox(sandbox)
                         .with_scratch_root(&scratch);
-                    let (text, diff, images) = execute_builtin_with_diff(tool, &args, &ctx).await;
-                    ToolOutcome {
-                        id,
-                        content: text,
-                        diff,
-                        images: images.unwrap_or_default(),
-                    }
+                    let started = std::time::Instant::now();
+                    let (text, diff, images) = match tokio::time::timeout(
+                        tool_timeout(capability),
+                        execute_builtin_with_diff(tool, &args, &ctx),
+                    )
+                    .await
+                    {
+                        Ok(result) => result,
+                        Err(_) => (tool_timed_out_msg(tool.name, capability), None, None),
+                    };
+                    (
+                        ToolOutcome {
+                            id,
+                            content: text,
+                            diff,
+                            images: images.unwrap_or_default(),
+                        },
+                        started.elapsed().as_millis() as u64,
+                    )
                 });
                 continue;
             }
+            let call_started = std::time::Instant::now();
             let (text, diff, images) = match decision {
                 Decision::Allow => {
-                    execute_builtin_with_diff(tool, &args, &self.streaming_tool_context(&id)).await
+                    match tokio::time::timeout(
+                        tool_timeout(tool.capability),
+                        execute_builtin_with_diff(tool, &args, &self.streaming_tool_context(&id)),
+                    )
+                    .await
+                    {
+                        Ok(result) => result,
+                        Err(_) => (tool_timed_out_msg(name, tool.capability), None, None),
+                    }
                 }
                 Decision::HardDeny(reason) => {
                     (hard_deny_msg(name, reason, &self.project_root), None, None)
@@ -1234,6 +1301,7 @@ impl ToolInvoker for CompositeToolInvoker {
                     }
                 }
             };
+            duration_of_call.insert(id.clone(), call_started.elapsed().as_millis() as u64);
             out.push(ToolOutcome {
                 id,
                 content: text,
@@ -1242,7 +1310,10 @@ impl ToolInvoker for CompositeToolInvoker {
             });
         }
         if !read_futures.is_empty() {
-            out.extend(futures::future::join_all(read_futures).await);
+            for (outcome, elapsed_ms) in futures::future::join_all(read_futures).await {
+                duration_of_call.insert(outcome.id.clone(), elapsed_ms);
+                out.push(outcome);
+            }
         }
         if !mcp_calls.is_empty() {
             out.extend(self.mcp.invoke(&mcp_calls).await?);
@@ -1255,12 +1326,6 @@ impl ToolInvoker for CompositeToolInvoker {
         out.sort_by_key(|o| *order.get(o.id.as_str()).unwrap_or(&usize::MAX));
 
         if let Some(recorder) = self.recorder.as_ref() {
-            // Calls in a batch start together, so an individual duration is only
-            // honest when the batch held one call. Absent means unmeasured, not
-            // instant -- a fabricated zero in an audit record is worse than a
-            // gap that says so.
-            let duration_ms =
-                (tool_calls.len() == 1).then(|| dispatched_at.elapsed().as_millis() as u64);
             for outcome in &out {
                 recorder.emit(jan_agent_harness::event::EventPayload::ToolFinished {
                     call_id: outcome.id.clone(),
@@ -1269,7 +1334,10 @@ impl ToolInvoker for CompositeToolInvoker {
                         .cloned()
                         .unwrap_or_default(),
                     outcome: classify_tool_outcome(&outcome.content),
-                    duration_ms,
+                    // Measured around each call individually. Absent for a call
+                    // the dispatcher handed elsewhere (MCP, `ask`) rather than
+                    // timing itself -- unknown must read as unknown.
+                    duration_ms: duration_of_call.get(&outcome.id).copied(),
                 });
             }
         }
@@ -5295,6 +5363,96 @@ mod tests {
 
         assert_eq!(classify_tool_outcome("ERROR: no such file"), Recorded::Failed);
         assert_eq!(classify_tool_outcome("wrote 3 lines"), Recorded::Ok);
+
+        // A timeout is its own outcome: it says the call may still be running,
+        // which "failed" does not.
+        assert_eq!(
+            classify_tool_outcome(&tool_timed_out_msg(
+                "bash",
+                tauri_plugin_agent_tools::tools::Capability::Exec
+            )),
+            Recorded::TimedOut
+        );
+    }
+
+    /// A stuck-call guard, not a performance budget: the values have to be
+    /// generous enough that a slow-but-working call never trips one, and
+    /// ordered by how long the work legitimately takes.
+    #[test]
+    fn every_capability_has_a_timeout_and_exec_is_the_most_generous() {
+        use tauri_plugin_agent_tools::tools::Capability;
+        let read = tool_timeout(Capability::Read);
+        let write = tool_timeout(Capability::Write);
+        let net = tool_timeout(Capability::Net);
+        let exec = tool_timeout(Capability::Exec);
+
+        for (label, value) in [("read", read), ("write", write), ("net", net), ("exec", exec)] {
+            assert!(value.as_secs() >= 60, "{label} timeout is too tight to be a stuck-call guard");
+        }
+        // Someone else's server decides how long a fetch takes.
+        assert!(net > read);
+        // `bash` runs its own timeout first and backgrounds the job; the outer
+        // bound has to sit well clear of that.
+        assert!(exec > net);
+    }
+
+    #[test]
+    fn the_timeout_message_warns_against_reissuing_the_call() {
+        use tauri_plugin_agent_tools::tools::Capability;
+        let message = tool_timed_out_msg("bash", Capability::Exec);
+        assert!(message.contains("may still be running"));
+        assert!(message.contains("do not simply reissue"));
+        assert!(
+            message.contains(&tool_timeout(Capability::Exec).as_secs().to_string()),
+            "must name the limit it hit: {message}"
+        );
+    }
+
+    /// Calls used to share one batch duration or report none at all. Each is
+    /// timed around itself now, so a batch reports a real number per call.
+    #[tokio::test]
+    async fn every_call_in_a_batch_reports_its_own_duration() {
+        let root = unique_project_root();
+        std::fs::write(root.join("a.txt"), "aaa").unwrap();
+        std::fs::write(root.join("b.txt"), "bbb").unwrap();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-durations");
+        let (invoker, recorder) = recording_invoker(root.clone(), &data);
+
+        let calls = vec![
+            json!({
+                "id": "c1",
+                "type": "function",
+                "function": { "name": "read", "arguments": "{\"path\":\"a.txt\"}" }
+            }),
+            json!({
+                "id": "c2",
+                "type": "function",
+                "function": { "name": "read", "arguments": "{\"path\":\"b.txt\"}" }
+            }),
+        ];
+        let out = invoker.invoke(&calls).await.unwrap();
+        assert_eq!(out.len(), 2);
+
+        let finished: Vec<(String, Option<u64>)> = recorded_events(&recorder)
+            .into_iter()
+            .filter_map(|e| match e.payload {
+                jan_agent_harness::event::EventPayload::ToolFinished {
+                    call_id,
+                    duration_ms,
+                    ..
+                } => Some((call_id, duration_ms)),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(finished.len(), 2);
+        for (call_id, duration) in &finished {
+            assert!(
+                duration.is_some(),
+                "{call_id} reported no duration in a two-call batch"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[tokio::test]
