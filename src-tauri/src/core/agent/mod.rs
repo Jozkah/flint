@@ -27,6 +27,7 @@ pub mod plugin_commands;
 pub mod plugins;
 pub mod progress;
 pub mod project;
+pub mod project_kind;
 pub mod recorder;
 pub mod reminder;
 pub mod session;

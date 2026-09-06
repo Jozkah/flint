@@ -28,13 +28,13 @@ and the latter two require a recorded `blockedReason`.
 | 0 | Foundation | 0 | 0 | 2 | 10 | 0 | 0 | 0 | 12 |
 | 1 | Core execution | 0 | 0 | 5 | 15 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 3 | 0 | 9 | 8 | 0 | 0 | 0 | 20 |
-| 3 | Repository intelligence | 18 | 0 | 2 | 0 | 0 | 0 | 0 | 20 |
+| 3 | Repository intelligence | 15 | 0 | 2 | 3 | 0 | 0 | 0 | 20 |
 | 4 | Context and memory | 6 | 0 | 7 | 3 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 8 | 0 | 6 | 11 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 23 | 0 | 2 | 1 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 16 | 0 | 9 | 4 | 0 | 0 | 0 | 29 |
-| **all** | | **85** | **0** | **48** | **67** | **0** | **0** | **0** | **200** |
+| **all** | | **82** | **0** | **48** | **70** | **0** | **0** | **0** | **200** |
 
 ## Ownership lanes
 
@@ -130,9 +130,9 @@ per-OS evidence log rather than backlog items.
 | `AH-065` | Dependency graph extraction | 3 | repo-intelligence | P2 | `missing` | low | `AH-053` |
 | `AH-066` | Test-to-source mapping | 3 | repo-intelligence | P1 | `missing` | low | `AH-065` |
 | `AH-067` | Changed-file impact analysis | 3 | repo-intelligence | P1 | `missing` | low | `AH-065` |
-| `AH-068` | Framework detection | 3 | repo-intelligence | P2 | `missing` | none | `AH-053` |
-| `AH-069` | Build-system detection | 3 | repo-intelligence | P1 | `missing` | none | `AH-068` |
-| `AH-070` | Test-runner detection | 3 | repo-intelligence | P1 | `missing` | none | `AH-068` |
+| `AH-068` | Framework detection | 3 | repo-intelligence | P2 | `implemented` | none | `AH-053` |
+| `AH-069` | Build-system detection | 3 | repo-intelligence | P1 | `implemented` | none | `AH-068` |
+| `AH-070` | Test-runner detection | 3 | repo-intelligence | P1 | `implemented` | none | `AH-068` |
 | `AH-071` | Semantic code search | 3 | repo-intelligence | P2 | `missing` | medium | `AH-053` |
 | `AH-072` | Repository health scan | 3 | repo-intelligence | P2 | `missing` | low | `AH-069`, `AH-070` |
 | `AH-073` | Exact dispatched-payload accounting | 4 | context-memory | P0 | `in-progress` | low | `AH-078` |
@@ -305,6 +305,9 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-053` Repository index store** - build_map produces a bounded breadth-first ProjectMap that is embedded in the run's prompt. It is an orientation blob, not an index: no symbols, no cache, no persistence.
 - **`AH-054` Initial index build** - The breadth-first walk is bounded by entry and depth caps and honours ignore rules, but produces no stored index.
 - **`AH-055` Incremental index updates** - The repository map is re-walked in full on each use; there is no cache to update.
+- **`AH-068` Framework detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. Frameworks: React, Next.js, Vue, Svelte, Vitest, Jest, Playwright, Django, Flask, FastAPI, Tauri, and a Cargo workspace -- which matters because `cargo test` at a workspace root means every member.
+- **`AH-069` Build-system detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. The lockfile, not the manifest, decides the package manager: running the wrong one rewrites the other's lockfile.
+- **`AH-070` Test-runner detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. Only test commands with evidence behind them: a package.json `test` script that exists, a declared Makefile target, pytest named in a Python manifest.
 - **`AH-071` Semantic code search** - Two RAG stacks exist (rag-extension, vector-db) but neither is wired to the agent harness; one is dead code.
 - **`AH-073` Exact dispatched-payload accounting** - Now measures the payload actually dispatched: onPayloadShaped freezes prompt, tools, repository map and messages, and measurement reads only that record. Still no tokenizer -- it is UTF-8 bytes divided by 4, so the numbers are approximations of the right thing rather than counts.
 - **`AH-074` Per-segment token attribution** - Per-category breakdown taken from the frozen dispatch; unmeasured categories report {known:false} rather than zero. Figures remain estimates until AH-073 lands a tokenizer.
