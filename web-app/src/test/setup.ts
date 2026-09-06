@@ -41,11 +41,6 @@ const mockServiceHub = {
     relocateJanDataFolder: vi.fn().mockResolvedValue(undefined),
     getJanDataFolder: vi.fn().mockResolvedValue('/mock/jan/data'),
   }),
-  analytic: () => ({
-    track: vi.fn(),
-    identify: vi.fn(),
-    page: vi.fn(),
-  }),
   messages: () => ({
     createMessage: vi.fn().mockResolvedValue({ id: 'test-message' }),
     deleteMessage: vi.fn().mockResolvedValue(undefined),

@@ -204,10 +204,6 @@ function General() {
                   </span>
                 }
               />
-              {!AUTO_UPDATER_DISABLED && (
-                <>
-                </>
-              )}
               <CardItem
                 anchor="settings-general-language"
                 title={t('common:language')}

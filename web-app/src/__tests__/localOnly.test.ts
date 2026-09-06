@@ -197,3 +197,110 @@ describe('no vendor services', () => {
     expect(filesMatching(/HTTP-Referer/i)).toEqual([])
   })
 })
+
+/**
+ * The rest of the repository: the shared core, the build scripts, and the
+ * Vite and Tauri configuration.
+ *
+ * The web app and the Rust core are covered above. These are the other places
+ * a fetch or an injected script can live, and the ones a reviewer is least
+ * likely to look at.
+ */
+const CORE = repoFiles(resolve(REPO, 'core/src'))
+const SCRIPTS = existsSync(resolve(REPO, 'scripts'))
+  ? repoFiles(resolve(REPO, 'scripts'))
+  : []
+const CONFIGS = [
+  'web-app/vite.config.ts',
+  'web-app/index.html',
+  'src-tauri/tauri.conf.json',
+]
+  .map((rel) => resolve(REPO, rel))
+  .filter((path) => existsSync(path))
+
+const EVERYWHERE = [...FILES, ...RUST, ...EXTENSIONS, ...CORE, ...SCRIPTS, ...CONFIGS]
+
+describe('nothing anywhere reports usage', () => {
+  it('injects no analytics script', () => {
+    expect(
+      repoMatches(EVERYWHERE, /googletagmanager|gtag\(|GA_MEASUREMENT_ID/)
+    ).toEqual([])
+  })
+
+  it('carries no usage identity', () => {
+    // Not `distinct_ids`: a thread-locking test uses that word for locks and
+    // has nothing to do with identity.
+    expect(repoMatches(EVERYWHERE, /distinct_id(?!s)/)).toEqual([])
+  })
+
+  it('exposes no analytics service', () => {
+    expect(existsSync(resolve(SRC, 'services/analytic'))).toBe(false)
+  })
+})
+
+describe('nothing anywhere checks for updates', () => {
+  it('registers no updater plugin', () => {
+    expect(repoMatches(EVERYWHERE, /tauri_plugin_updater|plugin-updater/)).toEqual(
+      []
+    )
+  })
+
+  it('keeps no updater service in the web app', () => {
+    expect(existsSync(resolve(SRC, 'services/updater'))).toBe(false)
+  })
+})
+
+describe('nothing anywhere fetches a model catalogue', () => {
+  it('names no catalogue URL', () => {
+    expect(
+      repoMatches(EVERYWHERE, /MODEL_CATALOG_URL|LATEST_JAN_MODEL_URL|model-catalog/)
+    ).toEqual([])
+  })
+
+  /**
+   * Browsing a model host is discovery by another name.
+   *
+   * Deliberately aimed at *catalogue and search* endpoints, not at the word
+   * "huggingface". Two things legitimately remain and are documented as
+   * network paths: the Hugging Face entry in the provider list, which is an
+   * API provider the user configures with their own token like any other, and
+   * llama.cpp's embedding model, which downloads once behind an explicit
+   * first-run consent. Neither is the app going looking on its own.
+   */
+  it('browses no model catalogue', () => {
+    expect(
+      repoMatches(
+        EVERYWHERE,
+        /huggingface\.co\/api\/models|hf\.co\/api\/models|model_catalog|model-catalog/
+      )
+    ).toEqual([])
+  })
+})
+
+describe('no model-download surface remains', () => {
+  it('has no hub route', () => {
+    expect(existsSync(resolve(SRC, 'routes/hub'))).toBe(false)
+  })
+
+  it('has no download controls', () => {
+    for (const name of [
+      'containers/DownloadButton.tsx',
+      'containers/ModelDownloadAction.tsx',
+      'containers/MlxModelDownloadAction.tsx',
+      'hooks/useDownloadStore.ts',
+      'hooks/useDownloadEvents.ts',
+      'providers/DownloadEventListener.tsx',
+    ]) {
+      expect(existsSync(resolve(SRC, name))).toBe(false)
+    }
+  })
+
+  it('leaves nothing importing them', () => {
+    expect(
+      repoMatches(
+        EVERYWHERE,
+        /useDownloadStore|useDownloadEvents|DownloadEventListener|ModelDownloadAction/
+      )
+    ).toEqual([])
+  })
+})

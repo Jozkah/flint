@@ -13,7 +13,6 @@ import { DefaultWindowService } from './window/default'
 import { DefaultEventsService } from './events/default'
 import { DefaultHardwareService } from './hardware/default'
 import { DefaultAppService } from './app/default'
-import { DefaultAnalyticService } from './analytic/default'
 import { DefaultMessagesService } from './messages/default'
 import { DefaultMCPService } from './mcp/default'
 import { DefaultThreadsService } from './threads/default'
@@ -37,7 +36,6 @@ import type { WindowService } from './window/types'
 import type { EventsService } from './events/types'
 import type { HardwareService } from './hardware/types'
 import type { AppService } from './app/types'
-import type { AnalyticService } from './analytic/types'
 import type { MessagesService } from './messages/types'
 import type { MCPService } from './mcp/types'
 import type { ThreadsService } from './threads/types'
@@ -58,7 +56,6 @@ export interface ServiceHub {
   events(): EventsService
   hardware(): HardwareService
   app(): AppService
-  analytic(): AnalyticService
   messages(): MessagesService
   mcp(): MCPService
   threads(): ThreadsService
@@ -81,7 +78,6 @@ class PlatformServiceHub implements ServiceHub {
   private eventsService: EventsService = new DefaultEventsService()
   private hardwareService: HardwareService = new DefaultHardwareService()
   private appService: AppService = new DefaultAppService()
-  private analyticService: AnalyticService = new DefaultAnalyticService()
   private messagesService: MessagesService = new DefaultMessagesService()
   private mcpService: MCPService = new DefaultMCPService()
   private threadsService: ThreadsService = new DefaultThreadsService()
@@ -237,10 +233,6 @@ class PlatformServiceHub implements ServiceHub {
     return this.appService
   }
 
-  analytic(): AnalyticService {
-    this.ensureInitialized()
-    return this.analyticService
-  }
 
   messages(): MessagesService {
     this.ensureInitialized()
