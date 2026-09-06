@@ -532,6 +532,7 @@ pub fn cli_agent_status(
         "model": cfg.agent.model,
         "max_session_tokens": cfg.budget.max_tokens.unwrap_or(DEFAULT_MAX_SESSION_TOKENS),
         "max_duration_secs": cfg.budget.max_duration_secs.unwrap_or(0),
+        "max_turns": cfg.budget.max_turns.unwrap_or(0),
         "on_exhausted": cfg.budget.on_exhausted,
         "tools": {
             "default": cfg.tools.default,
@@ -777,6 +778,9 @@ pub(crate) struct SessionLimits {
     pub max_run_seconds: u64,
     /// `[budget].on_exhausted`: whether crossing a ceiling ends the run.
     pub on_exhausted: crate::core::agent::session::ExhaustionPolicy,
+    /// `[budget].max_turns`: hard cap on orchestration turns. `0` is unbounded,
+    /// which is the default.
+    pub max_turns_cap: u64,
 }
 
 /// Resolved engine handle for a chat session: the args are built once and the
@@ -816,6 +820,7 @@ impl AgentSession {
             "max_session_tokens": self.limits.max_session_tokens,
             "max_run_seconds": self.limits.max_run_seconds,
             "budget_on_exhausted": self.limits.on_exhausted,
+            "max_turns": self.limits.max_turns_cap,
             "stream": true,
         });
         // Forward the per-request output cap only when configured; it flows to
@@ -1008,6 +1013,7 @@ fn prepare_agent_session(
             max_session_tokens: cfg.budget.max_tokens.unwrap_or(DEFAULT_MAX_SESSION_TOKENS),
             max_run_seconds: cfg.budget.max_duration_secs.unwrap_or(0),
             on_exhausted: cfg.budget.on_exhausted,
+            max_turns_cap: cfg.budget.max_turns.unwrap_or(0),
         },
         show_reasoning: cfg.agent.show_reasoning.unwrap_or(false),
         stream_reasoning: crate::core::agent::global_config::stream_reasoning_enabled(),

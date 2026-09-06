@@ -82,6 +82,12 @@ pub(crate) struct BudgetSection {
     /// restores the behaviour where a crossing was only recorded.
     #[serde(default)]
     pub on_exhausted: crate::core::agent::session::ExhaustionPolicy,
+    /// Hard cap on orchestration turns. Unset or `0` means no cap, which stays
+    /// the default: the agent takes as many turns as the task needs, and the
+    /// token and wall-clock ceilings are what bound a run that will not end.
+    /// Set it when a turn count is the bound you actually want.
+    #[serde(default)]
+    pub max_turns: Option<u64>,
 }
 
 /// `[agent]` — resolves the model and per-run knobs for CLI agent runs.
@@ -200,6 +206,7 @@ const AGENT_TOML_TEMPLATE: &str = r#"[agent]
 [budget]
 # max_tokens = 128000
 # max_duration_secs = 0
+# max_turns = 0
 # on_exhausted = "stop"
 
 [tools]
@@ -691,6 +698,41 @@ mod tests {
     fn scaffold_template_leaves_session_budget_unset() {
         let cfg: AgentToml = toml::from_str(AGENT_TOML_TEMPLATE).expect("scaffold template parses");
         assert_eq!(cfg.budget.max_tokens, None);
+    }
+
+    /// The three ceilings a run can carry, and what an unset one means.
+    #[cfg(feature = "cli")]
+    #[test]
+    fn every_budget_ceiling_parses_and_defaults_to_unbounded() {
+        let empty: AgentToml = toml::from_str("[budget]\n").expect("parses");
+        assert_eq!(empty.budget.max_tokens, None);
+        assert_eq!(empty.budget.max_duration_secs, None);
+        assert_eq!(empty.budget.max_turns, None);
+
+        let set: AgentToml = toml::from_str(
+            "[budget]\nmax_tokens = 5000\nmax_duration_secs = 900\nmax_turns = 40\n",
+        )
+        .expect("parses");
+        assert_eq!(set.budget.max_tokens, Some(5_000));
+        assert_eq!(set.budget.max_duration_secs, Some(900));
+        assert_eq!(set.budget.max_turns, Some(40));
+    }
+
+    /// Crossing a ceiling ends the run unless the file says otherwise, and an
+    /// unreadable value must not be read as the permissive option.
+    #[cfg(feature = "cli")]
+    #[test]
+    fn on_exhausted_defaults_to_stopping_and_is_not_loosened_by_a_typo() {
+        use crate::core::agent::session::ExhaustionPolicy;
+        let unset: AgentToml = toml::from_str("[budget]\n").expect("parses");
+        assert_eq!(unset.budget.on_exhausted, ExhaustionPolicy::Stop);
+
+        let opted_out: AgentToml =
+            toml::from_str("[budget]\non_exhausted = \"continue\"\n").expect("parses");
+        assert_eq!(opted_out.budget.on_exhausted, ExhaustionPolicy::Continue);
+
+        // A misspelling is a parse failure, not a silent unbounding.
+        assert!(toml::from_str::<AgentToml>("[budget]\non_exhausted = \"carry_on\"\n").is_err());
     }
 
     #[cfg(feature = "cli")]

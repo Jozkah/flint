@@ -566,6 +566,8 @@
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
+        "src-tauri/src/core/agent/project.rs",
+        "src-tauri/src/core/cli/mod.rs",
         "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "medium",
@@ -577,10 +579,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/project.rs::tests::every_budget_ceiling_parses_and_defaults_to_unbounded"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "max_turns still defaults to unbounded, which is the documented intent -- the token and wall-clock ceilings are what stop a run now. A configurable turn ceiling is the remaining work."
+      "auditNote": "[budget] max_turns is configurable and enforced, completing the ceiling trio with max_tokens and max_duration_secs. It stays in-progress against its own criterion, which asks for a ceiling enforced by default: the default remains unbounded, because the config states the agent takes as many turns as the task needs and the token and wall-clock ceilings now genuinely bound a run. Choosing a non-zero default would cut off legitimate long tasks and is a product decision, not one to make silently."
     },
     {
       "id": "AH-019",

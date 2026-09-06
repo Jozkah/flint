@@ -2674,11 +2674,12 @@ async fn run_turn_cycle(
             }
             // Every turn is finished and the run passed its token ceiling, so
             // the conversation is both complete and oversized. Compact it here,
-            // while nothing is waiting on the result: the ceiling no longer
-            // stops a run, so without this the thread only grows, and the next
-            // run resumes it by sending the whole oversized history upstream.
-            // The reactive path above cannot help with that -- it only fires
-            // once an upstream has already rejected a request.
+            // while nothing is waiting on the result. Still worth doing now that
+            // a crossing ends the run: under `on_exhausted = "continue"` a run
+            // carries on past the ceiling exactly as before, and either way the
+            // thread is left oversized for whatever resumes it. The reactive
+            // path above cannot help -- it only fires once an upstream has
+            // already rejected a request.
             //
             // Only when it actually shrinks: `compact_conversation` returns the
             // input untouched when there is too little to drop, and publishing
@@ -4418,10 +4419,10 @@ mod tests {
         );
     }
 
-    /// Passing the ceiling no longer stops a run, so a long thread only grows.
-    /// Once every turn is finished, the oversized conversation is compacted
-    /// before it is published -- otherwise the next run resumes this thread by
-    /// sending the whole thing upstream.
+    /// Under `on_exhausted = "continue"` a run carries on past its ceiling, so
+    /// a long thread only grows. Once every turn is finished, the oversized
+    /// conversation is compacted before it is published -- otherwise the next
+    /// run resumes this thread by sending the whole thing upstream.
     #[tokio::test]
     async fn an_exhausted_budget_compacts_the_conversation_once_turns_are_done() {
         let (tx, mut rx) = mpsc::unbounded_channel();

@@ -16395,6 +16395,7 @@ mod tests {
             max_session_tokens: 128_000,
             max_run_seconds: 0,
             on_exhausted: crate::core::agent::session::ExhaustionPolicy::default(),
+            max_turns_cap: 0,
         };
         let app = App::new(
             "m".into(),
@@ -16448,6 +16449,7 @@ mod tests {
                     max_session_tokens: 128_000,
             max_run_seconds: 0,
             on_exhausted: crate::core::agent::session::ExhaustionPolicy::default(),
+            max_turns_cap: 0,
                 },
                 false,
                 agent_dir,
