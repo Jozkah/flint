@@ -99,7 +99,73 @@ before this was committed; the re-audit is recorded with the Phase 0 report.
 | macOS, Windows and WebView validation | Not executed. No Phase 0 code is platform-specific; the first items needing it are the process jail and worktree work in Phases 2 and 5. |
 | Golden-repository and security-corpus suites | Not built yet -- `AH-197` and `AH-198` are `missing` in the registry. |
 
-### Phases 1-8
+### Phase 1 -- Core execution (in progress)
+
+Executed on Linux (`x86_64`, rustc 1.94.1) on `feat/agent-harness-phase-1`.
+Both mutually exclusive configurations of the app crate are run for every
+change, because neither proves the other -- and in this phase the desktop
+configuration twice caught a mistake the CLI one could not see.
+
+| Command | Result |
+| --- | --- |
+| `cargo test --no-default-features --features cli --lib` | 1492 passed, 0 failed |
+| `cargo test --no-default-features --features cli --bins` | 15 passed, 0 failed |
+| `cargo test --no-default-features --features test-tauri --lib` | 802 passed, 0 failed |
+| `cargo clippy --no-default-features --features cli --all-targets -- -D warnings` | clean |
+| `cargo clippy --no-default-features --features test-tauri --all-targets -- -D warnings` | clean |
+| `cargo test --manifest-path src-tauri/harness/Cargo.toml` | 54 passed |
+| `jan cli agent runs list` / `runs show` | run against the built binary |
+
+The suite was **1425 passed / 1 failed** when the phase opened. The failure was
+pre-existing, confirmed by re-running with the branch's changes stashed:
+`agent::global_config`'s tests repoint `HOME` process-wide, and a parallel
+`git commit` in the plugin test could then not resolve a committer identity.
+
+#### Defects found by the work itself
+
+Recorded because each was caught by a check rather than by reading:
+
+- The fixture temporary directory collided within a millisecond, and its
+  create-time cleanup would delete a live sibling's directory (Phase 0).
+- Three mid-run-nudge tests issued thirteen byte-identical tool calls -- which
+  is the doom loop the new detector stops. The fixture was unrealistic, not the
+  detector.
+- A `#[cfg(feature = "cli")]` was displaced from the test below it by an
+  insertion. Only the desktop configuration failed, because `[budget]` is
+  CLI-only. The same class of mistake -- inserting between an attribute and its
+  item -- happened three times in this phase and was caught by a build each
+  time, never by review.
+- The headless CLI leaked backgrounded shell trees on every exit. The desktop
+  app reaps on graceful exit; the CLI had no equivalent, and
+  `std::process::exit` runs no destructors.
+
+#### Not run in Phase 1, and why
+
+| Not run | Reason |
+| --- | --- |
+| JavaScript suites (`yarn test:*`) | No file under `web-app` is touched. The Cowork harness is unaffected because it never reaches `run_orchestration_streamed`. |
+| macOS, Windows, WebView | Not executed. Nothing in this phase is platform-specific; the process-group and reaping behaviour is exercised by the plugin's own tests on Linux only. |
+| Any CI job | Structurally unavailable -- see below. |
+
+#### CI produced no evidence for this phase
+
+Two independent reasons, both verified against the API rather than assumed:
+
+1. `rust-check.yml` triggers on `pull_request` only for base `main` or `dev`.
+   The Phase 1 pull request is stacked on `feat/cowork-background-tasks`, so
+   the Rust jobs never trigger for it at all. This resolves when Phase 0 merges
+   and the branch is retargeted.
+2. The one workflow that does run -- docs, because the registry lives under
+   `docs/` -- fails with `runner_id: 0`, an empty runner name, and no executed
+   steps, on every head. Per the execution rules above that is an
+   infrastructure failure, recorded and not treated as a red build. No re-run
+   was spent: the signature is established across many heads and both pull
+   requests, so another attempt produces another phantom failure, not evidence.
+
+Local verification is therefore the only evidence for this phase, which is why
+it is listed in full above and in each commit message.
+
+### Phases 2-8
 
 Recorded here as each phase closes, in the same shape: commands executed with
 their results, then commands not executed with the reason.
@@ -112,10 +178,15 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 | Area | Linux | macOS | Windows | WebView |
 | --- | --- | --- | --- | --- |
 | Harness foundation crate (Phase 0) | passed | not run | not run | n/a |
+| Run recording, budgets, loop detection (Phase 1) | passed | not run | not run | n/a |
 | Process jail (`bubblewrap` / Seatbelt / AppContainer) | not run | not run | not run | n/a |
 | Per-agent worktrees | not run | not run | not run | n/a |
 | Desktop agent surfaces | not run | not run | not run | not run |
 
 ## Known blockers
 
-None recorded for Phase 0.
+| Blocker | Effect | Status |
+| --- | --- | --- |
+| GitHub runners are never allocated on this fork | No CI evidence for any change | Recorded, not worked around. Verification is local and listed per phase. |
+| `rust-check.yml` does not trigger for a pull request based on a feature branch | The Phase 1 pull request gets no Rust checks | Resolves when Phase 0 merges and Phase 1 is retargeted to `main`. Not fixed by widening the filter, which is deliberate. |
+| No macOS or Windows machine in this environment | Per-OS behaviour cannot be validated | Recorded. The platform matrix keeps those cells empty rather than assuming them. |
