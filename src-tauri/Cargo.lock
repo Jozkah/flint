@@ -7399,6 +7399,7 @@ dependencies = [
  "base64 0.22.1",
  "glob",
  "ignore",
+ "jan-agent-harness",
  "nix 0.30.1",
  "regex",
  "serde",

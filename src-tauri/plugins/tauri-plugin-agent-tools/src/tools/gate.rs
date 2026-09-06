@@ -20,6 +20,12 @@ pub enum PromptKind {
     /// exists.
     WriteEscape,
     Exec,
+    /// A git command that destroys work -- a force push, a hard reset, a
+    /// destructive clean (AH-046). Gated apart from [`PromptKind::Exec`] on
+    /// purpose: an exec grant is per base command, so "allow all git commands"
+    /// would otherwise carry `git reset --hard` with it. See
+    /// [`crate::tools::gitrisk`] for what qualifies.
+    DestructiveGit,
 }
 
 /// The user's answer to a permission prompt (wire shape for a later IPC command).
@@ -45,6 +51,12 @@ pub struct SessionGrants {
     write_escape: bool,
     exec_commands: std::collections::BTreeSet<String>,
     exec_opaque: std::collections::BTreeSet<String>,
+    /// Destructive git commands granted this thread, by exact normalized text.
+    ///
+    /// Never widened to a base command: approving `git reset --hard HEAD~1` does
+    /// not approve `git reset --hard origin/main`, because the second one loses
+    /// different work. This is also why there is no blanket grant for the kind.
+    destructive_git: std::collections::BTreeSet<String>,
     /// MCP tools granted "allow always" this thread, by tool name.
     mcp_tools: std::collections::BTreeSet<String>,
     /// Project roots this session may write to, beyond its own workspace.
@@ -75,6 +87,8 @@ impl SessionGrants {
             PromptKind::WriteEscape => self.write_escape,
             // Exec coverage is command-specific; use `covers_command`.
             PromptKind::Exec => false,
+            // Likewise, and deliberately never blanket-grantable.
+            PromptKind::DestructiveGit => false,
         }
     }
 
@@ -97,6 +111,9 @@ impl SessionGrants {
             PromptKind::WriteEscape => self.write_escape = true,
             // No-op: exec is granted per command via `grant_command`.
             PromptKind::Exec => {}
+            // No-op, and not an oversight: a destructive command is granted only
+            // as itself, via `grant_destructive` (AH-046).
+            PromptKind::DestructiveGit => {}
         }
     }
 
@@ -113,6 +130,16 @@ impl SessionGrants {
     }
 
     /// Whether an MCP tool was granted "allow always" this thread.
+    /// True when this exact destructive command was already approved.
+    pub fn covers_destructive(&self, command: &str) -> bool {
+        self.destructive_git.contains(&normalize(command))
+    }
+
+    /// Approve this exact destructive command for the rest of the thread.
+    pub fn grant_destructive(&mut self, command: &str) {
+        self.destructive_git.insert(normalize(command));
+    }
+
     pub fn covers_mcp(&self, tool_name: &str) -> bool {
         self.mcp_tools.contains(tool_name)
     }
@@ -258,6 +285,18 @@ pub fn resolve_decision(
             {
                 return Decision::Allow;
             }
+            // Destructive git is decided first, and never by the base-command
+            // grant: `git` covering `git reset --hard` is exactly the escalation
+            // this separates out (AH-046). An explicit agent.toml allow for the
+            // tool still wins -- it is checked above, before any of this -- so a
+            // user who wants an unattended destructive run can still have one.
+            if crate::tools::gitrisk::classify(command).is_some() {
+                return if grants.covers_destructive(command) {
+                    Decision::Allow
+                } else {
+                    Decision::Prompt(PromptKind::DestructiveGit)
+                };
+            }
             if grants.covers_command(command) {
                 Decision::Allow
             } else {
@@ -334,6 +373,117 @@ mod tests {
         );
         assert_eq!(d, Decision::Prompt(PromptKind::ReadEscape));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The escalation this separation exists to stop: an exec grant is per base
+    /// command, so approving `git status` with "allow always" grants `git`, and
+    /// without a separate gate that grant would carry `git reset --hard` (AH-046).
+    #[test]
+    fn a_git_grant_does_not_cover_a_destructive_git_command() {
+        let root = unique_root();
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let mut grants = SessionGrants::default();
+        grants.grant_command("git status");
+        assert!(grants.covers_command("git diff HEAD~1"), "the base grant works");
+
+        for command in [
+            "git reset --hard HEAD~3",
+            "git push --force origin main",
+            "git clean -xfd",
+            "cargo build && git reset --hard",
+        ] {
+            let d = decide(&root, &perms, &grants, command);
+            assert_eq!(
+                d,
+                Decision::Prompt(PromptKind::DestructiveGit),
+                "a git grant covered: {command}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Approving one destructive command approves that command, not the kind: the
+    /// next one loses different work, so it asks again.
+    #[test]
+    fn approving_one_destructive_command_does_not_approve_the_next() {
+        let root = unique_root();
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let mut grants = SessionGrants::default();
+        grants.grant_destructive("git reset --hard HEAD~1");
+
+        assert_eq!(
+            decide(&root, &perms, &grants, "git reset --hard HEAD~1"),
+            Decision::Allow,
+            "the approved command runs"
+        );
+        assert_eq!(
+            decide(&root, &perms, &grants, "git reset --hard origin/main"),
+            Decision::Prompt(PromptKind::DestructiveGit),
+            "a different reset must ask"
+        );
+        // And the blanket kind grant is a no-op by construction.
+        grants.grant(PromptKind::DestructiveGit);
+        assert_eq!(
+            decide(&root, &perms, &grants, "git clean -fd"),
+            Decision::Prompt(PromptKind::DestructiveGit),
+            "the kind must not be grantable in bulk"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Safe git is unchanged: it prompts as ordinary exec, and a grant covers it.
+    #[test]
+    fn safe_git_is_still_ordinary_exec() {
+        let root = unique_root();
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let mut grants = SessionGrants::default();
+        assert_eq!(
+            decide(&root, &perms, &grants, "git status"),
+            Decision::Prompt(PromptKind::Exec)
+        );
+        grants.grant_command("git status");
+        for command in ["git status", "git add -A", "git commit -m x", "git log"] {
+            assert_eq!(
+                decide(&root, &perms, &grants, command),
+                Decision::Allow,
+                "ordinary git must not re-prompt: {command}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An explicit `agent.toml` allow still wins, so an operator who wants an
+    /// unattended destructive run can have one -- deliberately, in configuration,
+    /// rather than by accident through a base-command grant.
+    #[test]
+    fn an_explicit_policy_allow_still_wins_over_the_destructive_gate() {
+        let root = unique_root();
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &["bash".into()], &[], &[]);
+        let grants = SessionGrants::default();
+        assert_eq!(
+            decide(&root, &perms, &grants, "git reset --hard"),
+            Decision::Allow
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Shorthand for the exec path, which every destructive-git case goes through.
+    fn decide(
+        root: &PathBuf,
+        perms: &ToolPermissions,
+        grants: &SessionGrants,
+        command: &str,
+    ) -> Decision {
+        resolve_decision(
+            lookup("bash").unwrap(),
+            &json!({ "command": command }),
+            root,
+            None,
+            &[],
+            perms,
+            grants,
+            true,
+        )
     }
 
     #[test]

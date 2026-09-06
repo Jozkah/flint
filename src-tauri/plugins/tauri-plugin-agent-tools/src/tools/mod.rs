@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 pub mod appcontainer;
 pub mod cmdscan;
 pub mod gate;
+pub mod gitrisk;
 pub mod handlers;
 pub mod image;
 pub mod jail;

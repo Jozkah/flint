@@ -1321,6 +1321,7 @@ impl ToolInvoker for CompositeToolInvoker {
                         PromptKind::Write => "write",
                         PromptKind::WriteEscape => "write_escape",
                         PromptKind::Exec => "exec",
+                        PromptKind::DestructiveGit => "destructive_git",
                     };
                     let path = tool
                         .path_args
@@ -1388,7 +1389,14 @@ impl ToolInvoker for CompositeToolInvoker {
                             if matches!(tool.capability, Capability::Exec) {
                                 let command =
                                     args.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                                self.grants.lock().unwrap().grant_command(command);
+                                // A destructive command is granted as itself, not
+                                // as its base: approving one hard reset must not
+                                // approve every later `git` call (AH-046).
+                                if matches!(kind, PromptKind::DestructiveGit) {
+                                    self.grants.lock().unwrap().grant_destructive(command);
+                                } else {
+                                    self.grants.lock().unwrap().grant_command(command);
+                                }
                             } else {
                                 self.grants.lock().unwrap().grant(kind);
                             }

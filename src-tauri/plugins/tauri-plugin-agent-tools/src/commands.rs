@@ -549,6 +549,32 @@ async fn execute_tool_inner(
         // was protecting is already guaranteed. The gate itself is left alone,
         // because the CLI agent *does* want to prompt here.
         Decision::Prompt(PromptKind::Exec) if jail::backend().enforces() => {}
+        // A destructive git command is not made safe by the sandbox. The sandbox
+        // confines *where* the shell can write; a hard reset or a destructive
+        // clean loses work inside the very directory it is allowed to write, and
+        // with an access mode granted that directory is the user's real project.
+        // This surface has no prompt round-trip, so it is refused with a message
+        // that says what would have been lost -- told only "refused", a model
+        // retries until the step budget runs out (AH-046).
+        Decision::Prompt(PromptKind::DestructiveGit) => {
+            let command = args
+                .get("command")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            let risk = crate::tools::gitrisk::classify(command);
+            return Err(match risk {
+                Some(risk) => format!(
+                    "tool '{name}' was refused: this is a destructive git operation                      ({}), which {}. Run it yourself if you intend it.",
+                    risk.label(),
+                    risk.explain()
+                ),
+                // Unreachable: the gate only returns this kind for a classified
+                // command. Kept rather than unwrapped so a future gate change
+                // cannot turn a refusal into a panic.
+                None => format!("tool '{name}' was refused: destructive git operation"),
+            }
+            .into());
+        }
         // Same reasoning for writes, from the other direction. `root` here is
         // always `ensure_thread_workspace`, never a real project: an ephemeral
         // directory deleted with the conversation, which `escapes_project`
