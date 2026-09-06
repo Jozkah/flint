@@ -17,6 +17,7 @@ import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
+import { useActivityTimeline } from '@/hooks/useActivityTimeline'
 import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
@@ -51,6 +52,7 @@ const secondaryStores = [
   useCoworkSessions,
   useClaudeCompat,
   useCoworkActivity,
+  useActivityTimeline,
   useCoworkCheckpoints,
   useFileActivity,
   useAgentToolsConfig,
@@ -67,6 +69,11 @@ export async function hydrateBackendStores(): Promise<void> {
   // run left in flight, or the panel would show work still running that
   // nothing can ever finish.
   useCoworkActivity.getState().recoverOnLoad(INTERRUPTED_BY_RESTART)
+  // The timeline needs the same settling for the same reason: a row left
+  // `pending` by the previous app run describes a process that no longer
+  // exists, and a timeline that shows it still running is lying about the
+  // machine's state.
+  useActivityTimeline.getState().recoverOnLoad(INTERRUPTED_BY_RESTART)
 }
 
 /** Recorded as the reason on work the previous app run left unfinished. */
