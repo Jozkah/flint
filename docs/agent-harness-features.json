@@ -2015,13 +2015,15 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-065"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/impact.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "The harness can name the tests that cover a given source file.",
@@ -2030,9 +2032,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/impact.rs::tests::a_typescript_file_maps_to_its_sibling_test",
+        "src-tauri/src/core/agent/impact.rs::tests::a_rust_file_with_an_inline_test_module_tests_itself",
+        "src-tauri/src/core/agent/impact.rs::tests::a_file_with_no_test_is_reported_not_omitted"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Conventions for Rust (an inline #[cfg(test)] module means the file tests itself, plus tests/<stem>.rs), TypeScript/JavaScript (.test./.spec./__tests__), Python (test_x.py, x_test.py, tests/) and Go (x_test.go). Only candidates that exist are offered. Mapping is by filename convention, not coverage: it does not know which tests exercise which code. A file with no conventionally-named test is reported as unmapped rather than omitted, because silence would read as covered, and every rendered report repeats that passing these tests does not prove a change safe."
     },
     {
       "id": "AH-067",
@@ -2040,13 +2047,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-065"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/impact.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "A diff resolves to the set of modules and tests it can affect.",
@@ -2055,9 +2065,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::tests::impact_maps_explicit_paths_to_their_tests",
+        "src-tauri/src/core/agent/loop.rs::tests::impact_outside_a_git_repository_says_why_rather_than_reporting_no_changes"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "An `impact` tool resolves a diff to the tests that cover it, defaulting to the files git reports as changed and composing with detection so the report also carries the project's test command. Outside a git repository it says so rather than reporting no changes, which would read as the model's edits not being there. Mapping is by filename convention, not coverage: it does not know which tests exercise which code. A file with no conventionally-named test is reported as unmapped rather than omitted, because silence would read as covered, and every rendered report repeats that passing these tests does not prove a change safe."
     },
     {
       "id": "AH-068",

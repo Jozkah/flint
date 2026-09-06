@@ -28,13 +28,13 @@ and the latter two require a recorded `blockedReason`.
 | 0 | Foundation | 0 | 0 | 2 | 10 | 0 | 0 | 0 | 12 |
 | 1 | Core execution | 0 | 0 | 5 | 15 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 3 | 0 | 9 | 8 | 0 | 0 | 0 | 20 |
-| 3 | Repository intelligence | 13 | 0 | 0 | 7 | 0 | 0 | 0 | 20 |
+| 3 | Repository intelligence | 11 | 0 | 0 | 9 | 0 | 0 | 0 | 20 |
 | 4 | Context and memory | 6 | 0 | 7 | 3 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 8 | 0 | 6 | 11 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 23 | 0 | 2 | 1 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 16 | 0 | 9 | 4 | 0 | 0 | 0 | 29 |
-| **all** | | **80** | **0** | **46** | **74** | **0** | **0** | **0** | **200** |
+| **all** | | **78** | **0** | **46** | **76** | **0** | **0** | **0** | **200** |
 
 ## Ownership lanes
 
@@ -128,8 +128,8 @@ per-OS evidence log rather than backlog items.
 | `AH-063` | Diagnostics collection | 3 | repo-intelligence | P1 | `missing` | low | `AH-057` |
 | `AH-064` | Diagnostics surfaced to the agent | 3 | repo-intelligence | P1 | `missing` | low | `AH-063` |
 | `AH-065` | Dependency graph extraction | 3 | repo-intelligence | P2 | `missing` | low | `AH-053` |
-| `AH-066` | Test-to-source mapping | 3 | repo-intelligence | P1 | `missing` | low | `AH-065` |
-| `AH-067` | Changed-file impact analysis | 3 | repo-intelligence | P1 | `missing` | low | `AH-065` |
+| `AH-066` | Test-to-source mapping | 3 | repo-intelligence | P1 | `implemented` | low | `AH-065` |
+| `AH-067` | Changed-file impact analysis | 3 | repo-intelligence | P1 | `implemented` | low | `AH-065` |
 | `AH-068` | Framework detection | 3 | repo-intelligence | P2 | `implemented` | none | `AH-053` |
 | `AH-069` | Build-system detection | 3 | repo-intelligence | P1 | `implemented` | none | `AH-068` |
 | `AH-070` | Test-runner detection | 3 | repo-intelligence | P1 | `implemented` | none | `AH-068` |
@@ -306,6 +306,8 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-054` Initial index build** - Built on first use and refreshed at run start. Measured on this repository: 298ms cold for 1425 files and 7608 symbols, bounded by a file ceiling that is reported when hit. A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed.
 - **`AH-055` Incremental index updates** - A file whose size and modification time are unchanged is not re-read; a deleted file's symbols are dropped rather than left pointing at a path that no longer exists. Measured on this repository: 81ms warm against 298ms cold.
 - **`AH-059` Symbol search** - A `symbol_search` tool, advertised on every run with a project root and in plan mode too since it is read-only. Exact matches rank before prefix before substring. A miss reports what the index does not cover and says to fall back to grep, so the model cannot read it as "this does not exist". A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed.
+- **`AH-066` Test-to-source mapping** - Conventions for Rust (an inline #[cfg(test)] module means the file tests itself, plus tests/<stem>.rs), TypeScript/JavaScript (.test./.spec./__tests__), Python (test_x.py, x_test.py, tests/) and Go (x_test.go). Only candidates that exist are offered. Mapping is by filename convention, not coverage: it does not know which tests exercise which code. A file with no conventionally-named test is reported as unmapped rather than omitted, because silence would read as covered, and every rendered report repeats that passing these tests does not prove a change safe.
+- **`AH-067` Changed-file impact analysis** - An `impact` tool resolves a diff to the tests that cover it, defaulting to the files git reports as changed and composing with detection so the report also carries the project's test command. Outside a git repository it says so rather than reporting no changes, which would read as the model's edits not being there. Mapping is by filename convention, not coverage: it does not know which tests exercise which code. A file with no conventionally-named test is reported as unmapped rather than omitted, because silence would read as covered, and every rendered report repeats that passing these tests does not prove a change safe.
 - **`AH-068` Framework detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. Frameworks: React, Next.js, Vue, Svelte, Vitest, Jest, Playwright, Django, Flask, FastAPI, Tauri, and a Cargo workspace -- which matters because `cargo test` at a workspace root means every member.
 - **`AH-069` Build-system detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. The lockfile, not the manifest, decides the package manager: running the wrong one rewrites the other's lockfile.
 - **`AH-070` Test-runner detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. Only test commands with evidence behind them: a package.json `test` script that exists, a declared Makefile target, pytest named in a Python manifest.

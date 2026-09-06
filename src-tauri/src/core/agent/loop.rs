@@ -994,6 +994,52 @@ impl ToolInvoker for CompositeToolInvoker {
                 .and_then(|f| f.get("name"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
+            if name == "impact" {
+                let (id, _, args) = tool_call_parts(tc);
+                let requested: Vec<String> = args
+                    .get("paths")
+                    .and_then(|v| v.as_array())
+                    .map(|paths| {
+                        paths
+                            .iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                let content = if requested.is_empty() {
+                    // No paths given: ask git what changed. A repository-less
+                    // project is told so rather than reported as "no changes",
+                    // which would read as "your edits are not there".
+                    match crate::core::agent::git::status(
+                        &self.project_root,
+                        crate::core::agent::git::DiffScope::All,
+                    ) {
+                        Ok(status) => {
+                            let changed: Vec<String> =
+                                status.files.into_iter().map(|f| f.path).collect();
+                            let kind =
+                                crate::core::agent::project_kind::detect(&self.project_root);
+                            let impact = crate::core::agent::impact::analyse(
+                                &self.project_root,
+                                &changed,
+                            );
+                            crate::core::agent::impact::render(&impact, &changed, &kind)
+                        }
+                        Err(error) => format!(
+                            "Could not read changed files from git ({error}). Pass `paths` \
+                             explicitly to map specific files."
+                        ),
+                    }
+                } else {
+                    let kind = crate::core::agent::project_kind::detect(&self.project_root);
+                    let impact =
+                        crate::core::agent::impact::analyse(&self.project_root, &requested);
+                    crate::core::agent::impact::render(&impact, &requested, &kind)
+                };
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
             if name == "symbol_search" {
                 let (id, _, args) = tool_call_parts(tc);
                 let query = args.get("name").and_then(|v| v.as_str()).unwrap_or_default();
@@ -1587,6 +1633,14 @@ fn advertise_local_tools(
         && allowed_names.is_none_or(|allowed| allowed.contains("symbol_search"))
     {
         openai_tools.push(crate::core::agent::index::symbol_search_tool_schema());
+    }
+    // Also read-only, and also useful while planning: knowing what a change
+    // would oblige you to run is part of deciding whether to make it.
+    if project_root.is_some()
+        && !permissions.is_denied("impact")
+        && allowed_names.is_none_or(|allowed| allowed.contains("impact"))
+    {
+        openai_tools.push(crate::core::agent::impact::impact_tool_schema());
     }
     // Todo bookkeeping is session metadata, not filesystem access, so like
     // `ask` it's advertised independent of the project_root gate above.
@@ -5573,6 +5627,57 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    #[tokio::test]
+    async fn impact_maps_explicit_paths_to_their_tests() {
+        let root = unique_project_root();
+        std::fs::create_dir_all(root.join("pkg")).unwrap();
+        std::fs::write(root.join("pkg/server.go"), "package pkg\n").unwrap();
+        std::fs::write(root.join("pkg/server_test.go"), "package pkg\n").unwrap();
+        std::fs::write(root.join("go.mod"), "module x\n").unwrap();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-impact");
+        let (invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": {
+                "name": "impact",
+                "arguments": "{\"paths\":[\"pkg/server.go\"]}"
+            }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+
+        let content = &out[0].content;
+        assert!(content.contains("pkg/server_test.go"), "{content}");
+        // Composed with detection: the report says how to run them.
+        assert!(content.contains("`go test ./...`"), "{content}");
+        // And never without the caveat.
+        assert!(content.contains("not coverage"), "{content}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// "No changed files" would read as "your edits are not there".
+    #[tokio::test]
+    async fn impact_outside_a_git_repository_says_why_rather_than_reporting_no_changes() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-impact-nogit");
+        let (invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "impact", "arguments": "{}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+
+        let content = &out[0].content;
+        assert!(
+            content.contains("Could not read changed files") || content.contains("changed file"),
+            "{content}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn symbol_search_is_advertised_including_in_plan_mode() {
         let root = unique_project_root();
@@ -5599,6 +5704,10 @@ mod tests {
             assert!(
                 names.contains(&"symbol_search"),
                 "read-only search belongs in {mode:?}: {names:?}"
+            );
+            assert!(
+                names.contains(&"impact"),
+                "knowing what to run belongs in {mode:?}: {names:?}"
             );
         }
         let _ = std::fs::remove_dir_all(&root);
