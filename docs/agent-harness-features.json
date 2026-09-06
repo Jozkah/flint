@@ -141,11 +141,11 @@
       ],
       "tests": [
         "src-tauri/src/core/agent/recorder.rs::tests",
-        "src-tauri/src/core/agent/loop.rs::tests::a_dispatched_call_and_its_outcome_are_recorded"
+        "src-tauri/src/core/agent/loop.rs::tests::a_crossing_is_recorded_even_when_the_run_is_allowed_to_continue"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Events are now produced by the dispatcher and the run lifecycle, and persisted. Covers the Rust harness only -- the CLI, the TUI, subagents and the API-server proxy, every surface reaching run_orchestration_streamed. The Cowork desktop harness orchestrates in TypeScript and is not recorded yet."
+      "auditNote": "Run lifecycle, turn boundaries, tool calls, permission decisions and budget crossings are all produced and persisted. Covers the Rust harness only; the Cowork desktop harness orchestrates in TypeScript and is not recorded yet."
     },
     {
       "id": "AH-005",
@@ -525,7 +525,7 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-008"
@@ -533,7 +533,8 @@
       "owner": "lane-02-execution-runtime",
       "files": [
         "src-tauri/src/core/agent/session.rs",
-        "src-tauri/src/core/agent/loop.rs"
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/project.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -544,10 +545,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/session.rs::tests::a_crossed_ceiling_stops_the_run_by_default",
+        "src-tauri/src/core/agent/loop.rs::tests::a_run_stops_once_it_crosses_its_token_ceiling"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Documented in loop.rs as advisory: crossing the budget records a note and the run carries on, tool calls included. User cancellation is the only remaining bound on a run's spend."
+      "auditNote": "Crossing [budget] max_tokens now ends the run at the next turn boundary instead of appending a note and carrying on. on_exhausted = \"continue\" restores the old behaviour deliberately."
     },
     {
       "id": "AH-018",
@@ -576,7 +580,7 @@
       "tests": [],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "max_turns == 0 (unlimited) is the documented normal case, so unattended runs have no ceiling."
+      "auditNote": "max_turns still defaults to unbounded, which is the documented intent -- the token and wall-clock ceilings are what stop a run now. A configurable turn ceiling is the remaining work."
     },
     {
       "id": "AH-019",
@@ -584,13 +588,17 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-017"
       ],
       "owner": "lane-02-execution-runtime",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/session.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/project.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A run carries a deadline and terminates cleanly when it expires.",
@@ -600,9 +608,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/session.rs::tests::an_elapsed_time_limit_stops_the_run",
+        "src-tauri/src/core/agent/loop.rs::tests::a_run_whose_deadline_has_passed_does_no_work"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "[budget] max_duration_secs bounds a run that is cheap in tokens but stuck in a slow tool. Checked before the turn that would cross it, so no work is paid for past the deadline."
     },
     {
       "id": "AH-020",
@@ -639,13 +651,17 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-019"
       ],
       "owner": "lane-02-execution-runtime",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/session.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/subagent.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A single deadline bounds the whole orchestration including subagents.",
@@ -655,9 +671,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/subagent.rs::tests::a_child_inherits_what_is_left_of_the_run_deadline"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "One deadline bounds the whole orchestration: a dispatched subagent inherits what is left of it, rounded up to a second, so spawning a child is not a way around the run's deadline."
     },
     {
       "id": "AH-022",

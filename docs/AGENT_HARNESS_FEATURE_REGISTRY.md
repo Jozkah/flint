@@ -26,7 +26,7 @@ and the latter two require a recorded `blockedReason`.
 | Phase | Name | `missing` | `planned` | `in-progress` | `implemented` | `verified` | `platform-blocked` | `rejected-with-decision` | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Foundation | 0 | 0 | 2 | 10 | 0 | 0 | 0 | 12 |
-| 1 | Core execution | 3 | 0 | 9 | 8 | 0 | 0 | 0 | 20 |
+| 1 | Core execution | 1 | 0 | 8 | 11 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 3 | 0 | 9 | 8 | 0 | 0 | 0 | 20 |
 | 3 | Repository intelligence | 18 | 0 | 2 | 0 | 0 | 0 | 0 | 20 |
 | 4 | Context and memory | 6 | 0 | 7 | 3 | 0 | 0 | 0 | 16 |
@@ -34,7 +34,7 @@ and the latter two require a recorded `blockedReason`.
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 23 | 0 | 2 | 1 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 18 | 0 | 8 | 3 | 0 | 0 | 0 | 29 |
-| **all** | | **90** | **0** | **51** | **59** | **0** | **0** | **0** | **200** |
+| **all** | | **88** | **0** | **50** | **62** | **0** | **0** | **0** | **200** |
 
 ## Ownership lanes
 
@@ -79,11 +79,11 @@ per-OS evidence log rather than backlog items.
 | `AH-014` | Plan approval gate | 1 | execution | P0 | `implemented` | medium | `AH-013` |
 | `AH-015` | Todo/task state machine | 1 | execution | P0 | `implemented` | none | `AH-004` |
 | `AH-016` | Task board persistence | 1 | execution | P1 | `implemented` | none | `AH-015`, `AH-010` |
-| `AH-017` | Token budget enforcement | 1 | execution | P0 | `in-progress` | medium | `AH-008` |
+| `AH-017` | Token budget enforcement | 1 | execution | P0 | `implemented` | medium | `AH-008` |
 | `AH-018` | Step and iteration budget enforcement | 1 | execution | P0 | `in-progress` | medium | `AH-017` |
-| `AH-019` | Wall-clock budget enforcement | 1 | execution | P1 | `missing` | medium | `AH-017` |
+| `AH-019` | Wall-clock budget enforcement | 1 | execution | P1 | `implemented` | medium | `AH-017` |
 | `AH-020` | Per-tool timeouts | 1 | execution | P0 | `in-progress` | medium | `AH-009` |
-| `AH-021` | Per-run timeout | 1 | execution | P1 | `missing` | medium | `AH-019` |
+| `AH-021` | Per-run timeout | 1 | execution | P1 | `implemented` | medium | `AH-019` |
 | `AH-022` | Cancellation propagation | 1 | execution | P0 | `implemented` | high | `AH-008` |
 | `AH-023` | In-flight tool-call cancellation | 1 | execution | P0 | `in-progress` | high | `AH-022` |
 | `AH-024` | Retry policy with backoff | 1 | execution | P1 | `in-progress` | low | `AH-009` |
@@ -269,7 +269,7 @@ per-OS evidence log rather than backlog items.
 Recorded during the Phase 0 audit of `main`. Each note says why an item is not already
 `implemented`, so later phases start from evidence rather than a re-audit.
 
-- **`AH-004` Canonical harness event model** - Events are now produced by the dispatcher and the run lifecycle, and persisted. Covers the Rust harness only -- the CLI, the TUI, subagents and the API-server proxy, every surface reaching run_orchestration_streamed. The Cowork desktop harness orchestrates in TypeScript and is not recorded yet.
+- **`AH-004` Canonical harness event model** - Run lifecycle, turn boundaries, tool calls, permission decisions and budget crossings are all produced and persisted. Covers the Rust harness only; the Cowork desktop harness orchestrates in TypeScript and is not recorded yet.
 - **`AH-005` Event serialization and schema versioning** - In real use: every run appends versioned envelopes to its own events.jsonl.
 - **`AH-006` Tool capability model** - Capability{Read,Write,Exec,Net} covers the 16 built-ins; MCP tools carry no capability and are name-gated only. Extending the model to MCP is Phase 2 work under AH-041.
 - **`AH-007` Permission model core types** - Rules are glob patterns over tool names; arguments and resources are never pattern-matched. The (subject, capability, resource) redesign is Phase 2 work under AH-034.
@@ -277,9 +277,11 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-009` Harness error taxonomy** - HarnessError classifies kind, retryability and audience, and preserves the existing `ERROR [tag]:` shape so migrating a call site does not change what the model sees.
 - **`AH-010` Persistent state schema** - Each run writes a versioned record under <jan_data>/agent-state/runs/<run_id>/. thread.json and messages.jsonl remain unversioned.
 - **`AH-012` Agent worktree conventions** - Convention is `jan/cowork/<slug>` branches under a data-directory worktree root keyed by RepoIdentity (the repo's first commit). Owned by core/agent/worktree.rs; nothing else may add a second scheme.
-- **`AH-017` Token budget enforcement** - Documented in loop.rs as advisory: crossing the budget records a note and the run carries on, tool calls included. User cancellation is the only remaining bound on a run's spend.
-- **`AH-018` Step and iteration budget enforcement** - max_turns == 0 (unlimited) is the documented normal case, so unattended runs have no ceiling.
+- **`AH-017` Token budget enforcement** - Crossing [budget] max_tokens now ends the run at the next turn boundary instead of appending a note and carrying on. on_exhausted = "continue" restores the old behaviour deliberately.
+- **`AH-018` Step and iteration budget enforcement** - max_turns still defaults to unbounded, which is the documented intent -- the token and wall-clock ceilings are what stop a run now. A configurable turn ceiling is the remaining work.
+- **`AH-019` Wall-clock budget enforcement** - [budget] max_duration_secs bounds a run that is cheap in tokens but stuck in a slow tool. Checked before the turn that would cross it, so no work is paid for past the deadline.
 - **`AH-020` Per-tool timeouts** - Only bash has a timeout, and on expiry it backgrounds the job instead of killing it; read/edit/web/MCP have none.
+- **`AH-021` Per-run timeout** - One deadline bounds the whole orchestration: a dispatched subagent inherits what is left of it, rounded up to a second, so spawning a child is not a way around the run's deadline.
 - **`AH-023` In-flight tool-call cancellation** - Teardown is drop/abort-based with no cancellation token; in-flight children rely on process-group kill.
 - **`AH-024` Retry policy with backoff** - Retry exists for upstream HTTP only, and only before the first streamed event; tool failures are never retried.
 - **`AH-025` Retryable-error classification** - Classification is local to the HTTP client.

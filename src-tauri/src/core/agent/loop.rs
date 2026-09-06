@@ -250,6 +250,9 @@ struct SubagentContext {
     parent_args: OrchestrationArgs,
     model_id: String,
     max_session_tokens: Option<u64>,
+    /// What is left of the run's wall-clock deadline when a child is
+    /// dispatched, so a subagent cannot outlive the run that spawned it.
+    run_time_remaining: Option<std::time::Duration>,
     /// The parent's `send_reasoning`, forwarded to every child body: a child
     /// resends the reasoning of its own tool-call turns, so an opt-out that
     /// stopped at the parent would still break a strict provider.
@@ -550,6 +553,7 @@ impl CompositeToolInvoker {
                     &crate::core::agent::subagent::ParentRun {
                         model: ctx.model_id.clone(),
                         budget_remaining: ctx.max_session_tokens,
+                        time_remaining: ctx.run_time_remaining,
                         send_reasoning: ctx.send_reasoning,
                     },
                     &self.events,
@@ -816,6 +820,30 @@ fn hard_deny_msg(name: &str, reason: DenyReason, project_root: &std::path::Path)
     match reason {
         DenyReason::Policy => denied_by_policy_msg(name, project_root),
         DenyReason::Hidden => hidden_path_msg(name),
+    }
+}
+
+/// Terminal message for a run that hit a ceiling.
+///
+/// Phrased as a limit that was reached rather than as a failure, because it is
+/// the configured behaviour working: a caller that cannot tell "the budget
+/// stopped this" from "the model broke" will retry the wrong one.
+fn stopped_by_budget_msg(
+    cause: crate::core::agent::session::StopCause,
+    spent: u64,
+) -> String {
+    use crate::core::agent::session::StopCause;
+    match cause {
+        StopCause::TokenBudget => format!(
+            "ERROR [{}]: run stopped after {spent} tokens, at the configured [budget] max_tokens \
+             ceiling. Raise it, or set [budget] on_exhausted = \"continue\" to let a run pass it.",
+            cause.tag()
+        ),
+        StopCause::TimeLimit => format!(
+            "ERROR [{}]: run stopped at the configured [budget] max_duration_secs deadline after \
+             spending {spent} tokens.",
+            cause.tag()
+        ),
     }
 }
 
@@ -1919,7 +1947,9 @@ async fn orchestrate_inner(
     };
 
     let max_session_tokens = body_session_budget(json_body);
-    let mut budget = SessionBudget::new(max_session_tokens);
+    let mut budget = SessionBudget::new(max_session_tokens)
+        .with_time_limit(body_run_time_limit(json_body))
+        .with_policy(body_exhaustion_policy(json_body));
 
     // Top-level runs index their final assistant answer into project memory;
     // isolated child (subagent) runs skip it to keep history independent.
@@ -1974,6 +2004,7 @@ async fn orchestrate_inner(
             },
             model_id: model_id.clone(),
             max_session_tokens,
+            run_time_remaining: budget.time_remaining(),
             send_reasoning: body_send_reasoning(json_body),
             bg: bg.clone(),
         });
@@ -2027,6 +2058,7 @@ async fn orchestrate_inner(
             run_mode,
             todo_registry.as_ref(),
             force_first_tool,
+            recorder.as_ref(),
         )
         .await;
         // On a clean exit, wait for any subagents the model dispatched but never
@@ -2061,6 +2093,7 @@ async fn orchestrate_inner(
             run_mode,
             todo_registry.as_ref(),
             force_first_tool,
+            recorder.as_ref(),
         )
         .await
     };
@@ -2278,6 +2311,27 @@ fn body_session_budget(json_body: &serde_json::Value) -> Option<u64> {
         .filter(|v| *v > 0)
 }
 
+/// `[budget].max_duration_secs`, as a duration. Zero and absent both mean no
+/// deadline, matching how `max_session_tokens` treats zero.
+fn body_run_time_limit(json_body: &serde_json::Value) -> Option<std::time::Duration> {
+    json_body
+        .get("max_run_seconds")
+        .and_then(|v| v.as_u64())
+        .filter(|v| *v > 0)
+        .map(std::time::Duration::from_secs)
+}
+
+/// `[budget].on_exhausted`. An unreadable value falls back to the default
+/// rather than to the permissive option: a typo must not silently unbound a run.
+fn body_exhaustion_policy(
+    json_body: &serde_json::Value,
+) -> crate::core::agent::session::ExhaustionPolicy {
+    json_body
+        .get("budget_on_exhausted")
+        .and_then(|v| serde_json::from_value(v.clone()).ok())
+        .unwrap_or_default()
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_turn_cycle(
     events: &mpsc::UnboundedSender<StreamEvent>,
@@ -2295,6 +2349,10 @@ async fn run_turn_cycle(
     // named tool -- used to make the eager-todo nudge actually reliable
     // instead of an easily-ignored suggestion. `None` for every later turn.
     force_first_tool: Option<&str>,
+    // The run's durable record, so turn boundaries and budget crossings reach
+    // the same log the dispatcher writes tool calls to. `None` in tests and on
+    // a run with nowhere to write.
+    recorder: Option<&Arc<crate::core::agent::recorder::RunRecorder>>,
 ) -> Result<serde_json::Value, String> {
     // `max_turns == 0` is the normal case: the session token budget and user
     // cancellation are the real guards, so a run isn't cut off mid-task by a
@@ -2319,10 +2377,31 @@ async fn run_turn_cycle(
     let mut closeout_nudged = false;
 
     while unlimited || turn < max_turns {
+        // A ceiling is checked before the turn that would cross it, not after:
+        // stopping a run means not starting more work, and a deadline that only
+        // fires once the next upstream call has already been paid for is not a
+        // deadline.
+        if let Some(cause) = budget.stop_cause() {
+            if let Some(recorder) = recorder {
+                recorder.emit(jan_agent_harness::event::EventPayload::BudgetCrossed {
+                    budget: cause.tag().to_string(),
+                    spent: budget.spent(),
+                    limit: budget.max_tokens().unwrap_or(0),
+                    exhausted: true,
+                });
+            }
+            return Err(stopped_by_budget_msg(cause, budget.spent()));
+        }
+
         let _ = events.send(StreamEvent::Step {
             index: (turn as u32) + 1,
             max: max_turns as u32,
         });
+        if let Some(recorder) = recorder {
+            recorder.emit(jan_agent_harness::event::EventPayload::TurnStarted {
+                turn: turn as u32,
+            });
+        }
 
         // A turn this run just produced can carry poison of its own: a
         // length-truncated tool call, or an argument string that decodes to a
@@ -2415,6 +2494,25 @@ async fn run_turn_cycle(
             let _ = events.send(StreamEvent::TurnUsage { usage });
         }
         budget.record(&turn_usage);
+        if let Some(recorder) = recorder {
+            recorder.emit(jan_agent_harness::event::EventPayload::TurnFinished {
+                turn: turn as u32,
+                usage: jan_agent_harness::event::Usage {
+                    prompt_tokens: turn_usage
+                        .as_ref()
+                        .and_then(|u| u.prompt_tokens)
+                        .unwrap_or(0),
+                    completion_tokens: turn_usage
+                        .as_ref()
+                        .and_then(|u| u.completion_tokens)
+                        .unwrap_or(0),
+                },
+            });
+            // The record only has to be recent enough for a later process to
+            // find its place, so it is flushed at turn boundaries rather than
+            // per event: the log is the source of truth for what happened.
+            recorder.persist();
+        }
 
         let tool_calls = extract_tool_calls(&completion);
 
@@ -2494,11 +2592,10 @@ async fn run_turn_cycle(
             return Ok(completion);
         }
 
-        // Crossing the session budget is advisory: it is recorded and the run
-        // carries on, tool calls included. Note what this costs -- `max_turns
-        // == 0` is the normal case (see above), so with the budget no longer
-        // stopping anything, user cancellation is the only remaining bound on a
-        // run's spend.
+        // A crossing is always recorded. Whether it ends the run is the
+        // policy's call, checked at the top of the next turn -- the tool calls
+        // this turn already produced still run, so a run stops at a turn
+        // boundary rather than half-applied.
         //
         // Recorded as a system note rather than an assistant turn: the model
         // never wrote it, and putting a bracketed status marker in the
@@ -2506,12 +2603,28 @@ async fn run_turn_cycle(
         // is the shape a model will imitate unprompted on later turns.
         if budget.exhausted() && !budget_notice_recorded {
             budget_notice_recorded = true;
+            if let Some(recorder) = recorder {
+                recorder.emit(jan_agent_harness::event::EventPayload::BudgetCrossed {
+                    budget: crate::core::agent::session::StopCause::TokenBudget
+                        .tag()
+                        .to_string(),
+                    spent: budget.spent(),
+                    limit: budget.max_tokens().unwrap_or(0),
+                    exhausted: true,
+                });
+            }
+            let continuing = budget.stop_cause().is_none();
             conversation_messages.push(serde_json::json!({
                 "role": "system",
                 "content": format!(
-                    "[session token budget exhausted ({} tokens)] The configured \
-                     ceiling has been passed; this run is continuing past it.",
-                    budget.spent()
+                    "[session token budget exhausted ({} tokens)] The configured ceiling has \
+                     been passed; {}.",
+                    budget.spent(),
+                    if continuing {
+                        "this run is continuing past it"
+                    } else {
+                        "this run will stop after the current turn"
+                    }
                 ),
             }));
             let _ = events.send(StreamEvent::MessagesUpdated {
@@ -2943,6 +3056,167 @@ mod tests {
         })
     }
 
+    /// A tool-call turn that also reports token usage, so a test can drive the
+    /// budget the way a real provider does.
+    fn tool_call_completion_costing(total_tokens: u64) -> serde_json::Value {
+        let mut completion = tool_call_completion();
+        completion["usage"] = json!({ "total_tokens": total_tokens });
+        completion
+    }
+
+    fn final_completion() -> serde_json::Value {
+        json!({ "choices": [{ "message": { "content": "done" }, "finish_reason": "stop" }] })
+    }
+
+    /// The ceiling `[budget]` documents itself as. Before this it appended a
+    /// note and carried on, tool calls included.
+    #[tokio::test]
+    async fn a_run_stops_once_it_crosses_its_token_ceiling() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = MockModel::new(vec![
+            tool_call_completion_costing(500),
+            final_completion(),
+        ]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(Some(100));
+
+        let error = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0, // unbounded turns: the budget is what has to stop this
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("crossing the ceiling must end the run");
+
+        assert!(error.contains("token_budget"), "{error}");
+        assert!(error.contains("on_exhausted"), "must say how to opt out: {error}");
+        // The first turn's tools still ran; the run stops at a turn boundary,
+        // not half-applied.
+        assert_eq!(tool.calls.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn the_continue_policy_still_lets_a_run_pass_its_ceiling() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = MockModel::new(vec![
+            tool_call_completion_costing(500),
+            final_completion(),
+        ]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(Some(100))
+            .with_policy(crate::core::agent::session::ExhaustionPolicy::Continue);
+
+        let result = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("the opt-out must still work");
+
+        assert_eq!(result["choices"][0]["message"]["content"], "done");
+        assert!(budget.exhausted(), "the crossing is still a fact");
+    }
+
+    /// A run can be cheap in tokens and still be stuck in a slow tool.
+    #[tokio::test]
+    async fn a_run_whose_deadline_has_passed_does_no_work() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = MockModel::new(vec![final_completion()]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None)
+            .with_time_limit(Some(std::time::Duration::from_nanos(1)));
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        let error = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("an expired deadline must stop the run");
+
+        assert!(error.contains("time_limit"), "{error}");
+        assert_eq!(tool.calls.lock().unwrap().len(), 0, "no tool may run past the deadline");
+    }
+
+    #[tokio::test]
+    async fn a_crossing_is_recorded_even_when_the_run_is_allowed_to_continue() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let data = jan_agent_harness::fixtures::TempDir::new("budget-record");
+        let recorder = Arc::new(
+            crate::core::agent::recorder::RunRecorder::open(data.path(), None, None, "m", false)
+                .expect("recorder opens"),
+        );
+        let model = MockModel::new(vec![
+            tool_call_completion_costing(500),
+            final_completion(),
+        ]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(Some(100))
+            .with_policy(crate::core::agent::session::ExhaustionPolicy::Continue);
+
+        run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            Some(&recorder),
+        )
+        .await
+        .expect("continue policy runs to completion");
+
+        let events = jan_agent_harness::envelope::EventLog::read(
+            recorder.run_dir().join("events.jsonl"),
+        )
+        .expect("event log reads");
+        let kinds: Vec<String> = events.iter().map(|e| e.kind()).collect();
+        assert!(kinds.contains(&"turn_started".to_string()), "{kinds:?}");
+        assert!(kinds.contains(&"turn_finished".to_string()), "{kinds:?}");
+        assert!(
+            kinds.contains(&"budget_crossed".to_string()),
+            "a crossing must be recorded even when it does not stop the run: {kinds:?}"
+        );
+    }
+
     #[tokio::test]
     async fn turn_cycle_executes_tool_then_returns_final() {
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -2965,6 +3239,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -3050,6 +3325,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3107,6 +3383,7 @@ mod tests {
             &tool,
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
+            None,
             None,
         )
         .await
@@ -3223,6 +3500,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .expect("sanitized history must be accepted so the session can continue");
@@ -3258,6 +3536,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             Some("todo"),
+            None,
         )
         .await
         .unwrap();
@@ -3452,6 +3731,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3528,6 +3808,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3572,6 +3853,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3606,6 +3888,7 @@ mod tests {
             &tool,
             crate::core::agent::plan::RunMode::Plan,
             Some(&registry),
+            None,
             None,
         )
         .await
@@ -3657,6 +3940,7 @@ mod tests {
             &tool,
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
+            None,
             None,
         )
         .await
@@ -3734,6 +4018,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3760,7 +4045,12 @@ mod tests {
     /// Crossing the session token budget is advisory: it is announced once, as
     /// a system note, and the run carries on -- tool calls included.
     #[tokio::test]
-    async fn an_exhausted_budget_is_announced_once_and_the_run_continues() {
+    /// The announcement latch, the system voice and the no-imitation property
+    /// all still matter under `on_exhausted = "continue"` -- which is now what
+    /// makes a run pass its ceiling, rather than that being the default.
+    /// Stopping at the ceiling is covered by
+    /// `a_run_stops_once_it_crosses_its_token_ceiling`.
+    async fn an_exhausted_budget_is_announced_once_when_the_run_may_continue() {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let mut over_budget = tool_call_completion();
         over_budget["usage"] = json!({ "total_tokens": 100 });
@@ -3773,7 +4063,8 @@ mod tests {
         still_over["usage"] = json!({ "total_tokens": 200 });
         let model = MockModel::new(vec![over_budget, still_over, done]);
         let tool = MockTool::default();
-        let mut budget = SessionBudget::new(Some(50));
+        let mut budget = SessionBudget::new(Some(50))
+            .with_policy(crate::core::agent::session::ExhaustionPolicy::Continue);
         let convo = vec![json!({ "role": "user", "content": "hi" })];
 
         let result = run_turn_cycle(
@@ -3787,6 +4078,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -3892,6 +4184,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .expect("run completes");
@@ -3956,6 +4249,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -4036,6 +4330,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4081,6 +4376,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -4133,6 +4429,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -4198,6 +4495,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await;
 
@@ -4254,6 +4552,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await;
 
@@ -4304,6 +4603,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4339,6 +4639,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -5314,7 +5615,8 @@ mod tests {
                     crate::core::agent::plan::RunMode::Normal,
                     None,
                     None,
-                )
+            None,
+        )
                 .await
             }
         });

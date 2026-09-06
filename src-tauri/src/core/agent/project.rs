@@ -74,6 +74,14 @@ pub(crate) struct SkillsSection {
 pub(crate) struct BudgetSection {
     #[serde(default)]
     pub max_tokens: Option<u64>,
+    /// Wall-clock ceiling for one run, in seconds. Unset or `0` means no
+    /// deadline. Bounds a run that is cheap in tokens but stuck in a slow tool.
+    #[serde(default)]
+    pub max_duration_secs: Option<u64>,
+    /// What crossing a ceiling does. Defaults to stopping the run; `"continue"`
+    /// restores the behaviour where a crossing was only recorded.
+    #[serde(default)]
+    pub on_exhausted: crate::core::agent::session::ExhaustionPolicy,
 }
 
 /// `[agent]` — resolves the model and per-run knobs for CLI agent runs.
@@ -177,11 +185,22 @@ const AGENT_TOML_TEMPLATE: &str = r#"[agent]
 # base_url = "https://api.openai.com/v1"
 # models = ["gpt-4o"]
 
-# The run's only cap: new token spend across all turns (replayed context is not
-# recharged each turn). There is no turn limit. Defaults to 128000 when unset;
-# 0 disables the cap so the agent runs until the task is done or cancelled.
+# What bounds a run. There is no turn limit, so these are what stops one.
+#
+# max_tokens is new token spend across all turns (replayed context is not
+# recharged each turn). Defaults to 128000 when unset; 0 disables it.
+# max_duration_secs is a wall-clock ceiling, for a run that is cheap in tokens
+# but stuck in a slow tool. Unset or 0 means no deadline. A dispatched subagent
+# inherits what is left of both, so it cannot outlive the run that spawned it.
+#
+# Crossing either ends the run at the next turn boundary -- the tool calls the
+# current turn already produced still finish. Set on_exhausted = "continue" to
+# have the crossing recorded and the run carry on instead, which is what the
+# harness used to do unconditionally.
 [budget]
 # max_tokens = 128000
+# max_duration_secs = 0
+# on_exhausted = "stop"
 
 [tools]
 # read-only | deny | allow. read-only (default) exposes MCP tools and built-in
