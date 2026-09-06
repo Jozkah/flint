@@ -33,8 +33,8 @@ and the latter two require a recorded `blockedReason`.
 | 5 | Agent orchestration | 8 | 0 | 6 | 11 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 22 | 0 | 2 | 2 | 0 | 0 | 0 | 26 |
-| 8 | UX, automation and operations | 21 | 0 | 9 | 3 | 0 | 0 | 1 | 34 |
-| **all** | | **77** | **0** | **47** | **80** | **0** | **0** | **1** | **205** |
+| 8 | UX, automation and operations | 20 | 0 | 10 | 3 | 0 | 0 | 1 | 34 |
+| **all** | | **76** | **0** | **48** | **80** | **0** | **0** | **1** | **205** |
 
 ## Ownership lanes
 
@@ -263,7 +263,7 @@ per-OS evidence log rather than backlog items.
 | `AH-198` | Security regression corpus | 8 | ux-operations | P0 | `missing` | critical | `AH-011`, `AH-049` |
 | `AH-199` | Telemetry controls | 8 | ux-operations | P1 | `rejected-with-decision` | high | - |
 | `AH-200` | Full audit export | 8 | ux-operations | P1 | `in-progress` | critical | `AH-049`, `AH-177` |
-| `AH-201` | Detailed in-chat activity timeline | 8 | ux-operations | P0 | `missing` | medium | `AH-004`, `AH-005`, `AH-177` |
+| `AH-201` | Detailed in-chat activity timeline | 8 | ux-operations | P0 | `in-progress` | medium | `AH-004`, `AH-005`, `AH-177` |
 | `AH-202` | Expandable project navigation | 8 | ux-operations | P1 | `missing` | low | - |
 | `AH-203` | Side-by-side chat panes | 8 | ux-operations | P1 | `missing` | medium | `AH-202` |
 | `AH-204` | Global permission centre | 8 | permission-security | P0 | `missing` | critical | `AH-007`, `AH-049` |
@@ -371,7 +371,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-195` Local and offline model support** - Local inference ships on the desktop app; the headless CLI is remote-only.
 - **`AH-199` Telemetry controls** - Previously reverted to missing because it named web-app/src/containers/analytics/AnalyticConsent.tsx, which never existed in this tree. Now rejected with a decision: the telemetry it would have gated is gone, and a guard test keeps it gone.
 - **`AH-200` Full audit export** - Permission decisions, tool calls and run events export together as one reviewable record per run, auto-approvals included. Still per-run rather than across runs, and it covers the Rust harness only -- the Cowork desktop harness records nothing to export.
-- **`AH-201` Detailed in-chat activity timeline** - Requested directly by the operator. The event model (AH-004) and the run log (AH-005) exist in the harness crate and the CLI reads them back, but the desktop chat renders a transient StreamEvent stream that is never persisted, so the inline timeline, the rail, the panel and the export do not share a store.
+- **`AH-201` Detailed in-chat activity timeline** - The canonical log, its store, the recorder and the inline timeline exist and are wired: the desktop run driver records a pending row when a tool call starts and settles the same row when it exits, and the conversation renders reads with line ranges, changes with diffs and line counts, commands with working directory, exit code, duration and output, permission decisions, git operations (destructive marked), retries and cancellations. Filtering, search, expansion, copy, file navigation, truncation, virtualization, persistence, session isolation, redaction and accessible labels are covered by 68 tests. Still in-progress because the other three surfaces have not been moved onto it: the activity rail and the Background Tasks panel still project coworkActivity, and the audit export still reads the Rust event log only. Also web-app only -- the Rust harness records its own events and the two logs are not yet one.
 - **`AH-202` Expandable project navigation** - Requested directly by the operator and absent from the original 200-item backlog.
 - **`AH-203` Side-by-side chat panes** - Requested directly by the operator and absent from the original 200-item backlog. Pane-scoped permission state depends on the permission model (AH-007) being addressable per session.
 - **`AH-204` Global permission centre** - Requested directly by the operator. The gate, the decision events (AH-049) and the per-request registry exist, but a request is answerable only in the conversation that raised it, and nothing aggregates or expires them.

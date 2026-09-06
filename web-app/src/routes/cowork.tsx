@@ -31,6 +31,18 @@ import {
 import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import {
+  useActivityTimeline,
+  selectActivityLog,
+} from '@/hooks/useActivityTimeline'
+import { ActivityTimeline } from '@/containers/ActivityTimeline'
+import {
+  pendingEventFor,
+  runFinishedEvent,
+  runStartedEvent,
+  settledEventFor,
+  type ActivityRunContext,
+} from '@/lib/activityRecorder'
+import {
   lastUserQuestion,
   recordAgentDispatch,
   recordJobCollected,
@@ -1254,6 +1266,11 @@ function CoworkPage() {
 
   // The one activity record. The panel, the chip and every inline workflow
   // card select from this, so none of them can disagree about the same work.
+  // The run's own record of what it did (AH-201). One store, so this, the rail
+  // and the export cannot disagree about the same run.
+  const timelineLog = useActivityTimeline((s) =>
+    selectActivityLog(s, session?.id)
+  )
   const activityWorkflows = useCoworkActivity((s) => s.workflows)
   const activityTasks = useCoworkActivity((s) => s.tasks)
   const activity = useMemo(
@@ -1761,6 +1778,23 @@ function CoworkPage() {
         t('common:tasks.untitledRun'),
       model: selectedModel.id,
     }
+    // The timeline's view of the same run (AH-201). Separate from `RunContext`
+    // because the background-activity record and the timeline answer different
+    // questions, and one type serving both would grow fields neither needs.
+    const activityRun: ActivityRunContext = {
+      sessionId: sid,
+      runId,
+      model: selectedModel.id,
+    }
+    // Not named `activity`: the component already has one (the background
+    // activity selector), and shadowing it inside the run would make every use
+    // below silently mean something else.
+    useActivityTimeline
+      .getState()
+      .record(runStartedEvent(activityRun, run.title, Date.now()))
+    // When each call started, so a settled row can report how long it took
+    // rather than leaving the duration out or inventing one.
+    const callStartedAt = new Map<string, number>()
 
     const sink: StreamSink = {
       onText: (delta) => {
@@ -1785,6 +1819,22 @@ function CoworkPage() {
           row.args = call.input
           setLiveTurns([...liveTurnsRef.current])
         }
+        // The timeline's row for this call, recorded now so the conversation
+        // shows what is happening while it happens. The settle pass below
+        // updates this same row rather than adding a second one.
+        const startedAt = Date.now()
+        callStartedAt.set(call.toolCallId, startedAt)
+        useActivityTimeline.getState().record(
+          pendingEventFor(
+            activityRun,
+            {
+              callId: call.toolCallId,
+              toolName: call.toolName,
+              args: call.input,
+            },
+            startedAt
+          )
+        )
         // A shell command is background work the moment it starts, and its
         // arguments are the only place the command line exists.
         const command = commandOf(call.input)
@@ -2396,9 +2446,25 @@ function CoworkPage() {
             useFileActivity
               .getState()
               .record(sid, deriveFromTurns(turns, originOfPath, Date.now()))
+            const settledAtStep = Date.now()
             for (const [callId, outcome] of outcomes) {
               if (outcome.diff) {
                 useToolCallRuntime.getState().recordDiff(callId, outcome.diff)
+              }
+              // Settle the timeline row for this call: same id, so it becomes
+              // the result in place.
+              const settledTurn = turns.find(
+                (one) => one.role === 'tool' && one.callId === callId
+              )
+              if (settledTurn) {
+                const event = settledEventFor(
+                  activityRun,
+                  settledTurn,
+                  outcome,
+                  settledAtStep,
+                  callStartedAt.get(callId)
+                )
+                if (event) useActivityTimeline.getState().record(event)
               }
               const turn = turns.find(
                 (one) => one.role === 'tool' && one.callId === callId
@@ -2439,6 +2505,27 @@ function CoworkPage() {
       // unrepairable afterwards.
       useCoworkActivity.getState().settleRun(runId, INTERRUPTED_BY_RUN_END)
       useCoworkActivity.getState().finishWorkflow(runId)
+      // How the run ended, on the timeline. A cancelled run also settles every
+      // row still marked pending, so the transcript does not keep showing work
+      // that nothing is doing any more.
+      const stopped = thrown?.stoppedBy ?? outcome?.stoppedBy ?? null
+      const timeline = useActivityTimeline.getState()
+      if (stopped === 'aborted') {
+        timeline.cancelSession(sid, 'cancelled by the user')
+      } else {
+        timeline.record(
+          runFinishedEvent(
+            activityRun,
+            stopped === 'error'
+              ? {
+                  status: 'error',
+                  reason: thrown?.errorText ?? outcome?.errorText,
+                }
+              : { status: 'ok' },
+            Date.now()
+          )
+        )
+      }
       useCoworkSessions
         .getState()
         .commitTurns(
@@ -2640,6 +2727,20 @@ function CoworkPage() {
                       </Fragment>
                     ))}
                   </CodeOpenProvider>
+                  {timelineLog.events.length > 0 && (
+                    /* What the run actually did, in the conversation rather than
+                       only in a rail: reads with their line ranges, changes with
+                       their diffs, commands with their exit codes and output,
+                       permission decisions, git operations, retries and
+                       cancellations. The same store the rail and the export read,
+                       so none of them can disagree (AH-201). */
+                    <ActivityTimeline
+                      log={timelineLog}
+                      onOpenFile={openToolPath}
+                      onCopy={(text) => void navigator.clipboard.writeText(text)}
+                      className="mx-auto w-full border-t border-main-view-fg/10 pt-2"
+                    />
+                  )}
                   {running && (
                     // Row wrapper as in the chat route: the transcript is a
                     // column flex, which stretches the indicator's own

@@ -687,6 +687,10 @@ export function accessibleLabel(event: ActivityEvent): string {
   }
   if (d.kind === 'verification') {
     const v = d.verification
+    // A verification is a command too: the exit code is as much of the outcome
+    // here as it is there, and announcing the counts without it would leave a
+    // screen-reader user with less than the row shows.
+    if (v.exitCode !== undefined) parts.push(`exit code ${v.exitCode}`)
     if (v.failed !== undefined) parts.push(`${v.failed} failed`)
     if (v.passed !== undefined) parts.push(`${v.passed} passed`)
   }

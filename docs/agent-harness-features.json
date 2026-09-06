@@ -5861,7 +5861,7 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P0",
       "dependencies": [
         "AH-004",
@@ -5869,7 +5869,14 @@
         "AH-177"
       ],
       "owner": "lane-09-ux-observability",
-      "files": [],
+      "files": [
+        "web-app/src/lib/activityEvents.ts",
+        "web-app/src/lib/activityRecorder.ts",
+        "web-app/src/lib/secretRedaction.ts",
+        "web-app/src/hooks/useActivityTimeline.ts",
+        "web-app/src/containers/ActivityTimeline.tsx",
+        "web-app/src/routes/cowork.tsx"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Every observable execution event -- reads with line ranges, writes with diffs and line counts, commands with working directory, duration, exit code and output, tests and builds, permission requests and decisions, background tasks, retries, cancellations and git operations -- renders inline in the conversation from one canonical event store shared with the activity rail, the background-tasks panel and the audit export, and no private reasoning is exposed.",
@@ -5880,10 +5887,15 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/lib/__tests__/activityEvents.test.ts",
+        "web-app/src/lib/__tests__/activityRecorder.test.ts",
+        "web-app/src/hooks/__tests__/useActivityTimeline.test.ts",
+        "web-app/src/containers/ActivityTimeline.test.tsx"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Requested directly by the operator. The event model (AH-004) and the run log (AH-005) exist in the harness crate and the CLI reads them back, but the desktop chat renders a transient StreamEvent stream that is never persisted, so the inline timeline, the rail, the panel and the export do not share a store."
+      "auditNote": "The canonical log, its store, the recorder and the inline timeline exist and are wired: the desktop run driver records a pending row when a tool call starts and settles the same row when it exits, and the conversation renders reads with line ranges, changes with diffs and line counts, commands with working directory, exit code, duration and output, permission decisions, git operations (destructive marked), retries and cancellations. Filtering, search, expansion, copy, file navigation, truncation, virtualization, persistence, session isolation, redaction and accessible labels are covered by 68 tests. Still in-progress because the other three surfaces have not been moved onto it: the activity rail and the Background Tasks panel still project coworkActivity, and the audit export still reads the Rust event log only. Also web-app only -- the Rust harness records its own events and the two logs are not yet one."
     },
     {
       "id": "AH-202",
