@@ -16,11 +16,6 @@ vi.mock('@janhq/core', () => ({
 
 global.fetch = vi.fn()
 
-Object.defineProperty(global, 'MODEL_CATALOG_URL', {
-  value: 'https://example.com/models',
-  writable: true,
-  configurable: true,
-})
 
 describe('DefaultModelsService', () => {
   let modelsService: DefaultModelsService

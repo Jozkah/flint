@@ -197,3 +197,104 @@ describe('no vendor services', () => {
     expect(filesMatching(/HTTP-Referer/i)).toEqual([])
   })
 })
+
+/**
+ * Build configuration is not application source, so the scan above never sees
+ * it -- and it is exactly where an analytics snippet or a catalogue URL gets
+ * reintroduced, because a `define` looks like configuration rather than code.
+ */
+describe('the build injects no telemetry and no catalogue', () => {
+  const vite = read(resolve(SRC, '../vite.config.ts'))
+  const vitest = read(resolve(SRC, '../vitest.config.ts'))
+
+  it('injects no analytics script into the page', () => {
+    for (const config of [vite, vitest]) {
+      expect(config).not.toMatch(/googletagmanager|gtag|dataLayer|GA_MEASUREMENT_ID/i)
+    }
+  })
+
+  it('defines no model catalogue endpoint', () => {
+    for (const config of [vite, vitest]) {
+      expect(config).not.toMatch(/MODEL_CATALOG_URL|LATEST_JAN_MODEL_URL/)
+      expect(config).not.toMatch(/model-catalog/)
+    }
+  })
+
+  it('defines no update-check switch or interval', () => {
+    for (const config of [vite, vitest]) {
+      expect(config).not.toMatch(/AUTO_UPDATER_DISABLED|UPDATE_CHECK_INTERVAL_MS/)
+    }
+  })
+
+  it('declares none of those globals to the type system either', () => {
+    const globals = read(resolve(SRC, 'types/global.d.ts'))
+    expect(globals).not.toMatch(
+      /GA_MEASUREMENT_ID|gtag|dataLayer|MODEL_CATALOG_URL|LATEST_JAN_MODEL_URL|AUTO_UPDATER_DISABLED|UPDATE_CHECK_INTERVAL_MS/
+    )
+  })
+})
+
+describe('the web app carries no analytics identity', () => {
+  it('has no analytics service', () => {
+    expect(existsSync(resolve(SRC, 'services/analytic'))).toBe(false)
+  })
+
+  it('assigns no install-wide identifier', () => {
+    expect(filesMatching(/distinct_id/)).toEqual([])
+  })
+
+  it('fetches no model catalogue or model listing', () => {
+    expect(filesMatching(/MODEL_CATALOG_URL|LATEST_JAN_MODEL_URL/)).toEqual([])
+    // A remote inference provider the user configures is not model discovery:
+    // what must not come back is a fetch of someone else's model index.
+    expect(
+      filesMatching(/huggingface\.co\/api\/models|hf\.co\/api\/models|resolve\/main\/[^'"\s]*\.gguf/i)
+    ).toEqual([])
+  })
+
+  it('offers no model download path', () => {
+    expect(filesMatching(/downloadModel|useDownloadStore|abortDownload/)).toEqual([])
+    expect(existsSync(resolve(SRC, 'routes/hub'))).toBe(false)
+    expect(existsSync(resolve(SRC, 'services/updater'))).toBe(false)
+  })
+})
+
+/**
+ * Packaging and CI: not shipped in the app, but they are how a vendor endpoint
+ * gets back in -- an update feed published from a release job, or a QA job that
+ * downloads the vendor's own build instead of the one just built here.
+ */
+describe('packaging and CI reach no vendor service', () => {
+  const CI = repoFiles(resolve(REPO, '.github'))
+  const PACKAGING = [
+    ...repoFiles(resolve(REPO, 'flatpak')),
+    ...readdirSync(resolve(REPO, 'scripts'))
+      .filter((entry) => /\.(sh|ps1|ts|js|mjs)$/.test(entry))
+      .map((entry) => resolve(REPO, 'scripts', entry)),
+  ]
+
+  it('names no vendor host in CI', () => {
+    expect(repoMatches(CI, /https?:\/\/[a-z0-9.-]*jan\.ai/i)).toEqual([])
+  })
+
+  it('configures no update endpoint in CI', () => {
+    expect(repoMatches(CI, /plugins\.updater|update-check|latest\.json\.template/)).toEqual(
+      []
+    )
+  })
+
+  it('ships no update manifest template', () => {
+    expect(existsSync(resolve(REPO, 'src-tauri/latest.json.template'))).toBe(false)
+  })
+
+  it('names no vendor host in packaging or install scripts', () => {
+    expect(repoMatches(PACKAGING, /https?:\/\/[a-z0-9.-]*jan\.ai/i)).toEqual([])
+  })
+})
+
+describe('the shared core carries no analytics fields', () => {
+  it('has no distinct_id on the app configuration', () => {
+    const CORE = repoFiles(resolve(REPO, 'core/src'))
+    expect(repoMatches(CORE, /distinct_id/)).toEqual([])
+  })
+})

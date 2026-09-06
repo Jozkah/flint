@@ -13,17 +13,17 @@ on:
         description: 'Windows installer URL path (used when source_type=url or to select artifact)'
         required: true
         type: string
-        default: 'https://catalog.jan.ai/windows/Jan_0.6.8_x64-setup.exe'
+        default: ''
       jan_app_ubuntu_source:
         description: 'Ubuntu .deb URL path'
         required: true
         type: string
-        default: 'https://delta.jan.ai/nightly/Jan-nightly_0.6.4-728_amd64.deb'
+        default: ''
       jan_app_macos_source:
         description: 'macOS .dmg URL path'
         required: true
         type: string
-        default: 'https://delta.jan.ai/nightly/Jan-nightly_0.6.4-728_universal.dmg'
+        default: ''
       is_nightly:
         description: 'Is the app a nightly build?'
         required: true
@@ -51,7 +51,7 @@ jobs:
     runs-on: windows-11-nvidia-gpu
     timeout-minutes: 60
     env:
-      DEFAULT_JAN_APP_URL: 'https://catalog.jan.ai/windows/Jan_0.6.8_x64-setup.exe'
+      DEFAULT_JAN_APP_URL: ''
       DEFAULT_IS_NIGHTLY: 'false'
     steps:
       - name: Checkout repository

@@ -2,7 +2,6 @@ import { render, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Stub the build-time define used by DataProvider
-;(globalThis as unknown as { UPDATE_CHECK_INTERVAL_MS: number }).UPDATE_CHECK_INTERVAL_MS = 60_000
 
 // Hoisted shared mocks/state
 const h = vi.hoisted(() => {

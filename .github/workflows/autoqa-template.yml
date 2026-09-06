@@ -51,7 +51,7 @@ jobs:
     timeout-minutes: 60
 
     env:
-      DEFAULT_JAN_APP_URL: 'https://catalog.jan.ai/windows/Jan-nightly_0.6.5-758_x64-setup.exe'
+      DEFAULT_JAN_APP_URL: ''
       DEFAULT_IS_NIGHTLY: 'true'
 
     steps:
@@ -169,7 +169,7 @@ jobs:
     timeout-minutes: 60
 
     env:
-      DEFAULT_JAN_APP_URL: 'https://delta.jan.ai/nightly/Jan-nightly_0.6.4-728_amd64.deb'
+      DEFAULT_JAN_APP_URL: ''
       DEFAULT_IS_NIGHTLY: 'true'
 
     steps:
@@ -315,7 +315,7 @@ jobs:
     timeout-minutes: 60
 
     env:
-      DEFAULT_JAN_APP_URL: 'https://delta.jan.ai/nightly/Jan-nightly_0.6.4-728_universal.dmg'
+      DEFAULT_JAN_APP_URL: ''
       DEFAULT_IS_NIGHTLY: 'true'
 
     steps:

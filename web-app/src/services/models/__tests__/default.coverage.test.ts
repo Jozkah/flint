@@ -27,16 +27,6 @@ vi.mock('../tokenCountToolContext', () => ({
 
 global.fetch = vi.fn()
 
-Object.defineProperty(global, 'MODEL_CATALOG_URL', {
-  value: 'https://example.com/models',
-  writable: true,
-  configurable: true,
-})
-Object.defineProperty(global, 'LATEST_JAN_MODEL_URL', {
-  value: 'https://example.com/latest',
-  writable: true,
-  configurable: true,
-})
 
 describe('DefaultModelsService - coverage supplement', () => {
   let svc: DefaultModelsService
