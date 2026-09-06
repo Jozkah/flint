@@ -1023,6 +1023,7 @@ impl ToolInvoker for CompositeToolInvoker {
                             let impact = crate::core::agent::impact::analyse(
                                 &self.project_root,
                                 &changed,
+                                self.index.as_deref(),
                             );
                             crate::core::agent::impact::render(&impact, &changed, &kind)
                         }
@@ -1033,8 +1034,11 @@ impl ToolInvoker for CompositeToolInvoker {
                     }
                 } else {
                     let kind = crate::core::agent::project_kind::detect(&self.project_root);
-                    let impact =
-                        crate::core::agent::impact::analyse(&self.project_root, &requested);
+                    let impact = crate::core::agent::impact::analyse(
+                        &self.project_root,
+                        &requested,
+                        self.index.as_deref(),
+                    );
                     crate::core::agent::impact::render(&impact, &requested, &kind)
                 };
                 out.push(ToolOutcome::plain(id, content));
@@ -5652,7 +5656,7 @@ mod tests {
         // Composed with detection: the report says how to run them.
         assert!(content.contains("`go test ./...`"), "{content}");
         // And never without the caveat.
-        assert!(content.contains("not coverage"), "{content}");
+        assert!(content.contains("not by coverage"), "{content}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

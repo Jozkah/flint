@@ -1741,13 +1741,15 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-055"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Switching branches or rewinding a checkpoint reconciles the index with the new tree.",
@@ -1756,9 +1758,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs::tests::a_changed_file_is_re_read_and_its_symbols_replaced",
+        "src-tauri/src/core/agent/index.rs::tests::a_deleted_file_leaves_no_symbols_behind",
+        "src-tauri/src/core/agent/index.rs::tests::an_index_predating_the_import_graph_is_discarded"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Falls out of keying entries on size and modification time: a branch switch rewrites the files that differ, so exactly those are re-read and files absent on the new branch are dropped. A schema change discards the whole index rather than reading it as though the new fields were empty."
     },
     {
       "id": "AH-057",
@@ -1990,13 +1997,15 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Module and package import edges are derivable from the index.",
@@ -2005,9 +2014,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs::tests::a_rust_module_declaration_resolves_to_the_file_it_names",
+        "src-tauri/src/core/agent/index.rs::tests::importers_are_found_in_both_directions",
+        "src-tauri/src/core/agent/index.rs::tests::an_import_escaping_the_repository_resolves_to_nothing"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "File-level import edges, resolved only where resolution is sound: Rust `mod x;` to x.rs or x/mod.rs, relative TypeScript/JavaScript specifiers to a file or its index, relative Python imports. A bare specifier names a package rather than a file here and is deliberately left unresolved; Go imports are package-level and yield no file edge. Trustworthy in a way find-references would not be, because an import is unambiguous syntax at the top of a file."
     },
     {
       "id": "AH-066",
@@ -2055,6 +2069,7 @@
       "owner": "lane-04-repo-index-lsp",
       "files": [
         "src-tauri/src/core/agent/impact.rs",
+        "src-tauri/src/core/agent/index.rs",
         "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "low",
@@ -2066,12 +2081,13 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/src/core/agent/loop.rs::tests::impact_maps_explicit_paths_to_their_tests",
-        "src-tauri/src/core/agent/loop.rs::tests::impact_outside_a_git_repository_says_why_rather_than_reporting_no_changes"
+        "src-tauri/src/core/agent/impact.rs::tests::a_dependents_tests_are_pulled_in_by_the_import_graph",
+        "src-tauri/src/core/agent/impact.rs::tests::a_file_with_no_test_is_reported_not_omitted",
+        "src-tauri/src/core/agent/loop.rs::tests::impact_maps_explicit_paths_to_their_tests"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "An `impact` tool resolves a diff to the tests that cover it, defaulting to the files git reports as changed and composing with detection so the report also carries the project's test command. Outside a git repository it says so rather than reporting no changes, which would read as the model's edits not being there. Mapping is by filename convention, not coverage: it does not know which tests exercise which code. A file with no conventionally-named test is reported as unmapped rather than omitted, because silence would read as covered, and every rendered report repeats that passing these tests does not prove a change safe."
+      "auditNote": "A diff now resolves to both the tests that conventionally cover it and the files that import it one hop out, whose tests are included too -- so a change to a file with no test of its own still reaches the tests of its dependents. One hop, not a closure: further out, \"affected by\" stops meaning much. Still not coverage, and every report says so."
     },
     {
       "id": "AH-068",

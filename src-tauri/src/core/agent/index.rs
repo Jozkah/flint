@@ -33,7 +33,7 @@ use jan_agent_harness::error::{ErrorKind, HarnessError};
 
 /// Schema of the persisted index. Bumped when the shape changes; an index
 /// written by a different version is rebuilt rather than misread.
-pub(crate) const INDEX_SCHEMA_VERSION: u32 = 1;
+pub(crate) const INDEX_SCHEMA_VERSION: u32 = 2;
 
 /// Largest file this will read. A declaration past this point is not worth
 /// pulling a generated bundle or a vendored blob into memory for.
@@ -70,6 +70,14 @@ pub(crate) struct FileEntry {
     pub size: u64,
     pub mtime_ms: u64,
     pub symbols: Vec<Symbol>,
+    /// Repository-relative paths this file imports.
+    ///
+    /// Only specifiers that resolve to a file in this repository, which is why
+    /// this is trustworthy where "find references" would not be: an import is a
+    /// declaration at the top of a file with unambiguous syntax, not a name
+    /// that might be a call, a comment or a string.
+    #[serde(default)]
+    pub imports: Vec<String>,
 }
 
 /// The persisted index.
@@ -142,6 +150,22 @@ impl RepoIndex {
                 .then_with(|| a.1.line.cmp(&b.1.line))
         });
         scored.into_iter().take(limit).map(|(_, s)| s).collect()
+    }
+
+    /// Files that import `path`, directly.
+    ///
+    /// One hop, not a transitive closure: two hops out, "affected by" stops
+    /// meaning much, and a list long enough to ignore is worse than a short
+    /// one that is read.
+    pub fn importers_of(&self, path: &str) -> Vec<&str> {
+        let mut out: Vec<&str> = self
+            .files
+            .iter()
+            .filter(|(_, entry)| entry.imports.iter().any(|i| i == path))
+            .map(|(key, _)| key.as_str())
+            .collect();
+        out.sort();
+        out
     }
 
     pub fn symbol_count(&self) -> usize {
@@ -253,6 +277,7 @@ pub(crate) fn refresh(root: &Path, index: &mut RepoIndex) -> Result<Delta, Harne
             continue;
         };
         let symbols = declarations(&text, language, &relative);
+        let imports = imports_of(&text, language, &relative, root);
         if index.files.contains_key(&relative) {
             delta.updated += 1;
         } else {
@@ -260,7 +285,7 @@ pub(crate) fn refresh(root: &Path, index: &mut RepoIndex) -> Result<Delta, Harne
         }
         seen.insert(
             relative,
-            FileEntry { size: metadata.len(), mtime_ms, symbols },
+            FileEntry { size: metadata.len(), mtime_ms, symbols, imports },
         );
     }
 
@@ -331,6 +356,124 @@ fn declarations(text: &str, language: Language, path: &str) -> Vec<Symbol> {
         });
     }
     out
+}
+
+/// Files this file imports, resolved to repository-relative paths.
+///
+/// Only specifiers that name a file in this repository are kept. A bare
+/// specifier (`serde`, `react`, `os`) names a package, not a file here, and
+/// resolving it would be a guess.
+fn imports_of(text: &str, language: Language, from: &str, root: &Path) -> Vec<String> {
+    let dir = from.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+    let mut out: Vec<String> = Vec::new();
+
+    for raw in text.lines() {
+        let line = raw.trim_start();
+        if line.starts_with(language.line_comment()) {
+            continue;
+        }
+        for resolved in import_targets(line, language, dir, root) {
+            if !out.contains(&resolved) {
+                out.push(resolved);
+            }
+        }
+    }
+    out
+}
+
+fn import_targets(line: &str, language: Language, dir: &str, root: &Path) -> Vec<String> {
+    let exists = |candidate: String| -> Option<String> {
+        root.join(&candidate).is_file().then_some(candidate)
+    };
+    let joined = |relative: &str| -> String {
+        // Normalise `a/b/../c` without touching the filesystem, so a path that
+        // climbs out of the repository simply fails to resolve.
+        let combined = format!("{dir}/{relative}");
+        let mut parts: Vec<&str> = Vec::new();
+        for segment in combined.split('/') {
+            match segment {
+                "" | "." => {}
+                ".." => {
+                    parts.pop();
+                }
+                other => parts.push(other),
+            }
+        }
+        parts.join("/")
+    };
+
+    match language {
+        // `mod foo;` is the whole of Rust's file-level import syntax, and it
+        // resolves to exactly two possible paths.
+        Language::Rust => {
+            let rest = line
+                .strip_prefix("pub mod ")
+                .or_else(|| line.strip_prefix("pub(crate) mod "))
+                .or_else(|| line.strip_prefix("mod "));
+            let Some(rest) = rest else {
+                return Vec::new();
+            };
+            let name: String = rest.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if name.is_empty() || !rest[name.len()..].trim_start().starts_with(';') {
+                // `mod tests { ... }` is an inline module, not another file.
+                return Vec::new();
+            }
+            [joined(&format!("{name}.rs")), joined(&format!("{name}/mod.rs"))]
+                .into_iter()
+                .filter_map(exists)
+                .collect()
+        }
+        Language::TypeScript => {
+            let Some(specifier) = quoted_specifier(line) else {
+                return Vec::new();
+            };
+            if !specifier.starts_with('.') {
+                return Vec::new();
+            }
+            let base = joined(&specifier);
+            ["ts", "tsx", "js", "jsx", "mjs"]
+                .iter()
+                .flat_map(|ext| {
+                    [format!("{base}.{ext}"), format!("{base}/index.{ext}")]
+                })
+                .chain(std::iter::once(base.clone()))
+                .filter_map(exists)
+                .take(1)
+                .collect()
+        }
+        Language::Python => {
+            let Some(rest) = line.strip_prefix("from .") else {
+                return Vec::new();
+            };
+            let module: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if module.is_empty() {
+                return Vec::new();
+            }
+            [joined(&format!("{module}.py")), joined(&format!("{module}/__init__.py"))]
+                .into_iter()
+                .filter_map(exists)
+                .collect()
+        }
+        // Go imports name packages, not files; there is no file to resolve to.
+        Language::Go => Vec::new(),
+    }
+}
+
+/// The single- or double-quoted string on an import line, if there is one.
+fn quoted_specifier(line: &str) -> Option<String> {
+    if !(line.starts_with("import ")
+        || line.starts_with("export ")
+        || line.contains("require("))
+    {
+        return None;
+    }
+    let bytes = line.as_bytes();
+    let quote = bytes.iter().position(|b| *b == b'\'' || *b == b'"')?;
+    let closing = bytes[quote + 1..].iter().position(|b| *b == bytes[quote])?;
+    Some(line[quote + 1..quote + 1 + closing].to_string())
 }
 
 fn declaration_on(line: &str, language: Language) -> Option<(String, SymbolKind)> {
@@ -604,6 +747,121 @@ mod tests {
         let mut index = RepoIndex::default();
         refresh(dir.path(), &mut index).unwrap();
         assert_eq!(names(&index), vec!["real"]);
+    }
+
+    #[test]
+    fn a_rust_module_declaration_resolves_to_the_file_it_names() {
+        let dir = repo(&[
+            ("src/lib.rs", "pub mod helper;\nmod nested;\nmod tests { }\n"),
+            ("src/helper.rs", "pub fn h() {}\n"),
+            ("src/nested/mod.rs", "pub fn n() {}\n"),
+        ]);
+        let mut index = RepoIndex::default();
+        refresh(dir.path(), &mut index).unwrap();
+
+        let imports = &index.files["src/lib.rs"].imports;
+        assert!(imports.contains(&"src/helper.rs".to_string()), "{imports:?}");
+        assert!(imports.contains(&"src/nested/mod.rs".to_string()), "{imports:?}");
+        // `mod tests { ... }` is an inline module, not another file.
+        assert_eq!(imports.len(), 2, "{imports:?}");
+    }
+
+    #[test]
+    fn a_relative_typescript_import_resolves_and_a_package_one_does_not() {
+        let dir = repo(&[
+            ("src/a.ts", "import { b } from './b'\nimport React from 'react'\n"),
+            ("src/b.ts", "export const b = 1\n"),
+        ]);
+        let mut index = RepoIndex::default();
+        refresh(dir.path(), &mut index).unwrap();
+
+        // A bare specifier names a package, not a file here; resolving it would
+        // be a guess.
+        assert_eq!(index.files["src/a.ts"].imports, vec!["src/b.ts"]);
+    }
+
+    #[test]
+    fn an_import_of_a_directory_resolves_to_its_index_file() {
+        let dir = repo(&[
+            ("src/a.ts", "import { x } from './widget'\n"),
+            ("src/widget/index.ts", "export const x = 1\n"),
+        ]);
+        let mut index = RepoIndex::default();
+        refresh(dir.path(), &mut index).unwrap();
+        assert_eq!(index.files["src/a.ts"].imports, vec!["src/widget/index.ts"]);
+    }
+
+    #[test]
+    fn a_parent_relative_import_is_normalised() {
+        let dir = repo(&[
+            ("src/deep/a.ts", "import { b } from '../b'\n"),
+            ("src/b.ts", "export const b = 1\n"),
+        ]);
+        let mut index = RepoIndex::default();
+        refresh(dir.path(), &mut index).unwrap();
+        assert_eq!(index.files["src/deep/a.ts"].imports, vec!["src/b.ts"]);
+    }
+
+    /// A specifier that climbs out of the repository must resolve to nothing
+    /// rather than to a path outside it.
+    #[test]
+    fn an_import_escaping_the_repository_resolves_to_nothing() {
+        let dir = repo(&[("src/a.ts", "import x from '../../../../etc/passwd'\n")]);
+        let mut index = RepoIndex::default();
+        refresh(dir.path(), &mut index).unwrap();
+        assert!(index.files["src/a.ts"].imports.is_empty());
+    }
+
+    #[test]
+    fn a_relative_python_import_resolves() {
+        let dir = repo(&[
+            ("pkg/a.py", "from .helper import thing\nimport os\n"),
+            ("pkg/helper.py", "thing = 1\n"),
+        ]);
+        let mut index = RepoIndex::default();
+        refresh(dir.path(), &mut index).unwrap();
+        assert_eq!(index.files["pkg/a.py"].imports, vec!["pkg/helper.py"]);
+    }
+
+    #[test]
+    fn importers_are_found_in_both_directions() {
+        let dir = repo(&[
+            ("src/core.ts", "export const core = 1\n"),
+            ("src/one.ts", "import { core } from './core'\n"),
+            ("src/two.ts", "import { core } from './core'\n"),
+            ("src/unrelated.ts", "export const u = 1\n"),
+        ]);
+        let mut index = RepoIndex::default();
+        refresh(dir.path(), &mut index).unwrap();
+
+        assert_eq!(index.importers_of("src/core.ts"), vec!["src/one.ts", "src/two.ts"]);
+        assert!(index.importers_of("src/unrelated.ts").is_empty());
+    }
+
+    /// Adding `imports` to the entry was a schema change, so an index written
+    /// before it must be rebuilt -- not read as though every file simply
+    /// imported nothing, which would make the graph silently empty.
+    #[test]
+    fn an_index_predating_the_import_graph_is_discarded() {
+        let dir = TempDir::new("index-old-schema");
+        let path = index_path(dir.path(), "repo-key");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            serde_json::json!({
+                "schema_version": 1,
+                "built_at_ms": 1,
+                "files": {
+                    "a.ts": { "size": 1, "mtime_ms": 1, "symbols": [] }
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let loaded = load(&path);
+        assert_eq!(loaded, RepoIndex::default());
+        assert!(loaded.files.is_empty(), "the stale entry must not survive");
     }
 
     #[test]
