@@ -2375,6 +2375,9 @@ async fn run_turn_cycle(
     let mut mid_run_nudge_count: u32 = 0;
     // One-shot: asked the model to close out its todos before handing back.
     let mut closeout_nudged = false;
+    // Watches for a run that has settled into asking for the same thing over
+    // and over. With turns unbounded by design, nothing else notices.
+    let mut loop_watch = crate::core::agent::progress::LoopWatch::default();
 
     while unlimited || turn < max_turns {
         // A ceiling is checked before the turn that would cross it, not after:
@@ -2515,6 +2518,55 @@ async fn run_turn_cycle(
         }
 
         let tool_calls = extract_tool_calls(&completion);
+
+        // Repeating a request verbatim cannot produce a different answer. Say
+        // so once, and stop the run if it keeps happening -- the cheap
+        // intervention usually works, and the expensive one has to exist for
+        // when it does not.
+        {
+            use crate::core::agent::progress::Progress;
+            let fingerprints = tool_calls
+                .iter()
+                .map(|tc| {
+                    let (_, name, args) = tool_call_parts(tc);
+                    crate::core::agent::progress::LoopWatch::fingerprint_of(&name, &args)
+                })
+                .collect();
+            match loop_watch.observe(fingerprints) {
+                Progress::Fine => {}
+                Progress::Repeating { turns } => {
+                    if let Some(recorder) = recorder {
+                        recorder.emit(
+                            jan_agent_harness::event::EventPayload::ProgressStalled {
+                                repeats: turns,
+                                stopped: false,
+                            },
+                        );
+                    }
+                    // System voice, like the budget notice and for the same
+                    // reason: an assistant turn saying this teaches the model
+                    // to write status markers of its own.
+                    conversation_messages.push(serde_json::json!({
+                        "role": "system",
+                        "content": crate::core::agent::progress::repeating_notice(turns),
+                    }));
+                    let _ = events.send(StreamEvent::MessagesUpdated {
+                        messages: conversation_messages.clone(),
+                    });
+                }
+                Progress::Stalled { turns } => {
+                    if let Some(recorder) = recorder {
+                        recorder.emit(
+                            jan_agent_harness::event::EventPayload::ProgressStalled {
+                                repeats: turns,
+                                stopped: true,
+                            },
+                        );
+                    }
+                    return Err(crate::core::agent::progress::stalled_msg(turns));
+                }
+            }
+        }
 
         if tool_calls.is_empty() {
             // The model is about to hand control back. If it finished the work
@@ -3070,6 +3122,155 @@ mod tests {
 
     /// The ceiling `[budget]` documents itself as. Before this it appended a
     /// note and carried on, tool calls included.
+    /// A model that settles into one tool call had nothing stopping it: turns
+    /// are unbounded by design, and the only counterweight was a reminder.
+    #[tokio::test]
+    async fn a_run_repeating_one_tool_call_is_nudged_then_stopped() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        // The same tool call, forever.
+        let model = MockModel::new(vec![tool_call_completion(); 12]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+
+        let error = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0, // unbounded: loop detection is what has to stop this
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("a looping run must be stopped");
+
+        assert!(error.contains("doom_loop"), "{error}");
+
+        // The model was told before it was cut off, exactly once.
+        let requests = model.requests.lock().unwrap();
+        let last = requests.last().expect("at least one request");
+        let notices: Vec<&serde_json::Value> = last["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|m| {
+                m.get("content")
+                    .and_then(|c| c.as_str())
+                    .is_some_and(|c| c.contains("[no progress]"))
+            })
+            .collect();
+        assert_eq!(notices.len(), 1, "nudged once, not every turn");
+        assert_eq!(notices[0]["role"], "system", "system voice, not assistant");
+
+        // It stopped well short of the twelve turns the model was willing to
+        // spend: the point is not burning the budget first.
+        assert!(requests.len() <= 6, "stopped after {} turns", requests.len());
+    }
+
+    #[tokio::test]
+    async fn a_run_doing_new_work_each_turn_is_never_stopped() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut turns: Vec<serde_json::Value> = (0..6)
+            .map(|n| {
+                let mut completion = tool_call_completion();
+                completion["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] =
+                    json!(format!("{{\"query\":\"step {n}\"}}"));
+                completion
+            })
+            .collect();
+        turns.push(final_completion());
+        let model = MockModel::new(turns);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+
+        let result = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("distinct calls are ordinary work");
+
+        assert_eq!(result["choices"][0]["message"]["content"], "done");
+        let requests = model.requests.lock().unwrap();
+        assert!(
+            requests.last().unwrap()["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|m| !m["content"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("[no progress]")),
+            "a run doing new work must never be told it is repeating"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_stall_is_recorded_as_the_reason_the_run_stopped() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let data = jan_agent_harness::fixtures::TempDir::new("stall-record");
+        let recorder = Arc::new(
+            crate::core::agent::recorder::RunRecorder::open(data.path(), None, None, "m", false)
+                .expect("recorder opens"),
+        );
+        let model = MockModel::new(vec![tool_call_completion(); 12]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+
+        let _ = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({ "role": "user", "content": "hi" })],
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            Some(&recorder),
+        )
+        .await;
+
+        let stalls: Vec<bool> = jan_agent_harness::envelope::EventLog::read(
+            recorder.run_dir().join("events.jsonl"),
+        )
+        .expect("event log reads")
+        .into_iter()
+        .filter_map(|e| match e.payload {
+            jan_agent_harness::event::EventPayload::ProgressStalled { stopped, .. } => {
+                Some(stopped)
+            }
+            _ => None,
+        })
+        .collect();
+
+        assert_eq!(
+            stalls,
+            vec![false, true],
+            "the warning and the stop are both in the record"
+        );
+    }
+
     #[tokio::test]
     async fn a_run_stops_once_it_crosses_its_token_ceiling() {
         let (tx, _rx) = mpsc::unbounded_channel();
@@ -3646,6 +3847,12 @@ mod tests {
         );
     }
 
+    /// A mutating tool call whose *arguments* differ per call, not just its id.
+    ///
+    /// A run that mutates thirteen times mutates thirteen different things.
+    /// Identical arguments every turn is a doom loop, and `progress::LoopWatch`
+    /// stops one -- so a fixture that repeated itself verbatim would be testing
+    /// the mutation counter against a run the harness now refuses to let happen.
     fn mutating_tool_call_completion(id: &str, name: &str) -> serde_json::Value {
         json!({
             "choices": [{
@@ -3654,7 +3861,10 @@ mod tests {
                     "tool_calls": [{
                         "id": id,
                         "type": "function",
-                        "function": { "name": name, "arguments": "{}" }
+                        "function": {
+                            "name": name,
+                            "arguments": format!("{{\"command\":\"touch {id}\"}}")
+                        }
                     }]
                 },
                 "finish_reason": "tool_calls"

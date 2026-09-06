@@ -901,13 +901,14 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-004"
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
+        "src-tauri/src/core/agent/progress.rs",
         "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "medium",
@@ -919,10 +920,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/progress.rs::tests",
+        "src-tauri/src/core/agent/loop.rs::tests::a_run_repeating_one_tool_call_is_nudged_then_stopped"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Only a mutation-count nudge that injects a reminder; nothing measures progress or halts the run."
+      "auditNote": "A turn that asks for exactly what the previous turn asked for is treated as no progress: the model is told once, and the run is stopped if it keeps going. Deliberately narrow -- a turn of plain text, or any change to the calls, ends the streak."
     },
     {
       "id": "AH-030",
@@ -930,13 +934,16 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-029"
       ],
       "owner": "lane-02-execution-runtime",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/progress.rs",
+        "src-tauri/harness/src/event.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Repeated identical tool calls are fingerprinted and broken out of.",
@@ -946,9 +953,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/progress.rs::tests::the_same_calls_in_a_different_order_are_the_same_request",
+        "src-tauri/src/core/agent/loop.rs::tests::a_stall_is_recorded_as_the_reason_the_run_stopped"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Tool calls are fingerprinted by name and canonicalised arguments, so the same batch in a different order counts as a repeat and a partly-changed batch does not. Both the warning and the stop are recorded."
     },
     {
       "id": "AH-031",

@@ -87,6 +87,12 @@ pub enum EventPayload {
 
     ErrorRaised { kind: ErrorKind, message: String, audience: Audience },
 
+    /// The run repeated the same tool calls without making progress.
+    ///
+    /// `repeats` counts consecutive turns that asked for nothing new;
+    /// `stopped` says whether this was the escalation that ended the run.
+    ProgressStalled { repeats: u32, stopped: bool },
+
     /// An event written by a newer build than the one reading it.
     ///
     /// Preserved verbatim so an old reader neither drops nor corrupts a log it
@@ -116,6 +122,7 @@ impl EventPayload {
             Self::CheckpointCreated { .. } => "checkpoint_created".into(),
             Self::BudgetCrossed { .. } => "budget_crossed".into(),
             Self::ErrorRaised { .. } => "error_raised".into(),
+            Self::ProgressStalled { .. } => "progress_stalled".into(),
             Self::Unknown { kind, .. } => kind.clone(),
         }
     }
@@ -274,6 +281,7 @@ mod tests {
                 message: "x".into(),
                 audience: Audience::Internal,
             },
+            EventPayload::ProgressStalled { repeats: 3, stopped: true },
         ];
         let kinds: std::collections::HashSet<_> = payloads.iter().map(|p| p.kind()).collect();
         assert_eq!(kinds.len(), payloads.len());

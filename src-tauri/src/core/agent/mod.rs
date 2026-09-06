@@ -25,6 +25,7 @@ pub mod memory;
 pub mod plan;
 pub mod plugin_commands;
 pub mod plugins;
+pub mod progress;
 pub mod project;
 pub mod recorder;
 pub mod reminder;

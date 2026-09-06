@@ -26,7 +26,7 @@ and the latter two require a recorded `blockedReason`.
 | Phase | Name | `missing` | `planned` | `in-progress` | `implemented` | `verified` | `platform-blocked` | `rejected-with-decision` | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Foundation | 0 | 0 | 2 | 10 | 0 | 0 | 0 | 12 |
-| 1 | Core execution | 1 | 0 | 8 | 11 | 0 | 0 | 0 | 20 |
+| 1 | Core execution | 0 | 0 | 7 | 13 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 3 | 0 | 9 | 8 | 0 | 0 | 0 | 20 |
 | 3 | Repository intelligence | 18 | 0 | 2 | 0 | 0 | 0 | 0 | 20 |
 | 4 | Context and memory | 6 | 0 | 7 | 3 | 0 | 0 | 0 | 16 |
@@ -34,7 +34,7 @@ and the latter two require a recorded `blockedReason`.
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 23 | 0 | 2 | 1 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 18 | 0 | 8 | 3 | 0 | 0 | 0 | 29 |
-| **all** | | **88** | **0** | **50** | **62** | **0** | **0** | **0** | **200** |
+| **all** | | **87** | **0** | **49** | **64** | **0** | **0** | **0** | **200** |
 
 ## Ownership lanes
 
@@ -91,8 +91,8 @@ per-OS evidence log rather than backlog items.
 | `AH-026` | Run resume after restart | 1 | execution | P1 | `in-progress` | medium | `AH-010` |
 | `AH-027` | Run checkpoints | 1 | execution | P1 | `implemented` | medium | `AH-010` |
 | `AH-028` | Checkpoint rollback | 1 | execution | P1 | `implemented` | high | `AH-027` |
-| `AH-029` | Stuck-loop detection | 1 | execution | P1 | `in-progress` | medium | `AH-004` |
-| `AH-030` | Doom-loop detection | 1 | execution | P1 | `missing` | medium | `AH-029` |
+| `AH-029` | Stuck-loop detection | 1 | execution | P1 | `implemented` | medium | `AH-004` |
+| `AH-030` | Doom-loop detection | 1 | execution | P1 | `implemented` | medium | `AH-029` |
 | `AH-031` | Human takeover mid-run | 1 | execution | P1 | `implemented` | medium | `AH-022` |
 | `AH-032` | Run replay from the event log | 1 | execution | P1 | `in-progress` | low | `AH-005` |
 | `AH-033` | Ordered allow/deny/ask evaluation | 2 | security | P0 | `implemented` | critical | `AH-007` |
@@ -288,7 +288,8 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-026` Run resume after restart** - A run interrupted mid-turn is now detectable: the record stays Running and a later process reads it as Interrupted. Resuming from that point is not built.
 - **`AH-027` Run checkpoints** - Capture, plan, restore and forget behind Tauri commands with a persisted chain; snapshot commits stay off the user's branch. The TUI is no longer the only driver.
 - **`AH-028` Checkpoint rollback** - RewindPlan::{Restore,Patch}; restore refuses a UserCheckout destination, so a rewind can never rewrite the user's own checkout.
-- **`AH-029` Stuck-loop detection** - Only a mutation-count nudge that injects a reminder; nothing measures progress or halts the run.
+- **`AH-029` Stuck-loop detection** - A turn that asks for exactly what the previous turn asked for is treated as no progress: the model is told once, and the run is stopped if it keeps going. Deliberately narrow -- a turn of plain text, or any change to the calls, ends the streak.
+- **`AH-030` Doom-loop detection** - Tool calls are fingerprinted by name and canonicalised arguments, so the same batch in a different order counts as a repeat and a partly-changed batch does not. Both the warning and the stop are recorded.
 - **`AH-032` Run replay from the event log** - The replay source now exists -- an ordered, gapless, versioned event log per run. Nothing reads it back yet.
 - **`AH-034` Rule resource matching** - Globs match tool names only; arguments are never pattern-matched, so bash(git:*)-style rules are inexpressible.
 - **`AH-036` Per-path permissions** - Path control is structural containment only; there are no user-authorable per-path allow/deny lists.
