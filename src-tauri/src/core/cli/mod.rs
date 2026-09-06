@@ -12,6 +12,7 @@ pub mod mcp;
 mod model_capabilities;
 mod path_refs;
 pub mod providers;
+pub mod runs;
 pub mod run_report;
 mod secret_input;
 pub mod telemetry;

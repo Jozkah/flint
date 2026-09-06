@@ -12,6 +12,7 @@ use console::Style;
 use app_lib::core::agent::plugins::InstalledPlugin;
 use app_lib::core::cli::mcp::{self, split_kv, McpServerEntry};
 use app_lib::core::cli::providers::{load_provider_configs, ProviderOverrides};
+use app_lib::core::cli::runs::{cli_runs_export, cli_runs_list, cli_runs_show};
 use app_lib::core::cli::run_report::OutputFormat;
 use app_lib::core::cli::{
     cli_agent_config_list, cli_agent_config_path, cli_agent_config_set, cli_agent_config_unset,
@@ -264,6 +265,25 @@ enum CliCommands {
 
 // ── Agent subcommands ──────────────────────────────────────────────────────
 
+/// `jan cli agent runs`: read back the canonical event log the agent loop
+/// writes for every run. `show` renders it for a person, `export` emits the
+/// record and every event verbatim for a reviewer or another tool.
+#[derive(Subcommand)]
+enum RunsCommands {
+    /// List recorded runs, oldest first
+    List,
+    /// Replay one run's events as a transcript
+    Show {
+        /// Run id, as printed by `runs list` (e.g. run_abc123)
+        run: String,
+    },
+    /// Print one run's record and every event as JSON
+    Export {
+        /// Run id, as printed by `runs list` (e.g. run_abc123)
+        run: String,
+    },
+}
+
 /// Cloud/local credential source shared by `agent run/step/status`. Overrides
 /// the persisted desktop provider store; env vars fill any remaining gaps.
 #[derive(Args)]
@@ -316,6 +336,11 @@ enum AgentCommands {
         /// object on stdout when the run finishes
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         output_format: OutputFormat,
+    },
+    /// Inspect what recorded runs did: list them, replay one, or export one
+    Runs {
+        #[command(subcommand)]
+        cmd: RunsCommands,
     },
     /// Run a single turn (debugging)
     Step {
@@ -769,6 +794,11 @@ async fn handle_agent(cmd: AgentCommands) {
             )
             .await
         }
+        AgentCommands::Runs { cmd } => match cmd {
+            RunsCommands::List => cli_runs_list(),
+            RunsCommands::Show { run } => cli_runs_show(&run),
+            RunsCommands::Export { run } => cli_runs_export(&run),
+        },
         AgentCommands::Status { project, providers } => {
             match cli_agent_status(&project, &providers.into_overrides()) {
                 Ok(status) => {

@@ -26,15 +26,15 @@ and the latter two require a recorded `blockedReason`.
 | Phase | Name | `missing` | `planned` | `in-progress` | `implemented` | `verified` | `platform-blocked` | `rejected-with-decision` | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Foundation | 0 | 0 | 2 | 10 | 0 | 0 | 0 | 12 |
-| 1 | Core execution | 0 | 0 | 6 | 14 | 0 | 0 | 0 | 20 |
+| 1 | Core execution | 0 | 0 | 5 | 15 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 3 | 0 | 9 | 8 | 0 | 0 | 0 | 20 |
 | 3 | Repository intelligence | 18 | 0 | 2 | 0 | 0 | 0 | 0 | 20 |
 | 4 | Context and memory | 6 | 0 | 7 | 3 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 8 | 0 | 6 | 11 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 23 | 0 | 2 | 1 | 0 | 0 | 0 | 26 |
-| 8 | UX, automation and operations | 18 | 0 | 8 | 3 | 0 | 0 | 0 | 29 |
-| **all** | | **87** | **0** | **48** | **65** | **0** | **0** | **0** | **200** |
+| 8 | UX, automation and operations | 16 | 0 | 9 | 4 | 0 | 0 | 0 | 29 |
+| **all** | | **85** | **0** | **48** | **67** | **0** | **0** | **0** | **200** |
 
 ## Ownership lanes
 
@@ -94,7 +94,7 @@ per-OS evidence log rather than backlog items.
 | `AH-029` | Stuck-loop detection | 1 | execution | P1 | `implemented` | medium | `AH-004` |
 | `AH-030` | Doom-loop detection | 1 | execution | P1 | `implemented` | medium | `AH-029` |
 | `AH-031` | Human takeover mid-run | 1 | execution | P1 | `implemented` | medium | `AH-022` |
-| `AH-032` | Run replay from the event log | 1 | execution | P1 | `in-progress` | low | `AH-005` |
+| `AH-032` | Run replay from the event log | 1 | execution | P1 | `implemented` | low | `AH-005` |
 | `AH-033` | Ordered allow/deny/ask evaluation | 2 | security | P0 | `implemented` | critical | `AH-007` |
 | `AH-034` | Rule resource matching | 2 | security | P0 | `in-progress` | critical | `AH-033` |
 | `AH-035` | Rule precedence and specificity | 2 | security | P0 | `implemented` | critical | `AH-033` |
@@ -239,7 +239,7 @@ per-OS evidence log rather than backlog items.
 | `AH-174` | Resource usage monitor | 8 | ux-operations | P2 | `in-progress` | low | `AH-173` |
 | `AH-175` | Token and cost dashboard | 8 | ux-operations | P1 | `in-progress` | low | `AH-073` |
 | `AH-176` | Event replay UI | 8 | ux-operations | P2 | `in-progress` | low | `AH-032` |
-| `AH-177` | Event export | 8 | ux-operations | P1 | `missing` | medium | `AH-005` |
+| `AH-177` | Event export | 8 | ux-operations | P1 | `implemented` | medium | `AH-005` |
 | `AH-178` | Searchable transcripts | 8 | ux-operations | P2 | `in-progress` | low | `AH-010` |
 | `AH-179` | Screen-reader accessibility | 8 | ux-operations | P1 | `missing` | none | - |
 | `AH-180` | Keyboard navigation | 8 | ux-operations | P1 | `missing` | none | `AH-179` |
@@ -262,7 +262,7 @@ per-OS evidence log rather than backlog items.
 | `AH-197` | Golden-repository regression suite | 8 | ux-operations | P1 | `missing` | medium | `AH-011`, `AH-196` |
 | `AH-198` | Security regression corpus | 8 | ux-operations | P0 | `missing` | critical | `AH-011`, `AH-049` |
 | `AH-199` | Telemetry controls | 8 | ux-operations | P1 | `implemented` | high | - |
-| `AH-200` | Full audit export | 8 | ux-operations | P1 | `missing` | critical | `AH-049`, `AH-177` |
+| `AH-200` | Full audit export | 8 | ux-operations | P1 | `in-progress` | critical | `AH-049`, `AH-177` |
 
 ## Audit notes
 
@@ -290,7 +290,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-028` Checkpoint rollback** - RewindPlan::{Restore,Patch}; restore refuses a UserCheckout destination, so a rewind can never rewrite the user's own checkout.
 - **`AH-029` Stuck-loop detection** - A turn that asks for exactly what the previous turn asked for is treated as no progress: the model is told once, and the run is stopped if it keeps going. Deliberately narrow -- a turn of plain text, or any change to the calls, ends the streak.
 - **`AH-030` Doom-loop detection** - Tool calls are fingerprinted by name and canonicalised arguments, so the same batch in a different order counts as a repeat and a partly-changed batch does not. Both the warning and the stop are recorded.
-- **`AH-032` Run replay from the event log** - The replay source now exists -- an ordered, gapless, versioned event log per run. Nothing reads it back yet.
+- **`AH-032` Run replay from the event log** - `jan cli agent runs show` replays a run from its persisted canonical events. An event written by a newer build is named rather than skipped, and an unmeasured duration prints as untimed rather than as zero.
 - **`AH-034` Rule resource matching** - Globs match tool names only; arguments are never pattern-matched, so bash(git:*)-style rules are inexpressible.
 - **`AH-036` Per-path permissions** - Path control is structural containment only; there are no user-authorable per-path allow/deny lists.
 - **`AH-037` Per-command permissions** - Grants are session-scoped and per base command, so granting `git status` also permits `git push`.
@@ -345,11 +345,12 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-174` Resource usage monitor** - Only host-level CPU and RAM; nothing is attributed per run or per agent.
 - **`AH-175` Token and cost dashboard** - Tokens are tracked; there is no pricing model or cost figure anywhere in the product.
 - **`AH-176` Event replay UI** - The CLI replays a rendering journal; there is no event-level replay UI.
-- **`AH-177` Event export** - The events exist on disk per run; no command exports them.
-- **`AH-178` Searchable transcripts** - Search exists in the desktop app; there is no transcript export or CLI search.
+- **`AH-177` Event export** - `jan cli agent runs export` emits the run record and every event as JSON, round-tripping back into the same types.
+- **`AH-178` Searchable transcripts** - `jan cli agent runs list` makes past runs enumerable from the CLI and `show` renders one. Content search across runs is still absent; the desktop app searches threads, not runs.
 - **`AH-179` Screen-reader accessibility** - Not audited in depth during Phase 0; status to be confirmed by an accessibility pass in Phase 8.
 - **`AH-180` Keyboard navigation** - Not audited in depth during Phase 0; the CLI is keyboard-driven by nature, the desktop surfaces are unverified.
 - **`AH-182` Headless JSON API** - --output-format json emits a single terminal object, not a machine API surface.
 - **`AH-183` Headless event-stream API** - StreamEvent is already Tauri-free but is never exposed over stdout or a socket.
 - **`AH-194` Provider routing rules** - Resolution prefers a credentialed provider and supports a small-model role; there are no user-authored rules.
 - **`AH-195` Local and offline model support** - Local inference ships on the desktop app; the headless CLI is remote-only.
+- **`AH-200` Full audit export** - Permission decisions, tool calls and run events export together as one reviewable record per run, auto-approvals included. Still per-run rather than across runs, and it covers the Rust harness only -- the Cowork desktop harness records nothing to export.

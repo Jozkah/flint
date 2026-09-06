@@ -999,14 +999,15 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-005"
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/src/core/agent/recorder.rs"
+        "src-tauri/src/core/cli/runs.rs",
+        "src-tauri/src/bin/jan.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -1017,10 +1018,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/cli/runs.rs::tests::a_recorded_run_reads_back_as_a_replay_and_an_export",
+        "src-tauri/src/core/cli/runs.rs::tests::every_event_renders_on_one_line"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The replay source now exists -- an ordered, gapless, versioned event log per run. Nothing reads it back yet."
+      "auditNote": "`jan cli agent runs show` replays a run from its persisted canonical events. An event written by a newer build is named rather than skipped, and an unmeasured duration prints as untimed rather than as zero."
     },
     {
       "id": "AH-033",
@@ -5050,13 +5054,16 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-005"
       ],
       "owner": "lane-09-ux-observability",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/cli/runs.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A run's canonical events export to a file for external analysis.",
@@ -5065,10 +5072,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/cli/runs.rs::tests::the_export_carries_the_record_and_every_event_verbatim"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The events exist on disk per run; no command exports them."
+      "auditNote": "`jan cli agent runs export` emits the run record and every event as JSON, round-tripping back into the same types."
     },
     {
       "id": "AH-178",
@@ -5083,6 +5092,7 @@
       ],
       "owner": "lane-09-ux-observability",
       "files": [
+        "src-tauri/src/core/cli/runs.rs",
         "web-app/src/containers/dialogs/SearchDialog.tsx"
       ],
       "securityImpact": "low",
@@ -5096,7 +5106,7 @@
       "tests": [],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Search exists in the desktop app; there is no transcript export or CLI search."
+      "auditNote": "`jan cli agent runs list` makes past runs enumerable from the CLI and `show` renders one. Content search across runs is still absent; the desktop app searches threads, not runs."
     },
     {
       "id": "AH-179",
@@ -5655,14 +5665,16 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P1",
       "dependencies": [
         "AH-049",
         "AH-177"
       ],
       "owner": "lane-09-ux-observability",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/cli/runs.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "Every permission decision, tool call and run event exports as one reviewable record.",
@@ -5672,9 +5684,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/cli/runs.rs::tests::a_recorded_run_reads_back_as_a_replay_and_an_export"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Permission decisions, tool calls and run events export together as one reviewable record per run, auto-approvals included. Still per-run rather than across runs, and it covers the Rust harness only -- the Cowork desktop harness records nothing to export."
     }
   ]
 }
