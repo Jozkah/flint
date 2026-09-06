@@ -518,6 +518,21 @@ fn make_logo() -> String {
 
 // ── Entry point ────────────────────────────────────────────────────────────
 
+/// Exits after reaping any agent shell trees this process started.
+///
+/// `std::process::exit` runs no destructors, so a drop guard would never fire.
+/// The desktop app reaps explicitly on graceful exit for exactly this reason --
+/// "no shell (or child it spawned) outlives the app" -- and the headless CLI
+/// had no equivalent, so a backgrounded `bash` job outlived `jan` with nothing
+/// left that could ever collect its output.
+///
+/// Agent shells run in their own process group, so they do not receive the
+/// terminal's SIGINT either: nothing else was going to clean them up.
+fn exit_with(code: i32) -> ! {
+    tauri_plugin_agent_tools::tools::proc::kill_all();
+    std::process::exit(code)
+}
+
 #[tokio::main]
 async fn main() {
     // Exits early if invoked as the Windows sandbox helper for a `bash` tool
@@ -568,7 +583,7 @@ async fn main() {
         .await
         {
             eprintln!("Error: {e}");
-            std::process::exit(1);
+            exit_with(1);
         }
         return;
     };
@@ -585,23 +600,59 @@ async fn main() {
         Commands::Login { paste_token } => {
             if let Err(e) = app_lib::core::cli::login::run_login(paste_token).await {
                 eprintln!("Error: {e}");
-                std::process::exit(1);
+                exit_with(1);
             }
         }
         Commands::Auth { cmd } => {
             if let Err(e) = handle_auth(cmd).await {
                 eprintln!("Error: {e}");
-                std::process::exit(1);
+                exit_with(1);
             }
         }
         Commands::Config { cmd } => {
             if let Err(e) = handle_agent_config(cmd) {
                 eprintln!("Error: {e}");
-                std::process::exit(1);
+                exit_with(1);
             }
         }
         Commands::Plugin { cmd } => handle_plugin(cmd).await,
         Commands::Update { check, force } => handle_update(check, force).await,
+    }
+
+    // The success path needs the same reaping as the failure paths: a run that
+    // finished cleanly can still have backgrounded a `bash` job, and once `jan`
+    // is gone nothing can ever collect its output.
+    tauri_plugin_agent_tools::tools::proc::kill_all();
+}
+
+#[cfg(test)]
+mod exit_path_tests {
+    /// Every exit has to go through `exit_with`, which reaps first.
+    ///
+    /// `std::process::exit` runs no destructors, so one bare call is a shell
+    /// tree that outlives the CLI with nothing left to collect it -- and the
+    /// mistake is invisible in review because the leaked process is not the one
+    /// you are looking at. Checked the way `mcp::launch` checks its own
+    /// invariant: against the source, so a new call site fails here.
+    #[test]
+    fn no_exit_bypasses_the_process_reaper() {
+        let source = include_str!("jan.rs");
+        let production: String = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("source has a non-test prefix")
+            .to_string();
+
+        let bare = production.matches("std::process::exit(").count();
+        assert_eq!(
+            bare, 1,
+            "every exit must go through `exit_with`; found {bare} direct calls to              std::process::exit, expected only the one inside `exit_with` itself"
+        );
+        assert!(
+            production.contains("fn exit_with(code: i32) -> ! {
+    tauri_plugin_agent_tools::tools::proc::kill_all();"),
+            "`exit_with` must reap before exiting"
+        );
     }
 }
 
@@ -634,7 +685,7 @@ async fn handle_update(check: bool, force: bool) {
     };
     if let Err(e) = result {
         eprintln!("Error: {e}");
-        std::process::exit(1);
+        exit_with(1);
     }
 }
 
@@ -670,7 +721,7 @@ async fn handle_plugin(cmd: PluginCommands) {
         };
     if let Err(e) = result {
         eprintln!("Error: {e}");
-        std::process::exit(1);
+        exit_with(1);
     }
 }
 
@@ -738,7 +789,7 @@ async fn handle_cli(cmd: CliCommands) {
         CliCommands::Mcp { cmd } => {
             if let Err(e) = handle_mcp(cmd) {
                 eprintln!("Error: {e}");
-                std::process::exit(1);
+                exit_with(1);
             }
         }
     }
@@ -811,7 +862,7 @@ async fn handle_agent(cmd: AgentCommands) {
     };
     if let Err(e) = result {
         eprintln!("Error: {e}");
-        std::process::exit(1);
+        exit_with(1);
     }
 }
 
@@ -924,7 +975,7 @@ async fn handle_threads(cmd: ThreadsCommands) {
             }
             Err(e) => {
                 eprintln!("Error: {e}");
-                std::process::exit(1);
+                exit_with(1);
             }
         },
 
@@ -932,7 +983,7 @@ async fn handle_threads(cmd: ThreadsCommands) {
             Ok(thread) => println!("{}", serde_json::to_string_pretty(&thread).unwrap()),
             Err(e) => {
                 eprintln!("Error: {e}");
-                std::process::exit(1);
+                exit_with(1);
             }
         },
 
@@ -940,7 +991,7 @@ async fn handle_threads(cmd: ThreadsCommands) {
             Ok(()) => println!("{}", serde_json::json!({ "deleted": true, "id": id })),
             Err(e) => {
                 eprintln!("Error: {e}");
-                std::process::exit(1);
+                exit_with(1);
             }
         },
 
@@ -948,7 +999,7 @@ async fn handle_threads(cmd: ThreadsCommands) {
             Ok(messages) => println!("{}", serde_json::to_string_pretty(&messages).unwrap()),
             Err(e) => {
                 eprintln!("Error: {e}");
-                std::process::exit(1);
+                exit_with(1);
             }
         },
     }
@@ -966,7 +1017,7 @@ async fn handle_models(cmd: ModelsCommands) {
                 Ok(c) => c,
                 Err(e) => {
                     eprintln!("Error: {e}");
-                    std::process::exit(1);
+                    exit_with(1);
                 }
             };
             let mut output: Vec<serde_json::Value> = configs

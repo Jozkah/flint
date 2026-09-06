@@ -728,8 +728,9 @@
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/src/core/agent/loop.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs"
+        "src-tauri/src/bin/jan.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs",
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -741,10 +742,13 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/bin/jan.rs::exit_path_tests::no_exit_bypasses_the_process_reaper",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs::tests::kill_tree_reaps_backgrounded_grandchild"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "A tool call that hangs is now abandoned on a timeout rather than holding the run forever. True cancellation is still drop/abort-based with no cancellation token, so an in-flight child process relies on process-group kill and an abandoned call is not itself killed."
+      "auditNote": "Foreground tool processes are killed on drop and run in their own process group, and a hung call is now abandoned on a timeout. The headless CLI leaked backgrounded bash trees on every exit -- the desktop app reaps on graceful exit, the CLI never did -- so every exit path now goes through a reaping helper, guarded by a source-level test. Still outstanding: no cancellation token, so an abandoned call is not itself killed, and a signal-terminated CLI still leaks because agent shells sit outside the terminal's process group."
     },
     {
       "id": "AH-024",
