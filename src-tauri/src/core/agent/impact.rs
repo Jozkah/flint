@@ -40,7 +40,7 @@ pub(crate) struct Impact {
 }
 
 /// Whether a path is itself a test, by the same conventions.
-fn is_test_path(path: &str) -> bool {
+pub(crate) fn is_test_path(path: &str) -> bool {
     let name = path.rsplit('/').next().unwrap_or(path);
     name.ends_with("_test.go")
         || name.ends_with("_test.py")
@@ -53,7 +53,7 @@ fn is_test_path(path: &str) -> bool {
 }
 
 /// Candidate test paths for a source file, whether or not they exist.
-fn candidates(source: &str) -> Vec<String> {
+pub(crate) fn candidates(source: &str) -> Vec<String> {
     let (dir, name) = match source.rsplit_once('/') {
         Some((dir, name)) => (dir.to_string(), name.to_string()),
         None => (String::new(), source.to_string()),

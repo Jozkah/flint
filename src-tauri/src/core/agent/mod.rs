@@ -19,6 +19,7 @@ pub mod git;
 pub mod global_config;
 #[cfg(feature = "cli")]
 pub mod goal;
+pub mod health;
 pub mod impact;
 pub mod index;
 pub mod interaction;

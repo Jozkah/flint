@@ -1044,6 +1044,15 @@ impl ToolInvoker for CompositeToolInvoker {
                 out.push(ToolOutcome::plain(id, content));
                 continue;
             }
+            if name == "repo_health" {
+                let (id, _, _) = tool_call_parts(tc);
+                let report = crate::core::agent::health::scan(
+                    &self.project_root,
+                    self.index.as_deref(),
+                );
+                out.push(ToolOutcome::plain(id, crate::core::agent::health::render(&report)));
+                continue;
+            }
             if name == "code_search" {
                 let (id, _, args) = tool_call_parts(tc);
                 let query = args.get("query").and_then(|v| v.as_str()).unwrap_or_default();
@@ -1671,6 +1680,15 @@ fn advertise_local_tools(
         && allowed_names.is_none_or(|allowed| allowed.contains("code_search"))
     {
         openai_tools.push(crate::core::agent::search::search_tool_schema());
+    }
+    // The one tool here that reports on the others: whether the index they all
+    // read is current, and what it cannot see. Read-only, and most useful
+    // before trusting the first answer of a run.
+    if project_root.is_some()
+        && !permissions.is_denied("repo_health")
+        && allowed_names.is_none_or(|allowed| allowed.contains("repo_health"))
+    {
+        openai_tools.push(crate::core::agent::health::health_tool_schema());
     }
     // Todo bookkeeping is session metadata, not filesystem access, so like
     // `ask` it's advertised independent of the project_root gate above.
@@ -5709,6 +5727,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn repo_health_is_dispatched_against_the_run_index() {
+        let root = unique_project_root();
+        std::fs::write(root.join("lib.rs"), "pub fn only_thing() {}\n").unwrap();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-health");
+        let (mut invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let mut index = crate::core::agent::index::RepoIndex::default();
+        crate::core::agent::index::refresh(&root, &mut index).expect("indexes");
+        invoker.index = Some(Arc::new(index));
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "repo_health", "arguments": "{}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+
+        let content = &out[0].content;
+        assert!(content.contains("Repository scan:"), "{content}");
+        // The limits travel with the report, not with the documentation.
+        assert!(content.contains("no compiler"), "{content}");
+    }
+
+    #[tokio::test]
+    async fn repo_health_without_an_index_reports_that_as_the_finding() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-health-none");
+        let (invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "repo_health", "arguments": "{}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+        let content = &out[0].content;
+        assert!(content.contains("index-missing"), "{content}");
+        // A check that could not run must not read as a check that passed.
+        assert!(content.contains("Not checked"), "{content}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
     async fn code_search_is_dispatched_against_the_run_index() {
         let root = unique_project_root();
         std::fs::write(
@@ -5789,6 +5850,10 @@ mod tests {
             assert!(
                 names.contains(&"code_search"),
                 "read-only search belongs in {mode:?}: {names:?}"
+            );
+            assert!(
+                names.contains(&"repo_health"),
+                "knowing whether the index can be trusted belongs in {mode:?}: {names:?}"
             );
         }
         let _ = std::fs::remove_dir_all(&root);

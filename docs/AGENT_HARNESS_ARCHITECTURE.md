@@ -216,6 +216,7 @@ the model including in plan mode:
 | `index.rs` | `symbol_search` | where is `X` declared |
 | `search.rs` | `code_search` | where does the text `X` appear, as a name, a word inside one, a path or a doc comment |
 | `impact.rs` | `impact` | what should I run after changing these files, and who imports them |
+| `health.rs` | `repo_health` | can I trust the answers the other three just gave me |
 | `project_kind.rs` | -- | what kind of project is this (injected into the runtime block every run, not a tool) |
 
 The index is the shared substrate. It is built once per run, keyed on
@@ -236,6 +237,40 @@ place. Query length, result count and scan cost are all bounded, and a refusal
 names its reason. An empty index, a scan that stopped early and a genuine miss
 are three distinct outcomes and never collapse into one message: "no results"
 from an index that was never built is a lie about the repository.
+
+
+`repo_health` is the one tool here that reports on the others. Every other
+tool answers by trusting the index; this one asks whether the index deserves
+it, and reports each way it might not -- built from a tree that has since moved
+on, written by an older schema, holding edges to deleted files, or holding
+build output `.gitignore` should have kept out. It also checks the things
+around the index: whether a build and test command could be established at all,
+whether the feature registry's own claims are backed by the tree, and which
+modules exist in only one build configuration.
+
+Three properties of its report matter more than the check list:
+
+- **A skipped check is named, with its reason.** A check that quietly did not
+  run is indistinguishable from one that passed, and the reader will assume the
+  latter. Without an index, eight checks cannot run, and the report says so
+  eight times rather than reporting a short clean list.
+- **Findings that are usually deliberate are notes, not errors.** This
+  repository legitimately declares `new` in 37 files and gates `goal` on the
+  `cli` feature. Reporting those as errors would be correct and would teach the
+  reader to skip the report, which costs more than the findings are worth.
+- **A clean report never says the repository is healthy.** It runs no compiler,
+  type checker, linter or test. "The checks that ran found nothing" is a much
+  smaller claim than "this is fine", and only the smaller one is true.
+
+Its first run against this repository found four real defects: two in its own
+code (files above the index's 1 MiB ceiling reported as permanently "added
+since the index was built", and a hand-written `vendor/` source directory
+flagged as vendored dependencies) and two in the registry (`AH-012` citing a
+module that had been deleted, `AH-199` claiming a file that does not exist --
+which on reading turned out to be an `implemented` status the code did not
+support, now corrected to `missing`). That is the argument for the tool
+existing, and the reason its own false positives are now regression tests: a
+diagnostic that cries wolf is worse than none, because it is read once.
 
 ## 6. Relationship to the Cowork harness blueprint
 

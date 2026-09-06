@@ -173,9 +173,10 @@ above.
 
 | Command | Result |
 | --- | --- |
-| `cargo test --no-default-features --features cli --lib` | 1582 passed, 0 failed |
+| `cargo test --no-default-features --features cli --lib` | 1625 passed, 0 failed |
 | `cargo test --no-default-features --features cli --bins` | 15 passed, 0 failed |
-| `cargo test --no-default-features --features test-tauri --lib` | 889 passed, 0 failed |
+| `cargo test --no-default-features --features test-tauri --lib` | 932 passed, 0 failed |
+| `cargo test --manifest-path src-tauri/harness/Cargo.toml` | 56 passed, 0 failed |
 | `cargo clippy --no-default-features --features cli --all-targets -- -D warnings` | clean |
 | `cargo clippy --no-default-features --features test-tauri --all-targets -- -D warnings` | clean |
 | `node --test "scripts/agent-harness/*.test.mjs"` | 26 passed |
@@ -205,6 +206,29 @@ Every non-empty result ends with the same sentence: matching is lexical, over
 names, the words in them, paths and doc comments, and does not relate one word
 to another. No output claimed semantic understanding.
 
+`repo_health` was read the same way, against this repository, with and without
+an index, and the harness deleted afterwards. **The first reading found four
+defects, two of them in the tool itself**, which is the whole reason this step
+exists -- every one of the four passed its unit tests:
+
+| Found | Was it real |
+| --- | --- |
+| `src-tauri/src/core/cli/tui.rs` and `swagger-ui-bundle.js` reported as "added since the index was built" | **False positive.** Both exceed the index's 1 MiB per-file ceiling, so the index correctly omits them and the walk did not. Every rebuild would have re-reported them: a stale-index warning no action could ever clear. Fixed by mirroring the ceiling in the walk and reporting oversized files as their own note. |
+| `tauri-plugin-hardware/src/vendor/*.rs` reported as vendored code | **False positive.** Hand-written GPU-vendor source. The check matched `vendor/` as a substring; a diagnostic that tells the reader not to edit real source is worse than no diagnostic. Fixed by matching directory names as whole path segments and dropping `vendor` from the list entirely. |
+| `AH-012 (implemented)` claims a test in `src-tauri/harness/src/worktree.rs` | **Real.** That module was deleted in Phase 0 rather than reconciled with `core/agent/worktree.rs`, and the registry entry still cited it. Repointed at the three real tests. |
+| `AH-199 (implemented)` names `web-app/src/containers/analytics/AnalyticConsent.tsx` | **Real, and worse than a stale path.** The file does not exist; nor does the `@/providers/AnalyticProvider` that `__root.test.tsx` mocks; `__root.tsx` references neither. What exists is `DefaultAnalyticService`, which reads and writes a distinct id and has no consent gate. The acceptance criterion -- telemetry is consent-gated and can be disabled -- is unmet, so the status is corrected from `implemented` to `missing`. |
+
+Both code defects now have regression tests
+(`a_file_above_the_index_ceiling_is_not_reported_as_stale`,
+`a_source_directory_named_vendor_is_not_mistaken_for_vendored_code`). After the
+fixes the same scan reports 0 errors, 0 warnings and 5 notes, and each of the
+five is a true statement about a real limit rather than a defect.
+
+Also checked in that reading, and found correct: the skipped-check list names
+all eight index-dependent checks when no index exists; the counts of run and
+skipped checks add up to the check list; and no rendering of the report
+contains the word "healthy".
+
 #### Not run in Phase 3, and why
 
 | Not run | Reason |
@@ -218,6 +242,12 @@ to another. No output claimed semantic understanding.
 `AH-071` is `in-progress`, not `implemented`. Its acceptance criterion asks for
 embedding search; `code_search` is lexical. Marking it done would record a
 capability the code does not have, and the next reader would plan against it.
+
+`AH-072` is `in-progress`, not `implemented`, for the same reason. Its
+criterion asks for build, test, lint and dependency health; `repo_health`
+reports none of those four. It reports on the index and the project metadata,
+and running the build or the tests is a separate capability that stays open
+under this id.
 
 ### Phases 2, 4-8
 

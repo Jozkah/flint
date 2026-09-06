@@ -396,13 +396,15 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/harness/src/worktree.rs::tests"
+        "src-tauri/src/core/agent/worktree.rs::tests::identifies_a_repository_by_its_first_commit",
+        "src-tauri/src/core/agent/worktree.rs::tests::creates_a_worktree_outside_the_source_checkout",
+        "src-tauri/src/core/agent/worktree.rs::tests::reuses_the_same_worktree_across_restarts"
       ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": "Convention is `jan/cowork/<slug>` branches under a data-directory worktree root keyed by RepoIdentity (the repo's first commit). Owned by core/agent/worktree.rs; nothing else may add a second scheme."
+      "auditNote": "Convention is `jan/cowork/<slug>` branches under a data-directory worktree root keyed by RepoIdentity (the repo's first commit). Owned by core/agent/worktree.rs; nothing else may add a second scheme. The test reference previously pointed at src-tauri/harness/src/worktree.rs, a second worktree module that was deleted rather than reconciled with this one; the repo_health registry check (AH-072) found the dangling claim."
     },
     {
       "id": "AH-013",
@@ -2237,14 +2239,18 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P2",
       "dependencies": [
         "AH-069",
         "AH-070"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/health.rs",
+        "src-tauri/src/core/agent/impact.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "A one-shot scan reports build, test, lint and dependency health for the project.",
@@ -2253,9 +2259,33 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/health.rs::tests::a_missing_index_is_an_error_not_a_clean_bill_of_health",
+        "src-tauri/src/core/agent/health.rs::tests::without_an_index_the_checks_that_need_one_are_skipped_with_a_reason",
+        "src-tauri/src/core/agent/health.rs::tests::a_file_added_since_the_index_was_built_is_reported_as_stale",
+        "src-tauri/src/core/agent/health.rs::tests::an_index_from_an_older_schema_is_reported_as_a_mismatch",
+        "src-tauri/src/core/agent/health.rs::tests::an_indexed_file_that_can_no_longer_be_read_is_reported",
+        "src-tauri/src/core/agent/health.rs::tests::an_import_whose_target_was_deleted_is_a_broken_edge",
+        "src-tauri/src/core/agent/health.rs::tests::a_project_with_no_recognised_manifest_is_reported",
+        "src-tauri/src/core/agent/health.rs::tests::a_name_declared_in_two_files_is_reported_as_ambiguous",
+        "src-tauri/src/core/agent/health.rs::tests::files_in_a_language_the_indexer_cannot_read_are_named_with_their_count",
+        "src-tauri/src/core/agent/health.rs::tests::a_generated_file_that_reached_the_index_is_reported",
+        "src-tauri/src/core/agent/health.rs::tests::an_indexed_file_with_no_conventional_test_is_reported",
+        "src-tauri/src/core/agent/health.rs::tests::a_registry_claiming_a_file_that_does_not_exist_is_an_error",
+        "src-tauri/src/core/agent/health.rs::tests::a_registry_claiming_a_test_that_is_not_in_the_file_is_an_error",
+        "src-tauri/src/core/agent/health.rs::tests::a_malformed_registry_is_reported_rather_than_silently_passing",
+        "src-tauri/src/core/agent/health.rs::tests::a_module_gated_to_one_build_configuration_is_reported_as_drift",
+        "src-tauri/src/core/agent/health.rs::tests::a_skipped_check_is_never_also_listed_as_run",
+        "src-tauri/src/core/agent/health.rs::tests::a_file_above_the_index_ceiling_is_not_reported_as_stale",
+        "src-tauri/src/core/agent/health.rs::tests::a_source_directory_named_vendor_is_not_mistaken_for_vendored_code",
+        "src-tauri/src/core/agent/health.rs::tests::a_clean_report_does_not_claim_the_repository_is_healthy",
+        "src-tauri/src/core/agent/health.rs::tests::the_tool_description_does_not_promise_build_or_lint_results",
+        "src-tauri/src/core/agent/loop.rs::tests::repo_health_is_dispatched_against_the_run_index",
+        "src-tauri/src/core/agent/loop.rs::tests::repo_health_without_an_index_reports_that_as_the_finding"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Delivered as the `repo_health` tool: fourteen checks over the index and the tree -- missing index, schema mismatch, staleness (added/changed/removed), indexed files that cannot be read back, import edges whose target is gone, missing build or test command, names declared in more than one file, languages the indexer does not parse, files above the index's size ceiling, build output that reached the index, files with no conventionally-named test, feature-registry claims not backed by the tree, modules gated to one build configuration, and an unreadable scan root. Every check that could not run is listed with its reason, because a check that silently did not run reads exactly like one that passed. Findings that are usually deliberate (duplicate names, unsupported languages, configuration gates) are notes, not errors, so a report full of correct-but-uninteresting errors does not teach the reader to skip it. The report never says the repository is healthy: it runs no compiler, type checker, linter or test, and says so in every rendering. STATUS IS in-progress, NOT implemented: the registry's acceptance criterion asks for build, test, lint and dependency health, and this reports none of those four. Running them is a separate capability and stays open under this id. The scan found four real defects on its first run against this repository, two in its own code (files above the 1 MiB index ceiling reported as permanently 'added since the index was built', and a hand-written tauri-plugin-hardware/src/vendor/ directory flagged as vendored code) and two in this registry (AH-012 citing a deleted module, AH-199 claiming a file that does not exist). All four are fixed; the two code defects have regression tests."
     },
     {
       "id": "AH-073",
@@ -5742,13 +5772,11 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "implemented",
+      "status": "missing",
       "priority": "P1",
       "dependencies": [],
       "owner": "lane-09-ux-observability",
-      "files": [
-        "web-app/src/containers/analytics/AnalyticConsent.tsx"
-      ],
+      "files": [],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "Telemetry is consent-gated and can be disabled.",
@@ -5760,7 +5788,8 @@
       ],
       "tests": [],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Reverted from implemented to missing. The entry named web-app/src/containers/analytics/AnalyticConsent.tsx, which does not exist in this tree; the repo_health registry check (AH-072) found the claim, and reading the code confirmed it. What exists is DefaultAnalyticService (web-app/src/services/analytic/default.ts), which reads and writes a distinct id and has no consent gate. web-app/src/routes/__tests__/__root.test.tsx mocks an @/providers/AnalyticProvider that is absent from web-app/src/providers/, and __root.tsx does not reference it. So telemetry here is neither consent-gated nor disableable, and the acceptance criterion is unmet."
     },
     {
       "id": "AH-200",
