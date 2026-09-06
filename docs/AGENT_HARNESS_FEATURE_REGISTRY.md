@@ -28,13 +28,13 @@ and the latter two require a recorded `blockedReason`.
 | 0 | Foundation | 0 | 0 | 2 | 10 | 0 | 0 | 0 | 12 |
 | 1 | Core execution | 0 | 0 | 5 | 15 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 3 | 0 | 9 | 8 | 0 | 0 | 0 | 20 |
-| 3 | Repository intelligence | 15 | 0 | 2 | 3 | 0 | 0 | 0 | 20 |
+| 3 | Repository intelligence | 13 | 0 | 0 | 7 | 0 | 0 | 0 | 20 |
 | 4 | Context and memory | 6 | 0 | 7 | 3 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 8 | 0 | 6 | 11 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 23 | 0 | 2 | 1 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 16 | 0 | 9 | 4 | 0 | 0 | 0 | 29 |
-| **all** | | **82** | **0** | **48** | **70** | **0** | **0** | **0** | **200** |
+| **all** | | **80** | **0** | **46** | **74** | **0** | **0** | **0** | **200** |
 
 ## Ownership lanes
 
@@ -115,13 +115,13 @@ per-OS evidence log rather than backlog items.
 | `AH-050` | Tool invocation audit log | 2 | security | P0 | `implemented` | high | `AH-049` |
 | `AH-051` | Emergency kill switch | 2 | security | P0 | `in-progress` | critical | `AH-022` |
 | `AH-052` | Permission policy import and export | 2 | security | P2 | `missing` | high | `AH-007` |
-| `AH-053` | Repository index store | 3 | repo-intelligence | P1 | `in-progress` | medium | `AH-010` |
-| `AH-054` | Initial index build | 3 | repo-intelligence | P1 | `in-progress` | low | `AH-053` |
-| `AH-055` | Incremental index updates | 3 | repo-intelligence | P1 | `missing` | low | `AH-053` |
+| `AH-053` | Repository index store | 3 | repo-intelligence | P1 | `implemented` | medium | `AH-010` |
+| `AH-054` | Initial index build | 3 | repo-intelligence | P1 | `implemented` | low | `AH-053` |
+| `AH-055` | Incremental index updates | 3 | repo-intelligence | P1 | `implemented` | low | `AH-053` |
 | `AH-056` | Index invalidation on branch change | 3 | repo-intelligence | P2 | `missing` | low | `AH-055` |
 | `AH-057` | LSP client integration | 3 | repo-intelligence | P1 | `missing` | medium | `AH-053` |
 | `AH-058` | LSP server lifecycle management | 3 | repo-intelligence | P1 | `missing` | medium | `AH-057` |
-| `AH-059` | Symbol search | 3 | repo-intelligence | P1 | `missing` | low | `AH-057` |
+| `AH-059` | Symbol search | 3 | repo-intelligence | P1 | `implemented` | low | `AH-057` |
 | `AH-060` | Find references | 3 | repo-intelligence | P1 | `missing` | low | `AH-059` |
 | `AH-061` | Go to definition | 3 | repo-intelligence | P1 | `missing` | low | `AH-059` |
 | `AH-062` | Call hierarchy | 3 | repo-intelligence | P2 | `missing` | low | `AH-060` |
@@ -302,9 +302,10 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-049` Permission decision audit log** - Prompts and decisions are recorded, auto-approval included -- previously the one case that converted every prompt to an allow with no trace. Covers the Rust harness only -- the CLI, the TUI, subagents and the API-server proxy, every surface reaching run_orchestration_streamed. The Cowork desktop harness orchestrates in TypeScript and is not recorded yet.
 - **`AH-050` Tool invocation audit log** - Every dispatched call is recorded before it runs and again when it ends, in call order, with a duration measured around each call individually. Covers the Rust harness only; the Cowork desktop harness orchestrates in TypeScript and is not recorded yet.
 - **`AH-051` Emergency kill switch** - Cancellation is per-run only; nothing halts background subagents and detached bash jobs application-wide.
-- **`AH-053` Repository index store** - build_map produces a bounded breadth-first ProjectMap that is embedded in the run's prompt. It is an orientation blob, not an index: no symbols, no cache, no persistence.
-- **`AH-054` Initial index build** - The breadth-first walk is bounded by entry and depth caps and honours ignore rules, but produces no stored index.
-- **`AH-055` Incremental index updates** - The repository map is re-walked in full on each use; there is no cache to update.
+- **`AH-053` Repository index store** - Persistent, versioned, one index per project under <jan_data>/agent-state/index/. An index from another schema is rebuilt rather than reinterpreted. A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed.
+- **`AH-054` Initial index build** - Built on first use and refreshed at run start. Measured on this repository: 298ms cold for 1425 files and 7608 symbols, bounded by a file ceiling that is reported when hit. A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed.
+- **`AH-055` Incremental index updates** - A file whose size and modification time are unchanged is not re-read; a deleted file's symbols are dropped rather than left pointing at a path that no longer exists. Measured on this repository: 81ms warm against 298ms cold.
+- **`AH-059` Symbol search** - A `symbol_search` tool, advertised on every run with a project root and in plan mode too since it is read-only. Exact matches rank before prefix before substring. A miss reports what the index does not cover and says to fall back to grep, so the model cannot read it as "this does not exist". A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed.
 - **`AH-068` Framework detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. Frameworks: React, Next.js, Vue, Svelte, Vitest, Jest, Playwright, Django, Flask, FastAPI, Tauri, and a Cargo workspace -- which matters because `cargo test` at a workspace root means every member.
 - **`AH-069` Build-system detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. The lockfile, not the manifest, decides the package manager: running the wrong one rewrites the other's lockfile.
 - **`AH-070` Test-runner detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. Only test commands with evidence behind them: a package.json `test` script that exists, a declared Makefile target, pytest named in a Python manifest.

@@ -301,6 +301,9 @@ struct CompositeToolInvoker {
     subagents: Option<SubagentContext>,
     auto_approve: bool,
     run_mode: crate::core::agent::plan::RunMode,
+    /// The run's declaration index, refreshed once at run start. `None` when
+    /// the run has no project root to index.
+    index: Option<Arc<crate::core::agent::index::RepoIndex>>,
     /// The run's durable record. `None` only when a run has nowhere to write
     /// (no data folder), which is a degraded mode, not a normal one: without it
     /// nothing this dispatcher does can be replayed or audited afterwards.
@@ -991,6 +994,25 @@ impl ToolInvoker for CompositeToolInvoker {
                 .and_then(|f| f.get("name"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
+            if name == "symbol_search" {
+                let (id, _, args) = tool_call_parts(tc);
+                let query = args.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+                let limit = args
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(20)
+                    .clamp(1, 100) as usize;
+                let content = match self.index.as_ref() {
+                    Some(index) => crate::core::agent::index::render_results(
+                        query,
+                        &index.search(query, limit),
+                        index,
+                    ),
+                    None => "No symbol index for this run (no project root).".to_string(),
+                };
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
             if name == "ask" {
                 let id = tc
                     .get("id")
@@ -1558,6 +1580,14 @@ fn advertise_local_tools(
     if ask_enabled && allowed_names.is_none_or(|allowed| allowed.contains("ask")) {
         openai_tools.push(crate::core::agent::interaction::ask_tool_schema());
     }
+    // Read-only, so it is advertised in plan mode too: locating a declaration
+    // is exactly the work a plan is made of.
+    if project_root.is_some()
+        && !permissions.is_denied("symbol_search")
+        && allowed_names.is_none_or(|allowed| allowed.contains("symbol_search"))
+    {
+        openai_tools.push(crate::core::agent::index::symbol_search_tool_schema());
+    }
     // Todo bookkeeping is session metadata, not filesystem access, so like
     // `ask` it's advertised independent of the project_root gate above.
     if todo_enabled && allowed_names.is_none_or(|allowed| allowed.contains("todo")) {
@@ -2098,6 +2128,41 @@ async fn orchestrate_inner(
         if settings.sandbox {
             tauri_plugin_agent_tools::workspace::ensure_scratch_dir_path(&scratch_root).await?;
         }
+        // Refresh the declaration index for this project. Incremental after the
+        // first build: an unchanged file costs a stat, not a read. A failure is
+        // not fatal -- the run proceeds without `symbol_search` rather than
+        // refusing to start over an index.
+        let index = {
+            let state_root = std::path::Path::new(jan_data_folder.as_str())
+                .join(crate::core::agent::recorder::STATE_DIR);
+            let path = crate::core::agent::index::index_path(
+                &state_root,
+                &crate::core::agent::index::repo_key(root),
+            );
+            let mut loaded = crate::core::agent::index::load(&path);
+            match crate::core::agent::index::refresh(root, &mut loaded) {
+                Ok(delta) => {
+                    if !delta.is_noop() {
+                        if let Err(error) = crate::core::agent::index::save(&path, &loaded) {
+                            log::warn!("agent: could not persist the symbol index: {error}");
+                        }
+                    }
+                    log::debug!(
+                        "agent: symbol index {} symbols, {} file(s) added, {} updated, {} removed",
+                        loaded.symbol_count(),
+                        delta.added,
+                        delta.updated,
+                        delta.removed
+                    );
+                    Some(Arc::new(loaded))
+                }
+                Err(error) => {
+                    log::warn!("agent: symbol index unavailable: {error}");
+                    None
+                }
+            }
+        };
+
         let tools = CompositeToolInvoker {
             mcp: mcp_tools,
             store_root: tauri_plugin_agent_tools::workspace::project_store(root),
@@ -2118,6 +2183,7 @@ async fn orchestrate_inner(
             subagents,
             auto_approve: *auto_approve,
             run_mode,
+            index: index.clone(),
             recorder: recorder.clone(),
         };
         let result = run_turn_cycle(
@@ -5038,6 +5104,7 @@ mod tests {
             subagents: None,
             auto_approve: false,
             run_mode: crate::core::agent::plan::RunMode::Normal,
+            index: None,
             recorder: None,
         }
     }
@@ -5458,6 +5525,80 @@ mod tests {
             assert!(
                 duration.is_some(),
                 "{call_id} reported no duration in a two-call batch"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The tool has to actually reach the model, and actually answer.
+    #[tokio::test]
+    async fn symbol_search_is_dispatched_against_the_run_index() {
+        let root = unique_project_root();
+        std::fs::write(root.join("lib.rs"), "\n\npub fn find_me() {}\n").unwrap();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-symbols");
+        let (mut invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let mut index = crate::core::agent::index::RepoIndex::default();
+        crate::core::agent::index::refresh(&root, &mut index).expect("indexes");
+        invoker.index = Some(Arc::new(index));
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "symbol_search", "arguments": "{\"name\":\"find_me\"}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+
+        assert_eq!(out.len(), 1);
+        assert!(out[0].content.contains("lib.rs:3"), "{}", out[0].content);
+        assert!(out[0].content.contains("find_me"), "{}", out[0].content);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A run with no index must say so rather than reporting an empty result,
+    /// which the model would read as "this symbol does not exist".
+    #[tokio::test]
+    async fn symbol_search_without_an_index_says_so() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-symbols-none");
+        let (invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "symbol_search", "arguments": "{\"name\":\"anything\"}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+        assert!(out[0].content.contains("No symbol index"), "{}", out[0].content);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn symbol_search_is_advertised_including_in_plan_mode() {
+        let root = unique_project_root();
+        for mode in [
+            crate::core::agent::plan::RunMode::Normal,
+            crate::core::agent::plan::RunMode::Plan,
+        ] {
+            let mut tools = Vec::new();
+            advertise_local_tools(
+                &mut tools,
+                None,
+                &ToolPermissions::allow_all(),
+                Some(root.as_path()),
+                mode,
+                false,
+                1,
+                false,
+                false,
+            );
+            let names: Vec<&str> = tools
+                .iter()
+                .filter_map(|t| t["function"]["name"].as_str())
+                .collect();
+            assert!(
+                names.contains(&"symbol_search"),
+                "read-only search belongs in {mode:?}: {names:?}"
             );
         }
         let _ = std::fs::remove_dir_all(&root);

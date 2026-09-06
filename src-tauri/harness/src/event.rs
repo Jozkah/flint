@@ -178,7 +178,11 @@ impl HarnessEvent {
     }
 }
 
-pub(crate) fn now_ms() -> u64 {
+/// Milliseconds since the Unix epoch.
+///
+/// Shared rather than re-derived: several places need to stamp a record, and
+/// three subtly different clock readings in one log is a debugging trap.
+pub fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)

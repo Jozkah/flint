@@ -1646,15 +1646,15 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-010"
       ],
       "owner": "lane-04-repo-index-lsp",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/project_browse.rs",
-        "web-app/src/lib/coworkRepoMap.ts"
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -1664,10 +1664,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs::tests::an_index_round_trips_through_disk",
+        "src-tauri/src/core/agent/index.rs::tests::an_index_from_another_schema_is_discarded"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "build_map produces a bounded breadth-first ProjectMap that is embedded in the run's prompt. It is an orientation blob, not an index: no symbols, no cache, no persistence."
+      "auditNote": "Persistent, versioned, one index per project under <jan_data>/agent-state/index/. An index from another schema is rebuilt rather than reinterpreted. A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed."
     },
     {
       "id": "AH-054",
@@ -1675,14 +1678,14 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/project_browse.rs"
+        "src-tauri/src/core/agent/index.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -1692,10 +1695,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs::tests::declarations_are_found_across_the_supported_languages",
+        "src-tauri/src/core/agent/index.rs::tests::gitignored_and_unsupported_files_are_not_indexed"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The breadth-first walk is bounded by entry and depth caps and honours ignore rules, but produces no stored index."
+      "auditNote": "Built on first use and refreshed at run start. Measured on this repository: 298ms cold for 1425 files and 7608 symbols, bounded by a file ceiling that is reported when hit. A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed."
     },
     {
       "id": "AH-055",
@@ -1703,13 +1709,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "File changes update the index without a full rebuild.",
@@ -1718,10 +1727,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs::tests::an_unchanged_file_is_not_re_read",
+        "src-tauri/src/core/agent/index.rs::tests::a_deleted_file_leaves_no_symbols_behind"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The repository map is re-walked in full on each use; there is no cache to update."
+      "auditNote": "A file whose size and modification time are unchanged is not re-read; a deleted file's symbols are dropped rather than left pointing at a path that no longer exists. Measured on this repository: 81ms warm against 298ms cold."
     },
     {
       "id": "AH-056",
@@ -1808,13 +1820,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-057"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "The agent can look up a symbol by name instead of grepping for it.",
@@ -1823,11 +1838,16 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::tests::symbol_search_is_dispatched_against_the_run_index",
+        "src-tauri/src/core/agent/loop.rs::tests::symbol_search_is_advertised_including_in_plan_mode",
+        "src-tauri/src/core/agent/index.rs::tests::a_miss_says_what_the_index_does_not_cover"
+      ],
       "platformRequirements": [
         "a language server for the target language available on PATH"
       ],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "A `symbol_search` tool, advertised on every run with a project root and in plan mode too since it is read-only. Exact matches rank before prefix before substring. A miss reports what the index does not cover and says to fall back to grep, so the model cannot read it as \"this does not exist\". A declaration index, not a parser: it finds declarations and never references, covers Rust, TypeScript/JavaScript, Python and Go only, skips line comments but can be fooled by a declaration inside a string literal, and honours .gitignore. Both behaviours are pinned by tests so the limits are known rather than assumed."
     },
     {
       "id": "AH-060",
