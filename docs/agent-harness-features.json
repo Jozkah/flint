@@ -2191,13 +2191,17 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P2",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/search.rs",
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Embedding search over repository content is available to the agent loop.",
@@ -2206,10 +2210,26 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/search.rs::tests::an_identical_name_is_an_exact_match",
+        "src-tauri/src/core/agent/search.rs::tests::a_word_of_a_name_is_a_token_match_not_an_exact_one",
+        "src-tauri/src/core/agent/search.rs::tests::a_subsequence_is_a_fuzzy_match_ranked_below_a_token",
+        "src-tauri/src/core/agent/search.rs::tests::a_doc_comment_is_a_metadata_match_and_says_so",
+        "src-tauri/src/core/agent/search.rs::tests::results_are_ranked_exact_then_token_then_fuzzy_then_metadata",
+        "src-tauri/src/core/agent/search.rs::tests::the_same_query_returns_the_same_order_every_time",
+        "src-tauri/src/core/agent/search.rs::tests::a_query_that_is_too_short_is_refused_with_a_reason",
+        "src-tauri/src/core/agent/search.rs::tests::a_query_that_is_too_long_is_refused_with_a_reason",
+        "src-tauri/src/core/agent/search.rs::tests::the_scan_is_capped_and_says_when_it_stopped_early",
+        "src-tauri/src/core/agent/search.rs::tests::an_empty_index_is_distinguished_from_no_matches",
+        "src-tauri/src/core/agent/search.rs::tests::a_miss_never_claims_the_name_does_not_exist",
+        "src-tauri/src/core/agent/search.rs::tests::nothing_in_the_output_claims_to_understand_meaning",
+        "src-tauri/src/core/agent/search.rs::tests::the_tool_description_states_that_matching_is_lexical",
+        "src-tauri/src/core/agent/loop.rs::tests::code_search_is_dispatched_against_the_run_index",
+        "src-tauri/src/core/agent/loop.rs::tests::code_search_without_an_index_says_so"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Two RAG stacks exist (rag-extension, vector-db) but neither is wired to the agent harness; one is dead code."
+      "auditNote": "Delivered as the `code_search` tool: a lexical multi-signal search over the declaration index -- symbol names, the words inside them (snake, kebab, dot, slash and camelCase), file paths and doc comments -- returning file, line, symbol, kind, match type and a confidence derived from the match type (exact 100, token 75, fuzzy 45, metadata 30). Ranking is deterministic: match type, then symbol name length, then path, then line, over a BTreeMap so the scan cap always falls in the same place. Query length (2..=128), result count (<=50) and scan cost (<=20000 symbols) are all bounded, and a refusal names its reason. An empty index, a capped scan and a genuine miss are three distinct outcomes, never one message. STATUS IS in-progress, NOT implemented: the registry's acceptance criterion asks for embedding search, and this is not that. No embedding model, vector store or conceptual similarity is involved, so a differently-named equivalent will not be found. Every rendered result and the tool description say so in those words rather than letting the model infer otherwise. Wiring embeddings (the rag-extension / vector-db stacks noted in the original audit) remains open work under this id. Index schema version bumped 2 -> 3 to carry the doc-comment field the metadata match reads; a version-2 index on disk is discarded and rebuilt rather than read."
     },
     {
       "id": "AH-072",

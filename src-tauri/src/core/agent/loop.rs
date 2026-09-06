@@ -1044,6 +1044,24 @@ impl ToolInvoker for CompositeToolInvoker {
                 out.push(ToolOutcome::plain(id, content));
                 continue;
             }
+            if name == "code_search" {
+                let (id, _, args) = tool_call_parts(tc);
+                let query = args.get("query").and_then(|v| v.as_str()).unwrap_or_default();
+                let limit = args
+                    .get("limit")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(20)
+                    .min(u32::MAX as u64) as usize;
+                let content = match self.index.as_ref() {
+                    Some(index) => {
+                        let outcome = crate::core::agent::search::search(index, query, limit);
+                        crate::core::agent::search::render(query, &outcome)
+                    }
+                    None => "No index for this run (no project root).".to_string(),
+                };
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
             if name == "symbol_search" {
                 let (id, _, args) = tool_call_parts(tc);
                 let query = args.get("name").and_then(|v| v.as_str()).unwrap_or_default();
@@ -1645,6 +1663,14 @@ fn advertise_local_tools(
         && allowed_names.is_none_or(|allowed| allowed.contains("impact"))
     {
         openai_tools.push(crate::core::agent::impact::impact_tool_schema());
+    }
+    // Read-only like the other two, and the broadest of them: it is the tool
+    // to reach for when the exact name is half-remembered.
+    if project_root.is_some()
+        && !permissions.is_denied("code_search")
+        && allowed_names.is_none_or(|allowed| allowed.contains("code_search"))
+    {
+        openai_tools.push(crate::core::agent::search::search_tool_schema());
     }
     // Todo bookkeeping is session metadata, not filesystem access, so like
     // `ask` it's advertised independent of the project_root gate above.
@@ -5682,6 +5708,53 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    #[tokio::test]
+    async fn code_search_is_dispatched_against_the_run_index() {
+        let root = unique_project_root();
+        std::fs::write(
+            root.join("lib.rs"),
+            "/// Decodes the wire envelope.\npub fn decode_frame() {}\n",
+        )
+        .unwrap();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-code-search");
+        let (mut invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let mut index = crate::core::agent::index::RepoIndex::default();
+        crate::core::agent::index::refresh(&root, &mut index).expect("indexes");
+        invoker.index = Some(Arc::new(index));
+
+        // Matches the doc comment, not the name: the reach `symbol_search`
+        // does not have.
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "code_search", "arguments": "{\"query\":\"envelope\"}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+
+        let content = &out[0].content;
+        assert!(content.contains("lib.rs:2"), "{content}");
+        assert!(content.contains("decode_frame"), "{content}");
+        assert!(content.contains("Matching is lexical"), "{content}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn code_search_without_an_index_says_so() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-code-search-none");
+        let (invoker, _recorder) = recording_invoker(root.clone(), &data);
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "code_search", "arguments": "{\"query\":\"anything\"}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+        assert!(out[0].content.contains("No index"), "{}", out[0].content);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn symbol_search_is_advertised_including_in_plan_mode() {
         let root = unique_project_root();
@@ -5712,6 +5785,10 @@ mod tests {
             assert!(
                 names.contains(&"impact"),
                 "knowing what to run belongs in {mode:?}: {names:?}"
+            );
+            assert!(
+                names.contains(&"code_search"),
+                "read-only search belongs in {mode:?}: {names:?}"
             );
         }
         let _ = std::fs::remove_dir_all(&root);

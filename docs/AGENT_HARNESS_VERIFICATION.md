@@ -165,7 +165,61 @@ Two independent reasons, both verified against the API rather than assumed:
 Local verification is therefore the only evidence for this phase, which is why
 it is listed in full above and in each commit message.
 
-### Phases 2-8
+### Phase 3 -- Repository intelligence (in progress)
+
+Executed on Linux (`x86_64`, rustc 1.94.1) on `feat/cowork-background-tasks`.
+Both configurations of the app crate are run for every change, per the rule
+above.
+
+| Command | Result |
+| --- | --- |
+| `cargo test --no-default-features --features cli --lib` | 1582 passed, 0 failed |
+| `cargo test --no-default-features --features cli --bins` | 15 passed, 0 failed |
+| `cargo test --no-default-features --features test-tauri --lib` | 889 passed, 0 failed |
+| `cargo clippy --no-default-features --features cli --all-targets -- -D warnings` | clean |
+| `cargo clippy --no-default-features --features test-tauri --all-targets -- -D warnings` | clean |
+| `node --test "scripts/agent-harness/*.test.mjs"` | 26 passed |
+| `node scripts/agent-harness/validate-registry.mjs` | 200 features OK |
+
+#### Output inspected by hand, not only asserted
+
+Every tool in this phase renders prose the model reads, and an assertion proves
+a substring is present without proving the whole message reads honestly. So
+`code_search` was run against this repository through a throwaway harness and
+its output read directly, then the harness deleted -- it is not part of the
+diff. What was checked, and found:
+
+- `envelope` -- 4 ranked hits: two exact at confidence 100, two token at 75,
+  each carrying its own evidence line. No hit claimed a relationship the index
+  cannot show.
+- `authentication` -- 3 metadata hits, all from doc comments, all at confidence
+  30. The low number and the `metadata` label both appear; neither is inferable
+  from the other alone.
+- `zzzznotathing` -- a miss that names what was searched (7,687 declarations, by
+  name, doc comment and path) and says a differently-spelled related name will
+  not appear, suggesting grep. It does not claim the name is absent from the
+  repository, only from the index's reach.
+- `a` -- refused for length, with the limit stated.
+
+Every non-empty result ends with the same sentence: matching is lexical, over
+names, the words in them, paths and doc comments, and does not relate one word
+to another. No output claimed semantic understanding.
+
+#### Not run in Phase 3, and why
+
+| Not run | Reason |
+| --- | --- |
+| JavaScript suites (`yarn test:*`) | No file under `web-app` is touched. |
+| macOS, Windows, WebView | Not executed. Nothing in this phase is platform-specific: it reads files and compares strings. Path handling is the one platform-sensitive part and is exercised on Linux only. |
+| Any CI job | Structurally unavailable -- same two reasons recorded for Phase 1, re-checked against the API on this branch's heads and unchanged. |
+
+#### Delivered short of the registry's criterion
+
+`AH-071` is `in-progress`, not `implemented`. Its acceptance criterion asks for
+embedding search; `code_search` is lexical. Marking it done would record a
+capability the code does not have, and the next reader would plan against it.
+
+### Phases 2, 4-8
 
 Recorded here as each phase closes, in the same shape: commands executed with
 their results, then commands not executed with the reason.

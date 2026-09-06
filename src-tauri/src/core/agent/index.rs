@@ -33,7 +33,7 @@ use jan_agent_harness::error::{ErrorKind, HarnessError};
 
 /// Schema of the persisted index. Bumped when the shape changes; an index
 /// written by a different version is rebuilt rather than misread.
-pub(crate) const INDEX_SCHEMA_VERSION: u32 = 2;
+pub(crate) const INDEX_SCHEMA_VERSION: u32 = 3;
 
 /// Largest file this will read. A declaration past this point is not worth
 /// pulling a generated bundle or a vendored blob into memory for.
@@ -42,6 +42,10 @@ const MAX_FILE_BYTES: u64 = 1024 * 1024;
 /// Ceiling on indexed files, so a pathological tree cannot make a run hang.
 /// Reaching it is reported, never silent.
 const MAX_FILES: usize = 20_000;
+
+/// Longest doc comment kept per symbol. Enough for a first sentence, which is
+/// the part that describes the thing; the rest is in the file.
+const MAX_DOC_LEN: usize = 200;
 
 /// What a declaration is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -62,6 +66,14 @@ pub(crate) struct Symbol {
     pub path: String,
     /// 1-based, matching every editor and every compiler message.
     pub line: u32,
+    /// The doc comment attached to this declaration, truncated.
+    ///
+    /// Stored because it is the only prose the index can honestly attribute to
+    /// a symbol: a comment written directly above a declaration is about that
+    /// declaration. Arbitrary comments elsewhere in a file are not, which is
+    /// why they are not collected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub doc: Option<String>,
 }
 
 /// What was known about a file when it was last read.
@@ -339,8 +351,9 @@ impl Language {
 /// declarations and cannot silently mangle the ones it misses -- it just does
 /// not find them.
 fn declarations(text: &str, language: Language, path: &str) -> Vec<Symbol> {
+    let lines: Vec<&str> = text.lines().collect();
     let mut out = Vec::new();
-    for (index, raw) in text.lines().enumerate() {
+    for (index, raw) in lines.iter().enumerate() {
         let line = raw.trim_start();
         if line.starts_with(language.line_comment()) {
             continue;
@@ -353,9 +366,65 @@ fn declarations(text: &str, language: Language, path: &str) -> Vec<Symbol> {
             kind,
             path: path.to_string(),
             line: index as u32 + 1,
+            doc: doc_for(&lines, index, language),
         });
     }
     out
+}
+
+/// The doc comment attached to the declaration on `at`.
+///
+/// Looks immediately above for comment lines (and, for Python, immediately
+/// below for a docstring). Contiguity is the whole rule: a comment separated
+/// from a declaration by a blank line is not documenting it, and attaching it
+/// anyway would put unrelated prose in a symbol's evidence.
+fn doc_for(lines: &[&str], at: usize, language: Language) -> Option<String> {
+    let mut collected: Vec<String> = Vec::new();
+
+    if language == Language::Python {
+        // A Python docstring follows the `def`/`class` line.
+        if let Some(next) = lines.get(at + 1) {
+            let trimmed = next.trim();
+            for quote in ["\"\"\"", "'''"] {
+                if let Some(rest) = trimmed.strip_prefix(quote) {
+                    collected.push(rest.trim_end_matches(quote).trim().to_string());
+                    break;
+                }
+            }
+        }
+    } else {
+        let marker = language.line_comment();
+        let mut cursor = at;
+        while cursor > 0 {
+            cursor -= 1;
+            let trimmed = lines[cursor].trim();
+            // `*` continuation lines of a `/** ... */` block count too.
+            let content = trimmed
+                .strip_prefix("///")
+                .or_else(|| trimmed.strip_prefix("//!"))
+                .or_else(|| trimmed.strip_prefix(marker))
+                .or_else(|| trimmed.strip_prefix("* "))
+                .or_else(|| trimmed.strip_prefix("/**"));
+            match content {
+                Some(text) => collected.push(text.trim().to_string()),
+                None => break,
+            }
+        }
+        collected.reverse();
+    }
+
+    let joined = collected
+        .into_iter()
+        .filter(|line| !line.is_empty() && *line != "*/")
+        .collect::<Vec<_>>()
+        .join(" ");
+    if joined.is_empty() {
+        return None;
+    }
+    Some(match joined.char_indices().nth(MAX_DOC_LEN) {
+        Some((cut, _)) => format!("{}...", &joined[..cut]),
+        None => joined,
+    })
 }
 
 /// Files this file imports, resolved to repository-relative paths.

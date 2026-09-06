@@ -141,6 +141,33 @@ Lanes own modules exclusively for the duration of a phase, work in separate
 worktrees, and never edit the same file concurrently. Cross-boundary changes are
 made by the owning lane and consumed by the other.
 
+### AHD-013: a repository tool states what it cannot know
+
+The repository-intelligence tools answer from the declaration index and from
+files at the project root. None of them runs a compiler, a type checker or a
+coverage run, so each one has a boundary it cannot see past, and each says so in
+the same words in its tool description and in every rendered result:
+
+- `symbol_search` and `code_search` match text, not meaning. There is no
+  embedding model, vector store or conceptual similarity anywhere in the path, so
+  a differently-named equivalent will not be found.
+- `impact` maps tests by filename convention and dependents by the import graph,
+  not by coverage. Passing the tests it names does not prove a change safe.
+- the project block names the file each claim came from, and an unrecognised
+  project produces nothing rather than a plausible default.
+
+The rule this encodes: a tool that guesses silently is worse than one that
+returns nothing, because the model cannot tell a guess from a fact and will act
+on it. Absence of a caveat is read as a guarantee, so the caveat travels with
+every result rather than living in a doc the model never sees.
+
+Reference search and go-to-definition are deliberately absent for the same
+reason. They are resolution questions, and a regex cannot resolve a name to its
+binding: it cannot tell a shadowed local from the import it shadows, or a method
+on one type from the same method name on another. Approximating them would
+produce answers indistinguishable in shape from correct ones. They wait for a
+real LSP client (`AH-060`-`AH-064`).
+
 ## 3. Lane and file ownership
 
 | Lane | Owns |
@@ -178,7 +205,39 @@ Adoption is incremental: the crate lands with its own tests first, and each
 consuming module migrates in the phase that owns it (per AHD-012), rather than
 one atomic rewrite of `loop.rs`.
 
-## 5. Relationship to the Cowork harness blueprint
+## 5. Phase 3 repository-intelligence modules
+
+Phase 3 adds four modules under `core/agent/`, all read-only, all advertised to
+the model including in plan mode:
+
+| Module | Tool | Answers |
+| --- | --- | --- |
+| `index.rs` | -- | a declaration index: every symbol's file and line, its doc comment, and each file's imports |
+| `index.rs` | `symbol_search` | where is `X` declared |
+| `search.rs` | `code_search` | where does the text `X` appear, as a name, a word inside one, a path or a doc comment |
+| `impact.rs` | `impact` | what should I run after changing these files, and who imports them |
+| `project_kind.rs` | -- | what kind of project is this (injected into the runtime block every run, not a tool) |
+
+The index is the shared substrate. It is built once per run, keyed on
+`(size, mtime)` per file so a refresh re-reads only what changed, bounded at
+20,000 files and 1 MiB per file, and it honours `.gitignore` (via `ignore` with
+`.require_git(false)`, so a worktree without a `.git` directory still filters).
+It carries `INDEX_SCHEMA_VERSION`; an index written by an older version is
+discarded and rebuilt rather than read, per AHD-010. Version 3 added the
+doc-comment field that `code_search`'s metadata matching reads.
+
+`code_search` classifies every hit as exact, token, fuzzy or metadata, and that
+class alone decides the reported confidence -- 100, 75, 45, 30. The number is a
+restatement of the evidence, not an independent judgement about relevance, which
+is why it is fixed per class rather than computed. Ranking is total and
+deterministic (match type, symbol name length, path, line) over a `BTreeMap`, so
+the same query returns the same order and a capped scan always stops in the same
+place. Query length, result count and scan cost are all bounded, and a refusal
+names its reason. An empty index, a scan that stopped early and a genuine miss
+are three distinct outcomes and never collapse into one message: "no results"
+from an index that was never built is a lie about the repository.
+
+## 6. Relationship to the Cowork harness blueprint
 
 [`COWORK_HARNESS_BLUEPRINT.md`](./COWORK_HARNESS_BLUEPRINT.md) is a separate,
 active programme covering the Cowork desktop harness

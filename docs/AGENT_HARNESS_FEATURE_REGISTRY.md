@@ -28,13 +28,13 @@ and the latter two require a recorded `blockedReason`.
 | 0 | Foundation | 0 | 0 | 2 | 10 | 0 | 0 | 0 | 12 |
 | 1 | Core execution | 0 | 0 | 5 | 15 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 3 | 0 | 9 | 8 | 0 | 0 | 0 | 20 |
-| 3 | Repository intelligence | 9 | 0 | 0 | 11 | 0 | 0 | 0 | 20 |
+| 3 | Repository intelligence | 8 | 0 | 1 | 11 | 0 | 0 | 0 | 20 |
 | 4 | Context and memory | 6 | 0 | 7 | 3 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 8 | 0 | 6 | 11 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 23 | 0 | 2 | 1 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 16 | 0 | 9 | 4 | 0 | 0 | 0 | 29 |
-| **all** | | **76** | **0** | **46** | **78** | **0** | **0** | **0** | **200** |
+| **all** | | **75** | **0** | **47** | **78** | **0** | **0** | **0** | **200** |
 
 ## Ownership lanes
 
@@ -133,7 +133,7 @@ per-OS evidence log rather than backlog items.
 | `AH-068` | Framework detection | 3 | repo-intelligence | P2 | `implemented` | none | `AH-053` |
 | `AH-069` | Build-system detection | 3 | repo-intelligence | P1 | `implemented` | none | `AH-068` |
 | `AH-070` | Test-runner detection | 3 | repo-intelligence | P1 | `implemented` | none | `AH-068` |
-| `AH-071` | Semantic code search | 3 | repo-intelligence | P2 | `missing` | medium | `AH-053` |
+| `AH-071` | Semantic code search | 3 | repo-intelligence | P2 | `in-progress` | medium | `AH-053` |
 | `AH-072` | Repository health scan | 3 | repo-intelligence | P2 | `missing` | low | `AH-069`, `AH-070` |
 | `AH-073` | Exact dispatched-payload accounting | 4 | context-memory | P0 | `in-progress` | low | `AH-078` |
 | `AH-074` | Per-segment token attribution | 4 | context-memory | P1 | `implemented` | low | `AH-073` |
@@ -313,7 +313,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-068` Framework detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. Frameworks: React, Next.js, Vue, Svelte, Vitest, Jest, Playwright, Django, Flask, FastAPI, Tauri, and a Cargo workspace -- which matters because `cargo test` at a workspace root means every member.
 - **`AH-069` Build-system detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. The lockfile, not the manifest, decides the package manager: running the wrong one rewrites the other's lockfile.
 - **`AH-070` Test-runner detection** - Detected from a fixed set of manifests at the project root -- never a tree walk, which is the index's job -- and injected into the runtime block every run. Every claim names the file it came from, and an unrecognised project produces nothing rather than a plausible default: a confidently wrong command is worse than none, because the model runs it and the failure looks like the code's. Only test commands with evidence behind them: a package.json `test` script that exists, a declared Makefile target, pytest named in a Python manifest.
-- **`AH-071` Semantic code search** - Two RAG stacks exist (rag-extension, vector-db) but neither is wired to the agent harness; one is dead code.
+- **`AH-071` Semantic code search** - Delivered as the `code_search` tool: a lexical multi-signal search over the declaration index -- symbol names, the words inside them (snake, kebab, dot, slash and camelCase), file paths and doc comments -- returning file, line, symbol, kind, match type and a confidence derived from the match type (exact 100, token 75, fuzzy 45, metadata 30). Ranking is deterministic: match type, then symbol name length, then path, then line, over a BTreeMap so the scan cap always falls in the same place. Query length (2..=128), result count (<=50) and scan cost (<=20000 symbols) are all bounded, and a refusal names its reason. An empty index, a capped scan and a genuine miss are three distinct outcomes, never one message. STATUS IS in-progress, NOT implemented: the registry's acceptance criterion asks for embedding search, and this is not that. No embedding model, vector store or conceptual similarity is involved, so a differently-named equivalent will not be found. Every rendered result and the tool description say so in those words rather than letting the model infer otherwise. Wiring embeddings (the rag-extension / vector-db stacks noted in the original audit) remains open work under this id. Index schema version bumped 2 -> 3 to carry the doc-comment field the metadata match reads; a version-2 index on disk is discarded and rebuilt rather than read.
 - **`AH-073` Exact dispatched-payload accounting** - Now measures the payload actually dispatched: onPayloadShaped freezes prompt, tools, repository map and messages, and measurement reads only that record. Still no tokenizer -- it is UTF-8 bytes divided by 4, so the numbers are approximations of the right thing rather than counts.
 - **`AH-074` Per-segment token attribution** - Per-category breakdown taken from the frozen dispatch; unmeasured categories report {known:false} rather than zero. Figures remain estimates until AH-073 lands a tokenizer.
 - **`AH-075` Compaction visibility** - ContextShaping records what trimming and compaction removed and reports it beside the total. The Rust and TypeScript implementations are still separate (AH-076).
