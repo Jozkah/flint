@@ -352,6 +352,16 @@ pub async fn start_mcp_server<R: Runtime>(
         return Ok(());
     }
 
+    // The number this attempt runs under. If the name is stopped and started
+    // again while this one is still in flight, the number moves and this
+    // attempt's completion stops counting.
+    let generation = {
+        let mut generations = app_state.mcp_generation.lock().await;
+        let next = generations.get(&name).copied().unwrap_or(0) + 1;
+        generations.insert(name.clone(), next);
+        next
+    };
+
     // Store active server config for restart purposes
     store_active_server_config(&active_servers_state, &name, &config).await;
 
@@ -368,6 +378,21 @@ pub async fn start_mcp_server<R: Runtime>(
     // Start attempt finished (success or failure) — clear the in-flight marker so
     // future (re)activations aren't blocked.
     app_state.mcp_starting.lock().await.remove(&name);
+
+    // Superseded while we were starting: this service belongs to a name that
+    // now means something else. Installing a monitor for it would keep
+    // reconnecting the wrong program.
+    let superseded = {
+        let generations = app_state.mcp_generation.lock().await;
+        generations.get(&name).copied().unwrap_or(0) != generation
+    };
+    if superseded {
+        log::info!("MCP server {name} was replaced while starting; discarding this attempt");
+        if let Some(service) = servers_state.lock().await.remove(&name) {
+            let _ = service.cancel().await;
+        }
+        return Ok(());
+    }
 
     match first_start_result {
         Ok(_) => {

@@ -2060,3 +2060,146 @@ mod registration_decision_tests {
         assert_eq!(definition_identity(&before), definition_identity(&after));
     }
 }
+
+/// The manager's own bookkeeping, driven through a real Tauri app handle.
+///
+/// `start_mcp_server` is more than a connection: it records the active config,
+/// marks the name as starting, decides whether a duplicate is a no-op or a
+/// conflict, and installs a health monitor. Those are the parts a transport
+/// test cannot reach, and the parts that go wrong when a name is started twice
+/// or replaced mid-flight.
+#[cfg(test)]
+mod manager_bookkeeping_tests {
+    use super::super::helpers::start_mcp_server;
+    use crate::core::state::AppState;
+    use serde_json::json;
+    use tauri::test::mock_app;
+    use tauri::Manager;
+
+    /// An app with the state the manager reads, and its shared server map.
+    fn app_with_state() -> (tauri::App<tauri::test::MockRuntime>, crate::core::state::SharedMcpServers) {
+        let app = mock_app();
+        let state = AppState::default();
+        let servers = state.mcp_servers.clone();
+        app.manage(state);
+        (app, servers)
+    }
+
+    /// A definition that cannot connect: the point is the bookkeeping around
+    /// the attempt, not a live server.
+    fn unreachable(command: &str) -> serde_json::Value {
+        json!({ "type": "stdio", "command": command, "args": [] })
+    }
+
+    #[tokio::test]
+    async fn a_start_records_the_config_it_was_given() {
+        let (app, servers) = app_with_state();
+        let handle = app.handle().clone();
+
+        let _ = start_mcp_server(
+            handle.clone(),
+            servers,
+            "recorder".to_string(),
+            unreachable("definitely-not-a-real-binary"),
+        )
+        .await;
+
+        // Recorded for restart even though the start itself failed: the user
+        // asked for this server, and that is what the record is.
+        let state = handle.state::<AppState>();
+        let active = state.mcp_active_servers.lock().await;
+        assert!(active.contains_key("recorder"));
+    }
+
+    /// The in-flight marker exists to stop a second `serve()` racing the first.
+    /// It has to be cleared however the attempt ends, or the name is wedged.
+    #[tokio::test]
+    async fn a_failed_start_does_not_wedge_the_name() {
+        let (app, servers) = app_with_state();
+        let handle = app.handle().clone();
+
+        let _ = start_mcp_server(
+            handle.clone(),
+            servers,
+            "wedged".to_string(),
+            unreachable("definitely-not-a-real-binary"),
+        )
+        .await;
+
+        let state = handle.state::<AppState>();
+        let starting = state.mcp_starting.lock().await;
+        assert!(
+            !starting.contains("wedged"),
+            "the in-flight marker must be cleared even when the start fails"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_start_leaves_no_server_and_no_monitor() {
+        let (app, servers) = app_with_state();
+        let handle = app.handle().clone();
+
+        let result = start_mcp_server(
+            handle.clone(),
+            servers.clone(),
+            "absent".to_string(),
+            unreachable("definitely-not-a-real-binary"),
+        )
+        .await;
+
+        assert!(result.is_err(), "an unreachable command cannot start");
+        assert!(servers.lock().await.get("absent").is_none());
+        let state = handle.state::<AppState>();
+        let monitors = state.mcp_monitoring_tasks.lock().await;
+        assert!(
+            !monitors.contains_key("absent"),
+            "a failed start must not leave a monitor reconnecting it"
+        );
+    }
+
+    /// Every start takes a number, and the number moves. That is what lets a
+    /// completion tell whether it is still the current instance.
+    #[tokio::test]
+    async fn each_start_takes_a_new_number() {
+        let (app, servers) = app_with_state();
+        let handle = app.handle().clone();
+
+        for _ in 0..2 {
+            let _ = start_mcp_server(
+                handle.clone(),
+                servers.clone(),
+                "numbered".to_string(),
+                unreachable("definitely-not-a-real-binary"),
+            )
+            .await;
+        }
+
+        let state = handle.state::<AppState>();
+        let generations = state.mcp_generation.lock().await;
+        assert_eq!(
+            generations.get("numbered").copied(),
+            Some(2),
+            "two starts must be two instances"
+        );
+    }
+
+    /// A different definition under a name already running is refused rather
+    /// than skipped — the failure that let an edited server keep serving the
+    /// old program.
+    #[tokio::test]
+    async fn a_conflicting_definition_is_refused_by_the_manager() {
+        use crate::core::mcp::models::{registration_decision, RegistrationDecision};
+
+        let running = unreachable("node");
+        let edited = unreachable("python3");
+
+        assert!(matches!(
+            registration_decision(true, Some(&running), &edited),
+            RegistrationDecision::Conflict { .. }
+        ));
+        assert_eq!(
+            registration_decision(true, Some(&running), &running),
+            RegistrationDecision::AlreadyRunning
+        );
+    }
+}

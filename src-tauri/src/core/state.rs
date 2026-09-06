@@ -138,6 +138,15 @@ pub struct AppState {
     /// Cleared only on explicit user deactivation, never on a transient
     /// list-tools failure.
     pub mcp_last_known_tools: Arc<Mutex<HashMap<String, Vec<ToolWithServer>>>>,
+    /// Which instance of a named server is the current one.
+    ///
+    /// A name can be started, stopped and started again with a different
+    /// definition while an earlier start is still in flight. Without this the
+    /// earlier attempt's completion would install a health monitor for a name
+    /// that now means a different program — and that monitor would keep
+    /// reconnecting it. Every start takes a number; a completion only counts
+    /// while its number is still the current one.
+    pub mcp_generation: Arc<Mutex<HashMap<String, u64>>>,
 }
 
 #[cfg(not(feature = "cli"))]
@@ -160,6 +169,7 @@ impl Default for AppState {
             model_param_defaults: Default::default(),
             mcp_reconnect_notify: Arc::new(Notify::new()),
             mcp_last_known_tools: Default::default(),
+            mcp_generation: Default::default(),
         }
     }
 }

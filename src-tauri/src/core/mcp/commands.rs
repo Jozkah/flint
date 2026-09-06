@@ -203,6 +203,15 @@ pub async fn deactivate_mcp_server<R: Runtime>(
         log::info!("Removed MCP server {name} from active servers list");
     }
 
+    // Move the name's number on. A start that is still in flight belongs to
+    // the instance being turned off here, and must not install a monitor and
+    // reconnect it after the user asked for it to stop.
+    {
+        let mut generations = state.mcp_generation.lock().await;
+        let next = generations.get(&name).copied().unwrap_or(0) + 1;
+        generations.insert(name.clone(), next);
+    }
+
     // Explicit deactivation is the only thing that should drop the last-known
     // tool schema — a transient disconnect must not (collect_mcp_tools keeps
     // serving it until the server is actually turned off).
