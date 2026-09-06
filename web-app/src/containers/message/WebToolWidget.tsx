@@ -9,15 +9,17 @@ import {
   parseWebFetchOutput,
   type ToolCallBar,
 } from '@/lib/toolPresentation'
-import { faviconForUrl, hostOf } from '@/lib/webUrl'
+import { hostOf, siteInitial } from '@/lib/webUrl'
 import { ToolBar } from './ToolBar'
 
+/** The site's initial. Drawn here rather than fetched from a third party. */
 const Favicon = ({ url }: { url: string }) => (
-  <img
-    src={faviconForUrl(url)}
-    alt=""
-    className="size-4 shrink-0 rounded-full border border-border/60 bg-white object-contain"
-  />
+  <span
+    aria-hidden
+    className="size-4 shrink-0 inline-flex items-center justify-center rounded-full border border-border/60 bg-muted text-[0.5rem] font-medium uppercase text-muted-foreground"
+  >
+    {siteInitial(url)}
+  </span>
 )
 
 const ResultRow = ({

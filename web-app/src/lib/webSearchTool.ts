@@ -29,15 +29,6 @@ export const WEB_FETCH_INPUT_SCHEMA = {
   required: ['url'],
 } as const
 
-function faviconFor(url: string): string | undefined {
-  try {
-    const host = new URL(url).hostname
-    return `https://www.google.com/s2/favicons?domain=${host}&sz=64`
-  } catch {
-    return undefined
-  }
-}
-
 type WebToolInput = { query?: unknown; count?: unknown; url?: unknown }
 type WebToolResult = { content?: unknown; error?: string }
 
@@ -66,7 +57,6 @@ export async function executeWebTool(
             title: r.title,
             text: r.snippet,
             published_date: r.published_at,
-            favicon: faviconFor(r.url),
           })),
         },
       }

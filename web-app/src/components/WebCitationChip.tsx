@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/hover-card'
 import { useWebCitationStore } from '@/stores/web-citation-store'
 import { cn } from '@/lib/utils'
-import { faviconForUrl, hostOf } from '@/lib/webUrl'
+import { hostOf, siteInitial } from '@/lib/webUrl'
 
 export const WebCitationChip = memo(
   ({ messageId, url }: { messageId?: string; url: string }) => {
@@ -14,7 +14,7 @@ export const WebCitationChip = memo(
       messageId ? s.byMessageId[messageId]?.[url] : undefined
     )
     const host = hostOf(url)
-    const favicon = citation?.favicon || faviconForUrl(url)
+    const initial = siteInitial(url)
     return (
       <HoverCard openDelay={80} closeDelay={120}>
         <HoverCardTrigger asChild>
@@ -25,11 +25,12 @@ export const WebCitationChip = memo(
             className="mx-0.5 inline-flex translate-y-[-0.15em] align-baseline no-underline"
             title={citation?.title || url}
           >
-            <img
-              src={favicon}
-              alt=""
-              className="inline-block size-3.5 rounded-full border border-border/60 bg-white object-contain hover:ring-2 hover:ring-primary/40"
-            />
+            <span
+              aria-hidden
+              className="inline-block size-3.5 inline-flex items-center justify-center rounded-full border border-border/60 bg-muted text-[0.5rem] font-medium uppercase text-muted-foreground hover:ring-2 hover:ring-primary/40"
+            >
+              {initial}
+            </span>
           </a>
         </HoverCardTrigger>
         <HoverCardContent
@@ -38,11 +39,12 @@ export const WebCitationChip = memo(
           className="w-72 space-y-2 p-3 text-xs"
         >
           <div className="flex items-center gap-2">
-            <img
-              src={favicon}
-              alt=""
-              className="size-4 shrink-0 rounded-full border border-border/60 bg-white object-contain"
-            />
+            <span
+              aria-hidden
+              className="size-4 shrink-0 inline-flex items-center justify-center rounded-full border border-border/60 bg-muted text-[0.5rem] font-medium uppercase text-muted-foreground"
+            >
+              {initial}
+            </span>
             <span className="truncate text-muted-foreground">{host}</span>
           </div>
           <a

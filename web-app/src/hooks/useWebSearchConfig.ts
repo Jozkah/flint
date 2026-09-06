@@ -40,8 +40,14 @@ export const WEB_SEARCH_PROVIDERS: WebSearchProviderMeta[] = [
 
 export const DEFAULT_SEARCH_PROVIDER = 'exa'
 
-export const providerFavicon = (meta: WebSearchProviderMeta): string =>
-  `https://www.google.com/s2/favicons?domain=${meta.homepage}&sz=64`
+/**
+ * The provider's initial, drawn locally.
+ *
+ * Fetching the icon would tell a third party which search providers this
+ * machine is looking at, for no benefit beyond decoration.
+ */
+export const providerInitial = (meta: WebSearchProviderMeta): string =>
+  (meta.homepage.replace(/^[^a-z0-9]+/i, '')[0] ?? '?').toUpperCase()
 
 export const getProviderMeta = (id: string): WebSearchProviderMeta =>
   WEB_SEARCH_PROVIDERS.find((p) => p.id === id) ?? WEB_SEARCH_PROVIDERS[0]

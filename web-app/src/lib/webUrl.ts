@@ -7,5 +7,15 @@ export const hostOf = (url: string): string => {
   }
 }
 
-export const faviconForUrl = (url: string): string =>
-  `https://www.google.com/s2/favicons?domain=${hostOf(url)}&sz=64`
+/**
+ * The letter shown in place of a site's icon.
+ *
+ * Jan used to fetch favicons from Google, which meant every domain a search
+ * returned — and therefore a good deal about what someone was reading — was
+ * reported to a third party none of this app talks to otherwise. A letter
+ * drawn from the hostname fills the same slot and leaves the machine.
+ */
+export const siteInitial = (url: string): string => {
+  const host = hostOf(url)
+  return (host.replace(/^[^a-z0-9]+/i, '')[0] ?? '?').toUpperCase()
+}

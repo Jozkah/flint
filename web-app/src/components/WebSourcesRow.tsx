@@ -3,7 +3,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ChevronRightIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Citations, type WebCitation } from '@/components/Citations'
-import { faviconForUrl } from '@/lib/webUrl'
+import { siteInitial } from '@/lib/webUrl'
 
 export const WebSourcesRow = memo(
   ({ citations }: { citations: WebCitation[] }) => {
@@ -35,12 +35,13 @@ export const WebSourcesRow = memo(
         >
           <span className="flex -space-x-1.5">
             {preview.map((c) => (
-              <img
+              <span
                 key={c.url}
-                src={c.favicon || faviconForUrl(c.url)}
-                alt=""
-                className="size-4 rounded-full border border-border/60 bg-white object-contain"
-              />
+                aria-hidden
+                className="size-4 inline-flex items-center justify-center rounded-full border border-border/60 bg-muted text-[0.5rem] font-medium uppercase text-muted-foreground"
+              >
+                {siteInitial(c.url)}
+              </span>
             ))}
           </span>
           <span className="font-medium">

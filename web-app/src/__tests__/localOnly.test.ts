@@ -238,6 +238,19 @@ describe('nothing anywhere reports usage', () => {
   })
 })
 
+describe('nothing anywhere fetches a decoration', () => {
+  /**
+   * Favicons used to come from Google, which meant every domain a search
+   * returned was reported to a third party this app otherwise never talks to.
+   * An icon is not worth telling someone else what you are reading.
+   */
+  it('fetches no favicons from a third party', () => {
+    expect(
+      repoMatches(EVERYWHERE, /s2\/favicons|favicon.*\?domain=|icons\.duckduckgo/)
+    ).toEqual([])
+  })
+})
+
 describe('nothing anywhere checks for updates', () => {
   it('registers no updater plugin', () => {
     expect(repoMatches(EVERYWHERE, /tauri_plugin_updater|plugin-updater/)).toEqual(

@@ -21,7 +21,7 @@ import {
   useWebSearchConfig,
   WEB_SEARCH_PROVIDERS,
   getProviderMeta,
-  providerFavicon,
+  providerInitial,
 } from '@/hooks/useWebSearchConfig'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,12 +29,10 @@ export const Route = createFileRoute(route.settings.web_search as any)({
   component: WebSearchContent,
 })
 
-const ProviderFavicon = ({ src }: { src: string }) => (
-  <img
-    src={src}
-    alt=""
-    className="size-4 shrink-0 rounded-full border border-border/50 bg-white object-contain"
-  />
+const ProviderFavicon = ({ initial }: { initial: string }) => (
+  <span aria-hidden className="size-4 shrink-0 inline-flex items-center justify-center rounded-full border border-border/60 bg-muted text-[0.5rem] font-medium uppercase text-muted-foreground">
+    {initial}
+  </span>
 )
 
 function WebSearchContent() {
@@ -97,7 +95,7 @@ function WebSearchContent() {
                         size="sm"
                         className="justify-between gap-2"
                       >
-                        <ProviderFavicon src={providerFavicon(provider)} />
+                        <ProviderFavicon initial={providerInitial(provider)} />
                         <span className="truncate">{provider.label}</span>
                         <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground ml-2" />
                       </Button>
@@ -112,7 +110,7 @@ function WebSearchContent() {
                           )}
                           onClick={() => setSearchProvider(p.id)}
                         >
-                          <ProviderFavicon src={providerFavicon(p)} />
+                          <ProviderFavicon initial={providerInitial(p)} />
                           <span className="truncate">{p.label}</span>
                         </DropdownMenuItem>
                       ))}
