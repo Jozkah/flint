@@ -26,6 +26,14 @@ name = "jan"
 path = "src/bin/jan.rs"
 required-features = ["cli"]
 
+# Real-Tauri UI smoke harness. Excluded from release builds: `cowork-smoke` is
+# not in `default`, so `required-features` keeps cargo from building this target
+# unless it is asked for explicitly.
+[[bin]]
+name = "cowork-smoke"
+path = "src/bin/cowork_smoke.rs"
+required-features = ["cowork-smoke"]
+
 [features]
 default = [
     "tauri/wry",
@@ -38,6 +46,9 @@ default = [
     "tauri/custom-protocol",
     "desktop",
 ]
+# Builds the `cowork-smoke` binary, which drives the real Tauri app and its
+# real WebView. Never enabled for release bundles.
+cowork-smoke = ["desktop"]
 hardware = ["dep:tauri-plugin-hardware"]
 deep-link = ["dep:tauri-plugin-deep-link"]
 # MLX (tauri-plugin-mlx) is Apple-Silicon-only; it's a macOS-target dependency

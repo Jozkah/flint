@@ -264,12 +264,15 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
     }
 }
 
+/// Construct the fully-configured Tauri application without entering the event loop.
+///
+/// This is the single source of builder configuration: plugins, the invoke
+/// handler, managed [`AppState`], the `setup` hook and the generated context all
+/// live here. Production goes through [`run`]; the `cowork-smoke` harness calls
+/// this directly so it can capture the [`AppHandle`](tauri::AppHandle) before
+/// handing the app to [`run_app`].
 #[cfg(not(feature = "cli"))]
-#[cfg_attr(
-    all(mobile, any(target_os = "android", target_os = "ios")),
-    tauri::mobile_entry_point
-)]
-pub fn run() {
+pub fn build_app() -> tauri::App {
     let mut builder = tauri::Builder::default();
     #[cfg(desktop)]
     {
@@ -316,7 +319,7 @@ pub fn run() {
         core::server::remote_provider_commands::abort_remote_stream,
     ]);
 
-    let app = app_builder
+    app_builder
         .manage(AppState {
             app_token: Some(generate_app_token()),
             mcp_servers: Arc::new(Mutex::new(HashMap::new())),
@@ -403,8 +406,23 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while running tauri application");
-    // Handle app lifecycle events
+        .expect("error while running tauri application")
+}
+#[cfg(not(feature = "cli"))]
+#[cfg_attr(
+    all(mobile, any(target_os = "android", target_os = "ios")),
+    tauri::mobile_entry_point
+)]
+pub fn run() {
+    run_app(build_app());
+}
+
+/// Attach the lifecycle-event handler and enter the platform event loop.
+///
+/// Consumes the [`App`](tauri::App) produced by [`build_app`] and blocks until the
+/// process exits, so the smoke harness and production share one event loop.
+#[cfg(not(feature = "cli"))]
+pub fn run_app(app: tauri::App) {
     app.run(|app, event| {
         use std::sync::atomic::Ordering;
         if let RunEvent::WindowEvent {
