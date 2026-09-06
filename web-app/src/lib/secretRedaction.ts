@@ -225,14 +225,24 @@ export function redactSecrets(text: string): string {
  *
  * Keys are field names a tool schema defines, not content; redacting them would
  * produce an object nothing could render.
+ *
+ * A field named `command` gets the wider command-line rules, because that is the
+ * one place `--token value` appears -- a bare space separating a secret-named
+ * flag from its value. Without this a stored command keeps the credential that
+ * the same detector would have taken out of a `KEY=value` form, which is how the
+ * activity timeline's own test caught it.
  */
-export function redactSecretsDeep<T>(value: T): T {
-  if (typeof value === 'string') return redactSecrets(value) as unknown as T
-  if (Array.isArray(value)) return value.map(redactSecretsDeep) as unknown as T
+export function redactSecretsDeep<T>(value: T, key?: string): T {
+  if (typeof value === 'string') {
+    return (key === 'command' ? redactCommandLine(value) : redactSecrets(value)) as unknown as T
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSecretsDeep(item, key)) as unknown as T
+  }
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {}
-    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = redactSecretsDeep(val)
+    for (const [field, val] of Object.entries(value as Record<string, unknown>)) {
+      out[field] = redactSecretsDeep(val, field)
     }
     return out as unknown as T
   }
