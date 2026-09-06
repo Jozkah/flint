@@ -11,6 +11,9 @@
   },
   "scripts": {
     "lint": "yarn workspace @janhq/web-app lint",
+    "harness:registry": "node scripts/agent-harness/validate-registry.mjs",
+    "harness:registry:render": "node scripts/agent-harness/render-registry.mjs",
+    "harness:registry:test": "node --test \"scripts/agent-harness/*.test.mjs\"",
     "dev": "yarn dev:tauri",
     "ios": "yarn tauri ios dev",
     "android": "yarn tauri android dev",

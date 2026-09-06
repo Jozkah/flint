@@ -117,3 +117,38 @@ jobs:
 
       - name: cargo clippy
         run: cargo clippy --manifest-path src-tauri/${{ matrix.crate }}/Cargo.toml --all-targets -- -D warnings
+
+  # The harness foundation crate (run identity, the canonical event model, the
+  # error taxonomy, the persisted state schema) is its own workspace and no
+  # other crate depends on it yet, so nothing else in this file would compile
+  # it. It also owns the feature registry gate, which is dependency-free Node
+  # and runs without an install step.
+  agent-harness:
+    name: agent-harness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/harness
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: cargo clippy
+        run: cargo clippy --manifest-path src-tauri/harness/Cargo.toml --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --manifest-path src-tauri/harness/Cargo.toml
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: feature registry
+        run: |
+          node scripts/agent-harness/validate-registry.mjs
+          node --test "scripts/agent-harness/*.test.mjs"
