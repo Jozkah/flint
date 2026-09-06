@@ -96,7 +96,7 @@ impl EventStreamBuilder {
             call_id: call_id.to_string(),
             tool: tool.to_string(),
             outcome,
-            duration_ms: 5,
+            duration_ms: Some(5),
         })
     }
 

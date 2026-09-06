@@ -722,6 +722,8 @@ fn build_cli_orchestration_args(
         // `--sandbox` only when passed; unset falls through to the project's
         // `[tools].sandbox` and then the user's global `sandbox`.
         sandbox,
+        // A CLI invocation is always a top-level run; it opens its own record.
+        inherited_recorder: None,
     }
 }
 

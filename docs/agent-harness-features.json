@@ -127,7 +127,8 @@
       "owner": "lane-01-architecture-registry",
       "files": [
         "src-tauri/harness/src/event.rs",
-        "src-tauri/src/core/agent/events.rs"
+        "src-tauri/src/core/agent/recorder.rs",
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -139,11 +140,12 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/harness/src/event.rs::tests"
+        "src-tauri/src/core/agent/recorder.rs::tests",
+        "src-tauri/src/core/agent/loop.rs::tests::a_dispatched_call_and_its_outcome_are_recorded"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Canonical model landed in jan-agent-harness. StreamEvent is still never persisted, so replay, audit and export have no source; migrating the emitters is Phase 1 work (lane-02)."
+      "auditNote": "Events are now produced by the dispatcher and the run lifecycle, and persisted. Covers the Rust harness only -- the CLI, the TUI, subagents and the API-server proxy, every surface reaching run_orchestration_streamed. The Cowork desktop harness orchestrates in TypeScript and is not recorded yet."
     },
     {
       "id": "AH-005",
@@ -158,7 +160,8 @@
       ],
       "owner": "lane-01-architecture-registry",
       "files": [
-        "src-tauri/harness/src/envelope.rs"
+        "src-tauri/harness/src/envelope.rs",
+        "src-tauri/src/core/agent/recorder.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -170,11 +173,12 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/harness/src/envelope.rs::tests"
+        "src-tauri/harness/src/envelope.rs::tests",
+        "src-tauri/src/core/agent/recorder.rs::tests::events_are_numbered_densely_from_zero"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Versioned envelope, forward-compatible reader and a crash-tolerant JSONL log. Adopted by the run store in Phase 1."
+      "auditNote": "In real use: every run appends versioned envelopes to its own events.jsonl."
     },
     {
       "id": "AH-006",
@@ -250,7 +254,9 @@
       ],
       "owner": "lane-01-architecture-registry",
       "files": [
-        "src-tauri/harness/src/identity.rs"
+        "src-tauri/harness/src/identity.rs",
+        "src-tauri/src/core/agent/recorder.rs",
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -262,11 +268,12 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/harness/src/identity.rs::tests"
+        "src-tauri/harness/src/identity.rs::tests",
+        "src-tauri/src/core/agent/recorder.rs::tests::a_child_records_into_its_parents_run_under_its_own_agent_id"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "RunIdentity ties run, thread, session and agent together. The three existing ids are migrated onto it in Phase 1 (lane-02)."
+      "auditNote": "A run mints one RunIdentity in orchestrate_inner and every event carries it. A subagent inherits the parent's run and records under a fresh agent id rather than opening a run of its own. The legacy thread_id and session_id are still minted separately; folding them in is the remaining work."
     },
     {
       "id": "AH-009",
@@ -313,7 +320,7 @@
       "owner": "lane-01-architecture-registry",
       "files": [
         "src-tauri/harness/src/state.rs",
-        "src-tauri/src/core/threads/constants.rs"
+        "src-tauri/src/core/agent/recorder.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -325,11 +332,12 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/harness/src/state.rs::tests"
+        "src-tauri/harness/src/state.rs::tests",
+        "src-tauri/src/core/agent/recorder.rs::tests::the_record_tracks_how_far_the_log_got"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Versioned run record with an atomic writer, strict version reads and interrupted-run detection. The existing thread.json and messages.jsonl remain unversioned until Phase 1 migrates them."
+      "auditNote": "Each run writes a versioned record under <jan_data>/agent-state/runs/<run_id>/. thread.json and messages.jsonl remain unversioned."
     },
     {
       "id": "AH-011",
@@ -783,7 +791,8 @@
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/src/core/cli/mod.rs"
+        "src-tauri/harness/src/state.rs",
+        "src-tauri/src/core/agent/recorder.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -794,10 +803,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/recorder.rs::tests::a_run_that_never_closed_is_recovered_as_interrupted"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "State is written at turn boundaries only, so an interrupted turn is unrecoverable; resume lives in the CLI layer."
+      "auditNote": "A run interrupted mid-turn is now detectable: the record stays Running and a later process reads it as Interrupted. Resuming from that point is not built."
     },
     {
       "id": "AH-027",
@@ -961,7 +972,7 @@
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/src/core/cli/journal.rs"
+        "src-tauri/src/core/agent/recorder.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -975,7 +986,7 @@
       "tests": [],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "display.jsonl is a rendering journal; StreamEvent is never persisted, so runs cannot be replayed or audited."
+      "auditNote": "The replay source now exists -- an ordered, gapless, versioned event log per run. Nothing reads it back yet."
     },
     {
       "id": "AH-033",
@@ -1341,13 +1352,15 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P0",
       "dependencies": [
         "AH-044"
       ],
       "owner": "lane-03-permission-security",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/recorder.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "Secrets that do enter tool output are redacted before they reach logs, journals or the model.",
@@ -1358,9 +1371,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::tests::tool_arguments_never_reach_the_event_log"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "The event log records a redacted, truncated resource and a fingerprint, never raw arguments, so file contents and credentials cannot reach it. Transcripts, the display journal and tool output itself are still unredacted."
     },
     {
       "id": "AH-046",
@@ -1453,14 +1469,17 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-005",
         "AH-033"
       ],
       "owner": "lane-03-permission-security",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/recorder.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "Every allow, deny and auto-approval is written to a durable append-only record.",
@@ -1471,9 +1490,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::tests::auto_approval_is_recorded_as_a_decision_the_user_never_saw"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Prompts and decisions are recorded, auto-approval included -- previously the one case that converted every prompt to an allow with no trace. Covers the Rust harness only -- the CLI, the TUI, subagents and the API-server proxy, every surface reaching run_orchestration_streamed. The Cowork desktop harness orchestrates in TypeScript and is not recorded yet."
     },
     {
       "id": "AH-050",
@@ -1481,14 +1503,15 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-049"
       ],
       "owner": "lane-03-permission-security",
       "files": [
-        "src-tauri/src/core/cli/journal.rs"
+        "src-tauri/src/core/agent/recorder.rs",
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -1500,10 +1523,13 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::tests::a_dispatched_call_and_its_outcome_are_recorded",
+        "src-tauri/src/core/agent/loop.rs::tests::a_refused_call_is_recorded_as_denied_rather_than_failed"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "display.jsonl records calls for rendering; it is CLI-only and documents permission prompts as transient by design."
+      "auditNote": "Every dispatched call is recorded before it runs and again when it ends, in call order, built-in and MCP alike. Outcome classification still reads the dispatcher's own message strings; it becomes typed when tool results carry a HarnessError. Covers the Rust harness only -- the CLI, the TUI, subagents and the API-server proxy, every surface reaching run_orchestration_streamed. The Cowork desktop harness orchestrates in TypeScript and is not recorded yet."
     },
     {
       "id": "AH-051",
@@ -3145,7 +3171,7 @@
       ],
       "owner": "lane-06-agents-worktrees",
       "files": [
-        "src-tauri/src/core/agent/events.rs"
+        "src-tauri/src/core/agent/recorder.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -3156,12 +3182,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/recorder.rs::tests::parent_and_child_events_interleave_in_one_ordered_log"
+      ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": "Provenance exists at the event level only; file changes carry no agent attribution."
+      "auditNote": "Events carry the agent that produced them, and a child's agent id names its parent. File changes still carry no agent attribution."
     },
     {
       "id": "AH-111",
@@ -5005,7 +5033,8 @@
       ],
       "tests": [],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "The events exist on disk per run; no command exports them."
     },
     {
       "id": "AH-178",

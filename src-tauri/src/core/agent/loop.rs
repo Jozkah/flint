@@ -108,6 +108,13 @@ pub(crate) struct OrchestrationArgs {
     /// by dispatched subagents via the cloned parent args, so a child shell is
     /// confined exactly as its parent's was.
     pub sandbox: Option<bool>,
+    /// The parent's recorder, set only when this is a subagent's args.
+    ///
+    /// A child records into its parent's run under a fresh agent id rather than
+    /// opening a run of its own, so one run is one audit trail and a reader can
+    /// still tell which agent did what. `None` means "this is a top-level run",
+    /// which is what makes [`orchestrate_inner`] open a new record.
+    pub inherited_recorder: Option<Arc<crate::core::agent::recorder::RunRecorder>>,
 }
 
 #[async_trait]
@@ -286,6 +293,10 @@ struct CompositeToolInvoker {
     subagents: Option<SubagentContext>,
     auto_approve: bool,
     run_mode: crate::core::agent::plan::RunMode,
+    /// The run's durable record. `None` only when a run has nowhere to write
+    /// (no data folder), which is a degraded mode, not a normal one: without it
+    /// nothing this dispatcher does can be replayed or audited afterwards.
+    recorder: Option<Arc<crate::core::agent::recorder::RunRecorder>>,
 }
 
 /// Default for the sandboxed shell's network namespace, used when
@@ -808,6 +819,54 @@ fn hard_deny_msg(name: &str, reason: DenyReason, project_root: &std::path::Path)
     }
 }
 
+/// How a tool call ended, read back from the result the dispatcher produced.
+///
+/// A stopgap, and a deliberately cohesive one: every string it matches on is
+/// built by a function in *this* file, and the tests feed those builders'
+/// output straight into it, so a reworded refusal fails a test rather than
+/// silently downgrading a denial to a failure in the audit log. It goes away
+/// when a tool result carries a `HarnessError` instead of a `String`.
+fn classify_tool_outcome(content: &str) -> jan_agent_harness::event::ToolOutcome {
+    use jan_agent_harness::event::ToolOutcome as Recorded;
+    const REFUSALS: [&str; 4] = [
+        "denied by user",
+        "denied by project policy",
+        "plan_mode_read_only",
+        "is the agent's own state directory",
+    ];
+    if REFUSALS.iter().any(|marker| content.contains(marker)) {
+        return Recorded::Denied;
+    }
+    if content.starts_with("ERROR") {
+        return Recorded::Failed;
+    }
+    Recorded::Ok
+}
+
+/// The `id`, tool name and parsed arguments of one OpenAI tool call.
+///
+/// The dispatcher already re-derives these per branch; the recorder needs them
+/// for every call including the branches that never parse arguments at all.
+fn tool_call_parts(tc: &serde_json::Value) -> (String, String, serde_json::Value) {
+    let id = tc
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let function = tc.get("function");
+    let name = function
+        .and_then(|f| f.get("name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let args = function
+        .and_then(|f| f.get("arguments"))
+        .and_then(|v| v.as_str())
+        .and_then(|raw| serde_json::from_str(raw).ok())
+        .unwrap_or(serde_json::Value::Object(Default::default()));
+    (id, name, args)
+}
+
 /// Rejection message for a mutation-capable tool call attempted in
 /// `RunMode::Plan`. Authoritative: the tool never actually runs.
 fn plan_mode_read_only_msg(name: &str) -> String {
@@ -829,6 +888,25 @@ impl ToolInvoker for CompositeToolInvoker {
         // that prompts, writes, execs, or dispatches stays sequential so
         // permission prompts don't interleave and writes can't race.
         let mut read_futures = Vec::new();
+
+        // Every call the model asked for, recorded before any of them run, so
+        // the audit trail shows what was attempted even if the process dies
+        // part-way through the batch.
+        let dispatched_at = std::time::Instant::now();
+        let mut tool_of_call: HashMap<String, String> = HashMap::new();
+        for tc in tool_calls {
+            let (id, name, args) = tool_call_parts(tc);
+            tool_of_call.insert(id.clone(), name.clone());
+            if let Some(recorder) = self.recorder.as_ref() {
+                recorder.emit(jan_agent_harness::event::EventPayload::ToolCalled {
+                    call_id: id,
+                    resource: crate::core::agent::recorder::redacted_resource(&args),
+                    fingerprint: crate::core::agent::recorder::call_fingerprint(&name, &args),
+                    tool: name,
+                });
+            }
+        }
+
         for tc in tool_calls {
             let name = tc
                 .get("function")
@@ -969,7 +1047,22 @@ impl ToolInvoker for CompositeToolInvoker {
             // still honors HardDeny, so the hidden `.jan` invariant (while the shell
             // is sandboxed) and explicit agent.toml denies hold.
             let decision = match decision {
-                Decision::Prompt(_) if self.auto_approve => Decision::Allow,
+                Decision::Prompt(_) if self.auto_approve => {
+                    // The most important line in the audit log: a prompt the
+                    // user never saw. Recorded as its own decision so a reader
+                    // can tell an approval from a suppression.
+                    if let Some(recorder) = self.recorder.as_ref() {
+                        recorder.emit(
+                            jan_agent_harness::event::EventPayload::PermissionDecided {
+                                call_id: id.clone(),
+                                tool: name.to_string(),
+                                decision:
+                                    jan_agent_harness::event::PermissionDecision::AutoAllowed,
+                            },
+                        );
+                    }
+                    Decision::Allow
+                }
                 other => other,
             };
             // Read and Net tools are non-mutating and safe to run concurrently
@@ -1041,6 +1134,15 @@ impl ToolInvoker for CompositeToolInvoker {
                         .flatten()
                         .map(String::from);
                     let diff = preview_diff(tool, &args, &self.tool_context()).await;
+                    if let Some(recorder) = self.recorder.as_ref() {
+                        recorder.emit(
+                            jan_agent_harness::event::EventPayload::PermissionRequested {
+                                call_id: id.clone(),
+                                tool: name.to_string(),
+                                resource: crate::core::agent::recorder::redacted_resource(&args),
+                            },
+                        );
+                    }
                     let _ = self.events.send(StreamEvent::PermissionRequest {
                         request_id: request_id.clone(),
                         tool_name: name.to_string(),
@@ -1054,6 +1156,20 @@ impl ToolInvoker for CompositeToolInvoker {
                     // Sender dropped (client gone / run cancelled) => Deny. No timeout:
                     // the run is cancellable via agent_cancel, which drops this future.
                     let decision = rx.await.unwrap_or(PermissionDecision::Deny);
+                    if let Some(recorder) = self.recorder.as_ref() {
+                        use jan_agent_harness::event::PermissionDecision as Recorded;
+                        recorder.emit(
+                            jan_agent_harness::event::EventPayload::PermissionDecided {
+                                call_id: id.clone(),
+                                tool: name.to_string(),
+                                decision: match decision {
+                                    PermissionDecision::AllowOnce => Recorded::AllowOnce,
+                                    PermissionDecision::AllowAlways => Recorded::AllowAlways,
+                                    PermissionDecision::Deny => Recorded::Deny,
+                                },
+                            },
+                        );
+                    }
                     // Best-effort cleanup if the respond command didn't consume it.
                     self.permission_requests.lock().await.remove(&request_id);
                     match decision {
@@ -1109,6 +1225,26 @@ impl ToolInvoker for CompositeToolInvoker {
             .filter_map(|(i, tc)| tc.get("id").and_then(|v| v.as_str()).map(|id| (id, i)))
             .collect();
         out.sort_by_key(|o| *order.get(o.id.as_str()).unwrap_or(&usize::MAX));
+
+        if let Some(recorder) = self.recorder.as_ref() {
+            // Calls in a batch start together, so an individual duration is only
+            // honest when the batch held one call. Absent means unmeasured, not
+            // instant -- a fabricated zero in an audit record is worse than a
+            // gap that says so.
+            let duration_ms =
+                (tool_calls.len() == 1).then(|| dispatched_at.elapsed().as_millis() as u64);
+            for outcome in &out {
+                recorder.emit(jan_agent_harness::event::EventPayload::ToolFinished {
+                    call_id: outcome.id.clone(),
+                    tool: tool_of_call
+                        .get(&outcome.id)
+                        .cloned()
+                        .unwrap_or_default(),
+                    outcome: classify_tool_outcome(&outcome.content),
+                    duration_ms,
+                });
+            }
+        }
         Ok(out)
     }
 }
@@ -1153,6 +1289,7 @@ pub(crate) async fn run_server_side_openai_orchestration(
         run_mode: crate::core::agent::plan::RunMode::Normal,
         session_id: None,
         sandbox: None,
+        inherited_recorder: None,
     };
     let body = match json_body.get("max_turns") {
         Some(_) => std::borrow::Cow::Borrowed(json_body),
@@ -1551,6 +1688,7 @@ async fn orchestrate_inner(
         run_mode,
         session_id,
         sandbox,
+        inherited_recorder,
     } = args;
 
     // Per-turn override: the TUI toggles plan mode live via the request body
@@ -1787,7 +1925,38 @@ async fn orchestrate_inner(
     // isolated child (subagent) runs skip it to keep history independent.
     let index_memory = system_prompt_override.is_none();
 
-    if let Some(root) = project_root {
+    // One run, one durable record. Created here rather than threaded in through
+    // `OrchestrationArgs`, so every surface that reaches this function -- the
+    // CLI, the TUI, the desktop app and the API-server proxy -- records what its
+    // run did without four constructors having to remember to. A run that has
+    // nowhere to write proceeds unrecorded rather than failing: the record is
+    // evidence about the run, not a precondition for doing it.
+    let recorder = match inherited_recorder {
+        Some(parent) => Some(Arc::new(parent.child())),
+        None => crate::core::agent::recorder::RunRecorder::open(
+            std::path::Path::new(jan_data_folder.as_str()),
+            None,
+            session_id.as_deref(),
+            &model_id,
+            run_mode == crate::core::agent::plan::RunMode::Plan,
+        )
+        .inspect_err(|error| log::warn!("agent: this run will not be recorded: {error}"))
+        .ok()
+        .map(Arc::new),
+    };
+    if let Some(recorder) = recorder.as_ref() {
+        log::debug!(
+            "agent run {} recording to {}",
+            recorder.identity().run,
+            recorder.run_dir().display()
+        );
+        recorder.emit(jan_agent_harness::event::EventPayload::RunStarted {
+            model: model_id.clone(),
+            plan_mode: run_mode == crate::core::agent::plan::RunMode::Plan,
+        });
+    }
+
+    let outcome = if let Some(root) = project_root {
         // Background subagents are scoped to this run: `_bg_guard` aborts any
         // still-running child when `orchestrate_inner` returns or is cancelled.
         // The cap (`max_parallel_subagents`) is snapshotted here, at run start.
@@ -1796,7 +1965,13 @@ async fn orchestrate_inner(
         ));
         let _bg_guard = crate::core::agent::subagent::AbortOnDrop(bg.clone());
         let subagents = args.subagents_enabled.then(|| SubagentContext {
-            parent_args: args.clone(),
+            parent_args: {
+                // The child inherits everything about this run, including where
+                // its events go.
+                let mut inherited = args.clone();
+                inherited.inherited_recorder = recorder.clone();
+                inherited
+            },
             model_id: model_id.clone(),
             max_session_tokens,
             send_reasoning: body_send_reasoning(json_body),
@@ -1837,6 +2012,7 @@ async fn orchestrate_inner(
             subagents,
             auto_approve: *auto_approve,
             run_mode,
+            recorder: recorder.clone(),
         };
         let result = run_turn_cycle(
             events,
@@ -1887,7 +2063,33 @@ async fn orchestrate_inner(
             force_first_tool,
         )
         .await
+    };
+
+    // A cancelled run never reaches here: its future is dropped, `finish` is
+    // never called, and the record stays `Running` -- which is exactly how a
+    // later process learns the run was interrupted rather than that it failed.
+    if let Some(recorder) = recorder.as_ref() {
+        let (status, ended) = match &outcome {
+            Ok(_) => (
+                jan_agent_harness::state::RunStatus::Completed,
+                jan_agent_harness::event::ToolOutcome::Ok,
+            ),
+            Err(_) => (
+                jan_agent_harness::state::RunStatus::Failed,
+                jan_agent_harness::event::ToolOutcome::Failed,
+            ),
+        };
+        recorder.emit(jan_agent_harness::event::EventPayload::RunFinished { outcome: ended });
+        recorder.finish(status);
+        let dropped = recorder.dropped_events();
+        if dropped > 0 {
+            log::warn!(
+                "agent run {}: {dropped} event(s) could not be recorded; its audit trail is incomplete",
+                recorder.identity().run
+            );
+        }
     }
+    outcome
 }
 
 /// Upper bound on compaction retries per model call, so a persistently
@@ -4249,6 +4451,7 @@ mod tests {
             subagents: None,
             auto_approve: false,
             run_mode: crate::core::agent::plan::RunMode::Normal,
+            recorder: None,
         }
     }
 
@@ -4521,6 +4724,198 @@ mod tests {
             "type": "function",
             "function": { "name": name, "arguments": "{}" }
         })
+    }
+
+    /// Attaches a recorder to a dispatcher, and hands back both so a test can
+    /// read the run's event log after invoking.
+    fn recording_invoker(
+        root: std::path::PathBuf,
+        data: &jan_agent_harness::fixtures::TempDir,
+    ) -> (
+        CompositeToolInvoker,
+        Arc<crate::core::agent::recorder::RunRecorder>,
+    ) {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let permissions: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root, tx, permissions);
+        let recorder = Arc::new(
+            crate::core::agent::recorder::RunRecorder::open(
+                data.path(),
+                None,
+                None,
+                "test-model",
+                false,
+            )
+            .expect("recorder opens"),
+        );
+        invoker.recorder = Some(recorder.clone());
+        (invoker, recorder)
+    }
+
+    fn recorded_events(
+        recorder: &crate::core::agent::recorder::RunRecorder,
+    ) -> Vec<jan_agent_harness::event::HarnessEvent> {
+        jan_agent_harness::envelope::EventLog::read(recorder.run_dir().join("events.jsonl"))
+            .expect("event log reads")
+    }
+
+    /// The classifier is fed by the same builders the dispatcher uses, so a
+    /// reworded refusal fails here rather than quietly turning a denial into a
+    /// failure in the audit log.
+    #[test]
+    fn refusals_are_classified_from_the_messages_the_dispatcher_actually_builds() {
+        use jan_agent_harness::event::ToolOutcome as Recorded;
+        let root = std::path::Path::new("/tmp/project");
+
+        for message in [
+            denied_by_policy_msg("bash", root),
+            hidden_path_msg("read"),
+            plan_mode_read_only_msg("write"),
+            hard_deny_msg("bash", DenyReason::Policy, root),
+            hard_deny_msg("read", DenyReason::Hidden, root),
+            format!("ERROR: tool '{}' denied by user", "write"),
+        ] {
+            assert_eq!(
+                classify_tool_outcome(&message),
+                Recorded::Denied,
+                "should read as a refusal: {message}"
+            );
+        }
+
+        assert_eq!(classify_tool_outcome("ERROR: no such file"), Recorded::Failed);
+        assert_eq!(classify_tool_outcome("wrote 3 lines"), Recorded::Ok);
+    }
+
+    #[tokio::test]
+    async fn a_dispatched_call_and_its_outcome_are_recorded() {
+        let root = unique_project_root();
+        std::fs::write(root.join("hello.txt"), "contents").unwrap();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-record");
+        let (invoker, recorder) = recording_invoker(root.clone(), &data);
+
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": { "name": "read", "arguments": "{\"path\":\"hello.txt\"}" }
+        });
+        let out = invoker.invoke(&[call]).await.unwrap();
+        assert_eq!(out.len(), 1);
+
+        let events = recorded_events(&recorder);
+        let kinds: Vec<String> = events.iter().map(|e| e.kind()).collect();
+        assert_eq!(kinds, vec!["tool_called", "tool_finished"], "{kinds:?}");
+
+        match &events[0].payload {
+            jan_agent_harness::event::EventPayload::ToolCalled {
+                call_id,
+                tool,
+                resource,
+                fingerprint,
+            } => {
+                assert_eq!(call_id, "c1");
+                assert_eq!(tool, "read");
+                assert_eq!(resource.as_deref(), Some("hello.txt"));
+                assert!(!fingerprint.is_empty());
+            }
+            other => panic!("expected tool_called, got {other:?}"),
+        }
+        match &events[1].payload {
+            jan_agent_harness::event::EventPayload::ToolFinished {
+                tool,
+                outcome,
+                duration_ms,
+                ..
+            } => {
+                assert_eq!(tool, "read");
+                assert_eq!(*outcome, jan_agent_harness::event::ToolOutcome::Ok);
+                // One call in the batch, so its duration is honestly measurable.
+                assert!(duration_ms.is_some());
+            }
+            other => panic!("expected tool_finished, got {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_refused_call_is_recorded_as_denied_rather_than_failed() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-record-deny");
+        let (mut invoker, recorder) = recording_invoker(root.clone(), &data);
+        invoker.run_mode = crate::core::agent::plan::RunMode::Plan;
+        invoker.auto_approve = true;
+
+        let out = invoker.invoke(&[write_call()]).await.unwrap();
+        assert!(out[0].content.contains("plan_mode_read_only"));
+
+        let finished = recorded_events(&recorder)
+            .into_iter()
+            .find_map(|e| match e.payload {
+                jan_agent_harness::event::EventPayload::ToolFinished { outcome, .. } => {
+                    Some(outcome)
+                }
+                _ => None,
+            })
+            .expect("a tool_finished event");
+        assert_eq!(finished, jan_agent_harness::event::ToolOutcome::Denied);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Auto-approval turns every prompt into an allow without the user seeing
+    /// it. That is precisely the thing an audit log exists to make visible.
+    #[tokio::test]
+    async fn auto_approval_is_recorded_as_a_decision_the_user_never_saw() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-record-auto");
+        let (mut invoker, recorder) = recording_invoker(root.clone(), &data);
+        invoker.auto_approve = true;
+
+        let _ = invoker.invoke(&[write_call()]).await.unwrap();
+
+        let decisions: Vec<_> = recorded_events(&recorder)
+            .into_iter()
+            .filter_map(|e| match e.payload {
+                jan_agent_harness::event::EventPayload::PermissionDecided { decision, .. } => {
+                    Some(decision)
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            decisions,
+            vec![jan_agent_harness::event::PermissionDecision::AutoAllowed],
+            "an auto-approved write must leave a decision in the record"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The event log is written to disk and exported. Arguments carry file
+    /// contents, credentials and command lines, so none of them may reach it.
+    #[tokio::test]
+    async fn tool_arguments_never_reach_the_event_log() {
+        let root = unique_project_root();
+        let data = jan_agent_harness::fixtures::TempDir::new("loop-record-secret");
+        let (mut invoker, recorder) = recording_invoker(root.clone(), &data);
+        invoker.auto_approve = true;
+
+        const SECRET: &str = "sk-live-51H8ThisMustNeverBeLogged";
+        let call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": {
+                "name": "write",
+                "arguments": format!("{{\"path\":\"config.env\",\"content\":\"API_KEY={SECRET}\"}}")
+            }
+        });
+        let _ = invoker.invoke(&[call]).await.unwrap();
+
+        let raw = std::fs::read_to_string(recorder.run_dir().join("events.jsonl")).unwrap();
+        assert!(
+            !raw.contains(SECRET),
+            "the written file's contents leaked into the event log:\n{raw}"
+        );
+        // The path is recorded, because that is what an auditor needs.
+        assert!(raw.contains("config.env"), "{raw}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[tokio::test]

@@ -1904,6 +1904,7 @@ mod tests {
             run_mode: crate::core::agent::plan::RunMode::Normal,
             session_id: None,
             sandbox: None,
+            inherited_recorder: None,
         }
     }
 

@@ -60,7 +60,16 @@ pub enum EventPayload {
     /// A tool call was dispatched. `resource` is the redacted path, command or
     /// server the call touches; `fingerprint` identifies repeats (`AH-030`).
     ToolCalled { call_id: String, tool: String, resource: Option<String>, fingerprint: String },
-    ToolFinished { call_id: String, tool: String, outcome: ToolOutcome, duration_ms: u64 },
+    /// A tool call ended. `duration_ms` is absent when the dispatcher did not
+    /// measure this call individually -- an unknown duration must read as
+    /// unknown, not as zero, in a record someone audits.
+    ToolFinished {
+        call_id: String,
+        tool: String,
+        outcome: ToolOutcome,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        duration_ms: Option<u64>,
+    },
 
     PermissionRequested { call_id: String, tool: String, resource: Option<String> },
     PermissionDecided { call_id: String, tool: String, decision: PermissionDecision },
@@ -239,7 +248,7 @@ mod tests {
                 call_id: "c".into(),
                 tool: "read".into(),
                 outcome: ToolOutcome::Ok,
-                duration_ms: 1,
+                duration_ms: Some(1),
             },
             EventPayload::PermissionRequested { call_id: "c".into(), tool: "bash".into(), resource: None },
             EventPayload::PermissionDecided {
