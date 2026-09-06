@@ -816,12 +816,12 @@ mod review_tests {
         let raw = "3\t1\t\0old/name.rs\0new/name.rs\0";
         let map = parse_numstat(raw);
         assert_eq!(map.get("new/name.rs"), Some(&(3, 1, false)));
-        assert!(map.get("old/name.rs").is_none());
+        assert!(!map.contains_key("old/name.rs"));
     }
 
     #[test]
     fn status_v2_reads_branch_and_ordinary_change() {
-        let raw = "# branch.oid abc123\0# branch.head feature/x\01 .M N... 100644 100644 100644 aaa bbb src/a.rs\0";
+        let raw = "# branch.oid abc123\0# branch.head feature/x\x001 .M N... 100644 100644 100644 aaa bbb src/a.rs\0";
         let (branch, records) = parse_status_v2(raw);
         assert_eq!(branch.as_deref(), Some("feature/x"));
         assert_eq!(records.len(), 1);

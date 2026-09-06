@@ -511,7 +511,7 @@ pub fn list(repo: &Path, worktrees_root: &Path) -> Vec<WorktreeRecord> {
     let mut path: Option<String> = None;
     let mut head: Option<String> = None;
     let mut branch: Option<String> = None;
-    let mut flush = |path: &mut Option<String>,
+    let flush = |path: &mut Option<String>,
                      head: &mut Option<String>,
                      branch: &mut Option<String>,
                      found: &mut Vec<WorktreeRecord>| {
