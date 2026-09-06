@@ -132,35 +132,218 @@ describe('what the run reports it is sending', () => {
   const message = (text: string) =>
     ({ id: 'm', role: 'user', parts: [{ type: 'text', text }] }) as never
 
-  // The reason measurement lives on the transport at all. If the card built its
-  // own idea of the payload, the two would drift and the card would describe a
-  // run that is not happening.
-  it('measures the prompt the transport itself would send', () => {
-    const t = new CoworkChatTransport('s1', config({ readOnlyFolder: '/repo' }))
-    const sent = (
-      t as unknown as { buildSystemPrompt: (m: unknown[]) => string }
-    ).buildSystemPrompt([])
-    const measured = t.measureContext([])
+  /**
+   * Dispatch a payload the way `sendMessages` does.
+   *
+   * Reaching in on purpose, exactly as this file already does for
+   * `slotParams` and `assertSendable`: `onPayloadShaped` is a protected seam
+   * whose entire job is to be called from inside the parent's send, and the
+   * defect it exists to prevent is invisible from either side alone.
+   */
+  const dispatch = (
+    t: CoworkChatTransport,
+    payload: {
+      system?: string
+      before: unknown[]
+      after: unknown[]
+      kind?: 'unchanged' | 'trimmed' | 'compacted' | 'failed'
+      reason?: string | null
+    }
+  ) =>
+    (
+      t as unknown as {
+        onPayloadShaped: (d: Record<string, unknown>) => void
+      }
+    ).onPayloadShaped({
+      system:
+        payload.system ??
+        (
+          t as unknown as { buildSystemPrompt: (m: unknown[]) => string }
+        ).buildSystemPrompt([]),
+      before: payload.before,
+      after: payload.after,
+      kind: payload.kind ?? 'unchanged',
+      reason: payload.reason ?? null,
+    })
 
-    const instructions = measured.categories.instructions
-    expect(instructions.known).toBe('estimated')
-    // Same text, so same size: derived from the payload, not reconstructed.
-    const expected = Math.round(new TextEncoder().encode(sent).length / 4)
-    expect(
-      instructions.known !== false ? instructions.tokens : null
-    ).toBe(expected)
+  const tokensOf = (v: { known: unknown; tokens?: number }) =>
+    v.known === false ? 0 : (v.tokens ?? 0)
+  const bytes = (text: string) => new TextEncoder().encode(text).length
+
+  it('claims nothing at all before a payload has been dispatched', () => {
+    // Not zero. A run that has not sent anything has not sent nothing, and the
+    // difference is the whole reason `Measured` has three states.
+    const t = new CoworkChatTransport('s1', config())
+    const measured = t.measureContext(8192)
+
+    expect(measured.categories.instructions).toEqual({ known: false })
+    expect(measured.categories.conversation).toEqual({ known: false })
+    expect(measured.categories.tools).toEqual({ known: false })
+    expect(measured.shaping.kind).toBe('unknown')
+    expect(measured.budget).toEqual(
+      expect.objectContaining({ known: 'estimated', tokens: 8192 })
+    )
   })
 
-  it('counts the conversation it is handed', () => {
+  it('measures the payload that was dispatched, never the one assembled', () => {
+    // The defect this whole change exists for. `sendMessages` trims the window
+    // after the caller has handed its messages over, so measuring what the
+    // caller assembled described a conversation the model never received —
+    // and it did so on exactly the long runs where the number matters.
     const t = new CoworkChatTransport('s1', config())
-    const empty = t.measureContext([])
-    const full = t.measureContext([message('x'.repeat(4000))])
+    const kept = message('kept'.repeat(50))
+    const dropped = [message('dropped'.repeat(400)), message('also'.repeat(400))]
 
-    const tokensOf = (v: { known: unknown; tokens?: number }) =>
-      v.known === false ? 0 : (v.tokens ?? 0)
-    expect(tokensOf(full.categories.conversation)).toBeGreaterThan(
-      tokensOf(empty.categories.conversation)
+    dispatch(t, { before: [...dropped, kept], after: [kept], kind: 'trimmed' })
+    const measured = t.measureContext(8192)
+
+    const conversation = tokensOf(measured.categories.conversation)
+    expect(conversation).toBe(Math.round(bytes('kept'.repeat(50)) / 4))
+
+    // The mutation: measuring the assembled payload instead. If anyone routes
+    // `measureContext` back through the pre-trim messages, this is the number
+    // it would report, and it is not the number above.
+    const assembled = Math.round(
+      bytes('dropped'.repeat(400) + '\n' + 'also'.repeat(400) + '\n' + 'kept'.repeat(50)) /
+        4
     )
+    expect(conversation).not.toBe(assembled)
+    expect(conversation).toBeLessThan(assembled)
+  })
+
+  it('reports what the trim took out, in messages and in size', () => {
+    const t = new CoworkChatTransport('s1', config())
+    const kept = message('kept')
+    const dropped = message('x'.repeat(4000))
+
+    dispatch(t, { before: [dropped, kept], after: [kept], kind: 'trimmed' })
+    const { shaping } = t.measureContext()
+
+    expect(shaping.kind).toBe('trimmed')
+    expect(shaping.removed).toBe(1)
+    expect(shaping.retained).toBe(1)
+    expect(tokensOf(shaping.removedTokens)).toBeGreaterThan(900)
+    expect(shaping.reason).toBeNull()
+  })
+
+  it('distinguishes a compaction from a plain trim', () => {
+    const t = new CoworkChatTransport('s1', config())
+    const summary = message('summary of earlier turns')
+    dispatch(t, {
+      before: [message('a'.repeat(3000)), message('b'.repeat(3000))],
+      after: [summary],
+      kind: 'compacted',
+    })
+
+    expect(t.lastShaping.kind).toBe('compacted')
+    expect(t.lastShaping.removed).toBe(1)
+    expect(t.lastShaping.retained).toBe(1)
+  })
+
+  it('says why a configured compaction did not happen', () => {
+    // A failed compaction still sends — a trimmed window beats a lost turn —
+    // but the window in force is then not the one that was configured, and
+    // that is exactly the kind of quiet downgrade this surface exists to name.
+    const t = new CoworkChatTransport('s1', config())
+    dispatch(t, {
+      before: [message('a'.repeat(3000)), message('b')],
+      after: [message('b')],
+      kind: 'failed',
+      reason: 'model unavailable',
+    })
+
+    expect(t.lastShaping.kind).toBe('failed')
+    expect(t.lastShaping.reason).toBe('model unavailable')
+    expect(t.lastShaping.removed).toBe(1)
+  })
+
+  it('reports an untouched payload as sent whole, not as unknown', () => {
+    const t = new CoworkChatTransport('s1', config())
+    const messages = [message('one'), message('two')]
+    dispatch(t, { before: messages, after: messages })
+
+    expect(t.lastShaping).toEqual(
+      expect.objectContaining({ kind: 'unchanged', removed: 0, retained: 2 })
+    )
+  })
+
+  it('measures the prompt that went out, not one rebuilt from later config', () => {
+    // Configuration edited mid-run applies to the next run. The accounting has
+    // to follow the same rule, or the card describes a prompt that was never
+    // sent.
+    const t = new CoworkChatTransport('s1', config({ readOnlyFolder: '/repo' }))
+    const system = (
+      t as unknown as { buildSystemPrompt: (m: unknown[]) => string }
+    ).buildSystemPrompt([])
+    dispatch(t, { system, before: [], after: [] })
+
+    const before = t.measureContext()
+    t.setConfig(config({ readOnlyFolder: '/repo', repositoryMap: 'x'.repeat(4000) }))
+    const after = t.measureContext()
+
+    expect(after.categories.instructions).toEqual(before.categories.instructions)
+    expect(tokensOf(after.categories.instructions)).toBe(
+      Math.round(bytes(system) / 4)
+    )
+  })
+
+  it('forgets the last dispatch at a run boundary', () => {
+    // A new run showing the previous run's payload is a stale number that
+    // looks exactly like a fresh one.
+    const t = new CoworkChatTransport('s1', config())
+    dispatch(t, { before: [message('hi')], after: [message('hi')] })
+    expect(t.measureContext().shaping.kind).toBe('unchanged')
+
+    t.forgetDispatch()
+    expect(t.measureContext().shaping.kind).toBe('unknown')
+    expect(t.measureContext().categories.conversation).toEqual({ known: false })
+  })
+
+  it('tells the run about each dispatch as it happens', () => {
+    // Once per step, so a long run's card follows the payload rather than
+    // reporting only what the last step happened to send.
+    const t = new CoworkChatTransport('s1', config())
+    const seen: unknown[] = []
+    t.onDispatch = (accounting) => seen.push(accounting.shaping.kind)
+
+    dispatch(t, { before: [message('a')], after: [message('a')] })
+    dispatch(t, {
+      before: [message('a'), message('b')],
+      after: [message('b')],
+      kind: 'trimmed',
+    })
+
+    expect(seen).toEqual(['unchanged', 'trimmed'])
+  })
+
+  it('reconciles: the categories sum to the payload that was sent', async () => {
+    // The property the whole accounting rests on. If the parts do not add up
+    // to the dispatched bytes, the total on the card is a number about nothing.
+    const t = new CoworkChatTransport(
+      's1',
+      config({ repositoryMap: '# Repository map\n\nsrc/' })
+    )
+    await t.refreshTools()
+    const system = (
+      t as unknown as { buildSystemPrompt: (m: unknown[]) => string }
+    ).buildSystemPrompt([])
+    const sent = [message('hello'), message('world')]
+    dispatch(t, { system, before: sent, after: sent })
+
+    const measured = t.measureContext()
+    const parts =
+      tokensOf(measured.categories.instructions) +
+      tokensOf(measured.categories.repositoryMap) +
+      tokensOf(measured.categories.skills) +
+      tokensOf(measured.categories.conversation) +
+      tokensOf(measured.categories.tools)
+    const payload =
+      bytes(system) / 4 +
+      bytes(JSON.stringify(t.advertisedTools)) / 4 +
+      bytes('hello\nworld') / 4
+
+    // Within rounding of each category, not approximately equal in spirit.
+    expect(Math.abs(parts - payload)).toBeLessThanOrEqual(3)
   })
 
   it('measures the frozen tool set, not a rebuilt one', async () => {
@@ -169,12 +352,28 @@ describe('what the run reports it is sending', () => {
     // payload the model never received.
     const t = new CoworkChatTransport('s1', config())
     await t.refreshTools()
-    const before = t.measureContext([])
+    dispatch(t, { before: [], after: [] })
+    const before = t.measureContext()
 
     buildCoworkTools.mockResolvedValue({ read: {}, write: {}, bash: {}, edit: {} })
     await t.refreshTools()
-    const after = t.measureContext([])
+    const after = t.measureContext()
 
     expect(after.categories.tools).toEqual(before.categories.tools)
+  })
+
+  it('never carries dispatched message text in what it reports', () => {
+    // The record reaches the screen. A dropped message holds whatever the
+    // conversation held — a pasted key, a path, a file — so the shaping record
+    // carries counts and nothing else.
+    const t = new CoworkChatTransport('s1', config())
+    const secret = 'sk-not-a-real-key-0123456789'
+    dispatch(t, {
+      before: [message(secret), message('kept')],
+      after: [message('kept')],
+      kind: 'trimmed',
+    })
+
+    expect(JSON.stringify(t.measureContext().shaping)).not.toContain(secret)
   })
 })

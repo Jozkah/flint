@@ -6,9 +6,17 @@ import {
   conversationText,
   estimateTokens,
   measureContextPack,
+  shapingFor,
+  shapingNotice,
+  shapingWorthReporting,
+  unchangedShaping,
   utf8Bytes,
 } from '@/lib/coworkContext'
-import { accountedTotal, CONTEXT_CATEGORIES } from '@/lib/coworkReadiness'
+import {
+  accountedTotal,
+  CONTEXT_CATEGORIES,
+  UNKNOWN_SHAPING,
+} from '@/lib/coworkReadiness'
 
 const text = (value: string): UIMessage =>
   ({ id: 'm', role: 'user', parts: [{ type: 'text', text: value }] }) as UIMessage
@@ -217,5 +225,105 @@ describe('the context pack', () => {
     // `{}` serialises to two characters, so tools is a small estimate; an empty
     // prompt and no map are exact zeros.
     expect(accounting.categories.instructions).toEqual({ known: true, tokens: 0 })
+  })
+})
+
+describe('what the context manager did on the way out', () => {
+  const message = (text: string) =>
+    ({ id: 'm', role: 'user', parts: [{ type: 'text', text }] }) as never
+
+  it('reports an untouched payload as sent whole', () => {
+    const sent = [message('a'), message('b')]
+    expect(shapingFor({ kind: 'unchanged', before: sent, after: sent })).toEqual({
+      kind: 'unchanged',
+      removed: 0,
+      retained: 2,
+      removedTokens: { known: true, tokens: 0 },
+      reason: null,
+    })
+  })
+
+  it('measures what was removed as the difference between the payloads', () => {
+    // Not "the first N messages": compaction rewrites as well as drops, so the
+    // messages that are gone are not the same set as the messages that were
+    // first.
+    const before = [message('x'.repeat(400)), message('keep')]
+    const after = [message('summary')]
+    const shaping = shapingFor({ kind: 'compacted', before, after })
+
+    expect(shaping.kind).toBe('compacted')
+    expect(shaping.removed).toBe(1)
+    expect(shaping.retained).toBe(1)
+    expect(shaping.removedTokens).toEqual({
+      known: 'estimated',
+      tokens: Math.round((400 + 1 + 4 - 7) / 4),
+      method: ESTIMATE_METHOD,
+    })
+  })
+
+  it('reports a failed compaction even when the fallback removed nothing', () => {
+    // The window in force is not the one that was configured. That is worth
+    // saying whether or not the trim then had to cut anything.
+    const sent = [message('a')]
+    const shaping = shapingFor({
+      kind: 'failed',
+      before: sent,
+      after: sent,
+      reason: 'model unavailable',
+    })
+    expect(shaping.kind).toBe('failed')
+    expect(shaping.reason).toBe('model unavailable')
+    expect(shapingWorthReporting(shaping)).toBe(true)
+  })
+
+  it('does not put an unchanged or un-dispatched payload in the summary', () => {
+    expect(shapingWorthReporting(unchangedShaping(3))).toBe(false)
+    expect(shapingWorthReporting(UNKNOWN_SHAPING)).toBe(false)
+  })
+
+  it('never carries message text into the record', () => {
+    const secret = 'sk-not-a-real-key-0123456789'
+    const shaping = shapingFor({
+      kind: 'trimmed',
+      before: [message(secret), message('keep')],
+      after: [message('keep')],
+    })
+    expect(JSON.stringify(shaping)).not.toContain(secret)
+  })
+
+  it('hands one wording, with its counts, to every surface that reports it', () => {
+    // The breakdown and the completion summary read from here rather than each
+    // phrasing it, because two surfaces describing the same run in their own
+    // words is how they end up disagreeing about whether anything was dropped.
+    const notice = shapingNotice(
+      shapingFor({
+        kind: 'trimmed',
+        before: [message('x'.repeat(4000)), message('keep')],
+        after: [message('keep')],
+      })
+    )
+    expect(notice.key).toBe('common:readiness.shaping.trimmed')
+    expect(notice.params.removed).toBe(1)
+    expect(notice.params.retained).toBe(1)
+    expect(notice.params.tokens).toBeGreaterThan(900)
+    expect(notice.params.reason).toBe('')
+  })
+
+  it('reports the un-dispatched state as its own thing, not as clean', () => {
+    expect(shapingNotice(UNKNOWN_SHAPING).key).toBe(
+      'common:readiness.shaping.unknown'
+    )
+    expect(UNKNOWN_SHAPING.removedTokens).toEqual({ known: false })
+  })
+
+  it('defaults the accounting to unknown rather than to unchanged', () => {
+    // A pack measured without a shaping record has not established that
+    // nothing was removed; it has established nothing.
+    const accounting = measureContextPack({
+      systemPrompt: 'x',
+      toolSchemas: {},
+      messages: [],
+    })
+    expect(accounting.shaping).toEqual(UNKNOWN_SHAPING)
   })
 })

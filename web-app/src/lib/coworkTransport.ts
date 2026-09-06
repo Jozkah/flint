@@ -1,5 +1,8 @@
 import type { Tool, UIMessage } from 'ai'
-import { CustomChatTransport } from '@/lib/custom-chat-transport'
+import {
+  CustomChatTransport,
+  type PayloadShapingKind,
+} from '@/lib/custom-chat-transport'
 import { COWORK_SLOT_ID } from '@/constants/models'
 import { sandboxEnforces } from '@/lib/agentTools'
 import {
@@ -8,8 +11,12 @@ import {
   type CoworkToolOptions,
 } from '@/lib/coworkTools'
 import { buildCoworkSystemPrompt } from '@/lib/coworkPrompt'
-import { measureContextPack } from '@/lib/coworkContext'
-import type { ContextAccounting } from '@/lib/coworkReadiness'
+import { measureContextPack, shapingFor } from '@/lib/coworkContext'
+import {
+  UNKNOWN_SHAPING,
+  type ContextAccounting,
+  type ContextShaping,
+} from '@/lib/coworkReadiness'
 
 export type CoworkRunConfig = CoworkToolOptions & {
   workspacePath: string | null
@@ -71,6 +78,36 @@ export class CoworkChatTransport extends CustomChatTransport {
    * pay for a rebuild at every run boundary. */
   private builtTools: Record<string, Tool> | null = null
   private builtSig = ''
+  /**
+   * The last payload this transport actually dispatched.
+   *
+   * The accounting is measured from here and from nowhere else. It used to be
+   * measured from the messages the route had just assembled, which is the
+   * payload *before* `sendMessages` trims or auto-compacts it — so on a long
+   * run the card described a conversation larger than the one the model
+   * received. Counts and text sizes only: the messages are held just long
+   * enough to measure and are not exposed.
+   */
+  private dispatched: {
+    system: string
+    /**
+     * The map block that was inside `system` at dispatch time.
+     *
+     * Frozen alongside the prompt rather than read from the live config: the
+     * map's bytes are subtracted from `instructions` to avoid double-counting,
+     * and subtracting a *different* map from the prompt that was sent gives a
+     * wrong answer — badly wrong when the new map is the larger of the two.
+     */
+    repositoryMap: string | null
+    conversationTokensFrom: readonly UIMessage[]
+    tools: Record<string, Tool>
+    shaping: ContextShaping
+  } | null = null
+  /** Notified whenever a dispatch is recorded, so a run's card can follow it
+   * step by step rather than only at the end. */
+  onDispatch: ((accounting: ContextAccounting) => void) | null = null
+  /** The window to measure against, set by the run that owns this transport. */
+  private contextWindow: number | null = null
 
   constructor(sessionId: string, config: CoworkRunConfig) {
     super(undefined, sessionId)
@@ -82,10 +119,32 @@ export class CoworkChatTransport extends CustomChatTransport {
     this.config = config
   }
 
+  /**
+   * The model window the accounting is reported against.
+   *
+   * Set by the run rather than read here, because it comes from the selected
+   * model's settings and this class has no business reaching for those.
+   */
+  setContextWindow(tokens: number | null) {
+    this.contextWindow = tokens ?? null
+  }
+
+  /**
+   * Forget the last dispatch.
+   *
+   * Called at a run boundary. Without it a new run would show the previous
+   * run's payload until its own first step came back — a stale number that
+   * looks exactly like a fresh one.
+   */
+  forgetDispatch() {
+    this.dispatched = null
+  }
+
   /** Drop the freeze so the next run re-reads the config. */
   unfreezeTools() {
     this.frozenTools = null
   }
+
 
   /**
    * The set actually advertised this run, for narrowing a subagent's tools.
@@ -139,19 +198,70 @@ export class CoworkChatTransport extends CustomChatTransport {
    * built from, and cannot describe a run that is not happening.
    */
   measureContext(
-    messages: UIMessage[],
     configuredContextTokens?: number | null
   ): ContextAccounting {
+    const window = configuredContextTokens ?? this.contextWindow
+    const sent = this.dispatched
+    if (!sent) {
+      // Nothing has gone out. Every category that depends on the payload is
+      // genuinely unknown, and an unknown must not be shown as a zero.
+      return measureContextPack({
+        systemPrompt: null,
+        toolSchemas: null,
+        messages: null,
+        configuredContextTokens: window,
+      })
+    }
     return measureContextPack({
-      systemPrompt: this.buildSystemPrompt(messages),
-      toolSchemas: this.advertisedTools,
-      messages,
-      // The same string `buildSystemPrompt` just embedded, so the map's tokens
-      // are counted under `repositoryMap` and subtracted from `instructions`
-      // rather than counted twice.
-      repositoryMap: this.config.repositoryMap ?? null,
-      configuredContextTokens,
+      // The system prompt the request carried, not one rebuilt now: rebuilding
+      // it would measure the configuration as it stands rather than as it was
+      // dispatched, and those differ the moment anything is edited mid-run.
+      systemPrompt: sent.system,
+      toolSchemas: sent.tools,
+      messages: sent.conversationTokensFrom,
+      // The map that was in that prompt, so its tokens are counted under
+      // `repositoryMap` and subtracted from `instructions` rather than counted
+      // twice — and so a config edited since the dispatch cannot make the
+      // subtraction wrong.
+      repositoryMap: sent.repositoryMap,
+      configuredContextTokens: window,
+      shaping: sent.shaping,
     })
+  }
+
+  /**
+   * Record what actually went out, and tell the run about it.
+   *
+   * The whole point of the override: `before` is what the caller assembled and
+   * `after` is what the provider received, and until this existed only the
+   * first of the two was ever measured.
+   */
+  protected override onPayloadShaped(dispatched: {
+    system: string | undefined
+    before: UIMessage[]
+    after: UIMessage[]
+    kind: PayloadShapingKind
+    reason: string | null
+  }): void {
+    this.dispatched = {
+      // A request with no system prompt sent an empty one, not an unknown one.
+      system: dispatched.system ?? '',
+      repositoryMap: this.config.repositoryMap ?? null,
+      conversationTokensFrom: dispatched.after,
+      tools: this.advertisedTools,
+      shaping: shapingFor({
+        kind: dispatched.kind,
+        before: dispatched.before,
+        after: dispatched.after,
+        reason: dispatched.reason,
+      }),
+    }
+    this.onDispatch?.(this.measureContext())
+  }
+
+  /** What the context manager did to the last payload. Unknown before any. */
+  get lastShaping(): ContextShaping {
+    return this.dispatched?.shaping ?? UNKNOWN_SHAPING
   }
 
   /**

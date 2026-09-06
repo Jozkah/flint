@@ -775,6 +775,19 @@ function prependContinuationToUIStream(
   })
 }
 
+/**
+ * What the context manager did to a payload on its way out.
+ *
+ * `failed` means auto-compaction was configured, threw, and the payload was
+ * trimmed instead — the request still went, and the shortfall is reported
+ * rather than hidden.
+ */
+export type PayloadShapingKind =
+  | 'unchanged'
+  | 'trimmed'
+  | 'compacted'
+  | 'failed'
+
 export class CustomChatTransport implements ChatTransport<UIMessage> {
   public model: LanguageModel | null = null
   private routerModel: LanguageModel | null = null
@@ -897,6 +910,32 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * and throw a cryptic Jinja error. Fail early with a clear message when
    * deletion/eviction has left no real user turn to respond to.
    */
+  /**
+   * The payload, as it is about to be dispatched.
+   *
+   * A seam, not a behaviour: the base class does nothing with it. It exists
+   * because trimming and auto-compaction happen *inside* `sendMessages`, after
+   * the caller has handed its messages over, so a caller that reports on what
+   * the model received cannot learn it any other way. Counts and payloads are
+   * passed; what a subclass keeps is its own business, and Cowork's keeps
+   * counts only.
+   */
+  protected onPayloadShaped(_dispatched: {
+    /** Undefined when the request carries no system prompt at all. */
+    system: string | undefined
+    /** What the caller assembled. */
+    before: UIMessage[]
+    /** What is actually going out. */
+    after: UIMessage[]
+    kind: PayloadShapingKind
+    reason: string | null
+  }): void {
+    // The base transport keeps no record. Chat has no surface that reports on
+    // the payload, and holding the messages here would keep a conversation
+    // alive for no reader.
+    void _dispatched
+  }
+
   protected assertSendable(messages: UIMessage[]): void {
     if (!hasGenuineUserQuery(messages)) {
       throw new Error(
@@ -1383,6 +1422,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       inferenceParams.auto_compact === 'true'
 
     let effectiveMessages = messagesToConvert
+    // What the context manager did, recorded rather than logged. A subclass
+    // that reports on the payload (Cowork's readiness accounting) has no other
+    // way to learn that what it assembled is not what went out.
+    let shapingKind: PayloadShapingKind = 'unchanged'
+    let shapingReason: string | null = null
     if (maxContextTokens > 0) {
       const contextConfig: ContextManagerConfig = {
         maxContextTokens,
@@ -1395,21 +1439,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       const systemPromptTokens = effectiveSystem
         ? estimateTokens(effectiveSystem) + 4
         : 0
-      if (autoCompact && !contextShiftEnabled && this.model) {
-        const compactResult = await compactMessages(
-          messagesToConvert,
-          contextConfig,
-          this.model,
-          systemPromptTokens
-        )
-        effectiveMessages = compactResult.messages
-        if (compactResult.trimmedCount > 0) {
-          console.debug(
-            `[context-manager] Compacted ${compactResult.trimmedCount} messages` +
-              (compactResult.compactedSummary ? ' with summary' : ' (trim fallback)')
-          )
-        }
-      } else {
+      const trim = () => {
         const trimResult = trimMessages(
           messagesToConvert,
           contextConfig,
@@ -1421,8 +1451,54 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             `[context-manager] Trimmed ${trimResult.trimmedCount} oldest messages to fit context budget`
           )
         }
+        return trimResult.trimmedCount
+      }
+      if (autoCompact && !contextShiftEnabled && this.model) {
+        try {
+          const compactResult = await compactMessages(
+            messagesToConvert,
+            contextConfig,
+            this.model,
+            systemPromptTokens
+          )
+          effectiveMessages = compactResult.messages
+          if (compactResult.trimmedCount > 0) {
+            shapingKind = compactResult.compactedSummary ? 'compacted' : 'trimmed'
+            console.debug(
+              `[context-manager] Compacted ${compactResult.trimmedCount} messages` +
+                (compactResult.compactedSummary ? ' with summary' : ' (trim fallback)')
+            )
+          }
+        } catch (e) {
+          // Compaction summarises with the model, so it can fail for every
+          // reason a generation can. Losing the whole turn to that would be a
+          // worse outcome than sending a trimmed window — but the failure is
+          // reported, not swallowed, because a run that silently stopped
+          // compacting is a run whose window is quietly shorter than the user
+          // configured.
+          shapingReason = e instanceof Error ? e.message : String(e)
+          console.debug(
+            `[context-manager] Compaction failed (${shapingReason}); trimming instead`
+          )
+          trim()
+          shapingKind = 'failed'
+        }
+      } else if (trim() > 0) {
+        shapingKind = 'trimmed'
       }
     }
+
+    // Immediately before dispatch, and with the payload that is actually
+    // dispatched. Everything after this point is encoding for the provider
+    // (attachments, orphan tool calls, alternation), not a change to what the
+    // conversation contains.
+    this.onPayloadShaped({
+      system: effectiveSystem,
+      before: messagesToConvert,
+      after: effectiveMessages,
+      kind: shapingKind,
+      reason: shapingReason,
+    })
 
     // Many chat templates (Qwen3.5+) reject a window with no genuine user query
     // and throw a cryptic Jinja error. Fail early with a clear message when

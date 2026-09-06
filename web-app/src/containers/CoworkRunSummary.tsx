@@ -1,4 +1,6 @@
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { shapingNotice, shapingWorthReporting } from '@/lib/coworkContext'
+import type { ContextShaping } from '@/lib/coworkReadiness'
 import {
   summaryIsEmpty,
   type ChangeDestination,
@@ -17,8 +19,26 @@ import {
  * Each group says exactly what is known. "Jan changed" is claimed only where a
  * file tool succeeded; everything else is reported as found, not as done.
  */
-export function CoworkRunSummary({ summary }: { summary: CompletionSummary }) {
+export function CoworkRunSummary({
+  summary,
+  shaping,
+}: {
+  summary: CompletionSummary
+  /**
+   * What the context manager took out of the run's payload, when it took
+   * anything.
+   *
+   * Belongs in the completion summary for the same reason the file lists do:
+   * it is a fact about the run that the model has no incentive to mention and
+   * every reason to be unaware of. A run whose earlier turns were dropped
+   * produced its answer from less than the conversation on screen, and only
+   * the application knows that.
+   */
+  shaping?: ContextShaping
+}) {
   const { t } = useTranslation()
+  const shapingLine =
+    shaping && shapingWorthReporting(shaping) ? shapingNotice(shaping) : null
 
   const group = (label: string, paths: readonly string[]) =>
     paths.length === 0 ? null : (
@@ -83,6 +103,11 @@ export function CoworkRunSummary({ summary }: { summary: CompletionSummary }) {
             {group(t('common:coworkOrigins.unknown'), summary.unknown)}
           </>
         )}
+        {shapingLine ? (
+          <p className="text-main-view-fg/60">
+            {t(shapingLine.key, shapingLine.params)}
+          </p>
+        ) : null}
         <p className="text-main-view-fg/60">
           {t(`common:coworkOrigins.baseline.${summary.baseline}`)}
         </p>

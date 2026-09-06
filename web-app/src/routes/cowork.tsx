@@ -2071,13 +2071,26 @@ function CoworkPage() {
         ]
       : [...baseMessages]
 
-    // Measured here rather than at tool-refresh time because this is where the
-    // payload exists: `messages` is what the request carries, and the transport
-    // adds the system prompt and the advertised tools to it. Measuring earlier
-    // would report a conversation one turn short of the one being sent.
-    setRunContext(
-      transport.measureContext(messages, configuredContextTokens(selectedModel))
-    )
+    // Measured from what the transport *dispatched*, not from `messages`.
+    //
+    // These are not the same payload. `sendMessages` trims the window, and
+    // auto-compacts it when that is configured, after the caller has handed
+    // its messages over -- so measuring here, before the send, reported a
+    // conversation the model never received on exactly the long runs where the
+    // number matters most. The transport now records what went out and calls
+    // back with the accounting for it, once per step.
+    transport.setContextWindow(configuredContextTokens(selectedModel))
+    // A new run must not show the previous one's payload while it waits for
+    // its own first step: a stale number looks exactly like a fresh one.
+    transport.forgetDispatch()
+    setRunContext(transport.measureContext())
+    transport.onDispatch = (accounting) => {
+      // The run that owns this transport is the only one allowed to move the
+      // card. A callback that outlived its run would write a later run's
+      // payload onto an earlier run's session.
+      if (sessionIdRef.current !== sid) return
+      setRunContext(accounting)
+    }
 
     // Recorded before the turn runs, so a crash mid-inspection is resumed as an
     // inspection rather than as work nobody authorised.
@@ -2642,7 +2655,10 @@ function CoworkPage() {
                     // After the transcript, never inside it: the model's own
                     // account of the run and Jan's record of it must not read
                     // as one voice.
-                    <CoworkRunSummary summary={runOrigins.summary} />
+                    <CoworkRunSummary
+                      summary={runOrigins.summary}
+                      shaping={runContext?.shaping}
+                    />
                   )}
                   {stoppedBy === 'steps' && (
                     <CoworkBudgetNotice

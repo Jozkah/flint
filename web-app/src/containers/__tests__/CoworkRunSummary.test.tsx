@@ -7,6 +7,7 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
 
 import { CoworkRunSummary } from '../CoworkRunSummary'
 import type { CompletionSummary } from '@/lib/coworkOrigins'
+import type { ContextShaping } from '@/lib/coworkReadiness'
 
 const empty: CompletionSummary = {
   janWrites: [],
@@ -17,8 +18,22 @@ const empty: CompletionSummary = {
   baseline: 'clean',
 }
 
-const show = (over: Partial<CompletionSummary> = {}) =>
-  render(<CoworkRunSummary summary={{ ...empty, ...over }} />)
+const show = (
+  over: Partial<CompletionSummary> = {},
+  shaping?: ContextShaping
+) =>
+  render(
+    <CoworkRunSummary summary={{ ...empty, ...over }} shaping={shaping} />
+  )
+
+const shapingOf = (over: Partial<ContextShaping> = {}): ContextShaping => ({
+  kind: 'trimmed',
+  removed: 3,
+  retained: 7,
+  removedTokens: { known: 'estimated', tokens: 900, method: 'test' },
+  reason: null,
+  ...over,
+})
 
 const region = () => screen.getByTestId('cowork-run-summary')
 
@@ -93,5 +108,46 @@ describe('the run summary the application writes', () => {
 
     expect(section).toBe(region())
     expect(within(section).getByText('common:coworkOrigins.subtitle')).toBeInTheDocument()
+  })
+
+  it('says when the run answered from less than the conversation on screen', () => {
+    // A fact the model has no incentive to mention and every reason to be
+    // unaware of: its earlier turns were dropped before the request went out.
+    show({}, shapingOf())
+
+    expect(region()).toHaveTextContent('common:readiness.shaping.trimmed')
+  })
+
+  it('says a compaction was a compaction', () => {
+    show({}, shapingOf({ kind: 'compacted' }))
+
+    expect(region()).toHaveTextContent('common:readiness.shaping.compacted')
+  })
+
+  it('reports a failed compaction even when nothing was then dropped', () => {
+    // The window in force is not the one that was configured, which is worth
+    // saying whether or not the fallback had to cut anything.
+    show({}, shapingOf({ kind: 'failed', removed: 0, reason: 'no model' }))
+
+    expect(region()).toHaveTextContent('common:readiness.shaping.failed')
+  })
+
+  it('stays silent about a payload that went out whole', () => {
+    // Every run would otherwise carry a line saying nothing happened.
+    show({}, shapingOf({ kind: 'unchanged', removed: 0 }))
+
+    expect(region()).not.toHaveTextContent('common:readiness.shaping')
+  })
+
+  it('stays silent when nothing has been dispatched', () => {
+    show({}, shapingOf({ kind: 'unknown', removed: 0 }))
+
+    expect(region()).not.toHaveTextContent('common:readiness.shaping')
+  })
+
+  it('says nothing at all when the run did not report its payload', () => {
+    show({})
+
+    expect(region()).not.toHaveTextContent('common:readiness.shaping')
   })
 })

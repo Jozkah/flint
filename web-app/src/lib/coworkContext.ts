@@ -24,7 +24,9 @@ import type { UIMessage } from 'ai'
 import {
   estimated,
   measured,
+  UNKNOWN_SHAPING,
   type ContextAccounting,
+  type ContextShaping,
   type Measured,
 } from '@/lib/coworkReadiness'
 
@@ -135,6 +137,15 @@ export type ContextPackInput = {
    * loaded. So a configured value is reported as an estimate, with the reason.
    */
   configuredContextTokens?: number | null
+  /**
+   * What the context manager did on the way out.
+   *
+   * Omitted only where there is nothing to say yet — before a run has
+   * dispatched anything. It is never defaulted to "unchanged": claiming
+   * nothing was removed is a claim, and an un-dispatched run has not earned
+   * it.
+   */
+  shaping?: ContextShaping
 }
 
 /**
@@ -189,5 +200,105 @@ export function measureContextPack(input: ContextPackInput): ContextAccounting {
       input.configuredContextTokens != null
         ? estimated(input.configuredContextTokens, BUDGET_METHOD)
         : measured(null),
+    shaping: input.shaping ?? UNKNOWN_SHAPING,
   }
+}
+
+/**
+ * The shaping record for a payload that went out exactly as assembled.
+ *
+ * Distinct from `UNKNOWN_SHAPING`, and the distinction is the point: this one
+ * is a measurement ("everything was sent"), the other is an absence ("nothing
+ * has been sent"). Collapsing them would let a run that has not started yet
+ * report a clean bill of health.
+ */
+export function unchangedShaping(retained: number): ContextShaping {
+  return {
+    kind: 'unchanged',
+    removed: 0,
+    retained,
+    removedTokens: measured(0),
+    reason: null,
+  }
+}
+
+/**
+ * The shaping record for a payload the context manager cut down.
+ *
+ * `removedTokens` is estimated from the messages that were dropped, by the
+ * same method every other number here uses — so "3 messages, ~1,200 tokens"
+ * can be read against the budget on the same line without converting units in
+ * the reader's head. The messages themselves are not retained: this record is
+ * rendered, and a dropped message can hold anything the conversation held.
+ */
+export function shapingFor(input: {
+  kind: ContextShaping['kind']
+  before: readonly UIMessage[]
+  after: readonly UIMessage[]
+  summarised?: boolean
+  reason?: string | null
+}): ContextShaping {
+  const removed = Math.max(0, input.before.length - input.after.length)
+  if (removed === 0 && input.kind !== 'failed') {
+    return unchangedShaping(input.after.length)
+  }
+  // Measured as the difference between the two payloads rather than by
+  // slicing off the front: compaction rewrites as well as drops, so "the first
+  // N messages" is not the same set as "what is no longer being sent".
+  const beforeBytes = utf8Bytes(conversationText(input.before))
+  const afterBytes = utf8Bytes(conversationText(input.after))
+  return {
+    kind: input.kind,
+    removed,
+    retained: input.after.length,
+    removedTokens: estimated(
+      Math.max(0, beforeBytes - afterBytes) / CHARS_PER_TOKEN,
+      ESTIMATE_METHOD
+    ),
+    reason: input.reason ?? null,
+  }
+}
+
+/**
+ * One line describing what happened to the payload, ready to translate.
+ *
+ * Shared so the context breakdown and the completion summary say the same
+ * thing about the same run. Two surfaces phrasing this independently is how
+ * they end up disagreeing about whether anything was dropped.
+ *
+ * Carries counts and a failure reason. It never carries message text: this
+ * reaches the screen, and a dropped message holds whatever the conversation
+ * held.
+ */
+export type ShapingNotice = {
+  key: string
+  params: Record<string, string | number>
+}
+
+export function shapingNotice(shaping: ContextShaping): ShapingNotice {
+  const tokens =
+    shaping.removedTokens.known === false ? 0 : shaping.removedTokens.tokens
+  return {
+    key: `common:readiness.shaping.${shaping.kind}`,
+    params: {
+      removed: shaping.removed,
+      retained: shaping.retained,
+      tokens,
+      // Empty rather than absent, so a template referring to it never renders
+      // the literal placeholder.
+      reason: shaping.reason ?? '',
+    },
+  }
+}
+
+/**
+ * Did the context manager actually take something out?
+ *
+ * The question the completion summary asks: an unchanged payload is not worth
+ * a line there, and an un-dispatched one has nothing to report. A failed
+ * compaction is always worth saying, even if trimming then removed nothing,
+ * because the window in force is not the one that was configured.
+ */
+export function shapingWorthReporting(shaping: ContextShaping): boolean {
+  return shaping.kind === 'failed' || shaping.removed > 0
 }

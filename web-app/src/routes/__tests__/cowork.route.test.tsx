@@ -191,6 +191,16 @@ vi.mock('@/lib/coworkTransport', () => ({
     }
     unfreezeTools() {}
     async refreshTools() {}
+    /** Set by the run; recorded so a test can assert the window it carried. */
+    contextWindow: number | null = null
+    setContextWindow(tokens: number | null) {
+      this.contextWindow = tokens
+    }
+    forgotDispatch = 0
+    forgetDispatch() {
+      this.forgotDispatch += 1
+    }
+    onDispatch: ((accounting: any) => void) | null = null
     measureContext() {
       return {
         categories: {
@@ -201,6 +211,13 @@ vi.mock('@/lib/coworkTransport', () => ({
           tools: { known: 'estimated', tokens: 300, method: 'test' },
         },
         budget: { known: 'estimated', tokens: 8192, method: 'test' },
+        shaping: {
+          kind: 'unknown',
+          removed: 0,
+          retained: 0,
+          removedTokens: { known: false },
+          reason: null,
+        },
       }
     }
     async sendMessages() {
@@ -437,6 +454,25 @@ const call = (name: string, input: unknown, id = 'c1') => ({
   input,
 })
 
+/** An accounting for a payload the context manager cut down. */
+const trimmedAccounting = (kind = 'trimmed') => ({
+  categories: {
+    instructions: { known: 'estimated', tokens: 120, method: 'test' },
+    skills: { known: true, tokens: 0 },
+    repositoryMap: { known: true, tokens: 0 },
+    conversation: { known: 'estimated', tokens: 40, method: 'test' },
+    tools: { known: 'estimated', tokens: 300, method: 'test' },
+  },
+  budget: { known: 'estimated', tokens: 8192, method: 'test' },
+  shaping: {
+    kind,
+    removed: kind === 'unchanged' ? 0 : 3,
+    retained: 5,
+    removedTokens: { known: 'estimated', tokens: 900, method: 'test' },
+    reason: null,
+  },
+})
+
 /** Open the access menu and choose one mode. */
 async function chooseAccess(mode: string) {
   await userEvent.click(
@@ -572,6 +608,85 @@ describe('what a run carries, decided by the route', () => {
     expect(
       await screen.findByText(/readiness.repositoryMapFailed/)
     ).toBeInTheDocument()
+  })
+
+  it('reports the payload the transport dispatched, not the one assembled', async () => {
+    // The route used to measure `messages` before handing them over, and
+    // `sendMessages` then trimmed or auto-compacted them on the way out. The
+    // wiring being asserted is the callback: what the transport says it sent
+    // is what the breakdown shows.
+    seedSession({ turns: PRIOR_TURNS })
+    await renderRoute()
+    await runOneTurn()
+
+    const transport = h.transports.at(-1)
+    // The window the run measures against, carried from the selected model.
+    expect(transport.contextWindow).toBe(8192)
+    // And the previous run's payload dropped before this one starts.
+    expect(transport.forgotDispatch).toBe(1)
+
+    await act(async () => {
+      transport.onDispatch?.(trimmedAccounting())
+    })
+
+    expect(
+      await screen.findByLabelText('common:readiness.contextBreakdown')
+    ).toHaveTextContent('common:readiness.shaping.trimmed')
+  })
+
+  it('keeps reporting the last dispatch after the run is stopped', async () => {
+    // A cancelled run still sent what it sent. Blanking the accounting on stop
+    // would lose the one record of what the model was actually given.
+    seedSession({ turns: PRIOR_TURNS })
+    await renderRoute()
+    await runOneTurn()
+    await act(async () => {
+      h.transports.at(-1).onDispatch?.(trimmedAccounting())
+    })
+
+    await userEvent.click(screen.getByTestId('stop'))
+
+    expect(
+      await screen.findByLabelText('common:readiness.contextBreakdown')
+    ).toHaveTextContent('common:readiness.shaping.trimmed')
+  })
+
+  it('follows the payload in a managed run too', async () => {
+    seedSession({ turns: PRIOR_TURNS })
+    await renderRoute()
+    await chooseAccess('managed-worktree')
+    await waitFor(() => expect(h.directEditAuthorize).toHaveBeenCalled())
+    await runOneTurn()
+
+    await act(async () => {
+      h.transports.at(-1).onDispatch?.(trimmedAccounting('compacted'))
+    })
+
+    expect(
+      await screen.findByLabelText('common:readiness.contextBreakdown')
+    ).toHaveTextContent('common:readiness.shaping.compacted')
+  })
+
+  it('lets the latest step replace the previous one, retries included', async () => {
+    // A run dispatches once per step, and a retried step dispatches again. The
+    // card reports the payload of the step that actually went out last.
+    seedSession({ turns: PRIOR_TURNS })
+    await renderRoute()
+    await runOneTurn()
+    const transport = h.transports.at(-1)
+
+    await act(async () => {
+      transport.onDispatch?.(trimmedAccounting())
+    })
+    await act(async () => {
+      transport.onDispatch?.(trimmedAccounting('unchanged'))
+    })
+
+    const panel = await screen.findByLabelText(
+      'common:readiness.contextBreakdown'
+    )
+    expect(panel).toHaveTextContent('common:readiness.shaping.unchanged')
+    expect(panel).not.toHaveTextContent('common:readiness.shaping.trimmed')
   })
 
   it('does not start a run against a worktree that is no longer there', async () => {

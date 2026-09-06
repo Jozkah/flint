@@ -1029,6 +1029,14 @@
     },
     "categoryNothing": "nothing sent",
     "repositoryMapFailed": "No repository map was built for this run: {{reason}}",
+    "shapingLabel": "Sent as assembled",
+    "shaping": {
+      "unknown": "nothing dispatched yet",
+      "unchanged": "yes \u2014 all {{retained}} messages were sent",
+      "trimmed": "no \u2014 {{removed}} oldest messages (~{{tokens}} tokens) were dropped to fit the window; {{retained}} sent",
+      "compacted": "no \u2014 {{removed}} messages (~{{tokens}} tokens) were replaced by a generated summary; {{retained}} sent",
+      "failed": "no \u2014 compaction failed ({{reason}}), so {{removed}} messages (~{{tokens}} tokens) were dropped instead; {{retained}} sent"
+    },
     "categoryUnknown": "not known yet",
     "categoryCounted": "{{count}} tokens",
     "categoryEstimated": "~{{count}} tokens",

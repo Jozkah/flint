@@ -4,6 +4,7 @@ import { CoworkContextBreakdown } from '../CoworkContextBreakdown'
 import {
   estimated,
   measured,
+  UNKNOWN_SHAPING,
   type ContextAccounting,
 } from '@/lib/coworkReadiness'
 
@@ -16,6 +17,7 @@ const context = (over: Partial<ContextAccounting> = {}): ContextAccounting => ({
     tools: estimated(2000, '~4 chars per token'),
   },
   budget: estimated(8192, 'configured'),
+  shaping: UNKNOWN_SHAPING,
   ...over,
 })
 
@@ -111,5 +113,76 @@ describe('where the context went', () => {
     )
 
     expect(panel()).toHaveTextContent('common:readiness.budgetOver')
+  })
+
+  it('always says whether the payload went out as assembled', () => {
+    // The row exists in every state, `unchanged` included. One that only
+    // appeared when something was dropped would leave a reader unable to tell
+    // "nothing was dropped" from "nobody checked".
+    render(
+      <CoworkContextBreakdown
+        context={context({
+          shaping: {
+            kind: 'unchanged',
+            removed: 0,
+            retained: 12,
+            removedTokens: measured(0),
+            reason: null,
+          },
+        })}
+      />
+    )
+
+    expect(panel()).toHaveTextContent('common:readiness.shapingLabel')
+    expect(panel()).toHaveTextContent('common:readiness.shaping.unchanged')
+  })
+
+  it('says what a trim took out, and how much of it', () => {
+    render(
+      <CoworkContextBreakdown
+        context={context({
+          shaping: {
+            kind: 'trimmed',
+            removed: 4,
+            retained: 8,
+            removedTokens: estimated(900, '~4 chars per token'),
+            reason: null,
+          },
+        })}
+      />
+    )
+
+    // The counts themselves ride in the interpolation params, which this
+    // file's `t` stub does not render; `shapingNotice` is unit-tested for
+    // those. What matters here is that the trimmed wording is the wording
+    // chosen.
+    expect(panel()).toHaveTextContent('common:readiness.shaping.trimmed')
+    expect(panel()).not.toHaveTextContent('common:readiness.shaping.unchanged')
+  })
+
+  it('names the reason a configured compaction did not happen', () => {
+    render(
+      <CoworkContextBreakdown
+        context={context({
+          shaping: {
+            kind: 'failed',
+            removed: 3,
+            retained: 9,
+            removedTokens: estimated(400, '~4 chars per token'),
+            reason: 'model unavailable',
+          },
+        })}
+      />
+    )
+
+    expect(panel()).toHaveTextContent('common:readiness.shaping.failed')
+    expect(panel()).not.toHaveTextContent('common:readiness.shaping.trimmed')
+  })
+
+  it('does not claim a clean payload before anything has been sent', () => {
+    render(<CoworkContextBreakdown context={context()} />)
+
+    expect(panel()).toHaveTextContent('common:readiness.shaping.unknown')
+    expect(panel()).not.toHaveTextContent('common:readiness.shaping.unchanged')
   })
 })

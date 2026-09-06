@@ -1,4 +1,5 @@
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { shapingNotice } from '@/lib/coworkContext'
 import {
   CONTEXT_CATEGORIES,
   accountedTotal,
@@ -59,6 +60,7 @@ export function CoworkContextBreakdown({
   const { t } = useTranslation()
   const total = accountedTotal(context)
   const budget = context.budget
+  const shaping = shapingNotice(context.shaping)
 
   // Only meaningful when both halves are known. A "remaining" computed against
   // an unknown window would be an invented reassurance, and computed from an
@@ -103,6 +105,17 @@ export function CoworkContextBreakdown({
                     total: usage.window,
                   })}
           </dd>
+        </div>
+        <div className="flex items-baseline gap-2">
+          <dt className="shrink-0 text-main-view-fg/50">
+            {t('common:readiness.shapingLabel')}
+          </dt>
+          {/* What the context manager did on the way out. Shown for every
+              state, `unchanged` included: "the whole conversation was sent" is
+              the reassurance the rest of this panel is measured against, and a
+              row that only appears when something went wrong leaves the reader
+              unable to tell "nothing was dropped" from "nobody checked". */}
+          <dd className="min-w-0 truncate">{t(shaping.key, shaping.params)}</dd>
         </div>
       </dl>
       {repositoryMapNotice ? (

@@ -22,7 +22,7 @@ production code is changed by this document.**
 | Phase | State |
 |---|---|
 | 1 — managed worktree enforcement | **Built and in force.** `core/agent/worktree.rs` — create, validate, name, use, list, recover, discard; the run reads and writes the worktree, checked for staleness before it starts. |
-| 2 — context measurement | **Built.** Measured from the run's own payload; per-category breakdown. The repository-map category is no longer a permanent zero — see below. |
+| 2 — context measurement | **Built.** Measured from the payload the run *dispatched*, after trimming and compaction; per-category breakdown, with what the context manager removed reported beside it. The repository-map category is no longer a permanent zero — see below. |
 | 3 — first-turn inspect → propose | **Built.** Classifier widens only; review mode is the enforcement. |
 | 4 — compatibility ingestion | **Built.** Instructions, skills, agents and MCP; imported agents are dispatchable, stdio servers run through the shell's own confinement. |
 | 5 — coordinated agent teams | **Built and wired.** `lib/coworkTeam.ts` + a `team` tool dispatching through the real subagent runner; an isolated task gets a worktree and a grant of its own. |
@@ -62,6 +62,51 @@ entry cap, symlink escape, determinism), 13 in `coworkRepoMap`, 2 in
 tests asserting what crossed the boundary: which root was walked, that a
 managed run walks its worktree, and that a refused walk still runs and still
 reports.
+
+### After the merge: what the run actually sent
+
+The repository map closed the "always zero" category. This closes the one
+underneath it, which was worse: the accounting was measured from the messages
+the route *assembled*, and `CustomChatTransport.sendMessages` trims the window
+-- and auto-compacts it, where that is configured -- **after** the caller has
+handed its messages over. The only trace was a `console.debug`. So on a long
+run the readiness card described a payload larger than the one the model
+received, on exactly the runs where the number matters.
+
+- `CustomChatTransport` gained one seam, `onPayloadShaped`, called immediately
+  before dispatch with the system prompt, the assembled messages, the
+  dispatched messages, and what was done to them. The base class keeps nothing:
+  chat has no surface that reports on the payload.
+- `CoworkChatTransport` records that dispatch -- prompt, tool set, repository
+  map and messages, all frozen together -- and `measureContext()` now reads
+  **only** from it. Before a dispatch every payload-dependent category is
+  `{known:false}`, not zero: a run that has not sent anything has not sent
+  nothing.
+- Freezing the map alongside the prompt was not incidental. The map's bytes are
+  subtracted from `instructions` to avoid double-counting, and a config edited
+  mid-run would otherwise have that subtraction use a *different* map from the
+  one inside the prompt that went out. The transport test that changes the
+  config after a dispatch is what found it.
+- **A failed compaction no longer loses the turn.** `compactMessages`
+  summarises with the model, so it can fail for every reason a generation can,
+  and it was awaited with no `catch`. It now falls back to trimming, and the
+  failure is reported as its own shaping state with its reason -- because a run
+  that silently stopped compacting has a window shorter than the one configured.
+- `ContextShaping` carries counts and a reason, never message text. A dropped
+  message holds whatever the conversation held, and this record is rendered.
+- The same record reaches the context breakdown (a row present in every state,
+  `unchanged` included -- a row that only appeared on trouble would leave a
+  reader unable to tell "nothing was dropped" from "nobody checked") and the
+  completion summary (only when something really was removed, or a compaction
+  failed).
+
+Verified at this branch's head: the transport suite drives the seam directly,
+including a **mutation test** that computes what measuring the pre-trim payload
+would report and asserts the measurement is not that number; a reconciliation
+test asserting the five categories sum to the dispatched bytes within rounding;
+and route-level tests for the window carried, the per-run reset, a retried step
+replacing the previous measurement, a stopped run keeping its last record, and
+a managed-worktree run.
 
 ### What changed after the first pass
 
@@ -627,7 +672,7 @@ Measured in this container:
 | ESLint, Prettier | **Green** on every file this work touches |
 | `cargo test --lib` (app + plugin) | **Green** after installing GTK/WebKit headers |
 | `cargo fmt` | **Green** on every file this work touches; pre-existing drift elsewhere is left alone |
-| `scripts/cowork-compat-smoke.sh` | **Green** — 10 checks (macOS-only steps skip) |
+| `scripts/cowork-compat-smoke.sh` | **Green** — 10 checks (macOS-only steps skip). Needs `src-tauri/resources/bin` populated first: the app crate's `generate_context!()` build script fails on a declared bundle resource that is absent, so a fresh checkout fails its two `cargo test` checks before any test runs. `yarn download:bin` plus `scripts/stub-tauri-resources.sh` — the repo's own placeholder script, shared with the coverage and rust-check workflows — is the fix, and neither is part of `yarn install`. |
 | Route integration harness | **Green** — 22 checks through the real route |
 | `cargo clippy --all-targets` (app + plugin) | **Green** |
 | macOS native / WebView smoke | Impossible here (Linux container) |
