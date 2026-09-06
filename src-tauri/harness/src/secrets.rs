@@ -694,6 +694,55 @@ mod tests {
         );
     }
 
+    /// The shared corpus in `docs/security/secret-corpus.json`, which the web
+    /// app's mirror (`web-app/src/lib/secretRedaction.ts`) runs against too.
+    ///
+    /// One file rather than two lists so the two detectors cannot drift: a case
+    /// added there fails in both suites until both handle it. Also the seed of
+    /// the security regression corpus (AH-198).
+    #[test]
+    fn the_shared_corpus_is_detected_exactly() {
+        let raw = include_str!("../../../docs/security/secret-corpus.json");
+        let corpus: serde_json::Value =
+            serde_json::from_str(raw).expect("corpus is valid JSON");
+
+        let positives = corpus["positive"].as_array().expect("positive cases");
+        assert!(positives.len() >= 15, "the corpus must not shrink silently");
+        for case in positives {
+            let text = case["text"].as_str().expect("case has text");
+            let secret = case["secret"].as_str().expect("case names its secret");
+            let kind = case["kind"].as_str().expect("case names its kind");
+
+            let findings = scan(text);
+            assert!(
+                !findings.is_empty(),
+                "undetected corpus case: {text:?}"
+            );
+            assert!(
+                findings.iter().any(|f| f.kind.label() == kind),
+                "wrong kind for {text:?}: expected {kind}, got {:?}",
+                findings.iter().map(|f| f.kind.label()).collect::<Vec<_>>()
+            );
+            let redacted = redact(text);
+            assert!(
+                !redacted.contains(secret),
+                "secret survived redaction of {text:?}: {redacted}"
+            );
+        }
+
+        let negatives = corpus["negative"].as_array().expect("negative cases");
+        assert!(negatives.len() >= 15, "the corpus must not shrink silently");
+        for case in negatives {
+            let text = case["text"].as_str().expect("case has text");
+            let findings = scan(text);
+            assert!(
+                findings.is_empty(),
+                "false positive on {text:?} ({}): {findings:?}",
+                case["note"].as_str().unwrap_or("no note")
+            );
+        }
+    }
+
     #[test]
     fn detects_vendor_prefixed_tokens() {
         let cases: &[(&str, SecretKind)] = &[
