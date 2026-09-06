@@ -2077,7 +2077,10 @@ mod manager_bookkeeping_tests {
     use tauri::Manager;
 
     /// An app with the state the manager reads, and its shared server map.
-    fn app_with_state() -> (tauri::App<tauri::test::MockRuntime>, crate::core::state::SharedMcpServers) {
+    fn app_with_state() -> (
+        tauri::App<tauri::test::MockRuntime>,
+        crate::core::state::SharedMcpServers,
+    ) {
         let app = mock_app();
         let state = AppState::default();
         let servers = state.mcp_servers.clone();
