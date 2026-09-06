@@ -445,6 +445,28 @@ pub async fn execute_builtin_with_diff(
     match tool.name {
         "write" | "edit" => {
             let diff = preview_diff(tool, args, ctx).await;
+            // The diff is computed before the write, which makes it the last
+            // point at which a credential can be kept out of the file rather
+            // than taken back out of it afterwards (AH-157). Only the added
+            // lines are scanned: a key already in the file is not this change's
+            // doing, and refusing every edit to such a file would make it
+            // uneditable.
+            if let Some(diff) = diff.as_deref() {
+                let target = arg_str(args, "path").unwrap_or_default();
+                let hits = crate::tools::secretguard::guard_added_lines(diff, target);
+                if !hits.is_empty() {
+                    let what = if target.is_empty() {
+                        format!("apply this {}", tool.name)
+                    } else {
+                        format!("{} {target}", tool.name)
+                    };
+                    return (
+                        crate::tools::secretguard::refusal(&hits, &what),
+                        None,
+                        None,
+                    );
+                }
+            }
             let (content, images) = execute_builtin(tool, args, ctx).await;
             if content.starts_with("ERROR") {
                 return (content, None, None);
@@ -948,6 +970,21 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             "ERROR: working directory does not exist: {}",
             root.display()
         );
+    }
+
+    // A commit is the point after which a credential cannot be taken back out,
+    // and staging does not have to go through `write`/`edit` -- a shell redirect
+    // followed by `git add`, or `git apply`, reaches the index without either.
+    // So the commit is checked independently rather than trusting the earlier
+    // scan (AH-157). A guard that cannot run (no git, not a repository) does not
+    // fail the call: git itself will refuse a commit there, and breaking every
+    // non-git shell use because git is missing would be the worse failure.
+    if crate::tools::secretguard::is_git_commit(&command) {
+        if let Ok(hits) = crate::tools::secretguard::guard_staged_diff(root) {
+            if !hits.is_empty() {
+                return crate::tools::secretguard::refusal(&hits, "commit");
+            }
+        }
     }
 
     let mut policy =
@@ -2573,6 +2610,81 @@ mod tests {
             "edit content must stay concise: {content}"
         );
         assert_eq!(diff.as_deref(), Some("-    1 | foo\n+    1 | bar"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A write that would put a credential in the project is refused, and the
+    /// file is not created: the refusal has to happen before the write, or the
+    /// secret is already on disk when the model reads the error (AH-157).
+    #[tokio::test]
+    async fn a_write_that_would_add_a_credential_is_refused_before_it_lands() {
+        let root = unique_root();
+        let (content, diff) = execute_builtin_with_diff(
+            lookup("write").unwrap(),
+            &json!({
+                "path": "deploy.env",
+                "content": "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+",
+            }),
+            &root,
+        )
+        .await;
+        assert!(content.starts_with("ERROR: refusing to write deploy.env"), "{content}");
+        assert!(content.contains("aws-access-key-id"), "{content}");
+        assert!(!content.contains("AKIAIOSFODNN7EXAMPLE"), "refusal echoed the value: {content}");
+        assert!(diff.is_none(), "no diff is reported for a refused write");
+        assert!(
+            !root.join("deploy.env").exists(),
+            "the file must not exist after a refusal"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// An edit that introduces a credential into an existing file is refused and
+    /// the file is left exactly as it was.
+    #[tokio::test]
+    async fn an_edit_that_would_add_a_credential_leaves_the_file_untouched() {
+        let root = unique_root();
+        std::fs::write(root.join("cfg.toml"), b"key = \"placeholder\"
+").unwrap();
+        let (content, _diff) = execute_builtin_with_diff(
+            lookup("edit").unwrap(),
+            &json!({
+                "path": "cfg.toml",
+                "edits": [{
+                    "old_string": "placeholder",
+                    "new_string": "ghp_1234567890abcdefghijklmnopqrstuvwx",
+                }],
+            }),
+            &root,
+        )
+        .await;
+        assert!(content.starts_with("ERROR: refusing to edit cfg.toml"), "{content}");
+        assert_eq!(
+            std::fs::read_to_string(root.join("cfg.toml")).unwrap(),
+            "key = \"placeholder\"
+",
+            "the file changed despite the refusal"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The guard must not stand in the way of ordinary work: a write with nothing
+    /// secret in it goes through unchanged.
+    #[tokio::test]
+    async fn a_write_with_no_credential_is_unaffected_by_the_guard() {
+        let root = unique_root();
+        let (content, diff) = execute_builtin_with_diff(
+            lookup("write").unwrap(),
+            &json!({ "path": "notes.md", "content": "max_tokens = 4096
+api_key = $FROM_ENV
+" }),
+            &root,
+        )
+        .await;
+        assert!(content.starts_with("Created notes.md"), "{content}");
+        assert!(diff.is_some());
+        assert!(root.join("notes.md").exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 

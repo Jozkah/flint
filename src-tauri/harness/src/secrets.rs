@@ -240,6 +240,18 @@ fn is_token_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '+' | '/' | '=' | '~')
 }
 
+/// True when `c` immediately before a match means the match is the tail of a
+/// longer word rather than a token of its own -- `task-runner` is not `sk-…`.
+///
+/// Narrower than [`is_token_char`] on purpose. `=` is a token character because
+/// it is base64 padding at the *end* of a value, but it is also the commonest
+/// thing to appear immediately *before* one (`AWS_ACCESS_KEY_ID=AKIA…`), so
+/// treating it as a word character there would hide every assigned vendor token
+/// behind the more generic assignment rule.
+fn is_word_char_before(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | '+' | '/' | '~')
+}
+
 /// True while `c` can be part of an assignment's name.
 fn is_name_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')
@@ -366,7 +378,7 @@ fn scan_prefixes(text: &str, out: &mut Vec<Finding>) {
             // `sk-` inside `task-runner`.
             if start > 0 {
                 let prev = text[..start].chars().next_back().unwrap_or(' ');
-                if is_token_char(prev) {
+                if is_word_char_before(prev) {
                     continue;
                 }
             }
@@ -401,7 +413,7 @@ fn scan_jwts(text: &str, out: &mut Vec<Finding>) {
         from = start + HEAD.len();
         if start > 0 {
             let prev = text[..start].chars().next_back().unwrap_or(' ');
-            if is_token_char(prev) {
+            if is_word_char_before(prev) {
                 continue;
             }
         }
@@ -707,6 +719,18 @@ mod tests {
             );
             assert_redacted(&line, secret, *kind);
         }
+    }
+
+    /// An assigned vendor token must be reported as that vendor's kind, not as a
+    /// generic assignment: the label is what a reader of a redacted log has to go
+    /// on, and `=` immediately before the token must not hide it.
+    #[test]
+    fn an_assigned_vendor_token_keeps_its_own_kind() {
+        let findings = scan("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE");
+        assert_eq!(findings.len(), 1, "{findings:?}");
+        assert_eq!(findings[0].kind, SecretKind::AwsAccessKeyId);
+        assert!(redact("AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE")
+            .contains("[redacted: aws-access-key-id]"));
     }
 
     #[test]
