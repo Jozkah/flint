@@ -249,7 +249,62 @@ reports none of those four. It reports on the index and the project metadata,
 and running the build or the tests is a separate capability that stays open
 under this id.
 
-### Phases 2, 4-8
+### Phase 2 -- Security and permissions (in progress)
+
+Executed on Windows 11 (`x86_64`, rustc 1.94, Node 22) on the branch
+`feat/harness-integration`, at the commit that added each item.
+
+Covers `AH-045` (secret redaction), `AH-046` (destructive git) and `AH-157`
+(secret scanning on diffs). All three moved to `implemented`, not `verified`:
+see "Not run" below for the one rule that is outstanding.
+
+| Command | Result |
+| --- | --- |
+| `cargo test -p jan-agent-harness` | 75 passed, 0 failed |
+| `cargo test -p tauri-plugin-agent-tools --lib` | 346 passed, 19 failed (pre-existing, see below) |
+| `cargo test --no-default-features --features cli --lib` | 1517 passed, 84 failed (pre-existing, see below) |
+| `cargo build --no-default-features --features cli --bin jan` | clean |
+| `node scripts/agent-harness/validate-registry.mjs` | 205 features, schema and drift clean |
+| `node --test "scripts/agent-harness/*.test.mjs"` | 26 passed, 0 failed |
+| `npx vitest run src/__tests__/localOnly.test.ts` (web-app) | 29 passed, 0 failed |
+| `npx tsc --noEmit` (web-app) | clean |
+
+Evidence per acceptance rule:
+
+| Rule | AH-045 | AH-046 | AH-157 |
+| --- | --- | --- | --- |
+| Production implementation | `harness/src/secrets.rs` | `tools/gitrisk.rs` | `tools/secretguard.rs` |
+| Call-site wiring | `recorder::redacted_resource`, `journal::write_journal`, `compaction::summarize` | `gate::resolve_decision`, `loop.rs` grant routing, desktop `commands.rs` | `handlers::execute_builtin_with_diff`, `handlers::bash` |
+| Success path | clean text is byte-identical | ordinary git still prompts as exec and a grant covers it | a clean write goes through unchanged |
+| Refusal path | n/a -- redaction does not refuse | refused with the risk and the loss on the desktop | `ERROR: refusing to ...` naming file, line and kind |
+| Cancellation | n/a -- pure transformation with no in-flight state | the refusal precedes any process spawn, so there is nothing to abandon | the refusal precedes the write, and the test asserts the file does not exist |
+| Persistence across restart | the journal on disk is redacted and reads back redacted | grants are thread-scoped by design and deliberately not persisted | n/a -- no state |
+| Unit tests | 19 in `secrets.rs` | 6 in `gitrisk.rs` | 10 in `secretguard.rs` |
+| Integration tests | journal file, audit resource, summarizer request | 4 through `resolve_decision` | 3 through `execute_builtin_with_diff`, 3 against a real repository index |
+| Route or UI tests | n/a | n/a | n/a |
+| Security tests | every positive case asserts the value appears nowhere in the output | a `git` grant does not cover a destructive command; the kind cannot be granted in bulk | the refusal never echoes the value |
+| Documentation | AHD-014 | AHD-015 | AHD-014 |
+| Registry updated | yes | yes | yes |
+
+Two defects were found by the tests written for this work and fixed:
+
+- The detector treated `=` as a word character when looking at the character
+  *before* a match, so `AWS_ACCESS_KEY_ID=AKIA...` was reported as a generic
+  assignment rather than an AWS key. Preceding characters now use a narrower
+  rule; `=` remains a token character only where it belongs, as base64 padding.
+- `"password": "..."` was skipped entirely, because the closing quote was counted
+  as part of the name and the name then read as empty.
+
+#### Not run in Phase 2, and why
+
+| Not run | Reason |
+| --- | --- |
+| Linux and macOS execution | No Linux or macOS machine in this environment. This is the one acceptance rule outstanding for all three items, and the reason they are `implemented` rather than `verified`: the code is platform-independent Rust, but the verification rules do not accept that as a substitute for running it. |
+| The 19 failing `tauri-plugin-agent-tools` tests | Pre-existing and environmental: they re-exec the test binary as a sandbox helper and it rejects the flag (`Unrecognized option: 'internal-sandbox-exec'`), which only works from the app binary. Confirmed identical with these changes stashed (320 passed, 19 failed). |
+| The 84 failing app-crate tests | Pre-existing and environmental: they read the machine's real `~/.jan/config.toml`. Confirmed identical with these changes stashed (1517 passed, 84 failed). |
+| `cargo clippy` and the full desktop build | Deferred with the rest of toolchain validation until the product work in this pass is complete. |
+
+### Phases 4-8
 
 Recorded here as each phase closes, in the same shape: commands executed with
 their results, then commands not executed with the reason.
@@ -261,7 +316,9 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 
 | Area | Linux | macOS | Windows | WebView |
 | --- | --- | --- | --- | --- |
-| Harness foundation crate (Phase 0) | passed | not run | not run | n/a |
+| Harness foundation crate (Phase 0) | passed | not run | passed | n/a |
+| Secret redaction and diff scanning (`AH-045`, `AH-157`) | not run | not run | passed | n/a |
+| Destructive-git gating (`AH-046`) | not run | not run | passed | n/a |
 | Run recording, budgets, loop detection (Phase 1) | passed | not run | not run | n/a |
 | Process jail (`bubblewrap` / Seatbelt / AppContainer) | not run | not run | not run | n/a |
 | Per-agent worktrees | not run | not run | not run | n/a |
@@ -273,4 +330,6 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 | --- | --- | --- |
 | GitHub runners are never allocated on this fork | No CI evidence for any change | Recorded, not worked around. Verification is local and listed per phase. |
 | `rust-check.yml` does not trigger for a pull request based on a feature branch | The Phase 1 pull request gets no Rust checks | Resolves when Phase 0 merges and Phase 1 is retargeted to `main`. Not fixed by widening the filter, which is deliberate. |
-| No macOS or Windows machine in this environment | Per-OS behaviour cannot be validated | Recorded. The platform matrix keeps those cells empty rather than assuming them. |
+| No Linux or macOS machine in this environment | Per-OS behaviour cannot be validated there | Recorded. Phase 2 ran on Windows, which is why that column is now filled; the other two stay empty rather than being assumed. |
+| The sandbox helper re-exec fails under `cargo test` | 19 `tauri-plugin-agent-tools` tests cannot run outside the app binary | Recorded, not worked around. Their pass/fail count is compared against a stashed baseline on every change instead. |
+| Tests read the machine's real `~/.jan` | 84 app-crate tests fail on a developer machine with existing config | Recorded. Compared against a stashed baseline; fixing it means giving those tests an isolated data folder, which is its own change. |

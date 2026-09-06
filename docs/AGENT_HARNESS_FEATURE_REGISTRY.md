@@ -27,14 +27,14 @@ and the latter two require a recorded `blockedReason`.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | Foundation | 0 | 0 | 2 | 10 | 0 | 0 | 0 | 12 |
 | 1 | Core execution | 0 | 0 | 5 | 15 | 0 | 0 | 0 | 20 |
-| 2 | Security and permissions | 3 | 0 | 9 | 8 | 0 | 0 | 0 | 20 |
+| 2 | Security and permissions | 2 | 0 | 8 | 10 | 0 | 0 | 0 | 20 |
 | 3 | Repository intelligence | 7 | 0 | 2 | 11 | 0 | 0 | 0 | 20 |
 | 4 | Context and memory | 6 | 0 | 7 | 3 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 8 | 0 | 6 | 11 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
-| 7 | Coding and Git workflows | 23 | 0 | 2 | 1 | 0 | 0 | 0 | 26 |
-| 8 | UX, automation and operations | 17 | 0 | 9 | 3 | 0 | 0 | 0 | 29 |
-| **all** | | **75** | **0** | **48** | **77** | **0** | **0** | **0** | **200** |
+| 7 | Coding and Git workflows | 22 | 0 | 2 | 2 | 0 | 0 | 0 | 26 |
+| 8 | UX, automation and operations | 21 | 0 | 9 | 3 | 0 | 0 | 1 | 34 |
+| **all** | | **77** | **0** | **47** | **80** | **0** | **0** | **1** | **205** |
 
 ## Ownership lanes
 
@@ -46,13 +46,13 @@ consumes the result.
 | --- | --- |
 | `lane-01-architecture-registry` | 12 (AH-001-AH-012) |
 | `lane-02-execution-runtime` | 20 (AH-013-AH-032) |
-| `lane-03-permission-security` | 20 (AH-033-AH-052) |
+| `lane-03-permission-security` | 21 (AH-033-AH-204) |
 | `lane-04-repo-index-lsp` | 20 (AH-053-AH-072) |
 | `lane-05-context-memory` | 16 (AH-073-AH-088) |
 | `lane-06-agents-worktrees` | 25 (AH-089-AH-113) |
 | `lane-07-mcp-skills-plugins` | 32 (AH-114-AH-145) |
 | `lane-08-git-pr-workflows` | 26 (AH-146-AH-171) |
-| `lane-09-ux-observability` | 16 (AH-172-AH-200) |
+| `lane-09-ux-observability` | 20 (AH-172-AH-205) |
 | `lane-10-provider-enterprise` | 10 (AH-186-AH-195) |
 | `lane-12-security-regression-review` | 3 (AH-196-AH-198) |
 
@@ -107,8 +107,8 @@ per-OS evidence log rather than backlog items.
 | `AH-042` | Network egress permissions | 2 | security | P0 | `in-progress` | critical | `AH-006` |
 | `AH-043` | Network domain allow/deny lists | 2 | security | P1 | `missing` | high | `AH-042` |
 | `AH-044` | Secret-file protections | 2 | security | P0 | `in-progress` | critical | `AH-036` |
-| `AH-045` | Secret redaction in logs and transcripts | 2 | security | P0 | `in-progress` | critical | `AH-044` |
-| `AH-046` | Git destructive-operation protections | 2 | security | P0 | `missing` | critical | `AH-038` |
+| `AH-045` | Secret redaction in logs and transcripts | 2 | security | P0 | `implemented` | critical | `AH-044` |
+| `AH-046` | Git destructive-operation protections | 2 | security | P0 | `implemented` | critical | `AH-038` |
 | `AH-047` | Temporary session-scoped approvals | 2 | security | P0 | `implemented` | high | `AH-033` |
 | `AH-048` | Approval prompt contract | 2 | security | P0 | `implemented` | high | `AH-033` |
 | `AH-049` | Permission decision audit log | 2 | security | P0 | `implemented` | critical | `AH-005`, `AH-033` |
@@ -219,7 +219,7 @@ per-OS evidence log rather than backlog items.
 | `AH-154` | Dependency-change warnings | 7 | git-workflows | P1 | `missing` | high | `AH-146` |
 | `AH-155` | Lockfile-change warnings | 7 | git-workflows | P1 | `missing` | high | `AH-154` |
 | `AH-156` | Migration warnings | 7 | git-workflows | P1 | `missing` | high | `AH-146` |
-| `AH-157` | Secret scanning on diffs | 7 | git-workflows | P0 | `missing` | critical | `AH-045` |
+| `AH-157` | Secret scanning on diffs | 7 | git-workflows | P0 | `implemented` | critical | `AH-045` |
 | `AH-158` | License scanning | 7 | git-workflows | P2 | `missing` | medium | `AH-154` |
 | `AH-159` | Commit message generation | 7 | git-workflows | P1 | `missing` | low | `AH-146` |
 | `AH-160` | Commit splitting | 7 | git-workflows | P2 | `missing` | low | `AH-159` |
@@ -261,8 +261,13 @@ per-OS evidence log rather than backlog items.
 | `AH-196` | Benchmark harness | 8 | ux-operations | P2 | `missing` | none | `AH-011` |
 | `AH-197` | Golden-repository regression suite | 8 | ux-operations | P1 | `missing` | medium | `AH-011`, `AH-196` |
 | `AH-198` | Security regression corpus | 8 | ux-operations | P0 | `missing` | critical | `AH-011`, `AH-049` |
-| `AH-199` | Telemetry controls | 8 | ux-operations | P1 | `missing` | high | - |
+| `AH-199` | Telemetry controls | 8 | ux-operations | P1 | `rejected-with-decision` | high | - |
 | `AH-200` | Full audit export | 8 | ux-operations | P1 | `in-progress` | critical | `AH-049`, `AH-177` |
+| `AH-201` | Detailed in-chat activity timeline | 8 | ux-operations | P0 | `missing` | medium | `AH-004`, `AH-005`, `AH-177` |
+| `AH-202` | Expandable project navigation | 8 | ux-operations | P1 | `missing` | low | - |
+| `AH-203` | Side-by-side chat panes | 8 | ux-operations | P1 | `missing` | medium | `AH-202` |
+| `AH-204` | Global permission centre | 8 | permission-security | P0 | `missing` | critical | `AH-007`, `AH-049` |
+| `AH-205` | Cross-run audit export | 8 | ux-operations | P1 | `missing` | critical | `AH-177`, `AH-200`, `AH-201` |
 
 ## Audit notes
 
@@ -298,7 +303,8 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-041` Per-MCP-server permissions** - advertises_mcp keys on tool name; server-level trust lives in renderer localStorage, outside the Rust gate.
 - **`AH-042` Network egress permissions** - Shell egress is jailed, but Capability::Net web tools are allowed unconditionally even when allow_network is false.
 - **`AH-044` Secret-file protections** - is_sensitive_name covers dotenv files, private keys and credential files, and is reachable only from the UI browse, repo-map and read commands. The model's own read/edit/bash path in tools/handlers.rs has no such check.
-- **`AH-045` Secret redaction in logs and transcripts** - The event log records a redacted, truncated resource and a fingerprint, never raw arguments, so file contents and credentials cannot reach it. Transcripts, the display journal and tool output itself are still unredacted.
+- **`AH-045` Secret redaction in logs and transcripts** - One detector (jan_agent_harness::secrets) redacts on the three paths where text becomes durable or is re-sent: the audit event resource field, write_journal, and the compaction summarizer input. Previously only field discipline existed, and the field it kept -- the command line -- is where credentials are passed. The wire transcript of the live turn is deliberately not rewritten: the model already saw the file it read, so rewriting the turn would break the task rather than prevent a leak. What remains before verified is the cross-platform execution the verification doc requires; the evidence recorded so far ran on Windows only.
+- **`AH-046` Git destructive-operation protections** - Ten destructive operations are classified and gated as PromptKind::DestructiveGit, resolved before the base-command grant is consulted and granted only as exact command text. The escalation this closes: exec grants are per base command, so approving "git status" granted "git", which covered "git reset --hard". Ordinary git usage is untouched. On the desktop, which has no prompt round-trip, it is refused with the reason and the loss it would cause.
 - **`AH-049` Permission decision audit log** - Prompts and decisions are recorded, auto-approval included -- previously the one case that converted every prompt to an allow with no trace. Covers the Rust harness only -- the CLI, the TUI, subagents and the API-server proxy, every surface reaching run_orchestration_streamed. The Cowork desktop harness orchestrates in TypeScript and is not recorded yet.
 - **`AH-050` Tool invocation audit log** - Every dispatched call is recorded before it runs and again when it ends, in call order, with a duration measured around each call individually. Covers the Rust harness only; the Cowork desktop harness orchestrates in TypeScript and is not recorded yet.
 - **`AH-051` Emergency kill switch** - Cancellation is per-run only; nothing halts background subagents and detached bash jobs application-wide.
@@ -347,6 +353,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-144` MCP per-server budgets** - Truncation is global, not per server, and is not budget-aware.
 - **`AH-145` Compatibility bundle import and export** - CompatibilityManifest models an imported bundle and its components; there is no export path back out.
 - **`AH-146` Patch previews** - The approval event carries a whole-change diff; there is no reviewable staged patch.
+- **`AH-157` Secret scanning on diffs** - Two independent checks, both using the same detector as AH-045: the added lines of a write/edit diff, scanned between computing the diff and performing the write so a refusal leaves nothing on disk; and git diff --cached before a commit, because staging can reach the index without the write tools. Only added lines are scanned, so a key already in a file does not make that file uneditable. A guard that cannot run returns an error rather than a pass.
 - **`AH-159` Commit message generation** - No git tool exists; git is reachable only through bash, and git.rs commits are internal snapshots.
 - **`AH-161` Branch management** - The harness creates and deletes its own jan/cowork/* branches. There is no agent-facing git tool: the model reaches git only through bash, under per-base-command grants.
 - **`AH-170` Worktree cleanup** - discard refuses while uncommitted changes exist unless forced, and names the files; prune and list recover strays.
@@ -362,5 +369,10 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-183` Headless event-stream API** - StreamEvent is already Tauri-free but is never exposed over stdout or a socket.
 - **`AH-194` Provider routing rules** - Resolution prefers a credentialed provider and supports a small-model role; there are no user-authored rules.
 - **`AH-195` Local and offline model support** - Local inference ships on the desktop app; the headless CLI is remote-only.
-- **`AH-199` Telemetry controls** - Reverted from implemented to missing. The entry named web-app/src/containers/analytics/AnalyticConsent.tsx, which does not exist in this tree; the repo_health registry check (AH-072) found the claim, and reading the code confirmed it. What exists is DefaultAnalyticService (web-app/src/services/analytic/default.ts), which reads and writes a distinct id and has no consent gate. web-app/src/routes/__tests__/__root.test.tsx mocks an @/providers/AnalyticProvider that is absent from web-app/src/providers/, and __root.tsx does not reference it. So telemetry here is neither consent-gated nor disableable, and the acceptance criterion is unmet.
+- **`AH-199` Telemetry controls** - Previously reverted to missing because it named web-app/src/containers/analytics/AnalyticConsent.tsx, which never existed in this tree. Now rejected with a decision: the telemetry it would have gated is gone, and a guard test keeps it gone.
 - **`AH-200` Full audit export** - Permission decisions, tool calls and run events export together as one reviewable record per run, auto-approvals included. Still per-run rather than across runs, and it covers the Rust harness only -- the Cowork desktop harness records nothing to export.
+- **`AH-201` Detailed in-chat activity timeline** - Requested directly by the operator. The event model (AH-004) and the run log (AH-005) exist in the harness crate and the CLI reads them back, but the desktop chat renders a transient StreamEvent stream that is never persisted, so the inline timeline, the rail, the panel and the export do not share a store.
+- **`AH-202` Expandable project navigation** - Requested directly by the operator and absent from the original 200-item backlog.
+- **`AH-203` Side-by-side chat panes** - Requested directly by the operator and absent from the original 200-item backlog. Pane-scoped permission state depends on the permission model (AH-007) being addressable per session.
+- **`AH-204` Global permission centre** - Requested directly by the operator. The gate, the decision events (AH-049) and the per-request registry exist, but a request is answerable only in the conversation that raised it, and nothing aggregates or expires them.
+- **`AH-205` Cross-run audit export** - Splits the cross-run half out of AH-200, which is implemented per run and for the Rust harness only. Requested by the operator as "full audit export".

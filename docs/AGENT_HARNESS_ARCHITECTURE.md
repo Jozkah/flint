@@ -168,6 +168,65 @@ on one type from the same method name on another. Approximating them would
 produce answers indistinguishable in shape from correct ones. They wait for a
 real LSP client (`AH-060`-`AH-064`).
 
+### AHD-014: one credential detector, two dispositions
+
+`src-tauri/harness/src/secrets.rs` is the only place that decides what a
+credential looks like. Everything that needs the answer asks it, so what a log
+hides and what a write refuses can never drift apart.
+
+The two dispositions are deliberate and not interchangeable:
+
+- **Redact** where the text must survive to be useful and rewriting it costs
+  nothing real -- the audit event's resource field, the display journal, the
+  input to the compaction summarizer. The marker names the kind, so a reader can
+  still tell what was there.
+- **Refuse** where rewriting would be a lie -- a `write`/`edit` whose diff adds a
+  credential, and a `git commit` whose index holds one. Silently editing content
+  the model asked to write would leave the file disagreeing with what the model
+  believes it wrote, and the run would continue on a false premise.
+
+The detector is prefix, shape and assignment rules, hand-rolled rather than a
+regular-expression engine, because the harness crate is linked by the desktop
+app, the headless CLI and every test suite and stays dependency-light.
+
+It is a floor and says so: a high-entropy string with no vendor prefix, no
+secret-ish name and no credential shape is indistinguishable from a hash or a
+content address, and guessing at it would redact commit SHAs out of every diff.
+Field discipline (recording *which fields* an event keeps) and redaction are
+therefore complementary, and both stay.
+
+The live wire transcript is not rewritten. A model that just read a `.env` has
+already seen it; redacting the turn would break the task it is doing without
+preventing a leak, because the leak already happened when the file was read. The
+boundary is durability and re-sending: anything written to disk, replayed into a
+later session, exported, or carried forward by a summary is redacted.
+
+`AH-045` and `AH-157` implement this.
+
+### AHD-015: a grant covers a class of work, not a class of damage
+
+Exec permission is granted per base command, which is what makes "allow all git
+commands" a usable answer to a prompt. It is also why that answer used to cover
+`git reset --hard` and `git push --force`.
+
+So destructive git is classified separately
+(`tools/gitrisk.rs`) and gated as its own prompt kind, resolved *before* the
+base-command grant is consulted, and granted only as exact command text:
+approving `git reset --hard HEAD~1` does not approve
+`git reset --hard origin/main`, because the second loses different work. The kind
+cannot be granted in bulk at all -- `grant(PromptKind::DestructiveGit)` is a
+deliberate no-op.
+
+An explicit `agent.toml` allow still wins, so an unattended destructive run stays
+possible on purpose, in configuration, rather than by accident through a grant.
+On the desktop, which has no prompt round-trip, it is refused with the reason:
+the sandbox is not an answer, because it confines *where* the shell may write and
+a hard reset loses work inside the directory it is allowed to write.
+
+This is the narrow, shipped half of `AHD-005`: `AH-046` no longer waits on the
+full resource-matching rule engine, and `AH-034`/`AH-036`/`AH-037`/`AH-043`
+still do.
+
 ## 3. Lane and file ownership
 
 | Lane | Owns |
@@ -285,7 +344,7 @@ correspond. Read them as:
 - The blueprint is **narrower and further along**: one surface, eight phases,
   largely delivered. It is the authority on the Cowork harness's ownership map,
   its security invariants and its verification evidence.
-- This registry is **wider and earlier**: 200 items across both harnesses and
+- This registry is **wider and earlier**: 205 items across both harnesses and
   the shared Rust core, most of them not started.
 
 Where they overlap, the blueprint wins on fact and this registry records the

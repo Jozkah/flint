@@ -26,8 +26,16 @@ export const NEEDS_REASON = new Set(['platform-blocked', 'rejected-with-decision
 
 export const SECURITY_IMPACTS = ['none', 'low', 'medium', 'high', 'critical']
 
-/** The backlog is fixed at 200 items: they may change status, never disappear. */
-export const EXPECTED_FEATURE_COUNT = 200
+/** The backlog is fixed: items may change status, never disappear.
+ *
+ * It grew from 200 to 205 when work the operator asked for turned out to have no
+ * registry item at all -- the in-chat activity timeline, expandable project
+ * navigation, side-by-side chat, the global permission centre and the cross-run
+ * audit export (AH-201..AH-205). Adding items is allowed and removing them is
+ * not: the count is a floor that this constant records, so a deletion still
+ * fails validation.
+ */
+export const EXPECTED_FEATURE_COUNT = 205
 
 /** Inclusive id ranges per delivery phase, in dependency order. */
 export const PHASES = [
@@ -39,7 +47,7 @@ export const PHASES = [
   { phase: 5, name: 'Agent orchestration', from: 89, to: 113 },
   { phase: 6, name: 'Compatibility and integrations', from: 114, to: 145 },
   { phase: 7, name: 'Coding and Git workflows', from: 146, to: 171 },
-  { phase: 8, name: 'UX, automation and operations', from: 172, to: 200 },
+  { phase: 8, name: 'UX, automation and operations', from: 172, to: 205 },
 ]
 
 export const LANES = [

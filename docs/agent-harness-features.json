@@ -1404,14 +1404,17 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-044"
       ],
       "owner": "lane-03-permission-security",
       "files": [
-        "src-tauri/src/core/agent/recorder.rs"
+        "src-tauri/harness/src/secrets.rs",
+        "src-tauri/src/core/agent/recorder.rs",
+        "src-tauri/src/core/cli/journal.rs",
+        "src-tauri/src/core/agent/compaction.rs"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -1424,11 +1427,15 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/src/core/agent/loop.rs::tests::tool_arguments_never_reach_the_event_log"
+        "src-tauri/harness/src/secrets.rs::tests",
+        "src-tauri/src/core/cli/journal.rs::tests::a_credential_in_tool_output_never_reaches_the_file",
+        "src-tauri/src/core/cli/journal.rs::tests::rewriting_a_redacted_journal_changes_nothing",
+        "src-tauri/src/core/agent/recorder.rs::tests::a_credential_on_a_command_line_is_redacted_not_truncated",
+        "src-tauri/src/core/agent/compaction.rs::tests::a_credential_in_the_dropped_span_never_reaches_the_summarizer"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The event log records a redacted, truncated resource and a fingerprint, never raw arguments, so file contents and credentials cannot reach it. Transcripts, the display journal and tool output itself are still unredacted."
+      "auditNote": "One detector (jan_agent_harness::secrets) redacts on the three paths where text becomes durable or is re-sent: the audit event resource field, write_journal, and the compaction summarizer input. Previously only field discipline existed, and the field it kept -- the command line -- is where credentials are passed. The wire transcript of the live turn is deliberately not rewritten: the model already saw the file it read, so rewriting the turn would break the task rather than prevent a leak. What remains before verified is the cross-platform execution the verification doc requires; the evidence recorded so far ran on Windows only."
     },
     {
       "id": "AH-046",
@@ -1436,13 +1443,18 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-038"
       ],
       "owner": "lane-03-permission-security",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gitrisk.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "Force pushes, hard resets and destructive cleans are recognised and gated separately from safe git usage.",
@@ -1453,9 +1465,15 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gitrisk.rs::tests",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs::tests::a_git_grant_does_not_cover_a_destructive_git_command",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs::tests::approving_one_destructive_command_does_not_approve_the_next",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs::tests::safe_git_is_still_ordinary_exec"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Ten destructive operations are classified and gated as PromptKind::DestructiveGit, resolved before the base-command grant is consulted and granted only as exact command text. The escalation this closes: exec grants are per base command, so approving \"git status\" granted \"git\", which covered \"git reset --hard\". Ordinary git usage is untouched. On the desktop, which has no prompt round-trip, it is refused with the reason and the loss it would cause."
     },
     {
       "id": "AH-047",
@@ -4637,13 +4655,17 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-045"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/secretguard.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/harness/src/secrets.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "A diff containing a credential is blocked before it is written or committed.",
@@ -4653,9 +4675,15 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/secretguard.rs::tests",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::tests::a_write_that_would_add_a_credential_is_refused_before_it_lands",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::tests::an_edit_that_would_add_a_credential_leaves_the_file_untouched",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::tests::a_write_with_no_credential_is_unaffected_by_the_guard"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Two independent checks, both using the same detector as AH-045: the added lines of a write/edit diff, scanned between computing the diff and performing the write so a refusal leaves nothing on disk; and git diff --cached before a commit, because staging can reach the index without the write tools. Only added lines are scanned, so a key already in a file does not make that file uneditable. A guard that cannot run returns an error rather than a pass."
     },
     {
       "id": "AH-158",
@@ -5772,11 +5800,13 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "rejected-with-decision",
       "priority": "P1",
       "dependencies": [],
       "owner": "lane-09-ux-observability",
-      "files": [],
+      "files": [
+        "web-app/src/__tests__/localOnly.test.ts"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "Telemetry is consent-gated and can be disabled.",
@@ -5786,10 +5816,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/__tests__/localOnly.test.ts"
+      ],
       "platformRequirements": [],
-      "blockedReason": null,
-      "auditNote": "Reverted from implemented to missing. The entry named web-app/src/containers/analytics/AnalyticConsent.tsx, which does not exist in this tree; the repo_health registry check (AH-072) found the claim, and reading the code confirmed it. What exists is DefaultAnalyticService (web-app/src/services/analytic/default.ts), which reads and writes a distinct id and has no consent gate. web-app/src/routes/__tests__/__root.test.tsx mocks an @/providers/AnalyticProvider that is absent from web-app/src/providers/, and __root.tsx does not reference it. So telemetry here is neither consent-gated nor disableable, and the acceptance criterion is unmet."
+      "blockedReason": "Jan is local-only by design in this fork: there is no telemetry to consent to. The analytics service this item was written against has been removed, together with distinct_id from the shared AppConfiguration, the Google Analytics injection in the Vite build, the model catalogue endpoints and the updater feed. web-app/src/__tests__/localOnly.test.ts fails if any of it returns. A consent control for a channel that does not exist would be a control that lies, so this is rejected rather than implemented.",
+      "auditNote": "Previously reverted to missing because it named web-app/src/containers/analytics/AnalyticConsent.tsx, which never existed in this tree. Now rejected with a decision: the telemetry it would have gated is gone, and a guard test keeps it gone."
     },
     {
       "id": "AH-200",
@@ -5822,6 +5854,149 @@
       "platformRequirements": [],
       "blockedReason": null,
       "auditNote": "Permission decisions, tool calls and run events export together as one reviewable record per run, auto-approvals included. Still per-run rather than across runs, and it covers the Rust harness only -- the Cowork desktop harness records nothing to export."
+    },
+    {
+      "id": "AH-201",
+      "title": "Detailed in-chat activity timeline",
+      "category": "ux-operations",
+      "phase": 8,
+      "phaseName": "UX, automation and operations",
+      "status": "missing",
+      "priority": "P0",
+      "dependencies": [
+        "AH-004",
+        "AH-005",
+        "AH-177"
+      ],
+      "owner": "lane-09-ux-observability",
+      "files": [],
+      "securityImpact": "medium",
+      "acceptanceCriteria": [
+        "Every observable execution event -- reads with line ranges, writes with diffs and line counts, commands with working directory, duration, exit code and output, tests and builds, permission requests and decisions, background tasks, retries, cancellations and git operations -- renders inline in the conversation from one canonical event store shared with the activity rail, the background-tasks panel and the audit export, and no private reasoning is exposed.",
+        "Refusal path: the feature declines or fails with a typed harness error rather than failing silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process or lock.",
+        "Persistence: the behaviour and its state survive an application restart.",
+        "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
+        "Security: a negative test proves authority cannot be escalated through this path.",
+        "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
+      ],
+      "tests": [],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "auditNote": "Requested directly by the operator. The event model (AH-004) and the run log (AH-005) exist in the harness crate and the CLI reads them back, but the desktop chat renders a transient StreamEvent stream that is never persisted, so the inline timeline, the rail, the panel and the export do not share a store."
+    },
+    {
+      "id": "AH-202",
+      "title": "Expandable project navigation",
+      "category": "ux-operations",
+      "phase": 8,
+      "phaseName": "UX, automation and operations",
+      "status": "missing",
+      "priority": "P1",
+      "dependencies": [],
+      "owner": "lane-09-ux-observability",
+      "files": [],
+      "securityImpact": "low",
+      "acceptanceCriteria": [
+        "Clicking a project in the sidebar reveals its recent and pinned conversations inline, with pagination, persisted expansion state, loading, empty, error and deleted states, keyboard navigation and strict project isolation.",
+        "Refusal path: the feature declines or fails with a typed harness error rather than failing silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process or lock.",
+        "Persistence: the behaviour and its state survive an application restart.",
+        "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
+        "Security: a negative test proves authority cannot be escalated through this path.",
+        "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
+      ],
+      "tests": [],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "auditNote": "Requested directly by the operator and absent from the original 200-item backlog."
+    },
+    {
+      "id": "AH-203",
+      "title": "Side-by-side chat panes",
+      "category": "ux-operations",
+      "phase": 8,
+      "phaseName": "UX, automation and operations",
+      "status": "missing",
+      "priority": "P1",
+      "dependencies": [
+        "AH-202"
+      ],
+      "owner": "lane-09-ux-observability",
+      "files": [],
+      "securityImpact": "medium",
+      "acceptanceCriteria": [
+        "Several chat panes can be open at once with independent scrolling, focus, project, model, session and permission state, resizable dividers, open-beside and move-pane actions, a compare mode, a responsive single-pane fallback, persisted layout, and no state leaking between panes.",
+        "Refusal path: the feature declines or fails with a typed harness error rather than failing silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process or lock.",
+        "Persistence: the behaviour and its state survive an application restart.",
+        "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
+        "Security: a negative test proves authority cannot be escalated through this path.",
+        "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
+      ],
+      "tests": [],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "auditNote": "Requested directly by the operator and absent from the original 200-item backlog. Pane-scoped permission state depends on the permission model (AH-007) being addressable per session."
+    },
+    {
+      "id": "AH-204",
+      "title": "Global permission centre",
+      "category": "permission-security",
+      "phase": 8,
+      "phaseName": "UX, automation and operations",
+      "status": "missing",
+      "priority": "P0",
+      "dependencies": [
+        "AH-007",
+        "AH-049"
+      ],
+      "owner": "lane-03-permission-security",
+      "files": [],
+      "securityImpact": "critical",
+      "acceptanceCriteria": [
+        "One surface aggregates every pending permission request from chats, agents, background jobs, MCP tools and projects, supports scoped approve, deny and revoke, expires stale requests, keeps an audit history, and fails closed on a race so a request cannot be answered twice or answered after it expired.",
+        "Refusal path: the feature declines or fails with a typed harness error rather than failing silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process or lock.",
+        "Persistence: the behaviour and its state survive an application restart.",
+        "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
+        "Security: a negative test proves authority cannot be escalated through this path.",
+        "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
+      ],
+      "tests": [],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "auditNote": "Requested directly by the operator. The gate, the decision events (AH-049) and the per-request registry exist, but a request is answerable only in the conversation that raised it, and nothing aggregates or expires them."
+    },
+    {
+      "id": "AH-205",
+      "title": "Cross-run audit export",
+      "category": "ux-operations",
+      "phase": 8,
+      "phaseName": "UX, automation and operations",
+      "status": "missing",
+      "priority": "P1",
+      "dependencies": [
+        "AH-177",
+        "AH-200",
+        "AH-201"
+      ],
+      "owner": "lane-09-ux-observability",
+      "files": [],
+      "securityImpact": "critical",
+      "acceptanceCriteria": [
+        "Every run’s events, permission decisions and tool calls export together as one reviewable record across runs and across both surfaces, redacted, carrying a stable schema version.",
+        "Refusal path: the feature declines or fails with a typed harness error rather than failing silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process or lock.",
+        "Persistence: the behaviour and its state survive an application restart.",
+        "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
+        "Security: a negative test proves authority cannot be escalated through this path.",
+        "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
+      ],
+      "tests": [],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "auditNote": "Splits the cross-run half out of AH-200, which is implemented per run and for the Rust harness only. Requested by the operator as \"full audit export\"."
     }
   ]
 }
