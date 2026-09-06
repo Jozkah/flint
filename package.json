@@ -35,6 +35,8 @@
     "copy:assets:mobile": "cpx \"LICENSE\" \"src-tauri/resources/\"",
     "download:lib": "node ./scripts/download-lib.mjs",
     "download:bin": "node ./scripts/download-bin.mjs",
+    "check:resources": "node ./scripts/check-tauri-resources.mjs",
+    "prepare:resources": "./scripts/stub-tauri-resources.sh && node ./scripts/check-tauri-resources.mjs",
     "build:mlx-server": "make build-mlx-server",
     "build:cli": "make build-cli",
     "build:tauri:win32": "yarn download:bin && yarn build:cli && yarn tauri build",

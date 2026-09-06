@@ -1,5 +1,6 @@
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { modeLabelKey } from '@/lib/coworkMode'
+import { shapingNotice, shapingWorthReporting } from '@/lib/coworkContext'
 import {
   accountedTotal,
   CONTEXT_CATEGORIES,
@@ -196,15 +197,26 @@ export function CoworkReadinessCard({
             : ` · ${t('common:readiness.noMcp')}`}
         </Row>
         <Row label={t('common:readiness.context')}>
-          {/* Two separate admissions, and the wording keeps them separate.
+          {/* Three separate admissions, and the wording keeps them separate.
               "At least" covers a category that could not be measured at all;
               the tilde and the named method cover a number that was derived
-              rather than counted. A total that silently omitted either would
-              read as an exact and complete one. */}
+              rather than counted; and the clause below covers a total measured
+              from a payload the context manager cut down on the way out. A
+              total that silently omitted any of them would read as an exact,
+              complete count of the whole conversation. */}
           {t(contextKey(total), {
             count: total.tokens,
             method: estimateMethod(manifest.context),
           })}
+          {shapingWorthReporting(manifest.context.shaping) ? (
+            <>
+              {' · '}
+              {(() => {
+                const notice = shapingNotice(manifest.context.shaping)
+                return t(notice.key, notice.params)
+              })()}
+            </>
+          ) : null}
         </Row>
       </dl>
     </section>

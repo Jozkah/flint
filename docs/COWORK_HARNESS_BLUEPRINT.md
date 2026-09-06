@@ -63,6 +63,44 @@ tests asserting what crossed the boundary: which root was walked, that a
 managed run walks its worktree, and that a refused walk still runs and still
 reports.
 
+### After the merge: a fresh checkout can run the checks
+
+The smoke script used to fail its first two checks on a clone, and not on an
+assertion. `generate_context!()` validates every `bundle.resources` path, every
+`externalBin`, the icons and `frontendDist` *before* compiling anything, and all
+of those are gitignored build outputs — so the first thing anyone saw was
+
+```
+error: failed to run custom build command for `Jan v0.8.4`
+resource path `resources/bin/jan` doesn't exist
+```
+
+with no indication of the remedy, which is `scripts/stub-tauri-resources.sh`,
+findable only by reading the Makefile.
+
+**Correction.** An earlier version of this document said the fix was
+`yarn download:bin` *plus* the stub script. That was wrong: the stub script
+already covers `uv` and `bun` under the host triple, so it is sufficient on its
+own, and the download is only needed for a real application build. The
+corrected wording is what `scripts/check-tauri-resources.mjs` now prints.
+
+- The smoke script **prepares before it checks**: it runs the stub script
+  itself (idempotent, guarded, never clobbering a real local build — the same
+  one the coverage and rust-check workflows use) as a visible first step.
+- It then **verifies against the bundle config** rather than trusting the stub
+  script's exit code. `scripts/check-tauri-resources.mjs` reads the same
+  `tauri.<os>.conf.json` the build script reads and expands its globs and its
+  `externalBin` triple suffix, so a resource added to the config is checked
+  without anyone remembering to add it here. On failure it names each missing
+  path and prints the exact command that creates it.
+- `yarn check:resources`, `yarn prepare:resources` and `make stub-resources`
+  are three routes to that one implementation.
+- `web-app/src/__tests__/tauriResources.test.ts` holds the guards: that the
+  checker passes on a prepared tree, that on an empty one it fails and prints
+  both the missing path and the remedy verbatim, that the smoke script runs it
+  *before* its first `cargo` invocation, and that the named commands still
+  point at it.
+
 ### After the merge: what the run actually sent
 
 The repository map closed the "always zero" category. This closes the one
@@ -98,7 +136,11 @@ received, on exactly the runs where the number matters.
   `unchanged` included -- a row that only appeared on trouble would leave a
   reader unable to tell "nothing was dropped" from "nobody checked") and the
   completion summary (only when something really was removed, or a compaction
-  failed).
+  failed), and the readiness card's own total -- which had been presenting a
+  figure measured from a trimmed payload as an exact count of the conversation
+  on screen. That card already separated "at least" (a category that could not
+  be measured) from "~" (a number derived rather than counted); a shaped
+  payload is the third admission of the same kind, and it now says so.
 
 Verified at this branch's head: the transport suite drives the seam directly,
 including a **mutation test** that computes what measuring the pre-trim payload
@@ -672,7 +714,7 @@ Measured in this container:
 | ESLint, Prettier | **Green** on every file this work touches |
 | `cargo test --lib` (app + plugin) | **Green** after installing GTK/WebKit headers |
 | `cargo fmt` | **Green** on every file this work touches; pre-existing drift elsewhere is left alone |
-| `scripts/cowork-compat-smoke.sh` | **Green** — 10 checks (macOS-only steps skip). Needs `src-tauri/resources/bin` populated first: the app crate's `generate_context!()` build script fails on a declared bundle resource that is absent, so a fresh checkout fails its two `cargo test` checks before any test runs. `yarn download:bin` plus `scripts/stub-tauri-resources.sh` — the repo's own placeholder script, shared with the coverage and rust-check workflows — is the fix, and neither is part of `yarn install`. |
+| `scripts/cowork-compat-smoke.sh` | **Green** — 10 checks plus a preparation step (macOS-only steps skip). No longer needs anything set up by hand: see below. |
 | Route integration harness | **Green** — 22 checks through the real route |
 | `cargo clippy --all-targets` (app + plugin) | **Green** |
 | macOS native / WebView smoke | Impossible here (Linux container) |

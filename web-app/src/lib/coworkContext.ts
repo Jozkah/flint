@@ -8,16 +8,19 @@
  *
  * Two rules shape everything here.
  *
- * **Measure the payload, not the intent.** Every number below comes from
- * serialising the thing that is actually sent — the system prompt string, the
- * tool schemas as JSON, the conversation as the model will receive it. Nothing
- * is inferred from a setting or a count of files. If a category is not in the
- * payload, it measures zero, and that zero is the honest headline: a repository
- * map worth 0 tokens is precisely the answer to "what did the model get?".
+ * **Measure the payload that went out, not the one that was assembled.** Every
+ * number below comes from serialising the thing actually dispatched — the
+ * system prompt string, the tool schemas as JSON, the conversation as the
+ * model received it. Nothing is inferred from a setting or a count of files.
+ * The distinction is not academic: the transport trims the window, and
+ * auto-compacts it where that is configured, *after* the caller has handed its
+ * messages over, so measuring what the caller assembled overstated a long
+ * run's payload. `ContextShaping` carries what the manager took out.
  *
  * **A zero is not an unknown.** `measured(0)` says "nothing of this was sent";
  * `measured(null)` says "nobody knows". Conflating them would turn the card
- * back into the thing it replaced.
+ * back into the thing it replaced — and it is why an un-dispatched run reports
+ * `UNKNOWN_SHAPING` rather than "nothing was removed".
  */
 
 import type { UIMessage } from 'ai'
@@ -101,11 +104,15 @@ function safeJson(value: unknown): string {
 }
 
 export type ContextPackInput = {
-  /** The assembled system prompt, exactly as it will be sent. */
+  /** The system prompt exactly as the request carried it. */
   systemPrompt: string | null
   /** The advertised tool set, keyed by name, as handed to the model. */
   toolSchemas: Record<string, unknown> | null
-  /** The conversation so far, as it will be sent. */
+  /**
+   * The conversation as dispatched — after any trim or compaction, not before.
+   * Passing the pre-trim messages here is the defect this whole module now
+   * exists to prevent.
+   */
   messages: readonly UIMessage[] | null
   /**
    * The repository map block, exactly as it was embedded in `systemPrompt`.

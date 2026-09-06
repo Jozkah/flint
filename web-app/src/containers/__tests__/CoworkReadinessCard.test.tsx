@@ -14,6 +14,7 @@ import {
   estimated,
   measured,
   resolveSkills,
+  UNKNOWN_SHAPING,
   type ReadinessManifest,
 } from '@/lib/coworkReadiness'
 
@@ -38,6 +39,7 @@ const manifest = (
       tools: measured(null),
     },
     budget: measured(null),
+    shaping: UNKNOWN_SHAPING,
   },
   ...over,
 })
@@ -255,6 +257,7 @@ describe('what the card states about context', () => {
               tools: measured(50),
             },
             budget: measured(8000),
+            shaping: UNKNOWN_SHAPING,
           },
         })}
       />
@@ -278,6 +281,7 @@ describe('what the card states about context', () => {
               tools: measured(50),
             },
             budget: measured(8000),
+            shaping: UNKNOWN_SHAPING,
           },
         })}
       />
@@ -300,6 +304,7 @@ describe('what the card states about context', () => {
               tools: measured(null),
             },
             budget: measured(null),
+            shaping: UNKNOWN_SHAPING,
           },
         })}
       />
@@ -308,5 +313,35 @@ describe('what the card states about context', () => {
     // Missing and approximate are different failures; the card owes the reader
     // both rather than collapsing them into one hedge.
     expect(card()).toHaveTextContent('common:readiness.tokensEstimatedPartial')
+  })
+
+  it('says when its total describes a payload the manager cut down', () => {
+    // The card's own rule, applied to a third admission: a total measured from
+    // a trimmed payload, presented bare, reads as an exact count of the whole
+    // conversation on screen.
+    render(
+      <CoworkReadinessCard
+        manifest={manifest({
+          context: {
+            ...manifest().context,
+            shaping: {
+              kind: 'trimmed',
+              removed: 4,
+              retained: 8,
+              removedTokens: { known: 'estimated', tokens: 900, method: 't' },
+              reason: null,
+            },
+          },
+        })}
+      />
+    )
+
+    expect(screen.getByText(/readiness.shaping.trimmed/)).toBeInTheDocument()
+  })
+
+  it('adds nothing when the whole payload went out', () => {
+    render(<CoworkReadinessCard manifest={manifest()} />)
+
+    expect(screen.queryByText(/readiness.shaping\./)).toBeNull()
   })
 })
