@@ -2298,13 +2298,17 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P0",
       "dependencies": [
         "AH-010"
       ],
       "owner": "lane-05-context-memory",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/snapshot.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/events.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "The exact dispatched payload is persisted so it can be inspected and replayed later.",
@@ -2314,10 +2318,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/snapshot.rs::tests"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Closer than it was: the frozen dispatch exists in transport instance memory. Nothing writes it to disk, so it is gone when the run ends."
+      "auditNote": "The snapshot is taken in HttpModelInvoker::invoke from `normalized` -- the exact serialized request, after context construction and after the model id is rewritten, at the last point before dispatch. Not reconstructed from earlier state. It carries schema version, stable id, RFC3339 UTC timestamp, session, run, thread, agent, provider, model, reasoning configuration, the redacted payload, its hash, and the redaction list; message count, tool names and system prompt are derived from the payload rather than stored twice. Redaction runs while the record is built, walks the whole document (a credential in a nested tool argument leaks as surely as one in a header), matches credential fields by name because an auth header's value is opaque, and still applies the value-shaped pass to free text for an env line pasted into a prompt. Each removal records its path and reason, so an empty field is distinguishable from a redacted one. The hash is FNV-1a over a canonical key-sorted serialization of the *redacted* payload: identical payloads hash identically however built, any change to a retry produces a different hash, and a reader can verify the record against its own hash. Storage is append-only JSONL at <jan_data>/audit/prompts.jsonl, flushed per record, with a reader that drops an unparseable line so a truncated tail costs one record. Lookup by id, run and session. A snapshot that cannot be taken is recorded as explicitly unavailable with its reason and identity intact. StreamEvent::PromptSnapshot carries id, hash and redaction count to the activity timeline, never the payload. Guards mutation-checked: removing redaction, and making the hash ignore its input, each turn the relevant tests red. NOT YET IMPLEMENTED, which is why this is in-progress rather than implemented: the UI action to inspect a snapshot is not built; the event and the lookup functions exist for it."
     },
     {
       "id": "AH-079",

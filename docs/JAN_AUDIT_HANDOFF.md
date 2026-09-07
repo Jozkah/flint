@@ -264,6 +264,49 @@ Two corrections worth carrying forward:
 
 ### Exact next batch
 
+Registry: **65 implemented / 46 in-progress / 89 missing / 0 verified / 200**.
+
+Completed earlier in this phase: **AH-023**, **AH-051**.
+
+**AH-078 — backend done, in-progress on purpose.** The snapshot is taken in
+`HttpModelInvoker::invoke` from the exact serialized request, redacted with
+provenance before persistence, hashed over the redacted payload with a canonical
+key-sorted serialization, stored append-only at
+`<jan_data>/audit/prompts.jsonl`, and looked up by id, run or session.
+`StreamEvent::PromptSnapshot` carries id/hash/redaction-count to the timeline.
+Guards mutation-checked. **The one missing acceptance criterion is the UI action
+to inspect a snapshot** — the event and `snapshot::{find, by_run, by_session}`
+exist for it, and a Tauri command plus a viewer is all that remains. It is not
+marked implemented because of that.
+
+**AH-107 — not started.** `spawn_subagent` propagates the parent's cancellation
+token but still runs against the shared root. `core/agent/worktree.rs` already
+has create/validate/name/use/list/recover/discard — do not add a second manager.
+The work is: create a worktree before the child starts, pass its path as the
+child's working directory, record owner/run/branch/base-commit metadata, and
+wire cleanup to the cancellation path.
+
+**AH-146 — not started.** The approval event still carries a whole-change diff
+(`core/agent/events.rs`). The work is an immutable preview with a patch hash and
+base-state hashes that approval binds to, invalidated when either changes.
+
+Then: AH-007, AH-036, AH-037, AH-041, AH-042, AH-044, AH-045, AH-050, AH-073,
+AH-109, AH-157, AH-198.
+
+Facts worth carrying:
+
+- `lifecycle::current()` is the ambient token; a spawned task does **not**
+  inherit it and must capture it explicitly.
+- `resolve_jan_data_folder()` redirects under `cfg(test)`. Anything reached from
+  the dispatcher that writes to the data folder must keep that property.
+- The shared `Button` does not forward refs.
+- `snapshot::redact_payload` and `audit::redact` are the two redaction passes;
+  AH-044/AH-045 should build on them rather than adding a third.
+
+### Superseded next batch (kept for context)
+
+### Exact next batch
+
 Current at the head of this branch. Registry: **65 implemented / 45 in-progress
 / 90 missing / 0 verified / 200**.
 
