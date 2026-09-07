@@ -709,7 +709,7 @@ describe('refreshEnginePreset embedding slot reservation', () => {
   })
 })
 
-describe('bootstrapDefaultEmbedder', () => {
+describe('the embedding model Jan will use', () => {
   let extension: llamacpp_extension
 
   beforeEach(() => {
@@ -717,71 +717,68 @@ describe('bootstrapDefaultEmbedder', () => {
     extension = new llamacpp_extension()
   })
 
-  it('imports the fallback embedder when none is installed, then marks the bootstrap done', async () => {
-    vi.mocked(getBackendSetting).mockResolvedValue(null)
-    // The install is confirmed by re-listing, so the second call has to reflect
-    // the import having landed.
-    const list = vi
-      .spyOn(extension, 'list')
-      .mockResolvedValueOnce([{ id: 'chat-model', embedding: false }] as never)
-      .mockResolvedValue([
-        { id: 'chat-model', embedding: false },
-        { id: 'sentence-transformer-mini', embedding: true },
-      ] as never)
-    const importSpy = vi
-      .spyOn(extension, 'import')
-      .mockResolvedValue(undefined as never)
+  // Replaces the bootstrapDefaultEmbedder suite. That method downloaded an
+  // embedding model from huggingface.co during provisioning, recorded a
+  // "done" flag, and retried on the next launch whenever it failed -- so a
+  // fresh install reached the internet without the user asking. It is gone,
+  // and these assert what replaced it.
 
-    await extension['bootstrapDefaultEmbedder']()
+  it('never downloads a model of its own accord', async () => {
+    vi.spyOn(extension, 'list').mockResolvedValue([] as never)
+    const importSpy = vi.spyOn(extension, 'import')
 
-    expect(list).toHaveBeenCalled()
-    expect(importSpy).toHaveBeenCalledWith(
-      'sentence-transformer-mini',
-      expect.objectContaining({ modelPath: expect.stringContaining('MiniLM') })
-    )
-    expect(setBackendSetting).toHaveBeenCalledWith(
-      'llamacpp-embedder-bootstrapped',
-      'true'
-    )
+    await expect(
+      extension['ensureEmbeddingModelLoaded']()
+    ).rejects.toThrow(/No embedding model is installed/i)
+
+    expect(importSpy).not.toHaveBeenCalled()
   })
 
-  it('skips the download when an embedder is already installed but still marks done', async () => {
-    vi.mocked(getBackendSetting).mockResolvedValue(null)
+  it('says what the user can do about it rather than failing blankly', async () => {
+    vi.spyOn(extension, 'list').mockResolvedValue([] as never)
+
+    await expect(
+      extension['ensureEmbeddingModelLoaded']()
+    ).rejects.toThrow(/Settings/i)
+  })
+
+  it('uses an installed embedding model, whatever it is called', async () => {
     vi.spyOn(extension, 'list').mockResolvedValue([
+      { id: 'chat-model', embedding: false },
       { id: 'custom-embedder', embedding: true },
     ] as never)
     const importSpy = vi.spyOn(extension, 'import')
-
-    await extension['bootstrapDefaultEmbedder']()
-
-    expect(importSpy).not.toHaveBeenCalled()
-    expect(setBackendSetting).toHaveBeenCalledWith(
-      'llamacpp-embedder-bootstrapped',
-      'true'
+    vi.spyOn(extension as never, 'findSessionByModel').mockResolvedValue(
+      undefined as never
     )
+    const load = vi
+      .spyOn(extension, 'load')
+      .mockResolvedValue({ model_id: 'custom-embedder', port: 1 } as never)
+
+    const info = await extension['ensureEmbeddingModelLoaded']()
+
+    expect(load).toHaveBeenCalledWith('custom-embedder', undefined, true)
+    expect(importSpy).not.toHaveBeenCalled()
+    expect(info.model_id).toBe('custom-embedder')
   })
 
-  it('does nothing when the bootstrap already ran (respects user deletion)', async () => {
-    vi.mocked(getBackendSetting).mockResolvedValue('true')
-    const list = vi.spyOn(extension, 'list')
+  it('reuses a live session instead of loading again', async () => {
+    vi.spyOn(extension, 'list').mockResolvedValue([
+      { id: 'sentence-transformer-mini', embedding: true },
+    ] as never)
+    vi.spyOn(extension as never, 'findSessionByModel').mockResolvedValue({
+      model_id: 'sentence-transformer-mini',
+      port: 42,
+    } as never)
+    const load = vi.spyOn(extension, 'load')
 
-    await extension['bootstrapDefaultEmbedder']()
+    const info = await extension['ensureEmbeddingModelLoaded']()
 
-    expect(list).not.toHaveBeenCalled()
-    expect(setBackendSetting).not.toHaveBeenCalled()
-  })
-
-  it('does not mark done when the download fails, so it retries next launch', async () => {
-    vi.mocked(getBackendSetting).mockResolvedValue(null)
-    vi.spyOn(extension, 'list').mockResolvedValue([] as never)
-    vi.spyOn(extension, 'import').mockRejectedValue(new Error('offline'))
-
-    await expect(
-      extension['bootstrapDefaultEmbedder']()
-    ).resolves.toBeUndefined()
-    expect(setBackendSetting).not.toHaveBeenCalled()
+    expect(load).not.toHaveBeenCalled()
+    expect(info.port).toBe(42)
   })
 })
+
 
 describe('verifyEmbeddingModel', () => {
   let extension: llamacpp_extension
@@ -949,69 +946,6 @@ describe('verifyGpuOffload', () => {
     expect(result.status).toBe('warning')
     expect(result.error).toContain('no worker')
     expect(result.reason).toBeUndefined()
-  })
-})
-
-describe('bootstrapDefaultEmbedder failure reporting', () => {
-  let extension: llamacpp_extension
-
-  beforeEach(() => {
-    vi.clearAllMocks()
-    extension = new llamacpp_extension()
-  })
-
-  it('records why the bootstrap failed instead of only logging it', async () => {
-    vi.mocked(getBackendSetting).mockResolvedValue(null)
-    vi.spyOn(extension, 'list').mockResolvedValue([] as never)
-    vi.spyOn(extension, 'import').mockRejectedValue(new Error('offline'))
-
-    await extension['bootstrapDefaultEmbedder']()
-
-    expect(extension.getEmbedderBootstrapError()).toContain('offline')
-  })
-
-  it('leaves no error recorded on success', async () => {
-    vi.mocked(getBackendSetting).mockResolvedValue(null)
-    vi.spyOn(extension, 'list').mockResolvedValue([
-      { id: 'e', embedding: true },
-    ] as never)
-
-    await extension['bootstrapDefaultEmbedder']()
-
-    expect(extension.getEmbedderBootstrapError()).toBeUndefined()
-  })
-
-  it('clears a previous error once a later attempt succeeds', async () => {
-    vi.mocked(getBackendSetting).mockResolvedValue(null)
-    vi.spyOn(extension, 'list').mockResolvedValue([] as never)
-    vi.spyOn(extension, 'import').mockRejectedValue(new Error('offline'))
-    await extension['bootstrapDefaultEmbedder']()
-    expect(extension.getEmbedderBootstrapError()).toBeDefined()
-
-    vi.spyOn(extension, 'import').mockResolvedValue(undefined as never)
-    vi.spyOn(extension, 'list').mockResolvedValue([
-      { id: 'sentence-transformer-mini', embedding: true },
-    ] as never)
-    await extension['bootstrapDefaultEmbedder']()
-
-    expect(extension.getEmbedderBootstrapError()).toBeUndefined()
-  })
-
-  // A cancelled download resolves without throwing. Trusting that resolution
-  // marked the one-shot bootstrap done for a model that was never installed, so
-  // it never retried and the embedder stayed permanently missing.
-  it('does not mark done when the import resolves without installing anything', async () => {
-    vi.mocked(getBackendSetting).mockResolvedValue(null)
-    vi.spyOn(extension, 'list').mockResolvedValue([] as never)
-    const importSpy = vi
-      .spyOn(extension, 'import')
-      .mockResolvedValue(undefined as never)
-
-    await extension['bootstrapDefaultEmbedder']()
-
-    expect(importSpy).toHaveBeenCalled()
-    expect(setBackendSetting).not.toHaveBeenCalled()
-    expect(extension.getEmbedderBootstrapError()).toContain('did not complete')
   })
 })
 
@@ -1210,48 +1144,5 @@ describe('import deduplication', () => {
     runImport.mockResolvedValue(undefined as never)
     await extension.import('m', { modelPath: 'u' } as never)
     expect(runImport).toHaveBeenCalledTimes(2)
-  })
-})
-
-describe('embedding readiness during the first-run fetch', () => {
-  let extension: llamacpp_extension
-
-  beforeEach(() => {
-    vi.clearAllMocks()
-    extension = new llamacpp_extension()
-    extension['config'] = {} as never
-  })
-
-  // The old gate keyed off "no backend selected yet", which happened to cover
-  // this window. With the engine bundled that proxy is gone, so a normal
-  // first-run download was being reported as a failed embedding check --
-  // a warning on the onboarding checklist for nothing being wrong.
-  it('reports pending while the embedder is downloading, not a warning', async () => {
-    extension['embedderBootstrapping'] = true
-    const load = vi.spyOn(
-      extension as never,
-      'ensureEmbeddingModelLoaded' as never
-    )
-
-    const report = await extension.verifyEmbeddingModel()
-
-    expect(report.status).toBe('ok')
-    expect(report.pending).toBe(true)
-    // Probing mid-download would fail on a model that is simply not there yet.
-    expect(load).not.toHaveBeenCalled()
-  })
-
-  it('reports a real failure once the fetch is done', async () => {
-    extension['embedderBootstrapping'] = false
-    vi.spyOn(
-      extension as never,
-      'ensureEmbeddingModelLoaded' as never
-    ).mockRejectedValue(new Error('no embedder') as never)
-
-    const report = await extension.verifyEmbeddingModel()
-
-    expect(report.status).toBe('warning')
-    expect(report.pending).toBeUndefined()
-    expect(report.error).toContain('no embedder')
   })
 })

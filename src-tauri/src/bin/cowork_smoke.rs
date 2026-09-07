@@ -625,6 +625,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_app_startup,
     },
     Scenario {
+        name: "startup-makes-no-unconfigured-requests",
+        run: scenario_no_unconfigured_egress,
+    },
+    Scenario {
         name: "chat-composer",
         run: scenario_chat_composer,
     },
@@ -713,12 +717,12 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_per_chat_controls,
     },
     Scenario {
-        name: "model-round-trip",
-        run: scenario_model_round_trip,
-    },
-    Scenario {
         name: "provider-error-is-actionable",
         run: scenario_provider_error,
+    },
+    Scenario {
+        name: "model-round-trip",
+        run: scenario_model_round_trip,
     },
     Scenario {
         name: "composer-controls-do-not-overlap",
@@ -1862,6 +1866,51 @@ fn scenario_model_round_trip(ctx: &Ctx) -> ScenarioResult {
     Ok(())
 }
 
+/// Startup reaches nothing the user did not configure.
+///
+/// The llama.cpp extension used to fetch an embedding model from
+/// huggingface.co during provisioning, and again on the first RAG call if that
+/// failed. The extension runs in the WebView, so the browser's own resource
+/// timeline is the right instrument: every request the page made is in it.
+fn scenario_no_unconfigured_egress(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/")?;
+    // Give provisioning time to do whatever it is going to do.
+    std::thread::sleep(Duration::from_secs(5));
+
+    let port = ctx.mock_port;
+    let report = ctx.eval_string(&format!(
+        r#"const allowed = (url) =>
+             url.startsWith('tauri://')
+             || url.startsWith('asset://')
+             || url.startsWith('ipc://')
+             || url.startsWith('data:')
+             || url.startsWith('blob:')
+             || url.includes('://localhost')
+             || url.includes('://tauri.localhost')
+             || url.includes('://asset.localhost')
+             || url.includes('://ipc.localhost')
+             // The one endpoint this run configured.
+             || url.includes('127.0.0.1:{port}');
+           const foreign = performance
+             .getEntriesByType('resource')
+             .map((e) => e.name)
+             .filter((name) => !allowed(name));
+           return JSON.stringify({{ foreign: [...new Set(foreign)].slice(0, 20) }});"#
+    ))?;
+    println!("      unconfigured requests at startup: {report}");
+    let v: Value = serde_json::from_str(&report).unwrap_or(Value::Null);
+    let foreign = v
+        .get("foreign")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    ensure!(
+        foreign.is_empty(),
+        "startup reached endpoints nobody configured: {report}"
+    );
+    Ok(())
+}
+
 /// A failing provider says which endpoint failed, with what status, and who
 /// answered -- not a bare status word.
 fn scenario_provider_error(ctx: &Ctx) -> ScenarioResult {
@@ -1904,30 +1953,71 @@ fn scenario_provider_error(ctx: &Ctx) -> ScenarioResult {
             bail!("the provider page offered no way to refresh its models");
         }
 
+        // Observe the toast itself. Searching all of document.body raced the
+        // toast's own lifetime and matched text from anywhere on the page.
         ctx.wait_until(
-            "an actionable failure message",
-            &format!(
-                "const t = document.body.textContent || '';
-                 return t.includes('403') && t.includes('{SMOKE_PROVIDER}');"
-            ),
+            "the failure toast",
+            "return [...document.querySelectorAll('[data-sonner-toast]')]
+               .some(t => (t.textContent || '').includes('403'));",
             Duration::from_secs(45),
         )?;
 
-        let text = ctx.eval_string("return document.body.textContent;")?;
+        let toast = ctx.eval_string(
+            "const all = [...document.querySelectorAll('[data-sonner-toast]')];
+             const hit = all.filter(t => (t.textContent || '').includes('403'));
+             return JSON.stringify({
+               count: hit.length,
+               total: all.length,
+               text: hit.map(t => t.textContent || '').join(' | '),
+             });",
+        )?;
+        let v: Value = serde_json::from_str(&toast).unwrap_or(Value::Null);
+        let text = v
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        println!("      failure toast: {toast}");
+
+        ensure!(
+            v.get("count").and_then(Value::as_u64) == Some(1),
+            "expected exactly one failure toast: {toast}"
+        );
+        for needle in [
+            SMOKE_PROVIDER,
+            "GET",
+            "403",
+            "cloudflare",
+            &format!("127.0.0.1:{}", ctx.mock_port),
+        ] {
+            ensure!(
+                text.contains(needle),
+                "the toast never mentioned {needle:?}: {text}"
+            );
+        }
+        ensure!(
+            text.to_lowercase()
+                .contains("resolving to a public address"),
+            "the toast offered no remediation: {text}"
+        );
         ensure!(
             !text.contains("[object Object]"),
-            "the provider page rendered a raw object"
+            "the toast rendered a raw object: {text}"
         );
-        // The endpoint must be named, so the user can see where it went.
+        // The seeded key must never be echoed back to the screen.
         ensure!(
-            text.contains(&format!("127.0.0.1:{}", ctx.mock_port)),
-            "the failure did not name the endpoint that failed"
+            !text.contains("smoke-not-a-real-key"),
+            "the toast leaked the provider's API key: {text}"
         );
-        ensure!(
-            text.to_lowercase().contains("cloudflare"),
-            "the failure did not name what answered"
-        );
-        println!("      provider failure text names endpoint, status and server");
+
+        // And it must not stay forever.
+        ctx.wait_until(
+            "the toast to expire or be dismissed",
+            "return ![...document.querySelectorAll('[data-sonner-toast]')]
+               .some(t => (t.textContent || '').includes('403'));",
+            Duration::from_secs(60),
+        )?;
+
         Ok(())
     })();
 

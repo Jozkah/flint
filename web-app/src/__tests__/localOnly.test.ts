@@ -274,17 +274,56 @@ describe('nothing anywhere fetches a model catalogue', () => {
    * Browsing a model host is discovery by another name.
    *
    * Deliberately aimed at *catalogue and search* endpoints, not at the word
-   * "huggingface". Two things legitimately remain and are documented as
-   * network paths: the Hugging Face entry in the provider list, which is an
-   * API provider the user configures with their own token like any other, and
-   * llama.cpp's embedding model, which downloads once behind an explicit
-   * first-run consent. Neither is the app going looking on its own.
+   * "huggingface". One thing legitimately remains and is documented as a
+   * network path: the Hugging Face entry in the provider list, which is an API
+   * provider the user configures with their own token like any other. The
+   * llama.cpp embedding model used to be the second exception -- it is not any
+   * more; see the weights test below.
    */
   it('browses no model catalogue', () => {
     expect(
       repoMatches(
         EVERYWHERE,
         /huggingface\.co\/api\/models|hf\.co\/api\/models|model_catalog|model-catalog/
+      )
+    ).toEqual([])
+  })
+
+  /**
+   * No weights URL anywhere.
+   *
+   * The llama.cpp extension used to hold a `resolve/main/...gguf` link to
+   * huggingface.co and fetch it during provisioning -- and again on the first
+   * RAG call if that had failed -- so a fresh launch reached the internet
+   * without the user asking for anything. A URL that names a weights file is
+   * the shape of that defect regardless of which host serves it, so the check
+   * is on the shape, and swapping huggingface.co for another cloud would not
+   * pass it.
+   */
+  it('carries no model-weights download URL', () => {
+    expect(
+      repoMatches(
+        EVERYWHERE,
+        /https?:\/\/[^\s'"`]*\/resolve\/[^\s'"`]*\.(gguf|safetensors|bin)/i
+      )
+    ).toEqual([])
+  })
+
+  /**
+   * Nothing downloads a model on Jan's own initiative.
+   *
+   * The bootstrap was a startup task with a persisted "done" flag that retried
+   * on the next launch whenever it failed, which is exactly the hidden
+   * background retry the local-only rule forbids.
+   */
+  it('has no startup embedder bootstrap', () => {
+    expect(
+      repoMatches(
+        EVERYWHERE,
+        // Code-shaped only: a call, a declaration, or the persisted key as a
+        // string. Prose explaining why the bootstrap was removed is not the
+        // bootstrap.
+        /bootstrapDefaultEmbedder\s*[(:=]|['"`]llamacpp-embedder-bootstrapped['"`]|FALLBACK_EMBEDDING_MODEL_URL\s*[=,)]/
       )
     ).toEqual([])
   })
