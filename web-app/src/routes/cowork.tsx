@@ -241,6 +241,7 @@ import {
 } from '@/lib/coworkSubagent'
 import { errorText } from '@/lib/errorText'
 import { EmergencyStop } from '@/containers/EmergencyStop'
+import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 
 /** How often the backend's background-job list is re-read. Slower than the
  * activity panel's clock tick: the list changes when a command starts or ends,
@@ -2561,6 +2562,23 @@ function CoworkPage() {
                               now={activityNow}
                               onOpenTask={showTaskInPanel}
                               onOpenPanel={showWorkflowInPanel}
+                            />
+                          ) : null
+                        })()}
+                        {/* What the model received, at the message it
+                        produced. Collapsed, and it fetches nothing until
+                        someone opens it. */}
+                        {(() => {
+                          const part = (message.parts as { type: string; data?: unknown }[]).find(
+                            (p) => p.type === 'data-prompt-snapshot'
+                          )
+                          const ref = part?.data as
+                            | { id: string; hash: string; redactions: number }
+                            | undefined
+                          return ref ? (
+                            <PromptSnapshotView
+                              snapshotId={ref.id}
+                              sessionId={session?.id}
                             />
                           ) : null
                         })()}

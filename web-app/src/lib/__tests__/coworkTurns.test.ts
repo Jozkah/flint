@@ -167,3 +167,52 @@ describe('assistantAnchorId', () => {
     expect(messageIds(turns)).toContain('s-asst-0')
   })
 })
+
+describe('prompt snapshots ride the assistant message they produced', () => {
+  const partsOfTurns = (turns: CoworkTurn[]) =>
+    coworkTurnsToUIMessages(turns).flatMap((m: any) => m.parts)
+
+  it('emits a snapshot part on the assistant message', () => {
+    // AH-078: the viewer must sit with the invocation it belongs to.
+    const parts = partsOfTurns([
+      { role: 'user', content: 'hi' },
+      {
+        role: 'assistant',
+        content: 'hello',
+        promptSnapshot: { id: 'snap-7', hash: 'fnv1a64:abc', redactions: 1 },
+      },
+    ])
+    const snap: any = parts.find((p: any) => p.type === 'data-prompt-snapshot')
+    expect(snap).toBeTruthy()
+    expect(snap.data.id).toBe('snap-7')
+    expect(snap.data.hash).toBe('fnv1a64:abc')
+    expect(snap.data.redactions).toBe(1)
+  })
+
+  it('keeps each snapshot with its own turn rather than a shared latest', () => {
+    const messages = coworkTurnsToUIMessages([
+      { role: 'user', content: 'one' },
+      {
+        role: 'assistant',
+        content: 'first',
+        promptSnapshot: { id: 'snap-1', hash: 'h1', redactions: 0 },
+      },
+      { role: 'user', content: 'two' },
+      {
+        role: 'assistant',
+        content: 'second',
+        promptSnapshot: { id: 'snap-2', hash: 'h2', redactions: 0 },
+      },
+    ])
+    const ids = messages
+      .flatMap((m: any) => m.parts)
+      .filter((p: any) => p.type === 'data-prompt-snapshot')
+      .map((p: any) => p.data.id)
+    expect(ids).toEqual(['snap-1', 'snap-2'])
+  })
+
+  it('emits nothing when a turn has no snapshot', () => {
+    const parts = partsOfTurns([{ role: 'assistant', content: 'plain' }])
+    expect(parts.find((p: any) => p.type === 'data-prompt-snapshot')).toBeUndefined()
+  })
+})

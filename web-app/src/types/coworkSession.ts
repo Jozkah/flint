@@ -24,6 +24,14 @@ export type CoworkTurn = {
   isError?: boolean
   diff?: string
   status?: 'running' | 'done'
+  /**
+   * The prompt snapshot this assistant turn was produced from. AH-078.
+   *
+   * Attached to the turn rather than kept as a single "latest": a run makes
+   * many model calls, and a viewer showing the most recent one next to an
+   * older turn would be showing the wrong payload.
+   */
+  promptSnapshot?: { id: string; hash: string; redactions: number }
 }
 
 /** Mirrors the Rust `Usage` struct (events.rs). */

@@ -81,6 +81,15 @@ export function coworkTurnsToUIMessages(
     }
 
     if (turn.role === 'assistant') {
+      // AH-078. The snapshot rides on the assistant message it produced, so the
+      // viewer sits with the invocation it belongs to rather than showing a
+      // "latest" payload beside an older turn.
+      if (turn.promptSnapshot) {
+        ensureAssistant(i).parts.push({
+          type: 'data-prompt-snapshot',
+          data: turn.promptSnapshot,
+        } as never)
+      }
       // Split out <think>/<thought> reasoning into reasoning parts (same helper
       // the chat loader uses) so the agent's chain-of-thought renders in the
       // collapsible reasoning UI instead of leaking into the transcript as text.

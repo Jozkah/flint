@@ -266,6 +266,52 @@ Two corrections worth carrying forward:
 
 Registry: **65 implemented / 46 in-progress / 89 missing / 0 verified / 200**.
 
+**AH-078 is now wired end to end in the real timeline.** The chain is:
+
+`HttpModelInvoker::invoke` captures the frozen payload ->
+`snapshot::append` persists it redacted ->
+`StreamEvent::PromptSnapshot` ->
+`applyInnerToTurns` (useCoworkRun.ts) opens the assistant turn that snapshot
+produced ->
+`coworkTurnsToUIMessages` emits a `data-prompt-snapshot` part ->
+`routes/cowork.tsx` renders `<PromptSnapshotView>` on that message ->
+`agent_prompt_snapshots` -> `snapshot::scoped_lookup`.
+
+Each snapshot rides the turn it produced, so a second invocation does not show
+its payload against the first turn.
+
+It is still **in-progress**, for one reason only: no smoke scenario has
+exercised it in the real Tauri app. The unit chain is covered (8 scope, 19
+snapshot, 11 viewer, 3 turn-mapping, 3 event-mapping tests) but the acceptance
+bar is "launch Jan, make a request, open the panel from that request's
+activity", and that has not been run.
+
+**Next production target, precisely:** add a scenario to
+`src-tauri/src/bin/cowork_smoke.rs` that scripts the mock provider (`plain`),
+sends a message, waits for `[data-testid="prompt-snapshot"]` to appear on the
+assistant message, opens it, asserts provider/model/hash and the redaction
+summary, switches Tree/JSON, and asserts no `Bearer`/`sk-` appears anywhere in
+the panel. Add a negative scenario asserting a snapshot id from another session
+is refused. Then mark AH-078 implemented.
+
+**AH-107 — not started.** `spawn_subagent` (`core/agent/subagent.rs`) still runs
+against the shared root. `core/agent/worktree.rs` has the full lifecycle; do not
+duplicate it.
+
+**AH-146 — not started.** The approval event in `core/agent/events.rs` still
+carries a whole-change diff.
+
+**AH-201-AH-210 — not appended.** The registry is still 200 entries.
+
+Then: AH-007, AH-036, AH-037, AH-041, AH-042, AH-044, AH-045, AH-050, AH-073,
+AH-109, AH-157, AH-198.
+
+### Superseded next batch (kept for context)
+
+### Exact next batch
+
+Registry: **65 implemented / 46 in-progress / 89 missing / 0 verified / 200**.
+
 **AH-078 — one step from done.** Backend, IPC and viewer all exist and are
 tested:
 

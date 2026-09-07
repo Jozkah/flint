@@ -82,7 +82,8 @@ function mergeToolResult(
 
 // Apply one wrapped inner subagent event to that subagent's own turn lane
 // (token append / tool_call push / tool_result merge). Pure.
-function applyInnerToTurns(turns: CoworkTurn[], inner: StreamEvent): CoworkTurn[] {
+/** Exported so the event-to-turn mapping is testable on its own. */
+export function applyInnerToTurns(turns: CoworkTurn[], inner: StreamEvent): CoworkTurn[] {
   switch (inner.type) {
     case 'token':
       return appendAssistantToken(turns, inner.text)
@@ -98,6 +99,37 @@ function applyInnerToTurns(turns: CoworkTurn[], inner: StreamEvent): CoworkTurn[
       if (idx === -1) return turns
       const prev = turns[idx].argsLive ?? ''
       return [...turns.slice(0, idx), { ...turns[idx], argsLive: prev + inner.delta }, ...turns.slice(idx + 1)]
+    }
+    case 'prompt_snapshot': {
+      // Arrives immediately before the model streams its reply, so it opens the
+      // assistant turn that reply will be appended to. That is what ties a
+      // snapshot to the invocation it belongs to.
+      const last = turns[turns.length - 1]
+      if (last?.role === 'assistant' && !last.promptSnapshot && !last.content) {
+        return [
+          ...turns.slice(0, -1),
+          {
+            ...last,
+            promptSnapshot: {
+              id: inner.id,
+              hash: inner.hash,
+              redactions: inner.redactions,
+            },
+          },
+        ]
+      }
+      return [
+        ...turns,
+        {
+          role: 'assistant',
+          content: '',
+          promptSnapshot: {
+            id: inner.id,
+            hash: inner.hash,
+            redactions: inner.redactions,
+          },
+        },
+      ]
     }
     case 'tool_call':
       return [...turns, makeToolCallTurn(inner)]
