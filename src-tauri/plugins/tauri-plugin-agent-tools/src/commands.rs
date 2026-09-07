@@ -522,16 +522,31 @@ async fn execute_tool_inner(
     let tool = lookup(&name)
         .ok_or_else(|| AgentToolsError::from(format!("unknown built-in tool '{name}'")))?;
 
-    match gate::resolve_decision(
+    let permissions = ToolPermissions::default();
+    let decision = gate::resolve_decision(
         tool,
         &args,
         &root,
         Some(&scratch),
         &read_roots,
-        &ToolPermissions::default(),
+        &permissions,
         &grants,
         true,
-    ) {
+    );
+
+    // AH-049: every decision is recorded before it is acted on, so a refusal
+    // that returns early below is still in the log. Recording never changes
+    // the decision -- `append` swallows its own failures.
+    record_permission_decision(
+        Path::new(&data_folder),
+        &thread_id,
+        tool,
+        &args,
+        &root,
+        &decision,
+    );
+
+    match decision {
         Decision::Allow => {}
         Decision::HardDeny(gate::DenyReason::Hidden) => {
             return Err(format!(
@@ -542,6 +557,30 @@ async fn execute_tool_inner(
         }
         Decision::HardDeny(gate::DenyReason::Policy) => {
             return Err(format!("tool '{name}' is denied by policy").into());
+        }
+        // The argument could not be read, so nothing can vouch for it. Say
+        // which one: told only "refused", a model retries the same call.
+        Decision::HardDeny(gate::DenyReason::Resource) => {
+            return Err(format!(
+                "tool '{name}' was refused: its arguments could not be resolved to a \
+                 file, command or destination, so no permission rule could be applied \
+                 to it. Re-issue the call with explicit, well-formed arguments."
+            )
+            .into());
+        }
+        // A destructive git operation needs a rule that names it. A blanket
+        // `allow = ["bash"]` is permission to run commands, not permission to
+        // discard uncommitted work.
+        Decision::HardDeny(gate::DenyReason::DestructiveGit(op)) => {
+            return Err(format!(
+                "tool '{name}' was refused: this is a destructive git operation \
+                 ({}), which can lose work that was never committed or rewrite \
+                 history others have. It needs a rule that names it, such as \
+                 `allow = [\"bash(git:{})\"]`.",
+                op.as_str(),
+                op.as_str()
+            )
+            .into());
         }
         // An exec prompt asks the user to vouch for a command that could reach
         // anything. Under an enforcing sandbox it cannot: writes stay in the
@@ -661,6 +700,96 @@ fn output_sink(
 /// filesystem root are all refused, so the browse surface cannot reach
 /// anything the tool surface could not. Containment of `rel` inside `root` is
 /// enforced again in `project_browse`.
+
+/// Write one audit record per resource this call touches.
+///
+/// Split out so the production gate call above stays readable, and so the
+/// mapping from `Decision` to `Outcome` is in one place rather than repeated
+/// across the match arms that follow it.
+fn record_permission_decision(
+    data_folder: &Path,
+    thread_id: &str,
+    tool: &crate::tools::BuiltinTool,
+    args: &serde_json::Value,
+    root: &Path,
+    decision: &Decision,
+) {
+    use crate::audit::{self, Outcome, PermissionRecord};
+    use crate::tools::Capability;
+
+    let (outcome, reason) = match decision {
+        Decision::Allow => (Outcome::Allow, String::new()),
+        Decision::HardDeny(gate::DenyReason::Policy) => (Outcome::Deny, "policy".to_string()),
+        Decision::HardDeny(gate::DenyReason::Hidden) => {
+            (Outcome::Deny, "hidden-agent-state".to_string())
+        }
+        Decision::HardDeny(gate::DenyReason::Resource) => {
+            (Outcome::Deny, "unresolvable-resource".to_string())
+        }
+        Decision::HardDeny(gate::DenyReason::DestructiveGit(op)) => {
+            (Outcome::Deny, format!("destructive-git:{}", op.as_str()))
+        }
+        // A prompt is a request that has not been answered yet; the answer is
+        // recorded separately when it arrives.
+        Decision::Prompt(kind) => (Outcome::Prompt, format!("prompt:{kind:?}")),
+    };
+
+    let capability = match tool.capability {
+        Capability::Read => "read",
+        Capability::Write => "write",
+        Capability::Exec => "exec",
+        Capability::Net => "net",
+    };
+
+    let resources = crate::resource::Resource::for_builtin(
+        tool.name,
+        tool.path_args,
+        tool.capability == Capability::Net,
+        args,
+        Some(root),
+    );
+    let at = audit::now();
+    // A call with no resolvable resource still gets a record: "nothing was
+    // recorded" and "nothing was touched" must not look the same.
+    if resources.is_empty() {
+        let placeholder = crate::resource::Resource::Unknown {
+            tool: tool.name.to_string(),
+            why: "call names no resource".into(),
+        };
+        audit::append(
+            data_folder,
+            &PermissionRecord::new(
+                at,
+                thread_id,
+                tool.name,
+                capability,
+                &placeholder,
+                outcome,
+                reason,
+            )
+            .with_project(root.to_string_lossy())
+            .with_agent("main"),
+        );
+        return;
+    }
+    for resource in &resources {
+        audit::append(
+            data_folder,
+            &PermissionRecord::new(
+                at.clone(),
+                thread_id,
+                tool.name,
+                capability,
+                resource,
+                outcome,
+                reason.clone(),
+            )
+            .with_project(root.to_string_lossy())
+            .with_agent("main"),
+        );
+    }
+}
+
 #[tauri::command]
 pub async fn project_list_dir(
     data_folder: String,

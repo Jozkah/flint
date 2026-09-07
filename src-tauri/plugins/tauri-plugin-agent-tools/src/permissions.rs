@@ -1,8 +1,16 @@
 //! Tool-permission gate built from the `[tools]` section of `agent.toml`.
-//! Tools are MCP-only, so read/write cannot be inferred from a tool; classification
-//! is purely by the explicit name/glob lists. Deny always wins.
+//!
+//! Rules are [`ResourceRule`]s, so a rule can name what a call touches and not
+//! only which tool made it: `bash(git:force-push)` and `read(**/.ssh/**)` are
+//! expressible where `bash` and `read` were the only vocabulary before. A rule
+//! written the old way — a bare tool name or glob — keeps working unchanged and
+//! means "this tool, whatever it touches".
+//!
+//! There is deliberately one representation. The name-only entry points below
+//! are thin views over the same compiled rules rather than a second list that
+//! could disagree with the first. Deny always wins.
 
-use glob::Pattern;
+use crate::resource::{Resource, ResourceRule};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PermissionDefault {
@@ -27,16 +35,15 @@ impl PermissionDefault {
 #[derive(Debug, Clone)]
 pub struct ToolPermissions {
     default: PermissionDefault,
-    allow: Vec<Pattern>,
-    deny: Vec<Pattern>,
-    allow_write: Vec<Pattern>,
+    allow: Vec<ResourceRule>,
+    deny: Vec<ResourceRule>,
+    allow_write: Vec<ResourceRule>,
 }
 
-fn compile(patterns: &[String]) -> Vec<Pattern> {
-    patterns
-        .iter()
-        .filter_map(|p| Pattern::new(p).ok())
-        .collect()
+/// A rule that will not parse is dropped rather than guessed at: half a rule
+/// matches unpredictably, which is worse than no rule at all.
+fn compile(patterns: &[String]) -> Vec<ResourceRule> {
+    patterns.iter().filter_map(|p| ResourceRule::parse(p)).collect()
 }
 
 impl ToolPermissions {
@@ -65,14 +72,47 @@ impl ToolPermissions {
         }
     }
 
+    /// Whether any deny rule names this tool, ignoring what the call touches.
+    ///
+    /// The conservative view, kept for callers that have no resources to hand:
+    /// a resource-qualified deny still reports the tool as denied here, so a
+    /// caller without resources never under-reports a restriction.
     pub fn is_denied(&self, name: &str) -> bool {
-        self.deny.iter().any(|p| p.matches(name))
+        self.deny.iter().any(|r| r.matches_name(name))
     }
 
     /// Explicit allow-list membership (allow OR allow_write); does NOT consider deny or default.
     pub fn is_allowed(&self, name: &str) -> bool {
-        self.allow.iter().any(|p| p.matches(name))
-            || self.allow_write.iter().any(|p| p.matches(name))
+        self.allow.iter().any(|r| r.matches_name(name))
+            || self.allow_write.iter().any(|r| r.matches_name(name))
+    }
+
+    /// Whether this specific call is denied.
+    ///
+    /// Unlike [`is_denied`], this consults the resources the call actually
+    /// touches, so `bash(git:force-push)` denies a force push and leaves
+    /// `git status` alone. A resource the gate could not determine is denied by
+    /// any rule that names the tool.
+    pub fn denies_call(&self, name: &str, resources: &[Resource]) -> Option<&ResourceRule> {
+        self.deny.iter().find(|r| r.matches_deny(name, resources))
+    }
+
+    /// Whether this specific call is explicitly allowed.
+    ///
+    /// A call carrying a resource the gate could not determine is never allowed
+    /// here: `matches_allow` refuses to vouch for what it could not read.
+    pub fn allows_call(&self, name: &str, resources: &[Resource]) -> Option<&ResourceRule> {
+        self.allow
+            .iter()
+            .chain(self.allow_write.iter())
+            .find(|r| r.matches_allow(name, resources))
+    }
+
+    /// Whether a *write* was explicitly pre-approved for this call.
+    pub fn allows_write_call(&self, name: &str, resources: &[Resource]) -> Option<&ResourceRule> {
+        self.allow_write
+            .iter()
+            .find(|r| r.matches_allow(name, resources))
     }
 
     /// Whether an MCP tool is advertised to the model. Deny always wins. Otherwise
@@ -85,6 +125,10 @@ impl ToolPermissions {
             return false;
         }
         self.is_allowed(tool_name) || !matches!(self.default, PermissionDefault::Deny)
+    }
+
+    pub fn default_mode(&self) -> PermissionDefault {
+        self.default
     }
 }
 

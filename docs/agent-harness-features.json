@@ -182,14 +182,16 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-003"
       ],
       "owner": "lane-01-architecture-registry",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/resource.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -201,10 +203,13 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/resource.rs::tests",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs::tests"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Capability{Read,Write,Exec,Net} covers the 16 built-ins; MCP tools carry no capability and are name-gated only. Extending the model to MCP is Phase 2 work under AH-041."
+      "auditNote": "Capability{Read,Write,Exec,Net} now pairs with a canonical Resource (path, command, mcp, net, process, unknown) derived per call inside resolve_decision and consumed by the production gate. An argument that is present but unreadable becomes Resource::Unknown, which no allow rule matches and every deny rule does; the gate refuses it as DenyReason::Resource, and the production call site in commands.rs returns a message naming what could not be resolved. An absent argument stays the handler's schema business. MCP tools still carry no capability -- that remains AH-041."
     },
     {
       "id": "AH-007",
@@ -1012,14 +1017,15 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-033"
       ],
       "owner": "lane-03-permission-security",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/permissions.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/permissions.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/resource.rs"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -1031,10 +1037,13 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/resource.rs::tests",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs::tests"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Globs match tool names only; arguments are never pattern-matched, so bash(git:*)-style rules are inexpressible."
+      "auditNote": "Rules are ResourceRules: `tool` or `tool(pattern)`. bash(git:force-push) and read(**/.ssh/**) are now expressible, closing the gap where globs matched tool names only and arguments were never pattern-matched. Paths are lexically normalized and URLs canonicalized before matching, so one resource has one spelling and a rule cannot be dodged by rewriting the argument (proved by a test that spells the same file three ways). ToolPermissions holds one compiled rule set; is_denied/is_allowed are name-only views over it rather than a second representation."
     },
     {
       "id": "AH-035",
@@ -1368,13 +1377,17 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-038"
       ],
       "owner": "lane-03-permission-security",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/resource.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "Force pushes, hard resets and destructive cleans are recognised and gated separately from safe git usage.",
@@ -1385,9 +1398,13 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/resource.rs::tests",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs::tests"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "GitOp::classify recognises reset --hard/--merge/--keep, clean -f/-x/-d, force push (flag or +refspec), destructive checkout/restore, branch deletion, and history rewriting (rebase, filter-branch, commit --amend, reflog delete, gc --prune) from parsed argv, skipping git's own global options so `git -C /x push -f` is still a force push. Detection is structural, not substring: `echo 'git push --force'` and a commit message mentioning `reset --hard` are not flagged, and a mutation substituting substring matching turns those tests red. A destructive operation is refused with DenyReason::DestructiveGit unless a rule names it; a blanket allow=[\"bash\"] does not count. Every decision reaches the AH-049 log."
     },
     {
       "id": "AH-047",
@@ -1453,14 +1470,17 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-005",
         "AH-033"
       ],
       "owner": "lane-03-permission-security",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/audit.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "Every allow, deny and auto-approval is written to a durable append-only record.",
@@ -1471,9 +1491,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/audit.rs::tests"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Append-only JSONL at <jan_data>/audit/permissions.jsonl, one record per resource per decision, written from the production call site in commands.rs before the decision is acted on, so a refusal that returns early is still logged. Each record carries schema version, RFC3339 UTC timestamp, session, run, call, agent, project, tool, capability, resource kind and value, decision and reason. Secrets are redacted before the record is constructed, so a credential on a command line never reaches disk. The reader drops an unparseable line, so a process killed mid-write costs that record and nothing before it. Query and export are in place for the permission centre. NOTE: allow/deny/prompt have producers today; expired, revoked, stale and cancelled are representable and round-trip tested but are produced by the grant lifecycle, which lands with AH-023/AH-041. The registry's cited writer, harness/src/envelope.rs, does not exist in this tree; crash tolerance mirrors core/cli/journal.rs instead, because the plugin cannot depend on the main crate."
     },
     {
       "id": "AH-050",

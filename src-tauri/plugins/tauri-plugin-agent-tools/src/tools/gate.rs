@@ -133,6 +133,13 @@ pub enum DenyReason {
     Policy,
     /// The call reaches `<project>/.jan`, which is hidden from every tool.
     Hidden,
+    /// The call names a resource no rule allows, or one the gate could not
+    /// determine. Failing closed is the point: an argument we cannot read is
+    /// not an argument we can vouch for.
+    Resource,
+    /// A git invocation that can destroy uncommitted work or rewrite shared
+    /// history, with no rule granting it. See `GitOp::is_destructive`.
+    DestructiveGit(crate::resource::GitOp),
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -160,8 +167,40 @@ pub fn resolve_decision(
     grants: &SessionGrants,
     hide_jan: bool,
 ) -> Decision {
-    if perms.is_denied(tool.name) {
+    // What this call actually touches, normalized once and reused for the deny
+    // check, the allow check and the destructive-git guard below.
+    let resources = crate::resource::Resource::for_builtin(
+        tool.name,
+        tool.path_args,
+        tool.capability == Capability::Net,
+        args,
+        Some(project_root),
+    );
+
+    if perms.denies_call(tool.name, &resources).is_some() {
         return Decision::HardDeny(DenyReason::Policy);
+    }
+
+    // A resource the gate could not determine is refused rather than guessed
+    // at. `Unknown` carries why, so the model is told what was unreadable.
+    if resources
+        .iter()
+        .any(|r| matches!(r, crate::resource::Resource::Unknown { .. }))
+    {
+        return Decision::HardDeny(DenyReason::Resource);
+    }
+
+    // AH-046: a destructive git operation needs a rule that names it. An
+    // `allow = ["bash"]` blanket does not count -- that is the difference
+    // between "may run shell commands" and "may throw away my uncommitted
+    // work" -- so this is checked before the generic allow below.
+    if let Some(op) = resources.iter().find_map(|r| r.destructive_git()) {
+        let named = perms
+            .allows_call(tool.name, &resources)
+            .is_some_and(|rule| rule.source().contains('('));
+        if !named {
+            return Decision::HardDeny(DenyReason::DestructiveGit(op));
+        }
     }
     // Nothing under .jan is reachable while hidden: skills/memory only through
     // their dedicated tools, config, threads and the dir listing not at all.
@@ -185,7 +224,7 @@ pub fn resolve_decision(
     if hits_hidden || exec_hits_hidden {
         return Decision::HardDeny(DenyReason::Hidden);
     }
-    if perms.is_allowed(tool.name) {
+    if perms.allows_call(tool.name, &resources).is_some() {
         return Decision::Allow;
     }
     // Dedicated skill/memory tools act only on the agent's own workspace by a
@@ -1041,5 +1080,190 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    // ---- resource-aware rules (AH-006 / AH-034) and destructive git (AH-046)
+
+    #[test]
+    fn a_deny_rule_can_name_the_argument_not_just_the_tool() {
+        let root = unique_root();
+        let grants = SessionGrants::default();
+        // Previously inexpressible: deny reading one path while leaving the
+        // rest of the project readable.
+        let perms = ToolPermissions::new(
+            PermissionDefault::ReadOnly,
+            &[],
+            &s(&["read(**/.ssh/**)"]),
+            &[],
+        );
+        let key = root.join(".ssh/id_rsa");
+        let denied = resolve_decision(
+            lookup("read").unwrap(),
+            &json!({ "path": key.to_string_lossy() }),
+            &root,
+            None,
+            &[],
+            &perms,
+            &grants,
+            true,
+        );
+        assert_eq!(denied, Decision::HardDeny(DenyReason::Policy));
+
+        let ok = resolve_decision(
+            lookup("read").unwrap(),
+            &json!({ "path": root.join("src/a.rs").to_string_lossy() }),
+            &root,
+            None,
+            &[],
+            &perms,
+            &grants,
+            true,
+        );
+        assert_eq!(ok, Decision::Allow);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_destructive_git_command_is_refused_without_a_rule_naming_it() {
+        let root = unique_root();
+        let grants = SessionGrants::default();
+        // A blanket allow on bash is permission to run commands, not
+        // permission to throw away uncommitted work.
+        let perms =
+            ToolPermissions::new(PermissionDefault::Allow, &s(&["bash"]), &[], &[]);
+        for line in [
+            "git reset --hard HEAD~1",
+            "git clean -fdx",
+            "git push --force origin main",
+            "git branch -D topic",
+            "git -C . push -f",
+        ] {
+            let d = resolve_decision(
+                lookup("bash").unwrap(),
+                &json!({ "command": line }),
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                true,
+            );
+            assert!(
+                matches!(d, Decision::HardDeny(DenyReason::DestructiveGit(_))),
+                "{line} should be refused, got {d:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_rule_that_names_the_git_operation_permits_it() {
+        let root = unique_root();
+        let grants = SessionGrants::default();
+        let perms = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &s(&["bash(git:force-push)"]),
+            &[],
+            &[],
+        );
+        let allowed = resolve_decision(
+            lookup("bash").unwrap(),
+            &json!({ "command": "git push --force origin main" }),
+            &root,
+            None,
+            &[],
+            &perms,
+            &grants,
+            true,
+        );
+        assert_eq!(allowed, Decision::Allow);
+
+        // ...and only that operation.
+        let still_refused = resolve_decision(
+            lookup("bash").unwrap(),
+            &json!({ "command": "git reset --hard" }),
+            &root,
+            None,
+            &[],
+            &perms,
+            &grants,
+            true,
+        );
+        assert!(matches!(
+            still_refused,
+            Decision::HardDeny(DenyReason::DestructiveGit(_))
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn harmless_git_still_runs() {
+        let root = unique_root();
+        let grants = SessionGrants::default();
+        let perms = ToolPermissions::new(PermissionDefault::Allow, &s(&["bash"]), &[], &[]);
+        for line in ["git status", "git log --oneline", "git commit -m 'reset --hard'"] {
+            let d = resolve_decision(
+                lookup("bash").unwrap(),
+                &json!({ "command": line }),
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                true,
+            );
+            assert_eq!(d, Decision::Allow, "{line}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_unreadable_argument_is_refused_rather_than_guessed() {
+        let root = unique_root();
+        let grants = SessionGrants::default();
+        let perms = ToolPermissions::new(PermissionDefault::Allow, &s(&["bash"]), &[], &[]);
+        let d = resolve_decision(
+            lookup("bash").unwrap(),
+            &json!({ "command": "echo 'unterminated" }),
+            &root,
+            None,
+            &[],
+            &perms,
+            &grants,
+            true,
+        );
+        assert_eq!(d, Decision::HardDeny(DenyReason::Resource));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_path_rule_cannot_be_dodged_by_spelling() {
+        let root = unique_root();
+        let grants = SessionGrants::default();
+        let perms = ToolPermissions::new(
+            PermissionDefault::ReadOnly,
+            &[],
+            &s(&["read(**/secrets/**)"]),
+            &[],
+        );
+        // Every one of these names the same file.
+        for spelling in ["secrets/key", "./secrets/key", "sub/../secrets/key"] {
+            let d = resolve_decision(
+                lookup("read").unwrap(),
+                &json!({ "path": spelling }),
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                true,
+            );
+            assert_eq!(
+                d,
+                Decision::HardDeny(DenyReason::Policy),
+                "{spelling} must not dodge the rule"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
