@@ -55,14 +55,21 @@ export function CoworkCompatSection({
     .map((one) => one.name)
 
   return (
+    // Still its own labelled region -- a <details> is not a landmark -- with
+    // the body collapsed by default, because this is configuration and it was
+    // sitting open in the conversation column under every message.
     <section
       aria-label={t('common:claudeCompat.title')}
       data-testid="cowork-compat"
-      className="flex flex-col gap-2 text-xs"
+      className="text-xs"
     >
-      <header className="flex items-start justify-between gap-3">
+      <details className="flex flex-col gap-2">
+      <summary className="cursor-pointer list-none font-medium text-main-view-fg outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 rounded-sm">
+        {t('common:claudeCompat.title')}
+      </summary>
+      <header className="mt-2 flex items-start justify-between gap-3">
         <div className="flex flex-col gap-0.5">
-          <h3 className="font-medium text-main-view-fg">
+          <h3 className="sr-only">
             {t('common:claudeCompat.title')}
           </h3>
           <p className="text-main-view-fg/60">
@@ -151,6 +158,7 @@ export function CoworkCompatSection({
           ))}
         </div>
       )}
+      </details>
     </section>
   )
 }

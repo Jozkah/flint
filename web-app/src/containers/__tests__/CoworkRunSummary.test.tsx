@@ -94,4 +94,13 @@ describe('the run summary the application writes', () => {
     expect(section).toBe(region())
     expect(within(section).getByText('common:coworkOrigins.subtitle')).toBeInTheDocument()
   })
+
+  it('opens closed, so it does not reopen in full under every message', () => {
+    show()
+    const disclosure = region().querySelector('details')
+    expect(disclosure).not.toBeNull()
+    expect(disclosure).not.toHaveAttribute('open')
+    // The heading still names it while collapsed, so it can be found.
+    expect(region()).toHaveTextContent('common:coworkOrigins.title')
+  })
 })

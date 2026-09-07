@@ -18,6 +18,7 @@
 //!
 //! Exit code is non-zero if any scenario fails.
 
+use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -54,6 +55,8 @@ struct Ctx {
     workspace: PathBuf,
     /// The materialised fixture project inside `workspace`.
     project: PathBuf,
+    /// Port of the deterministic model fixture.
+    mock_port: u16,
 }
 
 #[derive(Debug)]
@@ -295,6 +298,25 @@ impl Ctx {
         Ok(())
     }
 
+    /// Re-script the model fixture for the scenario about to run.
+    ///
+    /// Driven from the WebView so the request comes from the same process and
+    /// origin as the app's own traffic.
+    fn script_model(&self, script: &str, tools: &[&str]) -> ScenarioResult {
+        let tools = serde_json::to_string(tools).unwrap_or_else(|_| "[]".into());
+        let port = self.mock_port;
+        let ok = self.eval_bool(&format!(
+            r#"const res = await fetch('http://127.0.0.1:{port}/__control', {{
+                 method: 'POST',
+                 headers: {{ 'Content-Type': 'application/json' }},
+                 body: JSON.stringify({{ script: {script:?}, tools: {tools} }}),
+               }});
+               return res.ok;"#
+        ))?;
+        ensure!(ok, "could not re-script the model fixture to {script:?}");
+        Ok(())
+    }
+
     /// Script the next native picker answer. `None` scripts a cancellation.
     ///
     /// This drives the test-only seam in `core::filesystem::smoke_dialog`,
@@ -428,6 +450,63 @@ fn materialize_project(workspace: &Path, template: Option<&Path>) -> Result<Path
     Ok(root)
 }
 
+/// Start the deterministic OpenAI-compatible fixture and return its port.
+///
+/// The provider's URL has to be written into settings.json before the app
+/// launches, so the server is started first and re-scripted afterwards over its
+/// `/__control` endpoint rather than restarted per scenario.
+fn start_mock_provider(fixtures: &Path) -> Result<(std::process::Child, u16), String> {
+    // `--fixtures` names the *project* template; the server fixture sits beside
+    // that directory, so accept either location.
+    let candidates = [
+        fixtures.join("mock_openai_server.py"),
+        fixtures
+            .parent()
+            .unwrap_or(fixtures)
+            .join("mock_openai_server.py"),
+        Path::new(MANIFEST_DIR).join("tests/fixtures/mock_openai_server.py"),
+    ];
+    let script = candidates
+        .iter()
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            format!(
+                "missing fixture mock_openai_server.py; looked in {}",
+                candidates
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })?;
+    let mut child = std::process::Command::new("python3")
+        .arg(&script)
+        .arg("--model")
+        .arg(SMOKE_MODEL)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("could not start the mock provider: {e}"))?;
+
+    let stdout = child.stdout.take().ok_or("mock provider had no stdout")?;
+    let mut reader = std::io::BufReader::new(stdout);
+    let mut line = String::new();
+    for _ in 0..50 {
+        line.clear();
+        if reader.read_line(&mut line).map_err(|e| e.to_string())? == 0 {
+            break;
+        }
+        if let Some(port) = line.strip_prefix("PORT ") {
+            let port: u16 = port
+                .trim()
+                .parse()
+                .map_err(|e| format!("unreadable port {line:?}: {e}"))?;
+            return Ok((child, port));
+        }
+    }
+    let _ = child.kill();
+    Err("the mock provider never announced a port".into())
+}
+
 /// Seed the fresh data folder so the app does not open first-run onboarding.
 ///
 /// `routes/index.tsx` shows `SetupScreen` whenever `hasUsableProvider` is
@@ -447,15 +526,21 @@ fn seed_settings(data_folder: &Path, base_url: &str) -> Result<(), String> {
                 "base_url": base_url,
                 "api_key": "smoke-not-a-real-key",
                 "settings": [],
+                // Shape copied from a real configured provider: `model` and
+                // `version` alongside `id`, or the store drops the entry and
+                // the provider page shows "No model found".
                 "models": [
-                    { "id": SMOKE_MODEL, "name": SMOKE_MODEL,
-                      "capabilities": ["completion", "tools"] },
-                    { "id": "smoke-alt", "name": "smoke-alt",
-                      "capabilities": ["completion", "tools"] }
+                    { "id": SMOKE_MODEL, "model": SMOKE_MODEL, "name": SMOKE_MODEL,
+                      "capabilities": ["completion", "tools"], "version": "1.0" },
+                    { "id": "smoke-alt", "model": "smoke-alt", "name": "smoke-alt",
+                      "capabilities": ["completion", "tools"], "version": "1.0" }
                 ]
             }],
             "selectedProvider": SMOKE_PROVIDER,
-            "selectedModel": SMOKE_MODEL,
+            "selectedModel": {
+                "id": SMOKE_MODEL, "model": SMOKE_MODEL, "name": SMOKE_MODEL,
+                "capabilities": ["completion", "tools"], "version": "1.0"
+            },
             "deletedModels": []
         }
     });
@@ -626,6 +711,14 @@ const SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "per-chat-model-and-reasoning",
         run: scenario_per_chat_controls,
+    },
+    Scenario {
+        name: "model-round-trip",
+        run: scenario_model_round_trip,
+    },
+    Scenario {
+        name: "provider-error-is-actionable",
+        run: scenario_provider_error,
     },
     Scenario {
         name: "composer-controls-do-not-overlap",
@@ -1611,6 +1704,148 @@ fn scenario_composer_footer(ctx: &Ctx) -> ScenarioResult {
     Ok(())
 }
 
+/// A message reaches the model and its reply comes back.
+///
+/// Everything downstream of a run -- the activity timeline, tool rows,
+/// cancellation -- depends on this working, so it is asserted on its own.
+fn scenario_model_round_trip(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    ctx.goto("/")?;
+    ctx.wait_until(
+        "the chat composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+
+    // Pick the model through the picker rather than relying on the seeded
+    // selection: the persisted store normalises what it is given, and a chat
+    // with no model selected silently does nothing when you press send.
+    let already = ctx.eval_bool(&format!(
+        "return [...document.querySelectorAll('button')].some(b =>
+           (b.textContent || '').includes({SMOKE_MODEL:?}));"
+    ))?;
+    if !already {
+        ctx.eval(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /select a model/i.test((x.getAttribute('aria-label') || '')
+                 + ' ' + (x.textContent || '')));
+             if (b) b.click();
+             return true;",
+        )?;
+        ctx.wait_until(
+            "the model picker",
+            "return [...document.querySelectorAll('input')].some(i =>
+                /search|find|model/i.test(i.getAttribute('placeholder') || ''));",
+            Duration::from_secs(20),
+        )?;
+        ctx.type_into("input[placeholder*='model' i], input[placeholder*='search' i]", "smoke")?;
+        std::thread::sleep(Duration::from_millis(800));
+        let picked = ctx.eval_bool(&format!(
+            "const el = [...document.querySelectorAll('[role=\"option\"],button,li,div')]
+               .filter(e => e.children.length <= 2
+                 && (e.textContent || '').trim().includes({SMOKE_MODEL:?}))
+               .pop();
+             if (!el) return false;
+             (el.closest('[role=\"option\"],button,li') || el).click();
+             return true;"
+        ))?;
+        if !picked {
+            ctx.describe("model-picker-open")?;
+            bail!("the picker never offered {SMOKE_MODEL}");
+        }
+        std::thread::sleep(Duration::from_millis(900));
+    }
+
+    ctx.type_into("[data-testid=\"chat-input\"]", "hello smoke")?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(15),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+
+    let replied = ctx.wait_until(
+        "the model's reply",
+        "return document.body.textContent.includes('Hello from the smoke model');",
+        Duration::from_secs(60),
+    );
+    if replied.is_err() {
+        let tail = ctx.eval_string(
+            "const t = document.body.textContent || '';
+             return t.slice(Math.max(0, t.length - 900));",
+        )?;
+        println!("      round-trip page tail: {tail}");
+    }
+    replied?;
+    Ok(())
+}
+
+/// A failing provider says which endpoint failed, with what status, and who
+/// answered -- not a bare status word.
+fn scenario_provider_error(ctx: &Ctx) -> ScenarioResult {
+    // Reproduces the reported failure: a local-looking endpoint answered 403 by
+    // something on the internet.
+    ctx.script_model("proxy-403", &[])?;
+    let restore = |ctx: &Ctx| {
+        let _ = ctx.script_model("plain", &[]);
+    };
+
+    let outcome = (|| -> ScenarioResult {
+        ctx.goto(&format!("/settings/providers/{SMOKE_PROVIDER}"))?;
+        ctx.wait_until(
+            "the provider page",
+            "return document.body.textContent.length > 40;",
+            Duration::from_secs(30),
+        )?;
+
+        // Refresh the model list, which is the request that fails.
+        let clicked = ctx.eval_bool(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /^refresh/i.test(((x.getAttribute('aria-label') || '')
+                 + ' ' + (x.getAttribute('title') || '')
+                 + ' ' + (x.textContent || '')).trim()));
+             if (!b) return false; b.click(); return true;",
+        )?;
+        if !clicked {
+            ctx.describe("provider-page")?;
+            bail!("the provider page offered no way to refresh its models");
+        }
+
+        ctx.wait_until(
+            "an actionable failure message",
+            &format!(
+                "const t = document.body.textContent || '';
+                 return t.includes('403') && t.includes('{SMOKE_PROVIDER}');"
+            ),
+            Duration::from_secs(45),
+        )?;
+
+        let text = ctx.eval_string("return document.body.textContent;")?;
+        ensure!(
+            !text.contains("[object Object]"),
+            "the provider page rendered a raw object"
+        );
+        // The endpoint must be named, so the user can see where it went.
+        ensure!(
+            text.contains(&format!("127.0.0.1:{}", ctx.mock_port)),
+            "the failure did not name the endpoint that failed"
+        );
+        ensure!(
+            text.to_lowercase().contains("cloudflare"),
+            "the failure did not name what answered"
+        );
+        println!("      provider failure text names endpoint, status and server");
+        Ok(())
+    })();
+
+    restore(ctx);
+    outcome
+}
+
 /// Nothing in the composer footer may sit on top of anything else.
 ///
 /// The send button and the Code/Preview/Changes/Activity rail icons share one
@@ -1701,9 +1936,19 @@ fn main() {
     // writes its sessions into the developer's real Jan data folder, and each
     // run inherits the previous run's attached folder from a temp directory
     // that has since been deleted.
+    let (mut mock, mock_port) = match start_mock_provider(&fixtures) {
+        Ok(pair) => pair,
+        Err(e) => {
+            eprintln!("FATAL: {e}");
+            std::process::exit(2);
+        }
+    };
+    println!("mock provider on port {mock_port}");
+
     let data_folder = workspace.join("data");
-    if let Err(e) = seed_settings(&data_folder, "http://127.0.0.1:59137/v1") {
+    if let Err(e) = seed_settings(&data_folder, &format!("http://127.0.0.1:{mock_port}/v1")) {
         eprintln!("FATAL: could not seed the smoke data folder: {e}");
+        let _ = mock.kill();
         std::process::exit(2);
     }
     std::env::set_var("JAN_DATA_FOLDER", &data_folder);
@@ -1715,8 +1960,11 @@ fn main() {
 
     let driver_workspace = workspace.clone();
     std::thread::spawn(move || {
-        let code = drive(&handle, fixtures, driver_workspace.clone());
+        let code = drive(&handle, fixtures, driver_workspace.clone(), mock_port);
         let _ = std::fs::remove_dir_all(&driver_workspace);
+        // Never leave the fixture server behind.
+        let _ = mock.kill();
+        let _ = mock.wait();
         VERDICT.store(code, Ordering::SeqCst);
         // On macOS the platform event loop terminates the process itself with
         // status 0, so `handle.exit(code)` would discard the verdict. Run
@@ -1741,7 +1989,7 @@ const SELF_TEST_FAIL: Scenario = Scenario {
     run: scenario_self_test_fail,
 };
 
-fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf) -> i32 {
+fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u16) -> i32 {
     let window = match wait_for_window(handle, Duration::from_secs(60)) {
         Some(w) => w,
         None => {
@@ -1771,6 +2019,7 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf) -> i32 {
         fixtures,
         workspace,
         project,
+        mock_port,
     };
 
     if let Err(Failure(e)) = ctx.reset_persisted_state() {

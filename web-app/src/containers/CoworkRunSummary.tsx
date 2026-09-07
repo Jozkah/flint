@@ -42,8 +42,14 @@ export function CoworkRunSummary({ summary }: { summary: CompletionSummary }) {
       data-testid="cowork-run-summary"
       className="my-3 rounded-md border border-main-view-fg/10 bg-main-view-fg/[0.03] p-3 text-xs"
     >
-      <header className="mb-2 flex flex-col gap-0.5">
-        <h3 className="font-medium text-main-view-fg">
+      {/* Collapsed by default: Jan's record of a run is worth keeping, but it
+          was opening in full under every single message. */}
+      <details>
+      <summary className="cursor-pointer list-none font-medium text-main-view-fg outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 rounded-sm">
+        {t('common:coworkOrigins.title')}
+      </summary>
+      <header className="mt-2 mb-2 flex flex-col gap-0.5">
+        <h3 className="sr-only">
           {t('common:coworkOrigins.title')}
         </h3>
         <p className="text-main-view-fg/60">
@@ -87,6 +93,7 @@ export function CoworkRunSummary({ summary }: { summary: CompletionSummary }) {
           {t(`common:coworkOrigins.baseline.${summary.baseline}`)}
         </p>
       </div>
+      </details>
     </section>
   )
 }

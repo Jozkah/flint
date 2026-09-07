@@ -58,14 +58,18 @@ export function CoworkContextBreakdown({
       ? { used: total.tokens, window: budget.tokens }
       : null
 
+  // Collapsed by default. This is reference material for the moment someone
+  // asks "what did the model actually get"; it sat open above the composer on
+  // every single message, pushing the conversation up the screen.
   return (
-    <section
+    <details
+      className="group rounded-md border border-border bg-main-view-fg/2 px-3 py-2 text-xs"
       aria-label={t('common:readiness.contextBreakdown')}
-      className="rounded-md border border-border bg-main-view-fg/2 px-3 py-2 text-xs"
     >
-      <h3 className="mb-1 text-main-view-fg/50">
+      <summary className="cursor-pointer list-none text-main-view-fg/50 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 rounded-sm">
         {t('common:readiness.contextBreakdown')}
-      </h3>
+      </summary>
+      <div className="mt-1">
       <dl className="grid gap-1">
         {CONTEXT_CATEGORIES.map((category) => (
           <div key={category} className="flex items-baseline gap-2">
@@ -95,6 +99,7 @@ export function CoworkContextBreakdown({
           </dd>
         </div>
       </dl>
-    </section>
+      </div>
+    </details>
   )
 }

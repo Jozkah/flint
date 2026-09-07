@@ -2687,6 +2687,9 @@ function CoworkPage() {
                       )
                     }}
                   />
+                  {/* Wrapped like its siblings: without this the block ran
+                      edge to edge while everything around it was inset. */}
+                  <div className="px-1 pb-2">
                   <CoworkCompatSection
                     manifest={compat}
                     hasFolder={Boolean(folder)}
@@ -2702,6 +2705,7 @@ function CoworkPage() {
                       if (probe) void setMcpConsent(probe, allowed)
                     }}
                   />
+                  </div>
                   <ClaudeSkillRootsSettings
                     roots={skillRoots}
                     onChange={(next) =>

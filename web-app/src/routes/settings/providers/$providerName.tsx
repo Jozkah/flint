@@ -48,6 +48,7 @@ import {
   describeEndpointFailure,
   isLocalEndpoint,
 } from '@/lib/endpointDiagnostics'
+import { errorText } from '@/lib/errorText'
 
 // as route.threadsDetail
 export const Route = createFileRoute('/settings/providers/$providerName')({
@@ -536,10 +537,15 @@ function ProviderDetail() {
         t('providers:refreshModelsFailed', { provider: provider.provider }),
         error
       )
+      // Show what actually failed. The service throws a message naming the
+      // endpoint, the status and whoever answered; replacing it with "check
+      // your API key and base URL" hid a proxy answering 403 for a server the
+      // user believed was local, and pointed at the one thing that was fine.
       toast.error(t('providers:models'), {
-        description: t('providers:refreshModelsFailed', {
-          provider: provider.provider,
-        }),
+        description: errorText(
+          error,
+          t('providers:refreshModelsFailed', { provider: provider.provider })
+        ),
       })
     } finally {
       setRefreshingModels(false)
@@ -980,6 +986,14 @@ function ProviderDetail() {
                             size="icon-xs"
                             onClick={handleRefreshModels}
                             disabled={refreshingModels}
+                            // Icon-only: without a name a screen reader
+                            // announces nothing but "button".
+                            aria-label={
+                              refreshingModels
+                                ? t('providers:refreshing')
+                                : t('providers:refresh')
+                            }
+                            title={t('providers:refresh')}
                           >
                             {refreshingModels ? (
                               <IconLoader

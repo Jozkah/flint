@@ -112,4 +112,11 @@ describe('where the context went', () => {
 
     expect(panel()).toHaveTextContent('common:readiness.budgetOver')
   })
+
+  it('opens closed, so it does not sit above the composer on every message', () => {
+    render(<CoworkContextBreakdown context={context()} />)
+    const disclosure = panel().closest('details') ?? panel().querySelector('details')
+    expect(disclosure).not.toBeNull()
+    expect(disclosure).not.toHaveAttribute('open')
+  })
 })
