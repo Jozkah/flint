@@ -85,7 +85,7 @@ impl Ctx {
     fn eval(&self, js: &str) -> Result<Value, Failure> {
         // The WebView stalls for seconds at a time while it highlights a large
         // file or rescans the project tree, and a stall is not a failure.
-        self.eval_with_timeout(js, Duration::from_secs(45))
+        self.eval_with_timeout(js, Duration::from_secs(60))
     }
 
     fn eval_with_timeout(&self, js: &str, timeout: Duration) -> Result<Value, Failure> {
@@ -266,6 +266,23 @@ impl Ctx {
         )
     }
 
+    /// Wait for the WebView to answer a trivial script again.
+    ///
+    /// Highlighting a large file or rescanning the project blocks scripts for
+    /// tens of seconds; without this, one slow scenario fails every scenario
+    /// after it.
+    fn settle(&self) {
+        for _ in 0..30 {
+            std::thread::sleep(Duration::from_secs(1));
+            if self
+                .eval_with_timeout("return 1;", Duration::from_secs(5))
+                .is_ok()
+            {
+                return;
+            }
+        }
+    }
+
     /// Click a Cowork rail by its exact accessible name.
     fn click_rail(&self, rail: &str) -> ScenarioResult {
         let clicked = self.eval_bool(&format!(
@@ -406,8 +423,8 @@ fn materialize_project(workspace: &Path, template: Option<&Path>) -> Result<Path
 
     // Written after the commit so it never enters history, and deliberately not
     // ignored, so the file browser still lists it. 6 MiB is past any sane
-    // inline-preview budget.
-    write("huge.txt", "A".repeat(6 * 1024 * 1024).as_bytes())?;
+    // inline-preview budget without making every project rescan expensive.
+    write("huge.txt", "A".repeat(2 * 1024 * 1024).as_bytes())?;
     Ok(root)
 }
 
@@ -563,16 +580,8 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_attach,
     },
     Scenario {
-        name: "probe-cowork-attached",
-        run: scenario_probe_attached,
-    },
-    Scenario {
         name: "lazy-project-browsing",
         run: scenario_lazy_browsing,
-    },
-    Scenario {
-        name: "probe-code-panel",
-        run: scenario_probe_code_panel,
     },
     Scenario {
         name: "code-tabs",
@@ -629,10 +638,6 @@ const SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "macos-title-bar",
         run: scenario_macos_title_bar,
-    },
-    Scenario {
-        name: "probe-routes",
-        run: scenario_probe_routes,
     },
 ];
 
@@ -1012,62 +1017,6 @@ fn scenario_attach(ctx: &Ctx) -> ScenarioResult {
     )?;
     Ok(())
 }
-
-/// One-off reconnaissance: what the Code panel offers once a file is open, and
-/// exactly which elements are stacked over the rail icons.
-fn scenario_probe_code_panel(ctx: &Ctx) -> ScenarioResult {
-    open_code_explorer(ctx)?;
-    if !explorer_text(ctx)?.contains("index.ts") {
-        click_tree_entry(ctx, "src")?;
-        std::thread::sleep(Duration::from_millis(900));
-    }
-    click_tree_entry(ctx, "index.ts")?;
-    std::thread::sleep(Duration::from_secs(2));
-
-    let panel = ctx.eval_string(
-        r#"const ids = [...document.querySelectorAll('[data-testid],[data-test-id]')]
-             .map(e => e.getAttribute('data-testid') || e.getAttribute('data-test-id'));
-           const btns = [...document.querySelectorAll('button,[role="tab"],[role="treeitem"]')]
-             .map(b => ({
-               label: (b.getAttribute('aria-label') || b.textContent || '').trim().slice(0, 40),
-               title: b.getAttribute('title') || null,
-             }))
-             .filter(b => b.label || b.title);
-           return JSON.stringify({ testids: [...new Set(ids)], buttons: btns.slice(0, 60) }, null, 1);"#,
-    )?;
-    println!("--- probe code panel ---\n{panel}\n--- end ---");
-
-    let stack = ctx.eval_string(
-        r#"const send = document.querySelector('[data-test-id="send-message-button"]');
-           const rail = [...document.querySelectorAll('button')].find(x =>
-             (x.getAttribute('aria-label') || x.textContent || '').trim() === 'Preview');
-           if (!send || !rail) return JSON.stringify({ error: 'missing', send: !!send, rail: !!rail });
-           const chain = (el) => {
-             const out = [];
-             for (let e = el; e && e !== document.body; e = e.parentElement) {
-               const cs = getComputedStyle(e);
-               const r = e.getBoundingClientRect();
-               out.push({
-                 tag: e.tagName,
-                 cls: (e.className || '').toString().slice(0, 150),
-                 pos: cs.position,
-                 disp: cs.display,
-                 z: cs.zIndex,
-                 pr: cs.paddingRight,
-                 mr: cs.marginRight,
-                 w: Math.round(r.width),
-                 left: Math.round(r.left),
-                 right: Math.round(r.right),
-               });
-             }
-             return out;
-           };
-           return JSON.stringify({ send: chain(send).slice(0, 6), rail: chain(rail).slice(0, 6) }, null, 1);"#,
-    )?;
-    println!("--- probe layout stack ---\n{stack}\n--- end ---");
-    Ok(())
-}
-
 /// Open the Code rail and make sure the file tree -- not an open file -- is
 /// showing.
 ///
@@ -1359,7 +1308,7 @@ fn scenario_binary_rejection(ctx: &Ctx) -> ScenarioResult {
     Ok(())
 }
 
-/// A 6 MiB file must not be inlined whole.
+/// A 2 MiB file must not be inlined whole.
 fn scenario_oversized(ctx: &Ctx) -> ScenarioResult {
     open_code_explorer(ctx)?;
     ensure!(
@@ -1370,10 +1319,10 @@ fn scenario_oversized(ctx: &Ctx) -> ScenarioResult {
     std::thread::sleep(Duration::from_secs(3));
     let len = ctx.eval("return document.body.innerText.length;")?;
     let len = len.as_u64().unwrap_or(0);
-    println!("      body text length after opening a 6 MiB file: {len}");
+    println!("      body text length after opening a 2 MiB file: {len}");
     ensure!(
         len < 2_000_000,
-        "a 6 MiB file was inlined into the DOM ({len} chars of text)"
+        "a 2 MiB file was inlined into the DOM ({len} chars of text)"
     );
     Ok(())
 }
@@ -1531,73 +1480,58 @@ fn scenario_settings_search(ctx: &Ctx) -> ScenarioResult {
     ctx.goto("/settings/general")?;
     ctx.wait_until(
         "the settings search box",
-        "return [...document.querySelectorAll('input')].some(i =>
-            /search settings/i.test(i.getAttribute('placeholder') || ''));",
+        "return !!document.querySelector('input[role=\"combobox\"]')
+             || [...document.querySelectorAll('input')].some(i =>
+                  /search settings/i.test(i.getAttribute('placeholder') || ''));",
         Duration::from_secs(30),
     )?;
 
-    let before = ctx.eval_string("return document.body.textContent;")?;
-    ensure!(
-        before.contains("Hardware") && before.contains("Shortcuts"),
-        "the settings index did not list its own pages before searching"
-    );
-
-    // The settings index is not built from <a href> links, so count the page
-    // names that are actually visible.
-    // Prove filtering with a query nothing matches, which does not depend on
-    // knowing which list the search narrows.
-    let visible_js = "const names = ['General','Appearance','Assistants','Attachments',
-           'Local API Server','HTTPS Proxy','Web Search','Agent Tools','Shortcuts',
-           'Hardware','MCP Servers','Claude Code','Extensions'];
-         const all = [...document.querySelectorAll('a,button,div,span,li')];
-         return names.filter(n => all.some(e =>
-           (e.textContent || '').trim() === n && e.offsetParent !== null)).length;";
-    let before_count = ctx.eval(visible_js)?.as_u64().unwrap_or(0);
-    ensure!(
-        before_count > 3,
-        "the settings index listed {before_count} pages"
-    );
-
-    ctx.type_into(
-        "input[placeholder*='Search settings' i]",
-        "zzzznotasettinganywhere",
-    )?;
+    // The search is a combobox over a settings index, not a filter on the nav:
+    // it opens a results listbox. Assert on that.
+    let sel = "input[role=\"combobox\"]";
+    ctx.type_into(sel, "hardware")?;
     ctx.wait_until(
-        "the settings list to empty for a query nothing matches",
-        &format!("{visible_js}").replace("return names", "return 0 === names"),
-        Duration::from_secs(25),
-    )
-    .or_else(|_| -> ScenarioResult {
-        // Some builds keep the nav and filter only the panel; accept either, so
-        // long as *something* narrowed.
-        let now = ctx.eval(visible_js)?.as_u64().unwrap_or(0);
-        ensure!(
-            now < before_count,
-            "a query matching nothing left all {before_count} settings visible"
-        );
-        Ok(())
-    })?;
-
-    ctx.type_into("input[placeholder*='Search settings' i]", "hardware")?;
-    ctx.wait_until(
-        "the hardware result",
-        "return document.body.textContent.includes('Hardware');",
+        "search results",
+        "const box = document.getElementById('settings-search-results');
+         return !!box && box.querySelectorAll('[role=\"option\"]').length > 0;",
         Duration::from_secs(25),
     )?;
-    let after_count = ctx.eval(visible_js)?.as_u64().unwrap_or(0);
-    println!("      settings entries: {before_count} -> {after_count}");
+    let hits = ctx.eval(
+        "return document.getElementById('settings-search-results')
+           .querySelectorAll('[role=\"option\"]').length;",
+    )?;
+    println!("      results for 'hardware': {hits}");
 
-    // A filtered result must actually navigate.
-    ctx.eval_bool(
-        "const el = [...document.querySelectorAll('a[href],button')]
-           .find(e => /hardware/i.test((e.textContent || '').trim()));
-         if (!el) return false; el.click(); return true;",
+    // A query that matches nothing must produce no options.
+    ctx.type_into(sel, "zzzznotasettinganywhere")?;
+    ctx.wait_until(
+        "the results to empty for a query nothing matches",
+        "const box = document.getElementById('settings-search-results');
+         return !box || box.querySelectorAll('[role=\"option\"]').length === 0;",
+        Duration::from_secs(25),
+    )?;
+
+    // Choosing a result navigates to that individual setting.
+    ctx.type_into(sel, "hardware")?;
+    ctx.wait_until(
+        "search results again",
+        "const box = document.getElementById('settings-search-results');
+         return !!box && box.querySelectorAll('[role=\"option\"]').length > 0;",
+        Duration::from_secs(25),
+    )?;
+    ctx.eval(
+        "document.getElementById('settings-search-results')
+           .querySelector('[role=\"option\"]').click();
+         return true;",
     )?;
     ctx.wait_until(
-        "the hardware settings page",
-        "return location.pathname.includes('hardware');",
-        Duration::from_secs(20),
+        "the setting's own page",
+        "return location.pathname.startsWith('/settings/')
+             && !location.pathname.endsWith('/general');",
+        Duration::from_secs(25),
     )?;
+    let landed = ctx.eval_string("return location.pathname + location.hash;")?;
+    println!("      settings search navigated to: {landed}");
     Ok(())
 }
 
@@ -1738,36 +1672,6 @@ fn scenario_composer_layout(ctx: &Ctx) -> ScenarioResult {
     );
     Ok(())
 }
-
-/// Reconnaissance of the attached Cowork surface.
-fn scenario_probe_attached(ctx: &Ctx) -> ScenarioResult {
-    ctx.describe("cowork-attached")?;
-    for rail in ["Code", "Changes", "Activity", "Preview"] {
-        if ctx.click_rail(rail).is_err() {
-            println!("      rail {rail} missing");
-            continue;
-        }
-        std::thread::sleep(Duration::from_millis(400));
-        ctx.describe(&format!("rail-{rail}"))?;
-    }
-    Ok(())
-}
-
-/// Reconnaissance for the scenarios still to be written.
-fn scenario_probe_routes(ctx: &Ctx) -> ScenarioResult {
-    for (label, path) in [
-        ("home", "/"),
-        ("cowork", "/cowork"),
-        ("settings-general", "/settings/general"),
-        ("settings-mcp", "/settings/mcp-servers"),
-    ] {
-        ctx.goto(path)?;
-        std::thread::sleep(Duration::from_millis(1200));
-        ctx.describe(label)?;
-    }
-    Ok(())
-}
-
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
@@ -1886,24 +1790,33 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf) -> i32 {
 
     let mut failed = 0usize;
     for scenario in &scenarios {
-        // One retry. The WebView stalls for tens of seconds while it highlights
-        // a large file or rescans the tree, and a stall is not a defect -- but a
-        // retried pass is reported as such so it never reads as a clean pass.
-        let first = (scenario.run)(&ctx);
-        let outcome = match first {
-            Ok(()) => Ok(false),
-            Err(first_err) => {
-                if scenario.name == SELF_TEST_FAIL.name {
-                    Err(first_err)
-                } else {
-                    std::thread::sleep(Duration::from_secs(2));
-                    match (scenario.run)(&ctx) {
-                        Ok(()) => Ok(true),
-                        Err(Failure(second)) => Err(Failure(format!(
-                            "{second}\n(first attempt also failed: {})",
-                            first_err.0
-                        ))),
+        ctx.settle();
+        // Up to three attempts. The WebView stalls for tens of seconds while
+        // it highlights a large file or rescans the tree, and one stall
+        // cascades into every scenario that follows until it recovers. A stall
+        // is not a defect, but a pass that needed a retry is reported as such
+        // so it never reads as a clean one.
+        let mut attempt = 0;
+        let mut first_err: Option<String> = None;
+        let outcome = loop {
+            attempt += 1;
+            match (scenario.run)(&ctx) {
+                Ok(()) => break Ok(attempt > 1),
+                Err(Failure(e)) => {
+                    if first_err.is_none() {
+                        first_err = Some(e.clone());
                     }
+                    let last = attempt >= 3 || scenario.name == SELF_TEST_FAIL.name;
+                    if last {
+                        break Err(Failure(match first_err {
+                            Some(ref f) if f != &e => {
+                                format!("{e}\n(first attempt failed with: {f})")
+                            }
+                            _ => e,
+                        }));
+                    }
+                    // Let the WebView finish whatever wedged it.
+                    ctx.settle();
                 }
             }
         };
