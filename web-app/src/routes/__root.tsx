@@ -57,11 +57,16 @@ const AppLayout = () => {
         {(IS_WINDOWS || IS_LINUX) && <WindowControls />}
         {IS_LINUX && <WindowResizeGrips />}
         {IS_TAURI && (
+          // `pointer-events-none`: this strip spans the top 48px of the window,
+          // which is exactly where the header's own controls sit. While it
+          // accepted pointer events every one of them was unclickable -- the
+          // press became a window drag, cursor and all. Dragging now comes from
+          // the header itself (see HeaderPage), where Tauri's own rule that the
+          // drag target must carry the attribute means a button on top of it
+          // still behaves like a button.
           <div
-            className="fixed w-full h-12 z-20 top-0 cursor-grab active:cursor-grabbing"
-            title="Drag window"
-            aria-label="Window drag area"
-            data-tauri-drag-region
+            className="pointer-events-none fixed w-full h-12 z-20 top-0"
+            aria-hidden
           />
         )}
         <LeftSidebar />

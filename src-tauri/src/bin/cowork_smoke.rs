@@ -480,7 +480,7 @@ fn start_mock_provider(fixtures: &Path) -> Result<(std::process::Child, u16), St
             )
         })?;
     let mut child = std::process::Command::new("python3")
-        .arg(&script)
+        .arg(script)
         .arg("--model")
         .arg(SMOKE_MODEL)
         .stdout(std::process::Stdio::piped())
@@ -729,6 +729,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_composer_footer,
     },
     Scenario {
+        name: "header-controls-are-clickable",
+        run: scenario_header_hit_test,
+    },
+    Scenario {
         name: "macos-title-bar",
         run: scenario_macos_title_bar,
     },
@@ -966,6 +970,56 @@ fn scenario_mcp_settings(ctx: &Ctx) -> ScenarioResult {
     Ok(())
 }
 
+/// Every control in the title-bar band must actually receive a click.
+///
+/// A full-width `data-tauri-drag-region` sheet used to cover the top 48px of
+/// the window, so pressing the model selector or the temporary-chat button
+/// dragged the window instead. Scripted `.click()` bypasses hit-testing, so
+/// only a hit test finds this: ask the document what is at each control's
+/// centre.
+fn scenario_header_hit_test(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/")?;
+    ctx.wait_until(
+        "the header",
+        "return document.querySelectorAll('button').length > 2;",
+        Duration::from_secs(30),
+    )?;
+    std::thread::sleep(Duration::from_millis(600));
+
+    let report = ctx.eval_string(
+        r#"const blocked = [];
+           for (const b of document.querySelectorAll('button')) {
+             const r = b.getBoundingClientRect();
+             // Only the title-bar band, and only what is actually on screen.
+             if (r.width === 0 || r.height === 0 || r.top > 60) continue;
+             const x = Math.round(r.left + r.width / 2);
+             const y = Math.round(r.top + r.height / 2);
+             const hit = document.elementFromPoint(x, y);
+             if (!hit || (hit !== b && !b.contains(hit))) {
+               blocked.push({
+                 control: (b.getAttribute('aria-label') || b.textContent || '?')
+                   .trim().slice(0, 40),
+                 covered_by: hit ? (hit.getAttribute('aria-label')
+                   || hit.className || hit.tagName).toString().slice(0, 80) : 'nothing',
+               });
+             }
+           }
+           return JSON.stringify({ blocked });"#,
+    )?;
+    println!("      header hit test: {report}");
+    let v: Value = serde_json::from_str(&report).unwrap_or(Value::Null);
+    let blocked = v
+        .get("blocked")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    ensure!(
+        blocked.is_empty(),
+        "controls in the title-bar band cannot be clicked: {report}"
+    );
+    Ok(())
+}
+
 /// macOS runs an overlay title bar with an inset traffic light, so the frontend
 /// must supply its own drag region. Asserted only where the platform applies.
 fn scenario_macos_title_bar(ctx: &Ctx) -> ScenarioResult {
@@ -1043,6 +1097,27 @@ const ATTACH_ITEM_JS: &str = r#"[...document.querySelectorAll('button,[role="men
 /// Open the pill popover and click its attach action.
 fn open_picker_through_the_pill(ctx: &Ctx) -> ScenarioResult {
     ctx.goto("/cowork")?;
+
+    // A retry, or a scenario that ran earlier, may have left a folder attached.
+    // Detach through the pill rather than assuming a clean session, or the
+    // "attach one" control is simply not there to click.
+    if !ctx.eval_bool(&format!("return !!({PILL_JS});"))? {
+        let _ = ctx.eval(
+            "const pill = [...document.querySelectorAll('button')].find(b =>
+               /attached read-only|project folder/i.test(b.getAttribute('aria-label') || ''));
+             if (pill) pill.click();
+             return true;",
+        );
+        std::thread::sleep(Duration::from_millis(700));
+        let _ = ctx.eval(
+            "const item = [...document.querySelectorAll('button,[role=\"menuitem\"]')]
+               .find(e => /^detach folder$/i.test((e.textContent || '').trim()));
+             if (item) item.click();
+             return true;",
+        );
+        std::thread::sleep(Duration::from_millis(900));
+    }
+
     ctx.wait_until(
         "the workspace pill",
         &format!("return !!({PILL_JS});"),
@@ -1738,7 +1813,10 @@ fn scenario_model_round_trip(ctx: &Ctx) -> ScenarioResult {
                 /search|find|model/i.test(i.getAttribute('placeholder') || ''));",
             Duration::from_secs(20),
         )?;
-        ctx.type_into("input[placeholder*='model' i], input[placeholder*='search' i]", "smoke")?;
+        ctx.type_into(
+            "input[placeholder*='model' i], input[placeholder*='search' i]",
+            "smoke",
+        )?;
         std::thread::sleep(Duration::from_millis(800));
         let picked = ctx.eval_bool(&format!(
             "const el = [...document.querySelectorAll('[role=\"option\"],button,li,div')]
@@ -1790,6 +1868,17 @@ fn scenario_provider_error(ctx: &Ctx) -> ScenarioResult {
     // Reproduces the reported failure: a local-looking endpoint answered 403 by
     // something on the internet.
     ctx.script_model("proxy-403", &[])?;
+    // Confirm the fixture really is refusing before driving the UI: scripting
+    // it and clicking in the same breath raced the switch.
+    ctx.wait_until(
+        "the fixture to start refusing",
+        &format!(
+            "const r = await fetch('http://127.0.0.1:{}/v1/models');
+             return r.status === 403;",
+            ctx.mock_port
+        ),
+        Duration::from_secs(20),
+    )?;
     let restore = |ctx: &Ctx| {
         let _ = ctx.script_model("plain", &[]);
     };

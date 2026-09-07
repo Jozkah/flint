@@ -29,8 +29,12 @@ const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
 
   return (
     <div
+      // The window drags from the header's empty space. Tauri drags only when
+      // the pressed element *is* the drag region, so the controls inside this
+      // bar keep working -- which the previous full-width overlay prevented.
+      data-tauri-drag-region
       className={cn(
-        'h-15 flex items-center shrink-0',
+        'h-15 flex items-center shrink-0 cursor-grab active:cursor-grabbing',
         inset.macLeftPad ? 'pl-24' : ' pl-4',
         children === undefined && 'border-none'
       )}

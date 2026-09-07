@@ -6,6 +6,7 @@ import {
   type CompatComponent,
   type CompatibilityManifest,
 } from '@/lib/claudeCompat'
+import { errorText } from '@/lib/errorText'
 
 /**
  * What Jan found in this folder's Claude configuration, and what it did about
@@ -122,7 +123,11 @@ export function CoworkCompatSection({
                       </span>
                       <span className="block text-main-view-fg/60">
                         {t(`common:claudeCompat.state.${item.state}`)}
-                        {item.reason ? ` · ${item.reason}` : ''}
+                        {/* Through the formatter at the point of display:
+                            `reason` is typed as a string but arrives from a
+                            rejected command, and an object here is what put
+                            "[object Object]" on screen. */}
+                        {item.reason ? ` · ${errorText(item.reason)}` : ''}
                       </span>
                       {item.type === 'mcp' ? (
                         <span className="block text-main-view-fg/60">
