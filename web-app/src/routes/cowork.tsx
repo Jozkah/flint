@@ -240,6 +240,7 @@ import {
   type SubagentRequest,
 } from '@/lib/coworkSubagent'
 import { errorText } from '@/lib/errorText'
+import { EmergencyStop } from '@/containers/EmergencyStop'
 
 /** How often the backend's background-job list is re-read. Slower than the
  * activity panel's clock tick: the list changes when a command starts or ends,
@@ -2783,6 +2784,14 @@ function CoworkPage() {
                       onDetach={detachFolder}
                     />
                     <CoworkSandboxChip />
+                    {/* Reachable while a run is going, which is the only time
+                        an emergency stop is any use. */}
+                    {running && (
+                      <EmergencyStop
+                        sessionId={session?.id}
+                        runId={session?.id}
+                      />
+                    )}
                     <CoworkRailToolbar
                       active={activeRail}
                       onSelect={selectRail}
