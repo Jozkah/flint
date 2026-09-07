@@ -260,7 +260,7 @@ describe('TauriProvidersService', () => {
 
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       await expect(svc.fetchModelsFromProvider(baseProvider))
-        .rejects.toThrow('Authentication failed')
+        .rejects.toThrow(/test-provider.*https:\/\/api\.test\.com\/v1\/models.*401/s)
       errSpy.mockRestore()
     })
 
@@ -273,7 +273,7 @@ describe('TauriProvidersService', () => {
 
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       await expect(svc.fetchModelsFromProvider(baseProvider))
-        .rejects.toThrow('Access forbidden')
+        .rejects.toThrow(/test-provider.*https:\/\/api\.test\.com\/v1\/models.*403/s)
       errSpy.mockRestore()
     })
 
@@ -286,11 +286,11 @@ describe('TauriProvidersService', () => {
 
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       await expect(svc.fetchModelsFromProvider(baseProvider))
-        .rejects.toThrow('Models endpoint not found')
+        .rejects.toThrow(/test-provider.*404.*ends at \/v1/s)
       errSpy.mockRestore()
     })
 
-    it('throws generic error on other status codes', async () => {
+    it('names the provider, endpoint and status on other status codes', async () => {
       vi.mocked(fetchTauri).mockResolvedValueOnce({
         ok: false,
         status: 500,
@@ -299,7 +299,7 @@ describe('TauriProvidersService', () => {
 
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       await expect(svc.fetchModelsFromProvider(baseProvider))
-        .rejects.toThrow('Failed to fetch models from')
+        .rejects.toThrow(/test-provider.*500.*check its logs/s)
       errSpy.mockRestore()
     })
 

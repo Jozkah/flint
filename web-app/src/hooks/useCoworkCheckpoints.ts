@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { invoke } from '@tauri-apps/api/core'
 import { backendStorage } from '@/lib/backendStorage'
 import { localStorageKey } from '@/constants/localStorage'
+import { errorText } from '@/lib/errorText'
 
 /**
  * Points a session can be taken back to.
@@ -85,8 +86,8 @@ type CheckpointsState = {
   forget: (sessionId: string) => Promise<void>
 }
 
-const messageOf = (e: unknown): string =>
-  e instanceof Error ? e.message : String(e)
+/** Shared so a rejected Tauri command never renders as `[object Object]`. */
+const messageOf = errorText
 
 export const useCoworkCheckpoints = create<CheckpointsState>()(
   persist(

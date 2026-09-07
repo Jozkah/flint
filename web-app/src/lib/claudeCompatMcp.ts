@@ -4,6 +4,7 @@ import {
   type McpConfinementRequest,
   type McpProbe,
 } from '@/lib/claudeCompat'
+import { errorText } from '@/lib/errorText'
 
 /**
  * Bringing an imported MCP server up, and taking it down again.
@@ -124,7 +125,7 @@ export async function startImportedMcp(
   } catch (e) {
     const record: McpRuntimeRecord = {
       state: 'init-failed',
-      reason: e instanceof Error ? e.message : String(e),
+      reason: errorText(e),
       tools: [],
       fingerprint,
     }
@@ -158,7 +159,7 @@ export async function startImportedMcp(
   } catch (e) {
     const record: McpRuntimeRecord = {
       state: 'init-failed',
-      reason: e instanceof Error ? e.message : String(e),
+      reason: errorText(e),
       tools: [],
       fingerprint,
     }
@@ -193,7 +194,7 @@ export async function stopImportedMcp(
   } catch (e) {
     const record: McpRuntimeRecord = {
       state: 'init-failed',
-      reason: `could not stop: ${e instanceof Error ? e.message : String(e)}`,
+      reason: `could not stop: ${errorText(e)}`,
       tools: [],
       fingerprint,
     }

@@ -2,6 +2,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import type { LanguageModel } from 'ai'
 import { getProviderApiType } from '@/lib/providerCaps'
+import { isLocalEndpoint } from '@/lib/endpointDiagnostics'
 
 /**
  * Llama.cpp timings structure from the response
@@ -124,9 +125,9 @@ export function createLanguageModel(
     apiKey: provider.api_key ?? '',
     baseURL: provider.base_url ?? 'http://localhost:1337/v1',
     headers: {
-      // Add Origin header for local providers
-      ...(provider.base_url?.includes('localhost:') ||
-      provider.base_url?.includes('127.0.0.1:')
+      // Add Origin header for local providers. Loopback *and* LAN, so a
+      // server on this network is not treated as a remote service.
+      ...(isLocalEndpoint(provider.base_url)
         ? { Origin: 'tauri://localhost' }
         : {}),
     },

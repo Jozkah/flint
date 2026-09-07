@@ -21,6 +21,7 @@ import {
   unresolvedRefs,
   type PreviewState,
 } from '@/lib/coworkPreview'
+import { errorText } from '@/lib/errorText'
 
 /** Held as a key, not a translated string: the loader must not depend on `t`,
  * whose identity changes on every render. */
@@ -101,7 +102,7 @@ export function CoworkPreviewPanel({ root, path, onClose }: Props) {
         setState({
           status: 'failed',
           path,
-          reason: e instanceof Error ? e.message : String(e),
+          reason: errorText(e),
         })
       }
     })()

@@ -10,6 +10,7 @@ import {
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { errorText } from '@/lib/errorText'
 
 /**
  * The built-in agent tools the desktop can dispatch.
@@ -114,10 +115,8 @@ type AgentToolResult = {
   diff?: string
 }
 
-const messageOf = (e: unknown): string =>
-  e && typeof e === 'object' && 'message' in e
-    ? String((e as { message: unknown }).message)
-    : String(e)
+/** Shared so a rejected Tauri command never renders as `[object Object]`. */
+const messageOf = errorText
 
 /**
  * Execute one built-in agent tool.

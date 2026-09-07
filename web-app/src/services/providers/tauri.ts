@@ -17,6 +17,10 @@ import {
   providerRemoteApiKeyChain,
 } from '@/lib/provider-api-keys'
 import { ensureAnthropicHeaders } from '@/lib/anthropicHeaders'
+import {
+  describeEndpointFailure,
+  parseModelList,
+} from '@/lib/endpointDiagnostics'
 
 export class TauriProvidersService extends DefaultProvidersService {
   fetch(): typeof fetch {
@@ -199,49 +203,32 @@ export class TauriProvidersService extends DefaultProvidersService {
         }
 
         if (!response.ok) {
-          if (response.status === 401) {
-            throw new Error(
-              `Authentication failed: API key is required or invalid for ${provider.provider}`
-            )
-          }
-          if (response.status === 403) {
-            throw new Error(
-              `Access forbidden: Check your API key permissions for ${provider.provider}`
-            )
-          }
-          if (response.status === 404) {
-            throw new Error(
-              `Models endpoint not found for ${provider.provider}. Check the base URL configuration.`
-            )
-          }
+          // One message that names the provider, the endpoint, the status and
+          // whoever answered. "Access forbidden: check your API key" was
+          // actively misleading for a local server fronted by a proxy, where
+          // the key was never the problem.
           throw new Error(
-            `Failed to fetch models from ${provider.provider}: ${response.status} ${response.statusText}`
+            describeEndpointFailure({
+              provider: provider.provider,
+              url: `${provider.base_url}/models`,
+              method: 'GET',
+              status: response.status,
+              statusText: response.statusText,
+              server: response.headers?.get?.('server') ?? null,
+            })
           )
         }
 
         const data = await response.json()
 
-        if (data.data && Array.isArray(data.data)) {
-          return data.data
-            .map((model: { id: string }) => model.id)
-            .filter(Boolean)
+        // One parser for every shape. llama.cpp answers with a non-standard
+        // `models` array whose entries carry `name`/`model` but no `id`, which
+        // the previous branch turned into a list of `undefined`.
+        const ids = parseModelList(Array.isArray(data) ? { data } : data)
+        if (ids.length === 0) {
+          console.warn('Provider listed no models at /models:', data)
         }
-        if (Array.isArray(data)) {
-          return data
-            .filter(Boolean)
-            .map((model) =>
-              typeof model === 'object' && 'id' in model ? model.id : model
-            )
-        }
-        if (data.models && Array.isArray(data.models)) {
-          return data.models
-            .map((model: string | { id: string }) =>
-              typeof model === 'string' ? model : model.id
-            )
-            .filter(Boolean)
-        }
-        console.warn('Unexpected response format from provider API:', data)
-        return []
+        return ids
       }
 
       throw new Error(

@@ -55,6 +55,7 @@ import {
 } from '@/lib/coworkCode'
 import type { CoworkTurn } from '@/types/coworkSession'
 import { readFileAsText } from '@/lib/fileSafety'
+import { errorText } from '@/lib/errorText'
 
 type DirState =
   | { status: 'loading' }
@@ -989,7 +990,5 @@ function originTitle(
 
 const DENIED_PREFIX = 'DENIED: '
 
-const messageOf = (e: unknown): string =>
-  e && typeof e === 'object' && 'message' in e
-    ? String((e as { message: unknown }).message)
-    : String(e)
+/** Shared so a rejected Tauri command never renders as `[object Object]`. */
+const messageOf = errorText

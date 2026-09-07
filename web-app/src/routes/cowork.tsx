@@ -239,6 +239,7 @@ import {
   runSubagent,
   type SubagentRequest,
 } from '@/lib/coworkSubagent'
+import { errorText } from '@/lib/errorText'
 
 /** How often the backend's background-job list is re-read. Slower than the
  * activity panel's clock tick: the list changes when a command starts or ends,
@@ -278,8 +279,8 @@ const configuredContextTokens = (
   return null
 }
 
-const messageOf = (e: unknown): string =>
-  e instanceof Error ? e.message : String(e)
+/** Shared so a rejected Tauri command never renders as `[object Object]`. */
+const messageOf = errorText
 
 function CoworkPage() {
   const { t } = useTranslation()

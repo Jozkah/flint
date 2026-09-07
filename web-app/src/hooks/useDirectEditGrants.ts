@@ -6,6 +6,7 @@ import {
   directEditRevokeSession,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import type { LiveGrant } from '@/lib/coworkAccess'
+import { errorText } from '@/lib/errorText'
 
 /**
  * The grants this renderer believes the backend is holding.
@@ -58,8 +59,8 @@ type DirectEditGrantsState = {
   forget: (sessionId: string) => void
 }
 
-const messageOf = (e: unknown): string =>
-  e instanceof Error ? e.message : String(e)
+/** Shared so a rejected Tauri command never renders as `[object Object]`. */
+const messageOf = errorText
 
 export const useDirectEditGrants = create<DirectEditGrantsState>()(
   (set, get) => ({

@@ -44,6 +44,10 @@ import {
   API_KEY_FALLBACKS_SETTING_KEY,
   serializeApiKeyFallbacks,
 } from '@/lib/provider-api-keys'
+import {
+  describeEndpointFailure,
+  isLocalEndpoint,
+} from '@/lib/endpointDiagnostics'
 
 // as route.threadsDetail
 export const Route = createFileRoute('/settings/providers/$providerName')({
@@ -420,10 +424,11 @@ function ProviderDetail() {
           'x-api-key': key,
           Authorization: `Bearer ${key}`,
         }
-        if (
-          provider.base_url.includes('localhost:') ||
-          provider.base_url.includes('127.0.0.1:')
-        ) {
+        // Loopback and LAN endpoints are local engines, not remote services.
+        // The old check matched the literal strings "localhost:" and
+        // "127.0.0.1:", so a server on the LAN or on a Tailscale address was
+        // treated as remote.
+        if (isLocalEndpoint(provider.base_url)) {
           headers['Origin'] = 'tauri://localhost'
         }
 
@@ -443,14 +448,31 @@ function ProviderDetail() {
             index: keyIndex,
             masked: maskApiKey(key),
             status,
-            detail: `${response.status} ${response.statusText}`,
+            // Name the endpoint, the status and whoever answered. A bare
+            // "Forbidden (403)" cannot tell a wrong key from a proxy on the
+            // internet answering for a server the user believes is local.
+            detail: response.ok
+              ? `${response.status} ${response.statusText}`
+              : describeEndpointFailure({
+                  provider: provider.provider,
+                  url: `${provider.base_url}/models`,
+                  method: 'GET',
+                  status: response.status,
+                  statusText: response.statusText,
+                  server: response.headers?.get?.('server') ?? null,
+                }),
           })
         } catch (err) {
           results.push({
             index: keyIndex,
             masked: maskApiKey(key),
             status: 'network_error',
-            detail: err instanceof Error ? err.message : 'Unknown error',
+            detail: describeEndpointFailure({
+              provider: provider.provider,
+              url: `${provider.base_url}/models`,
+              method: 'GET',
+              cause: err,
+            }),
           })
         }
       }

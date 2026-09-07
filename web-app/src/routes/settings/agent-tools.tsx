@@ -41,6 +41,7 @@ import {
   deleteMemory,
   type SkillMeta,
 } from '@/lib/agentWorkspace'
+import { errorText } from '@/lib/errorText'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.agent_tools as any)({
@@ -58,10 +59,8 @@ type Editor = {
   content: string
 }
 
-const messageOf = (e: unknown): string =>
-  e && typeof e === 'object' && 'message' in e
-    ? String((e as { message: unknown }).message)
-    : String(e)
+/** Shared so a rejected Tauri command never renders as `[object Object]`. */
+const messageOf = errorText
 
 const SKILL_TEMPLATE = '---\ndescription: \n---\n\n'
 
