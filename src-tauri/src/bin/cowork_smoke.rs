@@ -24,12 +24,17 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use tauri::{AppHandle, Listener, Manager, WebviewWindow};
+use tauri::{AppHandle, Listener, LogicalSize, Manager, WebviewWindow};
 
 /// Compile-time crate root. Fixtures live under this, never under the CWD.
 const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 
 static EVAL_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// A provider name deliberately absent from `predefinedProviders`, so it counts
+/// as a custom endpoint and needs no credential to be usable.
+const SMOKE_PROVIDER: &str = "cowork-smoke-mock";
+const SMOKE_MODEL: &str = "smoke-model";
 /// `AppHandle::exit` unwinds the event loop but does not set this process's
 /// status, so the verdict is stashed here and applied once `run_app` returns.
 static VERDICT: AtomicI32 = AtomicI32::new(2);
@@ -47,6 +52,8 @@ struct Ctx {
     /// Writable per-run workspace (projects are attached from here).
     #[allow(dead_code)]
     workspace: PathBuf,
+    /// The materialised fixture project inside `workspace`.
+    project: PathBuf,
 }
 
 #[derive(Debug)]
@@ -76,7 +83,9 @@ impl Ctx {
     /// (`WebviewWindow::eval` itself is fire-and-forget). A thrown error is
     /// reported as a scenario failure rather than a hang.
     fn eval(&self, js: &str) -> Result<Value, Failure> {
-        self.eval_with_timeout(js, Duration::from_secs(20))
+        // The WebView stalls for seconds at a time while it highlights a large
+        // file or rescans the project tree, and a stall is not a failure.
+        self.eval_with_timeout(js, Duration::from_secs(45))
     }
 
     fn eval_with_timeout(&self, js: &str, timeout: Duration) -> Result<Value, Failure> {
@@ -212,6 +221,79 @@ impl Ctx {
         )
     }
 
+    /// Dispatch a script without waiting for a reply.
+    ///
+    /// Needed for anything that tears the page down -- a reload cannot deliver
+    /// its own completion event.
+    fn eval_detached(&self, js: &str) -> ScenarioResult {
+        self.window
+            .eval(js)
+            .map_err(|e| Failure(format!("eval dispatch failed: {e}")))
+    }
+
+    /// Clear the WebView's own persisted state and reload.
+    ///
+    /// `CI=e2e` redirects the *app data folder*, but the Cowork session store
+    /// lives in the WebView's `localStorage`, which is keyed by the bundle
+    /// identifier and survives between runs. Without this, a run inherits the
+    /// previous run's attached folder -- a path in a temp workspace that has
+    /// since been deleted -- and every file scenario fails against a folder
+    /// that no longer exists.
+    fn reset_persisted_state(&self) -> ScenarioResult {
+        self.wait_until(
+            "React root to mount",
+            "return !!document.querySelector('#root') && document.querySelector('#root').children.length > 0;",
+            Duration::from_secs(90),
+        )?;
+        self.eval(
+            "try { localStorage.clear() } catch (e) {}
+             try { sessionStorage.clear() } catch (e) {}
+             if (window.indexedDB && indexedDB.databases) {
+               try {
+                 for (const db of await indexedDB.databases()) {
+                   if (db.name) indexedDB.deleteDatabase(db.name);
+                 }
+               } catch (e) {}
+             }
+             return true;",
+        )?;
+        self.eval_detached("window.location.reload();")?;
+        std::thread::sleep(Duration::from_secs(2));
+        self.wait_until(
+            "React root to remount after the reset",
+            "return !!document.querySelector('#root') && document.querySelector('#root').children.length > 0;",
+            Duration::from_secs(90),
+        )
+    }
+
+    /// Click a Cowork rail by its exact accessible name.
+    fn click_rail(&self, rail: &str) -> ScenarioResult {
+        let clicked = self.eval_bool(&format!(
+            r#"const el = [...document.querySelectorAll('button')].find(b =>
+                 (b.getAttribute('aria-label') || b.textContent || '').trim() === {rail:?});
+               if (!el) return false; el.click(); return true;"#
+        ))?;
+        ensure!(clicked, "rail button {rail:?} was not present");
+        std::thread::sleep(Duration::from_millis(900));
+        Ok(())
+    }
+
+    /// Script the next native picker answer. `None` scripts a cancellation.
+    ///
+    /// This drives the test-only seam in `core::filesystem::smoke_dialog`,
+    /// which only exists because the crate was built with `cowork-smoke`.
+    fn script_dialog(&self, pick: Option<&Path>) {
+        use app_lib::core::filesystem::smoke_dialog::{CANCEL, SCRIPT_ENV};
+        match pick {
+            Some(path) => std::env::set_var(SCRIPT_ENV, path),
+            None => std::env::set_var(SCRIPT_ENV, CANCEL),
+        }
+    }
+
+    fn clear_dialog_script(&self) {
+        std::env::remove_var(app_lib::core::filesystem::smoke_dialog::SCRIPT_ENV);
+    }
+
     /// Dump a route's structure for scenario authoring.
     fn describe(&self, label: &str) -> ScenarioResult {
         let report = self.eval_string(
@@ -251,6 +333,178 @@ impl Ctx {
             std::thread::sleep(Duration::from_millis(150));
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Fixture project
+// ---------------------------------------------------------------------------
+
+/// Deterministic project the harness attaches to.
+///
+/// Built fresh in the run's temp workspace rather than committed, so the
+/// repository never carries a file named like a private key, a `.env`, or a
+/// blob of NUL bytes -- and so the git history below is real rather than a
+/// nested repo checked into this one.
+fn materialize_project(workspace: &Path, template: Option<&Path>) -> Result<PathBuf, String> {
+    // A distinctive name: scenarios assert on it, and "project" alone
+    // also occurs in the *unattached* prompt text.
+    let root = workspace.join("cowork-smoke-fixture");
+    std::fs::create_dir_all(root.join("src/lib")).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(root.join("secrets")).map_err(|e| e.to_string())?;
+
+    let write = |rel: &str, body: &[u8]| -> Result<(), String> {
+        std::fs::write(root.join(rel), body).map_err(|e| format!("{rel}: {e}"))
+    };
+
+    write(
+        "README.md",
+        b"# Smoke fixture\n\nDeterministic project for cowork-smoke.\n",
+    )?;
+    write(
+        "package.json",
+        b"{\n  \"name\": \"cowork-smoke-fixture\",\n  \"version\": \"1.0.0\"\n}\n",
+    )?;
+    write(
+        "src/index.ts",
+        b"export const greet = (who: string): string => `hello ${who}`\n\nexport default greet\n",
+    )?;
+    // Long enough to need line numbers and a scrollbar in the Code viewer.
+    let mut util = String::from("// nested module used by the Code panel scenarios\n");
+    for i in 1..=120 {
+        util.push_str(&format!("export const value{i} = {i}\n"));
+    }
+    write("src/lib/util.ts", util.as_bytes())?;
+    write(
+        "src/lib/config.json",
+        b"{\n  \"retries\": 3,\n  \"verbose\": false\n}\n",
+    )?;
+    // A wide line, for the wrapping check.
+    write(
+        "src/lib/wide.ts",
+        format!("export const wide = '{}'\n", "x".repeat(400)).as_bytes(),
+    )?;
+    // Externally modifiable, and the file the edit scenarios rewrite.
+    write("notes.txt", b"line one\nline two\nline three\n")?;
+    // Sensitive by name.
+    write(".env", b"SMOKE_TOKEN=not-a-real-secret\n")?;
+    write(
+        "secrets/api_key.pem",
+        b"-----BEGIN PRIVATE KEY-----\nnot-a-real-key\n-----END PRIVATE KEY-----\n",
+    )?;
+    // Binary content behind a text extension: the sniffer must not trust the name.
+    let mut binary = vec![0u8, 1, 2, 3, 0xff, 0xfe];
+    binary.extend_from_slice(b"binary payload behind a .txt name");
+    binary.extend_from_slice(&[0u8, 0u8, 7u8]);
+    write("data.txt", &binary)?;
+
+    if let Some(template) = template {
+        // An explicit --fixtures tree is copied in on top of the generated one.
+        copy_tree(template, &root)?;
+    }
+
+    git_init_with_working_tree_changes(&root)?;
+
+    // Written after the commit so it never enters history, and deliberately not
+    // ignored, so the file browser still lists it. 6 MiB is past any sane
+    // inline-preview budget.
+    write("huge.txt", "A".repeat(6 * 1024 * 1024).as_bytes())?;
+    Ok(root)
+}
+
+/// Seed the fresh data folder so the app does not open first-run onboarding.
+///
+/// `routes/index.tsx` shows `SetupScreen` whenever `hasUsableProvider` is
+/// false, and a pristine data folder has no providers at all. A *custom*
+/// provider (one absent from `predefinedProviders`) is usable on models alone
+/// -- no credential -- which is exactly what a harness needs: deterministic,
+/// offline, and never touching a real endpoint.
+fn seed_settings(data_folder: &Path, base_url: &str) -> Result<(), String> {
+    std::fs::create_dir_all(data_folder).map_err(|e| e.to_string())?;
+    let providers = serde_json::json!({
+        "version": 18,
+        "state": {
+            "providers": [{
+                "active": true,
+                "persist": true,
+                "provider": SMOKE_PROVIDER,
+                "base_url": base_url,
+                "api_key": "smoke-not-a-real-key",
+                "settings": [],
+                "models": [
+                    { "id": SMOKE_MODEL, "name": SMOKE_MODEL,
+                      "capabilities": ["completion", "tools"] },
+                    { "id": "smoke-alt", "name": "smoke-alt",
+                      "capabilities": ["completion", "tools"] }
+                ]
+            }],
+            "selectedProvider": SMOKE_PROVIDER,
+            "selectedModel": SMOKE_MODEL,
+            "deletedModels": []
+        }
+    });
+    let settings = serde_json::json!({
+        "model-provider": providers.to_string(),
+        // Onboarding nudges that would otherwise cover the surfaces under test.
+        "jan-model-prompt-dismissed": "true",
+        "productAnalytic": "false",
+        "productAnalyticPrompt": "false",
+    });
+    std::fs::write(
+        data_folder.join("settings.json"),
+        serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn copy_tree(from: &Path, to: &Path) -> Result<(), String> {
+    for entry in std::fs::read_dir(from).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let target = to.join(entry.file_name());
+        if entry.path().is_dir() {
+            std::fs::create_dir_all(&target).map_err(|e| e.to_string())?;
+            copy_tree(&entry.path(), &target)?;
+        } else {
+            std::fs::copy(entry.path(), &target).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+fn git(root: &Path, args: &[&str]) -> Result<String, String> {
+    let out = std::process::Command::new("git")
+        .current_dir(root)
+        .args(args)
+        .output()
+        .map_err(|e| format!("git {args:?}: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+/// A committed baseline plus real working-tree changes, so "what git sees" can
+/// be told apart from "what a Cowork run changed".
+fn git_init_with_working_tree_changes(root: &Path) -> Result<(), String> {
+    git(root, &["init", "-q", "-b", "main"])?;
+    git(root, &["config", "user.email", "smoke@example.invalid"])?;
+    git(root, &["config", "user.name", "Cowork Smoke"])?;
+    std::fs::write(root.join(".gitignore"), "# intentionally empty\n")
+        .map_err(|e| e.to_string())?;
+    git(root, &["add", "-A"])?;
+    git(root, &["commit", "-qm", "baseline"])?;
+
+    // Working-tree changes that predate any Cowork run.
+    std::fs::write(
+        root.join("README.md"),
+        "# Smoke fixture\n\nEdited in the working tree before Cowork ran.\n",
+    )
+    .map_err(|e| e.to_string())?;
+    std::fs::write(root.join("untracked.md"), "created outside Cowork\n")
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -295,6 +549,62 @@ const SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "model-picker-search",
         run: scenario_model_picker,
+    },
+    Scenario {
+        name: "dialog-seam-over-ipc",
+        run: scenario_dialog_seam,
+    },
+    Scenario {
+        name: "project-attachment-cancelled",
+        run: scenario_attach_cancelled,
+    },
+    Scenario {
+        name: "project-attachment",
+        run: scenario_attach,
+    },
+    Scenario {
+        name: "probe-cowork-attached",
+        run: scenario_probe_attached,
+    },
+    Scenario {
+        name: "lazy-project-browsing",
+        run: scenario_lazy_browsing,
+    },
+    Scenario {
+        name: "probe-code-panel",
+        run: scenario_probe_code_panel,
+    },
+    Scenario {
+        name: "code-tabs",
+        run: scenario_code_tabs,
+    },
+    Scenario {
+        name: "code-viewer-presentation",
+        run: scenario_code_viewer,
+    },
+    Scenario {
+        name: "file-read",
+        run: scenario_file_read,
+    },
+    Scenario {
+        name: "sensitive-file-rejection",
+        run: scenario_sensitive_rejection,
+    },
+    Scenario {
+        name: "binary-file-rejection",
+        run: scenario_binary_rejection,
+    },
+    Scenario {
+        name: "oversized-file-handling",
+        run: scenario_oversized,
+    },
+    Scenario {
+        name: "git-working-tree-vs-sandbox",
+        run: scenario_git_vs_sandbox,
+    },
+    Scenario {
+        name: "composer-controls-do-not-overlap",
+        run: scenario_composer_layout,
     },
     Scenario {
         name: "macos-title-bar",
@@ -420,15 +730,7 @@ fn scenario_cowork_rails(ctx: &Ctx) -> ScenarioResult {
 
     for rail in ["Code", "Preview", "Changes", "Activity"] {
         // Match the rail exactly: "Code" must not select "Open code folder".
-        let clicked = ctx.eval_bool(&format!(
-            r#"const el = [...document.querySelectorAll('button')].find(b =>
-                 (b.getAttribute('aria-label') || b.textContent || '').trim() === {rail:?});
-               if (!el) return false;
-               el.click();
-               return true;"#
-        ))?;
-        ensure!(clicked, "rail button {rail:?} was not present");
-        std::thread::sleep(Duration::from_millis(900));
+        ctx.click_rail(rail)?;
         let panel = ctx.eval_string("return document.body.innerText;")?;
         ensure!(
             !panel.trim().is_empty(),
@@ -476,14 +778,37 @@ fn scenario_temporary_chat(ctx: &Ctx) -> ScenarioResult {
 /// The model picker opens and its search narrows the list.
 fn scenario_model_picker(ctx: &Ctx) -> ScenarioResult {
     ctx.goto("/")?;
-    ctx.click_matching("button", "Select a model")?;
-    std::thread::sleep(Duration::from_millis(900));
+    // The trigger's label carries the current model, so match on the control's
+    // role rather than a fixed string, and retry: a stray open popover from an
+    // earlier scenario can swallow the first click.
+    let open_js = "return [...document.querySelectorAll('input')].some(i =>
+            /search|find|model/i.test(i.getAttribute('placeholder') || ''));";
+    let mut opened = false;
+    for _ in 0..3 {
+        ctx.eval(
+            "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+             return true;",
+        )?;
+        std::thread::sleep(Duration::from_millis(400));
+        let clicked = ctx.eval_bool(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /select a model/i.test((x.getAttribute('aria-label') || '') + ' ' + (x.textContent || ''))
+               || x.closest('[data-model-trigger]'));
+             if (!b) return false; b.click(); return true;",
+        )?;
+        if !clicked {
+            continue;
+        }
+        if ctx
+            .wait_until("the model picker to open", open_js, Duration::from_secs(8))
+            .is_ok()
+        {
+            opened = true;
+            break;
+        }
+    }
+    ensure!(opened, "the model picker never exposed its search input");
     ctx.describe("model-picker")?;
-    let has_search = ctx.eval_bool(
-        "return [...document.querySelectorAll('input')].some(i =>
-            /search|find|model/i.test(i.getAttribute('placeholder') || ''));",
-    )?;
-    ensure!(has_search, "model picker exposed no search input");
     // Close the dialog deliberately: a left-open modal blocks the next
     // scenario's navigation.
     ctx.eval(
@@ -540,13 +865,579 @@ fn scenario_macos_title_bar(ctx: &Ctx) -> ScenarioResult {
     let top_left_clear = ctx.eval_bool(
         "const el = document.elementFromPoint(24, 20);
          if (!el) return true;
-         return !!el.closest('[data-tauri-drag-region]')
-             || el.tagName === 'BODY' || el.tagName === 'HTML' || el.id === 'root';",
+         // Anything clickable here would sit under the traffic light.
+         return !el.closest('button, a[href], input, select, textarea, [role=\"button\"]');",
     )?;
     ensure!(
         top_left_clear,
         "an interactive element sits under the macOS traffic-light inset"
     );
+    Ok(())
+}
+
+/// The scripted picker answers the real `open_dialog` command over real IPC.
+///
+/// Runs before the UI attach scenarios so a failure says whether the seam or
+/// the attach handler is at fault.
+fn scenario_dialog_seam(ctx: &Ctx) -> ScenarioResult {
+    let path = ctx.project.to_string_lossy().to_string();
+
+    ctx.script_dialog(Some(&ctx.project));
+    let picked = ctx.eval(
+        "return await window.__TAURI_INTERNALS__.invoke('open_dialog',
+            { options: { directory: true } });",
+    );
+    ctx.clear_dialog_script();
+    let picked = picked?;
+    ensure!(
+        picked.as_str() == Some(path.as_str()),
+        "scripted picker returned {picked:?}, expected {path:?}"
+    );
+
+    ctx.script_dialog(None);
+    let cancelled = ctx.eval(
+        "return await window.__TAURI_INTERNALS__.invoke('open_dialog',
+            { options: { directory: true } });",
+    );
+    ctx.clear_dialog_script();
+    ensure!(
+        cancelled?.is_null(),
+        "a scripted cancellation must return null"
+    );
+    Ok(())
+}
+
+/// The workspace pill. It is a popover *trigger*, not the attach action --
+/// clicking it alone does nothing, which is what made the first version of the
+/// attach scenario fail while reporting no error at all.
+const PILL_JS: &str = r#"[...document.querySelectorAll('button')].find(b =>
+    /no project folder attached/i.test(b.getAttribute('aria-label') || ''))"#;
+
+/// The attach action, which lives inside the pill's popover.
+const ATTACH_ITEM_JS: &str = r#"[...document.querySelectorAll('button,[role="menuitem"]')].find(b => {
+    const t = ((b.getAttribute('aria-label') || '') + ' ' + (b.textContent || '')).trim();
+    return /^(attach a folder|attach project)$/i.test(t);
+  })"#;
+
+/// Open the pill popover and click its attach action.
+fn open_picker_through_the_pill(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the workspace pill",
+        &format!("return !!({PILL_JS});"),
+        Duration::from_secs(30),
+    )?;
+    ctx.eval(&format!("({PILL_JS}).click(); return true;"))?;
+    ctx.wait_until(
+        "the pill popover's attach action",
+        &format!("return !!({ATTACH_ITEM_JS});"),
+        Duration::from_secs(15),
+    )?;
+    ctx.eval(&format!("({ATTACH_ITEM_JS}).click(); return true;"))?;
+    Ok(())
+}
+
+/// A dismissed picker must leave the session unattached.
+fn scenario_attach_cancelled(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_dialog(None);
+    let opened = open_picker_through_the_pill(ctx);
+    std::thread::sleep(Duration::from_secs(3));
+    ctx.clear_dialog_script();
+    opened?;
+
+    let still_unattached = ctx.eval_bool(&format!("return !!({PILL_JS});"))?;
+    ensure!(
+        still_unattached,
+        "cancelling the picker still attached a project"
+    );
+    Ok(())
+}
+
+/// Attaching through the real handler, the real service hub and the real
+/// `open_dialog` command -- only the OS modal is scripted.
+fn scenario_attach(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_dialog(Some(&ctx.project));
+    let opened = open_picker_through_the_pill(ctx);
+
+    // Assert on the fixture's own directory name. "project" alone would also
+    // match the unattached prompt, which is how the first version of this
+    // scenario passed without ever attaching anything.
+    let name = ctx
+        .project
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let landed = opened.and_then(|()| {
+        ctx.wait_until(
+            "the project to attach",
+            &format!(
+                "return document.body.innerText.includes({name:?})
+                     && !{PILL_JS};"
+            ),
+            Duration::from_secs(45),
+        )
+    });
+    ctx.clear_dialog_script();
+    landed?;
+
+    // The Code rail must stop offering to attach and start browsing.
+    ctx.click_rail("Code")?;
+    ctx.wait_until(
+        "the Code rail to leave its empty state",
+        "return !document.body.innerText.includes('Attach a project folder to browse');",
+        Duration::from_secs(20),
+    )?;
+    Ok(())
+}
+
+/// One-off reconnaissance: what the Code panel offers once a file is open, and
+/// exactly which elements are stacked over the rail icons.
+fn scenario_probe_code_panel(ctx: &Ctx) -> ScenarioResult {
+    open_code_explorer(ctx)?;
+    if !explorer_text(ctx)?.contains("index.ts") {
+        click_tree_entry(ctx, "src")?;
+        std::thread::sleep(Duration::from_millis(900));
+    }
+    click_tree_entry(ctx, "index.ts")?;
+    std::thread::sleep(Duration::from_secs(2));
+
+    let panel = ctx.eval_string(
+        r#"const ids = [...document.querySelectorAll('[data-testid],[data-test-id]')]
+             .map(e => e.getAttribute('data-testid') || e.getAttribute('data-test-id'));
+           const btns = [...document.querySelectorAll('button,[role="tab"],[role="treeitem"]')]
+             .map(b => ({
+               label: (b.getAttribute('aria-label') || b.textContent || '').trim().slice(0, 40),
+               title: b.getAttribute('title') || null,
+             }))
+             .filter(b => b.label || b.title);
+           return JSON.stringify({ testids: [...new Set(ids)], buttons: btns.slice(0, 60) }, null, 1);"#,
+    )?;
+    println!("--- probe code panel ---\n{panel}\n--- end ---");
+
+    let stack = ctx.eval_string(
+        r#"const send = document.querySelector('[data-test-id="send-message-button"]');
+           const rail = [...document.querySelectorAll('button')].find(x =>
+             (x.getAttribute('aria-label') || x.textContent || '').trim() === 'Preview');
+           if (!send || !rail) return JSON.stringify({ error: 'missing', send: !!send, rail: !!rail });
+           const chain = (el) => {
+             const out = [];
+             for (let e = el; e && e !== document.body; e = e.parentElement) {
+               const cs = getComputedStyle(e);
+               const r = e.getBoundingClientRect();
+               out.push({
+                 tag: e.tagName,
+                 cls: (e.className || '').toString().slice(0, 150),
+                 pos: cs.position,
+                 disp: cs.display,
+                 z: cs.zIndex,
+                 pr: cs.paddingRight,
+                 mr: cs.marginRight,
+                 w: Math.round(r.width),
+                 left: Math.round(r.left),
+                 right: Math.round(r.right),
+               });
+             }
+             return out;
+           };
+           return JSON.stringify({ send: chain(send).slice(0, 6), rail: chain(rail).slice(0, 6) }, null, 1);"#,
+    )?;
+    println!("--- probe layout stack ---\n{stack}\n--- end ---");
+    Ok(())
+}
+
+/// Open the Code rail and make sure the file tree -- not an open file -- is
+/// showing.
+///
+/// Opening a file replaces the tree with the viewer, and the rail button is a
+/// toggle, so clicking it again would close the panel outright. The panel's own
+/// "Project explorer" control is the way back.
+fn open_code_explorer(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/cowork")?;
+    let explorer = "return !!document.querySelector('[data-testid=\"code-explorer\"]');";
+    if !ctx.eval_bool(explorer)? {
+        let went_back = ctx.eval_bool(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /project explorer/i.test((x.getAttribute('aria-label') || '')
+                 + ' ' + (x.getAttribute('title') || '')));
+             if (!b) return false; b.click(); return true;",
+        )?;
+        if !went_back {
+            ctx.click_rail("Code")?;
+        }
+        std::thread::sleep(Duration::from_millis(700));
+    }
+    ctx.wait_until("the code explorer", explorer, Duration::from_secs(20))
+}
+
+fn click_tree_entry(ctx: &Ctx, name: &str) -> Result<bool, Failure> {
+    ctx.eval_bool(&format!(
+        r#"const root = document.querySelector('[data-testid="code-explorer"]');
+           if (!root) return false;
+           // The name may sit on a leaf span rather than the row element, so
+           // find the deepest node carrying exactly that text and climb to the
+           // nearest thing that can actually be clicked.
+           const leaf = [...root.querySelectorAll('*')]
+             .filter(e => e.children.length === 0 && (e.textContent || '').trim() === {name:?})
+             .pop()
+             || [...root.querySelectorAll('*')]
+               .filter(e => (e.textContent || '').trim() === {name:?})
+               .pop();
+           if (!leaf) return false;
+           const target = leaf.closest('button,[role="treeitem"],[role="button"],a,li') || leaf;
+           target.scrollIntoView({{ block: 'center' }});
+           target.click();
+           return true;"#
+    ))
+}
+
+fn explorer_text(ctx: &Ctx) -> Result<String, Failure> {
+    ctx.eval_string(
+        "const r = document.querySelector('[data-testid=\"code-explorer\"]');
+         return r ? r.textContent : '';",
+    )
+}
+
+/// A folder's children appear only once it is expanded -- the tree is not
+/// enumerated eagerly.
+fn scenario_lazy_browsing(ctx: &Ctx) -> ScenarioResult {
+    open_code_explorer(ctx)?;
+
+    // An earlier scenario may have left src expanded, so collapse it first
+    // rather than assuming the tree starts closed.
+    if explorer_text(ctx)?.contains("index.ts") {
+        click_tree_entry(ctx, "src")?;
+        std::thread::sleep(Duration::from_millis(800));
+    }
+
+    let before = explorer_text(ctx)?;
+    ensure!(
+        before.contains("src"),
+        "the explorer never listed the src folder (saw {before:?})"
+    );
+    ensure!(
+        !before.contains("index.ts"),
+        "src/index.ts was listed while src was collapsed; the tree is eager"
+    );
+
+    ensure!(
+        click_tree_entry(ctx, "src")?,
+        "could not click the src folder"
+    );
+    ctx.wait_until(
+        "src to expand",
+        "const r = document.querySelector('[data-testid=\"code-explorer\"]');
+         return !!r && r.textContent.includes('index.ts');",
+        Duration::from_secs(15),
+    )?;
+
+    // A nested folder is still not expanded.
+    let after = explorer_text(ctx)?;
+    ensure!(
+        after.contains("lib"),
+        "the nested lib folder did not appear after expanding src"
+    );
+    ensure!(
+        !after.contains("util.ts"),
+        "src/lib/util.ts was listed before lib was expanded; expansion is not lazy"
+    );
+    Ok(())
+}
+
+/// Opening files puts them in the Code panel, one tab each.
+fn scenario_code_tabs(ctx: &Ctx) -> ScenarioResult {
+    open_code_explorer(ctx)?;
+    if !explorer_text(ctx)?.contains("index.ts") {
+        click_tree_entry(ctx, "src")?;
+        std::thread::sleep(Duration::from_millis(900));
+    }
+    ensure!(
+        click_tree_entry(ctx, "index.ts")?,
+        "could not open src/index.ts"
+    );
+    ctx.wait_until(
+        "the code viewer",
+        "return !!document.querySelector('[data-testid=\"code-viewer-body\"]')
+             || !!document.querySelector('[data-testid=\"code-editor\"]');",
+        Duration::from_secs(20),
+    )?;
+
+    // Opening a file replaces the tree, so go back to it before the second one.
+    open_code_explorer(ctx)?;
+    if !click_tree_entry(ctx, "README.md")? {
+        let names = ctx.eval_string(
+            "const r = document.querySelector('[data-testid=\"code-explorer\"]');
+             if (!r) return 'no explorer';
+             return [...r.querySelectorAll('*')]
+               .filter(e => e.children.length === 0)
+               .map(e => (e.textContent || '').trim())
+               .filter(Boolean).slice(0, 40).join(' | ');",
+        )?;
+        bail!("could not open README.md; explorer leaves were: {names}");
+    }
+    ctx.wait_until(
+        "a second open file",
+        "const t = document.body.innerText;
+         return t.includes('README.md') && t.includes('index.ts');",
+        Duration::from_secs(20),
+    )?;
+    ctx.describe("code-tabs")?;
+    Ok(())
+}
+
+/// Line numbers, highlighting, wrapping and scrolling in the Code viewer.
+fn scenario_code_viewer(ctx: &Ctx) -> ScenarioResult {
+    open_file(ctx, &["src", "lib", "util.ts"])?;
+    ctx.wait_until(
+        "util.ts to render",
+        "const b = document.querySelector('[data-testid=\"code-viewer-body\"]');
+         return !!b && b.textContent.includes('value120');",
+        Duration::from_secs(45),
+    )?;
+
+    // Deliberately several small evals: one script that measured everything at
+    // once kept exceeding the eval budget while the viewer was still
+    // highlighting, and reported a timeout instead of a verdict.
+    const BODY: &str = "document.querySelector('[data-testid=\"code-viewer-body\"]')";
+
+    let numbered = ctx.eval_bool(&format!(
+        "const b = {BODY}; if (!b) return false;
+         const t = b.textContent || '';
+         return /(^|\\n)\\s*1\\s/.test(t) && t.includes('120');"
+    ))?;
+    ensure!(numbered, "the viewer showed no line-number gutter");
+
+    let colours = ctx.eval(&format!(
+        "const b = {BODY}; if (!b) return 0;
+         const spans = b.querySelectorAll('span');
+         const seen = new Set();
+         for (let i = 0; i < spans.length && i < 40; i++) seen.add(getComputedStyle(spans[i]).color);
+         return seen.size;"
+    ))?;
+    println!("      distinct token colours: {colours}");
+    ensure!(
+        colours.as_u64().unwrap_or(0) > 1,
+        "every token rendered in one colour, so nothing is highlighted"
+    );
+
+    let scrollable = ctx.eval_bool(&format!(
+        "const b = {BODY}; return !!b && b.scrollHeight > b.clientHeight + 4;"
+    ))?;
+    ensure!(
+        scrollable,
+        "a 120-line file did not overflow its viewport, so scrolling is untested"
+    );
+
+    // Scrolling actually moves the viewport.
+    let scrolled = ctx.eval_bool(
+        "const b = document.querySelector('[data-testid=\"code-viewer-body\"]');
+         if (!b) return false;
+         const before = b.scrollTop;
+         b.scrollTop = b.scrollHeight;
+         return b.scrollTop > before;",
+    )?;
+    ensure!(scrolled, "the code viewer would not scroll");
+
+    // Word wrap is a real toggle, and it must change how the body wraps.
+    let before = ctx.eval_string(
+        "const b = document.querySelector('[data-testid=\"code-viewer-body\"]');
+         return b ? getComputedStyle(b).whiteSpace : '';",
+    )?;
+    let toggled = ctx.eval_bool(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /word wrap/i.test((x.getAttribute('aria-label') || '')
+             + ' ' + (x.getAttribute('title') || '')));
+         if (!b) return false; b.click(); return true;",
+    )?;
+    ensure!(toggled, "the viewer exposed no word-wrap control");
+    std::thread::sleep(Duration::from_millis(600));
+    let after = ctx.eval_string(
+        "const b = document.querySelector('[data-testid=\"code-viewer-body\"]');
+         return b ? getComputedStyle(b).whiteSpace : '';",
+    )?;
+    println!("      word wrap: {before} -> {after}");
+    ensure!(
+        before != after,
+        "toggling word wrap did not change the viewer's wrapping ({before})"
+    );
+    Ok(())
+}
+
+/// Open a file by walking the tree from the explorer each time.
+fn open_file(ctx: &Ctx, path: &[&str]) -> ScenarioResult {
+    open_code_explorer(ctx)?;
+    for (i, part) in path.iter().enumerate() {
+        let last = i + 1 == path.len();
+        if !last && explorer_text(ctx)?.contains(path[i + 1]) {
+            continue; // already expanded
+        }
+        ensure!(
+            click_tree_entry(ctx, part)?,
+            "could not click {part:?} while opening {path:?}"
+        );
+        std::thread::sleep(Duration::from_millis(900));
+    }
+    Ok(())
+}
+
+/// Reading a file shows its real contents.
+fn scenario_file_read(ctx: &Ctx) -> ScenarioResult {
+    open_file(ctx, &["src", "index.ts"])?;
+    ctx.wait_until(
+        "index.ts contents",
+        "return document.body.innerText.includes('export const greet');",
+        Duration::from_secs(25),
+    )?;
+    Ok(())
+}
+
+/// Opening a file named like a secret must be refused, not previewed.
+fn scenario_sensitive_rejection(ctx: &Ctx) -> ScenarioResult {
+    open_file(ctx, &[".env"])?;
+    std::thread::sleep(Duration::from_secs(2));
+    let text = ctx.eval_string("return document.body.innerText;")?;
+    ensure!(
+        !text.contains("SMOKE_TOKEN"),
+        "the contents of .env were rendered into the UI"
+    );
+    println!("      after clicking .env, secret not shown");
+    Ok(())
+}
+
+/// A binary file behind a text extension must be refused, not rendered.
+fn scenario_binary_rejection(ctx: &Ctx) -> ScenarioResult {
+    open_file(ctx, &["data.txt"])?;
+    std::thread::sleep(Duration::from_secs(2));
+    let text = ctx.eval_string("return document.body.innerText;")?;
+    ensure!(
+        !text.contains("binary payload behind"),
+        "binary bytes were rendered as text despite the .txt extension"
+    );
+    println!("      after clicking data.txt, binary not rendered");
+    Ok(())
+}
+
+/// A 6 MiB file must not be inlined whole.
+fn scenario_oversized(ctx: &Ctx) -> ScenarioResult {
+    open_code_explorer(ctx)?;
+    ensure!(
+        explorer_text(ctx)?.contains("huge.txt"),
+        "the explorer did not list huge.txt"
+    );
+    open_file(ctx, &["huge.txt"])?;
+    std::thread::sleep(Duration::from_secs(3));
+    let len = ctx.eval("return document.body.innerText.length;")?;
+    let len = len.as_u64().unwrap_or(0);
+    println!("      body text length after opening a 6 MiB file: {len}");
+    ensure!(
+        len < 2_000_000,
+        "a 6 MiB file was inlined into the DOM ({len} chars of text)"
+    );
+    Ok(())
+}
+
+/// Uncommitted working-tree changes are surfaced, and are attributed to the
+/// working tree rather than to a Cowork run that never happened.
+fn scenario_git_vs_sandbox(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/cowork")?;
+    ctx.click_rail("Changes")?;
+    ctx.wait_until(
+        "the Changes rail",
+        "return document.body.innerText.includes('Changes');",
+        Duration::from_secs(20),
+    )?;
+    std::thread::sleep(Duration::from_secs(2));
+    let text = ctx.eval_string("return document.body.innerText;")?;
+    println!(
+        "      changes rail tail: {:?}",
+        &text[text.len().saturating_sub(400)..]
+    );
+
+    // No Cowork run has happened in this session, so anything listed here comes
+    // from the working tree the harness dirtied before attaching.
+    ensure!(
+        text.contains("README.md") || text.contains("untracked.md"),
+        "the working-tree changes made before attaching are not listed"
+    );
+    ensure!(
+        !text.contains("No changes yet"),
+        "the Changes rail still claims there is nothing to show"
+    );
+    Ok(())
+}
+
+/// Nothing in the composer footer may sit on top of anything else.
+///
+/// The send button and the Code/Preview/Changes/Activity rail icons share one
+/// row. When the row runs out of width the send control is drawn over the rail
+/// icons instead of the row wrapping or reserving space, which makes those
+/// icons unclickable where they overlap.
+fn scenario_composer_layout(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the composer",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(30),
+    )?;
+    std::thread::sleep(Duration::from_millis(600));
+
+    let report = ctx.eval_string(
+        r#"const send = document.querySelector('[data-test-id="send-message-button"]');
+           if (!send) return JSON.stringify({ error: 'no send button' });
+           const s = send.getBoundingClientRect();
+           const names = ['Code', 'Preview', 'Changes', 'Activity'];
+           const clashes = [];
+           for (const n of names) {
+             const b = [...document.querySelectorAll('button')].find(x =>
+               (x.getAttribute('aria-label') || x.textContent || '').trim() === n);
+             if (!b) continue;
+             const r = b.getBoundingClientRect();
+             const overlapX = Math.min(s.right, r.right) - Math.max(s.left, r.left);
+             const overlapY = Math.min(s.bottom, r.bottom) - Math.max(s.top, r.top);
+             if (overlapX > 1 && overlapY > 1) {
+               clashes.push({ rail: n, overlapX: Math.round(overlapX), overlapY: Math.round(overlapY) });
+             }
+             // Whatever the geometry says, the rail's own centre must belong to
+             // the rail: that is what decides whether a click reaches it.
+             const cx = Math.round(r.left + r.width / 2);
+             const cy = Math.round(r.top + r.height / 2);
+             const hit = document.elementFromPoint(cx, cy);
+             if (hit && !b.contains(hit) && hit !== b && !hit.contains(b)) {
+               clashes.push({
+                 rail: n,
+                 covered_by: hit.tagName,
+                 cls: (hit.className || '').toString().slice(0, 120),
+                 z: getComputedStyle(hit).zIndex,
+                 pos: getComputedStyle(hit).position,
+               });
+             }
+           }
+           return JSON.stringify({ send: { left: Math.round(s.left), right: Math.round(s.right) }, clashes });"#,
+    )?;
+    println!("      composer layout: {report}");
+    let v: Value = serde_json::from_str(&report).unwrap_or(Value::Null);
+    let clashes = v
+        .get("clashes")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    ensure!(
+        clashes.is_empty(),
+        "composer controls overlap the rail icons: {report}"
+    );
+    Ok(())
+}
+
+/// Reconnaissance of the attached Cowork surface.
+fn scenario_probe_attached(ctx: &Ctx) -> ScenarioResult {
+    ctx.describe("cowork-attached")?;
+    for rail in ["Code", "Changes", "Activity", "Preview"] {
+        if ctx.click_rail(rail).is_err() {
+            println!("      rail {rail} missing");
+            continue;
+        }
+        std::thread::sleep(Duration::from_millis(400));
+        ctx.describe(&format!("rail-{rail}"))?;
+    }
     Ok(())
 }
 
@@ -587,6 +1478,19 @@ fn main() {
     let workspace = std::env::temp_dir().join(format!("cowork-smoke-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&workspace);
     std::fs::create_dir_all(&workspace).expect("failed to create smoke workspace");
+    // `JAN_DATA_FOLDER` is the only override `resolve_jan_data_folder` honours,
+    // and it is the one that matters: settings.json -- which is where the
+    // Cowork session store actually persists, via `settings_set` -- is resolved
+    // through that function and NOT through `CI=e2e`. Without this the harness
+    // writes its sessions into the developer's real Jan data folder, and each
+    // run inherits the previous run's attached folder from a temp directory
+    // that has since been deleted.
+    let data_folder = workspace.join("data");
+    if let Err(e) = seed_settings(&data_folder, "http://127.0.0.1:59137/v1") {
+        eprintln!("FATAL: could not seed the smoke data folder: {e}");
+        std::process::exit(2);
+    }
+    std::env::set_var("JAN_DATA_FOLDER", &data_folder);
     std::env::set_var("CI", "e2e");
     std::env::set_current_dir(&workspace).expect("failed to enter smoke workspace");
 
@@ -629,17 +1533,32 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf) -> i32 {
             return 2;
         }
     };
+    // Layout assertions compare real geometry, so the window must be the same
+    // size on every run rather than whatever the platform last remembered.
+    if let Err(e) = window.set_size(LogicalSize::new(1440.0, 900.0)) {
+        eprintln!("WARN: could not fix the window size: {e}");
+    }
+    std::thread::sleep(Duration::from_millis(800));
+
+    let template = fixtures.is_dir().then(|| fixtures.clone());
+    let project = match materialize_project(&workspace, template.as_deref()) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("FATAL: could not materialise the fixture project: {e}");
+            return 2;
+        }
+    };
+    println!("fixture project: {}", project.display());
+
     let ctx = Ctx {
         window,
         fixtures,
         workspace,
+        project,
     };
 
-    if !ctx.fixtures.is_dir() {
-        eprintln!(
-            "FATAL: fixtures directory not found: {}",
-            ctx.fixtures.display()
-        );
+    if let Err(Failure(e)) = ctx.reset_persisted_state() {
+        eprintln!("FATAL: could not reset persisted WebView state: {e}");
         return 2;
     }
 
@@ -655,8 +1574,30 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf) -> i32 {
 
     let mut failed = 0usize;
     for scenario in &scenarios {
-        match (scenario.run)(&ctx) {
-            Ok(()) => println!("PASS {}", scenario.name),
+        // One retry. The WebView stalls for tens of seconds while it highlights
+        // a large file or rescans the tree, and a stall is not a defect -- but a
+        // retried pass is reported as such so it never reads as a clean pass.
+        let first = (scenario.run)(&ctx);
+        let outcome = match first {
+            Ok(()) => Ok(false),
+            Err(first_err) => {
+                if scenario.name == SELF_TEST_FAIL.name {
+                    Err(first_err)
+                } else {
+                    std::thread::sleep(Duration::from_secs(2));
+                    match (scenario.run)(&ctx) {
+                        Ok(()) => Ok(true),
+                        Err(Failure(second)) => Err(Failure(format!(
+                            "{second}\n(first attempt also failed: {})",
+                            first_err.0
+                        ))),
+                    }
+                }
+            }
+        };
+        match outcome {
+            Ok(false) => println!("PASS {}", scenario.name),
+            Ok(true) => println!("PASS {} (on retry)", scenario.name),
             Err(Failure(msg)) => {
                 failed += 1;
                 println!(

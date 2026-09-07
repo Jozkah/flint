@@ -265,6 +265,14 @@ pub(crate) fn unpack_archive(
 pub async fn open_dialog(
     options: Option<DialogOpenOptions>,
 ) -> Result<Option<serde_json::Value>, String> {
+    // Test-only: the cowork-smoke harness scripts the picker's answer because a
+    // WebView harness cannot drive a native modal. Everything else on this path
+    // stays real. Absent from release builds -- see `smoke_dialog`.
+    #[cfg(feature = "cowork-smoke")]
+    if let Some(scripted) = super::smoke_dialog::scripted_response() {
+        return Ok(scripted);
+    }
+
     let mut dialog = AsyncFileDialog::new();
 
     if let Some(opts) = options {

@@ -164,3 +164,77 @@ fn the_smoke_harness_uses_the_shared_construction_path() {
         "the harness must never resolve launch.json"
     );
 }
+
+// ---------------------------------------------------------------------------
+// The test-only dialog seam must not exist in production builds.
+// ---------------------------------------------------------------------------
+
+fn manifest(rel: &str) -> String {
+    std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(rel))
+        .unwrap_or_else(|e| panic!("{rel} must be readable: {e}"))
+}
+
+/// If `cowork-smoke` ever joins the default feature set, the seam ships.
+#[test]
+fn the_smoke_feature_is_not_a_default_feature() {
+    let toml = manifest("Cargo.toml");
+    let default_block = toml
+        .split("default = [")
+        .nth(1)
+        .and_then(|rest| rest.split(']').next())
+        .expect("Cargo.toml must declare a default feature list");
+    assert!(
+        !default_block.contains("cowork-smoke"),
+        "cowork-smoke became a default feature; the dialog seam would ship in \
+         release builds. default = [{default_block}]"
+    );
+}
+
+/// Every mention of the seam in production source must sit behind the feature.
+#[test]
+fn the_dialog_seam_is_gated_everywhere_it_is_mentioned() {
+    for rel in [
+        "src/core/filesystem/mod.rs",
+        "src/core/filesystem/commands.rs",
+    ] {
+        let src = manifest(rel);
+        let lines: Vec<&str> = src.lines().collect();
+        for (idx, line) in lines.iter().enumerate() {
+            // Only real code counts; prose about the seam is not the seam.
+            if !line.contains("smoke_dialog") || line.trim().starts_with("//") {
+                continue;
+            }
+            // Walk back over comments to the nearest attribute or code line.
+            let guard = lines[..idx]
+                .iter()
+                .rev()
+                .find(|l| !l.trim().is_empty() && !l.trim().starts_with("//"))
+                .copied()
+                .unwrap_or("");
+            assert!(
+                guard.contains(r#"#[cfg(feature = "cowork-smoke")]"#),
+                "{rel}:{} references smoke_dialog without a \
+                 #[cfg(feature = \"cowork-smoke\")] guard directly above it \
+                 (found {guard:?})",
+                idx + 1
+            );
+        }
+    }
+}
+
+/// The seam is driven by the harness's own process environment. It must never
+/// become reachable from the WebView, which would hand JavaScript a way to make
+/// the picker return an arbitrary path.
+#[test]
+fn the_dialog_seam_is_not_exposed_to_javascript() {
+    let seam = manifest("src/core/filesystem/smoke_dialog.rs");
+    assert!(
+        !seam.contains("#[tauri::command]"),
+        "the dialog seam must not be a Tauri command"
+    );
+    let lib = lib_rs();
+    assert!(
+        !lib.contains("smoke_dialog"),
+        "the dialog seam must not be registered in the invoke handler"
+    );
+}

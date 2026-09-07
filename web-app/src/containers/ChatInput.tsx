@@ -2250,7 +2250,7 @@ const ChatInput = memo(function ChatInput({
 
         <div className="absolute z-20 bg-transparent bottom-0 w-full p-2 ">
           <div className="flex justify-between items-center w-full">
-            <div className="px-1 flex items-center gap-1 flex-1 min-w-0">
+            <div className="px-1 flex flex-wrap items-center gap-x-1 gap-y-1 flex-1 min-w-0">
               <div
                 className={cn(
                   'px-1 flex items-center gap-1',
@@ -2782,7 +2782,7 @@ const ChatInput = memo(function ChatInput({
                   })()}
               </div>
               {surfaceControls && (
-                <div className="flex min-w-0 flex-1 items-center gap-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-1">
                   <Separator
                     orientation="vertical"
                     className="mx-1 h-4 shrink-0"

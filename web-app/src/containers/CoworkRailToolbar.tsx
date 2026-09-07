@@ -76,6 +76,9 @@ export function CoworkRailToolbar({
     <div
       role="group"
       aria-label={t('common:rail.label')}
+      // Kept `shrink-0` so the icons never squash; the composer's control row
+      // wraps instead (see ChatInput), which is what stops this group from
+      // overflowing to the right and sliding under the send button.
       className="flex shrink-0 items-center"
     >
       {item('code', t('common:rail.code'), <Code2 className="size-3.5 shrink-0" />)}
