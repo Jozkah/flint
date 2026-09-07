@@ -10,6 +10,7 @@
 //! `commands` are gated.
 
 pub mod audit;
+pub mod lifecycle;
 pub mod memory;
 pub mod permissions;
 pub mod project_browse;

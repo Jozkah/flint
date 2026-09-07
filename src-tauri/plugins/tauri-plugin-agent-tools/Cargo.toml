@@ -27,7 +27,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9.34"
 thiserror = "2.0.12"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["full", "test-util"] }
 tauri = { version = "2.8.5", default-features = false, optional = true }
 # `provider` only; `default-features = false` keeps `tauri` out of the graph so
 # the headless CLI can use the web tools.
@@ -53,3 +53,4 @@ windows-sys = { version = "0.60.2", features = [
   "Win32_System_Memory",
   "Win32_System_Threading",
 ] }
+

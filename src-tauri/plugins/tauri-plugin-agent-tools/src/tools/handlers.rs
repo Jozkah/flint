@@ -941,6 +941,9 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             .to_string();
     };
     let timeout_secs = arg_u64(args, "timeout").unwrap_or(DEFAULT_BASH_TIMEOUT_SECS);
+    // Opt-in: a command that outlives its deadline is terminated unless the
+    // caller explicitly asked for it to keep running and be polled by job_id.
+    let background = arg_bool(args, "background");
 
     let root = ctx.project_root;
     if !root.is_dir() {
@@ -1051,24 +1054,72 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     tokio::select! {
         res = &mut rx => res.unwrap_or_else(|_| "ERROR: background command ended without producing output".to_string()),
         _ = tokio::time::sleep(std::time::Duration::from_secs(timeout_secs)) => {
-            let job_id = format!("bash-{}", BASH_JOB_COUNTER.fetch_add(1, Ordering::SeqCst));
-            bash_jobs().lock().unwrap().insert(
-                job_id.clone(),
-                BashJob {
-                    rx: Some(rx),
-                    output: None,
-                    command: command.to_string(),
-                    started: job_started,
-                    call_id: ctx.call_id.map(str::to_string),
-                    pid,
-                    collecting: false,
-                },
-            );
-            format!(
-                "Command exceeded {timeout_secs}s and is continuing in the background \
-                 (job_id={job_id}). Call bash again with {{\"job_id\": \"{job_id}\"}} (no \
-                 command) to wait for and collect its output once it finishes."
+            // AH-020. A timeout used to *background* the command: it kept
+            // running, unowned, after the call that started it had returned,
+            // so "the timeout expired" and "the work stopped" were different
+            // events and a runaway command outlived every limit placed on it.
+            // The timeout now terminates the process tree it owns.
+            //
+            // Backgrounding is still available, but only when the caller asks
+            // for it -- see the `background` argument below. A command the
+            // model did not ask to background does not get to survive its
+            // deadline.
+            if background {
+                let job_id = format!("bash-{}", BASH_JOB_COUNTER.fetch_add(1, Ordering::SeqCst));
+                bash_jobs().lock().unwrap().insert(
+                    job_id.clone(),
+                    BashJob {
+                        rx: Some(rx),
+                        output: None,
+                        command: command.to_string(),
+                        started: job_started,
+                        call_id: ctx.call_id.map(str::to_string),
+                        pid,
+                        collecting: false,
+                    },
+                );
+                return format!(
+                    "Command exceeded {timeout_secs}s and is continuing in the background \
+                     (job_id={job_id}). Call bash again with {{\"job_id\": \"{job_id}\"}} (no \
+                     command) to wait for and collect its output once it finishes."
+                );
+            }
+
+            let killed = match pid {
+                Some(pid) => proc::kill_tree(pid),
+                // No pid means the child never started; nothing is left running.
+                None => proc::KillOutcome::Gone,
+            };
+            // Whatever the command managed to print is still worth having, and
+            // the collector flushes it once the child is gone. Bounded, so a
+            // process that ignores the kill cannot hold the call open.
+            let partial = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                &mut rx,
             )
+            .await
+            .ok()
+            .and_then(|r| r.ok())
+            .unwrap_or_default();
+
+            let mut out = format!(
+                "ERROR: command timed out after {timeout_secs}s and was terminated. \
+                 This is a timeout, not a cancellation: the command was still running \
+                 when its deadline passed. Re-run it with a larger {{\"timeout\": N}}, \
+                 or with {{\"background\": true}} to let it continue and poll it by \
+                 job_id."
+            );
+            if !killed.stopped() {
+                // Fail loudly rather than claim a clean stop we did not achieve.
+                out.push_str(
+                    "\n[warning: the process tree may not have terminated cleanly]",
+                );
+            }
+            if !partial.trim().is_empty() {
+                out.push_str("\n--- output before the timeout ---\n");
+                out.push_str(&partial);
+            }
+            out
         }
     }
 }
@@ -3343,7 +3394,7 @@ mod tests {
         // timeout 0 => backgrounds immediately, before the command prints.
         let out = super::execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "sleep 0.2; printf 'late\n'", "timeout": 0}),
+            &json!({"command": "sleep 0.2; printf 'late\n'", "timeout": 0, "background": true}),
             &ctx,
         )
         .await
@@ -3364,11 +3415,53 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bash_exceeding_timeout_backgrounds_instead_of_erroring() {
+    async fn bash_exceeding_its_timeout_is_terminated_not_backgrounded() {
+        // AH-020. This previously asserted the opposite: that a command past
+        // its deadline was shelved and kept running. An unowned process that
+        // outlives every limit placed on it is the defect, not the feature.
         let root = unique_root();
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "sleep 2", "timeout": 0}),
+            &json!({"command": "sleep 5", "timeout": 0}),
+            &root,
+        )
+        .await;
+        assert!(out.starts_with("ERROR"), "a timeout is an error: {out}");
+        assert!(out.contains("timed out"), "{out}");
+        assert!(out.contains("terminated"), "{out}");
+        // Distinguishable from a user cancellation, and it says how to ask for
+        // the old behaviour deliberately.
+        assert!(out.contains("not a cancellation"), "{out}");
+        assert!(out.contains("background"), "{out}");
+        assert!(
+            !out.contains("continuing in the background"),
+            "must not shelve the command: {out}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_timeout_keeps_whatever_the_command_printed_first() {
+        // Partial output survives the kill: the run still gets to see what the
+        // command managed to say before its deadline.
+        let root = unique_root();
+        let out = execute_builtin(
+            lookup("bash").unwrap(),
+            &json!({"command": "printf 'partial\\n'; sleep 5", "timeout": 1}),
+            &root,
+        )
+        .await;
+        assert!(out.starts_with("ERROR"), "{out}");
+        assert!(out.contains("partial"), "partial output must survive: {out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn backgrounding_is_available_when_it_is_asked_for() {
+        let root = unique_root();
+        let out = execute_builtin(
+            lookup("bash").unwrap(),
+            &json!({"command": "sleep 2", "timeout": 0, "background": true}),
             &root,
         )
         .await;
@@ -3383,7 +3476,7 @@ mod tests {
         let root = unique_root();
         let started = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "sleep 0.2; echo done", "timeout": 0}),
+            &json!({"command": "sleep 0.2; echo done", "timeout": 0, "background": true}),
             &root,
         )
         .await;
