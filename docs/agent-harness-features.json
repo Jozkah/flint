@@ -704,7 +704,7 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-022"
@@ -713,7 +713,9 @@
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs"
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/subagent.rs",
+        "src-tauri/src/core/agent/genai_bridge.rs"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -727,11 +729,14 @@
       ],
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs::tests",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::tests::a_cancelled_call_stops_before_it_runs_and_says_who_stopped_it"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs::ambient_tests",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::tests::a_cancelled_call_stops_before_it_runs_and_says_who_stopped_it",
+        "src-tauri/src/core/agent/loop.rs::tests::cancelling_a_runs_scope_stops_its_tool_calls",
+        "src-tauri/src/core/agent/loop.rs::tests::stopping_one_run_leaves_another_runs_calls_alone"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The primitive exists and is wired into the built-in tool path. lifecycle::Token is scoped to session/run/call, records why it stopped (first reason wins), owns its child pids and reaps them on stop, kills a child adopted after cancellation so the spawn/cancel race cannot leak a process, and refuses a result that arrives after the stop so a command finishing during its own kill cannot report success. stop_scope stops a run without touching sibling runs or other sessions. ToolContext carries an optional token and execute_builtin honours it, so cancel-before-execution and cancel-during-execution both work for every built-in. Guards are mutation-checked: accepting late results, and ignoring scope boundaries, each turn the relevant tests red. STILL MISSING, which is why this is not implemented: the token is not threaded from the desktop run/dispatcher down to the handler (only the CLI and tests supply one today), subagent dispatch is not cancelled, the permission-wait path does not observe the token, the existing MCP cancellation channel is not connected to it, and the AH-049 cancelled outcome is not emitted from the stop path."
+      "auditNote": "Cancellation reaches every path. lifecycle::Token is scoped to session/run/call, records why it stopped (first reason wins), owns and reaps child pids, kills a child adopted after cancellation so the spawn/cancel race cannot leak a process, and refuses results that arrive after the stop. CompositeToolInvoker owns the run's scope; all three dispatch paths (parallel reads, direct allow, both post-prompt branches) mint a call token under it and hold the guard across the await. The permission wait races the token, removes the pending request either way so the approval UI stops offering it, and treats an answer for an already-stopped call as stale. MCP calls race the canonical token, joining the pre-existing oneshot channel and timeout at core/mcp/commands.rs rather than replacing them; a batch completing during a stop is discarded. Retry backoff is cancellable through a task-local token -- the provider retry loop sits several calls below the dispatcher -- and stays scope-precise, proved by a test that one run's stop does not end another run's backoff. Subagents capture the parent token at spawn (a spawned task inherits no task-locals), get their own token under the parent's scope, race their body against it, and resolve to Cancelled rather than reporting a late answer. The AH-049 cancelled outcome has a single producer in CompositeToolInvoker::cancelled, which writes the transcript message and the audit record together. Guards mutation-checked: accepting late results, and ignoring scope boundaries, each turn the relevant tests red. Incidental safety fix: resolve_jan_data_folder had no cfg(test) redirect, so a cargo test run would have appended audit records to the data folder of whoever ran it."
     },
     {
       "id": "AH-024",
