@@ -158,3 +158,72 @@ implemented, 51 in-progress, 92 missing, 200 total, 0 verified. The shorthand
 names used in the handoff request map to the real filenames as
 `_FEATURE_REGISTRY.md` -> `AGENT_HARNESS_FEATURE_REGISTRY.md`, `_ROADMAP.md` ->
 `AGENT_HARNESS_ROADMAP.md`, `_VERIFICATION.md` -> `AGENT_HARNESS_VERIFICATION.md`.
+
+---
+
+## Checkpoint — 2026-09-07
+
+Branch `feat/local-only-completion`, commit `a8d43c78f`, pushed to `private`.
+
+Registry counts are **unchanged**: 57 implemented / 51 in-progress / 92 missing
+/ 0 verified / 200 total. The batch below was defect work and harness work, not
+registry work, so nothing was reclassified.
+
+### Completed this batch
+
+- Local-provider diagnosis and fix (`6ab1c5229`): `v100` resolved through a
+  search domain to a Cloudflare AAAA record, so requests left the machine and
+  came back 403. IPv4 reaches the real server and returns `qwen3.8-27b`.
+  `errorText`, `endpointDiagnostics`, and truthful provider failures.
+- Cowork panel collapse and padding (`f1444742b`).
+- Title-bar drag region no longer swallows header clicks (`8fe6d0719`).
+- HuggingFace startup egress removed (`719d9a207`): `bootstrapDefaultEmbedder`
+  and the weights URL are gone from source *and* from the shipped
+  `extensions/llamacpp-extension/dist/index.js`. Guard extended with a
+  weights-URL check and a bootstrap check; both scan the built bundle.
+- Smoke harness at 30 scenarios.
+
+### Known-flaky, not green
+
+`provider-error-is-actionable` passed 2 of 4 consecutive runs;
+`model-round-trip` is intermittent for the same reason. Both wait on the
+provider machinery and the WebView stalls under it. Do not treat either as
+settled evidence.
+
+### Exact next dependency-ready batch (P0, deps already satisfied)
+
+    AH-006  Tool capability model              in-progress
+    AH-017  Token budget enforcement           in-progress
+    AH-020  Per-tool timeouts                  in-progress
+    AH-023  In-flight tool-call cancellation   in-progress
+    AH-034  Rule resource matching             in-progress
+    AH-046  Git destructive-operation guards   missing
+    AH-049  Permission decision audit log      missing
+    AH-051  Emergency kill switch              in-progress
+    AH-078  Prompt snapshots                   missing
+    AH-107  Per-agent git worktrees            in-progress
+    AH-146  Patch previews                     in-progress
+
+Completing these unlocks AH-007, AH-018, AH-036, AH-037, AH-041, AH-042,
+AH-050, AH-073, AH-109 and AH-198.
+
+AH-049 was started: the only production call site for a permission decision is
+`plugins/tauri-plugin-agent-tools/src/commands.rs:525`
+(`gate::resolve_decision`); the two in `tools/handlers.rs` need checking for
+`#[cfg(test)]`. `harness/src/envelope.rs` already provides the versioned,
+crash-tolerant JSONL writer the log should reuse rather than reinvent. No code
+was written for it yet.
+
+### Tests run
+
+`tsc -b` clean; frontend 5083 passed / 1 known `formatDate` failure / 3 skipped;
+llamacpp extension suite 62 passed; `localOnly` 29 passed; entry-point guards
+8 passed; dialog seam 1 passed; smoke 30 scenarios, best run 30/30 exit 0.
+
+### Blockers
+
+- The two flaky scenarios above.
+- Registry throughput: see the note in the phase report. 143 items remain, each
+  carrying seven acceptance criteria including production wiring, persistence,
+  UI, security enforcement and tests.
+
