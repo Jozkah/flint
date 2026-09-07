@@ -320,10 +320,42 @@ pub async fn execute_builtin(
 ) -> (String, Option<Vec<ImageContentPart>>) {
     let project_root = ctx.project_root;
     let scratch = ctx.scratch_root;
-    let (content, images) = match tool.name {
-        "read" => read(args, project_root, scratch, ctx.read_roots).await,
-        "screenshot" => screenshot(args, project_root, scratch, ctx.read_roots).await,
-        _ => (execute_text(tool, args, ctx).await, None),
+
+    // AH-020/AH-023. Every built-in runs under a deadline and a cancellation
+    // token, not just `bash`. A filesystem call that wedges on a stale network
+    // mount, or a web fetch to a host that accepts and never answers, used to
+    // hang the whole run with nothing able to interrupt it.
+    //
+    // `bash` keeps its own inner deadline: it owns a process tree and has to
+    // kill it, which the generic wrapper cannot do. The wrapper is still the
+    // outer bound, so a bash call whose own handling stalls is not exempt.
+    let token = ctx.cancel.clone().unwrap_or_else(crate::lifecycle::Token::detached);
+    let limit = crate::lifecycle::Timeouts::default().for_tool(tool.name);
+
+    let work = async {
+        match tool.name {
+            "read" => read(args, project_root, scratch, ctx.read_roots).await,
+            "screenshot" => screenshot(args, project_root, scratch, ctx.read_roots).await,
+            _ => (execute_text(tool, args, ctx).await, None),
+        }
+    };
+
+    let (content, images) = match crate::lifecycle::run_with_deadline(&token, limit, work).await {
+        Ok(pair) => pair,
+        // Named, and distinguishable: a person reading the transcript needs to
+        // know whether they stopped this or it ran out of time.
+        Err(reason) => (
+            format!(
+                "ERROR: tool '{}' {} after {}s and was stopped. No result is available.",
+                tool.name,
+                match reason {
+                    crate::lifecycle::StopReason::Timeout => "exceeded its time limit",
+                    crate::lifecycle::StopReason::Cancelled => "was cancelled",
+                },
+                limit.as_secs()
+            ),
+            None,
+        ),
     };
     (content, images)
 }
@@ -3411,6 +3443,45 @@ mod tests {
             streamed.contains("late"),
             "a backgrounded job must keep reporting: {streamed:?}"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_call_stops_before_it_runs_and_says_who_stopped_it() {
+        // AH-023 through the real dispatch path: every built-in, not just bash.
+        use crate::lifecycle::{Scope, StopReason, Token};
+        let root = unique_root();
+        std::fs::write(root.join("a.txt"), "hello").unwrap();
+
+        let token = Token::new(Scope::new("s1", "r1", "c1"));
+        token.stop(StopReason::Cancelled);
+
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[]).with_cancel(token);
+        let (out, _) =
+            super::execute_builtin(lookup("read").unwrap(), &json!({ "path": "a.txt" }), &ctx)
+                .await;
+
+        assert!(out.starts_with("ERROR"), "{out}");
+        assert!(out.contains("was cancelled"), "{out}");
+        // Distinguishable from a deadline.
+        assert!(!out.contains("exceeded its time limit"), "{out}");
+        // The file's contents must not leak through a cancelled call.
+        assert!(!out.contains("hello"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn an_uncancelled_read_still_works() {
+        // The wrapper must not change the ordinary path.
+        let root = unique_root();
+        std::fs::write(root.join("a.txt"), "hello").unwrap();
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[]);
+        let (out, _) =
+            super::execute_builtin(lookup("read").unwrap(), &json!({ "path": "a.txt" }), &ctx)
+                .await;
+        assert!(out.contains("hello"), "{out}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

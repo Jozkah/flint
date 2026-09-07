@@ -5518,7 +5518,7 @@ mod tests {
             .with_output_sink(output_sink(&tx, "call-1"));
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "sleep 3; printf 'late\\n'", "timeout": 0}),
+            &json!({"command": "sleep 3; printf 'late\\n'", "timeout": 0, "background": true}),
             &ctx,
         )
         .await

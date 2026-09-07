@@ -55,6 +55,12 @@ pub struct ImageContentPart {
 /// clone explicitly.
 #[derive(Clone)]
 pub struct ToolContext<'a> {
+    /// Stops this call, and says whether it was a deadline or a person.
+    ///
+    /// `None` means "not cancellable", which is what the CLI and the tests
+    /// use; the desktop dispatcher supplies a token scoped to the call so a
+    /// stopped run does not leave a tool running behind it.
+    pub cancel: Option<crate::lifecycle::Token>,
     pub project_root: &'a Path,
     pub store_root: &'a Path,
     pub enabled_skills: &'a [String],
@@ -149,6 +155,8 @@ pub type OutputSink = std::sync::Arc<dyn Fn(String) + Send + Sync>;
 impl<'a> ToolContext<'a> {
     pub fn new(project_root: &'a Path, store_root: &'a Path, enabled_skills: &'a [String]) -> Self {
         Self {
+            // Not cancellable unless a caller supplies one; see the field.
+            cancel: None,
             project_root,
             store_root,
             enabled_skills,
@@ -163,6 +171,12 @@ impl<'a> ToolContext<'a> {
             write_roots: &[],
             call_id: None,
         }
+    }
+
+    /// Attach a cancellation token scoped to this call.
+    pub fn with_cancel(mut self, token: crate::lifecycle::Token) -> Self {
+        self.cancel = Some(token);
+        self
     }
 
     /// Attach folders the tools may read but never write. Callers pass the
