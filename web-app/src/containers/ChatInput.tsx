@@ -202,6 +202,26 @@ const ChatInput = memo(function ChatInput({
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [isFocused, setIsFocused] = useState(false)
+  // The control row is absolutely positioned at the bottom of the composer, so
+  // the composer must reserve exactly as much space as the row occupies. The
+  // row wraps when it runs out of width, so the reserve cannot be a constant:
+  // 40px is one row, and a wrapped row silently covered the textarea.
+  const footerRef = useRef<HTMLDivElement | null>(null)
+  const [footerHeight, setFooterHeight] = useState(40)
+  useEffect(() => {
+    const el = footerRef.current
+    if (!el) return
+    const measure = () =>
+      setFooterHeight((prev) => {
+        const next = Math.ceil(el.getBoundingClientRect().height)
+        return next > 0 && next !== prev ? next : prev
+      })
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
   const [rows, setRows] = useState(1)
   const serviceHub = useServiceHub()
   const abortControllers = useAppState((state) => state.abortControllers)
@@ -1998,8 +2018,14 @@ const ChatInput = memo(function ChatInput({
           )}
 
           <div
+            // The control row below is absolutely positioned at the bottom of
+            // this box, so the box has to reserve its height. That used to be a
+            // fixed `pb-10`, which is one row's worth: as soon as the controls
+            // wrapped to a second line they grew upward over the textarea. The
+            // reserve now follows the row's measured height.
+            style={{ paddingBottom: `${footerHeight}px` }}
             className={cn(
-              'relative z-20 px-0 pb-10 border rounded-3xl border-input bg-white dark:bg-input/30',
+              'relative z-20 px-0 border rounded-3xl border-input bg-white dark:bg-input/30',
               isFocused && 'ring-1 ring-ring/50',
               isDragOver && 'ring-2 ring-ring/50 border-primary'
             )}
@@ -2248,7 +2274,7 @@ const ChatInput = memo(function ChatInput({
           </div>
         </div>
 
-        <div className="absolute z-20 bg-transparent bottom-0 w-full p-2 ">
+        <div ref={footerRef} className="absolute z-20 bg-transparent bottom-0 w-full p-2 ">
           <div className="flex justify-between items-center w-full">
             <div className="px-1 flex flex-wrap items-center gap-x-1 gap-y-1 flex-1 min-w-0">
               <div

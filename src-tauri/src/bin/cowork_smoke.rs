@@ -603,8 +603,28 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_git_vs_sandbox,
     },
     Scenario {
+        name: "external-edit-structured-diff",
+        run: scenario_external_edit_diff,
+    },
+    Scenario {
+        name: "session-isolation",
+        run: scenario_session_isolation,
+    },
+    Scenario {
+        name: "settings-search-and-navigation",
+        run: scenario_settings_search,
+    },
+    Scenario {
+        name: "per-chat-model-and-reasoning",
+        run: scenario_per_chat_controls,
+    },
+    Scenario {
         name: "composer-controls-do-not-overlap",
         run: scenario_composer_layout,
+    },
+    Scenario {
+        name: "composer-footer-clears-the-textarea",
+        run: scenario_composer_footer,
     },
     Scenario {
         name: "macos-title-bar",
@@ -792,7 +812,10 @@ fn scenario_model_picker(ctx: &Ctx) -> ScenarioResult {
         std::thread::sleep(Duration::from_millis(400));
         let clicked = ctx.eval_bool(
             "const b = [...document.querySelectorAll('button')].find(x =>
-               /select a model/i.test((x.getAttribute('aria-label') || '') + ' ' + (x.textContent || ''))
+               // Once a model is selected the trigger carries its name, so
+               // matching the placeholder alone stops working.
+               /select a model|smoke-model|smoke-alt/i.test(
+                 (x.getAttribute('aria-label') || '') + ' ' + (x.textContent || ''))
                || x.closest('[data-model-trigger]'));
              if (!b) return false; b.click(); return true;",
         )?;
@@ -1199,12 +1222,21 @@ fn scenario_code_viewer(ctx: &Ctx) -> ScenarioResult {
     // highlighting, and reported a timeout instead of a verdict.
     const BODY: &str = "document.querySelector('[data-testid=\"code-viewer-body\"]')";
 
-    let numbered = ctx.eval_bool(&format!(
-        "const b = {BODY}; if (!b) return false;
-         const t = b.textContent || '';
-         return /(^|\\n)\\s*1\\s/.test(t) && t.includes('120');"
+    // Detect the gutter structurally. `textContent` concatenates without
+    // separators, so "1" runs straight into the first line of code and no
+    // text-shaped check can find it.
+    let gutter = ctx.eval(&format!(
+        "const b = {BODY}; if (!b) return 0;
+         const nums = [...b.querySelectorAll('*')]
+           .filter(e => e.children.length === 0 && /^[0-9]+$/.test((e.textContent || '').trim()))
+           .map(e => parseInt(e.textContent.trim(), 10));
+         return nums.includes(1) && nums.includes(120) ? nums.length : 0;"
     ))?;
-    ensure!(numbered, "the viewer showed no line-number gutter");
+    println!("      gutter entries: {gutter}");
+    ensure!(
+        gutter.as_u64().unwrap_or(0) >= 100,
+        "the viewer showed no line-number gutter running from 1 to 120"
+    );
 
     let colours = ctx.eval(&format!(
         "const b = {BODY}; if (!b) return 0;
@@ -1237,11 +1269,20 @@ fn scenario_code_viewer(ctx: &Ctx) -> ScenarioResult {
     )?;
     ensure!(scrolled, "the code viewer would not scroll");
 
-    // Word wrap is a real toggle, and it must change how the body wraps.
-    let before = ctx.eval_string(
-        "const b = document.querySelector('[data-testid=\"code-viewer-body\"]');
-         return b ? getComputedStyle(b).whiteSpace : '';",
+    // Word wrap is a real toggle. The wrapping is applied to the element that
+    // holds the lines rather than the panel body, so assert the observable
+    // consequence instead of a computed style: a 400-character line stops
+    // overflowing horizontally once wrapping is on.
+    open_file(ctx, &["src", "lib", "wide.ts"])?;
+    ctx.wait_until(
+        "wide.ts to render",
+        &format!("const b = {BODY}; return !!b && b.textContent.includes('xxxxxxxxxx');"),
+        Duration::from_secs(45),
     )?;
+
+    let overflow_before = ctx.eval_bool(&format!(
+        "const b = {BODY}; return !!b && b.scrollWidth > b.clientWidth + 4;"
+    ))?;
     let toggled = ctx.eval_bool(
         "const b = [...document.querySelectorAll('button')].find(x =>
            /word wrap/i.test((x.getAttribute('aria-label') || '')
@@ -1249,20 +1290,22 @@ fn scenario_code_viewer(ctx: &Ctx) -> ScenarioResult {
          if (!b) return false; b.click(); return true;",
     )?;
     ensure!(toggled, "the viewer exposed no word-wrap control");
-    std::thread::sleep(Duration::from_millis(600));
-    let after = ctx.eval_string(
-        "const b = document.querySelector('[data-testid=\"code-viewer-body\"]');
-         return b ? getComputedStyle(b).whiteSpace : '';",
-    )?;
-    println!("      word wrap: {before} -> {after}");
+    std::thread::sleep(Duration::from_millis(800));
+    let overflow_after = ctx.eval_bool(&format!(
+        "const b = {BODY}; return !!b && b.scrollWidth > b.clientWidth + 4;"
+    ))?;
+    println!("      horizontal overflow: {overflow_before} -> {overflow_after}");
     ensure!(
-        before != after,
-        "toggling word wrap did not change the viewer's wrapping ({before})"
+        overflow_before != overflow_after,
+        "toggling word wrap did not change whether a 400-character line overflows"
     );
     Ok(())
 }
 
 /// Open a file by walking the tree from the explorer each time.
+///
+/// Opening a file replaces the tree, so every scenario that opens one has to
+/// start from the explorer rather than assume the previous scenario's state.
 fn open_file(ctx: &Ctx, path: &[&str]) -> ScenarioResult {
     open_code_explorer(ctx)?;
     for (i, part) in path.iter().enumerate() {
@@ -1361,6 +1404,275 @@ fn scenario_git_vs_sandbox(ctx: &Ctx) -> ScenarioResult {
     ensure!(
         !text.contains("No changes yet"),
         "the Changes rail still claims there is nothing to show"
+    );
+    Ok(())
+}
+
+/// An edit made outside Jan shows up as a structured diff, with the added and
+/// removed lines distinguished rather than a blob of text.
+fn scenario_external_edit_diff(ctx: &Ctx) -> ScenarioResult {
+    let notes = ctx.project.join("notes.txt");
+    std::fs::write(
+        &notes,
+        "line one\nline two CHANGED\nline three\nline four added\n",
+    )
+    .map_err(|e| Failure(format!("could not edit the fixture: {e}")))?;
+
+    ctx.goto("/cowork")?;
+    ctx.click_rail("Changes")?;
+    std::thread::sleep(Duration::from_secs(1));
+
+    // The panel holds the last scan; an edit made outside Jan only appears once
+    // it rescans, so ask it to.
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /refresh|rescan|reload/i.test((x.getAttribute('aria-label') || '')
+             + ' ' + (x.getAttribute('title') || '')));
+         if (b) b.click();
+         return !!b;",
+    )?;
+
+    ctx.wait_until(
+        "notes.txt to appear in Changes",
+        "return document.body.textContent.includes('notes.txt');",
+        Duration::from_secs(60),
+    )?;
+
+    // Open the file's diff and check it is structured: additions and deletions
+    // are separate rows, not one lump of text.
+    // The row is collapsed: expand it so the hunk is rendered.
+    ctx.eval_bool(
+        "const row = [...document.querySelectorAll('*')]
+           .filter(e => (e.textContent || '').trim().endsWith('notes.txt')
+                        && e.children.length <= 3)
+           .pop();
+         if (!row) return false;
+         const clickable = row.closest('button,[role=\"button\"],[aria-expanded]')
+           || row.parentElement?.querySelector('button,[aria-expanded]')
+           || row;
+         clickable.click();
+         return true;",
+    )?;
+    std::thread::sleep(Duration::from_secs(2));
+    // If it is still collapsed, click whatever advertises itself as expandable.
+    if !ctx.eval_bool("return document.body.textContent.includes('line four added');")? {
+        ctx.eval(
+            "for (const e of document.querySelectorAll('[aria-expanded=\"false\"]')) {
+               e.click();
+             }
+             return true;",
+        )?;
+        std::thread::sleep(Duration::from_secs(2));
+    }
+
+    let diff = ctx.eval_string(
+        "const t = document.body.textContent || '';
+         return JSON.stringify({
+           added: t.includes('line four added'),
+           changed: t.includes('line two CHANGED'),
+           original: t.includes('line two') ,
+         });",
+    )?;
+    println!("      diff content: {diff}");
+    let v: Value = serde_json::from_str(&diff).unwrap_or(Value::Null);
+    ensure!(
+        v.get("added") == Some(&Value::Bool(true)) && v.get("changed") == Some(&Value::Bool(true)),
+        "the diff did not show the edited and added lines: {diff}"
+    );
+
+    // Structured, not a blob: additions and deletions are marked apart from
+    // each other rather than printed as one run of text.
+    let structured = ctx.eval_bool(
+        "const marked = [...document.querySelectorAll('*')].filter(e =>
+           e.children.length === 0 && /^[+-]/.test((e.textContent || '').trim()));
+         const cls = new Set([...document.querySelectorAll('[class*=\"add\"],[class*=\"insert\"],[class*=\"delete\"],[class*=\"remove\"]')]
+           .map(e => e.className.toString()));
+         return marked.length > 0 || cls.size > 0;",
+    )?;
+    ensure!(
+        structured,
+        "the diff rendered as plain text with no added/removed distinction"
+    );
+    Ok(())
+}
+
+/// A new session starts with no project of its own.
+fn scenario_session_isolation(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/cowork")?;
+    let name = ctx
+        .project
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    ctx.wait_until(
+        "the attached session",
+        &format!("return document.body.textContent.includes({name:?});"),
+        Duration::from_secs(30),
+    )?;
+
+    ctx.click_matching("button", "New session")?;
+    ctx.wait_until(
+        "a fresh session with no folder",
+        &format!("return !!({PILL_JS});"),
+        Duration::from_secs(30),
+    )?;
+    let leaked = ctx.eval_bool(&format!(
+        "return document.body.textContent.includes({name:?});"
+    ))?;
+    ensure!(
+        !leaked,
+        "a new session inherited the previous session's attached project"
+    );
+    Ok(())
+}
+
+/// Settings search narrows the list, and a result navigates to its own page.
+fn scenario_settings_search(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/settings/general")?;
+    ctx.wait_until(
+        "the settings search box",
+        "return [...document.querySelectorAll('input')].some(i =>
+            /search settings/i.test(i.getAttribute('placeholder') || ''));",
+        Duration::from_secs(30),
+    )?;
+
+    let before = ctx.eval_string("return document.body.textContent;")?;
+    ensure!(
+        before.contains("Hardware") && before.contains("Shortcuts"),
+        "the settings index did not list its own pages before searching"
+    );
+
+    // The settings index is not built from <a href> links, so count the page
+    // names that are actually visible.
+    // Prove filtering with a query nothing matches, which does not depend on
+    // knowing which list the search narrows.
+    let visible_js = "const names = ['General','Appearance','Assistants','Attachments',
+           'Local API Server','HTTPS Proxy','Web Search','Agent Tools','Shortcuts',
+           'Hardware','MCP Servers','Claude Code','Extensions'];
+         const all = [...document.querySelectorAll('a,button,div,span,li')];
+         return names.filter(n => all.some(e =>
+           (e.textContent || '').trim() === n && e.offsetParent !== null)).length;";
+    let before_count = ctx.eval(visible_js)?.as_u64().unwrap_or(0);
+    ensure!(
+        before_count > 3,
+        "the settings index listed {before_count} pages"
+    );
+
+    ctx.type_into(
+        "input[placeholder*='Search settings' i]",
+        "zzzznotasettinganywhere",
+    )?;
+    ctx.wait_until(
+        "the settings list to empty for a query nothing matches",
+        &format!("{visible_js}").replace("return names", "return 0 === names"),
+        Duration::from_secs(25),
+    )
+    .or_else(|_| -> ScenarioResult {
+        // Some builds keep the nav and filter only the panel; accept either, so
+        // long as *something* narrowed.
+        let now = ctx.eval(visible_js)?.as_u64().unwrap_or(0);
+        ensure!(
+            now < before_count,
+            "a query matching nothing left all {before_count} settings visible"
+        );
+        Ok(())
+    })?;
+
+    ctx.type_into("input[placeholder*='Search settings' i]", "hardware")?;
+    ctx.wait_until(
+        "the hardware result",
+        "return document.body.textContent.includes('Hardware');",
+        Duration::from_secs(25),
+    )?;
+    let after_count = ctx.eval(visible_js)?.as_u64().unwrap_or(0);
+    println!("      settings entries: {before_count} -> {after_count}");
+
+    // A filtered result must actually navigate.
+    ctx.eval_bool(
+        "const el = [...document.querySelectorAll('a[href],button')]
+           .find(e => /hardware/i.test((e.textContent || '').trim()));
+         if (!el) return false; el.click(); return true;",
+    )?;
+    ctx.wait_until(
+        "the hardware settings page",
+        "return location.pathname.includes('hardware');",
+        Duration::from_secs(20),
+    )?;
+    Ok(())
+}
+
+/// The Cowork composer carries its own model and reasoning controls.
+fn scenario_per_chat_controls(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the composer controls",
+        "const names = [...document.querySelectorAll('button')]
+           .map(b => (b.getAttribute('aria-label') || b.textContent || '').trim());
+         return names.some(n => /select a model|smoke-model/i.test(n))
+             && names.some(n => /sampling parameters/i.test(n));",
+        Duration::from_secs(30),
+    )?;
+
+    // The reasoning/sampling control opens and offers a thinking setting.
+    ctx.click_matching("button", "Sampling parameters")?;
+    ctx.wait_until(
+        "the sampling popover",
+        "const t = document.body.textContent || '';
+         return /thinking|reasoning|temperature|top[_ ]?p/i.test(t);",
+        Duration::from_secs(20),
+    )?;
+    ctx.describe("sampling-popover")?;
+    ctx.eval(
+        "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+         return true;",
+    )?;
+    Ok(())
+}
+
+/// The composer reserves space for its control row instead of drawing it over
+/// the textarea.
+///
+/// The row is absolutely positioned at the bottom of the composer, so the box
+/// reserves its height. That reserve used to be a constant one row tall, and a
+/// row that wrapped grew upward across the input.
+fn scenario_composer_footer(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    std::thread::sleep(Duration::from_millis(600));
+
+    let report = ctx.eval_string(
+        r#"const ta = document.querySelector('[data-testid="chat-input"]');
+           const send = document.querySelector('[data-test-id="send-message-button"]');
+           if (!ta || !send) return JSON.stringify({ error: 'missing composer parts' });
+           // The control row is the send button's positioned ancestor.
+           let footer = send;
+           while (footer && getComputedStyle(footer).position !== 'absolute') {
+             footer = footer.parentElement;
+           }
+           if (!footer) return JSON.stringify({ error: 'no positioned control row' });
+           const t = ta.getBoundingClientRect();
+           const f = footer.getBoundingClientRect();
+           return JSON.stringify({
+             textareaBottom: Math.round(t.bottom),
+             footerTop: Math.round(f.top),
+             footerHeight: Math.round(f.height),
+             overlap: Math.round(t.bottom - f.top),
+           });"#,
+    )?;
+    println!("      composer footer: {report}");
+    let v: Value = serde_json::from_str(&report).unwrap_or(Value::Null);
+    ensure!(
+        v.get("error").is_none(),
+        "could not measure the composer: {report}"
+    );
+    let overlap = v.get("overlap").and_then(Value::as_i64).unwrap_or(0);
+    ensure!(
+        overlap <= 1,
+        "the control row covers the bottom {overlap}px of the textarea: {report}"
     );
     Ok(())
 }
