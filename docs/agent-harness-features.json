@@ -522,7 +522,7 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-008"
@@ -541,10 +541,15 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::tests::an_exhausted_budget_stops_the_run_before_the_next_tool_call",
+        "src-tauri/src/core/agent/loop.rs::tests::a_run_inside_its_budget_is_not_stopped",
+        "src-tauri/src/core/agent/loop.rs::tests::an_exhausted_budget_is_announced_once_in_the_system_voice",
+        "src-tauri/src/core/agent/session.rs::tests"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Documented in loop.rs as advisory: crossing the budget records a note and the run carries on, tool calls included. User cancellation is the only remaining bound on a run's spend."
+      "auditNote": "The ceiling now stops the run. Crossing it used to record a system note and carry on, tool calls included, which -- with max_turns == 0 the normal case -- left user cancellation as the only bound on a run's spend: a run that went wrong could spend without limit while announcing that it had passed its limit. run_turn_cycle now returns as soon as the budget is exhausted. The turn that crossed the line is finished and returned intact, so its text and its tool_calls are preserved in the transcript; what stops is the next thing -- the tool calls that turn asked for are not dispatched and no further turn is taken. The system note says how many calls were skipped. Note that the pre-existing test an_exhausted_budget_is_announced_once_and_the_run_continues asserted the advisory behaviour this item exists to remove; it was replaced by an_exhausted_budget_is_announced_once_in_the_system_voice, which keeps its system-voice and once-only assertions and inverts the continuation one."
     },
     {
       "id": "AH-018",

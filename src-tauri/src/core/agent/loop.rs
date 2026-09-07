@@ -805,6 +805,23 @@ fn hard_deny_msg(name: &str, reason: DenyReason, project_root: &std::path::Path)
     match reason {
         DenyReason::Policy => denied_by_policy_msg(name, project_root),
         DenyReason::Hidden => hidden_path_msg(name),
+        // Say which argument could not be read. Told only "refused", a model
+        // reissues the same malformed call until the step budget runs out.
+        DenyReason::Resource => format!(
+            "ERROR: tool '{name}' refused: its arguments could not be resolved to a file, \
+             command or destination, so no permission rule could be applied to them. \
+             Reissue the call with explicit, well-formed arguments."
+        ),
+        // A destructive git operation needs a rule that names it; a blanket
+        // allow on the shell is not permission to discard uncommitted work.
+        DenyReason::DestructiveGit(op) => format!(
+            "ERROR: tool '{name}' refused: this is a destructive git operation ({}), which \
+             can lose work that was never committed or rewrite history others have. It \
+             needs a permission rule that names it, such as `allow = [\"bash(git:{})\"]`. \
+             Do not attempt it another way.",
+            op.as_str(),
+            op.as_str()
+        ),
     }
 }
 
@@ -2292,29 +2309,41 @@ async fn run_turn_cycle(
             return Ok(completion);
         }
 
-        // Crossing the session budget is advisory: it is recorded and the run
-        // carries on, tool calls included. Note what this costs -- `max_turns
-        // == 0` is the normal case (see above), so with the budget no longer
-        // stopping anything, user cancellation is the only remaining bound on a
-        // run's spend.
+        // AH-017. The budget is a ceiling, not a remark. It used to record a
+        // note and carry on -- which, with `max_turns == 0` the normal case,
+        // left user cancellation as the only bound on a run's spend, so a run
+        // that went wrong could spend without limit while telling the user it
+        // had passed the limit.
+        //
+        // The turn that crosses the ceiling is finished and kept: its text is
+        // already in `completion` and its cost is already paid. What stops is
+        // the *next* thing -- the tool calls this turn asked for are not
+        // dispatched, and there is no further turn. Stopping here rather than
+        // mid-turn is what makes the partial output coherent.
         //
         // Recorded as a system note rather than an assistant turn: the model
         // never wrote it, and putting a bracketed status marker in the
         // assistant's voice hands it an example of itself emitting one, which
         // is the shape a model will imitate unprompted on later turns.
-        if budget.exhausted() && !budget_notice_recorded {
-            budget_notice_recorded = true;
-            conversation_messages.push(serde_json::json!({
-                "role": "system",
-                "content": format!(
-                    "[session token budget exhausted ({} tokens)] The configured \
-                     ceiling has been passed; this run is continuing past it.",
-                    budget.spent()
-                ),
-            }));
+        if budget.exhausted() {
+            if !budget_notice_recorded {
+                budget_notice_recorded = true;
+                conversation_messages.push(serde_json::json!({
+                    "role": "system",
+                    "content": format!(
+                        "[session token budget exhausted ({} tokens)] The configured \
+                         ceiling has been reached, so this run stopped here. {} tool \
+                         call(s) the last turn asked for were not run. Raise the \
+                         budget or start a new run to continue.",
+                        budget.spent(),
+                        tool_calls.len()
+                    ),
+                }));
+            }
             let _ = events.send(StreamEvent::MessagesUpdated {
                 messages: conversation_messages.clone(),
             });
+            return Ok(completion);
         }
 
         for tc in &tool_calls {
@@ -2739,6 +2768,110 @@ mod tests {
                 "finish_reason": "tool_calls"
             }]
         })
+    }
+
+    /// AH-017. The ceiling has to stop the run, not narrate that it will not.
+    #[tokio::test]
+    async fn an_exhausted_budget_stops_the_run_before_the_next_tool_call() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        // The first turn asks for a tool and reports usage past the ceiling.
+        let over_budget = json!({
+            "choices": [{
+                "message": {
+                    "content": "starting",
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": { "name": "search", "arguments": "{}" }
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }],
+            "usage": { "total_tokens": 5_000, "prompt_tokens": 4_000, "completion_tokens": 1_000 }
+        });
+        let model = MockModel::new(vec![
+            over_budget,
+            // If enforcement fails, the loop reaches this and the assertions
+            // below catch it.
+            json!({ "choices": [{ "message": { "content": "kept going" }, "finish_reason": "stop" }] }),
+        ]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(Some(100));
+        let convo = vec![json!({ "role": "user", "content": "hi" })];
+
+        let result = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            8,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(budget.exhausted(), "the mock reported usage past the ceiling");
+        // The tool the over-budget turn asked for is never dispatched.
+        assert!(
+            tool.calls.lock().unwrap().is_empty(),
+            "a run past its ceiling must not dispatch further tool calls"
+        );
+        // The partial output of the turn that crossed the line is preserved.
+        assert_eq!(result["choices"][0]["message"]["content"], "starting");
+    }
+
+    /// The same run, under a ceiling it never reaches, is unaffected.
+    #[tokio::test]
+    async fn a_run_inside_its_budget_is_not_stopped() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let modest = json!({
+            "choices": [{
+                "message": {
+                    "content": serde_json::Value::Null,
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": { "name": "search", "arguments": "{}" }
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }],
+            "usage": { "total_tokens": 10, "prompt_tokens": 8, "completion_tokens": 2 }
+        });
+        let model = MockModel::new(vec![
+            modest,
+            json!({ "choices": [{ "message": { "content": "done" }, "finish_reason": "stop" }] }),
+        ]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(Some(100_000));
+        let convo = vec![json!({ "role": "user", "content": "hi" })];
+
+        let result = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            8,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(!budget.exhausted());
+        assert_eq!(tool.calls.lock().unwrap().len(), 1, "the tool should run");
+        assert_eq!(result["choices"][0]["message"]["content"], "done");
     }
 
     #[tokio::test]
@@ -3555,21 +3688,20 @@ mod tests {
         assert!(!bash_result_is_error_flag("ok\n[exit 0]").await);
     }
 
-    /// Crossing the session token budget is advisory: it is announced once, as
-    /// a system note, and the run carries on -- tool calls included.
+    /// The announcement is in the system voice, and it is the end of the run.
+    ///
+    /// This suite previously asserted the opposite -- that the run *continued*
+    /// past its ceiling -- which is the behaviour AH-017 exists to remove. The
+    /// voice and once-only parts of that assertion still matter and are kept.
     #[tokio::test]
-    async fn an_exhausted_budget_is_announced_once_and_the_run_continues() {
-        let (tx, mut rx) = mpsc::unbounded_channel();
+    async fn an_exhausted_budget_is_announced_once_in_the_system_voice() {
+        let (tx, _rx) = mpsc::unbounded_channel();
         let mut over_budget = tool_call_completion();
         over_budget["usage"] = json!({ "total_tokens": 100 });
-        let done = json!({
+        let never_reached = json!({
             "choices": [{ "message": { "content": "all done" }, "finish_reason": "stop" }]
         });
-        // A second tool-calling turn after the ceiling is crossed, so the
-        // once-only latch is actually exercised rather than assumed.
-        let mut still_over = tool_call_completion();
-        still_over["usage"] = json!({ "total_tokens": 200 });
-        let model = MockModel::new(vec![over_budget, still_over, done]);
+        let model = MockModel::new(vec![over_budget, never_reached]);
         let tool = MockTool::default();
         let mut budget = SessionBudget::new(Some(50));
         let convo = vec![json!({ "role": "user", "content": "hi" })];
@@ -3589,62 +3721,25 @@ mod tests {
             None,
         )
         .await
-        .expect("passing the ceiling is not an error");
+        .expect("reaching the ceiling is a stop, not an error");
 
+        assert!(budget.exhausted(), "precondition: the ceiling was crossed");
         assert!(
-            budget.exhausted(),
-            "precondition: the run really did cross the ceiling"
+            tool.calls.lock().unwrap().is_empty(),
+            "the tool calls the last turn asked for must not run"
         );
-        assert!(
-            !tool.calls.lock().unwrap().is_empty(),
-            "tool calls still run once the ceiling is passed"
-        );
+        // The run took exactly one turn: it stopped rather than asking again.
+        assert_eq!(model.requests.lock().unwrap().len(), 1);
+        // The crossing turn itself is what comes back -- its tool calls are
+        // reported to the caller even though they were not dispatched, so the
+        // transcript shows what the run was about to do when it stopped.
+        let message = extract_choice_message(&result).expect("a completion is returned");
         assert_eq!(
-            extract_choice_message(&result)
-                .and_then(|m| m.get("content").and_then(|c| c.as_str()))
-                .unwrap_or_default(),
-            "all done",
-            "the run finishes on the model's own answer, not a stop notice"
-        );
-
-        // Announced exactly once, in the system voice -- never as an assistant
-        // turn the model could later imitate.
-        let requests = model.requests.lock().unwrap();
-        assert_eq!(requests.len(), 3, "the run kept taking turns");
-        // The last request is two turns past the ceiling: if the latch were
-        // missing, the note would appear once per turn here.
-        let messages = requests[2]["messages"].as_array().unwrap();
-        let notes: Vec<&serde_json::Value> = messages
-            .iter()
-            .filter(|m| {
-                m.get("content")
-                    .and_then(|c| c.as_str())
-                    .is_some_and(|c| c.contains("budget exhausted"))
-            })
-            .collect();
-        assert_eq!(
-            notes.len(),
-            1,
-            "announced once, not per turn: {messages:#?}"
-        );
-        assert_eq!(notes[0]["role"], "system", "system voice, not assistant");
-        assert!(
-            messages.iter().all(
-                |m| m.get("role").and_then(|v| v.as_str()) != Some("assistant")
-                    || !m["content"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .contains("budget exhausted")
-            ),
-            "no assistant turn carries the marker"
-        );
-
-        assert!(
-            std::iter::from_fn(|| rx.try_recv().ok())
-                .any(|ev| matches!(ev, StreamEvent::MessagesUpdated { .. })),
-            "live surfaces see the annotated conversation"
+            message["tool_calls"][0]["id"], "call_1",
+            "the crossing turn is preserved rather than discarded"
         );
     }
+
 
     /// Passing the ceiling no longer stops a run, so a long thread only grows.
     /// Once every turn is finished, the oversized conversation is compacted
