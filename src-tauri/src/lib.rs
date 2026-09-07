@@ -85,6 +85,7 @@ macro_rules! invoke_commands_with_extras {
         core::server::commands::get_server_status,
         core::server::commands::set_server_run_in_background,
         // Agent commands
+        core::agent::commands::agent_emergency_stop,
         core::agent::commands::agent_skill_list,
         core::agent::commands::agent_skill_read,
         core::agent::commands::agent_skill_write,

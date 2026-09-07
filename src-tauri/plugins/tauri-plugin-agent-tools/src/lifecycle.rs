@@ -608,6 +608,135 @@ mod tests {
         assert_eq!(t.for_tool("read"), Duration::from_secs(30));
     }
 
+    // ---- emergency stop (AH-051) ----------------------------------------
+
+    fn kill_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "jan-kill-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn an_emergency_stop_reports_what_it_actually_stopped() {
+        let a = register(Token::new(scope("kill-s", "r1", "c1")));
+        let b = register(Token::new(scope("kill-s", "r2", "c1")));
+        let elsewhere = register(Token::new(scope("other-s", "r1", "c1")));
+
+        let report = emergency_stop(&scope("kill-s", "", ""));
+
+        assert_eq!(report.stopped, 2);
+        assert_eq!(report.already_stopped, 0);
+        assert_eq!(report.live_children, 0);
+        assert!(report.complete);
+        assert!(a.token().is_stopped() && b.token().is_stopped());
+        assert!(
+            !elsewhere.token().is_stopped(),
+            "an emergency stop must never reach another session"
+        );
+        assert!(report.summary().contains("nothing left running"));
+    }
+
+    #[test]
+    fn a_second_press_is_reported_as_already_stopped_not_as_new_work() {
+        let a = register(Token::new(scope("kill-twice", "r1", "c1")));
+        let first = emergency_stop(&scope("kill-twice", "", ""));
+        assert_eq!(first.stopped, 1);
+
+        let second = emergency_stop(&scope("kill-twice", "", ""));
+        assert_eq!(second.stopped, 0);
+        assert_eq!(second.already_stopped, 1);
+        assert!(second.complete);
+        assert!(a.token().is_stopped());
+    }
+
+    #[test]
+    fn an_incomplete_stop_says_so_rather_than_claiming_success() {
+        // A token whose child survives the kill: the report must fail closed.
+        let token = Token::new(scope("kill-stuck", "r1", "c1"));
+        let held = register(token.clone());
+        // Stop it first, then adopt -- `adopt` on a stopped token kills
+        // immediately, so re-inserting behind its back is how the test
+        // simulates a child that would not die.
+        token.stop(StopReason::Cancelled);
+        token.0.pids.lock().unwrap().push(u32::MAX);
+
+        let report = emergency_stop(&scope("kill-stuck", "", ""));
+        assert_eq!(report.live_children, 1);
+        assert!(!report.complete, "cleanup did not finish");
+        assert!(
+            report.summary().contains("still running"),
+            "{}",
+            report.summary()
+        );
+        drop(held);
+    }
+
+    #[test]
+    fn the_application_scope_stops_everything_and_nothing_else_exists_to_miss() {
+        let a = register(Token::new(scope("app-a", "r1", "c1")));
+        let b = register(Token::new(scope("app-b", "r9", "c9")));
+        let report = emergency_stop(&Scope::default());
+        assert!(report.stopped >= 2);
+        assert!(a.token().is_stopped() && b.token().is_stopped());
+        assert!(report.summary().contains("all work"));
+    }
+
+    #[test]
+    fn a_killed_scope_is_still_killed_after_a_restart() {
+        let dir = kill_dir("restart");
+        let killed = register(Token::new(scope("dead-s", "dead-r", "c1")));
+        let report = emergency_stop(&scope("dead-s", "dead-r", ""));
+        record_killed(&dir, &report);
+        drop(killed);
+
+        // A fresh process reads the file and refuses to resume the run.
+        assert!(was_killed(&dir, &scope("dead-s", "dead-r", "c1")));
+        assert!(was_killed(&dir, &scope("dead-s", "dead-r", "c2")));
+        // ...and does not refuse anything else.
+        assert!(!was_killed(&dir, &scope("dead-s", "live-r", "c1")));
+        assert!(!was_killed(&dir, &scope("live-s", "dead-r", "c1")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn killing_a_session_covers_the_runs_inside_it_after_a_restart() {
+        let dir = kill_dir("session");
+        let report = emergency_stop(&scope("whole-s", "", ""));
+        record_killed(&dir, &report);
+        assert!(was_killed(&dir, &scope("whole-s", "any-run", "any-call")));
+        assert!(!was_killed(&dir, &scope("other-s", "any-run", "")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_truncated_kill_log_does_not_lose_the_earlier_kills() {
+        let dir = kill_dir("truncated");
+        let report = emergency_stop(&scope("trunc-s", "trunc-r", ""));
+        record_killed(&dir, &report);
+        let path = dir.join("audit").join(KILLED_SCOPES_LOG);
+        let mut body = std::fs::read_to_string(&path).unwrap();
+        body.push_str("{\"at\":\"2026-01-01T00:00:0");
+        std::fs::write(&path, body).unwrap();
+
+        assert!(
+            was_killed(&dir, &scope("trunc-s", "trunc-r", "c1")),
+            "a truncated tail must not lose the recorded kill"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn no_kill_log_means_nothing_was_killed() {
+        let dir = kill_dir("absent");
+        assert!(!was_killed(&dir, &scope("s", "r", "c")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn both_stop_reasons_record_as_cancelled_with_the_reason_kept_separately() {
         assert_eq!(
@@ -617,4 +746,164 @@ mod tests {
         assert_eq!(StopReason::Timeout.as_str(), "timeout");
         assert_eq!(StopReason::Cancelled.as_str(), "cancelled");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Emergency stop (AH-051)
+// ---------------------------------------------------------------------------
+
+/// What an emergency stop achieved, and what it could not.
+///
+/// Deliberately reports failure rather than smoothing it over: a stop that
+/// leaves a process running has not stopped anything, and telling the user it
+/// succeeded is worse than telling them it did not.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct StopReport {
+    /// Tokens this call moved from running to stopped.
+    pub stopped: usize,
+    /// Tokens already stopped when it ran. Not a failure; a second press.
+    pub already_stopped: usize,
+    /// Child processes still owned after the sweep. Non-zero means the stop is
+    /// incomplete and the caller must say so.
+    pub live_children: usize,
+    /// Whether cleanup finished. False whenever `live_children` is non-zero.
+    pub complete: bool,
+    /// The scope this applied to, echoed back so a report is self-describing.
+    pub session: String,
+    pub run: String,
+    pub call: String,
+}
+
+impl StopReport {
+    /// The sentence to show. Names what is unresolved rather than implying a
+    /// clean stop.
+    pub fn summary(&self) -> String {
+        let where_ = match (self.session.as_str(), self.run.as_str(), self.call.as_str()) {
+            ("", "", "") => "all work".to_string(),
+            (s, "", "") => format!("session {s}"),
+            (_, r, "") => format!("run {r}"),
+            (_, _, c) => format!("call {c}"),
+        };
+        if self.complete {
+            format!(
+                "Stopped {where_}: {} stopped, {} already stopped, nothing left running.",
+                self.stopped, self.already_stopped
+            )
+        } else {
+            format!(
+                "Stopped {where_}: {} stopped, but {} child process(es) are still running. \
+                 Cleanup did not finish.",
+                self.stopped, self.live_children
+            )
+        }
+    }
+}
+
+/// Stop everything in `scope` and report honestly what remains.
+///
+/// Built on [`stop_scope`] rather than beside it: there is one cancellation
+/// system, and the emergency stop is that system applied to a wider scope. It
+/// grants no authority of its own — stopping work never needs permission that
+/// starting it did not.
+pub fn emergency_stop(scope: &Scope) -> StopReport {
+    let before: Vec<Token> = registry()
+        .lock()
+        .unwrap()
+        .values()
+        .filter(|t| t.scope().within(scope))
+        .cloned()
+        .collect();
+    let already_stopped = before.iter().filter(|t| t.is_stopped()).count();
+
+    let stopped = stop_scope(scope, StopReason::Cancelled);
+
+    // Measured after the sweep: `stop` reaps as it goes, so anything still
+    // here resisted the kill.
+    let live_children = live_children_in(scope);
+
+    StopReport {
+        stopped,
+        already_stopped,
+        live_children,
+        complete: live_children == 0,
+        session: scope.session.clone(),
+        run: scope.run.clone(),
+        call: scope.call.clone(),
+    }
+}
+
+/// Scopes stopped by an emergency stop, so a restart does not resume them.
+///
+/// Kept next to the audit log because it is the same kind of fact: something
+/// the user did that later behaviour has to respect. Append-only and
+/// truncation-tolerant for the same reasons.
+pub const KILLED_SCOPES_LOG: &str = "killed-scopes.jsonl";
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct KilledScope {
+    pub at: String,
+    pub session: String,
+    pub run: String,
+    pub call: String,
+    /// Whether cleanup finished when it was killed.
+    pub complete: bool,
+}
+
+fn killed_path(data_folder: &std::path::Path) -> std::path::PathBuf {
+    data_folder.join("audit").join(KILLED_SCOPES_LOG)
+}
+
+/// Record that a scope was killed. Best effort, like the audit log: failing to
+/// record must not change what was stopped.
+pub fn record_killed(data_folder: &std::path::Path, report: &StopReport) {
+    let entry = KilledScope {
+        at: crate::audit::now(),
+        session: report.session.clone(),
+        run: report.run.clone(),
+        call: report.call.clone(),
+        complete: report.complete,
+    };
+    let path = killed_path(data_folder);
+    let write = || -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let mut line = serde_json::to_string(&entry).map_err(|e| e.to_string())?;
+        line.push('\n');
+        use std::io::Write as _;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| e.to_string())?;
+        file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+        file.flush().map_err(|e| e.to_string())
+    };
+    if let Err(e) = write() {
+        eprintln!("emergency stop: could not record the killed scope: {e}");
+    }
+}
+
+/// Whether this scope was killed in an earlier session.
+///
+/// Consulted before resuming work so a restart cannot bring back something the
+/// user stopped. A scope is killed if any recorded kill *contains* it: killing
+/// a session covers every run in it, including ones recorded only by run id.
+pub fn was_killed(data_folder: &std::path::Path, scope: &Scope) -> bool {
+    use std::io::BufRead as _;
+    let Ok(file) = std::fs::File::open(killed_path(data_folder)) else {
+        return false;
+    };
+    std::io::BufReader::new(file)
+        .lines()
+        .map_while(Result::ok)
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str::<KilledScope>(&l).ok())
+        .any(|killed| {
+            scope.within(&Scope::new(
+                killed.session.clone(),
+                killed.run.clone(),
+                killed.call.clone(),
+            ))
+        })
 }

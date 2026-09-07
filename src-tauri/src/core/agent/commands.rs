@@ -468,3 +468,41 @@ mod worktree_command_tests {
         assert!(listed.is_empty());
     }
 }
+
+/// Stop work now, at the scope the caller names. AH-051.
+///
+/// Built on the one cancellation system rather than a second one: this is
+/// `lifecycle::emergency_stop`, which is `stop_scope` applied to a wider scope.
+/// It grants no authority — stopping work never needs permission that starting
+/// it did not — and it never reaches outside the scope it was given, so an
+/// application-wide stop is an explicit choice rather than a side effect.
+///
+/// The report is deliberately honest: if a child process survived the kill it
+/// says so and `complete` is false, because telling someone their emergency
+/// stop worked when a process is still running is worse than telling them it
+/// did not.
+#[tauri::command]
+pub async fn agent_emergency_stop(
+    app: tauri::AppHandle,
+    session: Option<String>,
+    run: Option<String>,
+    call: Option<String>,
+) -> Result<tauri_plugin_agent_tools::lifecycle::StopReport, String> {
+    use tauri_plugin_agent_tools::lifecycle::{emergency_stop, record_killed, Scope};
+
+    // An empty field means "everything at this level", which is what makes
+    // session, run and call scopes fall out of one shape.
+    let scope = Scope::new(
+        session.unwrap_or_default(),
+        run.unwrap_or_default(),
+        call.unwrap_or_default(),
+    );
+    let report = emergency_stop(&scope);
+
+    // Persisted so a restart cannot resume what was killed. Best effort: a
+    // failure to record must not un-stop the work.
+    let data_folder = crate::core::app::commands::get_jan_data_folder_path(app);
+    record_killed(&data_folder, &report);
+
+    Ok(report)
+}
