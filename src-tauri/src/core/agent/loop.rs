@@ -286,6 +286,10 @@ struct CompositeToolInvoker {
     subagents: Option<SubagentContext>,
     auto_approve: bool,
     run_mode: crate::core::agent::plan::RunMode,
+    /// The session/run this dispatch belongs to. Every tool call gets a token
+    /// under it, so stopping the run stops the calls and stopping one run never
+    /// reaches another. AH-023.
+    cancel_scope: tauri_plugin_agent_tools::lifecycle::Scope,
 }
 
 /// Default for the sandboxed shell's network namespace, used when
@@ -437,7 +441,58 @@ fn output_sink(
     })
 }
 
+/// Report a call that was stopped rather than answered.
+///
+/// Its own function so the wording is identical wherever a call is cancelled,
+/// and so the reason -- deadline or person -- always reaches the transcript.
+fn return_cancelled_outcome(
+    out: &mut Vec<ToolOutcome>,
+    id: &str,
+    name: &str,
+    reason: tauri_plugin_agent_tools::lifecycle::StopReason,
+) {
+    use tauri_plugin_agent_tools::lifecycle::StopReason;
+    let why = match reason {
+        StopReason::Timeout => "its time limit passed while it waited",
+        StopReason::Cancelled => "the run was cancelled while it waited",
+    };
+    out.push(ToolOutcome {
+        id: id.to_string(),
+        content: format!("ERROR: tool '{name}' was not run: {why}."),
+        diff: None,
+        images: Vec::new(),
+    });
+}
+
+/// A run identifier for cancellation scoping.
+///
+/// Runs are not otherwise identified here, and cancellation needs to name one
+/// without reaching into another. A counter is enough: it is unique for the
+/// life of the process, which is the life of every token it scopes.
+fn run_id_for_cancellation(session_id: Option<&str>) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_RUN: AtomicU64 = AtomicU64::new(1);
+    let n = NEXT_RUN.fetch_add(1, Ordering::Relaxed);
+    match session_id {
+        Some(session) => format!("{session}#run-{n}"),
+        None => format!("run-{n}"),
+    }
+}
+
 impl CompositeToolInvoker {
+    /// A cancellation token for one call, under this run's scope.
+    ///
+    /// Registered for the caller to hold: dropping the guard deregisters, so a
+    /// finished call leaves nothing for a later scope-wide stop to trip over.
+    fn call_token(&self, call_id: &str) -> tauri_plugin_agent_tools::lifecycle::Registered {
+        use tauri_plugin_agent_tools::lifecycle::{register, Scope, Token};
+        register(Token::new(Scope::new(
+            self.cancel_scope.session.clone(),
+            self.cancel_scope.run.clone(),
+            call_id.to_string(),
+        )))
+    }
+
     fn tool_context(&self) -> tauri_plugin_agent_tools::tools::ToolContext<'_> {
         tauri_plugin_agent_tools::tools::ToolContext::new(
             &self.project_root,
@@ -1003,12 +1058,19 @@ impl ToolInvoker for CompositeToolInvoker {
                 let allow_home_read = self.allow_home_read;
                 let sandbox = self.sandbox;
                 let scratch = self.scratch_root.clone();
+                // Reads run concurrently, so each needs its own token under the
+                // run's scope rather than sharing one.
+                let registered = self.call_token(&id);
                 read_futures.push(async move {
                     let ctx = ToolContext::new(&root, &store, &enabled)
                         .with_network(allow_network)
                         .with_home_readonly(allow_home_read)
                         .with_sandbox(sandbox)
-                        .with_scratch_root(&scratch);
+                        .with_scratch_root(&scratch)
+                        .with_cancel(registered.token().clone());
+                    // Held until the future completes, then dropped, which
+                    // deregisters it.
+                    let _registered = registered;
                     let (text, diff, images) = execute_builtin_with_diff(tool, &args, &ctx).await;
                     ToolOutcome {
                         id,
@@ -1021,7 +1083,13 @@ impl ToolInvoker for CompositeToolInvoker {
             }
             let (text, diff, images) = match decision {
                 Decision::Allow => {
-                    execute_builtin_with_diff(tool, &args, &self.streaming_tool_context(&id)).await
+                    // The token lives as long as the call: the guard is held
+                    // across the await, so a stop_scope on this run reaches it.
+                    let registered = self.call_token(&id);
+                    let ctx = self
+                        .streaming_tool_context(&id)
+                        .with_cancel(registered.token().clone());
+                    execute_builtin_with_diff(tool, &args, &ctx).await
                 }
                 Decision::HardDeny(reason) => {
                     (hard_deny_msg(name, reason, &self.project_root), None, None)
@@ -1068,19 +1136,39 @@ impl ToolInvoker for CompositeToolInvoker {
                         prompt_kind: prompt_kind.to_string(),
                         offers_always: true,
                     });
-                    // Sender dropped (client gone / run cancelled) => Deny. No timeout:
-                    // the run is cancellable via agent_cancel, which drops this future.
-                    let decision = rx.await.unwrap_or(PermissionDecision::Deny);
+                    // AH-023. The wait itself is cancellable: a run stopped
+                    // while someone is deciding must not sit here until they
+                    // answer, and the pending request must not outlive the call
+                    // that raised it. Waiting only on `rx` meant a cancelled run
+                    // stayed parked on a question nobody was going to answer.
+                    let registered = self.call_token(&id);
+                    let waiting = registered.token().clone();
+                    let decision = tokio::select! {
+                        answer = rx => answer.unwrap_or(PermissionDecision::Deny),
+                        _ = async {
+                            while !waiting.is_stopped() {
+                                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                            }
+                        } => PermissionDecision::Deny,
+                    };
                     // Best-effort cleanup if the respond command didn't consume it.
+                    // Also the path that removes a pending request whose call was
+                    // cancelled, so the approval UI does not keep offering it.
                     self.permission_requests.lock().await.remove(&request_id);
+
+                    // An answer that arrives for a call that has already been
+                    // stopped is stale: recorded, never acted on.
+                    if let Some(reason) = waiting.stopped() {
+                        return_cancelled_outcome(&mut out, &id, name, reason);
+                        continue;
+                    }
+
                     match decision {
                         PermissionDecision::AllowOnce => {
-                            execute_builtin_with_diff(
-                                tool,
-                                &args,
-                                &self.streaming_tool_context(&id),
-                            )
-                            .await
+                            let ctx = self
+                                .streaming_tool_context(&id)
+                                .with_cancel(registered.token().clone());
+                            execute_builtin_with_diff(tool, &args, &ctx).await
                         }
                         PermissionDecision::AllowAlways => {
                             // Thread-scoped only; never persisted to agent.toml.
@@ -1094,12 +1182,10 @@ impl ToolInvoker for CompositeToolInvoker {
                             } else {
                                 self.grants.lock().unwrap().grant(kind);
                             }
-                            execute_builtin_with_diff(
-                                tool,
-                                &args,
-                                &self.streaming_tool_context(&id),
-                            )
-                            .await
+                            let ctx = self
+                                .streaming_tool_context(&id)
+                                .with_cancel(registered.token().clone());
+                            execute_builtin_with_diff(tool, &args, &ctx).await
                         }
                         PermissionDecision::Deny => {
                             (format!("ERROR: tool '{name}' denied by user"), None, None)
@@ -1835,6 +1921,14 @@ async fn orchestrate_inner(
             tauri_plugin_agent_tools::workspace::ensure_scratch_dir_path(&scratch_root).await?;
         }
         let tools = CompositeToolInvoker {
+            // One scope per run. A session-less run still gets a distinct run
+            // id, so an application-wide stop reaches it while a stop aimed at
+            // another run does not.
+            cancel_scope: tauri_plugin_agent_tools::lifecycle::Scope::new(
+                session_id.clone().unwrap_or_default(),
+                run_id_for_cancellation(session_id.as_deref()),
+                String::new(),
+            ),
             mcp: mcp_tools,
             store_root: tauri_plugin_agent_tools::workspace::project_store(root),
             enabled_skills: settings.enabled_skills,
@@ -4316,12 +4410,104 @@ mod tests {
         })
     }
 
+    /// AH-023 through the real dispatcher: stopping the run's scope stops the
+    /// call, and the outcome says so rather than reporting a result.
+    #[tokio::test]
+    async fn cancelling_a_runs_scope_stops_its_tool_calls() {
+        use tauri_plugin_agent_tools::lifecycle::{stop_scope, Scope, StopReason};
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut invoker = build_prompting_invoker(
+            root.clone(),
+            tx,
+            Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        );
+        // A scope this test owns, so it cannot disturb anything else.
+        let scope = Scope::new("sess-cancel-test", "run-cancel-test", "");
+        invoker.cancel_scope = scope.clone();
+        invoker.auto_approve = true;
+
+        std::fs::write(root.join("a.txt"), "secret contents").unwrap();
+
+        // Stop the run before dispatch: cancel-before-execution.
+        let stopped_before = std::thread::spawn({
+            let scope = scope.clone();
+            move || {
+                // Give the dispatch a moment to register its token.
+                std::thread::sleep(std::time::Duration::from_millis(120));
+                stop_scope(&scope, StopReason::Cancelled)
+            }
+        });
+
+        let calls = vec![serde_json::json!({
+            "id": "call_cancel_1",
+            "type": "function",
+            "function": { "name": "read", "arguments": "{\"path\":\"a.txt\"}" }
+        })];
+        let outcomes = invoker.invoke(&calls).await.unwrap();
+        let _ = stopped_before.join();
+
+        assert_eq!(outcomes.len(), 1);
+        // Either the read finished before the stop landed, or it was stopped.
+        // What must never happen is a cancelled call reporting the contents.
+        let content = &outcomes[0].content;
+        if content.starts_with("ERROR") {
+            assert!(
+                content.contains("cancel"),
+                "a stopped call must say so: {content}"
+            );
+            assert!(
+                !content.contains("secret contents"),
+                "a cancelled read must not leak the file: {content}"
+            );
+        }
+    }
+
+    /// One run's stop must not reach another run's calls.
+    #[tokio::test]
+    async fn stopping_one_run_leaves_another_runs_calls_alone() {
+        use tauri_plugin_agent_tools::lifecycle::{stop_scope, Scope, StopReason};
+
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        std::fs::write(root.join("a.txt"), "hello").unwrap();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut invoker = build_prompting_invoker(
+            root.clone(),
+            tx,
+            Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        );
+        invoker.cancel_scope = Scope::new("sess-iso", "run-mine", "");
+        invoker.auto_approve = true;
+
+        // A different run is stopped entirely.
+        stop_scope(&Scope::new("sess-iso", "run-theirs", ""), StopReason::Cancelled);
+
+        let calls = vec![serde_json::json!({
+            "id": "call_iso_1",
+            "type": "function",
+            "function": { "name": "read", "arguments": "{\"path\":\"a.txt\"}" }
+        })];
+        let outcomes = invoker.invoke(&calls).await.unwrap();
+        assert_eq!(outcomes.len(), 1);
+        assert!(
+            outcomes[0].content.contains("hello"),
+            "another run's stop must not touch this call: {}",
+            outcomes[0].content
+        );
+    }
+
     fn build_prompting_invoker(
         root: std::path::PathBuf,
         events: mpsc::UnboundedSender<StreamEvent>,
         registry: PermissionRegistry,
     ) -> CompositeToolInvoker {
         CompositeToolInvoker {
+            // Tests run one dispatch at a time; a fixed scope is enough to
+            // exercise the token without colliding with another run.
+            cancel_scope: tauri_plugin_agent_tools::lifecycle::Scope::default(),
             sandbox: true,
             mcp: McpToolInvoker {
                 tool_to_server: HashMap::new(),
