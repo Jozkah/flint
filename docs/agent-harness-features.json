@@ -612,14 +612,16 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-009"
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -630,10 +632,15 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs::tests",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::tests::bash_exceeding_its_timeout_is_terminated_not_backgrounded",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::tests::a_timeout_keeps_whatever_the_command_printed_first",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::tests::backgrounding_is_available_when_it_is_asked_for"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Only bash has a timeout, and on expiry it backgrounds the job instead of killing it; read/edit/web/MCP have none."
+      "auditNote": "Every built-in now runs under a deadline, not just bash. lifecycle::Timeouts gives a default plus per-tool limits and overrides, and an unknown tool gets the default rather than no limit. execute_builtin wraps the handler in run_with_deadline, so the clock starts when execution starts -- after the gate, not while a call waited for approval -- and a stopped call reports whether it hit a deadline or a person. The bash timeout previously *backgrounded* the command: it kept running, unowned, after the call returned, so the deadline and the stop were unrelated events. It now terminates the process tree, preserves whatever the command printed first, and warns rather than claiming success if the tree did not die; backgrounding survives as an explicit background:true argument. CORRECTION to the prior audit note: MCP tool calls already had both a timeout and a cancellation channel (core/mcp/commands.rs:494-506, tool_call_timeout_duration); the claim that they had none was wrong. Timeouts are proved with tokio's paused clock, so the tests assert deadlines without waiting for them. REMAINING: a timeout does not yet emit an activity/audit event of its own; that arrives with the AH-050 tool-invocation log."
     },
     {
       "id": "AH-021",
@@ -704,6 +711,8 @@
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs"
       ],
       "securityImpact": "high",
@@ -716,10 +725,13 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs::tests",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::tests::a_cancelled_call_stops_before_it_runs_and_says_who_stopped_it"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Teardown is drop/abort-based with no cancellation token; in-flight children rely on process-group kill."
+      "auditNote": "The primitive exists and is wired into the built-in tool path. lifecycle::Token is scoped to session/run/call, records why it stopped (first reason wins), owns its child pids and reaps them on stop, kills a child adopted after cancellation so the spawn/cancel race cannot leak a process, and refuses a result that arrives after the stop so a command finishing during its own kill cannot report success. stop_scope stops a run without touching sibling runs or other sessions. ToolContext carries an optional token and execute_builtin honours it, so cancel-before-execution and cancel-during-execution both work for every built-in. Guards are mutation-checked: accepting late results, and ignoring scope boundaries, each turn the relevant tests red. STILL MISSING, which is why this is not implemented: the token is not threaded from the desktop run/dispatcher down to the handler (only the CLI and tests supply one today), subagent dispatch is not cancelled, the permission-wait path does not observe the token, the existing MCP cancellation channel is not connected to it, and the AH-049 cancelled outcome is not emitted from the stop path."
     },
     {
       "id": "AH-024",
