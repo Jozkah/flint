@@ -7205,7 +7205,6 @@ async fn await_branch_poll(
     joined.ok().flatten()
 }
 
-
 /// Await an in-flight `/plugin install`, parking forever when none is running.
 /// Same cancel-safe borrow as `await_mcp`.
 async fn await_plugin_install(
@@ -16178,9 +16177,9 @@ mod tests {
         autoscroll_selection, await_branch_poll, backgrounded_job_id, brand, build_user_message,
         clipboard_path, compact_tokens, context_lines, diff_lines, drain_stream_events,
         estimate_token_count, finish_account_login, finish_compaction, finish_context_report,
-        finish_login, finish_plugin_install, finish_tokamak_login, 
-        format_tokens, group_detail_lines, group_summary, handle_ask_key, handle_ask_mouse,
-        handle_key, handle_mouse, header_spans, image_mime, image_mime_of, input_content_lines,
+        finish_login, finish_plugin_install, finish_tokamak_login, format_tokens,
+        group_detail_lines, group_summary, handle_ask_key, handle_ask_mouse, handle_key,
+        handle_mouse, header_spans, image_mime, image_mime_of, input_content_lines,
         load_first_file_image, load_image_file, message_text, open_config_screen,
         open_rewind_picker, pairs_to_str, parse_command, partial_json_field,
         provider_label_for_model, rebuild_recall, replay_display_log, restore_goal,

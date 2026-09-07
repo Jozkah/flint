@@ -874,9 +874,8 @@ pub(crate) fn spawn_subagent(
     // The child gets its own token under the parent's *scope*, not the parent's
     // token, so stopping the run reaches both while a child that fails does not
     // stop its siblings.
-    let child_token = tauri_plugin_agent_tools::lifecycle::current().map(|parent| {
-        tauri_plugin_agent_tools::lifecycle::Token::new(parent.scope().clone())
-    });
+    let child_token = tauri_plugin_agent_tools::lifecycle::current()
+        .map(|parent| tauri_plugin_agent_tools::lifecycle::Token::new(parent.scope().clone()));
     let handle = tokio::spawn(async move {
         // Registered for the life of the child so a scope-wide stop finds it.
         let _child_registered = child_token

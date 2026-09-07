@@ -16,8 +16,8 @@ pub mod run_report;
 mod secret_input;
 pub mod terminal_setup;
 pub mod tokamak;
-pub mod version;
 mod tui;
+pub mod version;
 
 use std::path::PathBuf;
 use std::sync::Arc;

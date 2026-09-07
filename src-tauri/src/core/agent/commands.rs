@@ -506,3 +506,29 @@ pub async fn agent_emergency_stop(
 
     Ok(report)
 }
+
+/// Retrieve prompt snapshots. AH-078.
+///
+/// Scoped on purpose. A caller asks for one snapshot by id, or for the
+/// snapshots of a run or session it names, and gets nothing outside that: the
+/// viewer must not become a way to read another session's prompts, which is
+/// where the project context and any file content the agent was given would be.
+///
+/// The stored payload is already redacted -- redaction happens before
+/// persistence, in `snapshot::capture` -- so there is no unredacted form for
+/// this command to leak. It returns what is on disk and nothing more.
+#[tauri::command]
+pub async fn agent_prompt_snapshots(
+    app: tauri::AppHandle,
+    snapshot_id: Option<String>,
+    run: Option<String>,
+    session: Option<String>,
+) -> Result<Vec<tauri_plugin_agent_tools::snapshot::PromptSnapshot>, String> {
+    let data_folder = crate::core::app::commands::get_jan_data_folder_path(app);
+    tauri_plugin_agent_tools::snapshot::scoped_lookup(
+        &data_folder,
+        snapshot_id.as_deref(),
+        run.as_deref(),
+        session.as_deref(),
+    )
+}

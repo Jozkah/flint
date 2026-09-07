@@ -607,3 +607,163 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 }
+
+/// Scoped retrieval, shared by the Tauri command and its tests. AH-078.
+///
+/// Split out of the command so the boundary can be tested without a Tauri
+/// app handle: the rule is what matters, not the transport.
+///
+/// An id alone is not authority. The caller must also name the session or run
+/// it believes the snapshot belongs to, and the record has to agree — otherwise
+/// ids are guessable and the scope is decorative.
+pub fn scoped_lookup(
+    data_folder: &Path,
+    snapshot_id: Option<&str>,
+    run: Option<&str>,
+    session: Option<&str>,
+) -> Result<Vec<PromptSnapshot>, String> {
+    if let Some(id) = snapshot_id {
+        if session.is_none() && run.is_none() {
+            return Err("a snapshot must be requested with the session or run it belongs to".into());
+        }
+        let Some(found) = find(data_folder, id) else {
+            return Ok(Vec::new());
+        };
+        let in_scope = session.is_none_or(|s| found.session == s)
+            && run.is_none_or(|r| found.run == r);
+        if !in_scope {
+            return Err("a snapshot must be requested with the session or run it belongs to".into());
+        }
+        return Ok(vec![found]);
+    }
+    match (run, session) {
+        (Some(run), _) => Ok(by_run(data_folder, run)),
+        (None, Some(session)) => Ok(by_session(data_folder, session)),
+        // Refused rather than returning everything: an unscoped list is every
+        // prompt in every session.
+        (None, None) => Err("name a snapshot id, a run, or a session".into()),
+    }
+}
+
+#[cfg(test)]
+mod scope_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn dir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "jan-snapscope-{tag}-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn seed(d: &Path) -> (PromptSnapshot, PromptSnapshot) {
+        let mine = capture(
+            &json!({ "model": "m", "messages": [{ "role": "user", "content": "mine" }] }),
+            &Identity {
+                session: "s-mine".into(),
+                run: "r-mine".into(),
+                thread: "t".into(),
+                agent: "main".into(),
+                provider: "openai".into(),
+            },
+        );
+        let theirs = capture(
+            &json!({ "model": "m", "messages": [{ "role": "user", "content": "theirs" }] }),
+            &Identity {
+                session: "s-theirs".into(),
+                run: "r-theirs".into(),
+                thread: "t".into(),
+                agent: "main".into(),
+                provider: "openai".into(),
+            },
+        );
+        append(d, &mine);
+        append(d, &theirs);
+        (mine, theirs)
+    }
+
+    #[test]
+    fn a_session_sees_only_its_own_snapshots() {
+        let d = dir("session");
+        let (mine, _) = seed(&d);
+        let got = scoped_lookup(&d, None, None, Some("s-mine")).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].id, mine.id);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_run_sees_only_its_own_snapshots() {
+        let d = dir("run");
+        let (mine, _) = seed(&d);
+        let got = scoped_lookup(&d, None, Some("r-mine"), None).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].id, mine.id);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_id_from_another_session_is_refused_not_returned() {
+        // The boundary that matters: knowing an id must not be enough.
+        let d = dir("cross");
+        let (_, theirs) = seed(&d);
+        let refused = scoped_lookup(&d, Some(&theirs.id), None, Some("s-mine"));
+        assert!(refused.is_err(), "{refused:?}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_id_from_another_run_is_refused() {
+        let d = dir("cross-run");
+        let (_, theirs) = seed(&d);
+        assert!(scoped_lookup(&d, Some(&theirs.id), Some("r-mine"), None).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_id_on_its_own_is_refused() {
+        let d = dir("bare-id");
+        let (mine, _) = seed(&d);
+        assert!(
+            scoped_lookup(&d, Some(&mine.id), None, None).is_err(),
+            "an id alone must not be authority"
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_unscoped_list_is_refused() {
+        let d = dir("unscoped");
+        seed(&d);
+        assert!(
+            scoped_lookup(&d, None, None, None).is_err(),
+            "an unscoped list is every prompt in every session"
+        );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_correctly_scoped_id_is_returned() {
+        let d = dir("ok");
+        let (mine, _) = seed(&d);
+        let got = scoped_lookup(&d, Some(&mine.id), None, Some("s-mine")).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].id, mine.id);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn an_unknown_id_is_empty_rather_than_an_error() {
+        // Absence is not a permission failure, and must not be reported as one.
+        let d = dir("unknown");
+        seed(&d);
+        let got = scoped_lookup(&d, Some("snap-nope"), None, Some("s-mine")).unwrap();
+        assert!(got.is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+}

@@ -3068,7 +3068,10 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(budget.exhausted(), "the mock reported usage past the ceiling");
+        assert!(
+            budget.exhausted(),
+            "the mock reported usage past the ceiling"
+        );
         // The tool the over-budget turn asked for is never dispatched.
         assert!(
             tool.calls.lock().unwrap().is_empty(),
@@ -3992,7 +3995,6 @@ mod tests {
         );
     }
 
-
     /// Passing the ceiling no longer stops a run, so a long thread only grows.
     /// Once every turn is finished, the oversized conversation is compacted
     /// before it is published -- otherwise the next run resumes this thread by
@@ -4641,7 +4643,10 @@ mod tests {
         invoker.auto_approve = true;
 
         // A different run is stopped entirely.
-        stop_scope(&Scope::new("sess-iso", "run-theirs", ""), StopReason::Cancelled);
+        stop_scope(
+            &Scope::new("sess-iso", "run-theirs", ""),
+            StopReason::Cancelled,
+        );
 
         let calls = vec![serde_json::json!({
             "id": "call_iso_1",
