@@ -20,6 +20,10 @@ export type {
 // StreamEvent shapes emitted by the Rust agent loop (events.rs, tag = "type").
 // Owned here because this store is what consumes/dispatches them.
 export type StreamEvent =
+  // AH-078. Carries the id and hash of the payload that was just dispatched,
+  // never the payload itself: the timeline links to the stored record rather
+  // than embedding a copy that could drift from it.
+  | { type: 'prompt_snapshot'; id: string; hash: string; redactions: number }
   | { type: 'token'; text: string }
   | { type: 'step'; index: number; max: number }
   | { type: 'tool_call_started'; id: string; name: string }

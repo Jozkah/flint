@@ -266,6 +266,61 @@ Two corrections worth carrying forward:
 
 Registry: **65 implemented / 46 in-progress / 89 missing / 0 verified / 200**.
 
+**AH-078 — one step from done.** Backend, IPC and viewer all exist and are
+tested:
+
+- `snapshot::scoped_lookup` (plugin) holds the retrieval rule; 8 tests cover
+  same-session, by-run, cross-session refusal, cross-run refusal, bare id,
+  unscoped list, and unknown id.
+- `agent_prompt_snapshots` (registered in `src-tauri/src/lib.rs`) delegates to
+  it.
+- `web-app/src/containers/PromptSnapshotView.tsx` renders it; 11 tests.
+- `prompt_snapshot` is in the `StreamEvent` union in
+  `web-app/src/hooks/useCoworkRun.ts`.
+
+**The one remaining step: render the viewer.** `useCoworkRun.ts` has the event
+typed but `applyEvent` still falls through to `default` for it. Either add a
+turn kind for it, or — smaller and probably better — keep the latest snapshot id
+in the run store and render one `<PromptSnapshotView>` beside `CoworkRunSummary`
+in `routes/cowork.tsx`, passing `sessionId` so the scope check passes. Then mark
+AH-078 implemented.
+
+**AH-107 — not started.** `spawn_subagent` (`core/agent/subagent.rs`) propagates
+the cancellation token but still runs against the shared root.
+`core/agent/worktree.rs` already has create/validate/name/use/list/recover/
+discard — do not add a second manager. Create the worktree before the child
+starts, pass its path as the child's working directory, record
+owner/run/branch/base-commit, wire cleanup to the cancellation path.
+
+**AH-146 — not started.** The approval event in `core/agent/events.rs` still
+carries a whole-change diff. Needs an immutable preview with a patch hash and
+base-state hashes that approval binds to, invalidated when either changes.
+
+**AH-201–AH-210 — not appended.** The registry is still 200 entries.
+
+Then: AH-007, AH-036, AH-037, AH-041, AH-042, AH-044, AH-045, AH-050, AH-073,
+AH-109, AH-157, AH-198.
+
+Facts worth carrying:
+
+- `lifecycle::current()` is the ambient token; a spawned task does **not**
+  inherit it and must capture it explicitly.
+- `resolve_jan_data_folder()` redirects under `cfg(test)`. Anything reached from
+  the dispatcher that writes to the data folder must keep that property.
+- The shared `Button` does not forward refs.
+- `snapshot::redact_payload` (structure-aware, provenance) and `audit::redact`
+  (value-shaped) are the two redaction passes. AH-044/AH-045 should build on
+  them rather than adding a third.
+- In jsdom, `navigator.clipboard` is getter-only and `userEvent.setup()`
+  installs its own stub; define the mock after setup. jsdom does not implement
+  Enter-to-toggle on `<details>`.
+
+### Superseded next batch (kept for context)
+
+### Exact next batch
+
+Registry: **65 implemented / 46 in-progress / 89 missing / 0 verified / 200**.
+
 Completed earlier in this phase: **AH-023**, **AH-051**.
 
 **AH-078 — backend done, in-progress on purpose.** The snapshot is taken in
