@@ -264,6 +264,45 @@ Two corrections worth carrying forward:
 
 ### Exact next batch
 
+Updated at `ff91aaf58`. Registry counts unchanged (63/47/90): AH-023 and AH-051
+both advanced but neither meets its full acceptance list, so neither is claimed.
+
+**AH-023 — done:** the run scope lives on `CompositeToolInvoker`; all three
+dispatch paths (parallel reads, direct allow, both post-prompt branches) mint a
+call token under it and hold the guard across the await; the permission wait
+races the token, drops the pending request either way, and treats an answer for
+an already-stopped call as stale. Two tests drive the real dispatcher.
+
+**AH-023 — remaining, in order:**
+
+1. Cancel subagent dispatch in `core/agent/loop.rs` (`dispatch_subagent`).
+2. Connect `state.tool_call_cancellations` (the MCP oneshot channel that already
+   exists at `core/mcp/commands.rs:433-506`) to the canonical token, so one stop
+   reaches MCP calls instead of two systems each knowing half.
+3. Emit the AH-049 `cancelled` outcome from every stop path, not only the stale
+   answer. This also gives `expired`/`revoked`/`stale` their first producers.
+4. Cancel during retry/backoff in `genai_bridge.rs`.
+
+**AH-051 — done:** `emergency_stop` + `StopReport` (separates stopped from
+already-stopped, counts surviving children, fails closed), killed-scope
+persistence with containment-aware `was_killed`, and the `agent_emergency_stop`
+IPC command.
+
+**AH-051 — remaining:** the reachable confirmed UI action with accessibility,
+disabling repeat activation while a stop runs, revoking transient grants for
+stopped work, and stopping queued MCP/subagent work (blocked on AH-023 above).
+
+**Not started in this batch:** AH-078 (prompt snapshots), AH-107 (per-agent
+worktrees — `dispatch_subagent` still uses the shared root), AH-146 (structured
+patch previews).
+
+Then: AH-007, AH-018, AH-036, AH-037, AH-041, AH-042, AH-044, AH-045, AH-050,
+AH-073, AH-109, AH-157, AH-198.
+
+### Superseded next batch (kept for context)
+
+### Exact next batch
+
 Finish AH-023 first — it is the nearest to done and AH-051 depends on it:
 
 1. Thread `lifecycle::Token` from the desktop run and dispatcher into
