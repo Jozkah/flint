@@ -227,3 +227,74 @@ llamacpp extension suite 62 passed; `localOnly` 29 passed; entry-point guards
   carrying seven acceptance criteria including production wiring, persistence,
   UI, security enforcement and tests.
 
+## Resume point
+
+Updated after the P0 security batch. Everything below supersedes the older
+"next batch" notes further up this file.
+
+### Branch and commit
+
+`feat/local-only-completion` at `30d720c00`, pushed to `private`.
+
+### Registry counts
+
+63 implemented / 47 in-progress / 90 missing / 0 verified / 200 total.
+
+### Completed since the last handoff
+
+| ID | Status | Where |
+|---|---|---|
+| AH-006 | implemented | `plugins/tauri-plugin-agent-tools/src/resource.rs`, `tools/gate.rs` |
+| AH-034 | implemented | `permissions.rs`, `resource.rs` |
+| AH-046 | implemented | `resource.rs` (`GitOp::classify`), `tools/gate.rs`, `commands.rs` |
+| AH-049 | implemented | `audit.rs`, wired at `commands.rs` decision site |
+| AH-017 | implemented | `core/agent/loop.rs` — the ceiling now stops the run |
+| AH-020 | implemented | `lifecycle.rs`, `tools/handlers.rs`, `tools/mod.rs` |
+| AH-023 | in-progress | `lifecycle.rs` primitive done and wired to built-ins |
+
+Two corrections worth carrying forward:
+
+- `harness/src/envelope.rs`, which this document previously named as the writer
+  AH-049 should reuse, **does not exist**. The audit log mirrors
+  `core/cli/journal.rs` instead; the plugin cannot depend on the main crate
+  without a dependency cycle.
+- MCP tool calls **already had** a timeout and a cancellation channel
+  (`core/mcp/commands.rs:494-506`). The registry's AH-020 note claiming
+  otherwise was wrong and has been corrected in place.
+
+### Exact next batch
+
+Finish AH-023 first — it is the nearest to done and AH-051 depends on it:
+
+1. Thread `lifecycle::Token` from the desktop run and dispatcher into
+   `ToolContext::with_cancel` (today only the CLI and tests supply one).
+2. Cancel subagent dispatch in `core/agent/loop.rs`.
+3. Make the permission-wait path observe the token.
+4. Connect the existing MCP cancellation channel
+   (`state.tool_call_cancellations`) to the token.
+5. Emit the AH-049 `cancelled` outcome from the stop path — this also gives
+   AH-049's `expired`/`revoked`/`stale` outcomes their first producers.
+
+Then, still open from the active P0 batch: AH-051 (build on `stop_scope`, which
+already supports run/session/application scopes and reports
+`live_children_in` so it can fail closed), AH-078, AH-107, AH-146.
+
+After those: AH-007, AH-018, AH-036, AH-037, AH-041, AH-042, AH-044, AH-045,
+AH-050, AH-073, AH-109, AH-157, AH-198.
+
+### Tests
+
+428 plugin tests pass; 353 `core::agent` tests pass. Guards mutation-checked:
+fail-closed resources, substring git detection, audit redaction, audit reader
+tolerance, late-result acceptance, and scope boundaries each turn their tests
+red when removed.
+
+### Known failures
+
+- `core::agent::worktree::tests::lists_only_the_worktrees_jan_made_here` —
+  pre-existing macOS `/private/var` vs `/var` symlink mismatch, unrelated to
+  this work.
+- `formatDate` timezone test in the frontend suite — pre-existing.
+- Smoke scenarios `provider-error-is-actionable` and `model-round-trip` are
+  intermittent under WebView stalls; not marked verified.
+
