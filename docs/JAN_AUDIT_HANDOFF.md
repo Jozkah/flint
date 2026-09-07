@@ -264,6 +264,44 @@ Two corrections worth carrying forward:
 
 ### Exact next batch
 
+Current at the head of this branch. Registry: **65 implemented / 45 in-progress
+/ 90 missing / 0 verified / 200**.
+
+Completed in this phase: **AH-023** (cancellation reaches the dispatcher,
+built-ins, bash, MCP, subagents, the permission wait and retry backoff, with one
+producer for the `cancelled` audit outcome) and **AH-051** (emergency stop, both
+the scope machinery and a reachable, confirmed, accessible UI).
+
+Not started, and still the next three:
+
+- **AH-078** prompt snapshots. Nothing writes the frozen dispatch to disk. The
+  payload exists in transport instance memory at dispatch time; the work is to
+  persist it redacted, hashed and correlated, with corrupt/truncated handling.
+- **AH-107** per-agent worktrees. `spawn_subagent` now propagates the parent's
+  cancellation token, but the child still runs against the shared root;
+  `core/agent/worktree.rs` already has create/validate/recover, so the work is
+  wiring `dispatch_subagent` to it and owning the lifecycle.
+- **AH-146** patch previews. The approval event still carries a whole-change
+  diff; the work is an immutable, hash-bound preview that approval binds to.
+
+Then the unlocked security phase: AH-007, AH-036, AH-037, AH-041, AH-042,
+AH-044, AH-045, AH-050, AH-073, AH-109, AH-157, AH-198.
+
+Useful facts for whoever picks this up:
+
+- `lifecycle::current()` gives the ambient token for the running task; a spawned
+  task does **not** inherit it and must capture it explicitly (see
+  `spawn_subagent`).
+- `resolve_jan_data_folder()` now redirects under `cfg(test)`. Anything reached
+  from the dispatcher that writes to the data folder must keep that property, or
+  a test run appends to the developer's real Jan data.
+- The shared `Button` does not forward refs. A ref placed on it is silently
+  null.
+
+### Superseded next batch (kept for context)
+
+### Exact next batch
+
 Updated at `ff91aaf58`. Registry counts unchanged (63/47/90): AH-023 and AH-051
 both advanced but neither meets its full acceptance list, so neither is claimed.
 

@@ -1556,14 +1556,17 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-022"
       ],
       "owner": "lane-03-permission-security",
       "files": [
-        "src-tauri/src/core/agent/interaction.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/containers/EmergencyStop.tsx",
+        "web-app/src/routes/cowork.tsx"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -1575,12 +1578,20 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs::tests::an_emergency_stop_reports_what_it_actually_stopped",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs::tests::a_second_press_is_reported_as_already_stopped_not_as_new_work",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs::tests::an_incomplete_stop_says_so_rather_than_claiming_success",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs::tests::a_killed_scope_is_still_killed_after_a_restart",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs::tests::killing_a_session_covers_the_runs_inside_it_after_a_restart",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/lifecycle.rs::tests::a_truncated_kill_log_does_not_lose_the_earlier_kills",
+        "web-app/src/containers/__tests__/EmergencyStop.test.tsx"
+      ],
       "platformRequirements": [
         "per-OS validation on macOS, Windows and Linux"
       ],
       "blockedReason": null,
-      "auditNote": "Cancellation is per-run only; nothing halts background subagents and detached bash jobs application-wide."
+      "auditNote": "Built on the one cancellation system: emergency_stop is stop_scope at a wider scope, so call/run/session/application fall out of one shape where an empty field means 'everything at this level'. It grants no authority -- stopping work never needs permission that starting it did not -- and never reaches outside the scope given, proved by tests that a sibling run and another session survive. The StopReport separates what this press stopped from what an earlier press had already stopped, counts child processes surviving the sweep, and sets complete:false whenever any remain; the UI then reports the survivors in the destructive colour rather than showing a clean result. Killed scopes persist to <jan_data>/audit/killed-scopes.jsonl, append-only and truncation-tolerant, and was_killed matches by scope containment so killing a session covers runs a later process has never heard of -- a restart cannot resume killed work. agent_emergency_stop exposes it over IPC and records the terminal state. The UI is mounted in the Cowork composer row while a run is active: scope selector with a sentence naming exactly what each choice covers, confirmation before anything stops, disabled and non-re-entrant while stopping, progress and outcome in one role=status live region, accessible trigger name, keyboard operation, and focus restoration on close. Transient grants need no separate revocation path: SessionGrants lives on the run's own CompositeToolInvoker and cannot outlive the run being stopped. Pending permission requests are removed by the AH-023 cancellation path. Guards mutation-checked: forcing complete:true, and making the restart check ignore its own log, each turn the relevant tests red. Note: the focus-restore needed a wrapper element because the shared Button is a plain function component and does not forward refs."
     },
     {
       "id": "AH-052",
