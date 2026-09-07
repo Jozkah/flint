@@ -687,7 +687,17 @@ pub(crate) async fn stream_chat_completions(
                                 delay.as_millis(),
                                 attempt + 2
                             );
-                            tokio::time::sleep(delay).await;
+                            // AH-023. A run cancelled during a two-minute
+                            // backoff should stop then, not two minutes later.
+                            if let Some(reason) =
+                                tauri_plugin_agent_tools::lifecycle::sleep_unless_stopped(delay)
+                                    .await
+                            {
+                                return Err(format!(
+                                    "{last_err} (retry {} while waiting to retry)",
+                                    reason.as_str()
+                                ));
+                            }
                         }
                     }
                 }

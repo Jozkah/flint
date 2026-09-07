@@ -145,6 +145,20 @@ pub(crate) fn with_temp_data_folder<T>(f: impl FnOnce(&std::path::Path) -> T) ->
 /// Resolve the Jan data folder path without an AppHandle (for CLI use).
 /// Reads AppConfiguration from the config file; falls back to the default location.
 pub fn resolve_jan_data_folder() -> PathBuf {
+    // Never the developer's real Jan folder under `cargo test`. This function
+    // is reached from the agent dispatcher (the cancellation audit record), and
+    // without this a test run would append to the data of whoever ran it --
+    // the same mistake `get_jan_data_folder_path` already guards against.
+    if cfg!(test) {
+        let dir = std::env::temp_dir().join(format!(
+            "jan-test-data-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        return dir;
+    }
+
     // Explicit override wins on every platform. `dirs::data_dir()` reads
     // XDG_DATA_HOME only on Linux, so tests/headless consumers need a portable
     // way to redirect the data folder without relying on OS-specific env.

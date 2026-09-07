@@ -866,7 +866,22 @@ pub(crate) fn spawn_subagent(
     let description = req.description.clone();
     let run_id_task = run_id.clone();
     let queued_counter = bg.clone();
+    // AH-023. A spawned task does not inherit task-locals, so the parent's
+    // cancellation token is captured here and re-established inside the child.
+    // Without this a cancelled run left its subagents running: the parent
+    // returned and the children carried on against a run nobody was watching.
+    //
+    // The child gets its own token under the parent's *scope*, not the parent's
+    // token, so stopping the run reaches both while a child that fails does not
+    // stop its siblings.
+    let child_token = tauri_plugin_agent_tools::lifecycle::current().map(|parent| {
+        tauri_plugin_agent_tools::lifecycle::Token::new(parent.scope().clone())
+    });
     let handle = tokio::spawn(async move {
+        // Registered for the life of the child so a scope-wide stop finds it.
+        let _child_registered = child_token
+            .clone()
+            .map(tauri_plugin_agent_tools::lifecycle::register);
         let permit = match admitted {
             Ok(p) => p,
             Err(_) => {
@@ -879,15 +894,37 @@ pub(crate) fn spawn_subagent(
             }
         };
         let _permit = permit;
-        let result = run_subagent(
+        let work = run_subagent(
             parent_args,
             resolved,
             description,
             inherited,
             task_events,
             run_id_task,
-        )
-        .await;
+        );
+        // The parent's stop reaches the child: the body races the token, and
+        // whatever the child had produced is discarded rather than reported,
+        // because a cancelled run's answer is not an answer.
+        let result = match child_token.clone() {
+            None => work.await,
+            Some(token) => {
+                tauri_plugin_agent_tools::lifecycle::with_current(token.clone(), async move {
+                    tokio::select! {
+                        biased;
+                        produced = work => match token.stopped() {
+                            None => produced,
+                            Some(_) => Err(SubagentError::Cancelled),
+                        },
+                        _ = async {
+                            while !token.is_stopped() {
+                                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                            }
+                        } => Err(SubagentError::Cancelled),
+                    }
+                })
+                .await
+            }
+        };
         let _ = tx.send(result);
     });
 

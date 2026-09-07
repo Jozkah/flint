@@ -464,6 +464,45 @@ fn return_cancelled_outcome(
     });
 }
 
+/// Record a stopped call in the permission audit log.
+///
+/// Every dispatcher cancellation funnels through here, so the AH-049
+/// `cancelled` outcome has one producer rather than one per call site. The
+/// reason -- deadline or person -- is kept in the record's reason field, since
+/// the outcome alone cannot say which it was.
+fn record_cancelled_call(
+    data_folder: &std::path::Path,
+    scope: &tauri_plugin_agent_tools::lifecycle::Scope,
+    project_root: &std::path::Path,
+    id: &str,
+    name: &str,
+    reason: tauri_plugin_agent_tools::lifecycle::StopReason,
+) {
+    use tauri_plugin_agent_tools::audit::{self, PermissionRecord};
+    use tauri_plugin_agent_tools::resource::Resource;
+
+    let resource = Resource::Unknown {
+        tool: name.to_string(),
+        why: format!("call stopped: {}", reason.as_str()),
+    };
+    audit::append(
+        data_folder,
+        &PermissionRecord::new(
+            audit::now(),
+            scope.session.clone(),
+            name,
+            "unknown",
+            &resource,
+            reason.audit_outcome(),
+            reason.as_str(),
+        )
+        .with_run(scope.run.clone())
+        .with_call(id)
+        .with_agent("main")
+        .with_project(project_root.to_string_lossy()),
+    );
+}
+
 /// A run identifier for cancellation scoping.
 ///
 /// Runs are not otherwise identified here, and cancellation needs to name one
@@ -491,6 +530,28 @@ impl CompositeToolInvoker {
             self.cancel_scope.run.clone(),
             call_id.to_string(),
         )))
+    }
+
+    /// Report and record a stopped call.
+    ///
+    /// One place, so the transcript message and the audit record can never
+    /// disagree about what happened.
+    fn cancelled(
+        &self,
+        out: &mut Vec<ToolOutcome>,
+        id: &str,
+        name: &str,
+        reason: tauri_plugin_agent_tools::lifecycle::StopReason,
+    ) {
+        return_cancelled_outcome(out, id, name, reason);
+        record_cancelled_call(
+            &crate::core::app::commands::resolve_jan_data_folder(),
+            &self.cancel_scope,
+            &self.project_root,
+            id,
+            name,
+            reason,
+        );
     }
 
     fn tool_context(&self) -> tauri_plugin_agent_tools::tools::ToolContext<'_> {
@@ -1159,7 +1220,7 @@ impl ToolInvoker for CompositeToolInvoker {
                     // An answer that arrives for a call that has already been
                     // stopped is stale: recorded, never acted on.
                     if let Some(reason) = waiting.stopped() {
-                        return_cancelled_outcome(&mut out, &id, name, reason);
+                        self.cancelled(&mut out, &id, name, reason);
                         continue;
                     }
 
@@ -1204,7 +1265,49 @@ impl ToolInvoker for CompositeToolInvoker {
             out.extend(futures::future::join_all(read_futures).await);
         }
         if !mcp_calls.is_empty() {
-            out.extend(self.mcp.invoke(&mcp_calls).await?);
+            // AH-023. MCP calls are cancellable through the same token as
+            // everything else. The MCP layer has its own oneshot channel and
+            // its own timeout; racing here is what joins them to the canonical
+            // stop, so one cancellation reaches every kind of work instead of
+            // two systems each knowing half.
+            let mcp_ids: Vec<String> = mcp_calls
+                .iter()
+                .map(|c| {
+                    c.get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string()
+                })
+                .collect();
+            let registered = self.call_token(&mcp_ids.join(","));
+            let waiting = registered.token().clone();
+            tokio::select! {
+                biased;
+                results = self.mcp.invoke(&mcp_calls) => {
+                    // Late results lose: a batch that completes while the run
+                    // is being stopped must not report success.
+                    match waiting.stopped() {
+                        None => out.extend(results?),
+                        Some(reason) => {
+                            for id in &mcp_ids {
+                                self.cancelled(&mut out, id, "mcp", reason);
+                            }
+                        }
+                    }
+                }
+                _ = async {
+                    while !waiting.is_stopped() {
+                        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                    }
+                } => {
+                    let reason = waiting
+                        .stopped()
+                        .unwrap_or(tauri_plugin_agent_tools::lifecycle::StopReason::Cancelled);
+                    for id in &mcp_ids {
+                        self.cancelled(&mut out, id, "mcp", reason);
+                    }
+                }
+            }
         }
         let order: HashMap<&str, usize> = tool_calls
             .iter()
@@ -1949,19 +2052,31 @@ async fn orchestrate_inner(
             auto_approve: *auto_approve,
             run_mode,
         };
-        let result = run_turn_cycle(
-            events,
-            json_body,
-            &model_id,
-            &openai_tools,
-            conversation_messages,
-            max_turns,
-            &mut budget,
-            &http_model,
-            &tools,
-            run_mode,
-            todo_registry.as_ref(),
-            force_first_tool,
+        // AH-023. The run's own token becomes ambient for everything the turn
+        // cycle awaits, which is how layers far below the dispatcher -- the
+        // provider retry backoff, several calls down -- become cancellable
+        // without threading a parameter through every layer between that would
+        // not use it. The token carries its own scope, so this stays
+        // scope-precise: one run still cannot cancel another.
+        let run_registered = tauri_plugin_agent_tools::lifecycle::register(
+            tauri_plugin_agent_tools::lifecycle::Token::new(tools.cancel_scope.clone()),
+        );
+        let result = tauri_plugin_agent_tools::lifecycle::with_current(
+            run_registered.token().clone(),
+            run_turn_cycle(
+                events,
+                json_body,
+                &model_id,
+                &openai_tools,
+                conversation_messages,
+                max_turns,
+                &mut budget,
+                &http_model,
+                &tools,
+                run_mode,
+                todo_registry.as_ref(),
+                force_first_tool,
+            ),
         )
         .await;
         // On a clean exit, wait for any subagents the model dispatched but never

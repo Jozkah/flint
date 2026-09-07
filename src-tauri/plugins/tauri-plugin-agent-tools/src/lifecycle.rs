@@ -276,6 +276,53 @@ pub fn live_children_in(scope: &Scope) -> usize {
         .sum()
 }
 
+tokio::task_local! {
+    /// The token for the work running on this task.
+    ///
+    /// Set once where a run begins; everything it awaits inherits it. This
+    /// exists for the layers that are too far from the dispatcher to be handed
+    /// a token by hand -- the provider retry loop is several calls below the
+    /// invoker and threading a parameter down would touch every layer between
+    /// without any of them using it.
+    ///
+    /// Scope-precise despite being ambient: the token carries its own scope, so
+    /// reading it here cannot let one run cancel another.
+    static CURRENT: Token;
+}
+
+/// The token for the current task, if it is running inside a run.
+pub fn current() -> Option<Token> {
+    CURRENT.try_with(Token::clone).ok()
+}
+
+/// Run `future` with `token` as the ambient token.
+pub async fn with_current<F, T>(token: Token, future: F) -> T
+where
+    F: std::future::Future<Output = T>,
+{
+    CURRENT.scope(token, future).await
+}
+
+/// Sleep, unless the ambient token stops first.
+///
+/// Returns the reason if the wait was cut short. Used for retry backoff, where
+/// a run cancelled during a two-minute wait should stop then, not two minutes
+/// later.
+pub async fn sleep_unless_stopped(delay: Duration) -> Option<StopReason> {
+    let Some(token) = current() else {
+        tokio::time::sleep(delay).await;
+        return None;
+    };
+    if let Some(reason) = token.stopped() {
+        return Some(reason);
+    }
+    tokio::select! {
+        biased;
+        _ = tokio::time::sleep(delay) => None,
+        _ = wait_until_stopped(&token) => token.stopped(),
+    }
+}
+
 /// How long a tool may run before it is stopped.
 ///
 /// One table rather than a constant buried in the bash handler, so "how long
@@ -906,4 +953,67 @@ pub fn was_killed(data_folder: &std::path::Path, scope: &Scope) -> bool {
                 killed.call.clone(),
             ))
         })
+}
+
+#[cfg(test)]
+mod ambient_tests {
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn a_backoff_ends_when_the_run_is_cancelled() {
+        // AH-023: a run stopped during a two-minute wait stops then, not two
+        // minutes later.
+        let token = Token::new(Scope::new("s1", "r1", ""));
+        let watcher = token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            watcher.stop(StopReason::Cancelled);
+        });
+
+        let reason = with_current(token, async {
+            sleep_unless_stopped(Duration::from_secs(120)).await
+        })
+        .await;
+        assert_eq!(reason, Some(StopReason::Cancelled));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_uninterrupted_backoff_waits_the_whole_delay() {
+        let token = Token::new(Scope::new("s1", "r1", ""));
+        let reason =
+            with_current(token, async { sleep_unless_stopped(Duration::from_secs(5)).await }).await;
+        assert_eq!(reason, None, "nothing stopped it, so it slept");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_backoff_outside_a_run_still_sleeps() {
+        // No ambient token (the CLI, a test, a background task): unchanged.
+        assert_eq!(sleep_unless_stopped(Duration::from_secs(1)).await, None);
+        assert!(current().is_none());
+    }
+
+    #[tokio::test]
+    async fn the_ambient_token_is_the_running_task_s_own() {
+        let mine = Token::new(Scope::new("s-mine", "r-mine", ""));
+        let seen = with_current(mine.clone(), async { current().unwrap() }).await;
+        assert_eq!(seen.scope(), mine.scope());
+        // ...and does not leak outside the scope.
+        assert!(current().is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn one_runs_stop_does_not_end_another_runs_backoff() {
+        let mine = register(Token::new(Scope::new("s-iso", "r-mine", "")));
+        let theirs = Scope::new("s-iso", "r-theirs", "");
+        let _other = register(Token::new(theirs.clone()));
+
+        // Stop the other run entirely.
+        stop_scope(&theirs, StopReason::Cancelled);
+
+        let reason = with_current(mine.token().clone(), async {
+            sleep_unless_stopped(Duration::from_secs(2)).await
+        })
+        .await;
+        assert_eq!(reason, None, "another run's stop must not end this backoff");
+    }
 }
