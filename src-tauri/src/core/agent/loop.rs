@@ -162,6 +162,9 @@ struct HttpModelInvoker {
     /// Native provider converters still use reqwest 0.12 while the default
     /// agent path uses genai's reqwest 0.13 client.
     converter_client: reqwest::Client,
+    /// Who this dispatch belongs to, so a snapshot can be found by run or
+    /// session later. AH-078.
+    snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity,
 }
 
 fn converter_http_client() -> reqwest::Client {
@@ -188,6 +191,34 @@ impl ModelInvoker for HttpModelInvoker {
                 normalized["model"] = serde_json::json!(bare);
             }
         }
+        // AH-078. `normalized` is the payload as it will go on the wire: the
+        // last point at which a snapshot is the dispatch rather than a
+        // reconstruction of it. Taken here, after context construction and
+        // after the model id is rewritten, and redacted before it is written.
+        //
+        // Never fails the call: a snapshot is a witness, and losing one must not
+        // stop the model request it describes.
+        {
+            use tauri_plugin_agent_tools::snapshot::{append, capture, Identity};
+            let identity = Identity {
+                session: self.snapshot_identity.session.clone(),
+                run: self.snapshot_identity.run.clone(),
+                thread: self.snapshot_identity.thread.clone(),
+                agent: self.snapshot_identity.agent.clone(),
+                provider: self.snapshot_identity.provider.clone(),
+            };
+            let snapshot = capture(&normalized, &identity);
+            append(
+                &crate::core::app::commands::resolve_jan_data_folder(),
+                &snapshot,
+            );
+            let _ = events.send(StreamEvent::PromptSnapshot {
+                id: snapshot.id.clone(),
+                hash: snapshot.hash.clone(),
+                redactions: snapshot.redactions.len(),
+            });
+        }
+
         if let Some(converter) = &self.converter {
             crate::core::agent::upstream::stream_converted_chat_completions(
                 &self.converter_client,
@@ -1979,6 +2010,18 @@ async fn orchestrate_inner(
             .await
             .and_then(|(api_type, oauth)| converter_for(Some(&api_type), oauth)),
         converter_client: converter_http_client(),
+        // Session and thread are the same id on this path; the run id matches
+        // the cancellation scope so a snapshot and a stop name the same run.
+        snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity {
+            session: session_id.clone().unwrap_or_default(),
+            run: String::new(),
+            thread: session_id.clone().unwrap_or_default(),
+            agent: "main".to_string(),
+            provider: model_id
+                .split_once('/')
+                .map(|(p, _)| p.to_string())
+                .unwrap_or_default(),
+        },
     };
     let mcp_tools = McpToolInvoker {
         tool_to_server,

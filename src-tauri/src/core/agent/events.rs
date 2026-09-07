@@ -7,6 +7,17 @@
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEvent {
+    /// A snapshot of the exact payload that was just dispatched. AH-078.
+    ///
+    /// Carries the identity and the hash, never the payload: the activity
+    /// timeline links to the record rather than embedding a copy that could
+    /// drift from it, and the redaction count tells a reader that something was
+    /// removed without saying what.
+    PromptSnapshot {
+        id: String,
+        hash: String,
+        redactions: usize,
+    },
     /// A streamed content delta from the model.
     Token { text: String },
     /// A streamed reasoning delta, carried natively when the upstream exposes

@@ -16,6 +16,7 @@ pub mod permissions;
 pub mod project_browse;
 pub mod resource;
 pub mod skills;
+pub mod snapshot;
 pub mod tools;
 pub mod workspace;
 
