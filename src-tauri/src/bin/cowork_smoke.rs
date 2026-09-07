@@ -1940,27 +1940,40 @@ fn scenario_provider_error(ctx: &Ctx) -> ScenarioResult {
             Duration::from_secs(30),
         )?;
 
-        // Refresh the model list, which is the request that fails.
-        let clicked = ctx.eval_bool(
-            "const b = [...document.querySelectorAll('button')].find(x =>
-               /^refresh/i.test(((x.getAttribute('aria-label') || '')
-                 + ' ' + (x.getAttribute('title') || '')
-                 + ' ' + (x.textContent || '')).trim()));
-             if (!b) return false; b.click(); return true;",
-        )?;
-        if !clicked {
+        // Refresh the model list, which is the request that fails. The button
+        // is disabled while a refresh is in flight and the page mounts its
+        // model section asynchronously, so one click is not reliably one
+        // request -- press until the toast actually arrives.
+        let toast_present = "return [...document.querySelectorAll('[data-sonner-toast]')]
+             .some(t => (t.textContent || '').includes('403'));";
+        let mut pressed = false;
+        for _ in 0..4 {
+            let clicked = ctx.eval_bool(
+                "const b = [...document.querySelectorAll('button')].find(x =>
+                   /^refresh/i.test(((x.getAttribute('aria-label') || '')
+                     + ' ' + (x.getAttribute('title') || '')
+                     + ' ' + (x.textContent || '')).trim()));
+                 if (!b || b.disabled) return false; b.click(); return true;",
+            )?;
+            if clicked {
+                pressed = true;
+                if ctx
+                    .wait_until("the failure toast", toast_present, Duration::from_secs(20))
+                    .is_ok()
+                {
+                    break;
+                }
+            }
+            std::thread::sleep(Duration::from_secs(1));
+        }
+        if !pressed {
             ctx.describe("provider-page")?;
             bail!("the provider page offered no way to refresh its models");
         }
 
         // Observe the toast itself. Searching all of document.body raced the
         // toast's own lifetime and matched text from anywhere on the page.
-        ctx.wait_until(
-            "the failure toast",
-            "return [...document.querySelectorAll('[data-sonner-toast]')]
-               .some(t => (t.textContent || '').includes('403'));",
-            Duration::from_secs(45),
-        )?;
+        ctx.wait_until("the failure toast", toast_present, Duration::from_secs(30))?;
 
         let toast = ctx.eval_string(
             "const all = [...document.querySelectorAll('[data-sonner-toast]')];
