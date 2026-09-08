@@ -24,6 +24,17 @@ export const STATUSES = [
 /** Statuses that must carry a written reason rather than just a label. */
 export const NEEDS_REASON = new Set(['platform-blocked', 'rejected-with-decision'])
 
+/**
+ * Statuses a `blockedReason` may appear on.
+ *
+ * The two blocked statuses require one. `in-progress` is allowed one because
+ * that is where the field earns its keep in practice: it records what an item
+ * still lacks, which is the difference between "partially done" and a status
+ * that says nothing. Every other status forbids it -- a reason on a `verified`
+ * or `missing` item is a leftover, and a leftover reason is worse than none.
+ */
+export const MAY_HAVE_REASON = new Set([...NEEDS_REASON, 'in-progress'])
+
 export const SECURITY_IMPACTS = ['none', 'low', 'medium', 'high', 'critical']
 
 /** The backlog is fixed: items may change status, never disappear.
@@ -31,11 +42,12 @@ export const SECURITY_IMPACTS = ['none', 'low', 'medium', 'high', 'critical']
  * It grew from 200 to 205 when work the operator asked for turned out to have no
  * registry item at all -- the in-chat activity timeline, expandable project
  * navigation, side-by-side chat, the global permission centre and the cross-run
- * audit export (AH-201..AH-205). Adding items is allowed and removing them is
- * not: the count is a floor that this constant records, so a deletion still
- * fails validation.
+ * audit export (AH-201..AH-205) -- and again from 205 to 210 for expandable
+ * project navigation, agent forking and project-scoped work (AH-206..AH-210).
+ * Adding items is allowed and removing them is not: the count is a floor that
+ * this constant records, so a deletion still fails validation.
  */
-export const EXPECTED_FEATURE_COUNT = 205
+export const EXPECTED_FEATURE_COUNT = 210
 
 /** Inclusive id ranges per delivery phase, in dependency order. */
 export const PHASES = [
@@ -47,7 +59,11 @@ export const PHASES = [
   { phase: 5, name: 'Agent orchestration', from: 89, to: 113 },
   { phase: 6, name: 'Compatibility and integrations', from: 114, to: 145 },
   { phase: 7, name: 'Coding and Git workflows', from: 146, to: 171 },
-  { phase: 8, name: 'UX, automation and operations', from: 172, to: 205 },
+  { phase: 8, name: 'UX, automation and operations', from: 172, to: 200 },
+  // AH-201..AH-210 are their own phase rather than an extension of phase 8:
+  // they were approved after the original 200 were planned, and folding them
+  // into phase 8 would misreport when they were decided.
+  { phase: 9, name: 'Approved additions', from: 201, to: 210 },
 ]
 
 export const LANES = [
@@ -62,6 +78,13 @@ export const LANES = [
   'lane-09-ux-observability',
   'lane-10-provider-enterprise',
   'lane-12-security-regression-review',
+  // Opened with AH-201..AH-210, after the original ten lanes were drawn.
+  'lane-21-sessions',
+  'lane-22-checkpoints',
+  'lane-23-composer',
+  'lane-24-navigation',
+  'lane-25-agents',
+  'lane-26-projects',
 ]
 
 const REQUIRED_FIELDS = {
@@ -173,8 +196,11 @@ export function validateRegistry(doc) {
     if (NEEDS_REASON.has(feature.status) && !hasReason) {
       bad(`${feature.id}: status "${feature.status}" requires a written blockedReason`)
     }
-    if (!NEEDS_REASON.has(feature.status) && hasReason) {
-      bad(`${feature.id}: blockedReason is only meaningful for ${[...NEEDS_REASON].join(' or ')}`)
+    if (!MAY_HAVE_REASON.has(feature.status) && hasReason) {
+      bad(
+        `${feature.id}: blockedReason is only meaningful for ` +
+          `${[...MAY_HAVE_REASON].join(', ')}`
+      )
     }
     if (['implemented', 'verified'].includes(feature.status) && (feature.files ?? []).length === 0) {
       bad(`${feature.id}: status "${feature.status}" requires the implementing files to be listed`)
