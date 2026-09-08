@@ -90,6 +90,7 @@ macro_rules! invoke_commands_with_extras {
         // and dials through here, so there is one address-selection rule.
         core::net::commands::provider_http_request,
         core::net::commands::provider_http_stream,
+        core::net::commands::provider_http_cancel,
         core::net::commands::provider_endpoint_diagnostics,
         core::net::commands::provider_endpoint_refresh,
         core::agent::commands::agent_prompt_snapshots,

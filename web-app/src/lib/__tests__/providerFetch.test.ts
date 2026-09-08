@@ -220,4 +220,70 @@ describe('providerFetch', () => {
     expect(endpointOf('http://v100/v1')).toEqual({ host: 'v100', port: 80 })
     expect(endpointOf('not a url')).toBeNull()
   })
+
+  it('stops the request when the caller aborts before it starts', async () => {
+    drive()
+    const controller = new AbortController()
+    controller.abort()
+    await expect(
+      providerFetch('http://v100:8080/v1/models', { signal: controller.signal })
+    ).rejects.toThrow(/abort/i)
+  })
+
+  it('tells the transport to stop when the caller aborts mid-stream', async () => {
+    const d = drive()
+    const controller = new AbortController()
+    const pending = providerFetch('http://v100:8080/v1/chat/completions', {
+      method: 'POST',
+      body: '{}',
+      signal: controller.signal,
+    })
+    await d.send(OK)
+    const response = await pending
+    controller.abort()
+    // The stream is cancelled on the Rust side, not merely dropped here.
+    const cancelled = invoke.mock.calls.find(
+      (c) => c[0] === 'provider_http_cancel'
+    )
+    expect(cancelled?.[1].streamId).toBe(d.request().streamId)
+    await expect(response.text()).rejects.toThrow(/abort/i)
+  })
+
+  it('stops the request when the consumer lets the body go', async () => {
+    const d = drive()
+    const pending = providerFetch('http://v100:8080/v1/chat/completions', {
+      method: 'POST',
+      body: '{}',
+    })
+    await d.send(OK)
+    const response = await pending
+    await (response.body as ReadableStream<Uint8Array>).cancel()
+    // A body nobody is reading must not hold the connection open.
+    expect(
+      invoke.mock.calls.some((c) => c[0] === 'provider_http_cancel')
+    ).toBe(true)
+  })
+
+  it('does not try to cancel a stream the transport already ended', async () => {
+    const d = drive()
+    const pending = providerFetch('http://v100:8080/v1/models')
+    await d.send(OK)
+    await d.send({ kind: 'end' })
+    const response = await pending
+    await response.text()
+    expect(
+      invoke.mock.calls.some((c) => c[0] === 'provider_http_cancel')
+    ).toBe(false)
+  })
+
+  it('gives every request its own stream id', async () => {
+    const d = drive()
+    const first = providerFetch('http://v100:8080/v1/models')
+    await d.send(OK)
+    await d.send({ kind: 'end' })
+    await first
+    const one = d.request().streamId
+    expect(one).toBeTruthy()
+    expect(typeof one).toBe('string')
+  })
 })

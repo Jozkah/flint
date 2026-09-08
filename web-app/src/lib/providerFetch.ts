@@ -164,13 +164,28 @@ export const providerFetch: typeof globalThis.fetch = async (
     delete headers[header.toUpperCase()]
   }
 
+  // Names the stream so it can be stopped. A body nobody is reading any more
+  // -- the caller aborted, or the consumer released the stream once it had
+  // what it wanted -- must end the request, or the connection stays open and
+  // whoever is waiting on that body waits forever.
+  const streamId = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+
   const payload = {
     url,
     method,
     headers,
     body: await bodyText(init, request),
     timeoutSecs: null as number | null,
+    streamId,
     ...identity,
+  }
+
+  const signal = init?.signal ?? request?.signal
+  let stopped = false
+  const stop = () => {
+    if (stopped) return
+    stopped = true
+    void invoke('provider_http_cancel', { streamId }).catch(() => {})
   }
 
   return await new Promise<Response>((resolve, reject) => {
@@ -195,6 +210,30 @@ export const providerFetch: typeof globalThis.fetch = async (
       }
     }
 
+    if (signal) {
+      if (signal.aborted) {
+        settled = true
+        stop()
+        reject(new DOMException('The request was aborted.', 'AbortError'))
+        return
+      }
+      signal.addEventListener(
+        'abort',
+        () => {
+          stop()
+          const error = new DOMException('The request was aborted.', 'AbortError')
+          if (!settled) {
+            settled = true
+            reject(error)
+          } else {
+            failure = error
+            drain()
+          }
+        },
+        { once: true }
+      )
+    }
+
     const channel = new Channel<StreamChunk>()
     channel.onmessage = (chunk) => {
       switch (chunk.kind) {
@@ -208,6 +247,12 @@ export const providerFetch: typeof globalThis.fetch = async (
             start(c) {
               controller = c
               drain()
+            },
+            cancel() {
+              // The consumer let go: stop the request rather than reading a
+              // body into nothing.
+              controller = null
+              stop()
             },
           })
           // `Response` refuses a body on 204/205/304, and the transport never
@@ -228,6 +273,7 @@ export const providerFetch: typeof globalThis.fetch = async (
           break
         case 'end':
           ended = true
+          stopped = true
           drain()
           break
         case 'error': {

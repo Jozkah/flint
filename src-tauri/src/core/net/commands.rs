@@ -59,6 +59,12 @@ pub async fn provider_http_stream(
     transport::send_stream(request, ChannelSink(channel)).await
 }
 
+/// Stop a stream whose consumer has gone.
+#[tauri::command]
+pub fn provider_http_cancel(stream_id: String) {
+    transport::cancel_stream(&stream_id);
+}
+
 /// What was resolved for an endpoint, for the provider details surface.
 #[tauri::command]
 pub fn provider_endpoint_diagnostics(

@@ -14,6 +14,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Duration;
 
@@ -176,6 +177,65 @@ pub struct ProviderRequest {
     pub agent: Option<String>,
     #[serde(default)]
     pub provider: Option<String>,
+    /// Names this stream so it can be cancelled.
+    ///
+    /// A consumer that stops reading -- the AI SDK abandoning a body once it
+    /// has seen the terminator, or a run being stopped -- must be able to end
+    /// the request, or the connection is held open and whoever is waiting for
+    /// the body to finish waits forever.
+    #[serde(default)]
+    pub stream_id: Option<String>,
+}
+
+/// How often a stalled read looks at the cancellation flag.
+const CANCEL_POLL: Duration = Duration::from_millis(100);
+
+/// Streams currently in flight, by the id the caller gave them.
+fn live_streams() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
+    static LIVE: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
+    LIVE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Ask a stream to stop. Unknown ids are ignored: the stream may already have
+/// finished on its own, which is not an error.
+pub fn cancel_stream(stream_id: &str) {
+    if let Ok(live) = live_streams().lock() {
+        if let Some(flag) = live.get(stream_id) {
+            flag.store(true, Ordering::SeqCst);
+        }
+    }
+}
+
+/// Registers a stream for the duration of the request and removes it after.
+struct StreamGuard {
+    id: Option<String>,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl StreamGuard {
+    fn new(id: Option<String>) -> Self {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        if let Some(id) = &id {
+            if let Ok(mut live) = live_streams().lock() {
+                live.insert(id.clone(), cancelled.clone());
+            }
+        }
+        Self { id, cancelled }
+    }
+
+    fn cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for StreamGuard {
+    fn drop(&mut self) {
+        if let Some(id) = &self.id {
+            if let Ok(mut live) = live_streams().lock() {
+                live.remove(id);
+            }
+        }
+    }
 }
 
 /// A reference to the snapshot taken of a dispatched request.
@@ -376,6 +436,7 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
     let (host, port) = endpoint_of(&req.url)?;
     let client = client_for(&host, port)?;
     let snapshot = capture_snapshot(&req);
+    let guard = StreamGuard::new(req.stream_id.clone());
     let response = match build(&client, &req)?.send().await {
         Ok(r) => r,
         Err(e) => {
@@ -398,7 +459,27 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
     });
 
     let mut stream = response.bytes_stream();
-    while let Some(next) = stream.next().await {
+    loop {
+        // Checking the flag only when a chunk arrives is not enough: a server
+        // that has stopped sending but not closed leaves this awaiting a chunk
+        // that never comes, which is the case cancellation exists for. So the
+        // read is raced against the flag rather than gated on it.
+        let next = loop {
+            if guard.cancelled() {
+                // Dropping the response ends the request rather than holding
+                // the connection open for a body nobody will read.
+                sink.send(StreamChunk::End);
+                return Ok(());
+            }
+            match tokio::time::timeout(CANCEL_POLL, stream.next()).await {
+                Ok(Some(item)) => break item,
+                Ok(None) => {
+                    sink.send(StreamChunk::End);
+                    return Ok(());
+                }
+                Err(_) => continue,
+            }
+        };
         match next {
             Ok(bytes) => sink.send(StreamChunk::Data {
                 b64: base64::engine::general_purpose::STANDARD.encode(&bytes),
@@ -414,8 +495,6 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
             }
         }
     }
-    sink.send(StreamChunk::End);
-    Ok(())
 }
 
 #[cfg(test)]
@@ -534,6 +613,66 @@ mod tests {
             }
             other => panic!("expected a head chunk, got {other:?}"),
         }
+    }
+
+
+    #[tokio::test]
+    async fn a_cancelled_stream_ends_instead_of_holding_the_connection() {
+        // A server that sends a chunk and then keeps the connection open: the
+        // shape that made a run wait forever for a body nobody was reading.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 4096];
+                let _ = stream.read(&mut buf);
+                let _ = stream.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\ne\r\ndata: {\"a\":1}\n\r\n",
+                );
+                let _ = stream.flush();
+                // Never terminates the chunked body.
+                std::thread::sleep(Duration::from_secs(30));
+            }
+        });
+        let _guard = pin(vec![ip("127.0.0.1")]);
+
+        struct Collect(std::sync::Arc<Mutex<Vec<StreamChunk>>>);
+        impl ChunkSink for Collect {
+            fn send(&self, chunk: StreamChunk) {
+                if let StreamChunk::Data { .. } = chunk {
+                    // The consumer has what it wanted and lets go.
+                    cancel_stream("cancel-me");
+                }
+                self.0.lock().unwrap().push(chunk);
+            }
+        }
+        let seen = std::sync::Arc::new(Mutex::new(Vec::new()));
+
+        let done = tokio::time::timeout(
+            Duration::from_secs(10),
+            send_stream(
+                ProviderRequest {
+                    url: format!("http://v100:{port}/v1/chat/completions"),
+                    method: "POST".into(),
+                    body: Some("{}".into()),
+                    timeout_secs: Some(20),
+                    stream_id: Some("cancel-me".into()),
+                    ..Default::default()
+                },
+                Collect(seen.clone()),
+            ),
+        )
+        .await;
+
+        assert!(done.is_ok(), "a cancelled stream must not wait for the server");
+        done.unwrap().unwrap();
+        let chunks = seen.lock().unwrap();
+        assert!(matches!(chunks.last(), Some(StreamChunk::End)));
+    }
+
+    #[test]
+    fn cancelling_a_stream_nobody_is_running_is_not_an_error() {
+        cancel_stream("no-such-stream");
     }
 
     #[test]
