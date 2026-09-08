@@ -47,7 +47,9 @@ it('fails with a typed error that says both numbers', () => {
   const error = new ContextOverflowError(plan)
   expect(isContextOverflow(error)).toBe(true)
   expect(isContextOverflow(new Error('nope'))).toBe(false)
-  expect(error.message).toContain('40,000')
-  expect(error.message).toContain('32,768')
+  // Grouped in the reader's locale, so the expectation is derived rather
+  // than spelled with en-US separators.
+  expect(error.message).toContain((40000).toLocaleString())
+  expect(error.message).toContain((32768).toLocaleString())
   expect(error.plan.status).toBe('over')
 })

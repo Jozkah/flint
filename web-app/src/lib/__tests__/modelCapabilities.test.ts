@@ -104,7 +104,15 @@ describe('discovery order', () => {
 
 describe('what the user is shown', () => {
   it('reads as a window, with the digits grouped', () => {
-    expect(formatContextUsage(3367, 32768)).toBe('3,367 / 32,768 tokens')
+    // The separator is the reader's, not en-US's: `toLocaleString` groups
+    // according to the host locale, so asserting on commas failed on any
+    // machine that does not use them (pt-PT renders `32 768`). What is under
+    // test is that both numbers are grouped and laid out as a window, so the
+    // expectation is built the same way the string under test is.
+    const n = (value: number) => value.toLocaleString()
+    expect(formatContextUsage(3367, 32768)).toBe(
+      `${n(3367)} / ${n(32768)} tokens`
+    )
   })
 
   it('shows nothing rather than a made-up total', () => {
@@ -119,7 +127,7 @@ describe('what the user is shown', () => {
         trainingMaxTokens: 32768,
         source: 'local-runtime',
       })
-    ).toContain('8,192')
+    ).toContain((8192).toLocaleString())
     expect(
       contextWindowNote({
         contextTokens: 32768,
