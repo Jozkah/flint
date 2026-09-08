@@ -329,6 +329,79 @@ describe('nothing anywhere fetches a model catalogue', () => {
   })
 })
 
+/**
+ * The guards above read source. This one reads what is actually shipped.
+ *
+ * That distinction is not academic: `web-app/vite.config.ts` aliases
+ * `@janhq/llamacpp-extension` to `extensions/llamacpp-extension/dist/index.js`,
+ * a build output that `yarn build:web` does not rebuild. So a packaged app
+ * carried a startup embedder bootstrap -- fetching
+ * `huggingface.co/.../resolve/main/all-MiniLM-L6-v2-ggml-model-f16.gguf` on
+ * launch -- for weeks after that code was deleted from source, and every
+ * source-level guard passed while it did. It only stopped because the download
+ * extension it called was gone, so it threw instead of downloading.
+ *
+ * Skipped when the artifacts have not been built, so a fresh clone does not
+ * fail on something it was never asked to produce. CI and any packaging run
+ * build them first, which is when this matters.
+ */
+describe('the shipped bundle carries no model-download code', () => {
+  /** Built JS: the extension bundles plus the web app's own output. */
+  function builtArtifacts(): string[] {
+    const roots = [
+      resolve(REPO, 'web-app/dist/assets'),
+      ...readdirSafe(resolve(REPO, 'extensions')).map((name) =>
+        resolve(REPO, 'extensions', name, 'dist')
+      ),
+    ]
+    const found: string[] = []
+    for (const root of roots) {
+      for (const entry of readdirSafe(root)) {
+        if (entry.endsWith('.js')) found.push(join(root, entry))
+      }
+    }
+    return found
+  }
+
+  function readdirSafe(dir: string): string[] {
+    try {
+      return existsSync(dir) ? readdirSync(dir) : []
+    } catch {
+      return []
+    }
+  }
+
+  const BUILT = builtArtifacts()
+
+  it.skipIf(BUILT.length === 0)('has no startup embedder bootstrap', () => {
+    expect(
+      repoMatches(BUILT, /bootstrapDefaultEmbedder|llamacpp-embedder-bootstrapped/)
+    ).toEqual([])
+  })
+
+  it.skipIf(BUILT.length === 0)('carries no model-weights URL', () => {
+    // The weights, not the host: the Hugging Face provider legitimately links
+    // to its own model browser and token settings, and neither downloads
+    // anything.
+    expect(
+      repoMatches(
+        BUILT,
+        /https?:\/\/[^\s'"`]*\/resolve\/[^\s'"`]*\.(gguf|safetensors|bin)/i
+      )
+    ).toEqual([])
+  })
+
+  it.skipIf(BUILT.length === 0)('names no model catalogue host', () => {
+    expect(repoMatches(BUILT, /catalog\.jan\.ai|cdn\.jan\.ai/)).toEqual([])
+  })
+
+  it.skipIf(BUILT.length === 0)('registers no updater and reports no usage', () => {
+    expect(
+      repoMatches(BUILT, /plugin-updater|tauri_plugin_updater|googletagmanager|gtag\(/)
+    ).toEqual([])
+  })
+})
+
 describe('no model-download surface remains', () => {
   it('has no hub route', () => {
     expect(existsSync(resolve(SRC, 'routes/hub'))).toBe(false)
