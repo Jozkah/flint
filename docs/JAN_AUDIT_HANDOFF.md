@@ -650,3 +650,24 @@ cancellation on the Rust side, and make the stream's completion unconditional.
 The chat route's own round trip (`model-round-trip`) completes, so this is
 specific to the Cowork loop's use of the stream rather than to the transport
 refusing to finish.
+
+### State at the end of this batch (2026-09-08)
+
+Smoke: **34 pass, 2 fail** of 36.
+
+`prompt-snapshot-panel` — the panel still does not appear. Everything is in
+place and unit-tested on both sides: `capture_snapshot` records a dispatch and
+returns its id on the head chunk (Rust tests), `providerFetch` lifts the
+`x-jan-*` identity headers into the request and hands the reference to the
+sink, the Cowork route registers that sink, and `attachPromptSnapshot` puts the
+reference on the open assistant turn. What is not proven is the join between
+them in the running app. Next place to look: `model-factory.ts` wraps `fetch`
+more than once (`createCustomFetch`, then another wrapper further down), so an
+outer layer may be rebuilding `init` without the headers the inner one added.
+Log the payload `session` field in `capture_snapshot` and see whether it
+arrives.
+
+`provider-error-is-actionable` — the toast naming a 403 does not appear. This
+has been failing since the start of this batch, before the transport landed,
+so it is not obviously caused by it; unverified either way.
+
