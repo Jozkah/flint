@@ -287,7 +287,7 @@ bar is "launch Jan, make a request, open the panel from that request's
 activity", and that has not been run.
 
 **Next production target, precisely:** add a scenario to
-`src-tauri/src/bin/cowork_smoke.rs` that scripts the mock provider (`plain`),
+`src-tauri/examples/cowork_smoke.rs` that scripts the mock provider (`plain`),
 sends a message, waits for `[data-testid="prompt-snapshot"]` to appear on the
 assistant message, opens it, asserts provider/model/hash and the redaction
 summary, switches Tree/JSON, and asserts no `Bearer`/`sk-` appears anywhere in

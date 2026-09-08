@@ -136,9 +136,9 @@ fn the_builder_is_constructed_in_exactly_one_place() {
 #[test]
 fn the_smoke_harness_uses_the_shared_construction_path() {
     let smoke = std::fs::read_to_string(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bin/cowork_smoke.rs"),
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("examples/cowork_smoke.rs"),
     )
-    .expect("src/bin/cowork_smoke.rs must be readable");
+    .expect("examples/cowork_smoke.rs must be readable");
     assert!(
         smoke.contains("app_lib::build_app()"),
         "the harness must build the real application via app_lib::build_app()"

@@ -11,6 +11,12 @@ edition = "2021"
 rust-version = "1.85"
 resolver = "2"
 default-run = "Jan-Desktop"
+# Every binary this package ships is declared explicitly below. Cargo otherwise
+# auto-discovers each file in `src/bin/` as a binary of its own, carrying none
+# of the `required-features` a declared target would have -- so a feature-gated
+# helper dropped in there is built unconditionally and fails on the modules it
+# is gated behind. Declaring the targets is the contract; this keeps it honest.
+autobins = false
 
 [lib]
 name = "app_lib"
@@ -29,9 +35,28 @@ required-features = ["cli"]
 # Real-Tauri UI smoke harness. Excluded from release builds: `cowork-smoke` is
 # not in `default`, so `required-features` keeps cargo from building this target
 # unless it is asked for explicitly.
-[[bin]]
+#
+# An example rather than a [[bin]], because `required-features` only governs
+# cargo. The Tauri bundler enumerates every [[bin]] the package declares and
+# demands each one's file when it computes the installed size, so as a [[bin]]
+# this target failed `tauri build` outright:
+#
+#   failed to bundle project: when getting size of target/release/cowork-smoke.exe:
+#   The system cannot find the file specified. (os error 2)
+#
+# The bundler does not look at examples, so this keeps the harness out of the
+# installer instead of shipping a test binary to satisfy the size calculation.
+# `cargo ... --all-targets` still builds it, so CI coverage is unchanged.
+#
+# It also has to live outside `src/bin/`: the bundler enumerates that directory
+# directly, by file stem, rather than reading cargo's target list -- which is why
+# it asked for `cowork_smoke.exe` (the file name) and not `cowork-smoke.exe` (the
+# target name) even once no such target existed.
+#
+# Run it with: cargo run --example cowork-smoke --features cowork-smoke
+[[example]]
 name = "cowork-smoke"
-path = "src/bin/cowork_smoke.rs"
+path = "examples/cowork_smoke.rs"
 required-features = ["cowork-smoke"]
 
 [features]

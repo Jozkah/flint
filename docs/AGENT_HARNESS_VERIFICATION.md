@@ -131,7 +131,7 @@ None recorded for Phase 0.
 | Real WebView scenario | `cowork-smoke --only tool-activity-timeline` | a scripted `ls` call is dispatched, recorded through `requested`/`running`/terminal, rendered as its own item, carries no credential, and survives a reload |
 
 Run: `cargo test --lib activity::` and
-`cargo run --bin cowork-smoke --features cowork-smoke -- --only tool-activity-timeline`.
+`cargo run --example cowork-smoke --features cowork-smoke -- --only tool-activity-timeline`.
 
 
 ## Context accounting and model capabilities (AH-073 / AH-088 / AH-195)

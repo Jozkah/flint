@@ -1603,7 +1603,7 @@
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
         "web-app/src/lib/__tests__/toolActivity.test.ts",
-        "src-tauri/src/bin/cowork_smoke.rs::tool-activity-timeline"
+        "src-tauri/examples/cowork_smoke.rs::tool-activity-timeline"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -2234,7 +2234,7 @@
       "tests": [
         "web-app/src/lib/__tests__/payloadUsage.test.ts",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/usage.rs",
-        "src-tauri/src/bin/cowork_smoke.rs::tool-activity-timeline"
+        "src-tauri/examples/cowork_smoke.rs::tool-activity-timeline"
       ],
       "platformRequirements": [],
       "blockedReason": null,
@@ -5010,7 +5010,7 @@
       "tests": [
         "web-app/src/lib/__tests__/coworkActivityTimeline.test.ts",
         "web-app/src/lib/__tests__/coworkToolActivity.test.ts",
-        "src-tauri/src/bin/cowork_smoke.rs::tool-activity-timeline"
+        "src-tauri/examples/cowork_smoke.rs::tool-activity-timeline"
       ],
       "platformRequirements": [],
       "blockedReason": null,
