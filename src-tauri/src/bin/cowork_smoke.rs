@@ -2522,13 +2522,26 @@ fn scenario_cowork_search_and_settings(ctx: &Ctx) -> ScenarioResult {
                rect: { x: Math.round(r.left), y: Math.round(r.top),
                        w: Math.round(r.width), h: Math.round(r.height) },
                point: { cx, cy },
-               hit: hit ? {
-                 tag: hit.tagName,
-                 testid: hit.getAttribute('data-testid'),
-                 cls: (hit.className || '').toString().slice(0, 160),
-                 z: getComputedStyle(hit).zIndex,
-                 pos: getComputedStyle(hit).position,
-               } : null,
+               hit: hit ? (() => {
+                 const hr = hit.getBoundingClientRect();
+                 return {
+                   tag: hit.tagName,
+                   testid: hit.getAttribute('data-testid'),
+                   cls: (hit.className || '').toString().slice(0, 160),
+                   z: getComputedStyle(hit).zIndex,
+                   pos: getComputedStyle(hit).position,
+                   pe: getComputedStyle(hit).pointerEvents,
+                   rect: { x: Math.round(hr.left), y: Math.round(hr.top),
+                           w: Math.round(hr.width), h: Math.round(hr.height) },
+                   attrs: [...hit.attributes].map(a => a.name + '=' + a.value).join(' ').slice(0, 200),
+                   parent: hit.parentElement ? {
+                     tag: hit.parentElement.tagName,
+                     cls: (hit.parentElement.className || '').toString().slice(0, 120),
+                     attrs: [...hit.parentElement.attributes].map(a => a.name).join(',').slice(0, 120),
+                   } : null,
+                   kids: hit.children.length,
+                 };
+               })() : null,
              });
            }
            return JSON.stringify(report);"#,

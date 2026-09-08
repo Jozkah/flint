@@ -83,19 +83,26 @@ export function ExtensionProvider({ children }: PropsWithChildren) {
   }, [status, t])
 
   // Dismiss the loader only once the gated UI is ready, not on a fixed timer.
+  //
+  // Nothing here may be cancellable. The loader is `position: fixed`,
+  // `z-index: 9999` and covers the whole window; if its removal is called off
+  // -- as it was, by a cleanup that cancelled both the frame and the timer --
+  // it stays over a fully working application and silently absorbs every
+  // click. Controls look present, focus fine, and do nothing.
   useEffect(() => {
     if (!finishedSetup) return
     if (isMainWindow()) emit('app-ready').catch(() => {})
-    let removeTimer: ReturnType<typeof setTimeout>
-    const raf = requestAnimationFrame(() => {
-      document.body.classList.add('loaded')
-      removeTimer = setTimeout(() => {
-        document.getElementById('initial-loader')?.remove()
-      }, 300)
-    })
+    // Synchronously, so the loader stops taking clicks (`.loaded` sets
+    // `pointer-events: none`) even if nothing after this runs.
+    document.body.classList.add('loaded')
+    const removeTimer = setTimeout(() => {
+      document.getElementById('initial-loader')?.remove()
+    }, 300)
     return () => {
-      cancelAnimationFrame(raf)
+      // Take it out now rather than leaving it behind: the fade is a nicety,
+      // an unusable window is not.
       clearTimeout(removeTimer)
+      document.getElementById('initial-loader')?.remove()
     }
   }, [finishedSetup])
 
