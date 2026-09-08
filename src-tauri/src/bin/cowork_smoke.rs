@@ -2507,19 +2507,36 @@ fn scenario_cowork_search_and_settings(ctx: &Ctx) -> ScenarioResult {
     )?;
 
     // Neither control may be swallowed by the macOS window drag region.
-    let clickable = ctx.eval_bool(
-        r#"for (const id of ['cowork-search', 'cowork-settings']) {
+    let reach = ctx.eval_string(
+        r#"const report = [];
+           for (const id of ['cowork-search', 'cowork-settings']) {
              const el = document.querySelector(`[data-testid="${id}"]`);
-             if (!el) return false;
+             if (!el) { report.push({ id, missing: true }); continue; }
              const r = el.getBoundingClientRect();
-             const hit = document.elementFromPoint(
-               Math.round(r.left + r.width / 2),
-               Math.round(r.top + r.height / 2));
-             if (!hit || (!el.contains(hit) && hit !== el)) return false;
+             const cx = Math.round(r.left + r.width / 2);
+             const cy = Math.round(r.top + r.height / 2);
+             const hit = document.elementFromPoint(cx, cy);
+             if (hit && (el.contains(hit) || hit === el)) continue;
+             report.push({
+               id,
+               rect: { x: Math.round(r.left), y: Math.round(r.top),
+                       w: Math.round(r.width), h: Math.round(r.height) },
+               point: { cx, cy },
+               hit: hit ? {
+                 tag: hit.tagName,
+                 testid: hit.getAttribute('data-testid'),
+                 cls: (hit.className || '').toString().slice(0, 160),
+                 z: getComputedStyle(hit).zIndex,
+                 pos: getComputedStyle(hit).position,
+               } : null,
+             });
            }
-           return true;"#,
+           return JSON.stringify(report);"#,
     )?;
-    ensure!(clickable, "a quick action is covered by something else");
+    ensure!(
+        reach == "[]",
+        "a quick action is covered by something else: {reach}"
+    );
 
     // Search opens the shared dialog rather than a second implementation.
     ctx.eval("document.querySelector('[data-testid=\"cowork-search\"]').click(); return true;")?;

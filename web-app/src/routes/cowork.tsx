@@ -2614,10 +2614,12 @@ function CoworkPage() {
   return (
     <div className="flex flex-col h-[calc(100dvh-(env(safe-area-inset-bottom)+env(safe-area-inset-top)))]">
       <HeaderPage>
-        <div className="flex items-center justify-between w-full gap-2 pr-2">
-          {/* `min-w-0` so the model name truncates instead of pushing the
-              controls beside it out of the bar. */}
-          <div className="min-w-0 flex-1">
+        {/* Beside the model picker rather than pinned to the far right: on
+            macOS notifications default to the top-right corner, and their
+            container is a fixed z-9999 layer that sits exactly over anything
+            parked there. Controls belong next to what they act on anyway. */}
+        <div className="flex w-full items-center gap-2 pr-2">
+          <div className="min-w-0 shrink">
             <DropdownModelProvider useLastUsedModel />
           </div>
           {/* `shrink-0`: these must stay reachable at any width. */}
