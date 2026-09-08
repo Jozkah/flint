@@ -127,6 +127,9 @@ vi.mock('@/lib/providerCaps', () => ({
 }))
 vi.mock('../model-factory', () => ({
   ModelFactory: { createModel: vi.fn(async () => ({ modelId: 'gpt' })) },
+  // The transport tags each model with the conversation it belongs to, so the
+  // provider transport can record what was sent.
+  DISPATCH_PARAM_KEY: '__janDispatch',
 }))
 
 import { CustomChatTransport } from '../custom-chat-transport'

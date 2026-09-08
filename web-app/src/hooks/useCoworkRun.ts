@@ -316,6 +316,11 @@ type CoworkRunState = {
   removePendingAsk: (sid: string, requestId: string) => void
   /** Put a question in the transcript at the point it was asked. */
   attachAsk: (sid: string, record: AskRecord) => void
+  /** Record what the model was sent, on the turn its reply appears in. */
+  attachPromptSnapshot: (
+    sid: string,
+    ref: { id: string; hash: string; redactions: number }
+  ) => void
   /** Record what became of a question, in place, without moving it. */
   settleAsk: (
     sid: string,
@@ -563,6 +568,33 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
               ...turns.slice(idx + 1),
             ]
       return { liveTurns: { ...s.liveTurns, [sid]: next } }
+    }),
+
+  attachPromptSnapshot: (sid, ref) =>
+    set((s) => {
+      const turns = s.liveTurns[sid] ?? []
+      // The dispatch happens before the reply streams, so the turn it belongs
+      // to is the open assistant turn -- or a new one, which the reply will
+      // then be appended to. That is what ties a snapshot to its own
+      // invocation rather than to whichever turn is newest later.
+      const last = turns[turns.length - 1]
+      if (last?.role === 'assistant' && !last.promptSnapshot && !last.content) {
+        return {
+          liveTurns: {
+            ...s.liveTurns,
+            [sid]: [...turns.slice(0, -1), { ...last, promptSnapshot: ref }],
+          },
+        }
+      }
+      return {
+        liveTurns: {
+          ...s.liveTurns,
+          [sid]: [
+            ...turns,
+            { role: 'assistant' as const, content: '', promptSnapshot: ref },
+          ],
+        },
+      }
     }),
 
   settleAsk: (sid, requestId, state, answers) =>

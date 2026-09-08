@@ -204,10 +204,39 @@ const providerMetadataExtractor: MetadataExtractor = {
  * Keys from inference parameters that are client-side only and must not
  * be forwarded in the HTTP body to remote APIs.
  */
+/**
+ * Which conversation a model's requests belong to.
+ *
+ * Carried as a model parameter because the model instance is built per session:
+ * a module-level "current dispatch" would race between two sessions streaming
+ * at once, and the AI SDK gives no other place to thread it through. Stripped
+ * from the request body (it is not a sampling parameter) and sent as headers
+ * the provider transport consumes and removes before the request goes out.
+ */
+export const DISPATCH_PARAM_KEY = '__janDispatch'
+
+export type DispatchIdentity = {
+  session: string
+  run?: string
+  thread?: string
+  agent?: string
+  provider?: string
+}
+
+/** Header names the provider transport reads the identity from. */
+export const DISPATCH_HEADERS = {
+  session: 'x-jan-session',
+  run: 'x-jan-run',
+  thread: 'x-jan-thread',
+  agent: 'x-jan-agent',
+  provider: 'x-jan-provider',
+} as const
+
 const CLIENT_SIDE_PARAM_KEYS: ReadonlySet<string> = new Set([
   'ctx_len',
   'max_context_tokens',
   'auto_compact',
+  DISPATCH_PARAM_KEY,
 ])
 
 /**
@@ -518,7 +547,21 @@ export function createCustomFetch(
     return merged
   }
 
+  const dispatch = parameters[DISPATCH_PARAM_KEY] as DispatchIdentity | undefined
+
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    if (dispatch?.session) {
+      // The transport records what it is about to send; without knowing whose
+      // conversation this is, the record could not be found again.
+      const headers = new Headers(init?.headers ?? {})
+      headers.set(DISPATCH_HEADERS.session, dispatch.session)
+      if (dispatch.run) headers.set(DISPATCH_HEADERS.run, dispatch.run)
+      if (dispatch.thread) headers.set(DISPATCH_HEADERS.thread, dispatch.thread)
+      if (dispatch.agent) headers.set(DISPATCH_HEADERS.agent, dispatch.agent)
+      if (dispatch.provider)
+        headers.set(DISPATCH_HEADERS.provider, dispatch.provider)
+      init = { ...init, headers }
+    }
     let rawBody: Record<string, unknown> | null = null
     if (init?.method === 'POST' || !init?.method) {
       try {

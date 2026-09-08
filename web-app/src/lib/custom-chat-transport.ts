@@ -14,7 +14,7 @@ import {
 import { repairToolArgs } from './toolCallRepair'
 import { useServiceStore } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
-import { ModelFactory } from './model-factory'
+import { DISPATCH_PARAM_KEY, ModelFactory } from './model-factory'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useThreads } from '@/hooks/useThreads'
@@ -1167,7 +1167,21 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     providerId: string,
     abortSignal: AbortSignal | undefined
   ): Promise<LanguageModel> {
-    const modelPromise = ModelFactory.createModel(modelId, provider, parameters)
+    // Which conversation this model's requests belong to, so the transport can
+    // record what was sent and the timeline can find that record again. Set on
+    // the model instance, which is per conversation -- a shared "current
+    // dispatch" would race between two sessions streaming at once.
+    const modelPromise = ModelFactory.createModel(modelId, provider, {
+      ...parameters,
+      ...(this.threadId
+        ? {
+            [DISPATCH_PARAM_KEY]: {
+              session: this.threadId,
+              provider: providerId,
+            },
+          }
+        : {}),
+    })
     if (!abortSignal) return modelPromise
 
     // Target lib is ES2021 here (see tsconfig.app.json), predating

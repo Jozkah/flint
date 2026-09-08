@@ -23,6 +23,10 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
+use tauri_plugin_agent_tools::snapshot::{self, Identity as SnapshotIdentity};
+
+use crate::core::app::commands::resolve_jan_data_folder;
+
 use super::resolver::{self, DnsProbe, ResolverCache, SystemDns};
 
 /// What `reqwest::dns::Resolving` carries on failure.
@@ -144,7 +148,7 @@ pub fn invalidate_all() {
 }
 
 /// A provider request, as the web app describes it.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderRequest {
     pub url: String,
@@ -158,6 +162,62 @@ pub struct ProviderRequest {
     /// Seconds. `None` leaves it to the server and the user.
     #[serde(default)]
     pub timeout_secs: Option<u64>,
+    /// Who this request belongs to, so a snapshot of it can be found again.
+    ///
+    /// Absent for a request that is not a model dispatch (model discovery, a
+    /// health check), which is not snapshotted at all.
+    #[serde(default)]
+    pub session: Option<String>,
+    #[serde(default)]
+    pub run: Option<String>,
+    #[serde(default)]
+    pub thread: Option<String>,
+    #[serde(default)]
+    pub agent: Option<String>,
+    #[serde(default)]
+    pub provider: Option<String>,
+}
+
+/// A reference to the snapshot taken of a dispatched request.
+///
+/// Carries the id and hash, never the payload: the timeline links to the
+/// stored record rather than holding a copy that could drift from it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotRef {
+    pub id: String,
+    pub hash: String,
+    pub redactions: usize,
+}
+
+/// Record what is about to be sent, if this is a model dispatch.
+///
+/// The transport is the last point before the request leaves the process, and
+/// the only one every provider call passes through -- which is exactly what a
+/// prompt snapshot has to be taken at. A request with no session is not a
+/// dispatch (discovery, a health check) and is not recorded.
+fn capture_snapshot(req: &ProviderRequest) -> Option<SnapshotRef> {
+    let session = req.session.as_deref()?;
+    let body = req.body.as_deref()?;
+    let payload: serde_json::Value = serde_json::from_str(body).ok()?;
+    // A chat dispatch, not an arbitrary POST.
+    if !payload.get("messages").is_some_and(|m| m.is_array()) {
+        return None;
+    }
+    let identity = SnapshotIdentity {
+        session: session.to_string(),
+        run: req.run.clone().unwrap_or_default(),
+        thread: req.thread.clone().unwrap_or_default(),
+        agent: req.agent.clone().unwrap_or_default(),
+        provider: req.provider.clone().unwrap_or_default(),
+    };
+    let snapshot = snapshot::capture(&payload, &identity);
+    snapshot::append(&resolve_jan_data_folder(), &snapshot);
+    Some(SnapshotRef {
+        id: snapshot.id.clone(),
+        hash: snapshot.hash.clone(),
+        redactions: snapshot.redactions.len(),
+    })
 }
 
 fn default_method() -> String {
@@ -173,6 +233,8 @@ pub struct ProviderResponse {
     pub body: String,
     /// Which address actually answered, when the transport could tell.
     pub peer: Option<String>,
+    /// The snapshot taken of this request, when it was a model dispatch.
+    pub snapshot: Option<SnapshotRef>,
 }
 
 /// One streamed piece of a response.
@@ -185,6 +247,7 @@ pub enum StreamChunk {
         status_text: String,
         headers: HashMap<String, String>,
         peer: Option<String>,
+        snapshot: Option<SnapshotRef>,
     },
     /// Base64 so a chunk that splits a multi-byte character survives the trip.
     Data { b64: String },
@@ -275,6 +338,9 @@ pub fn describe(host: &str, port: u16) -> Option<String> {
 pub async fn send(req: ProviderRequest) -> Result<ProviderResponse, String> {
     let (host, port) = endpoint_of(&req.url)?;
     let client = client_for(&host, port)?;
+    // Taken from the request as it stands here, at the last point before it
+    // leaves the process.
+    let snapshot = capture_snapshot(&req);
     let response = build(&client, &req)?
         .send()
         .await
@@ -295,6 +361,7 @@ pub async fn send(req: ProviderRequest) -> Result<ProviderResponse, String> {
         headers,
         body,
         peer: peer.map(|p| p.to_string()),
+        snapshot,
     })
 }
 
@@ -308,6 +375,7 @@ pub trait ChunkSink: Send + 'static {
 pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<(), String> {
     let (host, port) = endpoint_of(&req.url)?;
     let client = client_for(&host, port)?;
+    let snapshot = capture_snapshot(&req);
     let response = match build(&client, &req)?.send().await {
         Ok(r) => r,
         Err(e) => {
@@ -326,6 +394,7 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
         status_text: status.canonical_reason().unwrap_or("").to_string(),
         headers: header_map(&response),
         peer: peer.map(|p| p.to_string()),
+        snapshot,
     });
 
     let mut stream = response.bytes_stream();
@@ -352,6 +421,120 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    #[tokio::test]
+    async fn a_model_dispatch_is_snapshotted_and_the_reference_comes_back() {
+        let (port, _requests) = serve(OK_JSON, 1);
+        let _guard = pin(vec![ip("127.0.0.1")]);
+
+        let response = send(ProviderRequest {
+            url: format!("http://v100:{port}/v1/chat/completions"),
+            method: "POST".into(),
+            headers: HashMap::from([(
+                "Authorization".into(),
+                "Bearer sk-not-a-real-key".into(),
+            )]),
+            body: Some(
+                r#"{"model":"qwen3.8-27b","messages":[{"role":"user","content":"hi"}]}"#.into(),
+            ),
+            timeout_secs: Some(10),
+            session: Some("s1".into()),
+            run: Some("r1".into()),
+            provider: Some("local".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        let taken = response.snapshot.expect("a chat dispatch is snapshotted");
+        assert!(taken.hash.starts_with("fnv1a64:"), "{}", taken.hash);
+        assert!(!taken.id.is_empty());
+
+        // And it is retrievable with the scope it belongs to.
+        let found = tauri_plugin_agent_tools::snapshot::scoped_lookup(
+            &resolve_jan_data_folder(),
+            Some(&taken.id),
+            Some("r1"),
+            Some("s1"),
+        )
+        .unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].model, "qwen3.8-27b");
+        // The stored record was redacted before it was written.
+        let stored = serde_json::to_string(&found[0]).unwrap();
+        assert!(!stored.contains("sk-not-a-real-key"), "{stored}");
+    }
+
+    #[tokio::test]
+    async fn a_request_that_is_not_a_dispatch_is_not_snapshotted() {
+        let (port, _requests) = serve(OK_JSON, 2);
+        let _guard = pin(vec![ip("127.0.0.1")]);
+
+        // Model discovery: no session, and no messages.
+        let discovery = send(ProviderRequest {
+            url: format!("http://v100:{port}/v1/models"),
+            method: "GET".into(),
+            timeout_secs: Some(10),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        assert!(discovery.snapshot.is_none());
+
+        // A POST that carries no conversation is not a dispatch either.
+        let other = send(ProviderRequest {
+            url: format!("http://v100:{port}/v1/embeddings"),
+            method: "POST".into(),
+            body: Some(r#"{"model":"e5","input":"hi"}"#.into()),
+            timeout_secs: Some(10),
+            session: Some("s1".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+        assert!(other.snapshot.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_streamed_dispatch_reports_its_snapshot_on_the_head() {
+        const SSE: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: [DONE]\n\n";
+        let (port, _requests) = serve(SSE, 1);
+        let _guard = pin(vec![ip("127.0.0.1")]);
+
+        struct Collect(std::sync::Arc<Mutex<Vec<StreamChunk>>>);
+        impl ChunkSink for Collect {
+            fn send(&self, chunk: StreamChunk) {
+                self.0.lock().unwrap().push(chunk);
+            }
+        }
+        let seen = std::sync::Arc::new(Mutex::new(Vec::new()));
+        send_stream(
+            ProviderRequest {
+                url: format!("http://v100:{port}/v1/chat/completions"),
+                method: "POST".into(),
+                body: Some(
+                    r#"{"model":"qwen3.8-27b","messages":[{"role":"user","content":"hi"}],"stream":true}"#
+                        .into(),
+                ),
+                timeout_secs: Some(10),
+                session: Some("s2".into()),
+                ..Default::default()
+            },
+            Collect(seen.clone()),
+        )
+        .await
+        .unwrap();
+
+        let chunks = seen.lock().unwrap();
+        match &chunks[0] {
+            StreamChunk::Head { snapshot, .. } => {
+                let taken = snapshot.as_ref().expect("streamed dispatch is snapshotted");
+                assert!(taken.hash.starts_with("fnv1a64:"));
+            }
+            other => panic!("expected a head chunk, got {other:?}"),
+        }
+    }
 
     #[test]
     fn an_endpoint_is_the_host_and_the_port_that_will_actually_be_dialled() {
@@ -441,6 +624,7 @@ mod tests {
             headers: HashMap::new(),
             body: None,
             timeout_secs: Some(10),
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -477,6 +661,7 @@ mod tests {
             headers: HashMap::new(),
             body: None,
             timeout_secs: Some(10),
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -501,6 +686,7 @@ mod tests {
             headers: HashMap::from([("Authorization".into(), "Bearer secret-key".into())]),
             body: None,
             timeout_secs: Some(10),
+            ..Default::default()
         })
         .await
         .expect("a 403 is a response, not a transport failure");
@@ -523,6 +709,7 @@ mod tests {
             headers: HashMap::from([("Content-Type".into(), "application/json".into())]),
             body: Some("{\"model\":\"qwen3.8-27b\"}".into()),
             timeout_secs: Some(10),
+            ..Default::default()
         })
         .await
         .unwrap();
@@ -555,6 +742,7 @@ mod tests {
                 headers: HashMap::new(),
                 body: Some("{}".into()),
                 timeout_secs: Some(10),
+                ..Default::default()
             },
             Collect(seen.clone()),
         )
@@ -603,6 +791,7 @@ mod tests {
             headers: HashMap::new(),
             body: None,
             timeout_secs: Some(5),
+            ..Default::default()
         })
         .await
         .unwrap_err();

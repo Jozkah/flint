@@ -24,10 +24,41 @@ type StreamChunk =
       statusText: string
       headers: Record<string, string>
       peer: string | null
+      snapshot: PromptSnapshotRef | null
     }
   | { kind: 'data'; b64: string }
   | { kind: 'end' }
   | { kind: 'error'; message: string }
+
+/** What the transport recorded about a dispatched request. */
+export type PromptSnapshotRef = {
+  id: string
+  hash: string
+  redactions: number
+}
+
+/**
+ * Where a snapshot reference goes when one is taken.
+ *
+ * The AI SDK owns the call that produced it and has nowhere to return it, so
+ * the transport hands it here instead. Registered by whoever renders the
+ * timeline; unset outside that.
+ */
+type SnapshotSink = (session: string, ref: PromptSnapshotRef) => void
+let snapshotSink: SnapshotSink | null = null
+
+export function setSnapshotSink(sink: SnapshotSink | null): void {
+  snapshotSink = sink
+}
+
+/** Header names carrying the dispatch identity. Consumed here, never sent. */
+const DISPATCH_HEADER_FIELDS: Record<string, string> = {
+  'x-jan-session': 'session',
+  'x-jan-run': 'run',
+  'x-jan-thread': 'thread',
+  'x-jan-agent': 'agent',
+  'x-jan-provider': 'provider',
+}
 
 /** Mirrors `core::net::commands::EndpointDiagnostics`. */
 export type EndpointDiagnostics = {
@@ -121,12 +152,25 @@ export const providerFetch: typeof globalThis.fetch = async (
     request?.url ?? (input instanceof URL ? input.toString() : String(input))
   const method = (init?.method ?? request?.method ?? 'GET').toUpperCase()
 
+  const headers = headersToRecord(init, request)
+  // The dispatch identity travels as headers because the AI SDK gives no other
+  // way to thread it through. It is for the transport, not the provider, so it
+  // is lifted out here and never reaches the wire.
+  const identity: Record<string, string> = {}
+  for (const [header, field] of Object.entries(DISPATCH_HEADER_FIELDS)) {
+    const value = headers[header] ?? headers[header.toUpperCase()]
+    if (value) identity[field] = value
+    delete headers[header]
+    delete headers[header.toUpperCase()]
+  }
+
   const payload = {
     url,
     method,
-    headers: headersToRecord(init, request),
+    headers,
     body: await bodyText(init, request),
     timeoutSecs: null as number | null,
+    ...identity,
   }
 
   return await new Promise<Response>((resolve, reject) => {
@@ -157,6 +201,9 @@ export const providerFetch: typeof globalThis.fetch = async (
         case 'head': {
           if (settled) return
           settled = true
+          if (chunk.snapshot && identity.session) {
+            snapshotSink?.(identity.session, chunk.snapshot)
+          }
           const body = new ReadableStream<Uint8Array>({
             start(c) {
               controller = c

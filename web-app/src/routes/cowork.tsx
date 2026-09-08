@@ -109,6 +109,7 @@ import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import type { AskRecord } from '@/types/coworkSession'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { usePrompt } from '@/hooks/usePrompt'
+import { setSnapshotSink } from '@/lib/providerFetch'
 import {
   NO_SESSION,
   useCoworkView,
@@ -2544,6 +2545,16 @@ function CoworkPage() {
       }
     }
   }, [session?.id, scrollNode])
+
+  // Snapshots are taken in the transport, which has nowhere to return them to
+  // -- the AI SDK owns the call. It hands them here instead, and they land on
+  // the turn whose reply that request produced.
+  useEffect(() => {
+    setSnapshotSink((sessionId, ref) => {
+      useCoworkRun.getState().attachPromptSnapshot(sessionId, ref)
+    })
+    return () => setSnapshotSink(null)
+  }, [])
 
   // A run outlives this component, so unmounting must not stop it.
   useEffect(() => () => useCoworkRun.getState().clearPendingPreview(), [])

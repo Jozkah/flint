@@ -2517,6 +2517,13 @@ fn scenario_cowork_search_and_settings(ctx: &Ctx) -> ScenarioResult {
         "document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
          return true;",
     )?;
+    // The overlay is `fixed inset-0`, so anything hit-tested while it is still
+    // leaving would report as covered by it.
+    ctx.wait_until(
+        "the dialog overlay to leave the DOM",
+        "return !document.querySelector('[data-slot=\"dialog-overlay\"]');",
+        Duration::from_secs(10),
+    )?;
     ctx.settle();
 
     // Neither control may be swallowed by the macOS window drag region.
