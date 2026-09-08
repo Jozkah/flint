@@ -36,7 +36,6 @@ import {
   type BotIconHandle,
 } from '@/components/animated-icon/bot'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
-import { SearchDialog } from '@/containers/dialogs/SearchDialog'
 import { useThreadManagement } from '@/hooks/useThreadManagement'
 import { useSearchDialog } from '@/hooks/useSearchDialog'
 import { useProjectDialog } from '@/hooks/useProjectDialog'
@@ -178,7 +177,7 @@ export function NavMain() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { addFolder } = useThreadManagement()
-  const { open: searchOpen, setOpen: setSearchOpen } = useSearchDialog()
+  const { setOpen: setSearchOpen } = useSearchDialog()
   const { open: projectDialogOpen, setOpen: setProjectDialogOpen } =
     useProjectDialog()
   const navMainItems = getNavMainItems(
@@ -257,7 +256,9 @@ export function NavMain() {
         onSave={handleCreateProject}
       />
 
-      <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+      {/* The dialog itself is mounted once at the app root: it is opened from
+          Cowork's header as well as from here, and this component is not
+          rendered on every surface that offers Search. */}
     </>
   )
 }

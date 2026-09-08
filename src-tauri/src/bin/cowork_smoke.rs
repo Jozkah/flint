@@ -301,18 +301,22 @@ impl Ctx {
     /// the route (that is what keeps a session's view across a trip to
     /// Settings), so a blind click can just as easily close one.
     fn ensure_rail_open(&self, rail: &str, marker: &str) -> ScenarioResult {
+        let present = format!("return !!document.querySelector({marker:?});");
+        // One click, then give the panel time to render. Clicking again
+        // because it had not appeared yet would toggle it straight back shut.
         for _ in 0..2 {
-            if self.eval_bool(&format!(
-                "return !!document.querySelector({marker:?});"
-            ))? {
+            if self.eval_bool(&present)? {
                 return Ok(());
             }
             self.click_rail(rail)?;
+            if self
+                .wait_until(rail, &present, Duration::from_secs(10))
+                .is_ok()
+            {
+                return Ok(());
+            }
         }
-        ensure!(
-            self.eval_bool(&format!("return !!document.querySelector({marker:?});"))?,
-            "the {rail} rail did not open"
-        );
+        ensure!(self.eval_bool(&present)?, "the {rail} rail did not open");
         Ok(())
     }
 

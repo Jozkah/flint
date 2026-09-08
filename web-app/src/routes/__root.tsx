@@ -9,6 +9,8 @@ import { DataProvider } from '@/providers/DataProvider'
 import { route } from '@/constants/routes'
 import { ExtensionProvider } from '@/providers/ExtensionProvider'
 import { ToasterProvider } from '@/providers/ToasterProvider'
+import { SearchDialog } from '@/containers/dialogs/SearchDialog'
+import { useSearchDialog } from '@/hooks/useSearchDialog'
 import { useLeftPanel } from '@/hooks/useLeftPanel'
 import { useClearSettingsSearchOnExit } from '@/hooks/useSettingsSearch'
 import { TranslationProvider } from '@/i18n/TranslationContext'
@@ -98,6 +100,8 @@ const LogsLayout = () => {
 }
 
 function RootLayout() {
+  const searchOpen = useSearchDialog((s) => s.open)
+  const setSearchOpen = useSearchDialog((s) => s.setOpen)
   const getInitialLayoutType = () => {
     const pathname = window.location.pathname
     return (
@@ -119,6 +123,11 @@ function RootLayout() {
           <ExtensionProvider>
             <DataProvider />
             <GlobalEventHandler />
+            {/* One mount, above every route: Search is offered from the
+                sidebar and from Cowork's own header, and a dialog that lived
+                inside the sidebar simply did not exist on a surface that did
+                not render it. */}
+            <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
             {IS_LOGS_ROUTE ? <LogsLayout /> : <AppLayout />}
           </ExtensionProvider>
           {/* <TanStackRouterDevtools position="bottom-right" /> */}
