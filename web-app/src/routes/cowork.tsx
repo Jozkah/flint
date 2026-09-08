@@ -63,6 +63,8 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { MessageItem } from '@/containers/MessageItem'
 import SkillSelector from '@/containers/SkillSelector'
 import { assistantAnchorId, coworkTurnsToUIMessages } from '@/lib/coworkTurns'
+import { reconcileToolActivity } from '@/lib/coworkActivityTimeline'
+import { loadToolActivity, type ToolActivityItem } from '@/lib/toolActivity'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { PromptProgress } from '@/components/PromptProgress'
 import { useAppState } from '@/hooks/useAppState'
@@ -1006,12 +1008,37 @@ function CoworkPage() {
   // `liveTurns` holds only the rows this run has produced — `commitTurns`
   // appends them — so the committed transcript has to be shown alongside it or
   // the conversation disappears the moment a follow-up run starts.
+  /**
+   * The canonical record of this session's tool calls. AH-050/AH-172.
+   *
+   * Reloaded when the session changes and when a run ends: during a run the
+   * live turns already carry the same states, and re-reading the log on every
+   * event would be a file read per tool call for no gain.
+   */
+  const [toolActivity, setToolActivity] = useState<ToolActivityItem[]>([])
+  useEffect(() => {
+    if (!session?.id) {
+      setToolActivity([])
+      return
+    }
+    let current = true
+    loadToolActivity(session.id).then((items) => {
+      if (current) setToolActivity(items)
+    })
+    return () => {
+      current = false
+    }
+  }, [session?.id, running])
+
   const displayedTurns = useMemo(
     () =>
-      running
-        ? [...(session?.turns ?? []), ...liveTurns]
-        : (session?.turns ?? []),
-    [running, liveTurns, session?.turns]
+      reconcileToolActivity(
+        running
+          ? [...(session?.turns ?? []), ...liveTurns]
+          : (session?.turns ?? []),
+        toolActivity
+      ),
+    [running, liveTurns, session?.turns, toolActivity]
   )
   // A presentation filter: the turns themselves are untouched, so turning the
   // option off puts the activity straight back without a reload.
@@ -2755,6 +2782,10 @@ function CoworkPage() {
                           onReasoningScrollToBottom={
                             forceScrollReasoningToBottom
                           }
+                          // The tool calls are the work here, not scaffolding
+                          // behind an answer: they stay in the conversation
+                          // unless the display option hides the finished ones.
+                          keepToolActivity
                         />
                         {/* One card per workflow, at the message its first
                         dispatch landed under. Same store as the panel, so it

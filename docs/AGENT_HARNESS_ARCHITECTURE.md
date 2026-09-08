@@ -200,3 +200,47 @@ outcome. Registry items whose work the blueprint already delivered are marked
 context measurement, checkpoints and compatibility ingestion. Citing
 "Phase 5" without saying which document is a defect; cite `AH-###` or a
 blueprint section number.
+
+## Tool activity: the canonical record (AH-050) and the timeline (AH-172)
+
+Two logs, deliberately separate:
+
+- `audit/permissions.jsonl` (`plugins/tauri-plugin-agent-tools/src/audit.rs`)
+  records *decisions* -- what was allowed, refused, expired or revoked.
+- `audit/tool-activity.jsonl` (`.../src/activity.rs`) records what each tool
+  call *did*: one item per call, moving through `requested`,
+  `awaiting-permission`, `allowed`, `refused`, `running`, `succeeded`,
+  `failed`, `cancelled`, `stale`, `timed-out`.
+
+**One way in.** `web-app/src/lib/coworkDispatch.ts` routes every tool call in
+the app -- the main agent's, a subagent's, a background task's, an MCP
+server's, a skill's -- and `withToolActivity` wraps that one function. A tool
+added later is covered without being told to be, and there is no second path
+that could execute something the record does not show.
+
+**Ordering.** `activity::items` folds the log into one item per call, ordered
+by when each was *requested*. Two concurrent calls therefore read in the order
+they were made however their results interleave. Recording is queued rather
+than awaited (`toolActivity.ts`), so a tool never waits on its own audit line,
+and the queue is what stops `running` landing after `succeeded`.
+
+**Restart.** `settle_unfinished` runs in `.setup()` before the window opens:
+a call left `running` by a killed process becomes `stale`, since nothing
+survives that could finish it. It is idempotent.
+
+**Rendering.** `coworkActivityTimeline.ts` reconciles the record against the
+session transcript. The record wins on what became of a call; the transcript
+keeps what the record deliberately does not carry (arguments, output, diff).
+Nothing is ever removed, and a call the transcript lost is restored from the
+record. `keepToolActivity` on `MessageItem` stops Cowork folding finished tool
+calls into "Worked for Ns" the way a chat thread does -- there the reasoning is
+scaffolding behind an answer; here the tool calls are the work.
+
+**Hiding.** "Hide completed tool activity" (default off) may hide only
+`succeeded`. A refusal, failure, cancellation, stale or running call always
+stays on screen, with a compact count and a temporary reveal. It is a display
+filter: the turns stay in the session, in exports and in search.
+
+**Redaction.** Applied on the way in, in `tool_activity_record`, because the
+file outlives the window. The record carries a short redacted detail, never a
+tool's whole output.

@@ -1526,14 +1526,17 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-049"
       ],
       "owner": "lane-03-permission-security",
       "files": [
-        "src-tauri/src/core/cli/journal.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/lib/toolActivity.ts",
+        "web-app/src/lib/coworkDispatch.ts"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -1545,10 +1548,14 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
+        "web-app/src/lib/__tests__/toolActivity.test.ts",
+        "src-tauri/src/bin/cowork_smoke.rs::tool-activity-timeline"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "display.jsonl records calls for rendering; it is CLI-only and documents permission prompts as transient by design."
+      "auditNote": "Canonical lifecycle events for every dispatched tool call, written through the single dispatch chokepoint; append-only JSONL, session-scoped reads, stale settlement at startup."
     },
     {
       "id": "AH-051",
@@ -4912,14 +4919,17 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-004"
       ],
       "owner": "lane-09-ux-observability",
       "files": [
-        "web-app/src/containers/CoworkTasksPanel.tsx"
+        "web-app/src/lib/coworkActivityTimeline.ts",
+        "web-app/src/lib/coworkTurns.ts",
+        "web-app/src/containers/message/ChainOfThoughtGroup.tsx",
+        "web-app/src/containers/CoworkHiddenTools.tsx"
       ],
       "securityImpact": "none",
       "acceptanceCriteria": [
@@ -4929,10 +4939,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/lib/__tests__/coworkActivityTimeline.test.ts",
+        "web-app/src/lib/__tests__/coworkToolActivity.test.ts",
+        "src-tauri/src/bin/cowork_smoke.rs::tool-activity-timeline"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Subagent lanes and bash jobs are shown; there is no unified tool timeline."
+      "auditNote": "Timeline built on the AH-050 record: one durable item per call, ordered by request time, restored after a restart, and never folded away behind an answer."
     },
     {
       "id": "AH-173",

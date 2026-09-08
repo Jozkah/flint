@@ -88,12 +88,16 @@ export type ToolActivityItem = {
 /** What a tool is allowed to do, for the audit's own classification. */
 const CAPABILITIES: Record<string, string> = {
   read: 'read',
-  list: 'read',
-  glob: 'read',
+  ls: 'read',
+  find: 'read',
   grep: 'read',
+  screenshot: 'read',
+  memory_list: 'read',
   memory_read: 'read',
+  skill_list: 'read',
   skill_read: 'read',
   todo: 'read',
+  ask: 'read',
   write: 'write',
   edit: 'write',
   memory_write: 'write',
@@ -110,6 +114,8 @@ const KINDS: Record<string, string> = {
   bash: 'command',
   task: 'process',
   team: 'process',
+  todo: 'unknown',
+  ask: 'unknown',
   web_search: 'net',
   web_fetch: 'net',
 }
@@ -225,9 +231,12 @@ export async function loadToolActivity(
   session?: string
 ): Promise<ToolActivityItem[]> {
   try {
-    return await invoke<ToolActivityItem[]>('tool_activity_items', {
+    // A backend that answers with nothing is an empty timeline, not a broken
+    // conversation: the transcript still renders without the record.
+    const items = await invoke<ToolActivityItem[]>('tool_activity_items', {
       session: session ?? null,
     })
+    return Array.isArray(items) ? items : []
   } catch {
     return []
   }

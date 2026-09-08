@@ -41,6 +41,7 @@ export type CoworkTurn = {
     | 'cancelled'
     | 'refused'
     | 'stale'
+    | 'timed-out'
   /** Epoch millis. Together with `endedAt` this is the duration shown. */
   startedAt?: number
   endedAt?: number

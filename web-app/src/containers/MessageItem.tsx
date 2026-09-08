@@ -76,6 +76,8 @@ export type MessageItemProps = {
   budget?: { step: number; max: number }
   isAnimating?: boolean
   hideActions?: boolean
+  /** Cowork only: keep completed tool calls in the conversation. AH-172. */
+  keepToolActivity?: boolean
 }
 
 export const MessageItem = memo(
@@ -86,6 +88,7 @@ export const MessageItem = memo(
     status,
     isAnimating,
     hideActions,
+    keepToolActivity,
     subagents,
     budget,
     reasoningContainerRef,
@@ -525,6 +528,7 @@ export const MessageItem = memo(
             isStreaming={isStreaming}
             hasFollowingContent={hasFollowing}
             awaitingApproval={awaitingApproval}
+            keepToolActivity={keepToolActivity}
             citationOffsets={citationOffsets}
             reasoningContainerRef={reasoningContainerRef}
             isReasoningAtBottom={isReasoningAtBottom}
@@ -800,6 +804,7 @@ export const MessageItem = memo(
       prevProps.isLastMessage === nextProps.isLastMessage &&
       prevProps.status === nextProps.status &&
       prevProps.hideActions === nextProps.hideActions &&
+      prevProps.keepToolActivity === nextProps.keepToolActivity &&
       prevProps.versionInfo?.index === nextProps.versionInfo?.index &&
       prevProps.versionInfo?.count === nextProps.versionInfo?.count
     )

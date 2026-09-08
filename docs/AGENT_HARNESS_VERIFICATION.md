@@ -115,7 +115,20 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 | Process jail (`bubblewrap` / Seatbelt / AppContainer) | not run | not run | not run | n/a |
 | Per-agent worktrees | not run | not run | not run | n/a |
 | Desktop agent surfaces | not run | not run | not run | not run |
+| Tool activity record and timeline (AH-050/AH-172) | not run | passed | not run | passed |
 
 ## Known blockers
 
 None recorded for Phase 0.
+
+## Tool activity record and timeline (AH-050 / AH-172)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 9 unit tests | `plugins/tauri-plugin-agent-tools/src/activity.rs` | one call stays one item; concurrent calls keep request order; refusal/cancellation/failure stay distinguishable; only a success is hideable; restart restores the timeline; a killed run's call becomes stale; cross-session reads refused; a truncated tail costs one event; no credential reaches the file |
+| 11 unit tests | `web-app/src/lib/__tests__/toolActivity.test.ts` | classification and resource extraction; success, failure, cancellation and throw paths; a tool never waits on its audit line; a failed write never fails the tool |
+| 7 unit tests | `web-app/src/lib/__tests__/coworkActivityTimeline.test.ts` | reconciliation: settles a stuck call, keeps unknown calls, restores lost ones in request order, marks refusals as errors |
+| Real WebView scenario | `cowork-smoke --only tool-activity-timeline` | a scripted `ls` call is dispatched, recorded through `requested`/`running`/terminal, rendered as its own item, carries no credential, and survives a reload |
+
+Run: `cargo test --lib activity::` and
+`cargo run --bin cowork-smoke --features cowork-smoke -- --only tool-activity-timeline`.

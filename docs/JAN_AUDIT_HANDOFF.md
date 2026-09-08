@@ -855,3 +855,20 @@ left that could finish it. It is idempotent.
 
 **Not done yet:** the timeline UI (AH-172) reads `tool_activity_items` but is
 not yet wired into the Cowork conversation column.
+
+### AH-172 found a real defect, not just a missing view (2026-09-08)
+
+The first two runs of `tool-activity-timeline` failed with the record on disk
+and no tool card in the DOM -- the same shape as the AH-078 failures, so it was
+worth measuring rather than redesigning. The scenario printed the event count
+and the transcript on failure, which settled it in one run: **3 events on disk,
+and a transcript reading "Worked for 1s / Done. I used the tools you allowed."**
+
+The record was working end to end. `ChainOfThoughtGroup` collapses a finished
+trace once an answer follows it, which is right for a chat thread -- reasoning
+is scaffolding behind the answer -- and wrong for Cowork, where the tool calls
+are the work. A user was left with the model's word for what it had done.
+
+Fixed with `keepToolActivity` on `MessageItem`, set in Cowork only. The
+scenario now passes, including after a reload, which is what proves the
+timeline is rebuilt from the record and not from run memory.

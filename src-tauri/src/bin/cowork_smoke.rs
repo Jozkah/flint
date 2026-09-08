@@ -867,6 +867,10 @@ const SCENARIOS: &[Scenario] = &[
         name: "prompt-snapshot-panel",
         run: scenario_prompt_snapshot,
     },
+    Scenario {
+        name: "tool-activity-timeline",
+        run: scenario_tool_activity,
+    },
 ];
 
 /// The frontend bundle is loaded, React has mounted, and IPC round-trips.
@@ -2183,6 +2187,128 @@ fn scenario_prompt_snapshot(ctx: &Ctx) -> ScenarioResult {
         );
     }
     Ok(())
+}
+
+/// A tool call is recorded, stays in the conversation, and survives a reload.
+/// AH-050/AH-172.
+fn scenario_tool_activity(ctx: &Ctx) -> ScenarioResult {
+    // A real tool call, not a plain reply: the model asks for `list`, the
+    // dispatcher runs it, and the record has to show the whole life of it.
+    ctx.script_model("tools", &["ls:{\"path\":\".\"}"])?;
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.wait_until(
+        "the previous run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
+    ctx.ensure_model_selected()?;
+
+    // A fresh session, so what is asserted below belongs to this run.
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+
+    let before = activity_events(ctx);
+    ctx.type_into("[data-testid=\"chat-input\"]", "list the folder")?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+
+    // The call appears in the conversation as its own item.
+    let card = ctx.wait_until(
+        "the tool call in the transcript",
+        "return !!document.querySelector('[data-testid=\"tool-activity-item\"]');",
+        Duration::from_secs(90),
+    );
+    if card.is_err() {
+        // Which half failed matters: a model that never asked for a tool and a
+        // dispatcher that never ran one look identical in the DOM.
+        println!(
+            "      events on disk: {}",
+            activity_events(ctx).len()
+        );
+        println!(
+            "      transcript: {}",
+            ctx.eval_string("return (document.body.innerText || '').slice(0, 700);")
+                .unwrap_or_default()
+        );
+    }
+    card?;
+    ctx.wait_until(
+        "the run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
+
+    // The record, not the DOM: a card drawn from live state and a card drawn
+    // from the record look identical, and only one of them survives a reload.
+    let events = activity_events(ctx);
+    ensure!(
+        events.len() > before.len(),
+        "the tool call was never recorded ({} events before, {} after)",
+        before.len(),
+        events.len()
+    );
+    let fresh = &events[before.len()..];
+    for phase in ["requested", "running"] {
+        ensure!(
+            fresh.iter().any(|e| e.contains(&format!("\"phase\":\"{phase}\""))),
+            "no {phase} event was recorded"
+        );
+    }
+    ensure!(
+        fresh
+            .iter()
+            .any(|e| e.contains("\"phase\":\"succeeded\"") || e.contains("\"phase\":\"failed\"")),
+        "the call never reached a terminal phase"
+    );
+    for secret in ["smoke-not-a-real-key", "Bearer ", "sk-"] {
+        ensure!(
+            !fresh.iter().any(|e| e.contains(secret)),
+            "the record contains {secret:?}"
+        );
+    }
+
+    // Reload. The conversation is rebuilt from what was stored, so a tool call
+    // that only lived in the run's memory disappears here.
+    ctx.goto("/")?;
+    ctx.settle();
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the tool call to survive the reload",
+        "return !!document.querySelector('[data-testid=\"tool-activity-item\"]');",
+        Duration::from_secs(45),
+    )?;
+    Ok(())
+}
+
+/// The lifecycle events on disk, one JSON line each.
+fn activity_events(_ctx: &Ctx) -> Vec<String> {
+    std::env::var("JAN_DATA_FOLDER")
+        .map(|d| Path::new(&d).join("audit/tool-activity.jsonl"))
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .unwrap_or_default()
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// A snapshot belonging to another session must not be retrievable.

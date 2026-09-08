@@ -100,7 +100,11 @@ export const TerminalWidget = memo(
     const body = result?.text || (errorText ? asText(errorText) : '')
 
     return (
-      <div className="overflow-hidden rounded-md border bg-card/60">
+      <div
+        className="overflow-hidden rounded-md border bg-card/60"
+        data-testid="tool-activity-item"
+        data-tool-state={state}
+      >
         <div className="flex items-center gap-1.5 border-b px-2 py-1 text-xs text-muted-foreground">
           <IconTerminal2 size={14} className="shrink-0" />
           <span className="font-medium">{t('tools:toolCall.terminal')}</span>
@@ -222,7 +226,11 @@ export const AgentToolWidget = memo(
         : undefined
 
     return (
-      <div className="space-y-1.5">
+      <div
+        className="space-y-1.5"
+        data-testid="tool-activity-item"
+        data-tool-state={state}
+      >
         <ToolBar
           icon={<Icon size={16} />}
           value={value}
