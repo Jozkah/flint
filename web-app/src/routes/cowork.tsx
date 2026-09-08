@@ -64,6 +64,10 @@ import { MessageItem } from '@/containers/MessageItem'
 import SkillSelector from '@/containers/SkillSelector'
 import { assistantAnchorId, coworkTurnsToUIMessages } from '@/lib/coworkTurns'
 import { reconcileToolActivity } from '@/lib/coworkActivityTimeline'
+import {
+  formatChangeSummary,
+  janAuthoredChanges,
+} from '@/lib/coworkChangeSummary'
 import { loadToolActivity, type ToolActivityItem } from '@/lib/toolActivity'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { PromptProgress } from '@/components/PromptProgress'
@@ -1251,16 +1255,18 @@ function CoworkPage() {
         : t('common:coworkAccess.unsupportedPlatform')
       : t('common:coworkAccess.capabilityLoading'),
   }
-  const changeCounts = useMemo(() => {
-    const sandboxAdds = fileDiffs.reduce((s, f) => s + f.additions, 0)
-    const sandboxDels = fileDiffs.reduce((s, f) => s + f.deletions, 0)
-    const gitFiles = git.status?.files.length ?? 0
-    return {
-      fileCount: fileDiffs.length + gitFiles,
-      additions: sandboxAdds + (git.status?.additions ?? 0),
-      deletions: sandboxDels + (git.status?.deletions ?? 0),
-    }
-  }, [fileDiffs, git.status])
+  /**
+   * What this session changed, and only that.
+   *
+   * The counts used to include the attached repository's whole dirty working
+   * tree, so a branch someone left half-finished was reported as Jan having
+   * written forty files. That is a false claim about authorship, not a
+   * generous count.
+   */
+  const changeCounts = useMemo(
+    () => janAuthoredChanges(fileDiffs, git.status),
+    [fileDiffs, git.status]
+  )
 
   // Background shell jobs, polled here rather than inside the Activity panel:
   // the chip derives its counts from the same list, and polling only while the
@@ -3026,6 +3032,7 @@ function CoworkPage() {
                       changeCount={changeCounts.fileCount}
                       additions={changeCounts.additions}
                       deletions={changeCounts.deletions}
+                      changeSummary={formatChangeSummary(changeCounts)}
                       activity={taskCounts}
                     />
                     <div className="ml-auto flex items-center">

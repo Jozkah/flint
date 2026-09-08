@@ -872,3 +872,18 @@ are the work. A user was left with the model's word for what it had done.
 Fixed with `keepToolActivity` on `MessageItem`, set in Cowork only. The
 scenario now passes, including after a reload, which is what proves the
 timeline is rebuilt from the record and not from run memory.
+
+### The changes chip was counting the user's own work (2026-09-08)
+
+`changeCounts` in the Cowork route added the attached repository's entire dirty
+working tree to this session's sandbox diffs. A branch someone had left
+half-finished was therefore reported as Jan having written forty files.
+
+That is not a generous count, it is a false claim about authorship, and it is
+the same defect `hasJanAuthoredChanges` was added to fix in the run summary --
+the chip was simply the place that still mixed the two sources.
+
+`janAuthoredChanges` now counts only paths this session wrote, taking line
+counts from Git only for a direct edit whose own diff reported none. The
+summary reads `3 files changed · +24 −8` in the tooltip and the accessible
+name, with the row itself still compact.

@@ -34,15 +34,20 @@ export function CoworkRailToolbar({
   additions,
   deletions,
   activity,
+  changeSummary,
 }: {
   active: RailMode | null
   onSelect: (mode: RailMode) => void
-  /** Combined project-git + sandbox changed-file count. */
+  /** Files this session changed. The user's own uncommitted work is not
+   * counted here: reporting it would be Jan claiming someone else's edits. */
   changeCount: number
   additions: number
   deletions: number
   /** This session's activity totals, from the canonical activity store. */
   activity: ActivityProgress
+  /** `3 files changed · +24 −8`, for the tooltip and the accessible name. The
+   * row itself stays compact. */
+  changeSummary?: string
 }) {
   const { t } = useTranslation()
   const inFlight = activity.running + activity.queued
@@ -85,7 +90,9 @@ export function CoworkRailToolbar({
       {item('preview', t('common:rail.preview'), <Eye className="size-3.5 shrink-0" />)}
       {item(
         'changes',
-        t('common:rail.changes'),
+        changeCount > 0 && changeSummary
+          ? `${t('common:rail.changes')} — ${changeSummary}`
+          : t('common:rail.changes'),
         <FileDiff className="size-3.5 shrink-0" />,
         changeCount > 0 ? (
           <span className="flex items-center gap-1 font-mono text-[11px] tabular-nums text-muted-foreground">
