@@ -555,10 +555,37 @@ fn resource_matches(pattern: &Pattern, resource: &Resource) -> bool {
             if resource.kind() != kind {
                 return false;
             }
-            return Pattern::new(rest).is_ok_and(|p| p.matches(&resource.match_text()));
+            return matches_resource_text(rest, resource);
         }
     }
-    pattern.matches(&resource.match_text())
+    matches_resource_text(raw, resource)
+}
+
+/// Match a pattern against a resource's text, in the spellings a person writes.
+///
+/// A path resource is normalized to an absolute path, because that is the only
+/// spelling two rules can agree on. A *rule*, though, is written the way the
+/// file is talked about: `secrets/**`, `.env`, `src/**/*.ts`. Matching only the
+/// absolute text meant none of those ever fired -- a project could write
+/// `deny = ["read(secrets/**)"]`, see it accepted, and have it silently match
+/// nothing.
+///
+/// So a relative pattern is also tried anchored at any directory boundary. The
+/// boundary is what keeps it honest: `secrets/**` covers `/proj/secrets/x` and
+/// does not cover `/proj/notsecrets/x`.
+fn matches_resource_text(pattern: &str, resource: &Resource) -> bool {
+    let text = resource.match_text();
+    if Pattern::new(pattern).is_ok_and(|p| p.matches(&text)) {
+        return true;
+    }
+    if !matches!(resource, Resource::Path(_)) {
+        return false;
+    }
+    // Already absolute or already anchored: nothing further to try.
+    if pattern.starts_with('/') || pattern.starts_with("**") {
+        return false;
+    }
+    Pattern::new(&format!("**/{pattern}")).is_ok_and(|p| p.matches(&text))
 }
 
 #[cfg(test)]
@@ -587,6 +614,32 @@ mod tests {
                 "{spelling} should normalize to the same resource"
             );
         }
+    }
+
+    #[test]
+    fn a_rule_written_the_way_people_write_rules_actually_matches() {
+        // Resources normalize to absolute paths; rules are written relative to
+        // the project. Matching only the absolute text meant a project could
+        // write `deny = ["read(secrets/**)"]`, have it accepted, and have it
+        // match nothing at all.
+        let rule = ResourceRule::parse("read(secrets/**)").unwrap();
+        let inside = Resource::path("/proj/secrets/keys.txt", None);
+        assert!(rule.matches_deny("read", std::slice::from_ref(&inside)));
+
+        // The directory boundary is what keeps it honest.
+        let lookalike = Resource::path("/proj/notsecrets/keys.txt", None);
+        assert!(!rule.matches_deny("read", std::slice::from_ref(&lookalike)));
+
+        // A bare file name matches that file anywhere, which is how people
+        // mean it when they write `read(.env)`.
+        let dotenv = ResourceRule::parse("read(.env)").unwrap();
+        assert!(dotenv.matches_deny("read", &[Resource::path("/proj/app/.env", None)]));
+        assert!(!dotenv.matches_deny("read", &[Resource::path("/proj/app/env.ts", None)]));
+
+        // An absolute rule still means exactly what it says.
+        let absolute = ResourceRule::parse("read(/etc/**)").unwrap();
+        assert!(absolute.matches_deny("read", &[Resource::path("/etc/passwd", None)]));
+        assert!(!absolute.matches_deny("read", &[Resource::path("/proj/etc/passwd", None)]));
     }
 
     #[test]

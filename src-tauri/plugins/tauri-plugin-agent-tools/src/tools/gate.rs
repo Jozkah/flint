@@ -127,7 +127,10 @@ impl SessionGrants {
 /// cases need different wording: a policy deny is something the user can edit in
 /// `agent.toml`, while a hidden path is structural -- telling the model to check
 /// a deny list would send it reading a file that is itself hidden.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// Not `Copy`: two of these carry the name of what was refused, because a
+// refusal that does not say which host or which file is one the user cannot act
+// on.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DenyReason {
     /// `[tools] deny` in agent.toml names this tool.
     Policy,
@@ -140,9 +143,84 @@ pub enum DenyReason {
     /// A git invocation that can destroy uncommitted work or rewrite shared
     /// history, with no rule granting it. See `GitOp::is_destructive`.
     DestructiveGit(crate::resource::GitOp),
+    /// The run has no network and this call would leave the machine. AH-042.
+    NetworkOff,
+    /// The destination is not on the allow list, or is on the deny list.
+    /// AH-043. Carries the host, so the refusal names what was refused.
+    Domain(String),
+    /// A file whose name says it holds credentials, with no rule naming it.
+    /// AH-044. Carries the file name, never its contents.
+    SecretFile(String),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+/// What this run may reach on the network. AH-042/AH-043.
+///
+/// Deny is checked before allow and cannot be overridden by it: a list of
+/// destinations someone has forbidden is only worth writing if nothing else
+/// can grant them. An empty allow list means "anywhere not denied", because
+/// the alternative -- an empty list denying everything -- would silently break
+/// every run that never configured one.
+#[derive(Debug, Clone, Default)]
+pub struct NetworkPolicy {
+    pub allowed: bool,
+    pub allow_domains: Vec<String>,
+    pub deny_domains: Vec<String>,
+}
+
+impl NetworkPolicy {
+    /// A run with the network on and no domain rules: the historical behaviour.
+    pub fn open() -> Self {
+        Self {
+            allowed: true,
+            allow_domains: Vec::new(),
+            deny_domains: Vec::new(),
+        }
+    }
+
+    /// The host this policy refuses, when it refuses one.
+    ///
+    /// A rule matches a host and everything under it, so `example.com` covers
+    /// `api.example.com` and does not cover `notexample.com` -- matching on a
+    /// bare substring is how a deny list gets walked around with a lookalike
+    /// domain.
+    pub fn refuses(&self, host: &str) -> Option<String> {
+        let host = host.trim().trim_end_matches('.').to_ascii_lowercase();
+        if host.is_empty() {
+            return Some(host);
+        }
+        if self.deny_domains.iter().any(|rule| covers(rule, &host)) {
+            return Some(host);
+        }
+        if self.allow_domains.is_empty() {
+            return None;
+        }
+        if self.allow_domains.iter().any(|rule| covers(rule, &host)) {
+            None
+        } else {
+            Some(host)
+        }
+    }
+}
+
+/// Whether `rule` covers `host`: the same name, or a parent domain of it.
+fn covers(rule: &str, host: &str) -> bool {
+    let rule = rule.trim().trim_start_matches("*.").trim_end_matches('.').to_ascii_lowercase();
+    if rule.is_empty() {
+        return false;
+    }
+    host == rule || host.ends_with(&format!(".{rule}"))
+}
+
+/// The file name of a secret-bearing path this call touches, if any.
+fn secret_file_name(resource: &crate::resource::Resource) -> Option<String> {
+    let crate::resource::Resource::Path(path) = resource else {
+        return None;
+    };
+    let name = path.file_name()?.to_string_lossy().to_string();
+    crate::project_browse::is_sensitive_name(&name).then_some(name)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
     Allow,
     HardDeny(DenyReason),
@@ -166,6 +244,7 @@ pub fn resolve_decision(
     perms: &ToolPermissions,
     grants: &SessionGrants,
     hide_jan: bool,
+    network: &NetworkPolicy,
 ) -> Decision {
     // What this call actually touches, normalized once and reused for the deny
     // check, the allow check and the destructive-git guard below.
@@ -179,6 +258,41 @@ pub fn resolve_decision(
 
     if perms.denies_call(tool.name, &resources).is_some() {
         return Decision::HardDeny(DenyReason::Policy);
+    }
+
+    // Network, checked here rather than in each web tool. AH-042/AH-043.
+    //
+    // `allow_network = false` used to confine the shell and leave the web tools
+    // alone, so a run with its network switched off could still fetch a URL --
+    // the setting meant "no network for Bash" while reading as "no network". A
+    // destination is separately checked against the project's domain lists,
+    // deny first, because a deny list nobody can override is the only kind
+    // worth having.
+    if tool.capability == Capability::Net && !network.allowed {
+        return Decision::HardDeny(DenyReason::NetworkOff);
+    }
+    for resource in &resources {
+        if let crate::resource::Resource::Net { host, .. } = resource {
+            if let Some(refused) = network.refuses(host) {
+                return Decision::HardDeny(DenyReason::Domain(refused));
+            }
+        }
+    }
+
+    // Files that hold credentials. AH-044.
+    //
+    // The name is the whole signal and it is enough: `.env`, a private key, a
+    // `.netrc`. Reading one puts its contents in the transcript, where they
+    // reach the model and the log. A rule that names the file explicitly still
+    // allows it -- someone who writes a rule spelling out the path has said
+    // what they mean -- but a blanket `allow = ["read"]` has not.
+    if let Some(secret) = resources.iter().find_map(secret_file_name) {
+        let named = perms
+            .allows_call(tool.name, &resources)
+            .is_some_and(|rule| rule.source().contains('('));
+        if !named {
+            return Decision::HardDeny(DenyReason::SecretFile(secret));
+        }
     }
 
     // A resource the gate could not determine is refused rather than guessed
@@ -322,6 +436,35 @@ mod tests {
     use serde_json::json;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// The pre-network signature, for the tests that predate it.
+    ///
+    /// They are about paths, commands and grants, and an open network is what
+    /// they were written against; the network rules have their own tests
+    /// below, which call the real function.
+    #[allow(clippy::too_many_arguments)]
+    fn resolve_decision(
+        tool: &BuiltinTool,
+        args: &serde_json::Value,
+        project_root: &Path,
+        scratch: Option<&Path>,
+        read_roots: &[PathBuf],
+        perms: &ToolPermissions,
+        grants: &SessionGrants,
+        hide_jan: bool,
+    ) -> Decision {
+        super::resolve_decision(
+            tool,
+            args,
+            project_root,
+            scratch,
+            read_roots,
+            perms,
+            grants,
+            hide_jan,
+            &NetworkPolicy::open(),
+        )
+    }
 
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -1265,5 +1408,303 @@ mod tests {
             );
         }
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// The adversarial corpus. AH-198.
+///
+/// Every case here is a way someone has actually tried to get past a gate like
+/// this one: a different spelling of a denied path, a wrapper around a denied
+/// command, a lookalike domain, a grant that belongs to someone else. They are
+/// kept together rather than filed under the feature each one attacks, because
+/// the question they answer is a single one -- does the gate fail closed --
+/// and a corpus scattered across modules stops being read as a whole.
+///
+/// A case that starts passing for the wrong reason is worse than no case at
+/// all, so each asserts the specific refusal rather than merely "not Allow".
+#[cfg(test)]
+mod security_corpus {
+    use super::*;
+    use crate::permissions::{PermissionDefault, ToolPermissions};
+    use crate::tools::lookup;
+    use serde_json::json;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn root() -> PathBuf {
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "jan_corpus_{}_{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn decide(
+        tool: &str,
+        args: serde_json::Value,
+        root: &Path,
+        perms: &ToolPermissions,
+        network: &NetworkPolicy,
+    ) -> Decision {
+        resolve_decision(
+            lookup(tool).unwrap(),
+            &args,
+            root,
+            None,
+            &[],
+            perms,
+            &SessionGrants::default(),
+            true,
+            network,
+        )
+    }
+
+    fn denying(rules: &[&str]) -> ToolPermissions {
+        let deny: Vec<String> = rules.iter().map(|r| r.to_string()).collect();
+        ToolPermissions::new(PermissionDefault::Allow, &[], &deny, &[])
+    }
+
+    // -- bypass spellings ----------------------------------------------------
+
+    #[test]
+    fn a_denied_path_stays_denied_however_it_is_spelled() {
+        let root = root();
+        std::fs::create_dir_all(root.join("secrets")).unwrap();
+        std::fs::write(root.join("secrets/keys.txt"), b"x").unwrap();
+        let perms = denying(&["read(secrets/**)"]);
+
+        for spelling in [
+            "secrets/keys.txt",
+            "./secrets/keys.txt",
+            "secrets/./keys.txt",
+            "secrets/../secrets/keys.txt",
+        ] {
+            assert_eq!(
+                decide("read", json!({ "path": spelling }), &root, &perms, &NetworkPolicy::open()),
+                Decision::HardDeny(DenyReason::Policy),
+                "{spelling} slipped past the deny rule"
+            );
+        }
+    }
+
+    #[test]
+    fn traversal_out_of_the_project_is_never_silently_allowed() {
+        let root = root();
+        let perms = ToolPermissions::allow_all();
+        let d = decide(
+            "read",
+            json!({ "path": "../../etc/passwd" }),
+            &root,
+            &perms,
+            &NetworkPolicy::open(),
+        );
+        // A prompt is acceptable; an Allow is not. The user is asked before
+        // anything outside the project is read.
+        assert_ne!(d, Decision::Allow);
+    }
+
+    #[test]
+    fn an_argument_the_gate_cannot_read_is_refused_rather_than_assumed_harmless() {
+        let root = root();
+        let perms = ToolPermissions::allow_all();
+        assert_eq!(
+            decide("read", json!({ "path": 42 }), &root, &perms, &NetworkPolicy::open()),
+            Decision::HardDeny(DenyReason::Resource)
+        );
+    }
+
+    // -- command wrappers ----------------------------------------------------
+
+    #[test]
+    fn a_denied_command_cannot_be_hidden_behind_a_wrapper_or_a_second_command() {
+        let root = root();
+        let perms = denying(&["bash(rm)"]);
+        for command in [
+            "rm -rf build",
+            "ls && rm -rf build",
+            "ls; rm -rf build",
+            "ls | xargs rm",
+        ] {
+            assert_ne!(
+                decide("bash", json!({ "command": command }), &root, &perms, &NetworkPolicy::open()),
+                Decision::Allow,
+                "{command} was allowed"
+            );
+        }
+    }
+
+    #[test]
+    fn a_blanket_bash_allowance_is_not_permission_to_discard_work() {
+        let root = root();
+        let perms = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &["bash".to_string()],
+            &[],
+            &[],
+        );
+        let d = decide(
+            "bash",
+            json!({ "command": "git reset --hard" }),
+            &root,
+            &perms,
+            &NetworkPolicy::open(),
+        );
+        assert!(
+            matches!(d, Decision::HardDeny(DenyReason::DestructiveGit(_))),
+            "{d:?}"
+        );
+    }
+
+    // -- secret files --------------------------------------------------------
+
+    #[test]
+    fn credential_files_are_refused_without_a_rule_that_names_them() {
+        let root = root();
+        std::fs::write(root.join(".env"), b"API_KEY=x").unwrap();
+        let perms = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &["read".to_string()],
+            &[],
+            &[],
+        );
+        assert!(
+            matches!(
+                decide("read", json!({ "path": ".env" }), &root, &perms, &NetworkPolicy::open()),
+                Decision::HardDeny(DenyReason::SecretFile(_))
+            ),
+            "a blanket read allowance opened .env"
+        );
+
+        // Someone who writes the path out has said what they mean.
+        let named = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &["read(.env)".to_string()],
+            &[],
+            &[],
+        );
+        assert_eq!(
+            decide("read", json!({ "path": ".env" }), &root, &named, &NetworkPolicy::open()),
+            Decision::Allow
+        );
+    }
+
+    #[test]
+    fn a_private_key_is_refused_by_shape_not_by_a_list_of_names() {
+        let root = root();
+        std::fs::write(root.join("deploy.pem"), b"x").unwrap();
+        let perms = ToolPermissions::allow_all();
+        assert!(matches!(
+            decide("read", json!({ "path": "deploy.pem" }), &root, &perms, &NetworkPolicy::open()),
+            Decision::HardDeny(DenyReason::SecretFile(_))
+        ));
+    }
+
+    // -- network -------------------------------------------------------------
+
+    #[test]
+    fn a_run_with_no_network_cannot_fetch_a_url() {
+        let root = root();
+        let perms = ToolPermissions::allow_all();
+        let off = NetworkPolicy {
+            allowed: false,
+            ..NetworkPolicy::default()
+        };
+        for tool in ["web_fetch", "web_search"] {
+            assert_eq!(
+                decide(tool, json!({ "url": "https://example.com" }), &root, &perms, &off),
+                Decision::HardDeny(DenyReason::NetworkOff),
+                "{tool} left the machine with the network off"
+            );
+        }
+    }
+
+    #[test]
+    fn a_lookalike_domain_does_not_pass_for_the_allowed_one() {
+        let policy = NetworkPolicy {
+            allowed: true,
+            allow_domains: vec!["example.com".into()],
+            deny_domains: Vec::new(),
+        };
+        // Covered: the domain itself and anything under it.
+        assert_eq!(policy.refuses("example.com"), None);
+        assert_eq!(policy.refuses("api.example.com"), None);
+        // Not covered: a name that merely contains it.
+        assert!(policy.refuses("example.com.evil.test").is_some());
+        assert!(policy.refuses("notexample.com").is_some());
+        assert!(policy.refuses("example.company").is_some());
+    }
+
+    #[test]
+    fn a_deny_rule_cannot_be_overridden_by_an_allow_rule() {
+        let policy = NetworkPolicy {
+            allowed: true,
+            allow_domains: vec!["internal.test".into()],
+            deny_domains: vec!["secrets.internal.test".into()],
+        };
+        assert_eq!(policy.refuses("app.internal.test"), None);
+        assert!(policy.refuses("secrets.internal.test").is_some());
+        assert!(policy.refuses("a.secrets.internal.test").is_some());
+    }
+
+    #[test]
+    fn a_trailing_dot_and_a_capital_letter_are_the_same_host() {
+        let policy = NetworkPolicy {
+            allowed: true,
+            allow_domains: Vec::new(),
+            deny_domains: vec!["evil.test".into()],
+        };
+        for spelling in ["evil.test", "EVIL.test", "evil.test.", "Api.Evil.Test"] {
+            assert!(policy.refuses(spelling).is_some(), "{spelling} passed");
+        }
+    }
+
+    #[test]
+    fn a_destination_that_resolves_to_nothing_is_refused_rather_than_allowed() {
+        let policy = NetworkPolicy {
+            allowed: true,
+            allow_domains: vec!["example.com".into()],
+            deny_domains: Vec::new(),
+        };
+        assert!(policy.refuses("").is_some());
+        assert!(policy.refuses("   ").is_some());
+    }
+
+    // -- authority -----------------------------------------------------------
+
+    #[test]
+    fn a_grant_is_not_inherited_by_a_call_that_did_not_receive_it() {
+        let root = root();
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        // No grants: a write outside the workspace is never simply allowed.
+        let d = resolve_decision(
+            lookup("write").unwrap(),
+            &json!({ "path": "../elsewhere.txt", "content": "x" }),
+            &root,
+            None,
+            &[],
+            &perms,
+            &SessionGrants::default(),
+            true,
+            &NetworkPolicy::open(),
+        );
+        assert_ne!(d, Decision::Allow);
+    }
+
+    #[test]
+    fn the_agents_own_state_directory_stays_hidden_whatever_the_rules_say() {
+        let root = root();
+        let perms = ToolPermissions::allow_all();
+        assert_eq!(
+            decide(
+                "read",
+                json!({ "path": ".jan/agent/agent.toml" }),
+                &root,
+                &perms,
+                &NetworkPolicy::open()
+            ),
+            Decision::HardDeny(DenyReason::Hidden)
+        );
     }
 }

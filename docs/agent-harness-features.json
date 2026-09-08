@@ -239,8 +239,8 @@
       ],
       "tests": [],
       "platformRequirements": [],
-      "blockedReason": null,
-      "auditNote": "Rules are glob patterns over tool names; arguments and resources are never pattern-matched. The (subject, capability, resource) redesign is Phase 2 work under AH-034."
+      "blockedReason": "Capability and canonical resource are modelled and enforced through one gate on both surfaces, and the desktop now loads the project's real policy. Still missing the subject half: rules cannot name which agent or session they apply to, so a subagent is bound by the same rules as its parent and no narrower.",
+      "auditNote": "Capability and canonical resource are modelled and enforced through one gate on both surfaces, and the desktop now loads the project's real policy. Still missing the subject half: rules cannot name which agent or session they apply to, so a subagent is bound by the same rules as its parent and no narrower."
     },
     {
       "id": "AH-008",
@@ -1137,14 +1137,16 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-034"
       ],
       "owner": "lane-03-permission-security",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/sandbox.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/resource.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/policy.rs"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -1156,10 +1158,13 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/resource.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/policy.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Path control is structural containment only; there are no user-authorable per-path allow/deny lists."
+      "auditNote": "User-authorable per-path allow/deny rules from the project's agent.toml now reach the desktop gate, which previously built ToolPermissions::default() (allow everything). A relative rule such as read(secrets/**) also matches, anchored at a directory boundary; before this it compiled, was accepted, and matched nothing."
     },
     {
       "id": "AH-037",
@@ -1189,8 +1194,8 @@
       ],
       "tests": [],
       "platformRequirements": [],
-      "blockedReason": null,
-      "auditNote": "Grants are session-scoped and per base command, so granting `git status` also permits `git push`."
+      "blockedReason": "Per-command rules work (bash(git:force-push), bash(rm)), but interactive grants are still per base command, so approving `git status` still covers `git push` for the session.",
+      "auditNote": "Per-command rules work (bash(git:force-push), bash(rm)), but interactive grants are still per base command, so approving `git status` still covers `git push` for the session."
     },
     {
       "id": "AH-038",
@@ -1308,8 +1313,8 @@
       ],
       "tests": [],
       "platformRequirements": [],
-      "blockedReason": null,
-      "auditNote": "advertises_mcp keys on tool name; server-level trust lives in renderer localStorage, outside the Rust gate."
+      "blockedReason": "MCP tools are gated by name through the same rules, but server-level trust still lives in renderer localStorage rather than in the Rust gate.",
+      "auditNote": "MCP tools are gated by name through the same rules, but server-level trust still lives in renderer localStorage rather than in the Rust gate."
     },
     {
       "id": "AH-042",
@@ -1317,7 +1322,7 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-006"
@@ -1325,7 +1330,7 @@
       "owner": "lane-03-permission-security",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/jail.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/policy.rs"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -1337,12 +1342,14 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs"
+      ],
       "platformRequirements": [
         "per-OS validation on macOS, Windows and Linux"
       ],
       "blockedReason": null,
-      "auditNote": "Shell egress is jailed, but Capability::Net web tools are allowed unconditionally even when allow_network is false."
+      "auditNote": "A Capability::Net call is refused when the run has no network. allow_network previously confined only the shell, so a run with its network off could still fetch a URL."
     },
     {
       "id": "AH-043",
@@ -1350,13 +1357,16 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-042"
       ],
       "owner": "lane-03-permission-security",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/policy.rs"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "Fetch and search targets are checked against a host policy before the request leaves.",
@@ -1367,9 +1377,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "allow_domains/deny_domains from agent.toml, matched on domain boundaries so a lookalike host cannot pass for an allowed one; deny is checked first and cannot be overridden by allow."
     },
     {
       "id": "AH-044",
@@ -1377,13 +1390,14 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-036"
       ],
       "owner": "lane-03-permission-security",
       "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/project_browse.rs"
       ],
       "securityImpact": "critical",
@@ -1396,10 +1410,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "is_sensitive_name covers dotenv files, private keys and credential files, and is reachable only from the UI browse, repo-map and read commands. The model's own read/edit/bash path in tools/handlers.rs has no such check."
+      "auditNote": "Credential-bearing files are refused by the canonical gate, not only by the UI browse path. A blanket allow does not open them; a rule naming the file does."
     },
     {
       "id": "AH-045",
@@ -1407,7 +1423,7 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P0",
       "dependencies": [
         "AH-044"
@@ -1426,7 +1442,8 @@
       ],
       "tests": [],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": "audit, activity and snapshot records redact before writing, and secrets::redact_secrets exists for the shape-based cases. Tool output persisted into the session transcript by the renderer does not yet pass through it.",
+      "auditNote": "audit, activity and snapshot records redact before writing, and secrets::redact_secrets exists for the shape-based cases. Tool output persisted into the session transcript by the renderer does not yet pass through it."
     },
     {
       "id": "AH-046",
@@ -4553,13 +4570,16 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-045"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/secrets.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "A diff containing a credential is blocked before it is written or committed.",
@@ -4569,9 +4589,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/secrets.rs"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Proposed diffs are scanned before they are written; a change that adds a credential is refused with the file, line and kind and never the value. Removals are ignored, so the warning does not fire on the fix."
     },
     {
       "id": "AH-158",
@@ -5668,14 +5691,16 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-011",
         "AH-049"
       ],
       "owner": "lane-12-security-regression-review",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "A corpus of prompt-injection and privilege-escalation attempts runs against the gate on every change.",
@@ -5685,9 +5710,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Adversarial corpus in tools/gate.rs::security_corpus: bypass spellings, traversal, unreadable arguments, command wrappers and second commands, destructive git behind a blanket allow, secret files, network off, lookalike and case/trailing-dot domains, deny-over-allow, absent grants, hidden agent state. Each asserts the specific refusal. Two live defects were found by writing it."
     },
     {
       "id": "AH-199",

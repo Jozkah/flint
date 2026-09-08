@@ -33,7 +33,7 @@ use crate::core::{
     mcp::models::McpSettings,
     state::{ProviderConfig, SharedMcpServers},
 };
-use tauri_plugin_agent_tools::tools::gate::{DenyReason, PermissionDecision};
+use tauri_plugin_agent_tools::tools::gate::{DenyReason, NetworkPolicy, PermissionDecision};
 
 /// In-flight permission prompts keyed by `request_id`, shared between the loop
 /// (which inserts a one-shot sender before awaiting) and the respond command
@@ -956,6 +956,19 @@ fn hidden_path_msg(name: &str) -> String {
 
 fn hard_deny_msg(name: &str, reason: DenyReason, project_root: &std::path::Path) -> String {
     match reason {
+        DenyReason::NetworkOff => format!(
+            "ERROR: tool '{name}' refused: this run has no network access, so nothing was \
+             sent. Work from what is already in the project, or ask the user to enable \
+             network access for this run."
+        ),
+        DenyReason::Domain(host) => format!(
+            "ERROR: tool '{name}' refused: {host} is not a destination this project allows, \
+             so nothing was sent. Do not try another spelling of the same host."
+        ),
+        DenyReason::SecretFile(file) => format!(
+            "ERROR: tool '{name}' refused: {file} looks like it holds credentials, and no \
+             rule names it, so it was not read. Ask the user before going near it."
+        ),
         DenyReason::Policy => denied_by_policy_msg(name, project_root),
         DenyReason::Hidden => hidden_path_msg(name),
         // Say which argument could not be read. Told only "refused", a model
@@ -1134,6 +1147,14 @@ impl ToolInvoker for CompositeToolInvoker {
                 &self.permissions,
                 &snapshot,
                 self.sandbox,
+                // The CLI's network policy is its own resolved `allow_network`;
+                // domain lists come from the project file, which the desktop
+                // reads through `policy::load`. Both surfaces go through the
+                // same gate so a rule cannot mean two things.
+                &NetworkPolicy {
+                    allowed: self.allow_network,
+                    ..NetworkPolicy::default()
+                },
             );
             // Auto-approval suppresses every prompt (sandbox escape, write, exec) but
             // still honors HardDeny, so the hidden `.jan` invariant (while the shell

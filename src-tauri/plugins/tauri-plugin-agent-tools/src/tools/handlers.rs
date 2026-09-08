@@ -477,6 +477,39 @@ pub async fn execute_builtin_with_diff(
     match tool.name {
         "write" | "edit" => {
             let diff = preview_diff(tool, args, ctx).await;
+
+            // A credential in what this change *adds* stops it before it
+            // lands. AH-157. Catching it afterwards is not the same thing: a
+            // key that reaches the working tree is a key that has to be
+            // rotated, and by then it may already be in a commit.
+            //
+            // The removals are ignored on purpose -- a secret on a deleted
+            // line is someone taking it out, and refusing that would fire the
+            // warning on the fix.
+            if let Some(preview) = diff.as_deref() {
+                let findings = crate::secrets::scan_diff(preview);
+                if !findings.is_empty() {
+                    let where_ = findings
+                        .iter()
+                        .map(|f| {
+                            let file = if f.file.is_empty() { "the file" } else { &f.file };
+                            format!("{} line {} ({})", file, f.line, f.kind.as_str())
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    return (
+                        format!(
+                            "ERROR: this change was not written: it adds what looks like a \
+                             credential at {where_}. Nothing was changed. Use a placeholder \
+                             and read the real value from the environment, or ask the user \
+                             to add it themselves."
+                        ),
+                        None,
+                        None,
+                    );
+                }
+            }
+
             let (content, images) = execute_builtin(tool, args, ctx).await;
             if content.starts_with("ERROR") {
                 return (content, None, None);

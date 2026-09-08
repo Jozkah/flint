@@ -933,3 +933,33 @@ legitimate step-cap test, and on inspection it would have stopped ordinary work
 too: re-reading a file after editing it, running the same test twice while
 fixing it. Identical calls now allow five; a repeating *failure* still allows
 three, because it is stronger evidence.
+
+
+### The desktop was not enforcing the project's tool policy at all (2026-09-08)
+
+`execute_tool_inner` built `ToolPermissions::default()` -- allow everything --
+and handed that to the gate. So a repository that wrote
+`deny = ["read(**/.ssh/**)"]` in its `agent.toml` was obeyed by the CLI and
+ignored by the desktop, which is worse than not supporting the file: the rule
+was accepted, displayed, and silently inert.
+
+The gate itself was fine. It was being fed an empty policy. `policy::load`
+reads the project's own `[tools]` section at the gate, deliberately not as an
+argument from the renderer -- a policy passed in is a policy the caller can
+choose not to send.
+
+**Writing the adversarial corpus found two more.**
+
+1. A relative path rule never matched anything. Resources normalize to absolute
+   paths, correctly, so `read(secrets/**)` was compared against
+   `/proj/secrets/keys.txt` and failed. Every rule a person would naturally
+   write was inert. Relative patterns are now also anchored at a directory
+   boundary, so `secrets/**` covers `/proj/secrets/x` and does not cover
+   `/proj/notsecrets/x`.
+
+2. `allow_network = false` confined the shell and left the web tools alone. A
+   run with its network switched off could still fetch a URL. The setting meant
+   "no network for Bash" while reading as "no network".
+
+Both were found by writing the corpus, not by reading the code, which is the
+argument for the corpus.

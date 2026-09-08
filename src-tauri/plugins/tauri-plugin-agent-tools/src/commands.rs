@@ -36,7 +36,6 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::memory;
-use crate::permissions::ToolPermissions;
 use crate::skills::{self, SkillMeta};
 use crate::tools::gate::{self, Decision, PromptKind, SessionGrants};
 use crate::tools::jail;
@@ -522,7 +521,17 @@ async fn execute_tool_inner(
     let tool = lookup(&name)
         .ok_or_else(|| AgentToolsError::from(format!("unknown built-in tool '{name}'")))?;
 
-    let permissions = ToolPermissions::default();
+    // The project's own policy, read from its `agent.toml` rather than assumed.
+    // AH-007/AH-036/AH-037/AH-042: this call site used to build
+    // `ToolPermissions::default()` -- allow everything -- so a repository that
+    // denied a tool or a path was obeyed by the CLI and ignored by the
+    // desktop. Read here, at the gate, because a policy passed in from the
+    // renderer is one the caller can choose not to send.
+    let policy = crate::policy::load(
+        read_only_project.as_deref().map(Path::new),
+        allow_network,
+    );
+    let permissions = policy.permissions.clone();
     let decision = gate::resolve_decision(
         tool,
         &args,
@@ -532,6 +541,7 @@ async fn execute_tool_inner(
         &permissions,
         &grants,
         true,
+        &policy.network,
     );
 
     // AH-049: every decision is recorded before it is acted on, so a refusal
@@ -557,6 +567,35 @@ async fn execute_tool_inner(
         }
         Decision::HardDeny(gate::DenyReason::Policy) => {
             return Err(format!("tool '{name}' is denied by policy").into());
+        }
+        // Say which of the two it was. "No network" and "not that host" call
+        // for different things from the user, and one message for both sends
+        // them to change the wrong setting.
+        Decision::HardDeny(gate::DenyReason::NetworkOff) => {
+            return Err(format!(
+                "tool '{name}' was refused: this run has no network access. \
+                 Nothing was sent. Work from what is already in the project, or \
+                 ask the user to enable network access for it."
+            )
+            .into());
+        }
+        Decision::HardDeny(gate::DenyReason::Domain(host)) => {
+            return Err(format!(
+                "tool '{name}' was refused: {host} is not a destination this \
+                 project allows. Nothing was sent. Do not try another spelling \
+                 of the same host."
+            )
+            .into());
+        }
+        // The name, never the contents: the point of refusing is that they do
+        // not reach the transcript.
+        Decision::HardDeny(gate::DenyReason::SecretFile(file)) => {
+            return Err(format!(
+                "tool '{name}' was refused: {file} looks like it holds \
+                 credentials, and nothing has granted access to it by name. It \
+                 was not read. Ask the user before going near it."
+            )
+            .into());
         }
         // The argument could not be read, so nothing can vouch for it. Say
         // which one: told only "refused", a model retries the same call.
@@ -728,6 +767,17 @@ fn record_permission_decision(
         }
         Decision::HardDeny(gate::DenyReason::DestructiveGit(op)) => {
             (Outcome::Deny, format!("destructive-git:{}", op.as_str()))
+        }
+        Decision::HardDeny(gate::DenyReason::NetworkOff) => {
+            (Outcome::Deny, "network-off".to_string())
+        }
+        // The host, not the URL: a query string is where a token would be.
+        Decision::HardDeny(gate::DenyReason::Domain(host)) => {
+            (Outcome::Deny, format!("domain:{host}"))
+        }
+        // The file name only. Its contents are the thing being protected.
+        Decision::HardDeny(gate::DenyReason::SecretFile(name)) => {
+            (Outcome::Deny, format!("secret-file:{name}"))
         }
         // A prompt is a request that has not been answered yet; the answer is
         // recorded separately when it arrives.
