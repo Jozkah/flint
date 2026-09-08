@@ -1,11 +1,16 @@
 name: Rust Check
 on:
   workflow_dispatch:
-  # Caches are branch-scoped and only the default branch's are readable from
-  # anywhere, so main has to run this to leave anything worth restoring.
+  # Every branch, not just main. The CLI stopped compiling because the desktop
+  # config was changed on branches that never opened a PR, so nothing ever
+  # built the CLI config against them and the breakage only surfaced when
+  # someone tried to package a release.
+  #
+  # Caches stay branch-scoped and only main saves (see save-if below), so the
+  # added runs restore from main's cache and leave nothing behind.
   push:
     branches:
-      - main
+      - '**'
   pull_request:
     # PRs open against main; the dev-only filter left this to manual dispatch.
     branches:
@@ -40,6 +45,19 @@ jobs:
             features: cli
             targets: --all-targets
             tauri: false
+          # `cowork-smoke` is a third config, not a variation of the desktop
+          # one: it adds a binary with its own call sites into the same APIs.
+          # Nothing checked it, so drift there was invisible until someone ran
+          # the smoke harness.
+          # `cowork-smoke = ["desktop"]` does not pull in the `tauri/*`
+          # sub-features (wry, tray-icon, custom-protocol) that `default`
+          # supplies, so this row keeps the default features rather than
+          # replacing them.
+          - name: cowork-smoke
+            features: cowork-smoke
+            targets: --all-targets
+            default_features: true
+            tauri: true
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -68,12 +86,14 @@ jobs:
       - name: cargo check
         run: |
           cargo check --locked --manifest-path src-tauri/Cargo.toml \
-            --no-default-features --features ${{ matrix.features }} ${{ matrix.targets }}
+            ${{ matrix.default_features && '' || '--no-default-features' }} \
+            --features ${{ matrix.features }} ${{ matrix.targets }}
 
       - name: cargo clippy
         run: |
           cargo clippy --locked --manifest-path src-tauri/Cargo.toml \
-            --no-default-features --features ${{ matrix.features }} ${{ matrix.targets }} \
+            ${{ matrix.default_features && '' || '--no-default-features' }} \
+            --features ${{ matrix.features }} ${{ matrix.targets }} \
             -- -D warnings
 
   # Each plugin and src-tauri/utils is its own workspace, so checking the app
