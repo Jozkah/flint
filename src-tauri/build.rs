@@ -11,33 +11,39 @@ fn main() {
         tauri_build::build();
     }
 
-    // NOTE (Windows, unfinished): `cargo test --features cowork-smoke` aborts at
-    // load with STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139), having run no tests.
+    // Give test and example binaries the manifest `tauri_build` embeds only in
+    // the application binary.
     //
-    // Diagnosed, not fixed. `dumpbin /imports` on the test binary shows it
-    // importing `TaskDialogIndirect`, `SetWindowSubclass`, `RemoveWindowSubclass`
-    // and `DefSubclassProc` from `comctl32.dll`, and `dumpbin /headers` shows no
-    // `.rsrc` section, so the binary carries no manifest. Those entry points
-    // exist only in ComCtl32 version 6, which a process reaches through an
-    // activation context declared in a manifest; without one the loader binds
-    // the version 5 `comctl32.dll` in System32, cannot resolve
-    // `TaskDialogIndirect`, and kills the process before `main`.
+    // With `tauri/common-controls-v6` on, this crate imports `TaskDialogIndirect`
+    // from `comctl32.dll`. That entry point exists only in ComCtl32 version 6,
+    // which a process reaches through an activation context declared in its
+    // manifest. A binary with no manifest gets the version 5 `comctl32.dll` in
+    // System32, the loader cannot resolve the symbol, and the process dies with
+    // STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139) before `main` -- so
+    // `cargo test --features cowork-smoke` and the smoke harness both aborted
+    // having run nothing. Confirmed by embedding the manifest into a copy of the
+    // built executable with `mt.exe`: the copy starts and reaches its own
+    // argument handling.
     //
-    // The application binary is unaffected: `tauri_build` compiles the manifest
-    // into `resource.lib` and links it via `cargo:rustc-link-arg-bins`. Only the
-    // configurations enabling `tauri/common-controls-v6` are affected, which is
-    // why `test-tauri` is healthy and the default-features one is not.
+    // `tauri_build` compiles the application manifest into `resource.lib` and
+    // links it with `cargo:rustc-link-arg-bins`. Linking the same object into
+    // tests and examples gives them the identical activation context -- and the
+    // identical icons and version metadata -- rather than a second, divergent
+    // manifest maintained by hand.
     //
-    // Tried and rejected, so this is not repeated: `cargo:rustc-link-arg-tests`
-    // with `/MANIFESTDEPENDENCY` (with and without `/MANIFEST:EMBED`), and with
-    // `resource.lib` both as a plain input and under `/WHOLEARCHIVE`. The build
-    // script does emit them -- they are visible in
-    // `target/debug/build/Jan-*/output` -- and the test binary does relink, yet
-    // it still has no `.rsrc`, so the flags are not reaching the linker in a
-    // form that takes effect for test targets. Next thing to try: embed the
-    // manifest into the test binary directly (an `.res` compiled from the
-    // generated `resource.rc` passed as a link input, or `embed-resource`),
-    // rather than relying on a link argument.
+    // `-examples` and `-tests` are not enough on their own: `-tests` covers the
+    // integration-test binaries but not the unit-test harness built from the
+    // library itself, which is the one `cargo test --lib` runs and the one that
+    // was dying. `cargo:rustc-link-arg` covers every linked artifact, which is
+    // what this needs.
+    #[cfg(all(windows, target_env = "msvc", feature = "tauri-app"))]
+    {
+        let resource =
+            std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("resource.lib");
+        if resource.exists() {
+            println!("cargo:rustc-link-arg={}", resource.display());
+        }
+    }
 
     #[cfg(target_os = "macos")]
     {

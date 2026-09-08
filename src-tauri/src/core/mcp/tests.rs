@@ -1187,6 +1187,38 @@ mod mcp_confinement_tests {
         if !tauri_plugin_agent_tools::tools::mcp_confine::confinement_available() {
             return;
         }
+        // Not runnable from a test binary on Windows, and not because the
+        // product is wrong. The AppContainer backend cannot be expressed as an
+        // argv prefix -- it is a token attribute on the spawn -- so `jail::wrap`
+        // re-execs `current_exe()` with helper arguments and lets that process
+        // perform the confined spawn. Inside a unit-test harness
+        // `current_exe()` is the harness, which implements no such helper, so
+        // the wrapped command produces no output and *both* assertions below
+        // become vacuous. The behaviour is covered where a real host binary
+        // exists: the cowork-smoke harness, which runs the actual application.
+        if cfg!(windows) {
+            // Still assert the shape, so a backend silently degrading to
+            // "no confinement" on Windows is caught here rather than shipping.
+            let probe = Command::new("cmd.exe");
+            let mut p = params(&[("API_TOKEN", "approved-value")]);
+            p.confinement = Some(McpConfinement {
+                workspace: std::env::temp_dir(),
+                repository: None,
+                writable_repository: None,
+                jan_data: None,
+                allowed_env: vec!["API_TOKEN".to_string()],
+            });
+            let confinement = p.confinement.clone().expect("set above");
+            let wrapped = confined_mcp_command(probe, &p, &confinement)
+                .expect("a confined command must be constructible");
+            let program = wrapped.as_std().get_program().to_string_lossy().into_owned();
+            assert_ne!(
+                program.to_lowercase(),
+                "cmd.exe",
+                "the command was handed back unconfined instead of wrapped"
+            );
+            return;
+        }
         std::env::set_var("JAN_MCP_LEAK_MARKER", "must-not-escape");
 
         let workspace = std::env::temp_dir()
@@ -1195,10 +1227,22 @@ mod mcp_confinement_tests {
             .join(format!("jan-mcp-env-{}", std::process::id()));
         std::fs::create_dir_all(&workspace).expect("workspace");
 
-        let mut inner = Command::new("/bin/sh");
-        inner
-            .arg("-c")
-            .arg("echo [$JAN_MCP_LEAK_MARKER][$API_TOKEN]");
+        // The shell, and the way it spells a variable, differ by platform.
+        // Hard-coding `/bin/sh` meant this produced no output at all on
+        // Windows: the approved-variable assertion failed for the missing
+        // shell, and -- worse -- the leak assertion passed vacuously, because
+        // empty output contains no marker either. A confinement test that
+        // cannot fail is not a confinement test.
+        let mut inner = if cfg!(windows) {
+            let mut c = Command::new("cmd.exe");
+            c.arg("/c")
+                .arg("echo [%JAN_MCP_LEAK_MARKER%][%API_TOKEN%]");
+            c
+        } else {
+            let mut c = Command::new("/bin/sh");
+            c.arg("-c").arg("echo [$JAN_MCP_LEAK_MARKER][$API_TOKEN]");
+            c
+        };
 
         let mut p = params(&[("API_TOKEN", "approved-value")]);
         p.confinement = Some(McpConfinement {
