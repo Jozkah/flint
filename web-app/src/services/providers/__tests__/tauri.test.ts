@@ -310,21 +310,36 @@ describe('TauriProvidersService', () => {
       errSpy.mockRestore()
     })
 
-    it('throws connection error on fetch failure', async () => {
+    it('names the endpoint it could not reach, not just the provider', async () => {
       vi.mocked(fetchTauri).mockRejectedValueOnce(new Error('fetch failed'))
 
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      await expect(svc.fetchModelsFromProvider(baseProvider))
-        .rejects.toThrow('Cannot connect to')
+      await expect(svc.fetchModelsFromProvider(baseProvider)).rejects.toThrow(
+        /test-provider.*could not reach GET https:\/\/api\.test\.com\/v1\/models/s
+      )
       errSpy.mockRestore()
     })
 
-    it('throws generic fallback for non-fetch errors', async () => {
-      vi.mocked(fetchTauri).mockRejectedValueOnce(new Error('something else'))
+    it("keeps the transport's own diagnosis instead of burying it", async () => {
+      // What a short hostname resolving to the wrong machine actually looks
+      // like. The resolution detail is the whole answer, and wrapping it in
+      // "Unexpected error while fetching models from X" read as a fault in
+      // Jan rather than an endpoint that was not listening.
+      // Not `Once`: this asserts twice, and a second call falling through to
+      // a different mock would be testing something else.
+      vi.mocked(fetchTauri).mockRejectedValue(
+        new Error(
+          'v100:8555 could not connect (resolved 203.0.113.9 [public, suppressed], 127.0.0.1 [loopback]; selected 127.0.0.1)'
+        )
+      )
 
       const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      await expect(svc.fetchModelsFromProvider(baseProvider))
-        .rejects.toThrow('Unexpected error')
+      await expect(svc.fetchModelsFromProvider(baseProvider)).rejects.toThrow(
+        /203\.0\.113\.9 \[public, suppressed\]/
+      )
+      await expect(
+        svc.fetchModelsFromProvider(baseProvider)
+      ).rejects.not.toThrow(/Unexpected error/)
       errSpy.mockRestore()
     })
 

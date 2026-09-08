@@ -158,3 +158,39 @@ describe('parseModelList', () => {
     expect(parseModelList({ data: 'nonsense' })).toEqual([])
   })
 })
+
+describe('when nothing answered at all', () => {
+  const failure = {
+    provider: '123',
+    url: 'http://v100:8555/v1/models',
+    method: 'GET',
+  }
+
+  it('keeps what the name resolved to, which is the diagnosis', () => {
+    const message = describeEndpointFailure({
+      ...failure,
+      cause: new Error(
+        'v100:8555 could not connect (resolved 203.0.113.9 [public, suppressed], 127.0.0.1 [loopback]; selected 127.0.0.1): error sending request for url (http://v100:8555/v1/models)'
+      ),
+    })
+    expect(message).toContain('203.0.113.9 [public, suppressed]')
+    expect(message).toContain('selected 127.0.0.1')
+    expect(message).toContain('listening on http://v100:8555')
+  })
+
+  it('does not say the same URL three times', () => {
+    const message = describeEndpointFailure({
+      ...failure,
+      cause: new Error(
+        'v100:8555 could not connect: error sending request for url (http://v100:8555/v1/models)'
+      ),
+    })
+    expect(message.match(/v1\/models/g) ?? []).toHaveLength(1)
+  })
+
+  it('still says something when the transport said nothing', () => {
+    const message = describeEndpointFailure({ ...failure, cause: undefined })
+    expect(message).toContain('could not reach GET http://v100:8555/v1/models')
+    expect(message).not.toContain('—  .')
+  })
+})

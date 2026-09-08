@@ -114,10 +114,17 @@ export function describeEndpointFailure(failure: EndpointFailure): string {
   const where = `${method} ${url}`
 
   if (status === undefined) {
+    // The transport's own sentence, minus the part this message already says.
+    // reqwest ends every connect failure with "error sending request for url
+    // (...)", and repeating the URL a second and third time in one toast
+    // pushes the part that matters -- what the name resolved to -- off the
+    // end of it.
     const detail = errorText(failure.cause, 'the request did not complete')
+      .replace(/[:,]?\s*error sending request for url \([^)]*\)\.?\s*$/i, '')
+      .trim()
     const host = originOf(url) ?? url
     return (
-      `${provider}: could not reach ${where} — ${detail}. ` +
+      `${provider}: could not reach ${where} — ${detail || 'the request did not complete'}. ` +
       `Check that the server is running and listening on ${host}.`
     )
   }

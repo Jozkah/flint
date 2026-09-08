@@ -261,16 +261,23 @@ export class TauriProvidersService extends DefaultProvidersService {
         throw new Error(error.message)
       }
 
-      // Provide helpful error message for any connection errors
-      if (error instanceof Error && error.message.includes('fetch')) {
-        throw new Error(
-          `Cannot connect to ${provider.provider} at ${provider.base_url}. Please check that the service is running and accessible.`
-        )
-      }
-
-      // Generic fallback
-      throw new Error(
-        `Unexpected error while fetching models from ${provider.provider}: ${error instanceof Error ? error.message : 'Unknown error'}`
+      /**
+       * Nothing answered.
+       *
+       * The transport already says what it tried and what it resolved to,
+       * which is the whole diagnosis for a short hostname pointing at the
+       * wrong machine. Both branches below used to bury that sentence: one
+       * threw it away for a generic "Cannot connect", the other wrapped it in
+       * "Unexpected error while fetching models from X", which reads as a
+       * fault in Jan rather than an endpoint that is not listening.
+       */
+      throw new EndpointError(
+        describeEndpointFailure({
+          provider: provider.provider,
+          url: `${provider.base_url}/models`,
+          method: 'GET',
+          cause: error,
+        })
       )
     }
   }
