@@ -676,3 +676,31 @@ produced -- the AI SDK may be sending the body in a form `bodyText` turns into
 has been failing since the start of this batch, before the transport landed,
 so it is not obviously caused by it; unverified either way.
 
+
+### AH-078 closed (2026-09-08)
+
+`prompt-snapshot-panel` passes in the real application. Two defects, found by
+measurement rather than inference:
+
+1. **Capture was never the problem.** The earlier "zero records on disk"
+   reading came from runs where the chat itself had not happened -- the
+   scenario asserted on the panel without first waiting for a reply, so a
+   failed send read as a missing panel. With the reply waited for, the boundary
+   probe showed the body arriving as a 14 KB JSON string with `messages` and
+   the session present, and the record written.
+2. **Two live-turn lanes.** The Cowork route renders its own ref-backed turn
+   array; `attachPromptSnapshot` and the ask actions wrote to the run store's,
+   which that route never reads. Worse, the run rebuilds its array as steps
+   complete, so even a reference written into the rendered lane at dispatch
+   time was discarded before it could render.
+
+The fix keeps snapshots beside the turns rather than on them:
+`useCoworkRun.promptSnapshots[sessionId]` is an ordered list of every dispatch
+the session made, and the timeline zips the Nth entry onto the Nth assistant
+message. That is immune to the run rebuilding its turns and still ties a
+snapshot to its own invocation. The ask lifecycle now writes through
+`mutateLive` into the rendered lane, via pure helpers (`attachAskToTurns`,
+`settleAskInTurns`, `attachPromptSnapshotToTurns`) that both lanes share.
+
+Also: the harness gained `--only a,b`. A scenario that wedges the WebView fails
+every scenario after it, so judging one honestly means running it alone.

@@ -110,6 +110,7 @@ import type { AskRecord } from '@/types/coworkSession'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { usePrompt } from '@/hooks/usePrompt'
 import { setSnapshotSink } from '@/lib/providerFetch'
+import { attachAskToTurns, settleAskInTurns } from '@/hooks/useCoworkRun'
 import {
   NO_SESSION,
   useCoworkView,
@@ -1028,6 +1029,25 @@ function CoworkPage() {
     [displayedTurns, session?.id, hideCompletedTools]
   )
 
+  // Every dispatch this session made, in order. The Nth belongs to the Nth
+  // assistant message, which is how a snapshot stays with its own invocation
+  // rather than being shown as a "latest" beside an older reply.
+  const sessionSnapshots = useCoworkRun((s) =>
+    session?.id ? s.promptSnapshots[session.id] : undefined
+  )
+  const snapshotByMessageId = useMemo(() => {
+    const byId = new Map<string, { id: string; hash: string; redactions: number }>()
+    if (!sessionSnapshots?.length) return byId
+    const assistantIds = uiMessages
+      .filter((m) => m.role === 'assistant')
+      .map((m) => m.id)
+    assistantIds.forEach((id, i) => {
+      const ref = sessionSnapshots[i]
+      if (ref) byId.set(id, ref)
+    })
+    return byId
+  }, [sessionSnapshots, uiMessages])
+
   const usage = liveUsage ?? session?.lastUsage ?? null
   const tokenSource = useMemo(
     () => ({
@@ -1389,6 +1409,23 @@ function CoworkPage() {
     liveTurnsRef.current = [...liveTurnsRef.current, ...turns]
     setLiveTurns(liveTurnsRef.current)
   }, [])
+
+  /**
+   * Change the live turns this route is actually rendering.
+   *
+   * There are two live-turn lanes: the run store's, and this ref-backed copy,
+   * and only this one reaches the screen. A question attached to the store's
+   * lane is recorded correctly and never rendered.
+   */
+  const mutateLive = useCallback(
+    (apply: (turns: CoworkTurn[]) => CoworkTurn[]) => {
+      const next = apply(liveTurnsRef.current)
+      if (next === liveTurnsRef.current) return
+      liveTurnsRef.current = next
+      setLiveTurns(next)
+    },
+    []
+  )
 
   /**
    * Drive one request. `text` is null for a resume — a retry after a failure
@@ -2172,14 +2209,18 @@ function CoworkPage() {
                   }
                   // In the transcript, at the point the run asked -- not in a
                   // slot above the composer. It stays there once answered.
-                  useCoworkRun.getState().attachAsk(sid, {
+                  const askRecord = {
                     requestId: callId,
                     request: parsed,
                     sessionId: sid,
                     callId,
                     at: new Date().toISOString(),
-                    state: 'pending',
-                  })
+                    state: 'pending' as const,
+                  }
+                  useCoworkRun.getState().attachAsk(sid, askRecord)
+                  if (sid === sessionIdRef.current) {
+                    mutateLive((turns) => attachAskToTurns(turns, askRecord))
+                  }
                   // The opening turn ends on a named question. Recording the
                   // wait is what makes a session reopened at this point restore
                   // an unanswered proposal rather than resume into work.
@@ -2194,14 +2235,20 @@ function CoworkPage() {
                     })
                   }
                   askResolvers.current.set(callId, (answers) => {
+                    const state = answers ? 'answered' : 'cancelled'
                     useCoworkRun
                       .getState()
-                      .settleAsk(
-                        sid,
-                        callId,
-                        answers ? 'answered' : 'cancelled',
-                        answers ?? undefined
+                      .settleAsk(sid, callId, state, answers ?? undefined)
+                    if (sid === sessionIdRef.current) {
+                      mutateLive((turns) =>
+                        settleAskInTurns(
+                          turns,
+                          callId,
+                          state,
+                          answers ?? undefined
+                        )
                       )
+                    }
                     // An answered proposal is no longer outstanding. Declining
                     // is recorded as a decision, not as work to pick up later.
                     if (proposal && current?.folder) {
@@ -2551,7 +2598,10 @@ function CoworkPage() {
   // the turn whose reply that request produced.
   useEffect(() => {
     setSnapshotSink((sessionId, ref) => {
-      useCoworkRun.getState().attachPromptSnapshot(sessionId, ref)
+      // Beside the turns, not on them: the run rebuilds its live turn array as
+      // steps complete, so a reference written onto a turn at dispatch time is
+      // gone before it can render.
+      useCoworkRun.getState().recordPromptSnapshot(sessionId, ref)
     })
     return () => setSnapshotSink(null)
   }, [])
@@ -2752,12 +2802,7 @@ function CoworkPage() {
                         produced. Collapsed, and it fetches nothing until
                         someone opens it. */}
                         {(() => {
-                          const part = (message.parts as { type: string; data?: unknown }[]).find(
-                            (p) => p.type === 'data-prompt-snapshot'
-                          )
-                          const ref = part?.data as
-                            | { id: string; hash: string; redactions: number }
-                            | undefined
+                          const ref = snapshotByMessageId.get(message.id)
                           return ref ? (
                             <PromptSnapshotView
                               snapshotId={ref.id}

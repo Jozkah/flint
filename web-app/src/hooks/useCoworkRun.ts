@@ -114,6 +114,79 @@ function mergeToolResult(
   return [...turns.slice(0, idx), { ...turns[idx], ...patch }, ...turns.slice(idx + 1)]
 }
 
+/**
+ * Put a question on the assistant turn that was speaking when it was asked.
+ *
+ * Pure, because there are two live-turn lanes: this store, and the Cowork
+ * route's own ref-backed copy that it actually renders. Both have to apply the
+ * same rule, and a rule that lives in one store action is a rule the other
+ * lane silently does not have.
+ */
+export function attachAskToTurns(
+  turns: CoworkTurn[],
+  record: AskRecord
+): CoworkTurn[] {
+  if (turns.some((t) => t.asks?.some((a) => a.requestId === record.requestId))) {
+    return turns
+  }
+  // The assistant turn, not the tool turn: a tool turn is the call itself, and
+  // hanging the card off it would put the question inside the tool card.
+  let idx = -1
+  for (let i = turns.length - 1; i >= 0; i--) {
+    if (turns[i].role === 'assistant') {
+      idx = i
+      break
+    }
+  }
+  if (idx === -1) {
+    return [...turns, { role: 'assistant', content: '', asks: [record] }]
+  }
+  return [
+    ...turns.slice(0, idx),
+    { ...turns[idx], asks: [...(turns[idx].asks ?? []), record] },
+    ...turns.slice(idx + 1),
+  ]
+}
+
+/** Record what became of a question, in place, without moving it. */
+export function settleAskInTurns(
+  turns: CoworkTurn[],
+  requestId: string,
+  state: AskRecord['state'],
+  answers?: AskAnswer[]
+): CoworkTurn[] {
+  let changed = false
+  const next = turns.map((turn) => {
+    if (!turn.asks?.some((a) => a.requestId === requestId)) return turn
+    changed = true
+    return {
+      ...turn,
+      asks: turn.asks.map((a) =>
+        a.requestId === requestId ? { ...a, state, answers } : a
+      ),
+    }
+  })
+  return changed ? next : turns
+}
+
+/**
+ * Put a prompt snapshot on the turn whose reply that request produced.
+ *
+ * The dispatch happens before the reply streams, so the turn it belongs to is
+ * the open assistant turn -- or a new one, which the reply is then appended to.
+ */
+export function attachPromptSnapshotToTurns(
+  turns: CoworkTurn[],
+  ref: { id: string; hash: string; redactions: number }
+): CoworkTurn[] {
+  if (turns.some((t) => t.promptSnapshot?.id === ref.id)) return turns
+  const last = turns[turns.length - 1]
+  if (last?.role === 'assistant' && !last.promptSnapshot && !last.content) {
+    return [...turns.slice(0, -1), { ...last, promptSnapshot: ref }]
+  }
+  return [...turns, { role: 'assistant', content: '', promptSnapshot: ref }]
+}
+
 // Apply one wrapped inner subagent event to that subagent's own turn lane
 // (token append / tool_call push / tool_result merge). Pure.
 /** Exported so the event-to-turn mapping is testable on its own. */
@@ -321,6 +394,22 @@ type CoworkRunState = {
     sid: string,
     ref: { id: string; hash: string; redactions: number }
   ) => void
+  /**
+   * Every dispatch this session has made, in order.
+   *
+   * Kept beside the turns rather than on them: the run rebuilds its live turn
+   * array as steps complete, and a reference written onto a turn at dispatch
+   * time does not survive that. The Nth entry belongs to the Nth model
+   * invocation, which is what the timeline zips against.
+   */
+  promptSnapshots: Record<
+    string,
+    { id: string; hash: string; redactions: number }[]
+  >
+  recordPromptSnapshot: (
+    sid: string,
+    ref: { id: string; hash: string; redactions: number }
+  ) => void
   /** Record what became of a question, in place, without moving it. */
   settleAsk: (
     sid: string,
@@ -341,6 +430,7 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
   liveTurns: {},
   subagents: {},
   pendingAsks: {},
+  promptSnapshots: {},
   usage: {},
   pendingPreview: null,
   pendingCodeOpen: null,
@@ -545,74 +635,42 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
     })),
 
   attachAsk: (sid, record) =>
-    set((s) => {
-      const turns = s.liveTurns[sid] ?? []
-      // The question belongs to the assistant turn that was speaking when it
-      // was asked. A tool turn is the call itself; hanging the card off it
-      // would put the question inside the tool card rather than beside it.
-      const idx = (() => {
-        for (let i = turns.length - 1; i >= 0; i--) {
-          if (turns[i].role === 'assistant') return i
-        }
-        return -1
-      })()
-      if (turns.some((t) => t.asks?.some((a) => a.requestId === record.requestId))) {
-        return {}
+    set((st) => ({
+      liveTurns: {
+        ...st.liveTurns,
+        [sid]: attachAskToTurns(st.liveTurns[sid] ?? [], record),
+      },
+    })),
+
+  recordPromptSnapshot: (sid, ref) =>
+    set((st) => {
+      const seen = st.promptSnapshots[sid] ?? []
+      if (seen.some((s) => s.id === ref.id)) return {}
+      return {
+        promptSnapshots: { ...st.promptSnapshots, [sid]: [...seen, ref] },
       }
-      const next =
-        idx === -1
-          ? [...turns, { role: 'assistant' as const, content: '', asks: [record] }]
-          : [
-              ...turns.slice(0, idx),
-              { ...turns[idx], asks: [...(turns[idx].asks ?? []), record] },
-              ...turns.slice(idx + 1),
-            ]
-      return { liveTurns: { ...s.liveTurns, [sid]: next } }
     }),
 
   attachPromptSnapshot: (sid, ref) =>
-    set((s) => {
-      const turns = s.liveTurns[sid] ?? []
-      // The dispatch happens before the reply streams, so the turn it belongs
-      // to is the open assistant turn -- or a new one, which the reply will
-      // then be appended to. That is what ties a snapshot to its own
-      // invocation rather than to whichever turn is newest later.
-      const last = turns[turns.length - 1]
-      if (last?.role === 'assistant' && !last.promptSnapshot && !last.content) {
-        return {
-          liveTurns: {
-            ...s.liveTurns,
-            [sid]: [...turns.slice(0, -1), { ...last, promptSnapshot: ref }],
-          },
-        }
-      }
-      return {
-        liveTurns: {
-          ...s.liveTurns,
-          [sid]: [
-            ...turns,
-            { role: 'assistant' as const, content: '', promptSnapshot: ref },
-          ],
-        },
-      }
-    }),
+    set((st) => ({
+      liveTurns: {
+        ...st.liveTurns,
+        [sid]: attachPromptSnapshotToTurns(st.liveTurns[sid] ?? [], ref),
+      },
+    })),
 
   settleAsk: (sid, requestId, state, answers) =>
-    set((s) => {
-      const turns = s.liveTurns[sid] ?? []
-      let changed = false
-      const next = turns.map((turn) => {
-        if (!turn.asks?.some((a) => a.requestId === requestId)) return turn
-        changed = true
-        return {
-          ...turn,
-          asks: turn.asks.map((a) =>
-            a.requestId === requestId ? { ...a, state, answers } : a
-          ),
-        }
-      })
-      return changed ? { liveTurns: { ...s.liveTurns, [sid]: next } } : {}
-    }),
+    set((st) => ({
+      liveTurns: {
+        ...st.liveTurns,
+        [sid]: settleAskInTurns(
+          st.liveTurns[sid] ?? [],
+          requestId,
+          state,
+          answers
+        ),
+      },
+    })),
 
   finalizeRun: (sid) => {
     // Run-level failure surfaces via `useMessageErrors` (Generation-failed

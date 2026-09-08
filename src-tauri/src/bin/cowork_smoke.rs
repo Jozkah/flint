@@ -2058,22 +2058,26 @@ fn scenario_prompt_snapshot(ctx: &Ctx) -> ScenarioResult {
     // Was one recorded at all? This separates "the transport never captured
     // it" from "it was captured and the timeline did not show it", which look
     // identical from the DOM.
-    let log = std::env::var("JAN_DATA_FOLDER")
+    // The dispatch is recorded before anything is rendered, so a missing panel
+    // and a missing record are different defects and must not read alike.
+    let recorded = std::env::var("JAN_DATA_FOLDER")
         .map(|d| Path::new(&d).join("audit/prompts.jsonl"))
-        .ok();
-    let recorded = log
-        .as_ref()
+        .ok()
         .and_then(|p| std::fs::read_to_string(p).ok())
         .unwrap_or_default();
-    println!(
-        "      snapshots on disk: {} record(s){}",
-        recorded.lines().filter(|l| !l.trim().is_empty()).count(),
-        recorded
-            .lines()
-            .last()
-            .map(|l| format!("; last: {}", &l[..l.len().min(220)]))
-            .unwrap_or_default()
+    let records = recorded.lines().filter(|l| !l.trim().is_empty()).count();
+    ensure!(
+        records >= 1,
+        "the dispatch was never recorded ({records} records on disk)"
     );
+
+    // The reply first. Without this a chat that never happened is reported as
+    // "the panel did not appear", which is the wrong defect entirely.
+    ctx.wait_until(
+        "the model's reply",
+        "return document.body.innerText.includes('Hello from the smoke model');",
+        Duration::from_secs(90),
+    )?;
 
     // The panel appears on the assistant message the snapshot produced.
     ctx.wait_until(
@@ -2930,6 +2934,14 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
     }
 
     let self_test = std::env::args().any(|a| a == "--self-test-fail");
+    // `--only a,b` runs just those scenarios. A scenario that wedges the
+    // WebView fails every scenario after it, so the only honest way to judge
+    // one is to run it by itself.
+    let only: Option<Vec<String>> = std::env::args()
+        .collect::<Vec<_>>()
+        .windows(2)
+        .find(|w| w[0] == "--only")
+        .map(|w| w[1].split(',').map(|s| s.trim().to_string()).collect());
     let scenarios: Vec<&Scenario> = SCENARIOS
         .iter()
         .chain(if self_test {
@@ -2937,7 +2949,19 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
         } else {
             &[]
         })
+        .filter(|s| match &only {
+            Some(names) => names.iter().any(|n| n == s.name),
+            None => true,
+        })
         .collect();
+    if let Some(names) = &only {
+        for name in names {
+            if !scenarios.iter().any(|s| &s.name == name) {
+                eprintln!("FATAL: no scenario named {name:?}");
+                return 2;
+            }
+        }
+    }
 
     let mut failed = 0usize;
     for scenario in &scenarios {

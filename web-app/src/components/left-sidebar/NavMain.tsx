@@ -70,6 +70,23 @@ const getNavMainItems = (
   onJanClaw: () => void,
   onOpenCodeFolder: () => void
 ): NavMainItem[] => [
+  // Search first, matching the Cowork nav. The two lists differ in what they
+  // offer, but an entry both have should not be in a different place on each.
+  {
+    title: 'common:search',
+    animatedIcon: SearchIcon,
+    onClick: onSearch,
+    shortcut: (
+      <KbdGroup className="ml-auto scale-90 gap-0">
+        <Kbd className="bg-transparent size-3">
+          <PlatformMetaKey />
+        </Kbd>
+        <Kbd className="bg-transparent size-3 uppercase">
+          {PlatformShortcuts[ShortcutAction.SEARCH].key}
+        </Kbd>
+      </KbdGroup>
+    ),
+  },
   {
     title: 'common:newChat',
     animatedIcon: MessageCircleIcon,
@@ -116,19 +133,6 @@ const getNavMainItems = (
     title: 'common:projects.openCodeFolder',
     animatedIcon: FolderOpenIcon,
     onClick: onOpenCodeFolder,
-  },
-  {
-    title: 'common:search',
-    animatedIcon: SearchIcon,
-    onClick: onSearch,
-    shortcut: (
-      <KbdGroup className="ml-auto scale-90 gap-0">
-        <Kbd className="bg-transparent size-3">
-          <PlatformMetaKey />
-        </Kbd>
-        <Kbd className="bg-transparent size-3 uppercase">{PlatformShortcuts[ShortcutAction.SEARCH].key} </Kbd>
-      </KbdGroup>
-    ),
   },
   // Settings is deliberately not in this list. It is pinned to the bottom of
   // the sidebar for every tab, so it stays in one place instead of moving up
