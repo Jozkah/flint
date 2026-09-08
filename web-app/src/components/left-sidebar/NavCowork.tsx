@@ -39,6 +39,14 @@ import {
   MessageCircleIcon,
   type MessageCircleIconHandle,
 } from '@/components/animated-icon/message-circle'
+import {
+  SearchIcon,
+  type SearchIconHandle,
+} from '@/components/animated-icon/search'
+import { Kbd, KbdGroup } from '@/components/ui/kbd'
+import { PlatformMetaKey } from '@/containers/PlatformMetaKey'
+import { PlatformShortcuts, ShortcutAction } from '@/lib/shortcuts'
+import { useSearchDialog } from '@/hooks/useSearchDialog'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { usePrompt } from '@/hooks/usePrompt'
@@ -188,6 +196,7 @@ export function NavCowork() {
 
   const goCowork = useCallback(() => navigate({ to: route.cowork }), [navigate])
   const newSessionIconRef = useRef<MessageCircleIconHandle>(null)
+  const searchIconRef = useRef<SearchIconHandle>(null)
   const newSession = () => {
     // Idempotent: on a blank session this returns the same one, so a second
     // press cannot leave a trail of empty sessions behind. An unsent draft
@@ -246,6 +255,33 @@ export function NavCowork() {
   return (
     <>
       <SidebarMenu>
+        {/* Cowork replaces `NavMain` in the sidebar, so it has to carry the
+            same entries NavMain does; without this, Search and Settings were
+            simply absent on this tab. Same dialog, same route -- opened
+            through the shared store, not a second implementation. */}
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            onClick={() => useSearchDialog.getState().setOpen(true)}
+            data-testid="cowork-search"
+            onMouseEnter={() => searchIconRef.current?.startAnimation()}
+            onMouseLeave={() => searchIconRef.current?.stopAnimation()}
+          >
+            <SearchIcon
+              ref={searchIconRef}
+              className="text-foreground/70"
+              size={16}
+            />
+            <span>{t('common:search')}</span>
+            <KbdGroup className="ml-auto scale-90 gap-0">
+              <Kbd className="bg-transparent size-3">
+                <PlatformMetaKey />
+              </Kbd>
+              <Kbd className="bg-transparent size-3 uppercase">
+                {PlatformShortcuts[ShortcutAction.SEARCH].key}
+              </Kbd>
+            </KbdGroup>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
             onClick={newSession}

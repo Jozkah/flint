@@ -2590,7 +2590,19 @@ fn scenario_cowork_search_and_settings(ctx: &Ctx) -> ScenarioResult {
          || !!document.querySelector('[data-testid=\"cowork-diff-panel\"]');",
     )?;
 
-    // Neither control may be swallowed by the macOS window drag region.
+    // They live in the left nav now, so it has to be open.
+    ctx.eval(
+        "const t = document.querySelector('[data-sidebar=\"trigger\"]');
+         if (t && !document.querySelector('[data-testid=\"cowork-search\"]')) t.click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the cowork nav",
+        "return !!document.querySelector('[data-testid=\"cowork-search\"]');",
+        Duration::from_secs(15),
+    )?;
+
+    // Neither control may be covered by anything.
     let reach = ctx.eval_string(
         r#"const report = [];
            for (const id of ['cowork-search', 'cowork-settings']) {

@@ -103,7 +103,6 @@ import {
 import { isReadOnly, modeOf } from '@/lib/coworkMode'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
-import { CoworkQuickActions } from '@/containers/CoworkQuickActions'
 import { CoworkHiddenTools } from '@/containers/CoworkHiddenTools'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import type { AskRecord } from '@/types/coworkSession'
@@ -2614,14 +2613,8 @@ function CoworkPage() {
   return (
     <div className="flex flex-col h-[calc(100dvh-(env(safe-area-inset-bottom)+env(safe-area-inset-top)))]">
       <HeaderPage>
-        {/* Before the model picker, not after it: on macOS notifications
-            default to the top-right corner, and their container is a fixed
-            z-9999 layer sitting exactly there -- anything parked in that
-            corner is visible, focusable and completely inert. */}
         <div className="flex w-full items-center gap-2 pr-2">
           <div className="flex shrink-0 items-center gap-1">
-            {/* The same Search dialog and Settings route the rest of Jan uses. */}
-            <CoworkQuickActions />
           {/* Everything about the session that is reference material rather
               than conversation, closed until asked for. */}
           <CoworkSessionDetails summary={sessionDetailsSummary}>
