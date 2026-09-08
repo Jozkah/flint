@@ -295,6 +295,27 @@ impl Ctx {
     }
 
     /// Click a Cowork rail by its exact accessible name.
+    /// Open a rail, leaving it open if it already was.
+    ///
+    /// The toolbar toggles, and a rail now survives leaving and re-entering
+    /// the route (that is what keeps a session's view across a trip to
+    /// Settings), so a blind click can just as easily close one.
+    fn ensure_rail_open(&self, rail: &str, marker: &str) -> ScenarioResult {
+        for _ in 0..2 {
+            if self.eval_bool(&format!(
+                "return !!document.querySelector({marker:?});"
+            ))? {
+                return Ok(());
+            }
+            self.click_rail(rail)?;
+        }
+        ensure!(
+            self.eval_bool(&format!("return !!document.querySelector({marker:?});"))?,
+            "the {rail} rail did not open"
+        );
+        Ok(())
+    }
+
     fn click_rail(&self, rail: &str) -> ScenarioResult {
         let clicked = self.eval_bool(&format!(
             r#"const el = [...document.querySelectorAll('button')].find(b =>
@@ -727,14 +748,6 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_per_chat_controls,
     },
     Scenario {
-        name: "prompt-snapshot-panel",
-        run: scenario_prompt_snapshot,
-    },
-    Scenario {
-        name: "prompt-snapshot-cross-session-refused",
-        run: scenario_prompt_snapshot_isolation,
-    },
-    Scenario {
         name: "cowork-search-and-settings",
         run: scenario_cowork_search_and_settings,
     },
@@ -773,6 +786,14 @@ const SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "macos-title-bar",
         run: scenario_macos_title_bar,
+    },
+    Scenario {
+        name: "prompt-snapshot-cross-session-refused",
+        run: scenario_prompt_snapshot_isolation,
+    },
+    Scenario {
+        name: "prompt-snapshot-panel",
+        run: scenario_prompt_snapshot,
     },
 ];
 
@@ -1537,10 +1558,10 @@ fn scenario_oversized(ctx: &Ctx) -> ScenarioResult {
 /// working tree rather than to a Cowork run that never happened.
 fn scenario_git_vs_sandbox(ctx: &Ctx) -> ScenarioResult {
     ctx.goto("/cowork")?;
-    ctx.click_rail("Changes")?;
+    ctx.ensure_rail_open("Changes", "[data-testid=\"cowork-diff-panel\"]")?;
     ctx.wait_until(
         "the Changes rail",
-        "return document.body.innerText.includes('Changes');",
+        "return !!document.querySelector('[data-testid=\"cowork-diff-panel\"]');",
         Duration::from_secs(20),
     )?;
     std::thread::sleep(Duration::from_secs(2));

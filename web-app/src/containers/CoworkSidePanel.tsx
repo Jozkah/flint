@@ -9,6 +9,8 @@ type CoworkSidePanelProps = {
   summary?: ReactNode
   children: ReactNode
   onClose: () => void
+  /** Lets a panel identify itself to the smoke harness. */
+  'data-testid'?: string
 }
 
 const PANEL_MIN_W = 240
@@ -21,6 +23,7 @@ export function CoworkSidePanel({
   summary,
   children,
   onClose,
+  'data-testid': testId,
 }: CoworkSidePanelProps): React.ReactElement {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
@@ -54,6 +57,7 @@ export function CoworkSidePanel({
 
   return (
     <aside
+      data-testid={testId}
       className={cn(
         'relative flex h-full shrink-0 flex-col border-l bg-main-view',
         expanded ? 'w-[32rem] max-w-[60%]' : ''

@@ -312,6 +312,7 @@ export function CoworkDiffPanel({
 
   return (
     <CoworkSidePanel
+      data-testid="cowork-diff-panel"
       title={title}
       summary={
         <span className="shrink-0 font-mono text-xs text-main-view-fg/60">
