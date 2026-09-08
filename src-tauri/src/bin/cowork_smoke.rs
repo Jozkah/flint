@@ -320,6 +320,54 @@ impl Ctx {
         Ok(())
     }
 
+    /// Make sure a model is selected before sending.
+    ///
+    /// A composer with no model selected accepts the text and then silently
+    /// does nothing when you press send, so a scenario that skips this waits
+    /// out its whole timeout on a reply that was never requested.
+    fn ensure_model_selected(&self) -> ScenarioResult {
+        let already = self.eval_bool(&format!(
+            "return [...document.querySelectorAll('button')].some(b =>
+               (b.textContent || '').includes({SMOKE_MODEL:?}));"
+        ))?;
+        if already {
+            return Ok(());
+        }
+        self.eval(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /select a model/i.test((x.getAttribute('aria-label') || '')
+                 + ' ' + (x.textContent || '')));
+             if (b) b.click();
+             return true;",
+        )?;
+        self.wait_until(
+            "the model picker",
+            "return [...document.querySelectorAll('input')].some(i =>
+                /search|find|model/i.test(i.getAttribute('placeholder') || ''));",
+            Duration::from_secs(20),
+        )?;
+        self.type_into(
+            "input[placeholder*='model' i], input[placeholder*='search' i]",
+            "smoke",
+        )?;
+        std::thread::sleep(Duration::from_millis(800));
+        let picked = self.eval_bool(&format!(
+            "const el = [...document.querySelectorAll('[role=\"option\"],button,li,div')]
+               .filter(e => e.children.length <= 2
+                 && (e.textContent || '').trim().includes({SMOKE_MODEL:?}))
+               .pop();
+             if (!el) return false;
+             (el.closest('[role=\"option\"],button,li') || el).click();
+             return true;"
+        ))?;
+        if !picked {
+            self.describe("model-picker-open")?;
+            bail!("the picker never offered {SMOKE_MODEL}");
+        }
+        std::thread::sleep(Duration::from_millis(900));
+        Ok(())
+    }
+
     fn click_rail(&self, rail: &str) -> ScenarioResult {
         let clicked = self.eval_bool(&format!(
             r#"const el = [...document.querySelectorAll('button')].find(b =>
@@ -1981,6 +2029,7 @@ fn scenario_prompt_snapshot(ctx: &Ctx) -> ScenarioResult {
         Duration::from_secs(30),
     )?;
 
+    ctx.ensure_model_selected()?;
     ctx.type_into("[data-testid=\"chat-input\"]", "snapshot probe")?;
     ctx.wait_until(
         "the send control to arm",
@@ -2345,6 +2394,7 @@ fn scenario_stream_over_local_hostname(ctx: &Ctx) -> ScenarioResult {
         "return !!document.querySelector('[data-testid=\"chat-input\"]');",
         Duration::from_secs(30),
     )?;
+    ctx.ensure_model_selected()?;
     ctx.type_into("[data-testid=\"chat-input\"]", "stream over the short name")?;
     ctx.wait_until(
         "the send control to arm",
@@ -2391,6 +2441,7 @@ fn scenario_no_setup_wall(ctx: &Ctx) -> ScenarioResult {
         "return !!document.querySelector('[data-testid=\"chat-input\"]');",
         Duration::from_secs(30),
     )?;
+    ctx.ensure_model_selected()?;
     ctx.type_into("[data-testid=\"chat-input\"]", "clear the wall")?;
     ctx.wait_until(
         "the send control to arm",
