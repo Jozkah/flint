@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import llamacpp_extension from '../index'
+import { fs, getJanDataFolderPath, joinPath } from '@janhq/core'
+import { invoke } from '@tauri-apps/api/core'
+import {
+  readGgufMetadata,
+  reloadEngineModels,
+  startEngine,
+} from '@janhq/tauri-plugin-llamacpp-api'
+import { generatePreset } from '../preset'
 
 import { getBackendSetting, setBackendSetting } from '../backend-settings'
 
@@ -550,6 +558,21 @@ describe('llamacpp_extension', () => {
 
       expect(result).toEqual(['model1', 'model2'])
     })
+  })
+
+  it('reads the architecture-specific context limit without inventing an unknown limit', async () => {
+    vi.mocked(getJanDataFolderPath).mockResolvedValue('/jan')
+    vi.mocked(joinPath).mockImplementation(async (parts) => parts.join('/'))
+    vi.mocked(invoke).mockResolvedValue({ model_path: 'model.gguf' })
+    vi.mocked(readGgufMetadata).mockResolvedValueOnce({
+      version: 3, tensor_count: 1,
+      metadata: { 'general.architecture': 'qwen3', 'qwen3.context_length': '65536' },
+    })
+    expect(await extension.getModelContextLimit('model')).toBe(65536)
+    vi.mocked(readGgufMetadata).mockResolvedValueOnce({
+      version: 3, tensor_count: 1, metadata: {},
+    })
+    expect(await extension.getModelContextLimit('model')).toBeUndefined()
   })
 
 })
