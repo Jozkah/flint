@@ -2467,7 +2467,21 @@ fn scenario_no_setup_wall(ctx: &Ctx) -> ScenarioResult {
          return !!b && b.textContent.trim().length > 0;",
     )?;
     ensure!(has, "the session details opened empty");
-    ctx.eval("document.body.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true})); return true;")?;
+    // Closed through its own control rather than a synthetic Escape, and the
+    // overlay must actually leave the DOM -- a closed one still covering the
+    // window is how a dialog silently blocks every later click.
+    ctx.eval(
+        "const c = [...document.querySelectorAll('[data-slot=\"dialog-content\"] button')]
+           .find(b => (b.textContent || '').trim() === 'Close');
+         if (c) { c.click(); return true; }
+         document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the dialog overlay to leave the DOM",
+        "return !document.querySelector('[data-slot=\"dialog-overlay\"]');",
+        Duration::from_secs(10),
+    )?;
     Ok(())
 }
 
