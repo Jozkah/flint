@@ -177,6 +177,7 @@ ifeq ($(RECIPE_SHELL_IS_CMD),yes)
 	-powershell -Command "New-Item -ItemType Directory -Force -Path src-tauri/resources/bin | Out-Null; foreach ($$f in @('jan-cli.exe','jan-llama-worker.exe','ggml-base.dll')) { $$p = Join-Path 'src-tauri/resources/bin' $$f; if (-not (Test-Path $$p)) { New-Item -ItemType File -Path $$p | Out-Null } }"
 else
 	@./scripts/stub-tauri-resources.sh
+	@node ./scripts/check-tauri-resources.mjs
 endif
 
 test-ci: test-prepare
