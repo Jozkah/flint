@@ -7393,7 +7393,7 @@ pub async fn run(
     // so say so once, and only where a config file proves it is unconfigured
     // (see `terminal_setup::setup_hint`): the note disappears on its own once
     // /terminal-setup has run.
-    if let Some(hint) = dirs::home_dir()
+    if let Some(hint) = crate::core::app::commands::jan_home_dir()
         .filter(|_| crate::core::agent::global_config::terminal_hint_enabled())
         .and_then(|home| {
             super::terminal_setup::setup_hint(&home, cfg!(target_os = "macos"), |k| {
@@ -12616,7 +12616,7 @@ async fn reload_provider_configs(app: &mut App) {
 /// `terminal_setup` for why a terminal-side binding is the only reliable route.
 fn terminal_setup_command(app: &mut App) {
     use super::terminal_setup::{apply, Outcome};
-    let Some(home) = dirs::home_dir() else {
+    let Some(home) = crate::core::app::commands::jan_home_dir() else {
         app.system(Level::Error, "no home directory for terminal config");
         return;
     };
@@ -16035,10 +16035,14 @@ fn hint_spans(key_style: Style, pairs: &[(&str, &str)]) -> Vec<Span<'static>> {
 /// than an absolute path. Non-home paths are returned unchanged.
 fn tilde_path(path: &std::path::Path) -> String {
     let full = path.to_string_lossy().into_owned();
-    let Some(home) = std::env::var_os("HOME") else {
+    // Not `HOME`: that variable is usually unset on Windows, so reading it
+    // directly meant the abbreviation silently never happened there and the
+    // dock rendered a full `C:\Users\...` path where every other platform
+    // showed `~`.
+    let Some(home) = crate::core::app::commands::jan_home_dir() else {
         return full;
     };
-    let home = std::path::Path::new(&home);
+    let home = home.as_path();
     match path.strip_prefix(home) {
         // The home dir itself, not a `~`-prefixed child.
         Ok(rest) if rest.as_os_str().is_empty() => "~".to_string(),
@@ -27088,7 +27092,10 @@ mod tests {
 
     #[test]
     fn tilde_path_abbreviates_only_the_home_prefix() {
-        let home = std::path::PathBuf::from(std::env::var_os("HOME").expect("HOME set in tests"));
+        // Whatever the platform resolves as Jan's home, not `HOME` -- which is
+        // unset on Windows and made this assert on a variable the function no
+        // longer reads.
+        let home = crate::core::app::commands::jan_home_dir().expect("a home in tests");
         assert_eq!(tilde_path(&home), "~");
         assert_eq!(tilde_path(&home.join("code/jan")), "~/code/jan");
         // A path that merely starts with the same characters is not a child.

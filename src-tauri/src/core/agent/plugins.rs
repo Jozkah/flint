@@ -221,15 +221,50 @@ fn read_manifest(root: &Path) -> Manifest {
         .unwrap_or_default()
 }
 
+/// Does the spec name a local filesystem path in Windows form?
+///
+/// Only `\` is at stake here, and only for a path. A drive-letter path
+/// (`C:\src\plugin`), its `file://` URL, and a UNC share (`\\host\share`) all
+/// contain backslashes as *separators*, which is not the same thing as a spec
+/// trying to smuggle an escape into a command line.
+fn is_windows_local_path(spec: &str) -> bool {
+    let path = spec
+        .strip_prefix("file:///")
+        .or_else(|| spec.strip_prefix("file://"))
+        .unwrap_or(spec);
+    let bytes = path.as_bytes();
+    // `\\host\share`
+    if path.starts_with(r"\\") {
+        return true;
+    }
+    // `C:\...` or `C:/...`
+    bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+}
+
 /// Reject specs that could inject shell commands. The spec is later passed as
 /// literal argv to `git clone`, never to a shell, but a spec full of `$()`
 /// is a typo at best — error early and clearly.
+///
+/// `\` is the one character whose meaning depends on the spec. It is a shell
+/// escape in a URL and a path separator on Windows, and rejecting it outright
+/// made every local-path install impossible there -- `jan plugin install
+/// C:\src\my-plugin` and the `file://` form both failed as "shell
+/// metacharacters are not allowed". So it is permitted for a spec that is
+/// recognisably a Windows path, and rejected everywhere else. Every other
+/// metacharacter is still refused, in a path or out of it.
 fn validate_spec(spec: &str) -> Result<(), String> {
     let spec = spec.trim();
     if spec.is_empty() {
         return Err("ERROR: nothing to install".into());
     }
-    if spec.chars().any(|c| SHELL_METACHARS.contains(&c)) {
+    let path_like = is_windows_local_path(spec);
+    if spec
+        .chars()
+        .any(|c| SHELL_METACHARS.contains(&c) && !(path_like && c == '\\'))
+    {
         return Err(format!(
             "ERROR: invalid plugin spec '{spec}' (shell metacharacters are not allowed)"
         ));
@@ -931,6 +966,39 @@ mod tests {
         }
         assert!(validate_spec("").is_err());
         assert!(validate_spec("  ").is_err());
+    }
+
+    /// A backslash is a path separator on Windows, not an escape. Rejecting it
+    /// outright made every local-path install fail there.
+    #[test]
+    fn validate_spec_accepts_windows_paths() {
+        for good in [
+            r"C:\src\my-plugin",
+            r"c:/src/my-plugin",
+            r"file://C:\src\my-plugin",
+            r"file:///C:\src\my-plugin",
+            r"\\fileserver\share\my-plugin",
+        ] {
+            assert!(validate_spec(good).is_ok(), "rejected {good:?}");
+        }
+    }
+
+    /// The exemption is for the separator only. A path-shaped spec gets no
+    /// licence to carry a command substitution, and a non-path spec gets no
+    /// backslash.
+    #[test]
+    fn validate_spec_still_refuses_injection_inside_a_path() {
+        for bad in [
+            r"C:\src\$(id)",
+            r"C:\src\a;rm -rf /",
+            r"C:\src\a`id`",
+            r"file://C:\src\a|b",
+            // Not path-shaped: the backslash has no business here.
+            r"https://x/y\z",
+            r"marketplace\name",
+        ] {
+            assert!(validate_spec(bad).is_err(), "accepted {bad:?}");
+        }
     }
 
     #[test]

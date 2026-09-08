@@ -12,6 +12,44 @@ use super::models::AppConfiguration;
 #[cfg(not(feature = "cli"))]
 use crate::core::state::AppState;
 
+/// The environment variable that redirects Jan's *home* root, the directory
+/// `~/.jan` hangs off. The portable counterpart to `JAN_DATA_FOLDER`, which
+/// already redirects the data folder.
+pub const JAN_HOME_ENV: &str = "JAN_HOME";
+
+/// The root Jan resolves `~/.jan` against.
+///
+/// `HOME` is not an isolation mechanism on Windows. `dirs::home_dir()` calls
+/// `SHGetKnownFolderPath(FOLDERID_Profile)`, which reads neither `HOME` nor
+/// `USERPROFILE`, so a test that redirected `HOME` and expected a scratch tree
+/// silently read and wrote the real `C:\Users\<you>\.jan` instead -- which is
+/// how a test fixture came to overwrite a developer's own `config.toml`.
+///
+/// So the override is explicit and platform-independent, and under `cfg!(test)`
+/// there is no way to reach the real home at all: an unset `JAN_HOME` resolves
+/// to a per-process, per-thread temp directory rather than falling through.
+/// Tests fail closed, and they get a root each, so parallel tests cannot see
+/// one another's writes.
+pub fn jan_home_dir() -> Option<PathBuf> {
+    if let Some(explicit) = std::env::var_os(JAN_HOME_ENV) {
+        if !explicit.is_empty() {
+            return Some(PathBuf::from(explicit));
+        }
+    }
+
+    if cfg!(test) {
+        let dir = std::env::temp_dir().join(format!(
+            "jan-test-home-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        return Some(dir);
+    }
+
+    dirs::home_dir()
+}
+
 /// Canonical Jan app support directory (`%APPDATA%/Jan` on Windows).
 fn resolve_human_readable_app_data_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|d| d.join(env!("CARGO_PKG_NAME")))
