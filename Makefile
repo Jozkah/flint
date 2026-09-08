@@ -273,7 +273,7 @@ ifeq ($(DETECTED_OS),Darwin)
 	cp src-tauri/resources/bin/jan src-tauri/target/universal-apple-darwin/release/jan
 else ifeq ($(DETECTED_OS),Windows)
 	cd src-tauri && cargo build --release --no-default-features --features cli --bin jan
-	cp src-tauri/target/release/jan.exe src-tauri/resources/bin/jan.exe
+	copy src-tauri\target\release\jan.exe src-tauri\resources\bin\jan.exe
 else
 	cd src-tauri && cargo build --release --no-default-features --features cli --bin jan
 	cp src-tauri/target/release/jan src-tauri/resources/bin/jan

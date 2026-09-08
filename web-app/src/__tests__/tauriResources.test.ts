@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -55,7 +55,10 @@ describe('the Tauri resource preflight', () => {
       // it reads and nothing else.
       const fakeRoot = join(dir, 'repo')
       const tauri = join(fakeRoot, 'src-tauri')
-      execFileSync('mkdir', ['-p', join(tauri), join(fakeRoot, 'scripts')])
+      // `mkdir -p` is not a program on Windows, so make the directories through
+      // node rather than shelling out to a POSIX utility.
+      mkdirSync(tauri, { recursive: true })
+      mkdirSync(join(fakeRoot, 'scripts'), { recursive: true })
       for (const name of [
         'tauri.linux.conf.json',
         'tauri.macos.conf.json',
