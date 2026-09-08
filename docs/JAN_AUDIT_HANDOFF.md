@@ -887,3 +887,29 @@ the chip was simply the place that still mixed the two sources.
 counts from Git only for a direct edit whose own diff reported none. The
 summary reads `3 files changed · +24 −8` in the tooltip and the accessible
 name, with the row itself still compact.
+
+
+### Context accounting, budget and capabilities (2026-09-08)
+
+Three things that were being conflated are now three things.
+
+**AH-195.** The context window read "not known" for every OpenAI-compatible
+endpoint because exactly one field was ever consulted -- Jan's own `ctx_len`.
+Servers report it as `context_length`, `max_context_length`, `max_model_len` or
+`n_ctx`, and llama.cpp reports both `n_ctx` (the window in force, which `--fit`
+may have shrunk) and `n_ctx_train` (what the model was trained for). The
+resolver reads all of them, in a fixed order of trust, with no network lookup,
+and leaves an undiscoverable window unknown rather than guessing -- a guess
+would silently truncate.
+
+**AH-088.** The window is now checked before dispatch. A request that would
+leave the model nowhere to answer raises `ContextOverflowError` and is never
+sent; some providers respond to that case by quietly dropping the front of the
+conversation, so the run carries on having forgotten what it was asked. An
+unknown window is never a refusal.
+
+**AH-073.** Jan's own measurement is bytes over four and cannot be anything
+else -- it runs before a request exists. The exact number is the one the server
+that tokenized the payload reports back, and it is now recorded against the
+invocation and that payload's snapshot, so a count is always beside the payload
+it counted rather than beside "the last request".

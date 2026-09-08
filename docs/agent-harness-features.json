@@ -2159,15 +2159,16 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-078"
       ],
       "owner": "lane-05-context-memory",
       "files": [
-        "web-app/src/lib/coworkTransport.ts",
-        "web-app/src/lib/coworkContext.ts"
+        "web-app/src/lib/payloadUsage.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/usage.rs",
+        "src-tauri/src/core/agent/commands.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -2178,10 +2179,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/lib/__tests__/payloadUsage.test.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/usage.rs",
+        "src-tauri/src/bin/cowork_smoke.rs::tool-activity-timeline"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Now measures the payload actually dispatched: onPayloadShaped freezes prompt, tools, repository map and messages, and measurement reads only that record. Still no tokenizer -- it is UTF-8 bytes divided by 4, so the numbers are approximations of the right thing rather than counts."
+      "auditNote": "The provider's own count for the dispatched payload is recorded against the invocation and that payload's snapshot; Jan's byte estimate stays separate and labelled, and never overwrites a real count."
     },
     {
       "id": "AH-074",
@@ -2585,13 +2590,16 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-073"
       ],
       "owner": "lane-05-context-memory",
-      "files": [],
+      "files": [
+        "web-app/src/lib/coworkBudget.ts",
+        "web-app/src/routes/cowork.tsx"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "The harness reserves window headroom ahead of a turn instead of reacting to overflow.",
@@ -2601,10 +2609,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/lib/__tests__/coworkBudgetPlanner.test.ts"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "should_auto_compact reserves headroom in the CLI only."
+      "auditNote": "planTurn reserves reply headroom and classifies the turn before dispatch; an over-capacity request raises ContextOverflowError instead of being sent. An undiscoverable window is reported, never refused."
     },
     {
       "id": "AH-089",
@@ -5539,11 +5549,15 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [],
       "owner": "lane-10-provider-enterprise",
-      "files": [],
+      "files": [
+        "web-app/src/lib/modelCapabilities.ts",
+        "web-app/src/hooks/useModelCapabilities.ts",
+        "web-app/src/lib/modelLocation.ts"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Runs can execute entirely against a local model with no network dependency.",
@@ -5552,12 +5566,15 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/lib/__tests__/modelCapabilities.test.ts",
+        "web-app/src/lib/__tests__/modelLocation.test.ts"
+      ],
       "platformRequirements": [
         "a desktop build; the headless CLI has no local inference backend"
       ],
       "blockedReason": null,
-      "auditNote": "Local inference ships on the desktop app; the headless CLI is remote-only."
+      "auditNote": "Canonical ModelCapabilities with a fixed discovery order over sources the app already has; no network lookup. llama.cpp's effective n_ctx is distinguished from n_ctx_train, and an unknown window stays unknown."
     },
     {
       "id": "AH-196",

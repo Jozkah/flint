@@ -568,3 +568,37 @@ pub async fn tool_activity_items(
         session.as_deref(),
     ))
 }
+
+/// Record what one dispatched payload cost. AH-073.
+///
+/// The count comes from the provider that tokenized the payload, so it is the
+/// only exact number available; Jan's own measurement is an estimate and is
+/// recorded as one. Both are bound to the invocation and to the snapshot of
+/// the payload they describe, because a run makes many model calls and a count
+/// shown beside the wrong one looks authoritative while being wrong.
+#[tauri::command]
+pub async fn payload_usage_record(
+    app: tauri::AppHandle,
+    usage: tauri_plugin_agent_tools::usage::PayloadUsage,
+) -> Result<(), String> {
+    let data_folder = get_jan_data_folder_path(app);
+    tauri_plugin_agent_tools::usage::append(&data_folder, &usage);
+    Ok(())
+}
+
+/// Retrieve payload accounting, scoped the way snapshots are.
+#[tauri::command]
+pub async fn payload_usage_lookup(
+    app: tauri::AppHandle,
+    invocation: Option<String>,
+    run: Option<String>,
+    session: Option<String>,
+) -> Result<Vec<tauri_plugin_agent_tools::usage::PayloadUsage>, String> {
+    let data_folder = get_jan_data_folder_path(app);
+    tauri_plugin_agent_tools::usage::scoped_lookup(
+        &data_folder,
+        invocation.as_deref(),
+        run.as_deref(),
+        session.as_deref(),
+    )
+}

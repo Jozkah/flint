@@ -6,6 +6,7 @@ import {
   type ContextCategory,
   type Measured,
 } from '@/lib/coworkReadiness'
+import { formatContextUsage } from '@/lib/modelCapabilities'
 
 /**
  * Where the context went, category by category.
@@ -92,10 +93,10 @@ export function CoworkContextBreakdown({
                 ? t('common:readiness.budgetOver', {
                     over: usage.used - usage.window,
                   })
-                : t('common:readiness.budgetRemaining', {
-                    used: usage.used,
-                    total: usage.window,
-                  })}
+                : // "3,367 / 32,768 tokens": both numbers, grouped, so the
+                  // headroom is read rather than worked out.
+                  (formatContextUsage(usage.used, usage.window) ??
+                  t('common:readiness.budgetUnknown'))}
           </dd>
         </div>
       </dl>

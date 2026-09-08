@@ -64,6 +64,13 @@ import { MessageItem } from '@/containers/MessageItem'
 import SkillSelector from '@/containers/SkillSelector'
 import { assistantAnchorId, coworkTurnsToUIMessages } from '@/lib/coworkTurns'
 import { reconcileToolActivity } from '@/lib/coworkActivityTimeline'
+import { useModelCapabilities } from '@/hooks/useModelCapabilities'
+import {
+  ContextOverflowError,
+  isContextOverflow,
+  planTurn,
+} from '@/lib/coworkBudget'
+import { accountedTotal } from '@/lib/coworkReadiness'
 import {
   formatChangeSummary,
   janAuthoredChanges,
@@ -115,7 +122,8 @@ import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import type { AskRecord } from '@/types/coworkSession'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { usePrompt } from '@/hooks/usePrompt'
-import { setSnapshotSink } from '@/lib/providerFetch'
+import { setSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
+import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { attachAskToTurns, settleAskInTurns } from '@/hooks/useCoworkRun'
 import {
   NO_SESSION,
@@ -273,32 +281,18 @@ export const Route = createFileRoute(route.cowork as any)({
 
 /** Same shape the other Cowork surfaces use; kept local, as they do. */
 /**
- * The model's configured context size, when it has one.
+ * The window a request has to fit inside, when it is known.
  *
- * Configured, not live: llama.cpp's `--fit` can pick a runtime `n_ctx` far from
- * this, and that is only knowable once the model is loaded. The measurement
- * layer labels it as an estimate for exactly that reason, so what is wanted
- * here is the honest configured number or nothing at all.
+ * Resolved by `useModelCapabilities` (AH-195) rather than read from one
+ * settings field: an OpenAI-compatible server reports its window under any of
+ * several names, and reading only Jan's own `ctx_len` left every such endpoint
+ * permanently "not known". When a local runtime has answered this is its
+ * effective `n_ctx`, which `--fit` may have set well below the model's
+ * training size -- the smaller number is the real limit.
  */
 const configuredContextTokens = (
-  model:
-    | {
-        settings?: Record<string, { controller_props?: { value?: unknown } }>
-      }
-    | null
-    | undefined
-): number | null => {
-  const value = model?.settings?.ctx_len?.controller_props?.value
-  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-    return value
-  }
-  // Some providers store it as a string from a number input.
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number(value)
-    if (Number.isFinite(parsed) && parsed > 0) return parsed
-  }
-  return null
-}
+  caps: { contextTokens: number | null } | null | undefined
+): number | null => caps?.contextTokens ?? null
 
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
 const messageOf = errorText
@@ -307,6 +301,15 @@ function CoworkPage() {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const { selectedModel, selectedProvider } = useModelProvider()
+  // Resolved once for the route: the readiness card, the context measurement
+  // and the run all have to be talking about the same window.
+  // The snapshot of the dispatch now in flight, so its reply's usage can be
+  // recorded against the payload it actually counted.
+  const lastSnapshotRef = useRef<PromptSnapshotRef | null>(null)
+  const modelCapabilities = useModelCapabilities(
+    selectedModel as never,
+    selectedProvider as never
+  )
 
   const sessions = useCoworkSessions((s) => s.sessions)
   const currentId = useCoworkSessions((s) => s.currentId)
@@ -575,7 +578,7 @@ function CoworkPage() {
           systemPrompt: null,
           toolSchemas: null,
           messages: null,
-          configuredContextTokens: configuredContextTokens(selectedModel),
+          configuredContextTokens: configuredContextTokens(modelCapabilities),
         }),
     }
   }, [
@@ -594,6 +597,7 @@ function CoworkPage() {
     enabledSkills,
     composerPrompt,
     selectedModel,
+    modelCapabilities,
   ])
 
   // Read inside the instruction effect without making the session a dependency:
@@ -2147,9 +2151,32 @@ function CoworkPage() {
     // payload exists: `messages` is what the request carries, and the transport
     // adds the system prompt and the advertised tools to it. Measuring earlier
     // would report a conversation one turn short of the one being sent.
-    setRunContext(
-      transport.measureContext(messages, configuredContextTokens(selectedModel))
+    const measured = transport.measureContext(
+      messages,
+      configuredContextTokens(modelCapabilities)
     )
+    setRunContext(measured)
+
+    /**
+     * Check the window before dispatching, not after the server complains.
+     * AH-088.
+     *
+     * A request that fills the window leaves the model nowhere to answer, and
+     * some providers respond to that by silently dropping the front of the
+     * conversation -- so the run continues, having quietly forgotten what it
+     * was asked. Refusing here keeps the failure visible and the transcript
+     * intact. An unknown window is never a refusal: it is a limit Jan could
+     * not discover, not a limit that was exceeded.
+     */
+    const accounted = accountedTotal(measured)
+    const plan = planTurn({
+      projected: accounted.tokens,
+      window: measured.budget.known === false ? null : measured.budget.tokens,
+    })
+    const overflow =
+      plan.status === 'over' && accounted.complete
+        ? new ContextOverflowError(plan)
+        : null
 
     // Recorded before the turn runs, so a crash mid-inspection is resumed as an
     // inspection rather than as work nobody authorised.
@@ -2163,6 +2190,10 @@ function CoworkPage() {
     let outcome: RunOutcome | null = null
     let thrown: Pick<RunOutcome, 'stoppedBy' | 'errorText'> | null = null
     try {
+      // Raised here rather than returned earlier so the turn is torn down the
+      // way every other ending is: the user's own message is committed, the
+      // run is closed and nothing is left running.
+      if (overflow) throw overflow
       outcome = await runTurn({
         messages,
         signal: controller.signal,
@@ -2468,6 +2499,24 @@ function CoworkPage() {
           sink,
           onStep: ({ result, turns, outcomes }) => {
             if (result.usage) setLiveUsage(result.usage)
+            /**
+             * Bind the provider's own count to the payload it counted.
+             * AH-073.
+             *
+             * The snapshot the transport just took carries the invocation, so
+             * the exact number and the exact bytes name the same model call.
+             * Without that the count is "the last request", which is a
+             * different thing on every step of a long turn.
+             */
+            if (result.usage) {
+              void recordPayloadUsage({
+                session: sid,
+                run: runId,
+                snapshot: lastSnapshotRef.current,
+                model: selectedModel?.id,
+                usage: result.usage,
+              })
+            }
             // Replace the optimistic running rows with the settled ones so the
             // transcript shows results, not spinners.
             liveTurnsRef.current = liveTurnsRef.current.filter(
@@ -2509,10 +2558,15 @@ function CoworkPage() {
       // and rendering it as one claimed the agent had run something.
       thrown = isAbortLike(e, controller.signal)
         ? { stoppedBy: 'aborted' }
-        : {
-            stoppedBy: 'error',
-            errorText: e instanceof Error ? e.message : String(e),
-          }
+        : isContextOverflow(e)
+          ? // Not an error in the loop: the request was measured, found not to
+            // fit, and never sent. It offers the same way out as running out
+            // of tokens mid-turn, because it is the same problem.
+            { stoppedBy: 'tokens', errorText: e.message }
+          : {
+              stoppedBy: 'error',
+              errorText: e instanceof Error ? e.message : String(e),
+            }
     } finally {
       useAppState.getState().updateLoadingModel(false)
       endRun(sid, runId)
@@ -2641,6 +2695,9 @@ function CoworkPage() {
   // the turn whose reply that request produced.
   useEffect(() => {
     setSnapshotSink((sessionId, ref) => {
+      // Kept for the step that follows: the accounting for a dispatch is only
+      // known once its reply lands, and by then the sink has moved on.
+      lastSnapshotRef.current = ref
       // Beside the turns, not on them: the run rebuilds its live turn array as
       // steps complete, so a reference written onto a turn at dispatch time is
       // gone before it can render.

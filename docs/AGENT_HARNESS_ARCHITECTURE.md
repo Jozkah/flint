@@ -244,3 +244,39 @@ filter: the turns stay in the session, in exports and in search.
 **Redaction.** Applied on the way in, in `tool_activity_record`, because the
 file outlives the window. The record carries a short redacted detail, never a
 tool's whole output.
+
+
+## Context: what fits, what it cost, and what the model can hold
+
+Three separate questions, deliberately answered by three separate things.
+
+**What the model can hold (AH-195).** `web-app/src/lib/modelCapabilities.ts`
+resolves one `ModelCapabilities` from sources the app already has, in order of
+how much they are worth trusting: the user's own setting, the provider's
+metadata for that model, the local runtime's report for the loaded model, the
+provider default, then bundled offline metadata. Nothing here reaches the
+network. It recognizes `ctx_len`, `ctx_size`, `n_ctx`, `context_length`,
+`max_context_length`, `max_model_len` and `context_window`, and reads Jan's own
+nested `settings.<key>.controller_props.value` shape as well as a `/models`
+entry's flat one -- reading only `ctx_len`, as the app used to, left every
+OpenAI-compatible endpoint permanently "not known". `n_ctx_train` is kept apart
+from `n_ctx`: llama.cpp's `--fit` routinely runs a 32k model in an 8k window,
+and the smaller number is the real limit. An unknown window stays unknown; a
+guessed one would silently truncate.
+
+**What fits (AH-088).** `planTurn` in `coworkBudget.ts` reserves room for the
+reply -- 15% of the window, floored at 512 and capped at 8192 -- and classifies
+the turn as `fits`, `tight`, `over` or `unknown` *before* dispatch. `over`
+raises `ContextOverflowError` inside the run's own try block, so the turn is
+torn down like any other ending: the user's message is committed and the run is
+closed. `unknown` is never a refusal -- it is a limit Jan could not discover,
+not one that was exceeded.
+
+**What it cost (AH-073).** Jan's own measurement is bytes over four and is
+labelled an estimate. The exact number comes from the server that tokenized the
+payload, and `usage.rs` records it against the invocation *and* the snapshot of
+the payload it counted, because a run makes many model calls and a count shown
+beside the wrong one looks authoritative while being wrong. A provider count
+replaces an estimate for the same invocation; an estimate never replaces a
+count. Lookups are scoped like snapshot lookups: name an invocation, a run or a
+session, or be refused.

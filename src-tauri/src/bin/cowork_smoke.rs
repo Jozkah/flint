@@ -2285,6 +2285,34 @@ fn scenario_tool_activity(ctx: &Ctx) -> ScenarioResult {
         );
     }
 
+    // The count the provider reported is bound to the dispatch it counted, and
+    // to that dispatch's snapshot. AH-073.
+    let usage = std::env::var("JAN_DATA_FOLDER")
+        .map(|d| Path::new(&d).join("audit/payload-usage.jsonl"))
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .unwrap_or_default();
+    let counted: Vec<&str> = usage.lines().filter(|l| !l.trim().is_empty()).collect();
+    ensure!(
+        !counted.is_empty(),
+        "the dispatched payload was never accounted for"
+    );
+    for record in &counted {
+        ensure!(
+            record.contains("\"source\":\"provider\""),
+            "a count was recorded that the provider did not report: {record}"
+        );
+        // An unbound count is the defect this record exists to prevent.
+        ensure!(
+            !record.contains("\"invocation\":\"\""),
+            "a count was recorded against no dispatch: {record}"
+        );
+        ensure!(
+            !record.contains("\"snapshot\":\"\""),
+            "a count was recorded against no payload snapshot: {record}"
+        );
+    }
+
     // Reload. The conversation is rebuilt from what was stored, so a tool call
     // that only lived in the run's memory disappears here.
     ctx.goto("/")?;

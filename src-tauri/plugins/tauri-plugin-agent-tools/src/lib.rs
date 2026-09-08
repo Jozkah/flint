@@ -19,6 +19,7 @@ pub mod resource;
 pub mod skills;
 pub mod snapshot;
 pub mod tools;
+pub mod usage;
 pub mod workspace;
 
 #[cfg(feature = "tauri")]

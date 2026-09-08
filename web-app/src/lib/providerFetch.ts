@@ -35,6 +35,13 @@ export type PromptSnapshotRef = {
   id: string
   hash: string
   redactions: number
+  /**
+   * The dispatch this snapshot is of.
+   *
+   * Echoed back by the transport so a count, a snapshot and a rendered turn
+   * can all name the same model call rather than being matched by position.
+   */
+  invocation?: string
 }
 
 /**
