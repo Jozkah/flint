@@ -341,9 +341,7 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
         Err(Errno::ESRCH) => match kill(target, Signal::SIGKILL) {
             Ok(()) => KillOutcome::Signalled,
             Err(Errno::ESRCH) => KillOutcome::Gone,
-            Err(Errno::EPERM) => {
-                KillOutcome::Failed("not permitted to signal this process".into())
-            }
+            Err(Errno::EPERM) => KillOutcome::Failed("not permitted to signal this process".into()),
             Err(e) => KillOutcome::Failed(e.desc().to_string()),
         },
         Err(Errno::EPERM) => {
@@ -422,7 +420,14 @@ mod env_allowlist_tests {
     /// a bare Windows box can actually run a command.
     #[test]
     fn allowlist_has_windows_system_keys() {
-        for key in ["SystemRoot", "windir", "ComSpec", "PATHEXT", "ProgramFiles", "ProgramData"] {
+        for key in [
+            "SystemRoot",
+            "windir",
+            "ComSpec",
+            "PATHEXT",
+            "ProgramFiles",
+            "ProgramData",
+        ] {
             assert!(
                 SANDBOX_ENV_ALLOW.contains(&key),
                 "missing {key} in SANDBOX_ENV_ALLOW"
@@ -581,7 +586,10 @@ mod tests {
             }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
-        assert!(!alive(grandchild), "grandchild must be reaped by group kill");
+        assert!(
+            !alive(grandchild),
+            "grandchild must be reaped by group kill"
+        );
     }
 
     /// A pid nothing owns is not a failure: there is nothing left to kill.
@@ -645,6 +653,9 @@ mod tests {
         let out = child.wait_with_output().await.unwrap();
         unregister(pid);
         let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        assert_eq!(val, "1024", "NOFILE soft limit should be capped, got: {val}");
+        assert_eq!(
+            val, "1024",
+            "NOFILE soft limit should be capped, got: {val}"
+        );
     }
 }

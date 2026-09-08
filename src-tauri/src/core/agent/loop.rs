@@ -206,13 +206,13 @@ impl ModelInvoker for HttpModelInvoker {
                 thread: self.snapshot_identity.thread.clone(),
                 agent: self.snapshot_identity.agent.clone(),
                 provider: self.snapshot_identity.provider.clone(),
-                        // The agent loop dispatches once per step; the step's own id is
-            // the invocation.
-            invocation: String::new(),
-            turn: String::new(),
-            attempt: 1,
-            kind: Default::default(),
-        };
+                // The agent loop dispatches once per step; the step's own id is
+                // the invocation.
+                invocation: String::new(),
+                turn: String::new(),
+                attempt: 1,
+                kind: Default::default(),
+            };
             let snapshot = capture(&normalized, &identity);
             append(
                 &crate::core::app::commands::resolve_jan_data_folder(),
@@ -2048,7 +2048,7 @@ async fn orchestrate_inner(
                 .split_once('/')
                 .map(|(p, _)| p.to_string())
                 .unwrap_or_default(),
-                    // The agent loop dispatches once per step; the step's own id is
+            // The agent loop dispatches once per step; the step's own id is
             // the invocation.
             invocation: String::new(),
             turn: String::new(),

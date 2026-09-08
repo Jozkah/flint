@@ -356,9 +356,9 @@ pub fn build_app() -> tauri::App {
             // Anything a killed run left mid-flight is settled before the
             // window opens, so a timeline restored from disk never shows a
             // call as still running when nothing is left to finish it.
-            tauri_plugin_agent_tools::activity::settle_unfinished(
-                &get_jan_data_folder_path(app.handle().clone()),
-            );
+            tauri_plugin_agent_tools::activity::settle_unfinished(&get_jan_data_folder_path(
+                app.handle().clone(),
+            ));
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Debug)

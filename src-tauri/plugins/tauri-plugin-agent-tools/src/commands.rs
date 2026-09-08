@@ -527,10 +527,7 @@ async fn execute_tool_inner(
     // denied a tool or a path was obeyed by the CLI and ignored by the
     // desktop. Read here, at the gate, because a policy passed in from the
     // renderer is one the caller can choose not to send.
-    let policy = crate::policy::load(
-        read_only_project.as_deref().map(Path::new),
-        allow_network,
-    );
+    let policy = crate::policy::load(read_only_project.as_deref().map(Path::new), allow_network);
     let permissions = policy.permissions.clone();
     let decision = gate::resolve_decision(
         tool,
@@ -730,15 +727,6 @@ fn output_sink(
         }
     })
 }
-
-/// List one directory level of the attached read-only project, for the Cowork
-/// code panel's lazy file tree.
-///
-/// `root` passes the same validation as a read-only tool mount
-/// (`validate_read_root`): the workspace, the Jan data folder and the
-/// filesystem root are all refused, so the browse surface cannot reach
-/// anything the tool surface could not. Containment of `rel` inside `root` is
-/// enforced again in `project_browse`.
 
 /// Write one audit record per resource this call touches.
 ///

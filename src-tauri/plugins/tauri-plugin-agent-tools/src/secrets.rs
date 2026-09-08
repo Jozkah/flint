@@ -75,17 +75,17 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
     let lower = trimmed.to_ascii_lowercase();
 
     if lower.contains("begin") && lower.contains("private key") {
-        return Some((SecretKind::PrivateKey, "-----BEGIN … PRIVATE KEY-----".into()));
+        return Some((
+            SecretKind::PrivateKey,
+            "-----BEGIN … PRIVATE KEY-----".into(),
+        ));
     }
 
     // scheme://user:password@host
     if let Some(at) = trimmed.find('@') {
         let head = &trimmed[..at];
         if head.contains("://") && head.rsplit("://").next().is_some_and(|c| c.contains(':')) {
-            return Some((
-                SecretKind::ConnectionString,
-                mask_after(trimmed, "://"),
-            ));
+            return Some((SecretKind::ConnectionString, mask_after(trimmed, "://")));
         }
     }
 
@@ -250,7 +250,11 @@ fn redact_line(line: &str) -> String {
     // place and redact nothing.
     let marker = if line.starts_with('+') || line.starts_with('-') {
         // A PEM header starts with five dashes; a diff marker is one.
-        if line.starts_with("--") { "" } else { &line[..1] }
+        if line.starts_with("--") {
+            ""
+        } else {
+            &line[..1]
+        }
     } else {
         ""
     };
@@ -340,9 +344,7 @@ mod tests {
 
     #[test]
     fn redaction_keeps_the_line_legible_and_loses_the_value() {
-        let redacted = redact_secrets(
-            "API_KEY = \"sk-live-2f8a91bd77\"\nport = 8080\n",
-        );
+        let redacted = redact_secrets("API_KEY = \"sk-live-2f8a91bd77\"\nport = 8080\n");
         assert!(redacted.contains("api_key=[redacted]") || redacted.contains("API_KEY=[redacted]"));
         assert!(!redacted.contains("sk-live-2f8a91bd77"));
         // Everything else is left exactly as it was.

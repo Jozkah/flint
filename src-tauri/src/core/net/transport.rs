@@ -24,9 +24,7 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use tauri_plugin_agent_tools::snapshot::{
-    self, DispatchKind, Identity as SnapshotIdentity,
-};
+use tauri_plugin_agent_tools::snapshot::{self, DispatchKind, Identity as SnapshotIdentity};
 
 use crate::core::app::commands::resolve_jan_data_folder;
 
@@ -353,9 +351,13 @@ pub enum StreamChunk {
         snapshot: Option<SnapshotRef>,
     },
     /// Base64 so a chunk that splits a multi-byte character survives the trip.
-    Data { b64: String },
+    Data {
+        b64: String,
+    },
     End,
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 fn build(client: &Client, req: &ProviderRequest) -> Result<reqwest::RequestBuilder, String> {
@@ -544,7 +546,6 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
 mod tests {
     use super::*;
 
-
     #[tokio::test]
     async fn a_model_dispatch_is_snapshotted_and_the_reference_comes_back() {
         let (port, _requests) = serve(OK_JSON, 1);
@@ -553,10 +554,7 @@ mod tests {
         let response = send(ProviderRequest {
             url: format!("http://v100:{port}/v1/chat/completions"),
             method: "POST".into(),
-            headers: HashMap::from([(
-                "Authorization".into(),
-                "Bearer sk-not-a-real-key".into(),
-            )]),
+            headers: HashMap::from([("Authorization".into(), "Bearer sk-not-a-real-key".into())]),
             body: Some(
                 r#"{"model":"qwen3.8-27b","messages":[{"role":"user","content":"hi"}]}"#.into(),
             ),
@@ -658,7 +656,6 @@ mod tests {
         }
     }
 
-
     #[tokio::test]
     async fn a_cancelled_stream_ends_instead_of_holding_the_connection() {
         // A server that sends a chunk and then keeps the connection open: the
@@ -707,7 +704,10 @@ mod tests {
         )
         .await;
 
-        assert!(done.is_ok(), "a cancelled stream must not wait for the server");
+        assert!(
+            done.is_ok(),
+            "a cancelled stream must not wait for the server"
+        );
         done.unwrap().unwrap();
         let chunks = seen.lock().unwrap();
         assert!(matches!(chunks.last(), Some(StreamChunk::End)));
@@ -717,7 +717,6 @@ mod tests {
     fn cancelling_a_stream_nobody_is_running_is_not_an_error() {
         cancel_stream("no-such-stream");
     }
-
 
     #[tokio::test]
     async fn each_attempt_is_its_own_record_under_its_own_invocation() {
@@ -787,7 +786,6 @@ mod tests {
         );
         assert!(endpoint_of("not a url").is_err());
     }
-
 
     // --- End-to-end over real sockets -------------------------------------
     //
@@ -879,7 +877,10 @@ mod tests {
         let diag = resolver::shared().peek("v100", port).unwrap();
         assert!(diag.suppressed_public);
         assert_eq!(diag.selected().map(|a| a.ip()), Some(ip("127.0.0.1")));
-        assert_eq!(response.peer.as_deref(), Some(&*format!("127.0.0.1:{port}")));
+        assert_eq!(
+            response.peer.as_deref(),
+            Some(&*format!("127.0.0.1:{port}"))
+        );
     }
 
     #[tokio::test]
@@ -901,7 +902,11 @@ mod tests {
         .unwrap();
 
         assert_eq!(response.status, 200);
-        assert!(requests.recv().unwrap().to_lowercase().contains("host: v100"));
+        assert!(requests
+            .recv()
+            .unwrap()
+            .to_lowercase()
+            .contains("host: v100"));
     }
 
     #[tokio::test]
@@ -997,7 +1002,9 @@ mod tests {
             .filter_map(|c| match c {
                 StreamChunk::Data { b64 } => Some(
                     String::from_utf8(
-                        base64::engine::general_purpose::STANDARD.decode(b64).unwrap(),
+                        base64::engine::general_purpose::STANDARD
+                            .decode(b64)
+                            .unwrap(),
                     )
                     .unwrap(),
                 ),

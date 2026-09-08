@@ -153,7 +153,8 @@ pub fn discover(store: &Path) -> Vec<SkillEntry> {
     };
     // Keyed by name so a duplicate stem collapses to one entry; BTreeMap also
     // gives the sorted-by-name order for free.
-    let mut by_name: std::collections::BTreeMap<String, SkillEntry> = std::collections::BTreeMap::new();
+    let mut by_name: std::collections::BTreeMap<String, SkillEntry> =
+        std::collections::BTreeMap::new();
     let mut consider = |entry: SkillEntry| {
         match by_name.get(&entry.name) {
             // Keep an existing folder entry over an incoming flat one.
@@ -258,7 +259,6 @@ fn default_jan_skill_meta() -> SkillMeta {
         model_invocable: true,
     }
 }
-
 
 fn meta_for(name: String, parsed: &ParsedSkill) -> SkillMeta {
     SkillMeta {
@@ -419,7 +419,10 @@ mod tests {
     fn discover_finds_folder_and_flat_skills_sorted() {
         let root = std::env::temp_dir().join(format!(
             "jan_skills_test_{}",
-            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
         ));
         let dir = skills_dir(&root);
         std::fs::create_dir_all(dir.join("b_folder")).unwrap();
@@ -435,7 +438,10 @@ mod tests {
     fn write_new_creates_folder_form_read_delete_roundtrip() {
         let root = std::env::temp_dir().join(format!(
             "jan_skills_rt_{}",
-            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
         ));
         write(&root, "deploy", "---\ndescription: d\n---\nbody").unwrap();
         assert!(skills_dir(&root).join("deploy").join("SKILL.md").is_file());
@@ -494,7 +500,11 @@ mod tests {
         write("user_only", "disable-model-invocation: true\n");
 
         let model: Vec<_> = catalog(&root, &[]).into_iter().map(|m| m.name).collect();
-        assert_eq!(model, vec!["both", "model_only", "jan"], "model side: {model:?}");
+        assert_eq!(
+            model,
+            vec!["both", "model_only", "jan"],
+            "model side: {model:?}"
+        );
 
         // Both flags still visible to the management list.
         let all = list_meta(&root);
@@ -518,7 +528,10 @@ mod tests {
     fn catalog_enabled_whitelist_filters() {
         let root = std::env::temp_dir().join(format!(
             "jan_skills_wl_{}",
-            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
         ));
         write(&root, "a", "body a").unwrap();
         write(&root, "b", "body b").unwrap();
@@ -537,14 +550,20 @@ mod tests {
     fn write_existing_flat_stays_flat() {
         let root = std::env::temp_dir().join(format!(
             "jan_skills_flat_{}",
-            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
         ));
         let dir = skills_dir(&root);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("legacy.md"), "old").unwrap();
 
         write(&root, "legacy", "new").unwrap();
-        assert_eq!(std::fs::read_to_string(dir.join("legacy.md")).unwrap(), "new");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("legacy.md")).unwrap(),
+            "new"
+        );
         assert!(!dir.join("legacy").exists());
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -556,7 +575,10 @@ mod tests {
         // an edit isn't swallowed into a flat file the reader ignores.
         let root = std::env::temp_dir().join(format!(
             "jan_skills_both_{}",
-            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+            std::time::SystemTime::UNIX_EPOCH
+                .elapsed()
+                .unwrap()
+                .as_nanos()
         ));
         let dir = skills_dir(&root);
         std::fs::create_dir_all(dir.join("dup")).unwrap();

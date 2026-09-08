@@ -438,15 +438,12 @@ mod tests {
     async fn a_slow_operation_times_out_and_says_so() {
         // Paused clock: the deadline is deterministic, not a real 5s wait.
         let token = Token::new(scope("s1", "r1", "c1"));
-        let outcome: Result<&str, StopReason> = run_with_deadline(
-            &token,
-            Duration::from_secs(5),
-            async {
+        let outcome: Result<&str, StopReason> =
+            run_with_deadline(&token, Duration::from_secs(5), async {
                 tokio::time::sleep(Duration::from_secs(60)).await;
                 "finished"
-            },
-        )
-        .await;
+            })
+            .await;
         assert_eq!(outcome, Err(StopReason::Timeout));
         assert_eq!(token.stopped(), Some(StopReason::Timeout));
         // Not conflated with a user pressing stop.
@@ -473,15 +470,12 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(100)).await;
             watcher.stop(StopReason::Cancelled);
         });
-        let outcome: Result<&str, StopReason> = run_with_deadline(
-            &token,
-            Duration::from_secs(3600),
-            async {
+        let outcome: Result<&str, StopReason> =
+            run_with_deadline(&token, Duration::from_secs(3600), async {
                 tokio::time::sleep(Duration::from_secs(3600)).await;
                 "finished"
-            },
-        )
-        .await;
+            })
+            .await;
         assert_eq!(outcome, Err(StopReason::Cancelled));
     }
 
@@ -645,7 +639,10 @@ mod tests {
         assert_eq!(t.for_tool("web_fetch"), Duration::from_secs(60));
         assert_eq!(t.for_tool("some.mcp.tool"), Duration::from_secs(120));
         // The one that matters: an unknown tool is bounded, not unbounded.
-        assert_eq!(t.for_tool("a_tool_added_next_year"), Duration::from_secs(60));
+        assert_eq!(
+            t.for_tool("a_tool_added_next_year"),
+            Duration::from_secs(60)
+        );
     }
 
     #[test]
@@ -980,8 +977,10 @@ mod ambient_tests {
     #[tokio::test(start_paused = true)]
     async fn an_uninterrupted_backoff_waits_the_whole_delay() {
         let token = Token::new(Scope::new("s1", "r1", ""));
-        let reason =
-            with_current(token, async { sleep_unless_stopped(Duration::from_secs(5)).await }).await;
+        let reason = with_current(token, async {
+            sleep_unless_stopped(Duration::from_secs(5)).await
+        })
+        .await;
         assert_eq!(reason, None, "nothing stopped it, so it slept");
     }
 

@@ -106,7 +106,10 @@ pub fn is_local_hostname(host: &str) -> bool {
     if host.is_empty() {
         return false;
     }
-    if let Ok(ip) = host.trim_matches(|c| c == '[' || c == ']').parse::<IpAddr>() {
+    if let Ok(ip) = host
+        .trim_matches(|c| c == '[' || c == ']')
+        .parse::<IpAddr>()
+    {
         return classify(ip).is_local();
     }
     if !host.contains('.') {
@@ -445,7 +448,10 @@ mod tests {
     fn classification_covers_the_ranges_the_ordering_depends_on() {
         assert_eq!(classify("127.0.0.1".parse().unwrap()), AddrClass::Loopback);
         assert_eq!(classify("::1".parse().unwrap()), AddrClass::Loopback);
-        assert_eq!(classify("100.64.0.1".parse().unwrap()), AddrClass::Tailscale);
+        assert_eq!(
+            classify("100.64.0.1".parse().unwrap()),
+            AddrClass::Tailscale
+        );
         assert_eq!(
             classify("100.127.255.254".parse().unwrap()),
             AddrClass::Tailscale
@@ -457,7 +463,10 @@ mod tests {
         );
         assert_eq!(classify("100.128.0.1".parse().unwrap()), AddrClass::Public);
         assert_eq!(classify("10.0.0.5".parse().unwrap()), AddrClass::PrivateLan);
-        assert_eq!(classify("172.16.0.5".parse().unwrap()), AddrClass::PrivateLan);
+        assert_eq!(
+            classify("172.16.0.5".parse().unwrap()),
+            AddrClass::PrivateLan
+        );
         assert_eq!(classify("172.32.0.5".parse().unwrap()), AddrClass::Public);
         assert_eq!(
             classify("192.168.0.5".parse().unwrap()),

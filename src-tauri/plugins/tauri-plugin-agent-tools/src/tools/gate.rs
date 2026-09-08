@@ -204,7 +204,11 @@ impl NetworkPolicy {
 
 /// Whether `rule` covers `host`: the same name, or a parent domain of it.
 fn covers(rule: &str, host: &str) -> bool {
-    let rule = rule.trim().trim_start_matches("*.").trim_end_matches('.').to_ascii_lowercase();
+    let rule = rule
+        .trim()
+        .trim_start_matches("*.")
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
     if rule.is_empty() {
         return false;
     }
@@ -1185,7 +1189,10 @@ mod tests {
 
         // Inside the authorized repository this is an ordinary write, which
         // the desktop allows without a prompt round-trip.
-        assert_eq!(verdict(repo.join("new.txt")), Decision::Prompt(PromptKind::Write));
+        assert_eq!(
+            verdict(repo.join("new.txt")),
+            Decision::Prompt(PromptKind::Write)
+        );
         // Anywhere else is still an escape, authorization or not.
         assert_eq!(
             verdict(sibling.join("new.txt")),
@@ -1272,8 +1279,7 @@ mod tests {
         let grants = SessionGrants::default();
         // A blanket allow on bash is permission to run commands, not
         // permission to throw away uncommitted work.
-        let perms =
-            ToolPermissions::new(PermissionDefault::Allow, &s(&["bash"]), &[], &[]);
+        let perms = ToolPermissions::new(PermissionDefault::Allow, &s(&["bash"]), &[], &[]);
         for line in [
             "git reset --hard HEAD~1",
             "git clean -fdx",
@@ -1344,7 +1350,11 @@ mod tests {
         let root = unique_root();
         let grants = SessionGrants::default();
         let perms = ToolPermissions::new(PermissionDefault::Allow, &s(&["bash"]), &[], &[]);
-        for line in ["git status", "git log --oneline", "git commit -m 'reset --hard'"] {
+        for line in [
+            "git status",
+            "git log --oneline",
+            "git commit -m 'reset --hard'",
+        ] {
             let d = resolve_decision(
                 lookup("bash").unwrap(),
                 &json!({ "command": line }),
@@ -1482,7 +1492,13 @@ mod security_corpus {
             "secrets/../secrets/keys.txt",
         ] {
             assert_eq!(
-                decide("read", json!({ "path": spelling }), &root, &perms, &NetworkPolicy::open()),
+                decide(
+                    "read",
+                    json!({ "path": spelling }),
+                    &root,
+                    &perms,
+                    &NetworkPolicy::open()
+                ),
                 Decision::HardDeny(DenyReason::Policy),
                 "{spelling} slipped past the deny rule"
             );
@@ -1510,7 +1526,13 @@ mod security_corpus {
         let root = root();
         let perms = ToolPermissions::allow_all();
         assert_eq!(
-            decide("read", json!({ "path": 42 }), &root, &perms, &NetworkPolicy::open()),
+            decide(
+                "read",
+                json!({ "path": 42 }),
+                &root,
+                &perms,
+                &NetworkPolicy::open()
+            ),
             Decision::HardDeny(DenyReason::Resource)
         );
     }
@@ -1528,7 +1550,13 @@ mod security_corpus {
             "ls | xargs rm",
         ] {
             assert_ne!(
-                decide("bash", json!({ "command": command }), &root, &perms, &NetworkPolicy::open()),
+                decide(
+                    "bash",
+                    json!({ "command": command }),
+                    &root,
+                    &perms,
+                    &NetworkPolicy::open()
+                ),
                 Decision::Allow,
                 "{command} was allowed"
             );
@@ -1538,12 +1566,7 @@ mod security_corpus {
     #[test]
     fn a_blanket_bash_allowance_is_not_permission_to_discard_work() {
         let root = root();
-        let perms = ToolPermissions::new(
-            PermissionDefault::Allow,
-            &["bash".to_string()],
-            &[],
-            &[],
-        );
+        let perms = ToolPermissions::new(PermissionDefault::Allow, &["bash".to_string()], &[], &[]);
         let d = decide(
             "bash",
             json!({ "command": "git reset --hard" }),
@@ -1563,15 +1586,16 @@ mod security_corpus {
     fn credential_files_are_refused_without_a_rule_that_names_them() {
         let root = root();
         std::fs::write(root.join(".env"), b"API_KEY=x").unwrap();
-        let perms = ToolPermissions::new(
-            PermissionDefault::Allow,
-            &["read".to_string()],
-            &[],
-            &[],
-        );
+        let perms = ToolPermissions::new(PermissionDefault::Allow, &["read".to_string()], &[], &[]);
         assert!(
             matches!(
-                decide("read", json!({ "path": ".env" }), &root, &perms, &NetworkPolicy::open()),
+                decide(
+                    "read",
+                    json!({ "path": ".env" }),
+                    &root,
+                    &perms,
+                    &NetworkPolicy::open()
+                ),
                 Decision::HardDeny(DenyReason::SecretFile(_))
             ),
             "a blanket read allowance opened .env"
@@ -1585,7 +1609,13 @@ mod security_corpus {
             &[],
         );
         assert_eq!(
-            decide("read", json!({ "path": ".env" }), &root, &named, &NetworkPolicy::open()),
+            decide(
+                "read",
+                json!({ "path": ".env" }),
+                &root,
+                &named,
+                &NetworkPolicy::open()
+            ),
             Decision::Allow
         );
     }
@@ -1596,7 +1626,13 @@ mod security_corpus {
         std::fs::write(root.join("deploy.pem"), b"x").unwrap();
         let perms = ToolPermissions::allow_all();
         assert!(matches!(
-            decide("read", json!({ "path": "deploy.pem" }), &root, &perms, &NetworkPolicy::open()),
+            decide(
+                "read",
+                json!({ "path": "deploy.pem" }),
+                &root,
+                &perms,
+                &NetworkPolicy::open()
+            ),
             Decision::HardDeny(DenyReason::SecretFile(_))
         ));
     }
@@ -1613,7 +1649,13 @@ mod security_corpus {
         };
         for tool in ["web_fetch", "web_search"] {
             assert_eq!(
-                decide(tool, json!({ "url": "https://example.com" }), &root, &perms, &off),
+                decide(
+                    tool,
+                    json!({ "url": "https://example.com" }),
+                    &root,
+                    &perms,
+                    &off
+                ),
                 Decision::HardDeny(DenyReason::NetworkOff),
                 "{tool} left the machine with the network off"
             );

@@ -102,12 +102,7 @@ pub fn load(project_root: Option<&Path>, network_default: Option<bool>) -> Proje
         .unwrap_or(PermissionDefault::Allow);
 
     ProjectPolicy {
-        permissions: ToolPermissions::new(
-            default,
-            &tools.allow,
-            &tools.deny,
-            &tools.allow_write,
-        ),
+        permissions: ToolPermissions::new(default, &tools.allow, &tools.deny, &tools.allow_write),
         network: NetworkPolicy {
             // The project's setting wins over the surface's default, which is
             // the point of writing it down in the repository.

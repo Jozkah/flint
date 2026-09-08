@@ -96,7 +96,9 @@ impl GitOp {
             // `git checkout .` and `git checkout -- path` overwrite the tree.
             "checkout" if rest.iter().any(|a| *a == "." || *a == "--") => GitOp::DiscardWorktree,
             "restore" if !has(&["--staged"]) && !rest.is_empty() => GitOp::DiscardWorktree,
-            "branch" if rest.iter().any(|a| is_short_flag_with(a, &['D'])) || has(&["--delete"]) => {
+            "branch"
+                if rest.iter().any(|a| is_short_flag_with(a, &['D'])) || has(&["--delete"]) =>
+            {
                 GitOp::DeleteBranch
             }
             "update-ref" if rest.iter().any(|a| is_short_flag_with(a, &['d'])) => {
@@ -104,7 +106,11 @@ impl GitOp {
             }
             "rebase" | "filter-branch" | "filter-repo" => GitOp::RewriteHistory,
             "commit" if has(&["--amend"]) => GitOp::RewriteHistory,
-            "reflog" if rest.first().is_some_and(|a| *a == "delete" || *a == "expire") => {
+            "reflog"
+                if rest
+                    .first()
+                    .is_some_and(|a| *a == "delete" || *a == "expire") =>
+            {
                 GitOp::RewriteHistory
             }
             "gc" if rest.iter().any(|a| a.starts_with("--prune")) => GitOp::RewriteHistory,
@@ -546,7 +552,9 @@ fn resource_matches(pattern: &Pattern, resource: &Resource) -> bool {
     let raw = pattern.as_str();
     if let Some(op) = raw.strip_prefix("git:") {
         return match resource {
-            Resource::Command { git, .. } => Pattern::new(op).is_ok_and(|p| p.matches(git.as_str())),
+            Resource::Command { git, .. } => {
+                Pattern::new(op).is_ok_and(|p| p.matches(git.as_str()))
+            }
             _ => false,
         };
     }
@@ -607,7 +615,12 @@ mod tests {
     fn one_file_has_one_spelling() {
         let root = Path::new("/proj");
         let direct = Resource::path("src/a.rs", Some(root));
-        for spelling in ["./src/a.rs", "src/../src/a.rs", "src/./a.rs", "/proj/src/a.rs"] {
+        for spelling in [
+            "./src/a.rs",
+            "src/../src/a.rs",
+            "src/./a.rs",
+            "/proj/src/a.rs",
+        ] {
             assert_eq!(
                 Resource::path(spelling, Some(root)),
                 direct,
@@ -720,7 +733,11 @@ mod tests {
             "add .",
             "diff",
         ] {
-            assert_eq!(git(line), GitOp::Other, "git {line} must not be destructive");
+            assert_eq!(
+                git(line),
+                GitOp::Other,
+                "git {line} must not be destructive"
+            );
         }
     }
 
@@ -778,8 +795,7 @@ mod tests {
 
     #[test]
     fn a_present_but_unreadable_command_is_unknown() {
-        let resources =
-            Resource::for_builtin("bash", &[], false, &json!({"command": 7}), None);
+        let resources = Resource::for_builtin("bash", &[], false, &json!({"command": 7}), None);
         assert!(matches!(resources[0], Resource::Unknown { .. }));
     }
 

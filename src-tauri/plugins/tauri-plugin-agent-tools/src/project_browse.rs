@@ -96,12 +96,22 @@ pub fn is_sensitive_name(name: &str) -> bool {
     if lower == "credentials" || lower == "credentials.json" || lower == "service-account.json" {
         return true;
     }
-    if lower.starts_with("id_rsa") || lower.starts_with("id_ed25519") || lower.starts_with("id_ecdsa")
+    if lower.starts_with("id_rsa")
+        || lower.starts_with("id_ed25519")
+        || lower.starts_with("id_ecdsa")
     {
         return true;
     }
     for ext in [
-        ".pem", ".key", ".p12", ".pfx", ".keystore", ".jks", ".asc", ".gpg", ".kdbx",
+        ".pem",
+        ".key",
+        ".p12",
+        ".pfx",
+        ".keystore",
+        ".jks",
+        ".asc",
+        ".gpg",
+        ".kdbx",
     ] {
         if lower.ends_with(ext) {
             return true;
@@ -565,7 +575,14 @@ mod tests {
 
     #[test]
     fn sensitive_names() {
-        for name in [".env", ".env.local", "id_rsa", "server.pem", "app.key", ".npmrc"] {
+        for name in [
+            ".env",
+            ".env.local",
+            "id_rsa",
+            "server.pem",
+            "app.key",
+            ".npmrc",
+        ] {
             assert!(is_sensitive_name(name), "{name} should be sensitive");
         }
         for name in ["main.rs", "env.ts", "keyboard.tsx", "monkey.md"] {
@@ -579,8 +596,7 @@ mod symlink_laundering_tests {
     use super::*;
 
     fn temp_root(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir()
-            .join(format!("jan-pb-symlink-{}-{tag}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("jan-pb-symlink-{}-{tag}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir

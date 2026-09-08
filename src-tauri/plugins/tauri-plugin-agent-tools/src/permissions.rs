@@ -43,7 +43,10 @@ pub struct ToolPermissions {
 /// A rule that will not parse is dropped rather than guessed at: half a rule
 /// matches unpredictably, which is worse than no rule at all.
 fn compile(patterns: &[String]) -> Vec<ResourceRule> {
-    patterns.iter().filter_map(|p| ResourceRule::parse(p)).collect()
+    patterns
+        .iter()
+        .filter_map(|p| ResourceRule::parse(p))
+        .collect()
 }
 
 impl ToolPermissions {

@@ -343,16 +343,16 @@ pub struct Query {
 
 impl Query {
     fn accepts(&self, r: &PermissionRecord) -> bool {
-        let eq = |want: &Option<String>, have: &str| want.as_ref().is_none_or(|w| w == have);
+        let eq = |want: &Option<String>, have: &str| want.as_ref().map_or(true, |w| w == have);
         eq(&self.session, &r.session)
             && eq(&self.run, &r.run)
             && eq(&self.agent, &r.agent)
             && eq(&self.tool, &r.tool)
-            && self.decision.is_none_or(|d| d == r.decision)
+            && self.decision.map_or(true, |d| d == r.decision)
             && self
                 .resource_contains
                 .as_ref()
-                .is_none_or(|needle| r.resource.contains(needle))
+                .map_or(true, |needle| r.resource.contains(needle))
     }
 }
 
@@ -509,9 +509,22 @@ mod tests {
     #[test]
     fn the_log_answers_questions_rather_than_only_replaying() {
         let dir = temp_dir("query");
-        append(&dir, &record("s1", Outcome::Allow).with_run("r1").with_agent("main"));
-        append(&dir, &record("s1", Outcome::Deny).with_run("r1").with_agent("sub"));
-        append(&dir, &record("s2", Outcome::Deny).with_run("r2").with_agent("main"));
+        append(
+            &dir,
+            &record("s1", Outcome::Allow)
+                .with_run("r1")
+                .with_agent("main"),
+        );
+        append(
+            &dir,
+            &record("s1", Outcome::Deny).with_run("r1").with_agent("sub"),
+        );
+        append(
+            &dir,
+            &record("s2", Outcome::Deny)
+                .with_run("r2")
+                .with_agent("main"),
+        );
 
         let denied_in_s1 = query(
             &dir,

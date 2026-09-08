@@ -503,7 +503,11 @@ mod tests {
     #[test]
     fn the_snapshot_is_the_payload_that_was_sent() {
         let snap = capture(&payload(), &ident());
-        assert_eq!(snap.payload, payload(), "no field may be dropped or reshaped");
+        assert_eq!(
+            snap.payload,
+            payload(),
+            "no field may be dropped or reshaped"
+        );
         assert_eq!(snap.model, "gpt-4o");
         assert_eq!(snap.reasoning, json!({ "effort": "high" }));
         assert_eq!(snap.message_count(), 2);
@@ -521,8 +525,14 @@ mod tests {
     fn the_same_payload_hashes_the_same_however_it_was_built() {
         // Key order must not change the hash, or a retry of an identical
         // payload would look like a different one.
-        let a = capture(&json!({ "a": 1, "b": [1, 2], "c": { "x": true } }), &ident());
-        let b = capture(&json!({ "c": { "x": true }, "b": [1, 2], "a": 1 }), &ident());
+        let a = capture(
+            &json!({ "a": 1, "b": [1, 2], "c": { "x": true } }),
+            &ident(),
+        );
+        let b = capture(
+            &json!({ "c": { "x": true }, "b": [1, 2], "a": 1 }),
+            &ident(),
+        );
         assert_eq!(a.hash, b.hash);
         // ...and ids are still distinct, so two dispatches are two records.
         assert_ne!(a.id, b.id);
@@ -596,7 +606,9 @@ mod tests {
             }),
             &ident(),
         );
-        assert!(!serde_json::to_string(&snap).unwrap().contains("Bearer secret"));
+        assert!(!serde_json::to_string(&snap)
+            .unwrap()
+            .contains("Bearer secret"));
         assert!(!snap.redactions.is_empty());
     }
 
@@ -680,15 +692,19 @@ pub fn scoped_lookup(
 ) -> Result<Vec<PromptSnapshot>, String> {
     if let Some(id) = snapshot_id {
         if session.is_none() && run.is_none() {
-            return Err("a snapshot must be requested with the session or run it belongs to".into());
+            return Err(
+                "a snapshot must be requested with the session or run it belongs to".into(),
+            );
         }
         let Some(found) = find(data_folder, id) else {
             return Ok(Vec::new());
         };
-        let in_scope = session.is_none_or(|s| found.session == s)
-            && run.is_none_or(|r| found.run == r);
+        let in_scope =
+            session.map_or(true, |s| found.session == s) && run.map_or(true, |r| found.run == r);
         if !in_scope {
-            return Err("a snapshot must be requested with the session or run it belongs to".into());
+            return Err(
+                "a snapshot must be requested with the session or run it belongs to".into(),
+            );
         }
         return Ok(vec![found]);
     }

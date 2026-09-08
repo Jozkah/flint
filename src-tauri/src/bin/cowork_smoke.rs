@@ -2181,10 +2181,7 @@ fn scenario_prompt_snapshot(ctx: &Ctx) -> ScenarioResult {
         "return document.querySelector('[data-testid=\"prompt-snapshot\"]').textContent;",
     )?;
     for secret in ["smoke-not-a-real-key", "Bearer ", "sk-"] {
-        ensure!(
-            !panel.contains(secret),
-            "the panel exposed {secret:?}"
-        );
+        ensure!(!panel.contains(secret), "the panel exposed {secret:?}");
     }
     Ok(())
 }
@@ -2239,10 +2236,7 @@ fn scenario_tool_activity(ctx: &Ctx) -> ScenarioResult {
     if card.is_err() {
         // Which half failed matters: a model that never asked for a tool and a
         // dispatcher that never ran one look identical in the DOM.
-        println!(
-            "      events on disk: {}",
-            activity_events(ctx).len()
-        );
+        println!("      events on disk: {}", activity_events(ctx).len());
         println!(
             "      transcript: {}",
             ctx.eval_string("return (document.body.innerText || '').slice(0, 700);")
@@ -2268,7 +2262,9 @@ fn scenario_tool_activity(ctx: &Ctx) -> ScenarioResult {
     let fresh = &events[before.len()..];
     for phase in ["requested", "running"] {
         ensure!(
-            fresh.iter().any(|e| e.contains(&format!("\"phase\":\"{phase}\""))),
+            fresh
+                .iter()
+                .any(|e| e.contains(&format!("\"phase\":\"{phase}\""))),
             "no {phase} event was recorded"
         );
     }
@@ -2435,8 +2431,7 @@ fn scenario_provider_error(ctx: &Ctx) -> ScenarioResult {
              globalThis.__toastLog.length = 0;
              return true;",
         )?;
-        let toast_present =
-            "return (globalThis.__toastLog || []).some(t => t.includes('403'));";
+        let toast_present = "return (globalThis.__toastLog || []).some(t => t.includes('403'));";
         let mut pressed = false;
         for _ in 0..4 {
             let clicked = ctx.eval_bool(
@@ -2470,9 +2465,7 @@ fn scenario_provider_error(ctx: &Ctx) -> ScenarioResult {
         {
             // Say what did appear. "No toast mentioning 403" and "a toast
             // saying the refresh succeeded" are different defects.
-            let seen = ctx.eval_string(
-                "return JSON.stringify(globalThis.__toastLog || []);",
-            )?;
+            let seen = ctx.eval_string("return JSON.stringify(globalThis.__toastLog || []);")?;
             bail!("no toast mentioned 403; toasts seen: {seen}");
         }
 
@@ -2801,7 +2794,9 @@ fn scenario_no_setup_wall(ctx: &Ctx) -> ScenarioResult {
 
     // The details are still reachable, and they carry the information that was
     // taken out of the conversation.
-    ctx.eval("document.querySelector('[data-testid=\"session-details-trigger\"]').click(); return true;")?;
+    ctx.eval(
+        "document.querySelector('[data-testid=\"session-details-trigger\"]').click(); return true;",
+    )?;
     ctx.wait_until(
         "the session details",
         "return !!document.querySelector('[data-testid=\"session-details-body\"]');",
@@ -2966,7 +2961,10 @@ fn scenario_cowork_search_and_settings(ctx: &Ctx) -> ScenarioResult {
                && b.getAttribute('aria-pressed') === 'true')
              || !!document.querySelector('[data-testid=\"cowork-diff-panel\"]');",
         )?;
-        ensure!(still, "the open rail was lost on the way back from Settings");
+        ensure!(
+            still,
+            "the open rail was lost on the way back from Settings"
+        );
     }
     Ok(())
 }
@@ -3208,7 +3206,10 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
             // Whatever ran before left the page unresponsive. Say so against
             // the scenario that inherits it, so a cascade is never read as a
             // string of unrelated defects.
-            println!("      (recovered a wedged WebView before {})", scenario.name);
+            println!(
+                "      (recovered a wedged WebView before {})",
+                scenario.name
+            );
             wedged.push(scenario.name);
         }
         // Up to three attempts. The WebView stalls for tens of seconds while

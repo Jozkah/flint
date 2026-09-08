@@ -111,9 +111,9 @@ pub fn scoped_lookup(
     Ok(read_all(data_folder)
         .into_iter()
         .filter(|record| {
-            invocation.is_none_or(|id| record.invocation == id)
-                && run.is_none_or(|id| record.run == id)
-                && session.is_none_or(|id| record.session == id)
+            invocation.map_or(true, |id| record.invocation == id)
+                && run.map_or(true, |id| record.run == id)
+                && session.map_or(true, |id| record.session == id)
         })
         .collect())
 }
@@ -131,8 +131,7 @@ pub fn latest_for(data_folder: &Path, invocation: &str) -> Option<PayloadUsage> 
         let better = match &best {
             None => true,
             Some(current) => {
-                current.source == UsageSource::Estimated
-                    || record.source == UsageSource::Provider
+                current.source == UsageSource::Estimated || record.source == UsageSource::Provider
             }
         };
         if better {
@@ -143,10 +142,7 @@ pub fn latest_for(data_folder: &Path, invocation: &str) -> Option<PayloadUsage> 
 }
 
 /// Build a record, stamped now.
-pub fn record(
-    invocation: impl Into<String>,
-    source: UsageSource,
-) -> PayloadUsage {
+pub fn record(invocation: impl Into<String>, source: UsageSource) -> PayloadUsage {
     PayloadUsage {
         version: SCHEMA_VERSION,
         at: now(),
@@ -217,7 +213,10 @@ mod tests {
         append(&dir, &seed("i1", UsageSource::Provider, 137));
         append(&dir, &seed("i1", UsageSource::Estimated, 120));
 
-        assert_eq!(latest_for(&dir, "i1").unwrap().source, UsageSource::Provider);
+        assert_eq!(
+            latest_for(&dir, "i1").unwrap().source,
+            UsageSource::Provider
+        );
     }
 
     #[test]

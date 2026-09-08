@@ -101,9 +101,8 @@ impl BashJob {
             }
             Err(oneshot::error::TryRecvError::Empty) => false,
             Err(oneshot::error::TryRecvError::Closed) => {
-                self.output = Some(
-                    "ERROR: background command ended without producing output".to_string(),
-                );
+                self.output =
+                    Some("ERROR: background command ended without producing output".to_string());
                 self.rx = None;
                 true
             }
@@ -176,7 +175,12 @@ pub fn list_bash_jobs() -> Vec<BashJobStatus> {
         })
         .collect();
     // Newest first: job ids are a monotonic `bash-N`.
-    out.sort_by(|a, b| b.job_id.len().cmp(&a.job_id.len()).then(b.job_id.cmp(&a.job_id)));
+    out.sort_by(|a, b| {
+        b.job_id
+            .len()
+            .cmp(&a.job_id.len())
+            .then(b.job_id.cmp(&a.job_id))
+    });
     out
 }
 
@@ -329,7 +333,10 @@ pub async fn execute_builtin(
     // `bash` keeps its own inner deadline: it owns a process tree and has to
     // kill it, which the generic wrapper cannot do. The wrapper is still the
     // outer bound, so a bash call whose own handling stalls is not exempt.
-    let token = ctx.cancel.clone().unwrap_or_else(crate::lifecycle::Token::detached);
+    let token = ctx
+        .cancel
+        .clone()
+        .unwrap_or_else(crate::lifecycle::Token::detached);
     let limit = crate::lifecycle::Timeouts::default().for_tool(tool.name);
 
     let work = async {
@@ -492,7 +499,11 @@ pub async fn execute_builtin_with_diff(
                     let where_ = findings
                         .iter()
                         .map(|f| {
-                            let file = if f.file.is_empty() { "the file" } else { &f.file };
+                            let file = if f.file.is_empty() {
+                                "the file"
+                            } else {
+                                &f.file
+                            };
                             format!("{} line {} ({})", file, f.line, f.kind.as_str())
                         })
                         .collect::<Vec<_>>()
@@ -1226,9 +1237,7 @@ async fn await_bash_job(job_id: &str) -> String {
         Collect::Awaiting(rx) => rx.await.unwrap_or_else(|_| {
             "ERROR: background command ended without producing output".to_string()
         }),
-        Collect::Drained => {
-            "ERROR: background command ended without producing output".to_string()
-        }
+        Collect::Drained => "ERROR: background command ended without producing output".to_string(),
         Collect::Unknown => {
             return format!("ERROR: unknown or already-collected job_id '{job_id}'")
         }
@@ -1973,7 +1982,6 @@ fn truncate_line(line: &str) -> String {
     }
 }
 
-
 #[cfg(test)]
 mod bash_job_registry_tests {
     use super::*;
@@ -2066,12 +2074,17 @@ mod bash_job_registry_tests {
             .find(|j| j.job_id == "bash-collect-live")
             .expect("a job being collected is still a job");
         assert!(!job.finished, "it is still running");
-        assert_eq!(kill_bash_job("bash-collect-live").outcome, BashJobKillOutcome::Killed);
+        assert_eq!(
+            kill_bash_job("bash-collect-live").outcome,
+            BashJobKillOutcome::Killed
+        );
 
         tx.send("built".to_string()).unwrap();
         assert_eq!(collector.await.unwrap(), "built");
         // Collected: now it is gone.
-        assert!(!list_bash_jobs().iter().any(|j| j.job_id == "bash-collect-live"));
+        assert!(!list_bash_jobs()
+            .iter()
+            .any(|j| j.job_id == "bash-collect-live"));
     }
 
     #[tokio::test]
@@ -2099,7 +2112,9 @@ mod bash_job_registry_tests {
         let killed = kill_bash_job("bash-kill-nopid");
         assert_eq!(killed.outcome, BashJobKillOutcome::NoPid);
         // Still listed: nothing was signalled, so nothing has stopped.
-        assert!(list_bash_jobs().iter().any(|j| j.job_id == "bash-kill-nopid"));
+        assert!(list_bash_jobs()
+            .iter()
+            .any(|j| j.job_id == "bash-kill-nopid"));
         let _ = bash_jobs().lock().unwrap().remove("bash-kill-nopid");
     }
 
@@ -2196,7 +2211,9 @@ mod bash_job_registry_tests {
         let tx = park("bash-twice", "echo x");
         tx.send("x".to_string()).unwrap();
         assert_eq!(await_bash_job("bash-twice").await, "x");
-        assert!(await_bash_job("bash-twice").await.contains("already-collected"));
+        assert!(await_bash_job("bash-twice")
+            .await
+            .contains("already-collected"));
     }
 }
 
@@ -3556,7 +3573,10 @@ mod tests {
         )
         .await;
         assert!(out.starts_with("ERROR"), "{out}");
-        assert!(out.contains("partial"), "partial output must survive: {out}");
+        assert!(
+            out.contains("partial"),
+            "partial output must survive: {out}"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
