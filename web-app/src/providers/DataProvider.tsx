@@ -8,14 +8,11 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { useEffect, useRef } from 'react'
 import { useMCPServers, DEFAULT_MCP_SETTINGS } from '@/hooks/useMCPServers'
 import { useAssistant } from '@/hooks/useAssistant'
-import { useNavigate } from '@tanstack/react-router'
-import { route } from '@/constants/routes'
 import { useThreads } from '@/hooks/useThreads'
 import { ExtensionManager } from '@/lib/extension'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { useAppState } from '@/hooks/useAppState'
 import { AppEvent, events } from '@janhq/core'
-import { SystemEvent } from '@/types/events'
 import { sweepThreadWorkspaces } from '@/lib/agentTools'
 import { invoke } from '@tauri-apps/api/core'
 import { providerHasRemoteApiKeys, providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
@@ -186,7 +183,6 @@ export function DataProvider() {
   // The thread fetch re-runs on extension re-registration; the sandbox sweep
   // should not.
   const sweptWorkspaces = useRef(false)
-  const navigate = useNavigate()
   const serviceHub = useServiceHub()
 
   // Local API Server hooks
@@ -252,31 +248,9 @@ export function DataProvider() {
       .catch((error) => {
         console.warn('Failed to load assistants, keeping default:', error)
       })
-    serviceHub.deeplink().getCurrent().then(handleDeepLink)
-
-    let unsubscribeOpenUrl = () => {}
-    serviceHub
-      .deeplink()
-      .onOpenUrl(handleDeepLink)
-      .then((unsub) => {
-        unsubscribeOpenUrl = unsub
-      })
-
-    // Listen for deep link events
-    let unsubscribe = () => {}
-    serviceHub
-      .events()
-      .listen(SystemEvent.DEEP_LINK, (event) => {
-        const deep_link = event.payload as string
-        handleDeepLink([deep_link])
-      })
-      .then((unsub) => {
-        unsubscribe = unsub
-      })
-    return () => {
-      unsubscribeOpenUrl()
-      unsubscribe()
-    }
+    // No deep-link handling. Its only destination was the model Hub, which
+    // took a remote repository id from the URL -- an entry point for exactly
+    // the remote model discovery this build does not do.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceHub])
 
@@ -451,28 +425,6 @@ export function DataProvider() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceHub])
-
-  const handleDeepLink = (urls: string[] | null) => {
-    if (!urls) return
-    console.log('Received deeplink:', urls)
-    const deeplink = urls[0]
-    if (deeplink) {
-      const url = new URL(deeplink)
-      const params = url.pathname.split('/').filter((str) => str.length > 0)
-
-      if (params.length < 3) return undefined
-      // const action = params[0]
-      // const provider = params[1]
-      const resource = params.slice(1).join('/')
-      // return { action, provider, resource }
-      navigate({
-        to: route.hub.model,
-        search: {
-          repo: resource,
-        },
-      })
-    }
-  }
 
   return null
 }

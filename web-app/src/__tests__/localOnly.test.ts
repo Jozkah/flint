@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs'
 import { join, resolve, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -98,5 +98,76 @@ describe('no vendor services', () => {
 
   it('sends no vendor referer header', () => {
     expect(filesMatching(/HTTP-Referer/i)).toEqual([])
+  })
+})
+
+describe('no remote model discovery', () => {
+  it('defines no model-catalog endpoint at build time', () => {
+    const vite = read(resolve(REPO, 'web-app/vite.config.ts'))
+    expect(vite).not.toMatch(/MODEL_CATALOG_URL|LATEST_JAN_MODEL_URL/)
+  })
+
+  it('queries no huggingface model or account API', () => {
+    // Hugging Face survives in `constants/providers.ts` as an OpenAI-compatible
+    // provider the user configures with their own key and base URL, the same as
+    // OpenAI or Anthropic. What must not come back is the app calling Hugging
+    // Face on its own account: the model API it browsed catalogs with, and the
+    // whoami endpoint the download token was validated against.
+    expect(filesMatching(/huggingface\.co\/api\//)).toEqual([])
+    expect(filesMatching(/huggingface\.co\/[^\s'"`]*\/resolve\//)).toEqual([])
+  })
+
+  it('reads no vendor model catalog', () => {
+    expect(filesMatching(/model-catalog|model_catalog_v2|latest_jan_model/)).toEqual(
+      []
+    )
+  })
+
+  it('names no vendor model repository', () => {
+    expect(filesMatching(/janhq\/Jan-/)).toEqual([])
+  })
+
+  it('ships no model hub route', () => {
+    expect(existsSync(resolve(SRC, 'routes/hub'))).toBe(false)
+  })
+})
+
+describe('no model downloading', () => {
+  it('exposes no download method on the models service', () => {
+    const service = read(resolve(SRC, 'services/models/types.ts'))
+    expect(service).not.toMatch(
+      /pullModelWithMetadata|abortDownload|pauseDownload/
+    )
+  })
+
+  it('still imports a model file the user already has', () => {
+    // The one path a model may take into the app. Its removal would leave the
+    // build with no way to add a model at all, so it is guarded here rather
+    // than only in the dialog's own tests.
+    const service = read(resolve(SRC, 'services/models/types.ts'))
+    expect(service).toMatch(/pullModel\(/)
+    expect(
+      existsSync(resolve(SRC, 'containers/dialogs/ImportLlamacppModelDialog.tsx'))
+    ).toBe(true)
+  })
+
+  it('offers the local importer on first run, and downloads nothing', () => {
+    const setup = read(resolve(SRC, 'containers/SetupScreen.tsx'))
+    expect(setup).toMatch(/ImportLlamacppModelDialog/)
+    // Asserting on calls, not on the word: prose explaining that nothing is
+    // downloaded is the opposite of a regression.
+    expect(setup).not.toMatch(/pullModelWithMetadata|useDownloadStore|fetch\(/)
+  })
+})
+
+describe('no analytics service', () => {
+  it('keeps no analytics service in the service hub', () => {
+    const hub = read(resolve(SRC, 'services/index.ts'))
+    expect(hub).not.toMatch(/analytic/i)
+  })
+
+  it('declares no google analytics globals', () => {
+    const globals = read(resolve(SRC, 'types/global.d.ts'))
+    expect(globals).not.toMatch(/gtag|dataLayer|GA_MEASUREMENT_ID/)
   })
 })

@@ -17,15 +17,8 @@ declare global {
   declare const IS_ANDROID: boolean
   declare const PLATFORM: string
   declare const VERSION: string
-  declare const MODEL_CATALOG_URL: string
-  declare const LATEST_JAN_MODEL_URL: string
-  declare const AUTO_UPDATER_DISABLED: boolean
-  declare const UPDATE_CHECK_INTERVAL_MS: number
-  declare const GA_MEASUREMENT_ID: string
   declare const IS_DEV: boolean
   interface Window {
     core: AppCore | undefined
-    gtag?: (...args: unknown[]) => void
-    dataLayer?: unknown[]
   }
 }

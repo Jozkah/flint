@@ -1,17 +1,5 @@
 {
   "description": "Download the recommended model to start chatting, or browse the Hub for another one.",
-  "quickStartFailed": "Something went wrong. Please try again.",
-  "exploreHub": "Browse other models in the Hub",
-  "download": "Download",
-  "modelInstalled": "Installed",
-  "capabilityGeneral": "General",
-  "capabilityMultimodal": "Multimodal",
-  "fallbackModelName": "Jan Model",
-  "stageModel": "Your first model",
-  "checkModelResolving": "Finding the recommended model...",
-  "checkModelWaiting": "{{model}} ({{size}}) ready to download",
-  "checkModelDownloading": "Downloading {{model}}...",
-  "checkModelReady": "{{model}} is ready",
   "stageChecking": "Checking...",
   "checkSystemGpu": "{{gpus}}, driver {{driver}}",
   "checkSystemGpuNoDriver": "{{gpus}}",
@@ -49,5 +37,11 @@
   "otherWarnings": "{{count}} other checks also need attention.",
   "continueStep": "Continue",
   "stageSetupDone": "Engine ready",
-  "setupDoneBody": "Jan will run local models with llama.cpp."
+  "setupDoneBody": "Jan will run local models with llama.cpp.",
+  "title": "Set up",
+  "localOnlyTitle": "Add a model to get started",
+  "localOnlyDesc": "This build runs entirely on your machine. It does not browse or download models, so pick a GGUF file you already have.",
+  "importLocalModel": "Import a model file",
+  "noLocalEngine": "The local llama.cpp engine is unavailable, so no model can be imported.",
+  "importedModel": "Imported {{name}}."
 }

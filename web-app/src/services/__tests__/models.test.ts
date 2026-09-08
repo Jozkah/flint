@@ -59,23 +59,6 @@ describe('DefaultModelsService', () => {
     })
   })
 
-  describe('fetchModelCatalog', () => {
-    it('should fetch model catalog successfully', async () => {
-      const mockCatalog = [{ model_name: 'GPT-4', description: 'LLM' }]
-      ;(fetch as any).mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue(mockCatalog) })
-      expect(await modelsService.fetchModelCatalog()).toEqual(mockCatalog)
-    })
-
-    it('should handle fetch error', async () => {
-      ;(fetch as any).mockResolvedValue({ ok: false, status: 404, statusText: 'Not Found' })
-      await expect(modelsService.fetchModelCatalog()).rejects.toThrow('Failed to fetch model catalog: 404 Not Found')
-    })
-
-    it('should handle network error', async () => {
-      ;(fetch as any).mockRejectedValue(new Error('Network error'))
-      await expect(modelsService.fetchModelCatalog()).rejects.toThrow('Failed to fetch model catalog: Network error')
-    })
-  })
 
   describe('updateModel', () => {
     it.each([
@@ -100,16 +83,6 @@ describe('DefaultModelsService', () => {
     })
   })
 
-  describe('abortDownload', () => {
-    it('should abort download and emit event', async () => {
-      await modelsService.abortDownload('model1')
-      expect(mockEngine.abortImport).toHaveBeenCalledWith('model1')
-      expect(events.emit).toHaveBeenCalledWith(
-        DownloadEvent.onFileDownloadStopped,
-        expect.objectContaining({ modelId: 'model1', downloadType: 'Model' })
-      )
-    })
-  })
 
   describe('deleteModel', () => {
     it('should delete model', async () => {
@@ -176,171 +149,7 @@ describe('DefaultModelsService', () => {
     })
   })
 
-  describe('fetchHuggingFaceRepo', () => {
-    beforeEach(() => { vi.clearAllMocks() })
 
-    it('should fetch HuggingFace repo with blobs=true', async () => {
-      const mockRepoData = { modelId: 'microsoft/DialoGPT-medium', siblings: [] }
-      ;(fetch as any).mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue(mockRepoData) })
-
-      const result = await modelsService.fetchHuggingFaceRepo('microsoft/DialoGPT-medium')
-      expect(result).toEqual(mockRepoData)
-      expect(fetch).toHaveBeenCalledWith(
-        'https://huggingface.co/api/models/microsoft/DialoGPT-medium?blobs=true&files_metadata=true',
-        { headers: {} }
-      )
-    })
-
-    it.each([
-      ['full URL', 'https://huggingface.co/microsoft/DialoGPT-medium'],
-      ['domain prefix', 'huggingface.co/microsoft/DialoGPT-medium'],
-      ['trailing slash', 'microsoft/DialoGPT-medium/'],
-    ])('should clean %s input format', async (_label, input) => {
-      ;(fetch as any).mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue({}) })
-      await modelsService.fetchHuggingFaceRepo(input)
-      expect(fetch).toHaveBeenCalledWith(
-        'https://huggingface.co/api/models/microsoft/DialoGPT-medium?blobs=true&files_metadata=true',
-        { headers: {} }
-      )
-    })
-
-    it.each(['', 'invalid-repo', '   '])('should return null for invalid input "%s"', async (input) => {
-      expect(await modelsService.fetchHuggingFaceRepo(input)).toBeNull()
-    })
-
-    it('should return null for 404', async () => {
-      ;(fetch as any).mockResolvedValue({ ok: false, status: 404, statusText: 'Not Found' })
-      expect(await modelsService.fetchHuggingFaceRepo('nonexistent/model')).toBeNull()
-    })
-
-    it.each([
-      ['HTTP 500', () => (fetch as any).mockResolvedValue({ ok: false, status: 500, statusText: 'Error' })],
-      ['network error', () => (fetch as any).mockRejectedValue(new Error('Network error'))],
-    ])('should return null and log error on %s', async (_label, setupMock) => {
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-      setupMock()
-      expect(await modelsService.fetchHuggingFaceRepo('microsoft/DialoGPT-medium')).toBeNull()
-      expect(consoleSpy).toHaveBeenCalledWith('Error fetching HuggingFace repository:', expect.any(Error))
-      consoleSpy.mockRestore()
-    })
-
-    it.each([
-      ['no siblings', { siblings: undefined }],
-      ['no GGUF files', { siblings: [{ rfilename: 'README.md', size: 1024, blobId: 'b1' }] }],
-      ['mixed files', { siblings: [{ rfilename: 'model.gguf', size: 2147483648, blobId: 'b1' }, { rfilename: 'README.md', size: 1024, blobId: 'b2' }] }],
-    ])('should handle repo with %s', async (_label, overrides) => {
-      const mockRepoData = { id: 'microsoft/DialoGPT-medium', ...overrides }
-      ;(fetch as any).mockResolvedValue({ ok: true, json: vi.fn().mockResolvedValue(mockRepoData) })
-      const result = await modelsService.fetchHuggingFaceRepo('microsoft/DialoGPT-medium')
-      expect(result).toEqual(mockRepoData)
-    })
-  })
-
-  describe('convertHfRepoToCatalogModel', () => {
-    const baseRepo: HuggingFaceRepo = {
-      id: 'microsoft/DialoGPT-medium',
-      modelId: 'microsoft/DialoGPT-medium',
-      sha: 'abc123',
-      downloads: 1500,
-      likes: 75,
-      tags: ['pytorch', 'transformers', 'text-generation'],
-      pipeline_tag: 'text-generation',
-      createdAt: '2021-01-01T00:00:00Z',
-      last_modified: '2021-12-01T00:00:00Z',
-      private: false,
-      disabled: false,
-      library_name: 'mlx',
-      gated: false,
-      author: 'microsoft',
-      siblings: [
-        { rfilename: 'model-q4_0.gguf', size: 2 * 1024 * 1024 * 1024, blobId: 'blob123' },
-        { rfilename: 'model-q8_0.GGUF', size: 4 * 1024 * 1024 * 1024, blobId: 'blob456' },
-        { rfilename: 'tokenizer.json', size: 1024 * 1024, blobId: 'blob789' },
-      ],
-    }
-
-    it('should convert HuggingFace repo to catalog model', () => {
-      const result = modelsService.convertHfRepoToCatalogModel(baseRepo)
-      expect(result.model_name).toBe('microsoft/DialoGPT-medium')
-      expect(result.developer).toBe('microsoft')
-      expect(result.downloads).toBe(1500)
-      expect(result.num_quants).toBe(2)
-      expect(result.is_mlx).toBe(true)
-      expect(result.quants[0]).toMatchObject({ model_id: 'microsoft/model-q4_0', file_size: '2.0 GB' })
-      expect(result.quants[1]).toMatchObject({ model_id: 'microsoft/model-q8_0', file_size: '4.0 GB' })
-      expect(result.quants[0].path).toContain('/resolve/main/model-q4_0.gguf')
-      expect(result.readme).toContain('/resolve/main/README.md')
-    })
-
-    it.each([
-      ['no GGUF files', { siblings: [{ rfilename: 'tokenizer.json', size: 1024, blobId: 'b1' }] }],
-      ['no siblings', { siblings: undefined }],
-    ])('should handle repo with %s', (_label, overrides) => {
-      const result = modelsService.convertHfRepoToCatalogModel({ ...baseRepo, ...overrides } as any)
-      expect(result.num_quants).toBe(0)
-      expect(result.quants).toEqual([])
-    })
-
-    it('should format file sizes correctly', () => {
-      const repo = {
-        ...baseRepo,
-        siblings: [
-          { rfilename: 'small.gguf', size: 500 * 1024 * 1024, blobId: 'b1' },
-          { rfilename: 'large.gguf', size: 3.5 * 1024 * 1024 * 1024, blobId: 'b2' },
-          { rfilename: 'unknown.gguf', blobId: 'b3' },
-        ],
-      }
-      const result = modelsService.convertHfRepoToCatalogModel(repo as any)
-      expect(result.quants[0].file_size).toBe('500.0 MB')
-      expect(result.quants[1].file_size).toBe('3.5 GB')
-      expect(result.quants[2].file_size).toBe('Unknown size')
-    })
-
-    it('should handle edge cases', () => {
-      const repo = {
-        ...baseRepo,
-        tags: [],
-        downloads: undefined as any,
-        siblings: [
-          { rfilename: 'tiny.gguf', size: 512, blobId: 'b1' },
-          { rfilename: 'exactly-1gb.gguf', size: 1024 * 1024 * 1024, blobId: 'b2' },
-          { rfilename: 'zero.gguf', size: 0, blobId: 'b3' },
-        ],
-      }
-      const result = modelsService.convertHfRepoToCatalogModel(repo as any)
-      expect(result.description).toBe('**Tags**: ')
-      expect(result.downloads).toBe(0)
-      expect(result.quants[0].file_size).toBe('0.0 MB')
-      expect(result.quants[1].file_size).toBe('1.0 GB')
-      expect(result.quants[2].file_size).toBe('Unknown size')
-    })
-
-    it('should handle case-insensitive GGUF matching', () => {
-      const repo = {
-        ...baseRepo,
-        siblings: [
-          { rfilename: 'a.gguf', size: 1024, blobId: 'b1' },
-          { rfilename: 'b.GGUF', size: 1024, blobId: 'b2' },
-          { rfilename: 'c.GgUf', size: 1024, blobId: 'b3' },
-          { rfilename: 'not.txt', size: 1024, blobId: 'b4' },
-        ],
-      }
-      const result = modelsService.convertHfRepoToCatalogModel(repo as any)
-      expect(result.num_quants).toBe(3)
-    })
-
-    it('should handle minimal repo', () => {
-      const minimal: HuggingFaceRepo = {
-        id: 'minimal/repo', modelId: 'minimal/repo', sha: 'abc', downloads: 0, likes: 0,
-        tags: [], createdAt: '2021-01-01T00:00:00Z', last_modified: '2021-12-01T00:00:00Z',
-        private: false, disabled: false, gated: false, author: 'minimal',
-        siblings: [{ rfilename: 'model.gguf', blobId: 'b1' }],
-      }
-      const result = modelsService.convertHfRepoToCatalogModel(minimal)
-      expect(result.model_name).toBe('minimal/repo')
-      expect(result.quants[0].file_size).toBe('Unknown size')
-    })
-  })
 
   describe('isModelSupported', () => {
     beforeEach(() => { vi.clearAllMocks() })

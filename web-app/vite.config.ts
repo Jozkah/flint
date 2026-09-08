@@ -111,19 +111,9 @@ export default defineConfig(({ mode }) => {
 
       VERSION: JSON.stringify(packageJson.version),
 
-      GA_MEASUREMENT_ID: JSON.stringify(env.GA_MEASUREMENT_ID),
-      MODEL_CATALOG_URL: JSON.stringify(
-        'https://raw.githubusercontent.com/janhq/model-catalog/main/model_catalog_v2.json'
-      ),
-      LATEST_JAN_MODEL_URL: JSON.stringify(
-        'https://raw.githubusercontent.com/janhq/model-catalog/main/latest_jan_model.json'
-      ),
-      AUTO_UPDATER_DISABLED: JSON.stringify(
-        env.AUTO_UPDATER_DISABLED === 'true'
-      ),
-      UPDATE_CHECK_INTERVAL_MS: JSON.stringify(
-        Number(env.UPDATE_CHECK_INTERVAL_MS) || 60 * 60 * 1000
-      ),
+      // No analytics id, no model-catalog endpoints and no update interval:
+      // this build talks to nothing. A model arrives only by the user pointing
+      // the importer at a file they already have.
     },
 
     // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

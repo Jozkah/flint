@@ -4,7 +4,6 @@
   "descriptionWeb": "Per iniziare, dovrai connetterti a un modello cloud utilizzando una chiave API",
   "quickStart": "Avvio rapido con un modello Jan",
   "quickStartDescription": "Nessuna configurazione richiesta",
-  "quickStartFailed": "Qualcosa è andato storto. Riprova.",
   "downloading": "Download del modello Jan in corso...",
   "downloadingDescription": "Attendi il download del modello. L'operazione potrebbe richiedere alcuni minuti.",
   "orDivider": "oppure",

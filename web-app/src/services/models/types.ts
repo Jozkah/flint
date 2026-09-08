@@ -109,14 +109,13 @@ export type PreflightReason =
 export interface ModelsService {
   getModel(modelId: string): Promise<modelInfo | undefined>
   fetchModels(): Promise<modelInfo[]>
-  fetchModelCatalog(): Promise<ModelCatalog>
-  fetchLatestJanModel(): Promise<CatalogModel | null>
-  fetchHuggingFaceRepo(
-    repoId: string,
-    hfToken?: string
-  ): Promise<HuggingFaceRepo | null>
-  convertHfRepoToCatalogModel(repo: HuggingFaceRepo): CatalogModel
   updateModel(modelId: string, model: Partial<CoreModel>): Promise<void>
+  /**
+   * Imports a model file that is already on this machine.
+   *
+   * The only way a model enters the app now that remote discovery and
+   * downloading are gone: the user picks a `.gguf` they already have.
+   */
   pullModel(
     id: string,
     modelPath: string,
@@ -128,17 +127,6 @@ export interface ModelsService {
     specDraftPath?: string,
     specDraftKind?: SpecDraftKind
   ): Promise<void>
-  pullModelWithMetadata(
-    id: string,
-    modelPath: string,
-    mmprojPath?: string,
-    hfToken?: string,
-    skipVerification?: boolean,
-    specDraftPath?: string,
-    specDraftKind?: SpecDraftKind
-  ): Promise<void>
-  abortDownload(id: string): Promise<void>
-  pauseDownload(id: string): Promise<void>
   deleteModel(id: string, provider?: string): Promise<void>
   getActiveModels(provider?: string): Promise<string[]>
   stopModel(model: string, provider?: string): Promise<UnloadResult | undefined>

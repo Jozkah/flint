@@ -30,7 +30,6 @@ import {
   SettingsIcon,
   type SettingsIconHandle,
 } from '@/components/animated-icon/settings'
-import { BlocksIcon, type BlocksIconHandle } from '../animated-icon/blocks'
 import {
   BotIcon,
   type BotIconHandle,
@@ -49,7 +48,6 @@ type AnimatedIconHandle =
   | FolderPlusIconHandle
   | MessageCircleIconHandle
   | SettingsIconHandle
-  | BlocksIconHandle
   | BotIconHandle
 
 type NavMainItem = {
@@ -133,11 +131,6 @@ const getNavMainItems = (
         <Kbd className="bg-transparent size-3 uppercase">{PlatformShortcuts[ShortcutAction.SEARCH].key} </Kbd>
       </KbdGroup>
     ),
-  },
-  {
-    title: 'common:hub',
-    url: route.hub.index,
-    animatedIcon: BlocksIcon,
   },
   {
     title: 'common:settings',

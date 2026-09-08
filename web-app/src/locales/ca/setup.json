@@ -4,7 +4,6 @@
   "descriptionWeb": "Per començar necessites connectar-te a un model al núvol amb una clau API.",
   "quickStart": "Inici ràpid amb el model de Jan",
   "quickStartDescription": "Sense configuració",
-  "quickStartFailed": "Alguna cosa ha fallat. Torna-ho a provar.",
   "downloading": "S’està descarregant el model de Jan...",
   "downloadingDescription": "Espera mentre descarreguem el model. Pot trigar uns minuts.",
   "orDivider": "o",

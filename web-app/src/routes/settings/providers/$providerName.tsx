@@ -1202,11 +1202,7 @@ function ProviderDetail() {
                       {provider && !isLocalProvider(provider.provider) ? (
                         t('providers:noModelFoundRemoteDesc')
                       ) : (
-                        <>
-                          {t('providers:noModelFoundDesc')}
-                          &nbsp;
-                          <Link to={route.hub.index}>{t('common:hub')}</Link>
-                        </>
+                        <>{t('providers:noModelFoundDesc')}</>
                       )}
                     </p>
                   </div>
