@@ -4,6 +4,8 @@ Generated from `docs/agent-harness-features.json`, which is the source of truth.
 Run `node scripts/agent-harness/validate-registry.mjs` after any edit: it enforces the
 schema, the status vocabulary, dependency integrity and this file staying in sync.
 Regenerate with `node scripts/agent-harness/render-registry.mjs`; never hand-edit it.
+That script is not present on this branch, so the totals below were recomputed
+directly from the JSON when AH-201..AH-210 were appended.
 
 ## Status vocabulary
 
@@ -25,16 +27,17 @@ and the latter two require a recorded `blockedReason`.
 
 | Phase | Name | `missing` | `planned` | `in-progress` | `implemented` | `verified` | `platform-blocked` | `rejected-with-decision` | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 0 | Foundation | 0 | 0 | 2 | 10 | 0 | 0 | 0 | 12 |
-| 1 | Core execution | 3 | 0 | 9 | 8 | 0 | 0 | 0 | 20 |
-| 2 | Security and permissions | 5 | 0 | 9 | 6 | 0 | 0 | 0 | 20 |
+| 0 | Foundation | 0 | 0 | 1 | 11 | 0 | 0 | 0 | 12 |
+| 1 | Core execution | 3 | 0 | 6 | 11 | 0 | 0 | 0 | 20 |
+| 2 | Security and permissions | 3 | 0 | 7 | 10 | 0 | 0 | 0 | 20 |
 | 3 | Repository intelligence | 18 | 0 | 2 | 0 | 0 | 0 | 0 | 20 |
-| 4 | Context and memory | 6 | 0 | 7 | 3 | 0 | 0 | 0 | 16 |
+| 4 | Context and memory | 5 | 0 | 7 | 4 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 8 | 0 | 6 | 11 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 23 | 0 | 2 | 1 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 18 | 0 | 8 | 3 | 0 | 0 | 0 | 29 |
-| **all** | | **92** | **0** | **51** | **57** | **0** | **0** | **0** | **200** |
+| 9 | Approved additions | 10 | 0 | 0 | 0 | 0 | 0 | 0 | 10 |
+| **all** | | **99** | **0** | **45** | **66** | **0** | **0** | **0** | **210** |
 
 ## Ownership lanes
 

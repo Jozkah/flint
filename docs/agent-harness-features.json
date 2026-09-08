@@ -5675,6 +5675,332 @@
       "tests": [],
       "platformRequirements": [],
       "blockedReason": null
+    },
+    {
+      "id": "AH-201",
+      "title": "Conversation and session forking",
+      "category": "sessions",
+      "phase": 9,
+      "phaseName": "Approved additions",
+      "status": "missing",
+      "priority": "P2",
+      "dependencies": [
+        "AH-078"
+      ],
+      "owner": "lane-21-sessions",
+      "files": [],
+      "securityImpact": "medium",
+      "acceptanceCriteria": [
+        "A session can be forked at any turn, producing an independent session whose history up to that turn is identical and whose later turns are its own.",
+        "The fork records its parent id and the turn it diverged at, and both sessions remain independently usable and deletable.",
+        "Forking copies no authority: grants, worktrees and approvals are not inherited, and the fork must ask for its own.",
+        "A fork of a session bound to a folder or worktree starts unbound rather than sharing the parent's checkout.",
+        "Refusal path: the feature declines with a typed harness error naming what was refused and why, never silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process, lock or partial file.",
+        "Persistence: the behaviour and its state survive an application restart, and a restored state is the one that was saved.",
+        "Accessibility: reachable by keyboard alone, every control has an accessible name, focus is visible and restored on dismissal, and status changes are announced.",
+        "Security: no capability is granted that the user did not already hold; scope is checked on every retrieval, not only at creation.",
+        "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
+      ],
+      "tests": [
+        "web-app/src/hooks/__tests__/useCoworkSessions.fork.test.ts"
+      ],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "evidence": "Not implemented. `useCoworkSessions` has no fork action and no parent/divergence fields on a session."
+    },
+    {
+      "id": "AH-202",
+      "title": "User-facing message and file undo/redo",
+      "category": "checkpoints",
+      "phase": 9,
+      "phaseName": "Approved additions",
+      "status": "missing",
+      "priority": "P2",
+      "dependencies": [
+        "AH-146"
+      ],
+      "owner": "lane-22-checkpoints",
+      "files": [],
+      "securityImpact": "high",
+      "acceptanceCriteria": [
+        "A user can undo the file changes a turn produced, and redo them, from the turn that produced them.",
+        "Undo is scoped to Jan-authored changes: edits the user made themselves are never reverted.",
+        "An undo that cannot be applied cleanly refuses and says which paths conflict, rather than partially reverting.",
+        "The undo/redo position survives restart and is per session.",
+        "Refusal path: the feature declines with a typed harness error naming what was refused and why, never silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process, lock or partial file.",
+        "Persistence: the behaviour and its state survive an application restart, and a restored state is the one that was saved.",
+        "Accessibility: reachable by keyboard alone, every control has an accessible name, focus is visible and restored on dismissal, and status changes are announced.",
+        "Security: no capability is granted that the user did not already hold; scope is checked on every retrieval, not only at creation.",
+        "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
+      ],
+      "tests": [
+        "web-app/src/lib/__tests__/coworkCheckpoints.undo.test.ts"
+      ],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "evidence": "Not implemented. `useCoworkCheckpoints` records checkpoints but exposes no undo/redo, and nothing distinguishes Jan-authored paths at revert time."
+    },
+    {
+      "id": "AH-203",
+      "title": "Portable conversation import and export",
+      "category": "sessions",
+      "phase": 9,
+      "phaseName": "Approved additions",
+      "status": "missing",
+      "priority": "P2",
+      "dependencies": [
+        "AH-201"
+      ],
+      "owner": "lane-21-sessions",
+      "files": [],
+      "securityImpact": "high",
+      "acceptanceCriteria": [
+        "A session exports to a single self-describing file carrying its turns, tool activity, questions and change summaries, with a schema version.",
+        "Import reconstructs the same ordering and states without duplicates, and refuses a file whose schema version it does not understand.",
+        "Export redacts credentials and never includes API keys, tokens or authorization headers.",
+        "Import grants no authority: an imported session starts with no folder binding, no worktree and no approvals.",
+        "Refusal path: the feature declines with a typed harness error naming what was refused and why, never silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process, lock or partial file.",
+        "Persistence: the behaviour and its state survive an application restart, and a restored state is the one that was saved.",
+        "Accessibility: reachable by keyboard alone, every control has an accessible name, focus is visible and restored on dismissal, and status changes are announced.",
+        "Security: no capability is granted that the user did not already hold; scope is checked on every retrieval, not only at creation.",
+        "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
+      ],
+      "tests": [
+        "web-app/src/lib/__tests__/coworkPortableSession.test.ts"
+      ],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "evidence": "Not implemented. No export or import path exists for a Cowork session."
+    },
+    {
+      "id": "AH-204",
+      "title": "Unified @ reference autocomplete",
+      "category": "composer",
+      "phase": 9,
+      "phaseName": "Approved additions",
+      "status": "missing",
+      "priority": "P2",
+      "dependencies": [],
+      "owner": "lane-23-composer",
+      "files": [],
+      "securityImpact": "medium",
+      "acceptanceCriteria": [
+        "One `@` menu offers files, folders, skills, agents and saved aliases from a single ranked list.",
+        "Only paths inside the session's attached folder are offered; nothing outside it is suggested or resolvable.",
+        "Selection inserts a stable reference that survives a rename of the display text.",
+        "Typing continues to work when the index is unavailable: the menu degrades to what it can resolve rather than blocking input.",
+        "Refusal path: the feature declines with a typed harness error naming what was refused and why, never silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process, lock or partial file.",
+        "Persistence: the behaviour and its state survive an application restart, and a restored state is the one that was saved.",
+        "Accessibility: reachable by keyboard alone, every control has an accessible name, focus is visible and restored on dismissal, and status changes are announced.",
+        "Security: no capability is granted that the user did not already hold; scope is checked on every retrieval, not only at creation.",
+        "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
+      ],
+      "tests": [
+        "web-app/src/containers/__tests__/ReferenceAutocomplete.test.tsx"
+      ],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "evidence": "Not implemented. The composer has no unified `@` menu; file mentions and skills are separate surfaces."
+    },
+    {
+      "id": "AH-205",
+      "title": "Persistent reference aliases",
+      "category": "composer",
+      "phase": 9,
+      "phaseName": "Approved additions",
+      "status": "missing",
+      "priority": "P2",
+      "dependencies": [
+        "AH-204"
+      ],
+      "owner": "lane-23-composer",
+      "files": [],
+      "securityImpact": "medium",
+      "acceptanceCriteria": [
+        "A user can name a file, folder or selection and reuse that name in later turns and sessions.",
+        "An alias resolves to a path inside the attached folder at use time, and refuses if it now points outside it.",
+        "A broken alias reports the path it can no longer find rather than silently resolving to nothing.",
+        "Refusal path: the feature declines with a typed harness error naming what was refused and why, never silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process, lock or partial file.",
+        "Persistence: the behaviour and its state survive an application restart, and a restored state is the one that was saved.",
+        "Accessibility: reachable by keyboard alone, every control has an accessible name, focus is visible and restored on dismissal, and status changes are announced.",
+        "Security: no capability is granted that the user did not already hold; scope is checked on every retrieval, not only at creation.",
+        "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
+      ],
+      "tests": [
+        "web-app/src/lib/__tests__/referenceAliases.test.ts"
+      ],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "evidence": "Not implemented. No alias store exists."
+    },
+    {
+      "id": "AH-206",
+      "title": "Local command palette",
+      "category": "navigation",
+      "phase": 9,
+      "phaseName": "Approved additions",
+      "status": "missing",
+      "priority": "P2",
+      "dependencies": [],
+      "owner": "lane-24-navigation",
+      "files": [],
+      "securityImpact": "low",
+      "acceptanceCriteria": [
+        "One palette opens from a keyboard shortcut anywhere in the app and offers navigation, session actions and settings.",
+        "Entries are ranked locally with no network lookup of any kind.",
+        "Every entry states what it will do, and a destructive entry confirms before acting.",
+        "The palette closes on Escape and returns focus to where it was opened from.",
+        "Refusal path: the feature declines with a typed harness error naming what was refused and why, never silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process, lock or partial file.",
+        "Persistence: the behaviour and its state survive an application restart, and a restored state is the one that was saved.",
+        "Accessibility: reachable by keyboard alone, every control has an accessible name, focus is visible and restored on dismissal, and status changes are announced.",
+        "Security: no capability is granted that the user did not already hold; scope is checked on every retrieval, not only at creation.",
+        "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
+      ],
+      "tests": [
+        "web-app/src/containers/__tests__/CommandPalette.test.tsx"
+      ],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "evidence": "Not implemented. `SearchDialog` searches threads only and offers no commands."
+    },
+    {
+      "id": "AH-207",
+      "title": "Customizable keybindings",
+      "category": "navigation",
+      "phase": 9,
+      "phaseName": "Approved additions",
+      "status": "missing",
+      "priority": "P2",
+      "dependencies": [
+        "AH-206"
+      ],
+      "owner": "lane-24-navigation",
+      "files": [],
+      "securityImpact": "low",
+      "acceptanceCriteria": [
+        "Shortcuts are editable, persisted, and restored on restart.",
+        "A conflicting binding is refused with the command it collides with named, rather than silently overriding it.",
+        "A binding can be reset to its default individually and in bulk.",
+        "Bindings are honoured on every platform's modifier conventions.",
+        "Refusal path: the feature declines with a typed harness error naming what was refused and why, never silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process, lock or partial file.",
+        "Persistence: the behaviour and its state survive an application restart, and a restored state is the one that was saved.",
+        "Accessibility: reachable by keyboard alone, every control has an accessible name, focus is visible and restored on dismissal, and status changes are announced.",
+        "Security: no capability is granted that the user did not already hold; scope is checked on every retrieval, not only at creation.",
+        "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
+      ],
+      "tests": [
+        "web-app/src/lib/__tests__/shortcuts.custom.test.ts"
+      ],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "evidence": "Not implemented. `lib/shortcuts` exposes a fixed platform table with no user overrides."
+    },
+    {
+      "id": "AH-208",
+      "title": "Hidden internal utility agents",
+      "category": "agents",
+      "phase": 9,
+      "phaseName": "Approved additions",
+      "status": "missing",
+      "priority": "P2",
+      "dependencies": [
+        "AH-107"
+      ],
+      "owner": "lane-25-agents",
+      "files": [],
+      "securityImpact": "high",
+      "acceptanceCriteria": [
+        "Internal agents used for summarising, titling and classification run without appearing as user-facing agents.",
+        "They inherit no authority from the run that invoked them and cannot call file or shell tools.",
+        "Their activity is still auditable: every invocation is recorded even though it is not shown in the timeline by default.",
+        "A hidden agent cannot be addressed or dispatched by the model.",
+        "Refusal path: the feature declines with a typed harness error naming what was refused and why, never silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process, lock or partial file.",
+        "Persistence: the behaviour and its state survive an application restart, and a restored state is the one that was saved.",
+        "Accessibility: reachable by keyboard alone, every control has an accessible name, focus is visible and restored on dismissal, and status changes are announced.",
+        "Security: no capability is granted that the user did not already hold; scope is checked on every retrieval, not only at creation.",
+        "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
+      ],
+      "tests": [
+        "src-tauri/src/core/agent/subagent.rs::tests"
+      ],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "evidence": "Not implemented. Subagents exist but there is no hidden class with a reduced tool set and no authority inheritance boundary for one."
+    },
+    {
+      "id": "AH-209",
+      "title": "Project initialization assistant",
+      "category": "projects",
+      "phase": 9,
+      "phaseName": "Approved additions",
+      "status": "missing",
+      "priority": "P2",
+      "dependencies": [
+        "AH-204"
+      ],
+      "owner": "lane-26-projects",
+      "files": [],
+      "securityImpact": "medium",
+      "acceptanceCriteria": [
+        "A newly attached folder can be surveyed to produce a starting description of what the project is and how it is built.",
+        "The survey reads only inside the attached folder, respects ignore rules, and never executes project code.",
+        "The result is a proposal the user edits and accepts; nothing is written without acceptance.",
+        "A survey of a very large repository is bounded and says what it did not read.",
+        "Refusal path: the feature declines with a typed harness error naming what was refused and why, never silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process, lock or partial file.",
+        "Persistence: the behaviour and its state survive an application restart, and a restored state is the one that was saved.",
+        "Accessibility: reachable by keyboard alone, every control has an accessible name, focus is visible and restored on dismissal, and status changes are announced.",
+        "Security: no capability is granted that the user did not already hold; scope is checked on every retrieval, not only at creation.",
+        "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
+      ],
+      "tests": [
+        "web-app/src/lib/__tests__/projectInit.test.ts"
+      ],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "evidence": "Not implemented. Attaching a folder produces a readiness manifest but no project description proposal."
+    },
+    {
+      "id": "AH-210",
+      "title": "Portable PC-to-PC handoff bundle",
+      "category": "sessions",
+      "phase": 9,
+      "phaseName": "Approved additions",
+      "status": "missing",
+      "priority": "P2",
+      "dependencies": [
+        "AH-203",
+        "AH-146"
+      ],
+      "owner": "lane-21-sessions",
+      "files": [],
+      "securityImpact": "high",
+      "acceptanceCriteria": [
+        "A session and the state needed to continue it export to one bundle that another machine can import and resume.",
+        "The bundle carries no credentials, no keyring material and no absolute paths that only make sense on the source machine.",
+        "Import states plainly what it could not restore -- a missing folder, an absent model, an unavailable provider -- rather than resuming into a broken session.",
+        "The bundle is produced and consumed entirely locally, with no upload, no account and no Jan-hosted service.",
+        "Refusal path: the feature declines with a typed harness error naming what was refused and why, never silently.",
+        "Cancellation: an operation abandoned mid-flight leaves no orphaned state, process, lock or partial file.",
+        "Persistence: the behaviour and its state survive an application restart, and a restored state is the one that was saved.",
+        "Accessibility: reachable by keyboard alone, every control has an accessible name, focus is visible and restored on dismissal, and status changes are announced.",
+        "Security: no capability is granted that the user did not already hold; scope is checked on every retrieval, not only at creation.",
+        "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
+      ],
+      "tests": [
+        "web-app/src/lib/__tests__/handoffBundle.test.ts"
+      ],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "evidence": "Not implemented. Depends on AH-203, which does not exist yet."
     }
   ]
 }

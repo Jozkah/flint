@@ -734,3 +734,21 @@ Observed toast, exactly one:
 cloudflare). The request reached a proxy on the internet rather than your own
 server, so the hostname is resolving to a public address. Point the provider at
 the machine's address directly, or fix the name resolution.`
+
+### Registry extended to 210 (2026-09-08)
+
+AH-001..AH-200 are unchanged. AH-201..AH-210 appended as a new phase 9,
+"Approved additions", each `missing` with dependencies, security impact,
+acceptance criteria covering refusal, cancellation, persistence, accessibility
+and negative authority, a named test, and evidence stating what does not exist
+today.
+
+Counts, recomputed from the JSON: **210 total — 66 implemented, 45 in-progress,
+99 missing.** An earlier commit message in this batch said 67/44; that was
+wrong, the correct figure after AH-078 moved was 66/45.
+
+`scripts/agent-harness/render-registry.mjs` is referenced by the markdown
+registry but does not exist on this branch, so the totals table was recomputed
+from the JSON rather than regenerated, and the file says so.
+
+Appending an entry is documentation. None of AH-201..AH-210 is implemented.
