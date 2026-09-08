@@ -63,7 +63,11 @@ import {
   useProviderReachability,
 } from '@/hooks/useProviderReachability'
 import { SessionInfo } from '@janhq/core'
-import { fetch as httpFetch } from '@tauri-apps/plugin-http'
+import { providerFetch } from '@/lib/providerFetch'
+
+// These three call sites predate the canonical transport and named the raw
+// Tauri fetch; they are the same transport now, under the name they used.
+const httpFetch = providerFetch
 import { hasAudioSentinel, splitAudioSentinels } from './audio-sentinel'
 import { hasVideoSentinel, splitVideoSentinels } from './video-sentinel'
 import { filterDefaultSseEvents } from './sseEventTypeFilter'
@@ -384,7 +388,7 @@ export function cleanUpstreamErrorMessage(raw: string): string {
 
 /**
  * Map a transport-level fetch failure (no HTTP response — DNS, connect, TLS,
- * timeout, dropped connection) to an actionable message. `@tauri-apps/plugin-http`
+ * timeout, dropped connection) to an actionable message. the provider transport
  * rethrows reqwest's raw "error sending request for url …" string, which isn't
  * useful to users. Returns null when `err` is not a recognised transport error.
  */
@@ -886,9 +890,9 @@ function getRuntimeFetch(): typeof globalThis.fetch {
     typeof maybeWindow.__TAURI__ !== 'undefined' ||
     typeof maybeWindow.__TAURI_INTERNALS__ !== 'undefined'
 
-  return isPlatformTauri() && hasTauriRuntime
-    ? (httpFetch as typeof globalThis.fetch)
-    : globalThis.fetch
+  // The canonical provider transport, so a completion resolves its endpoint the
+  // same way model discovery and a connection test do.
+  return isPlatformTauri() && hasTauriRuntime ? providerFetch : globalThis.fetch
 }
 
 /**

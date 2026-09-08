@@ -184,7 +184,7 @@ export function abortRun(sid: string, reason = 'cancelled'): void {
  * Whether a rejection means "the user stopped this", not "this failed".
  *
  * Needed because the abort does not arrive as an `AbortError`: Jan streams
- * through `@tauri-apps/plugin-http`, whose `fetch` rejects with a plain
+ * through the provider transport, whose `fetch` rejects with a plain
  * `Error('Request cancelled')` when the signal fires. Matched exactly rather
  * than by substring — "connection aborted" is a network failure and must keep
  * being reported as one.

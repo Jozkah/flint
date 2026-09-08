@@ -140,4 +140,82 @@ describe('CoworkAskCard', () => {
     rerender(<CoworkAskCard requestId="ask-2" request={single} onRespond={onRespond} />)
     expect(submitButton()).toBeDisabled()
   })
+
+  it('renders exactly one custom-answer row when the model supplied its own', () => {
+    // The duplicate that was on screen: the model's "Something else" plus the
+    // card's injected one.
+    const withOwnOther: AskRequestPayload = {
+      questions: [
+        {
+          id: 'scope',
+          question: 'Which scope?',
+          options: [{ label: 'Small' }, { label: 'common:askSomethingElse' }],
+        },
+      ],
+    }
+    render(
+      <CoworkAskCard requestId="r" request={withOwnOther} onRespond={onRespond} />
+    )
+    expect(screen.getAllByTestId('ask-custom-option')).toHaveLength(1)
+    expect(screen.getAllByText('common:askSomethingElse')).toHaveLength(1)
+  })
+
+  it('opens exactly one text input when the custom row is chosen', () => {
+    render(<CoworkAskCard requestId="r" request={single} onRespond={onRespond} />)
+    fireEvent.click(screen.getByTestId('ask-custom-option'))
+    expect(screen.getAllByTestId('ask-custom-input')).toHaveLength(1)
+    // And no second row appeared to serve as the input.
+    expect(screen.getAllByTestId('ask-custom-option')).toHaveLength(1)
+  })
+
+  it('sends the model wording, not the card wording, for a model-supplied row', () => {
+    const padded: AskRequestPayload = {
+      questions: [
+        {
+          id: 'scope',
+          question: 'Which scope?',
+          options: [{ label: 'Small' }, { label: '  Other  ' }],
+        },
+      ],
+    }
+    render(<CoworkAskCard requestId="r" request={padded} onRespond={onRespond} />)
+    // It is recognised as the custom row, so it opens the input rather than
+    // being submitted as a selected label.
+    fireEvent.click(screen.getByTestId('ask-custom-option'))
+    fireEvent.change(screen.getByTestId('ask-custom-input'), {
+      target: { value: 'squash' },
+    })
+    fireEvent.click(screen.getByLabelText('common:submit'))
+    expect(onRespond).toHaveBeenCalledWith('r', [
+      { id: 'scope', selected: [], custom_input: 'squash' },
+    ])
+  })
+
+  it('keeps the selection when a streamed update rewrites a label', () => {
+    const { rerender } = render(
+      <CoworkAskCard requestId="r" request={single} onRespond={onRespond} />
+    )
+    fireEvent.click(screen.getByText('Small'))
+    rerender(
+      <CoworkAskCard
+        requestId="r"
+        request={{
+          questions: [
+            {
+              id: 'scope',
+              question: 'Which scope?',
+              options: [{ label: 'Small change' }, { label: 'Large' }],
+            },
+          ],
+        }}
+        onRespond={onRespond}
+      />
+    )
+    fireEvent.click(screen.getByLabelText('common:submit'))
+    // Identity is positional, so the first option is still the answer -- with
+    // whatever wording it now carries.
+    expect(onRespond).toHaveBeenCalledWith('r', [
+      { id: 'scope', selected: ['Small change'] },
+    ])
+  })
 })

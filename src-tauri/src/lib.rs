@@ -86,6 +86,12 @@ macro_rules! invoke_commands_with_extras {
         core::server::commands::set_server_run_in_background,
         // Agent commands
         core::agent::commands::agent_emergency_stop,
+        // One provider transport: every OpenAI-compatible request resolves
+        // and dials through here, so there is one address-selection rule.
+        core::net::commands::provider_http_request,
+        core::net::commands::provider_http_stream,
+        core::net::commands::provider_endpoint_diagnostics,
+        core::net::commands::provider_endpoint_refresh,
         core::agent::commands::agent_prompt_snapshots,
         core::agent::commands::agent_skill_list,
         core::agent::commands::agent_skill_read,

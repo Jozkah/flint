@@ -7,8 +7,17 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }))
 
-vi.mock('@tauri-apps/plugin-http', () => ({
-  fetch: vi.fn().mockImplementation(async () => new Response('{}', { status: 200 })),
+vi.mock('@/lib/providerFetch', () => ({
+  // Provider requests go through the canonical transport now; this is the
+  // seam that used to be `@tauri-apps/plugin-http`.
+  providerFetch: vi
+    .fn()
+    .mockImplementation(async () => new Response('{}', { status: 200 })),
+  runtimeProviderFetch: vi.fn(),
+  hasTauriRuntime: vi.fn(() => true),
+  endpointDiagnostics: vi.fn(async () => null),
+  refreshEndpoint: vi.fn(async () => undefined),
+  endpointOf: vi.fn(() => null),
 }))
 
 vi.mock('@tauri-apps/api/event', () => ({
@@ -90,7 +99,7 @@ vi.mock('@/lib/provider-api-keys', () => ({
 
 import { ModelFactory } from '../model-factory'
 import { invoke } from '@tauri-apps/api/core'
-import { fetch as httpFetch } from '@tauri-apps/plugin-http'
+import { providerFetch as httpFetch } from '@/lib/providerFetch'
 
 function getOpts(): any {
   return (globalThis as any).__capturedModelOpts

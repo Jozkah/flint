@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock all external dependencies before imports
-vi.mock('@tauri-apps/plugin-http', () => ({
-  fetch: vi.fn(),
+vi.mock('@/lib/providerFetch', () => ({
+  // Provider requests go through the canonical transport now; this is the
+  // seam that used to be `@tauri-apps/plugin-http`.
+  providerFetch: vi.fn(),
+  runtimeProviderFetch: vi.fn(),
+  hasTauriRuntime: vi.fn(() => true),
+  endpointDiagnostics: vi.fn(async () => null),
+  refreshEndpoint: vi.fn(async () => undefined),
+  endpointOf: vi.fn(() => null),
 }))
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -70,7 +77,7 @@ vi.mock('@/lib/provider-api-keys', () => ({
   API_KEY_FALLBACKS_SETTING_KEY: 'api-key-fallbacks',
 }))
 
-import { fetch as fetchTauri } from '@tauri-apps/plugin-http'
+import { providerFetch as fetchTauri } from '@/lib/providerFetch'
 import { invoke } from '@tauri-apps/api/core'
 import { EngineManager } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'

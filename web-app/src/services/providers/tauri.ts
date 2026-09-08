@@ -8,7 +8,7 @@ import { EngineManager, SettingComponentProps } from '@janhq/core'
 import { ModelCapabilities } from '@/types/models'
 import { modelSettings } from '@/lib/predefined'
 import { ExtensionManager } from '@/lib/extension'
-import { fetch as fetchTauri } from '@tauri-apps/plugin-http'
+import { providerFetch as fetchTauri } from '@/lib/providerFetch'
 import { invoke } from '@tauri-apps/api/core'
 import { DefaultProvidersService } from './default'
 import { getModelCapabilities } from '@/lib/models'
@@ -24,7 +24,8 @@ import {
 
 export class TauriProvidersService extends DefaultProvidersService {
   fetch(): typeof fetch {
-    // Tauri implementation uses Tauri's fetch to avoid CORS issues
+    // The canonical provider transport: no CORS, and one endpoint-resolution
+    // rule shared with chat completions, embeddings and connection tests.
     return fetchTauri as typeof fetch
   }
 

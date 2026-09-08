@@ -717,6 +717,14 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_per_chat_controls,
     },
     Scenario {
+        name: "prompt-snapshot-panel",
+        run: scenario_prompt_snapshot,
+    },
+    Scenario {
+        name: "prompt-snapshot-cross-session-refused",
+        run: scenario_prompt_snapshot_isolation,
+    },
+    Scenario {
         name: "provider-error-is-actionable",
         run: scenario_provider_error,
     },
@@ -1907,6 +1915,136 @@ fn scenario_no_unconfigured_egress(ctx: &Ctx) -> ScenarioResult {
     ensure!(
         foreign.is_empty(),
         "startup reached endpoints nobody configured: {report}"
+    );
+    Ok(())
+}
+
+/// AH-078. A real model request, then "What the model received" opened from
+/// that request's own activity.
+fn scenario_prompt_snapshot(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+
+    ctx.type_into("[data-testid=\"chat-input\"]", "snapshot probe")?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(15),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+
+    // The panel appears on the assistant message the snapshot produced.
+    ctx.wait_until(
+        "the prompt snapshot panel",
+        "return !!document.querySelector('[data-testid=\"prompt-snapshot\"]');",
+        Duration::from_secs(90),
+    )?;
+
+    // Collapsed until asked for.
+    let open_before = ctx.eval_bool(
+        "return document.querySelector('[data-testid=\"prompt-snapshot\"]').open === true;",
+    )?;
+    ensure!(!open_before, "the panel must be collapsed by default");
+
+    ctx.eval(
+        "document.querySelector('[data-testid=\"prompt-snapshot-toggle\"]').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the snapshot to load",
+        "return !!document.querySelector('[data-testid=\"prompt-snapshot-meta\"]');",
+        Duration::from_secs(45),
+    )?;
+
+    let meta = ctx.eval_string(
+        "return document.querySelector('[data-testid=\"prompt-snapshot-meta\"]').textContent;",
+    )?;
+    println!("      snapshot meta: {meta}");
+    ensure!(
+        meta.contains(SMOKE_PROVIDER) || meta.contains(SMOKE_MODEL),
+        "the panel did not name the provider or model: {meta}"
+    );
+    ensure!(meta.contains("fnv1a64:"), "no payload hash shown: {meta}");
+    ensure!(
+        ctx.eval_bool(
+            "return !!document.querySelector('[data-testid=\"prompt-snapshot-redactions\"]');"
+        )?,
+        "no redaction summary shown"
+    );
+
+    // Both views render the same payload.
+    ctx.wait_until(
+        "the tree view",
+        "return !!document.querySelector('[data-testid=\"prompt-snapshot-tree\"]');",
+        Duration::from_secs(15),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-testid=\"prompt-snapshot-view-json\"]').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the JSON view",
+        "return !!document.querySelector('[data-testid=\"prompt-snapshot-json\"]');",
+        Duration::from_secs(15),
+    )?;
+
+    // Nothing that looks like a credential reaches the panel. The seeded
+    // provider carries an api key, so this is a real check and not a tautology.
+    let panel = ctx.eval_string(
+        "return document.querySelector('[data-testid=\"prompt-snapshot\"]').textContent;",
+    )?;
+    for secret in ["smoke-not-a-real-key", "Bearer ", "sk-"] {
+        ensure!(
+            !panel.contains(secret),
+            "the panel exposed {secret:?}"
+        );
+    }
+    Ok(())
+}
+
+/// A snapshot belonging to another session must not be retrievable.
+fn scenario_prompt_snapshot_isolation(ctx: &Ctx) -> ScenarioResult {
+    // Straight at the command, because this is a boundary the UI must not be
+    // able to talk its way around either.
+    let refused = ctx.eval(
+        "try {
+           const r = await window.__TAURI_INTERNALS__.invoke('agent_prompt_snapshots', {
+             snapshotId: 'snap-1', session: 'a-session-that-is-not-mine'
+           });
+           return { ok: r };
+         } catch (e) {
+           return { err: String(e) };
+         }",
+    )?;
+    println!("      cross-session lookup: {refused}");
+    // Either refused outright, or empty -- never another session's payload.
+    let leaked = refused
+        .get("ok")
+        .and_then(Value::as_array)
+        .is_some_and(|rows| !rows.is_empty());
+    ensure!(!leaked, "a snapshot leaked across sessions: {refused}");
+
+    // An unscoped list must be refused rather than returning everything.
+    let unscoped = ctx.eval(
+        "try {
+           const r = await window.__TAURI_INTERNALS__.invoke('agent_prompt_snapshots', {});
+           return { ok: r };
+         } catch (e) {
+           return { err: String(e) };
+         }",
+    )?;
+    ensure!(
+        unscoped.get("err").is_some(),
+        "an unscoped snapshot list must be refused: {unscoped}"
     );
     Ok(())
 }
