@@ -47,6 +47,40 @@ skip() {
   printf '  \033[33mskip\033[0m  %s (%s)\n' "$1" "$2"
 }
 
+# Prepare before checking, because the first failure on a fresh checkout is not
+# a failing test -- it is the Tauri build script refusing to compile at all:
+#
+#   resource path `resources/bin/jan` doesn't exist
+#
+# Every bundle resource, icon and `frontendDist` it validates is a gitignored
+# build output, so a clone has none of them and every `cargo test` below dies
+# before running a single test. Whoever hit that had to go and find
+# `scripts/stub-tauri-resources.sh` in the Makefile to get past it, which is a
+# discovery step this script has no business imposing.
+#
+# So it is done here. The stub script is idempotent and guarded -- it never
+# clobbers a real local build -- and it is the same one the coverage and
+# rust-check workflows use, so this cannot drift from CI.
+#
+# These stubs are for compiling only. `scripts/check-sidecars.mjs` is what
+# stands between them and an installer, and it runs in the packaging path, not
+# here.
+step "Preparing the build inputs a fresh checkout does not have"
+if ./scripts/stub-tauri-resources.sh >/dev/null 2>&1; then
+  printf '  \033[32mpass\033[0m  %s\n' "bundle resources, icons and frontendDist in place"
+else
+  printf '  \033[31mFAIL\033[0m  %s\n' "could not create the Tauri build stubs"
+  FAILED=1
+fi
+# And verified against the bundle config rather than assumed from the stub
+# script having exited 0: the two are separate files, and a resource added to
+# one and not the other is exactly the drift that produces the cryptic build
+# error this step exists to prevent. On failure it names the paths and the
+# command that creates them.
+if ! node scripts/check-tauri-resources.mjs; then
+  FAILED=1
+fi
+
 step "The safety properties, anywhere"
 # These are the guarantees the access modes rest on, and none of them needs a
 # particular platform to be true.

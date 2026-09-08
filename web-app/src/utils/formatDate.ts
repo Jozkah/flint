@@ -12,6 +12,10 @@ export const formatDate = (
   const base: Intl.DateTimeFormatOptions = {
     year: 'numeric',
     day: 'numeric',
+    // Dates in persisted activity and session records are UTC instants. Keep
+    // their calendar day stable across machines instead of letting the local
+    // timezone move midnight into the previous or next day.
+    timeZone: 'UTC',
   }
 
   if (includeTime) {
