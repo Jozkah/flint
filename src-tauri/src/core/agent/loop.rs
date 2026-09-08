@@ -2291,6 +2291,23 @@ pub(crate) async fn compact_history(
             .await
             .and_then(|(api_type, oauth)| converter_for(Some(&api_type), oauth)),
         converter_client: converter_http_client(),
+        // A compaction request is a dispatch like any other, and AH-078 says
+        // every dispatch leaves a snapshot. `Compaction` is what separates it
+        // from the turn's own requests when the snapshots are read back.
+        snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity {
+            session: args.session_id.clone().unwrap_or_default(),
+            run: String::new(),
+            thread: args.session_id.clone().unwrap_or_default(),
+            agent: "compaction".to_string(),
+            provider: model_id
+                .split_once('/')
+                .map(|(p, _)| p.to_string())
+                .unwrap_or_default(),
+            invocation: String::new(),
+            turn: String::new(),
+            attempt: 1,
+            kind: tauri_plugin_agent_tools::snapshot::DispatchKind::Compaction,
+        },
     };
     crate::core::agent::compaction::compact_conversation(messages, model_id, &model, keep_recent)
         .await
@@ -2325,6 +2342,22 @@ pub(crate) async fn evaluate_goal(
             .await
             .and_then(|(api_type, oauth)| converter_for(Some(&api_type), oauth)),
         converter_client: converter_http_client(),
+        // The goal evaluator is a separate agent making its own single call,
+        // so it is named as one rather than folded into the main dispatch.
+        snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity {
+            session: args.session_id.clone().unwrap_or_default(),
+            run: String::new(),
+            thread: args.session_id.clone().unwrap_or_default(),
+            agent: "goal".to_string(),
+            provider: smol_model_id
+                .split_once('/')
+                .map(|(p, _)| p.to_string())
+                .unwrap_or_default(),
+            invocation: String::new(),
+            turn: String::new(),
+            attempt: 1,
+            kind: Default::default(),
+        },
     };
     crate::core::agent::goal::evaluate(smol_model_id, condition, messages, &model).await
 }

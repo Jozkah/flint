@@ -17,7 +17,7 @@ use rmcp::{
     transport::{
         sse_client::{SseClient, SseClientConfig},
         streamable_http_client::{StreamableHttpClient, StreamableHttpClientTransportConfig},
-        SseClientTransport, StreamableHttpClientTransport, TokioChildProcess,
+        SseClientTransport, StreamableHttpClientTransport,
     },
     ServiceExt,
 };

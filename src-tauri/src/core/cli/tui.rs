@@ -4702,6 +4702,12 @@ impl App {
                     self.tokens_estimated = false;
                 }
             }
+            // AH-078. The record is written by the dispatcher and is already
+            // redacted; the TUI holds the identity so the run can be pointed at
+            // it, and never the payload. Matched explicitly, not through a
+            // wildcard, so a new event breaks this build rather than being
+            // silently dropped from the interface.
+            StreamEvent::PromptSnapshot { .. } => {}
             StreamEvent::Done { .. } | StreamEvent::Error { .. } => {}
             StreamEvent::MessagesUpdated { messages } => {
                 self.history = messages;

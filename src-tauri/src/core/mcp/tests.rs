@@ -1057,7 +1057,7 @@ async fn terminate_browser_mcp_reaps_process_group() {
 /// rather than inherited. The policy itself is the plugin's, and tested there.
 #[cfg(test)]
 mod mcp_confinement_tests {
-    use super::super::helpers::confined_mcp_command;
+    use super::super::launch::confined_mcp_command;
     use super::super::models::{McpConfinement, McpServerConfig};
     use std::path::PathBuf;
     use tokio::process::Command;

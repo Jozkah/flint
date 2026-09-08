@@ -1344,6 +1344,13 @@ async fn print_event(ev: StreamEvent, registry: &PermissionRegistry) {
         );
     }
     match ev {
+        // AH-078. The snapshot is already written to the data folder by the
+        // dispatcher; this event only says one exists. Headless stdout is the
+        // model's completion and nothing else, and the payload is never printed
+        // anywhere -- reading a snapshot back is `jan snapshots`, which serves
+        // the redacted record. Matched explicitly rather than through a
+        // wildcard so a new event still fails this build instead of vanishing.
+        StreamEvent::PromptSnapshot { .. } => {}
         StreamEvent::Token { text } => {
             print!("{text}");
             let _ = std::io::stdout().flush();
