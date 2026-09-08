@@ -1946,11 +1946,14 @@ fn scenario_model_round_trip(ctx: &Ctx) -> ScenarioResult {
     }
 
     ctx.type_into("[data-testid=\"chat-input\"]", "hello smoke")?;
+    // Sixty seconds, not fifteen: the previous scenario's run may still be
+    // streaming when this one starts, and while it is the control is a stop
+    // button rather than a send one.
     ctx.wait_until(
         "the send control to arm",
         "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
          return !!b && b.disabled !== true;",
-        Duration::from_secs(15),
+        Duration::from_secs(60),
     )?;
     ctx.eval(
         "document.querySelector('[data-test-id=\"send-message-button\"]').click();
@@ -2029,13 +2032,23 @@ fn scenario_prompt_snapshot(ctx: &Ctx) -> ScenarioResult {
         Duration::from_secs(30),
     )?;
 
+    // While a run streams the send control is replaced by a stop control, so
+    // this selector finds nothing until the previous scenario's run is over.
+    ctx.wait_until(
+        "the previous run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
     ctx.ensure_model_selected()?;
     ctx.type_into("[data-testid=\"chat-input\"]", "snapshot probe")?;
+    // Sixty seconds, not fifteen: the previous scenario's run may still be
+    // streaming when this one starts, and while it is the control is a stop
+    // button rather than a send one.
     ctx.wait_until(
         "the send control to arm",
         "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
          return !!b && b.disabled !== true;",
-        Duration::from_secs(15),
+        Duration::from_secs(60),
     )?;
     ctx.eval(
         "document.querySelector('[data-test-id=\"send-message-button\"]').click();
@@ -2394,13 +2407,23 @@ fn scenario_stream_over_local_hostname(ctx: &Ctx) -> ScenarioResult {
         "return !!document.querySelector('[data-testid=\"chat-input\"]');",
         Duration::from_secs(30),
     )?;
+    // While a run streams the send control is replaced by a stop control, so
+    // this selector finds nothing until the previous scenario's run is over.
+    ctx.wait_until(
+        "the previous run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
     ctx.ensure_model_selected()?;
     ctx.type_into("[data-testid=\"chat-input\"]", "stream over the short name")?;
+    // Sixty seconds, not fifteen: the previous scenario's run may still be
+    // streaming when this one starts, and while it is the control is a stop
+    // button rather than a send one.
     ctx.wait_until(
         "the send control to arm",
         "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
          return !!b && b.disabled !== true;",
-        Duration::from_secs(15),
+        Duration::from_secs(60),
     )?;
     ctx.eval(
         "document.querySelector('[data-test-id=\"send-message-button\"]').click();
@@ -2441,13 +2464,23 @@ fn scenario_no_setup_wall(ctx: &Ctx) -> ScenarioResult {
         "return !!document.querySelector('[data-testid=\"chat-input\"]');",
         Duration::from_secs(30),
     )?;
+    // While a run streams the send control is replaced by a stop control, so
+    // this selector finds nothing until the previous scenario's run is over.
+    ctx.wait_until(
+        "the previous run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
     ctx.ensure_model_selected()?;
     ctx.type_into("[data-testid=\"chat-input\"]", "clear the wall")?;
+    // Sixty seconds, not fifteen: the previous scenario's run may still be
+    // streaming when this one starts, and while it is the control is a stop
+    // button rather than a send one.
     ctx.wait_until(
         "the send control to arm",
         "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
          return !!b && b.disabled !== true;",
-        Duration::from_secs(15),
+        Duration::from_secs(60),
     )?;
     ctx.eval(
         "document.querySelector('[data-test-id=\"send-message-button\"]').click();

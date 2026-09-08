@@ -629,3 +629,24 @@ sessions streaming at once.
 - The smoke harness reads the user's real provider list through the store
   plugin, which uses the app config dir rather than `JAN_DATA_FOLDER`. That
   makes runs slow and non-deterministic and should be isolated.
+
+
+### Open, found by the harness and not yet fixed (2026-09-08)
+
+**A Cowork run streaming through the new transport does not terminate.** The
+reply text arrives and renders -- `chat-streams-over-the-local-hostname`
+passes on that -- but the send control never comes back, so the run is still
+considered active ninety seconds later. `no-setup-wall-above-the-composer`
+fails waiting for it, and `provider-error-is-actionable` and
+`header-controls-are-clickable` fail behind it.
+
+First place to look: `web-app/src/lib/providerFetch.ts` ignores
+`init.signal` entirely, so nothing can abort a provider request, and the
+response body stream is closed only when the transport sends `End`. If that
+chunk does not arrive -- or arrives after the consumer has gone -- the AI SDK
+waits on a body that never finishes. Wire the abort signal through to a
+cancellation on the Rust side, and make the stream's completion unconditional.
+
+The chat route's own round trip (`model-round-trip`) completes, so this is
+specific to the Cowork loop's use of the stream rather than to the transport
+refusing to finish.
