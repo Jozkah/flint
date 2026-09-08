@@ -50,6 +50,35 @@ pub fn jan_home_dir() -> Option<PathBuf> {
     dirs::home_dir()
 }
 
+/// Drop the `\\?\` extended-length prefix Windows canonicalisation adds.
+///
+/// `Path::canonicalize` returns a verbatim path on Windows -- the same
+/// directory comes back as `\\?\C:\Users\...` rather than `C:\Users\...`.
+/// That form is correct for the filesystem APIs and wrong for everything else:
+/// compared against a path Jan built itself it is unequal, and written
+/// somewhere a human or another program reads it -- the user's `PATH`, a
+/// stored record -- it is a path most tools will not accept.
+///
+/// So canonicalise for correctness, then come back to the ordinary spelling
+/// before the result is stored, compared, or shown. Non-verbatim paths, and
+/// every path on other platforms, pass through untouched. UNC verbatim paths
+/// (`\\?\UNC\server\share`) are deliberately left alone: rewriting those needs
+/// more than removing a prefix.
+pub fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    match text.strip_prefix(r"\\?\") {
+        // `\\?\C:\...` -> `C:\...`, only for a real drive-letter path.
+        Some(rest)
+            if rest.len() >= 2
+                && rest.as_bytes()[0].is_ascii_alphabetic()
+                && rest.as_bytes()[1] == b':' =>
+        {
+            PathBuf::from(rest.to_string())
+        }
+        _ => path,
+    }
+}
+
 /// Canonical Jan app support directory (`%APPDATA%/Jan` on Windows).
 fn resolve_human_readable_app_data_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|d| d.join(env!("CARGO_PKG_NAME")))
@@ -183,10 +212,28 @@ pub(crate) fn with_temp_data_folder<T>(f: impl FnOnce(&std::path::Path) -> T) ->
 /// Resolve the Jan data folder path without an AppHandle (for CLI use).
 /// Reads AppConfiguration from the config file; falls back to the default location.
 pub fn resolve_jan_data_folder() -> PathBuf {
+    // Explicit override wins on every platform, tests included. `dirs::data_dir()`
+    // reads XDG_DATA_HOME only on Linux, so tests/headless consumers need a
+    // portable way to redirect the data folder without relying on OS-specific env.
+    //
+    // This is checked *before* the `cfg!(test)` fallback below, and that order
+    // matters. With the fallback first, a test that set `JAN_DATA_FOLDER` got a
+    // per-thread scratch directory instead of the one it asked for -- and since
+    // the secret store writes through `spawn_blocking`, the store ran on a pool
+    // thread and the load ran on the test thread, giving each a different folder
+    // and turning "read back what I just wrote" into `None`.
+    if let Ok(folder) = std::env::var("JAN_DATA_FOLDER") {
+        if !folder.is_empty() {
+            return PathBuf::from(folder);
+        }
+    }
+
     // Never the developer's real Jan folder under `cargo test`. This function
     // is reached from the agent dispatcher (the cancellation audit record), and
     // without this a test run would append to the data of whoever ran it --
-    // the same mistake `get_jan_data_folder_path` already guards against.
+    // the same mistake `get_jan_data_folder_path` already guards against. Tests
+    // that want a shared folder across threads set the override above; this is
+    // only the fail-closed default for those that set nothing.
     if cfg!(test) {
         let dir = std::env::temp_dir().join(format!(
             "jan-test-data-{}-{:?}",
@@ -195,15 +242,6 @@ pub fn resolve_jan_data_folder() -> PathBuf {
         ));
         let _ = fs::create_dir_all(&dir);
         return dir;
-    }
-
-    // Explicit override wins on every platform. `dirs::data_dir()` reads
-    // XDG_DATA_HOME only on Linux, so tests/headless consumers need a portable
-    // way to redirect the data folder without relying on OS-specific env.
-    if let Ok(folder) = std::env::var("JAN_DATA_FOLDER") {
-        if !folder.is_empty() {
-            return PathBuf::from(folder);
-        }
     }
 
     let config_file = resolve_config_file_path();

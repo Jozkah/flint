@@ -456,10 +456,17 @@ fn split_ref(url: &str) -> (&str, Option<&str>) {
 
 /// The default plugin name for a repo URL: the last path segment, `.git`
 /// stripped. `https://github.com/acme/release-tools.git` -> `release-tools`.
+///
+/// Splits on `\` as well as `/`, because a spec can be a local Windows path.
+/// Splitting on `/` alone left `C:\src\my-plugin` as a single "segment", so the
+/// whole path became the proposed plugin name and installing from a local
+/// directory failed as `invalid plugin name 'C:\src\my-plugin'`. A backslash
+/// is never a legal character *within* a segment on either platform, so
+/// treating it as a separator everywhere costs nothing.
 fn repo_dir_name(url: &str) -> Option<&str> {
     let (base, _) = split_ref(url);
-    let base = base.trim_end_matches('/');
-    let name = base.rsplit('/').next()?;
+    let base = base.trim_end_matches(['/', '\\']);
+    let name = base.rsplit(['/', '\\']).next()?;
     Some(name.strip_suffix(".git").unwrap_or(name))
 }
 
@@ -539,20 +546,23 @@ fn install_git(
         // A collection repo (e.g. anthropics/claude-plugins-official) has no
         // payload at its root; plugins can be nested any number of dirs deep
         // (`plugins/` and `external_plugins/` are only wrapper dirs).
-        let mut candidates = find_plugin_dirs(&payload_root);
-        candidates.sort_by_key(|p| {
+        // Repo-relative, always `/`-separated. These are offered back to the
+        // user as the tail of a `<url>/tree/<ref>/<path>` spec and matched
+        // against subdirectories the caller names, so a Windows `\` here would
+        // print a suggestion that does not work when pasted back in.
+        let rel_of = |p: &Path| {
             p.strip_prefix(&payload_root)
-                .map(|rel| rel.to_string_lossy().into_owned())
+                .map(|rel| {
+                    rel.components()
+                        .map(|c| c.as_os_str().to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join("/")
+                })
                 .unwrap_or_default()
-        });
-        let rels: Vec<String> = candidates
-            .iter()
-            .map(|p| {
-                p.strip_prefix(&payload_root)
-                    .map(|rel| rel.to_string_lossy().into_owned())
-                    .unwrap_or_default()
-            })
-            .collect();
+        };
+        let mut candidates = find_plugin_dirs(&payload_root);
+        candidates.sort_by_key(|p| rel_of(p));
+        let rels: Vec<String> = candidates.iter().map(|p| rel_of(p)).collect();
         let picked: Vec<usize> = match candidates.len() {
             0 => {
                 let _ = std::fs::remove_dir_all(&tmp);
@@ -1017,6 +1027,25 @@ mod tests {
             repo_dir_name("git@github.com:acme/tools.git"),
             Some("tools")
         );
+    }
+
+    /// A local Windows path names the plugin after its last segment, not after
+    /// the whole path. Splitting on `/` alone made the entire `C:\...` string
+    /// the proposed name, which then failed name validation.
+    #[test]
+    fn repo_dir_name_reads_the_last_segment_of_a_windows_path() {
+        assert_eq!(repo_dir_name(r"C:\src\my-plugin"), Some("my-plugin"));
+        assert_eq!(repo_dir_name(r"C:\src\my-plugin\"), Some("my-plugin"));
+        assert_eq!(
+            repo_dir_name(r"file://C:\src\release-tools.git"),
+            Some("release-tools")
+        );
+        assert_eq!(
+            repo_dir_name(r"\\fileserver\share\my-plugin"),
+            Some("my-plugin")
+        );
+        // A mixed-separator path still ends at the last segment.
+        assert_eq!(repo_dir_name(r"C:/src\my-plugin"), Some("my-plugin"));
     }
     #[test]
     fn parses_github_tree_specs_as_repo_ref_and_subdirectory() {

@@ -523,6 +523,19 @@ pub fn list(repo: &Path, worktrees_root: &Path) -> Vec<WorktreeRecord> {
         if !b.starts_with(BRANCH_PREFIX) || !contained(Path::new(&p), worktrees_root) {
             return;
         }
+        // `git worktree list --porcelain` reports `C:/Users/...` on Windows,
+        // while every record Jan creates holds a native `C:\Users\...`. Left
+        // as git printed it, the same worktree compared unequal to itself --
+        // so a listed worktree could not be matched to the one that made it.
+        // Resolved the same way `contained` resolves, so both sides of any
+        // comparison have been through the same normalisation.
+        let p = resolve_lexically(Path::new(&p))
+            .map(|resolved| {
+                crate::core::app::commands::strip_verbatim_prefix(resolved)
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .unwrap_or(p);
         found.push(WorktreeRecord {
             path: p,
             branch: b,

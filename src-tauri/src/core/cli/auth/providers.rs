@@ -355,6 +355,7 @@ mod tests {
     struct TempSecrets {
         _guard: MutexGuard<'static, ()>,
         prev_data_folder: Option<String>,
+        prev_home: Option<std::ffi::OsString>,
         _dir: tempfile::TempDir,
     }
 
@@ -366,10 +367,17 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             let prev_data_folder = std::env::var("JAN_DATA_FOLDER").ok();
             std::env::set_var("JAN_DATA_FOLDER", dir.path());
+            // These tests persist a secret *and* non-secret config, and the
+            // non-secret half lands in `~/.jan`. Pin that to the same scratch
+            // tree, or the test reads back whatever home another test happened
+            // to leave configured.
+            let prev_home = std::env::var_os(crate::core::app::commands::JAN_HOME_ENV);
+            std::env::set_var(crate::core::app::commands::JAN_HOME_ENV, dir.path());
             crate::core::server::provider_secrets::force_file_secrets();
             Self {
                 _guard: guard,
                 prev_data_folder,
+                prev_home,
                 _dir: dir,
             }
         }
@@ -380,6 +388,10 @@ mod tests {
             match &self.prev_data_folder {
                 Some(v) => std::env::set_var("JAN_DATA_FOLDER", v),
                 None => std::env::remove_var("JAN_DATA_FOLDER"),
+            }
+            match &self.prev_home {
+                Some(v) => std::env::set_var(crate::core::app::commands::JAN_HOME_ENV, v),
+                None => std::env::remove_var(crate::core::app::commands::JAN_HOME_ENV),
             }
         }
     }

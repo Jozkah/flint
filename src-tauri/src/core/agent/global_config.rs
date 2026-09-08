@@ -637,6 +637,12 @@ pub(crate) fn with_temp_home<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Mutex;
 
+    // A lock of its own, deliberately not `SECRET_STORE_TEST_LOCK`. Sharing
+    // that one would serialise every environment mutator against every other,
+    // which sounds right and deadlocks: `MutexGuard` is not reentrant, and
+    // tests that already hold it through a `TempSecrets` go on to call this.
+    // Helpers that need both roots isolated set `JAN_HOME` themselves while
+    // holding the secret-store lock.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
     static COUNTER: AtomicU32 = AtomicU32::new(0);
 

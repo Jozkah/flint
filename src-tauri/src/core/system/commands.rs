@@ -669,11 +669,14 @@ pub fn install_jan_cli_sync<R: Runtime>(
     app_handle: &AppHandle<R>,
 ) -> Result<CliInstallStatus, String> {
     let bin_name = if cfg!(windows) { "jan.exe" } else { "jan" };
-    let resource_bin_dir = app_handle
-        .path()
-        .resource_dir()
-        .map_err(|e| e.to_string())?
-        .join("resources/bin");
+    // `resource_dir()` hands back a verbatim `\\?\C:\...` path on Windows. That
+    // is fine to open a file with and wrong to persist: written into the user's
+    // PATH it produced an entry most shells and tools will not resolve, and it
+    // is not a spelling anyone recognises when they look at their own PATH.
+    let resource_bin_dir = crate::core::app::commands::strip_verbatim_prefix(
+        app_handle.path().resource_dir().map_err(|e| e.to_string())?,
+    )
+    .join("resources/bin");
     let bundled = resource_bin_dir.join(bin_name);
 
     if !bundled.exists() {

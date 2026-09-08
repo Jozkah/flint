@@ -44,7 +44,17 @@ fn git(args: &[&str]) -> Result<String, String> {
 /// never triggers commit signing.
 fn run(repo: &Path, index: Option<&Path>, args: &[&str]) -> Result<String, String> {
     let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(repo).args(args);
+    cmd.arg("-C").arg(repo);
+    // Snapshot and restore must round-trip the working tree byte for byte.
+    // `core.autocrlf` is on by default in Git for Windows, which converts on
+    // the way into the index and back out again -- so a file snapshotted as
+    // "one\n" was restored as "one\r\n", and Jan silently rewrote the line
+    // endings of every file it put back. These are Jan's own private objects,
+    // not the user's commits, so the conversion has nothing to gain here and a
+    // fidelity guarantee to lose.
+    cmd.arg("-c").arg("core.autocrlf=false");
+    cmd.arg("-c").arg("core.eol=lf");
+    cmd.args(args);
     cmd.env("GIT_AUTHOR_NAME", "Jan Agent")
         .env("GIT_AUTHOR_EMAIL", "agent@jan.ai")
         .env("GIT_COMMITTER_NAME", "Jan Agent")
@@ -76,13 +86,46 @@ fn temp_index() -> PathBuf {
     std::env::temp_dir().join(format!("jan-agent-idx-{}-{n}", std::process::id()))
 }
 
-/// A stable index path for a thread's snapshot chain, kept across calls (not
-/// deleted after use). Reusing it lets `git add -A` compare against its own
-/// prior stat cache instead of a fresh empty one, so unchanged files are only
-/// stat'd (cheap) rather than re-hashed and re-inserted like every other file
-/// touched this turn.
-fn snapshot_index(thread_id: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("jan-agent-snap-idx-{thread_id}"))
+/// Where a thread's scratch indexes live: one directory per thread, one index
+/// file per repository inside it.
+///
+/// The index is kept across calls rather than deleted after use. Reusing it
+/// lets staging compare against its own prior stat cache instead of a fresh
+/// empty one, so unchanged files are only stat'd (cheap) rather than re-hashed
+/// and re-inserted like every other file touched this turn.
+///
+/// The repository has to be part of the key. With the index named only after
+/// the thread, one file was shared by every repository that thread ever
+/// touched, so a snapshot in a second project staged against the first
+/// project's tree. Worse, the file outlives the process: an index left behind
+/// by a crashed session -- or by a repository that has since been deleted --
+/// refers to objects that no longer exist, and every later snapshot for that
+/// thread failed with `fatal: <sha> is not a valid object` and stayed failing.
+fn snapshot_index_dir(thread_id: &str) -> PathBuf {
+    // The id reaches the filesystem, so keep it to something that can be a
+    // directory name on every platform.
+    let safe: String = thread_id
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    std::env::temp_dir().join("jan-agent-snap-idx").join(safe)
+}
+
+/// A stable digest of the repository path, so the same repository maps to the
+/// same index across processes. FNV-1a: `DefaultHasher` is explicitly not
+/// guaranteed stable between runs, which is exactly what this needs to be.
+fn repo_key(repo: &Path) -> String {
+    let canonical = repo.canonicalize().unwrap_or_else(|_| repo.to_path_buf());
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in canonical.to_string_lossy().to_lowercase().as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100_0000_01b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn snapshot_index(repo: &Path, thread_id: &str) -> PathBuf {
+    snapshot_index_dir(thread_id).join(repo_key(repo))
 }
 
 /// Hidden ref that keeps a thread's snapshot chain reachable across GC. One ref
@@ -161,23 +204,53 @@ pub(crate) fn snapshot(
     thread_id: &str,
     changed: &[PathBuf],
 ) -> Result<String, String> {
-    let idx = snapshot_index(thread_id);
-    if !idx.exists() {
+    let idx = snapshot_index(repo, thread_id);
+    if let Some(parent_dir) = idx.parent() {
+        std::fs::create_dir_all(parent_dir)
+            .map_err(|e| format!("snapshot index directory: {e}"))?;
+    }
+
+    // Build the index from the repository's own state.
+    let seed = |idx: &Path| -> Result<(), String> {
         let base_tree = run(repo, None, &["rev-parse", "--verify", "-q", "HEAD^{tree}"])
             .ok()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| EMPTY_TREE.to_string());
-        run(repo, Some(&idx), &["read-tree", &base_tree])?;
+        run(repo, Some(idx), &["read-tree", &base_tree])?;
         if let Ok(dirty) = run(repo, None, &["diff", "--name-only", "HEAD"]) {
             for rel in dirty.lines().filter(|l| !l.is_empty()) {
-                stage_path(repo, &idx, Path::new(rel), true)?;
+                stage_path(repo, idx, Path::new(rel), true)?;
             }
         }
+        Ok(())
+    };
+
+    let stage_all = |idx: &Path| -> Result<String, String> {
+        for rel in changed {
+            stage_path(repo, idx, rel, false)?;
+        }
+        run(repo, Some(idx), &["write-tree"])
+    };
+
+    if !idx.exists() {
+        seed(&idx)?;
     }
-    for rel in changed {
-        stage_path(repo, &idx, rel, false)?;
-    }
-    let tree = run(repo, Some(&idx), &["write-tree"])?;
+
+    // An index carried over from a previous session can name objects this
+    // repository does not have -- the repository was recreated, or the index
+    // was written against a different one. That is recoverable: the index is a
+    // cache, so throw it away and rebuild rather than leaving the thread
+    // permanently unable to snapshot.
+    let tree = match stage_all(&idx) {
+        Ok(tree) => tree,
+        Err(err) => {
+            let _ = std::fs::remove_file(&idx);
+            seed(&idx).map_err(|second| {
+                format!("snapshot index was unusable ({err}); rebuilding it also failed: {second}")
+            })?;
+            stage_all(&idx)?
+        }
+    };
     let mut args = vec!["commit-tree", &tree];
     if let Some(p) = parent {
         args.push("-p");
@@ -192,7 +265,9 @@ pub(crate) fn snapshot(
 /// after a workspace restore invalidates it). Safe to call even if it was
 /// never created.
 pub(crate) fn cleanup_snapshot_index(thread_id: &str) {
-    let _ = std::fs::remove_file(snapshot_index(thread_id));
+    // Every repository this thread touched, not just one: the caller deleting a
+    // thread has no repository in hand and should not leave indexes behind.
+    let _ = std::fs::remove_dir_all(snapshot_index_dir(thread_id));
 }
 
 /// Point the thread's snapshot ref at `sha` (create or update).
@@ -963,6 +1038,79 @@ mod tests {
         repo_root(&root)
     }
 
+    /// Two repositories, one thread id. Before the index was keyed by
+    /// repository as well, the second snapshot staged against the first
+    /// repository's tree.
+    #[test]
+    fn each_repository_gets_its_own_snapshot_index() {
+        let Some(a) = init_repo() else { return };
+        let Some(b) = init_repo() else { return };
+        let thread_id = "shared-thread-id";
+        cleanup_snapshot_index(thread_id);
+
+        assert_ne!(
+            snapshot_index(&a, thread_id),
+            snapshot_index(&b, thread_id),
+            "one index file served two repositories"
+        );
+
+        snapshot(&a, None, "a", thread_id, &[]).expect("snapshot a");
+        snapshot(&b, None, "b", thread_id, &[]).expect("snapshot b");
+        assert!(snapshot_index(&a, thread_id).exists());
+        assert!(snapshot_index(&b, thread_id).exists());
+        cleanup_snapshot_index(thread_id);
+    }
+
+    /// An index left behind by a previous session names objects this repository
+    /// does not have. That must be recoverable: it is a cache, not a record.
+    /// Before this the failure was permanent -- every later snapshot for the
+    /// thread returned `fatal: <sha> is not a valid object`.
+    #[test]
+    fn a_poisoned_snapshot_index_is_rebuilt_rather_than_fatal() {
+        let Some(root) = init_repo() else { return };
+        let thread_id = "poisoned-thread";
+        cleanup_snapshot_index(thread_id);
+
+        snapshot(&root, None, "base", thread_id, &[]).expect("base snapshot");
+        let idx = snapshot_index(&root, thread_id);
+        assert!(idx.exists());
+
+        // Replace it with an index from a different repository, whose objects
+        // this one has never seen.
+        let Some(other) = init_repo() else { return };
+        let other_thread = "poisoned-thread-source";
+        cleanup_snapshot_index(other_thread);
+        std::fs::write(other.join("a.txt"), "different").unwrap();
+        snapshot(&other, None, "other", other_thread, &[PathBuf::from("a.txt")])
+            .expect("other snapshot");
+        std::fs::copy(snapshot_index(&other, other_thread), &idx).unwrap();
+
+        std::fs::write(root.join("a.txt"), "changed").unwrap();
+        let sha = snapshot(&root, None, "after", thread_id, &[PathBuf::from("a.txt")])
+            .expect("a stale index must not be fatal");
+        assert!(!sha.is_empty());
+
+        cleanup_snapshot_index(thread_id);
+        cleanup_snapshot_index(other_thread);
+    }
+
+    /// `cleanup_snapshot_index` has no repository in hand, so it must clear the
+    /// thread's indexes for every repository it touched.
+    #[test]
+    fn cleanup_clears_every_repository_for_the_thread() {
+        let Some(a) = init_repo() else { return };
+        let Some(b) = init_repo() else { return };
+        let thread_id = "cleanup-thread";
+        cleanup_snapshot_index(thread_id);
+
+        snapshot(&a, None, "a", thread_id, &[]).expect("snapshot a");
+        snapshot(&b, None, "b", thread_id, &[]).expect("snapshot b");
+
+        cleanup_snapshot_index(thread_id);
+        assert!(!snapshot_index(&a, thread_id).exists());
+        assert!(!snapshot_index(&b, thread_id).exists());
+    }
+
     #[test]
     fn snapshot_restore_roundtrip() {
         let Some(root) = init_repo() else { return };
@@ -1069,7 +1217,7 @@ mod tests {
         let thread_id = "test-thread-3";
 
         let base = snapshot(&root, None, "base", thread_id, &[]).expect("base snapshot");
-        let idx = snapshot_index(thread_id);
+        let idx = snapshot_index(&root, thread_id);
         assert!(idx.exists(), "base snapshot should persist its index");
 
         // Two files change on disk, but only one is reported as touched; the
