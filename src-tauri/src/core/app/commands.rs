@@ -198,6 +198,19 @@ pub fn get_app_configurations<R: Runtime>(app_handle: tauri::AppHandle<R>) -> Ap
         return app_default_configuration;
     }
 
+    // The same explicit override `resolve_jan_data_folder` honours. Without it
+    // the two disagreed: settings resolved to the redirected folder while
+    // everything reached through this one -- the extensions' own storage, and
+    // so the user's configured providers -- resolved to the real folder. A
+    // harness run then loaded the developer's real provider list and tried to
+    // connect to their machines.
+    if let Ok(folder) = std::env::var("JAN_DATA_FOLDER") {
+        if !folder.is_empty() {
+            app_default_configuration.data_folder = folder;
+            return app_default_configuration;
+        }
+    }
+
     let app_path = app_data_dir_with_fallback(&app_handle);
     if let Err(err) = migrate_legacy_app_configuration(&app_path) {
         log::warn!("Legacy app config migration skipped: {err}");
