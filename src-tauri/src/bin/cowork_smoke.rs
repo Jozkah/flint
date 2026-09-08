@@ -2506,6 +2506,21 @@ fn scenario_cowork_search_and_settings(ctx: &Ctx) -> ScenarioResult {
          || !!document.querySelector('[data-testid=\"cowork-diff-panel\"]');",
     )?;
 
+    // Neither control may be swallowed by the macOS window drag region.
+    let clickable = ctx.eval_bool(
+        r#"for (const id of ['cowork-search', 'cowork-settings']) {
+             const el = document.querySelector(`[data-testid="${id}"]`);
+             if (!el) return false;
+             const r = el.getBoundingClientRect();
+             const hit = document.elementFromPoint(
+               Math.round(r.left + r.width / 2),
+               Math.round(r.top + r.height / 2));
+             if (!hit || (!el.contains(hit) && hit !== el)) return false;
+           }
+           return true;"#,
+    )?;
+    ensure!(clickable, "a quick action is covered by something else");
+
     // Search opens the shared dialog rather than a second implementation.
     ctx.eval("document.querySelector('[data-testid=\"cowork-search\"]').click(); return true;")?;
     ctx.wait_until(
@@ -2531,21 +2546,6 @@ fn scenario_cowork_search_and_settings(ctx: &Ctx) -> ScenarioResult {
         Duration::from_secs(10),
     )?;
     ctx.settle();
-
-    // Neither control may be swallowed by the macOS window drag region.
-    let clickable = ctx.eval_bool(
-        r#"for (const id of ['cowork-search', 'cowork-settings']) {
-             const el = document.querySelector(`[data-testid="${id}"]`);
-             if (!el) return false;
-             const r = el.getBoundingClientRect();
-             const hit = document.elementFromPoint(
-               Math.round(r.left + r.width / 2),
-               Math.round(r.top + r.height / 2));
-             if (!hit || (!el.contains(hit) && hit !== el)) return false;
-           }
-           return true;"#,
-    )?;
-    ensure!(clickable, "a quick action is covered by something else");
 
     ctx.eval("document.querySelector('[data-testid=\"cowork-settings\"]').click(); return true;")?;
     ctx.wait_until(

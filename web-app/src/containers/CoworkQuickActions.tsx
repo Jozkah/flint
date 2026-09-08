@@ -33,9 +33,10 @@ export function CoworkQuickActions() {
     'flex size-7 items-center justify-center rounded-md text-main-view-fg/60 hover:bg-main-view-fg/5 hover:text-main-view-fg focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50'
 
   return (
-    // `no-drag` matters on macOS: the header is a window drag region, and a
-    // control inside one swallows its own clicks without this.
-    <div className="no-drag flex items-center gap-0.5">
+    // Tauri drags only when the pressed element *is* the drag region, so a
+    // control inside the header bar keeps its own clicks. What it must not do
+    // is get squeezed out of the bar, hence `shrink-0`.
+    <div className="flex shrink-0 items-center gap-0.5">
       <Tooltip>
         <TooltipTrigger asChild>
           <button

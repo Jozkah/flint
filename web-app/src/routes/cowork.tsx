@@ -2615,8 +2615,13 @@ function CoworkPage() {
     <div className="flex flex-col h-[calc(100dvh-(env(safe-area-inset-bottom)+env(safe-area-inset-top)))]">
       <HeaderPage>
         <div className="flex items-center justify-between w-full gap-2 pr-2">
-          <DropdownModelProvider useLastUsedModel />
-          <div className="ml-auto flex items-center gap-1">
+          {/* `min-w-0` so the model name truncates instead of pushing the
+              controls beside it out of the bar. */}
+          <div className="min-w-0 flex-1">
+            <DropdownModelProvider useLastUsedModel />
+          </div>
+          {/* `shrink-0`: these must stay reachable at any width. */}
+          <div className="flex shrink-0 items-center gap-1">
             {/* The same Search dialog and Settings route the rest of Jan uses. */}
             <CoworkQuickActions />
           {/* Everything about the session that is reference material rather
