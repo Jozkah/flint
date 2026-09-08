@@ -109,7 +109,11 @@ import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import type { AskRecord } from '@/types/coworkSession'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { usePrompt } from '@/hooks/usePrompt'
-import { useCoworkView, type CoworkRail } from '@/hooks/useCoworkView'
+import {
+  NO_SESSION,
+  useCoworkView,
+  type CoworkRail,
+} from '@/hooks/useCoworkView'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import {
   deriveFromSubagent,
@@ -652,9 +656,14 @@ function CoworkPage() {
   // -- same rail, same place in the transcript -- not to a reset view.
   const railBySession = useCoworkView((s) => s.railBySession)
   const sessionIdForView = session?.id
-  const rail = sessionIdForView
-    ? (railBySession[sessionIdForView] ?? null)
-    : null
+  const rail = railBySession[sessionIdForView ?? NO_SESSION] ?? null
+  // A rail opened before the first message belongs to the session that message
+  // starts.
+  useEffect(() => {
+    if (sessionIdForView) {
+      useCoworkView.getState().adoptPreSession(sessionIdForView)
+    }
+  }, [sessionIdForView])
   const setRail = useCallback(
     (next: CoworkRail) =>
       useCoworkView.getState().setRail(sessionIdForView, next),
