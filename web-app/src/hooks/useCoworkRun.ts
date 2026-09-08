@@ -67,7 +67,38 @@ export function makeToolCallTurn(ev: {
     name: ev.name,
     args: ev.args,
     status: 'running',
+    // The durable item begins here and is never replaced: the result merges
+    // onto this same turn.
+    toolState: 'running',
+    startedAt: Date.now(),
   }
+}
+
+/**
+ * Which terminal state an error result belongs in.
+ *
+ * A refusal and a cancellation are not failures -- they are outcomes the user
+ * or the permission gate chose -- and the timeline has to keep saying which,
+ * because "failed" would read as the tool having gone wrong.
+ */
+export function toolOutcome(
+  isError: boolean,
+  content: string
+): 'succeeded' | 'failed' | 'cancelled' | 'refused' {
+  if (!isError) return 'succeeded'
+  const text = content.toLowerCase()
+  if (text.includes('cancelled') || text.includes('canceled') || text.includes('interrupted')) {
+    return 'cancelled'
+  }
+  if (
+    text.includes('refused') ||
+    text.includes('denied') ||
+    text.includes('not permitted') ||
+    text.includes('permission')
+  ) {
+    return 'refused'
+  }
+  return 'failed'
 }
 
 // Find the tool turn by callId and merge patch onto it; returns the same
@@ -94,7 +125,19 @@ export function applyInnerToTurns(turns: CoworkTurn[], inner: StreamEvent): Cowo
       if (turns.some((tn) => tn.role === 'tool' && tn.callId === inner.id)) return turns
       return [
         ...turns,
-        { role: 'tool', content: '', callId: inner.id, name: inner.name, args: null, argsLive: '', status: 'running' },
+        {
+          role: 'tool',
+          content: '',
+          callId: inner.id,
+          name: inner.name,
+          args: null,
+          argsLive: '',
+          status: 'running',
+          // Named before its arguments have finished streaming: the item
+          // exists from the moment the call was requested.
+          toolState: 'requested',
+          startedAt: Date.now(),
+        },
       ]
     }
     case 'tool_call_args_delta': {
@@ -134,14 +177,36 @@ export function applyInnerToTurns(turns: CoworkTurn[], inner: StreamEvent): Cowo
         },
       ]
     }
-    case 'tool_call':
+    case 'tool_call': {
+      // The call may already be here from `tool_call_started`; that turn is
+      // advanced rather than duplicated.
+      const idx = turns.findIndex(
+        (tn) => tn.role === 'tool' && tn.callId === inner.id
+      )
+      if (idx !== -1) {
+        return [
+          ...turns.slice(0, idx),
+          {
+            ...turns[idx],
+            args: inner.args,
+            argsLive: undefined,
+            toolState: 'running',
+          },
+          ...turns.slice(idx + 1),
+        ]
+      }
       return [...turns, makeToolCallTurn(inner)]
+    }
     case 'tool_result':
       return mergeToolResult(turns, inner.id, {
         result: inner.content,
         isError: inner.is_error,
         diff: inner.diff,
         status: 'done',
+        // The same item, in a terminal state. Nothing is removed and no
+        // separate result item is appended.
+        toolState: toolOutcome(inner.is_error, inner.content),
+        endedAt: Date.now(),
       })
     default:
       return turns // step / anything else: no visible turn
@@ -523,7 +588,15 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
     // misleading error-styled tool card even though no tool call failed.
     const turns: CoworkTurn[] = (get().liveTurns[sid] ?? []).map((tn) =>
       tn.role === 'tool' && tn.status === 'running'
-        ? { ...tn, status: 'done' as const, isError: true, result: tn.result || '(interrupted)' }
+        ? {
+            ...tn,
+            status: 'done' as const,
+            isError: true,
+            result: tn.result || '(interrupted)',
+            // The run that would have finished this call is gone.
+            toolState: 'stale' as const,
+            endedAt: Date.now(),
+          }
         : tn
     )
     const subs = (get().subagents[sid] ?? []).map((r) =>

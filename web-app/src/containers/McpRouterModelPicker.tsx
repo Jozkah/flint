@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/popover'
 import { Button } from '@/components/ui/button'
 import { cn, getModelDisplayName, isLocalProvider } from '@/lib/utils'
+import { classifyModelLocation } from '@/lib/modelLocation'
 import { IconChevronDown, IconX } from '@tabler/icons-react'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import Capabilities from '@/containers/Capabilities'
@@ -65,7 +66,12 @@ export function McpRouterModelPicker({
         entries.push({
           model: m,
           providerName: p.provider,
-          isLocal: !!isLocalProvider(p.provider),
+          // Where inference runs, not how the provider was installed.
+          isLocal:
+            classifyModelLocation({
+              baseUrl: p.base_url,
+              builtInEngine: Boolean(isLocalProvider(p.provider)),
+            }) === 'local',
           hasApiKey: !!p.api_key?.length,
         })
       }

@@ -25,6 +25,7 @@ export const localStorageKey = {
   threadManagement: 'thread-management',
   recentSearches: 'recent-searches',
   agentMode: 'agent-mode',
+  coworkDisplay: 'cowork-display',
   defaultEmbeddingModel: 'default-embedding-model',
   modelOverrides: 'model-overrides',
   // Value predates the Cowork rename; changing it would orphan saved sessions.

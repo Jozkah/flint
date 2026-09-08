@@ -12,6 +12,7 @@ import {
   getModelDisplayName,
   isLocalProvider,
 } from '@/lib/utils'
+import { classifyModelLocation } from '@/lib/modelLocation'
 import { highlightFzfMatch } from '@/utils/highlight'
 import Capabilities from './Capabilities'
 import { IconArrowsSort, IconSettings, IconX } from '@tabler/icons-react'
@@ -143,7 +144,13 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     (item: SearchableModel) =>
       isOffline(
         modelAvailability({
-          isLocal: Boolean(isLocalProvider(item.provider.provider)),
+          // Where inference runs. A LAN or tailnet endpoint needs no API key,
+          // and treating it as remote made the picker demand one.
+          isLocal:
+            classifyModelLocation({
+              baseUrl: item.provider.base_url,
+              builtInEngine: Boolean(isLocalProvider(item.provider.provider)),
+            }) !== 'remote',
           providerActive: item.provider.active !== false,
           hasApiKey: Boolean(hasRemoteKeys(item.provider)),
           baseUrl: item.provider.base_url,

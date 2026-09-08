@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils'
 
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { getProviderTitle, isLocalProvider } from '@/lib/utils'
+import { useProviderLocations } from '@/hooks/useEndpointLocations'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import { AddProviderDialog } from '@/containers/dialogs'
 import {
@@ -100,12 +101,23 @@ const SettingsMenu = () => {
     return true
   })
 
-  const activeLocalProviders = activeProviders.filter((p) =>
-    isLocalProvider(p.provider)
+  // Grouped by where inference actually runs, not by whether the provider
+  // shipped an engine: a workstation or tailnet endpoint the user configured
+  // by hand belongs under LOCAL, and used to be filed with the hosted APIs.
+  const locationOf = useProviderLocations(activeProviders, (name) =>
+    Boolean(isLocalProvider(name))
   )
-  const activeRemoteProviders = activeProviders.filter(
-    (p) => !isLocalProvider(p.provider)
+  const activeLocalProviders = activeProviders.filter(
+    (p) => locationOf(p) === 'local'
   )
+  // Anything still resolving stays out of REMOTE rather than being filed
+  // there and moved a moment later. A provider with no endpoint of its own is
+  // a hosted API on its built-in URL, which is remote by definition -- that is
+  // not the unresolved case.
+  const activeRemoteProviders = activeProviders.filter((p) => {
+    const location = locationOf(p)
+    return location === 'remote' || location === 'unknown'
+  })
 
   const hiddenProviders = providers.filter((provider) => {
     if (provider.active) return false

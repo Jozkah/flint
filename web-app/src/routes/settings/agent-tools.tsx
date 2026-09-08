@@ -28,6 +28,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getSandboxStatus } from '@/lib/agentTools'
 import type { SandboxStatus } from '@janhq/tauri-plugin-agent-tools-api'
+import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import {
   storePath,
   revealStore,
@@ -66,6 +67,10 @@ const SKILL_TEMPLATE = '---\ndescription: \n---\n\n'
 
 function AgentToolsContent() {
   const { t } = useTranslation()
+  const hideCompletedTools = useCoworkDisplay((x) => x.hideCompletedTools)
+  const setHideCompletedTools = useCoworkDisplay(
+    (x) => x.setHideCompletedTools
+  )
   const agentToolsEnabled = useAgentToolsConfig((s) => s.agentToolsEnabled)
   const setAgentToolsEnabled = useAgentToolsConfig(
     (s) => s.setAgentToolsEnabled
@@ -262,6 +267,22 @@ function AgentToolsContent() {
                   <Switch
                     checked={agentToolsEnabled}
                     onCheckedChange={setAgentToolsEnabled}
+                  />
+                }
+              />
+              {/* A display preference, kept beside the tools it is about.
+                  Nothing is deleted: hidden activity stays in the session, in
+                  exports and in search. */}
+              <CardItem
+                anchor="settings-agent-tools-hide-completed"
+                title={t('common:coworkDisplay.hideCompletedTools')}
+                description={t('common:coworkDisplay.hideCompletedToolsDescription')}
+                align="start"
+                actions={
+                  <Switch
+                    data-testid="hide-completed-tools"
+                    checked={hideCompletedTools}
+                    onCheckedChange={setHideCompletedTools}
                   />
                 }
               />

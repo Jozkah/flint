@@ -1215,5 +1215,12 @@
     "description": "The repository, mode, workspace, instructions, skills, tools and model this session is using."
   },
   "askSkipped": "Skipped",
-  "askStale": "No longer waiting for an answer"
+  "askStale": "No longer waiting for an answer",
+  "coworkDisplay": {
+    "hideCompletedTools": "Hide completed tool activity",
+    "hideCompletedToolsDescription": "Hide tool activity that finished successfully. Running, failed, refused, cancelled and stale activity is always shown, and nothing is deleted.",
+    "hiddenCount": "{{count}} completed tool activities hidden",
+    "hiddenCount_one": "1 completed tool activity hidden",
+    "showAgain": "Show them again"
+  }
 }

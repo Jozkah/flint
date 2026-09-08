@@ -50,9 +50,38 @@ export function assistantAnchorId(
   return undefined
 }
 
+/**
+ * Whether a tool turn is one the "Hide completed tool activity" option may
+ * hide.
+ *
+ * Only a clean success. Anything running, waiting on permission, failed,
+ * refused, cancelled or stale stays on screen whatever the setting says --
+ * hiding those would hide the things that need attention.
+ */
+export function isHideableToolTurn(turn: CoworkTurn): boolean {
+  if (turn.role !== 'tool') return false
+  if (turn.isError) return false
+  if (turn.toolState) return turn.toolState === 'succeeded'
+  // Turns written before the state field existed: a finished call with no
+  // error is a success.
+  return turn.status === 'done'
+}
+
+export type CoworkTurnsOptions = {
+  /**
+   * Hide successfully completed tool activity from the timeline.
+   *
+   * A presentation filter and nothing more: the turns are still in the
+   * session, still exported, and still searchable. Turning it off shows them
+   * again with no reload.
+   */
+  hideCompletedTools?: boolean
+}
+
 export function coworkTurnsToUIMessages(
   turns: CoworkTurn[],
-  idPrefix = 'code'
+  idPrefix = 'code',
+  options: CoworkTurnsOptions = {}
 ): UIMessage[] {
   const messages: UIMessage[] = []
   let assistant: any = null
@@ -107,6 +136,18 @@ export function coworkTurnsToUIMessages(
           asst.parts.push(part)
         }
       }
+      return
+    }
+
+    if (options.hideCompletedTools && isHideableToolTurn(turn)) {
+      // Counted, not dropped: the timeline says how many are hidden and offers
+      // to show them.
+      const asst = ensureAssistant(i)
+      const existing = asst.parts.find(
+        (p: any) => p.type === 'data-hidden-tools'
+      )
+      if (existing) existing.data.count += 1
+      else asst.parts.push({ type: 'data-hidden-tools', data: { count: 1 } })
       return
     }
 

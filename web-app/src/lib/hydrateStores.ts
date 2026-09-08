@@ -21,6 +21,7 @@ import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
+import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -55,6 +56,7 @@ const secondaryStores = [
   useFileActivity,
   useAgentToolsConfig,
   useModelOverrides,
+  useCoworkDisplay,
 ] as const
 
 export async function hydrateBackendStores(): Promise<void> {

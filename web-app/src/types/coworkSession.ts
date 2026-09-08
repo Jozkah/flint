@@ -25,6 +25,33 @@ export type CoworkTurn = {
   diff?: string
   status?: 'running' | 'done'
   /**
+   * What became of this tool invocation.
+   *
+   * One durable item moves through these states; the invocation is never
+   * replaced by its result and never removed when the stream ends. `status`
+   * above is the older two-value form kept for turns already on disk, and is
+   * derived from this when both are present.
+   */
+  toolState?:
+    | 'requested'
+    | 'awaiting-permission'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'cancelled'
+    | 'refused'
+    | 'stale'
+  /** Epoch millis. Together with `endedAt` this is the duration shown. */
+  startedAt?: number
+  endedAt?: number
+  /** Which run and agent made the call, when it was not the main one. */
+  runId?: string
+  agent?: string
+  /** What the permission gate decided, when it was consulted. */
+  permission?: 'allowed' | 'denied' | 'prompted-allowed' | 'prompted-denied'
+  /** Exit status for a command, when the tool reports one. */
+  exitCode?: number
+  /**
    * The prompt snapshot this assistant turn was produced from. AH-078.
    *
    * Attached to the turn rather than kept as a single "latest": a run makes

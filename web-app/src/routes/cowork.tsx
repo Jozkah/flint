@@ -103,6 +103,8 @@ import {
 import { isReadOnly, modeOf } from '@/lib/coworkMode'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
+import { CoworkHiddenTools } from '@/containers/CoworkHiddenTools'
+import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import type { AskRecord } from '@/types/coworkSession'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { usePrompt } from '@/hooks/usePrompt'
@@ -147,6 +149,7 @@ import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
 import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
 import { CoworkRunSummary } from '@/containers/CoworkRunSummary'
+import { hasJanAuthoredChanges } from '@/lib/coworkOrigins'
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
@@ -991,9 +994,20 @@ function CoworkPage() {
         : (session?.turns ?? []),
     [running, liveTurns, session?.turns]
   )
+  // A presentation filter: the turns themselves are untouched, so turning the
+  // option off puts the activity straight back without a reload.
+  const hideCompletedToolsSetting = useCoworkDisplay((s) => s.hideCompletedTools)
+  // A temporary look at what is hidden. Not persisted, and reset whenever the
+  // setting itself changes, so it never silently overrides the preference.
+  const [revealHiddenTools, setRevealHiddenTools] = useState(false)
+  useEffect(() => setRevealHiddenTools(false), [hideCompletedToolsSetting])
+  const hideCompletedTools = hideCompletedToolsSetting && !revealHiddenTools
   const uiMessages = useMemo(
-    () => coworkTurnsToUIMessages(displayedTurns, session?.id ?? 'cowork'),
-    [displayedTurns, session?.id]
+    () =>
+      coworkTurnsToUIMessages(displayedTurns, session?.id ?? 'cowork', {
+        hideCompletedTools,
+      }),
+    [displayedTurns, session?.id, hideCompletedTools]
   )
 
   const usage = liveUsage ?? session?.lastUsage ?? null
@@ -2635,6 +2649,23 @@ function CoworkPage() {
                             />
                           ) : null
                         })()}
+                        {/* Completed tool activity the display option is
+                        filtering out. The turns are still in the session; this
+                        says how many and offers to look. */}
+                        {(() => {
+                          const part = (
+                            message.parts as { type: string; data?: unknown }[]
+                          ).find((p) => p.type === 'data-hidden-tools')
+                          const data = part?.data as
+                            | { count: number }
+                            | undefined
+                          return data ? (
+                            <CoworkHiddenTools
+                              count={data.count}
+                              onReveal={() => setRevealHiddenTools(true)}
+                            />
+                          ) : null
+                        })()}
                         {/* Questions the run asked here, in the order they
                         were asked. A pending one is the card; an answered,
                         skipped or stale one collapses to what happened, and
@@ -2694,12 +2725,15 @@ function CoworkPage() {
                       />
                     </div>
                   )}
-                  {!running && runOrigins?.summary && (
-                    // After the transcript, never inside it: the model's own
-                    // account of the run and Jan's record of it must not read
-                    // as one voice.
-                    <CoworkRunSummary summary={runOrigins.summary} />
-                  )}
+                  {!running &&
+                    runOrigins?.summary &&
+                    // Only when this run actually wrote something. A working
+                    // tree that was already dirty is not the run's work, and
+                    // reporting it here left a permanent panel over the
+                    // composer listing the user's own edits.
+                    hasJanAuthoredChanges(runOrigins.summary) && (
+                      <CoworkRunSummary summary={runOrigins.summary} />
+                    )}
                   {stoppedBy === 'steps' && (
                     <CoworkBudgetNotice
                       kind="steps"

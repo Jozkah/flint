@@ -35,6 +35,14 @@ static EVAL_SEQ: AtomicU64 = AtomicU64::new(0);
 /// A provider name deliberately absent from `predefinedProviders`, so it counts
 /// as a custom endpoint and needs no credential to be usable.
 const SMOKE_PROVIDER: &str = "cowork-smoke-mock";
+/// The single-label hostname the provider is configured at, exactly as a user
+/// would type it. It is never rewritten to an address.
+const SMOKE_ENDPOINT_HOST: &str = "v100";
+const SMOKE_ENDPOINT_PORT: u16 = 8080;
+/// A documentation-range address standing in for the public answer a search
+/// domain collision produces. Reaching it would hang; the point is that it is
+/// never dialled.
+const SMOKE_PUBLIC_DECOY: &str = "203.0.113.9";
 const SMOKE_MODEL: &str = "smoke-model";
 /// `AppHandle::exit` unwinds the event loop but does not set this process's
 /// status, so the verdict is stashed here and applied once `run_app` returns.
@@ -455,7 +463,7 @@ fn materialize_project(workspace: &Path, template: Option<&Path>) -> Result<Path
 /// The provider's URL has to be written into settings.json before the app
 /// launches, so the server is started first and re-scripted afterwards over its
 /// `/__control` endpoint rather than restarted per scenario.
-fn start_mock_provider(fixtures: &Path) -> Result<(std::process::Child, u16), String> {
+fn start_mock_provider(fixtures: &Path, port: u16) -> Result<(std::process::Child, u16), String> {
     // `--fixtures` names the *project* template; the server fixture sits beside
     // that directory, so accept either location.
     let candidates = [
@@ -483,6 +491,8 @@ fn start_mock_provider(fixtures: &Path) -> Result<(std::process::Child, u16), St
         .arg(script)
         .arg("--model")
         .arg(SMOKE_MODEL)
+        .arg("--port")
+        .arg(port.to_string())
         .stdout(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("could not start the mock provider: {e}"))?;
@@ -723,6 +733,18 @@ const SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "prompt-snapshot-cross-session-refused",
         run: scenario_prompt_snapshot_isolation,
+    },
+    Scenario {
+        name: "local-hostname-selects-the-private-address",
+        run: scenario_local_hostname,
+    },
+    Scenario {
+        name: "chat-streams-over-the-local-hostname",
+        run: scenario_stream_over_local_hostname,
+    },
+    Scenario {
+        name: "no-setup-wall-above-the-composer",
+        run: scenario_no_setup_wall,
     },
     Scenario {
         name: "provider-error-is-actionable",
@@ -2182,6 +2204,244 @@ fn scenario_provider_error(ctx: &Ctx) -> ScenarioResult {
 /// row. When the row runs out of width the send control is drawn over the rail
 /// icons instead of the row wrapping or reserving space, which makes those
 /// icons unclickable where they overlap.
+/// The reported defect, end to end: a provider configured at a single-label
+/// hostname must reach the machine on the private address, never the public
+/// answer a search-domain collision produced.
+fn scenario_local_hostname(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/cowork")?;
+    ctx.settle();
+
+    // Model discovery over the production command, at the URL exactly as
+    // configured. Nothing here rewrites it to an address.
+    let listed = ctx.eval_string(&format!(
+        r#"const r = await window.__TAURI_INTERNALS__.invoke('provider_http_request', {{
+             request: {{
+               url: 'http://{host}:{port}/v1/models',
+               method: 'GET',
+               headers: {{ 'Content-Type': 'application/json' }},
+               body: null,
+               timeoutSecs: 15,
+             }},
+           }});
+           return JSON.stringify({{ status: r.status, peer: r.peer, body: r.body.slice(0, 300) }});"#,
+        host = SMOKE_ENDPOINT_HOST,
+        port = SMOKE_ENDPOINT_PORT,
+    ))?;
+    println!("      discovery: {listed}");
+    let v: Value = serde_json::from_str(&listed).unwrap_or(Value::Null);
+    ensure!(
+        v.get("status").and_then(Value::as_u64) == Some(200),
+        "model discovery at the configured hostname did not answer 200: {listed}"
+    );
+    ensure!(
+        v.get("body")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .contains(SMOKE_MODEL),
+        "model discovery did not list {SMOKE_MODEL}: {listed}"
+    );
+    // The peer is the private address, not the public decoy.
+    let peer = v.get("peer").and_then(Value::as_str).unwrap_or_default();
+    ensure!(
+        peer.starts_with("127.0.0.1:"),
+        "the request reached {peer:?} instead of the private address"
+    );
+
+    let diag = ctx.eval_string(&format!(
+        r#"const d = await window.__TAURI_INTERNALS__.invoke(
+             'provider_endpoint_diagnostics', {{ host: {host:?}, port: {port} }});
+           return JSON.stringify(d);"#,
+        host = SMOKE_ENDPOINT_HOST,
+        port = SMOKE_ENDPOINT_PORT,
+    ))?;
+    println!("      diagnostics: {diag}");
+    let d: Value = serde_json::from_str(&diag).unwrap_or(Value::Null);
+    ensure!(
+        d.get("selected").and_then(Value::as_str) == Some("127.0.0.1"),
+        "the selected address was not the private one: {diag}"
+    );
+    ensure!(
+        d.get("suppressedPublic").and_then(Value::as_bool) == Some(true),
+        "the public candidate was not suppressed: {diag}"
+    );
+    ensure!(
+        d.get("localName").and_then(Value::as_bool) == Some(true),
+        "{SMOKE_ENDPOINT_HOST} was not treated as a local name: {diag}"
+    );
+    let decoy = d
+        .get("candidates")
+        .and_then(Value::as_array)
+        .map(|c| {
+            c.iter().any(|one| {
+                one.get("address").and_then(Value::as_str) == Some(SMOKE_PUBLIC_DECOY)
+                    && one.get("eligible").and_then(Value::as_bool) == Some(false)
+            })
+        })
+        .unwrap_or(false);
+    ensure!(
+        decoy,
+        "the public candidate is not reported as an ineligible candidate: {diag}"
+    );
+    ensure!(
+        d.get("responded")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            == "127.0.0.1",
+        "diagnostics did not record the responding peer: {diag}"
+    );
+    // Diagnostics never carry the credential the provider is configured with.
+    ensure!(
+        !diag.contains("smoke-not-a-real-key") && !diag.to_lowercase().contains("bearer"),
+        "the diagnostics leaked a credential"
+    );
+    Ok(())
+}
+
+/// A chat streams through the same resolved endpoint as discovery.
+fn scenario_stream_over_local_hostname(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    // Forget what was resolved so this scenario proves the whole path, not a
+    // decision another scenario already made.
+    ctx.eval(&format!(
+        "await window.__TAURI_INTERNALS__.invoke('provider_endpoint_refresh',
+           {{ host: {host:?}, port: {port} }});
+         return true;",
+        host = SMOKE_ENDPOINT_HOST,
+        port = SMOKE_ENDPOINT_PORT,
+    ))?;
+
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "stream over the short name")?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(15),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the model's reply",
+        "return document.body.innerText.includes('Hello from the smoke model');",
+        Duration::from_secs(90),
+    )?;
+
+    let diag = ctx.eval_string(&format!(
+        r#"const d = await window.__TAURI_INTERNALS__.invoke(
+             'provider_endpoint_diagnostics', {{ host: {host:?}, port: {port} }});
+           return JSON.stringify(d);"#,
+        host = SMOKE_ENDPOINT_HOST,
+        port = SMOKE_ENDPOINT_PORT,
+    ))?;
+    println!("      streaming diagnostics: {diag}");
+    let d: Value = serde_json::from_str(&diag).unwrap_or(Value::Null);
+    ensure!(
+        d.get("responded").and_then(Value::as_str) == Some("127.0.0.1"),
+        "the streamed completion did not go to the private address: {diag}"
+    );
+    ensure!(
+        d.get("suppressedPublic").and_then(Value::as_bool) == Some(true),
+        "the public candidate was not suppressed for the streaming request: {diag}"
+    );
+    Ok(())
+}
+
+/// Nothing between the last thing said and the composer but the composer.
+fn scenario_no_setup_wall(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "clear the wall")?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(15),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the model's reply",
+        "return document.body.innerText.includes('Hello from the smoke model');",
+        Duration::from_secs(90),
+    )?;
+    ctx.settle();
+
+    let report = ctx.eval_string(
+        r#"const gone = (sel) => document.querySelectorAll(sel).length;
+           const composer = document.querySelector('[data-testid="chat-input"]');
+           const c = composer.getBoundingClientRect();
+           // Anything diagnostic still rendered in the conversation would sit
+           // above the composer and below the transcript.
+           const snapshots = [...document.querySelectorAll('[data-testid="prompt-snapshot"]')];
+           const orphan = snapshots.filter((s) => {
+             const r = s.getBoundingClientRect();
+             // A snapshot bar whose own row has no message text above it in the
+             // same column is the empty bar that used to sit over the composer.
+             return r.bottom <= c.top && r.bottom > c.top - 80;
+           }).length;
+           return JSON.stringify({
+             compat: gone('[data-testid="cowork-compat"]'),
+             readiness: gone('[aria-label="common:readiness.title"], section[aria-label*="readiness"]'),
+             detailsBody: gone('[data-testid="session-details-body"]'),
+             trigger: gone('[data-testid="session-details-trigger"]'),
+             orphanSnapshotBars: orphan,
+           });"#,
+    )?;
+    println!("      wall: {report}");
+    let v: Value = serde_json::from_str(&report).unwrap_or(Value::Null);
+    let count = |k: &str| v.get(k).and_then(Value::as_u64).unwrap_or(u64::MAX);
+    ensure!(
+        count("compat") == 0,
+        "the compatibility section is still in the conversation: {report}"
+    );
+    ensure!(
+        count("readiness") == 0,
+        "the readiness card is still in the conversation: {report}"
+    );
+    ensure!(
+        count("detailsBody") == 0,
+        "session details are expanded rather than closed: {report}"
+    );
+    ensure!(
+        count("trigger") == 1,
+        "there is no compact session-details control: {report}"
+    );
+    ensure!(
+        count("orphanSnapshotBars") == 0,
+        "an empty snapshot bar is sitting above the composer: {report}"
+    );
+
+    // The details are still reachable, and they carry the information that was
+    // taken out of the conversation.
+    ctx.eval("document.querySelector('[data-testid=\"session-details-trigger\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the session details",
+        "return !!document.querySelector('[data-testid=\"session-details-body\"]');",
+        Duration::from_secs(10),
+    )?;
+    let has = ctx.eval_bool(
+        "const b = document.querySelector('[data-testid=\"session-details-body\"]');
+         return !!b && b.textContent.trim().length > 0;",
+    )?;
+    ensure!(has, "the session details opened empty");
+    ctx.eval("document.body.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true})); return true;")?;
+    Ok(())
+}
+
 fn scenario_composer_layout(ctx: &Ctx) -> ScenarioResult {
     ctx.goto("/cowork")?;
     ctx.wait_until(
@@ -2266,7 +2526,10 @@ fn main() {
     // writes its sessions into the developer's real Jan data folder, and each
     // run inherits the previous run's attached folder from a temp directory
     // that has since been deleted.
-    let (mut mock, mock_port) = match start_mock_provider(&fixtures) {
+    // The provider is reached at a single-label hostname on a fixed port, so
+    // every scenario that talks to a model exercises the short-hostname path
+    // that was resolving to the wrong machine.
+    let (mut mock, mock_port) = match start_mock_provider(&fixtures, SMOKE_ENDPOINT_PORT) {
         Ok(pair) => pair,
         Err(e) => {
             eprintln!("FATAL: {e}");
@@ -2275,8 +2538,29 @@ fn main() {
     };
     println!("mock provider on port {mock_port}");
 
+    // Deterministic resolution for the harness only: `v100` answers with a
+    // public address and a loopback one, exactly the shape that sent requests
+    // out of the network. Nothing else about the request path changes -- the
+    // app still builds and sends through `core::net::transport`.
+    struct SmokeDns;
+    impl app_lib::core::net::resolver::DnsProbe for SmokeDns {
+        fn lookup(&self, host: &str, port: u16) -> Result<Vec<std::net::SocketAddr>, String> {
+            if host.eq_ignore_ascii_case(SMOKE_ENDPOINT_HOST) {
+                return Ok(vec![
+                    std::net::SocketAddr::new(SMOKE_PUBLIC_DECOY.parse().unwrap(), port),
+                    std::net::SocketAddr::new("127.0.0.1".parse().unwrap(), port),
+                ]);
+            }
+            app_lib::core::net::resolver::SystemDns.lookup(host, port)
+        }
+    }
+    app_lib::core::net::transport::set_probe(std::sync::Arc::new(SmokeDns));
+
     let data_folder = workspace.join("data");
-    if let Err(e) = seed_settings(&data_folder, &format!("http://127.0.0.1:{mock_port}/v1")) {
+    if let Err(e) = seed_settings(
+        &data_folder,
+        &format!("http://{SMOKE_ENDPOINT_HOST}:{SMOKE_ENDPOINT_PORT}/v1"),
+    ) {
         eprintln!("FATAL: could not seed the smoke data folder: {e}");
         let _ = mock.kill();
         std::process::exit(2);

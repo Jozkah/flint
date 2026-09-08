@@ -417,6 +417,27 @@ export function summarizeRun(
 }
 
 /** Does this summary have anything to report at all? */
+/**
+ * The files Jan itself wrote, across every destination.
+ *
+ * Distinct from "files that are different": a working tree that was already
+ * dirty when the run started is not the run's work, and a summary built from
+ * that would be Jan taking credit for the user's edits.
+ */
+export const janAuthoredPaths = (summary: CompletionSummary): string[] =>
+  summary.janWrites.flatMap((group) => group.paths)
+
+/**
+ * Whether this run has anything of its own to report.
+ *
+ * This is the gate on showing the summary at all. `summaryIsEmpty` is not: it
+ * is false for a run that changed nothing but started in a dirty tree, which is
+ * exactly the case that left a "What changed" panel sitting over the composer
+ * listing files the user had edited themselves.
+ */
+export const hasJanAuthoredChanges = (summary: CompletionSummary): boolean =>
+  janAuthoredPaths(summary).length > 0
+
 export const summaryIsEmpty = (summary: CompletionSummary): boolean =>
   summary.janWrites.length === 0 &&
   summary.preExisting.length === 0 &&
