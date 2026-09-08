@@ -103,11 +103,13 @@ import {
 import { isReadOnly, modeOf } from '@/lib/coworkMode'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
+import { CoworkQuickActions } from '@/containers/CoworkQuickActions'
 import { CoworkHiddenTools } from '@/containers/CoworkHiddenTools'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import type { AskRecord } from '@/types/coworkSession'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { usePrompt } from '@/hooks/usePrompt'
+import { useCoworkView, type CoworkRail } from '@/hooks/useCoworkView'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import {
   deriveFromSubagent,
@@ -645,13 +647,19 @@ function CoworkPage() {
   const [liveUsage, setLiveUsage] = useState<Usage | null>(null)
   // The rail holds one panel at a time: preview, diff and code all want the
   // width, so showing two together starves the transcript (C7).
-  const [rail, setRail] = useState<
-    | { kind: 'preview'; path?: string }
-    | { kind: 'diff' }
-    | { kind: 'code' }
-    | { kind: 'tasks' }
-    | null
-  >(null)
+  // Held in a store rather than in this component: stepping into Settings
+  // unmounts the route, and coming back must return to the session as it was
+  // -- same rail, same place in the transcript -- not to a reset view.
+  const railBySession = useCoworkView((s) => s.railBySession)
+  const sessionIdForView = session?.id
+  const rail = sessionIdForView
+    ? (railBySession[sessionIdForView] ?? null)
+    : null
+  const setRail = useCallback(
+    (next: CoworkRail) =>
+      useCoworkView.getState().setRail(sessionIdForView, next),
+    [sessionIdForView]
+  )
   // The last artifact previewed this session, so re-opening Preview from the
   // rail toolbar returns to it instead of an empty pane.
   const [lastPreviewPath, setLastPreviewPath] = useState<string | undefined>(
@@ -801,15 +809,15 @@ function CoworkPage() {
   const selectRail = useCallback(
     (mode: RailMode) => {
       if (mode === 'code') ensureCurrentSession()
-      setRail((current) => {
-        const kind =
-          mode === 'changes' ? 'diff' : mode === 'activity' ? 'tasks' : mode
-        if (current?.kind === kind) return null
-        if (kind === 'preview') return { kind, path: lastPreviewPath }
-        return { kind }
-      })
+      const kind =
+        mode === 'changes' ? 'diff' : mode === 'activity' ? 'tasks' : mode
+      if (rail?.kind === kind) {
+        setRail(null)
+        return
+      }
+      setRail(kind === 'preview' ? { kind, path: lastPreviewPath } : { kind })
     },
-    [lastPreviewPath]
+    [lastPreviewPath, rail?.kind, setRail, ensureCurrentSession]
   )
   /** The toolbar's semantic mode for the currently open rail, or null. */
   const activeRail: RailMode | null =
@@ -2493,6 +2501,41 @@ function CoworkPage() {
     [session?.id]
   )
 
+  /**
+   * Where the transcript was scrolled to, kept across a trip to Settings.
+   *
+   * The scroll node is the one `StickToBottom` owns inside the `role="log"`
+   * container; it is found rather than held by ref because that element is the
+   * library's, not this route's.
+   */
+  const scrollNode = useCallback((): HTMLElement | null => {
+    const log = document.querySelector('[role="log"]')
+    if (!log) return null
+    return (
+      (log.querySelector(':scope > *') as HTMLElement | null) ??
+      (log as HTMLElement)
+    )
+  }, [])
+
+  useEffect(() => {
+    const sid = session?.id
+    if (!sid) return
+    const remembered = useCoworkView.getState().scrollBySession[sid]
+    if (remembered != null) {
+      // After paint: the transcript has to exist before it can be scrolled.
+      requestAnimationFrame(() => {
+        const node = scrollNode()
+        if (node) node.scrollTop = remembered
+      })
+    }
+    return () => {
+      const node = scrollNode()
+      if (node) {
+        useCoworkView.getState().rememberScroll(sid, node.scrollTop)
+      }
+    }
+  }, [session?.id, scrollNode])
+
   // A run outlives this component, so unmounting must not stop it.
   useEffect(() => () => useCoworkRun.getState().clearPendingPreview(), [])
 
@@ -2553,6 +2596,9 @@ function CoworkPage() {
       <HeaderPage>
         <div className="flex items-center justify-between w-full gap-2 pr-2">
           <DropdownModelProvider useLastUsedModel />
+          <div className="ml-auto flex items-center gap-1">
+            {/* The same Search dialog and Settings route the rest of Jan uses. */}
+            <CoworkQuickActions />
           {/* Everything about the session that is reference material rather
               than conversation, closed until asked for. */}
           <CoworkSessionDetails summary={sessionDetailsSummary}>
@@ -2599,6 +2645,7 @@ function CoworkPage() {
               }}
             />
           </CoworkSessionDetails>
+          </div>
         </div>
       </HeaderPage>
 

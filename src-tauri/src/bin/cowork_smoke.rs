@@ -735,6 +735,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_prompt_snapshot_isolation,
     },
     Scenario {
+        name: "cowork-search-and-settings",
+        run: scenario_cowork_search_and_settings,
+    },
+    Scenario {
         name: "local-hostname-selects-the-private-address",
         run: scenario_local_hostname,
     },
@@ -2439,6 +2443,92 @@ fn scenario_no_setup_wall(ctx: &Ctx) -> ScenarioResult {
     )?;
     ensure!(has, "the session details opened empty");
     ctx.eval("document.body.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true})); return true;")?;
+    Ok(())
+}
+
+/// Search and Settings are reachable from Cowork, and coming back returns to
+/// the session as it was.
+fn scenario_cowork_search_and_settings(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+
+    // A draft and an open rail: the state a trip to Settings must not lose.
+    ctx.type_into("[data-testid=\"chat-input\"]", "draft that must survive")?;
+    ctx.click_matching("button", "Changes")?;
+    ctx.settle();
+    let rail_open = ctx.eval_bool(
+        "return [...document.querySelectorAll('button')].some(b =>
+           (b.getAttribute('aria-label') || b.textContent || '').trim() === 'Changes'
+           && b.getAttribute('aria-pressed') === 'true')
+         || !!document.querySelector('[data-testid=\"cowork-diff-panel\"]');",
+    )?;
+
+    // Search opens the shared dialog rather than a second implementation.
+    ctx.eval("document.querySelector('[data-testid=\"cowork-search\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the shared search dialog",
+        "return !!document.querySelector('[role=\"dialog\"]');",
+        Duration::from_secs(15),
+    )?;
+    ctx.eval(
+        "document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
+         return true;",
+    )?;
+    ctx.settle();
+
+    // Neither control may be swallowed by the macOS window drag region.
+    let clickable = ctx.eval_bool(
+        r#"for (const id of ['cowork-search', 'cowork-settings']) {
+             const el = document.querySelector(`[data-testid="${id}"]`);
+             if (!el) return false;
+             const r = el.getBoundingClientRect();
+             const hit = document.elementFromPoint(
+               Math.round(r.left + r.width / 2),
+               Math.round(r.top + r.height / 2));
+             if (!hit || (!el.contains(hit) && hit !== el)) return false;
+           }
+           return true;"#,
+    )?;
+    ensure!(clickable, "a quick action is covered by something else");
+
+    ctx.eval("document.querySelector('[data-testid=\"cowork-settings\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the settings route",
+        "return location.hash.includes('/settings') || location.pathname.includes('/settings');",
+        Duration::from_secs(20),
+    )?;
+
+    // Back to Cowork: same session, same draft, same rail.
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.settle();
+
+    let draft = ctx.eval_string(
+        "const el = document.querySelector('[data-testid=\"chat-input\"]');
+         return el ? (el.value || el.textContent || '') : '';",
+    )?;
+    ensure!(
+        draft.contains("draft that must survive"),
+        "the composer draft did not survive the trip to Settings: {draft:?}"
+    );
+
+    if rail_open {
+        let still = ctx.eval_bool(
+            "return [...document.querySelectorAll('button')].some(b =>
+               (b.getAttribute('aria-label') || b.textContent || '').trim() === 'Changes'
+               && b.getAttribute('aria-pressed') === 'true')
+             || !!document.querySelector('[data-testid=\"cowork-diff-panel\"]');",
+        )?;
+        ensure!(still, "the open rail was lost on the way back from Settings");
+    }
     Ok(())
 }
 

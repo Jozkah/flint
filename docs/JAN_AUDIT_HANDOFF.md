@@ -519,3 +519,82 @@ red when removed.
 - Smoke scenarios `provider-error-is-actionable` and `model-round-trip` are
   intermittent under WebView stalls; not marked verified.
 
+
+---
+
+## Defect batch: provider transport and the Cowork timeline (2026-09-08)
+
+Paused the 210-feature programme at `28f46d1c5` on user instruction to fix
+reported production defects. Resumed after this batch.
+
+### `http://v100:8080/v1` reached the wrong machine
+
+Root cause: `v100` is a single-label name, so the only way it resolves to
+anything public is a DNS search-domain collision. The OS returned both a public
+Cloudflare record and the Tailscale address; the connector took whichever came
+first, left the network, and the public host answered 403. Every layer above
+reported that as an API-key problem.
+
+Fix: one transport for every OpenAI-compatible provider request.
+
+- `src-tauri/src/core/net/resolver.rs` — classifies each answer (loopback,
+  Tailscale `100.64.0.0/10`, RFC1918, IPv6 ULA/link-local, public) and orders
+  them closest-first for a local-looking name. A public answer is dropped, not
+  deprioritised, when a local one exists.
+- `src-tauri/src/core/net/transport.rs` — `send` / `send_stream`. The URL is
+  never rewritten: selection happens in the connector through a
+  `reqwest::dns::Resolve` bound to that endpoint, so hostname, port, `Host`,
+  SNI, path and query are exactly as configured. Every eligible address is
+  offered in order so a refusal falls through. A 401/403 from the selected
+  server stays an HTTP response. Resolutions cached per host+port for 30s,
+  dropped on transport failure, provider edit or explicit refresh.
+- `src-tauri/src/core/net/commands.rs` — `provider_http_request`,
+  `provider_http_stream`, `provider_endpoint_diagnostics`,
+  `provider_endpoint_refresh`.
+- `web-app/src/lib/providerFetch.ts` — `fetch`-shaped, streaming. Wired at the
+  two chokepoints: `model-factory.ts` `getRuntimeFetch` (chat, streaming,
+  embeddings, AI SDK providers) and `services/providers/tauri.ts` (discovery,
+  connection tests).
+
+Deterministic resolver injection: `transport::set_probe`. The smoke harness
+pins `v100` to a public decoy plus loopback and configures the provider at the
+literal `http://v100:8080/v1`, so every model-touching scenario exercises the
+short-hostname path.
+
+### Cowork timeline
+
+- The setup/debug wall (readiness, compatibility, skill folders, context
+  accounting) moved from above the composer into `CoworkSessionDetails`, a
+  collapsed control in the header. Contents mount only while open.
+- `ask` questions became chronological chat items on the assistant turn that
+  asked them (`CoworkTurn.asks`, `CoworkAskEntry`), with answered / cancelled /
+  stale states. Staleness is derived from "the run is gone", not stored.
+- `lib/askOptions.ts` — one normalization decides the custom-answer row, so
+  "Something else" is never rendered twice and a model-supplied label is never
+  rewritten. Selection identity moved to stable ids.
+- Tool activity is one durable item per invocation moving through
+  requested → running → succeeded/failed/refused/cancelled/stale. "Hide
+  completed tool activity" (`useCoworkDisplay`, off by default) is a
+  presentation filter only.
+- `lib/modelLocation.ts` — classifies by where inference runs, not by whether
+  the provider ships an engine, so a LAN/tailnet endpoint groups under LOCAL.
+  A single-label name is `checking` until the resolver answers.
+- "What changed" is gated on Jan-authored writes, so a dirty working tree no
+  longer parks a panel over the composer.
+- `CoworkQuickActions` — Search (the shared dialog) and Settings (the ordinary
+  route) from the Cowork header; `useCoworkView` keeps rail and scroll across
+  the trip.
+
+### Not yet done in this batch
+
+- Item 1 of the second defect message (the Cowork spacing/padding system) is
+  not implemented.
+- Item 7 (canonical model-capabilities record and the context-window display)
+  is not implemented.
+- Tool-activity metadata beyond state and timing (permission decision, exit
+  code, agent identity) has fields on the turn but no producers yet.
+- Scroll restoration across Settings is implemented but not proven by a smoke
+  assertion; `StickToBottom` owns that scroll node.
+- The smoke harness reads the user's real provider list through the store
+  plugin, which uses the app config dir rather than `JAN_DATA_FOLDER`. That
+  makes runs slow and non-deterministic and should be isolated.
