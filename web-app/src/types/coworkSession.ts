@@ -32,6 +32,38 @@ export type CoworkTurn = {
    * older turn would be showing the wrong payload.
    */
   promptSnapshot?: { id: string; hash: string; redactions: number }
+  /**
+   * Questions the run asked at this point in the conversation.
+   *
+   * Attached to the turn, not held in a single "current question" slot beside
+   * the composer: a question is something that was asked at a moment, and it
+   * belongs at that moment in the transcript. It stays there after it is
+   * answered, so the answer is part of the history rather than something that
+   * vanished when it was given.
+   */
+  asks?: AskRecord[]
+}
+
+/**
+ * One `ask` request, with what became of it.
+ *
+ * `pending` until answered; `answered` carries what was chosen; `cancelled` is
+ * a skip or a stopped run; `stale` is a question whose run is gone -- the
+ * process that was waiting for the answer no longer exists, so accepting one
+ * would be a lie.
+ */
+export type AskRecord = {
+  requestId: string
+  request: AskRequestPayload
+  /** Who asked: enough to tell two concurrent runs' questions apart. */
+  sessionId: string
+  runId?: string
+  callId?: string
+  agent?: string
+  /** RFC3339, so the order survives a reload. */
+  at: string
+  state: 'pending' | 'answered' | 'cancelled' | 'stale'
+  answers?: AskAnswer[]
 }
 
 /** Mirrors the Rust `Usage` struct (events.rs). */

@@ -90,6 +90,14 @@ export function coworkTurnsToUIMessages(
           data: turn.promptSnapshot,
         } as never)
       }
+      // Questions the run asked here. They stay in the transcript after they
+      // are answered, so the answer is part of the history.
+      for (const ask of turn.asks ?? []) {
+        ensureAssistant(i).parts.push({
+          type: 'data-ask',
+          data: ask,
+        } as never)
+      }
       // Split out <think>/<thought> reasoning into reasoning parts (same helper
       // the chat loader uses) so the agent's chain-of-thought renders in the
       // collapsible reasoning UI instead of leaking into the transcript as text.

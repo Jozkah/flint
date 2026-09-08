@@ -1209,5 +1209,11 @@
       "discovered": "Skills found",
       "noneFound": "No skills in this folder"
     }
-  }
+  },
+  "sessionDetails": {
+    "title": "Session details",
+    "description": "The repository, mode, workspace, instructions, skills, tools and model this session is using."
+  },
+  "askSkipped": "Skipped",
+  "askStale": "No longer waiting for an answer"
 }

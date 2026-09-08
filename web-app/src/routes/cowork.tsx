@@ -103,6 +103,8 @@ import {
 import { isReadOnly, modeOf } from '@/lib/coworkMode'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
+import type { AskRecord } from '@/types/coworkSession'
+import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import {
@@ -146,7 +148,7 @@ import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
 import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
 import { CoworkRunSummary } from '@/containers/CoworkRunSummary'
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
-import { CoworkAskCard } from '@/containers/CoworkAskCard'
+import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
@@ -581,6 +583,17 @@ function CoworkPage() {
   // the effect keys on the folder, and the ref is only used to notice that the
   // session changed underneath a read that was already in flight.
   /** The last run's resolved skills, so a retake does not lose them. */
+  /**
+   * A few words for the session-details trigger: the repository and branch,
+   * which is what someone glances at to confirm they are in the right place.
+   * The rest lives inside the dialog.
+   */
+  const sessionDetailsSummary = useMemo(() => {
+    const repo = readiness.folder?.split('/').filter(Boolean).pop()
+    if (!repo) return ''
+    return readiness.branch ? `${repo} · ${readiness.branch}` : repo
+  }, [readiness.folder, readiness.branch])
+
   const runSkillsRef = useRef<ReturnType<typeof resolveSkills>>([])
   const sessionIdRef = useRef<string | null>(null)
   sessionIdRef.current = session?.id ?? null
@@ -803,10 +816,6 @@ function CoworkPage() {
         ? 'activity'
         : (rail?.kind ?? null)
 
-  const [ask, setAsk] = useState<{
-    requestId: string
-    request: ReturnType<typeof parseAskRequest>
-  } | null>(null)
 
   const {
     containerRef: reasoningContainerRef,
@@ -2129,7 +2138,16 @@ function CoworkPage() {
                     resolve({ output: `ERROR: ${parsed}`, isError: true })
                     return
                   }
-                  setAsk({ requestId: callId, request: parsed })
+                  // In the transcript, at the point the run asked -- not in a
+                  // slot above the composer. It stays there once answered.
+                  useCoworkRun.getState().attachAsk(sid, {
+                    requestId: callId,
+                    request: parsed,
+                    sessionId: sid,
+                    callId,
+                    at: new Date().toISOString(),
+                    state: 'pending',
+                  })
                   // The opening turn ends on a named question. Recording the
                   // wait is what makes a session reopened at this point restore
                   // an unanswered proposal rather than resume into work.
@@ -2144,7 +2162,14 @@ function CoworkPage() {
                     })
                   }
                   askResolvers.current.set(callId, (answers) => {
-                    setAsk(null)
+                    useCoworkRun
+                      .getState()
+                      .settleAsk(
+                        sid,
+                        callId,
+                        answers ? 'answered' : 'cancelled',
+                        answers ?? undefined
+                      )
                     // An answered proposal is no longer outstanding. Declining
                     // is recorded as a decision, not as work to pick up later.
                     if (proposal && current?.folder) {
@@ -2409,7 +2434,6 @@ function CoworkPage() {
       runWorkDone()
       abortRef.current = null
       askResolvers.current.clear()
-      setAsk(null)
       setStoppedBy(thrown?.stoppedBy ?? outcome?.stoppedBy ?? null)
       setRunError(thrown?.errorText ?? outcome?.errorText)
     }
@@ -2513,8 +2537,54 @@ function CoworkPage() {
   return (
     <div className="flex flex-col h-[calc(100dvh-(env(safe-area-inset-bottom)+env(safe-area-inset-top)))]">
       <HeaderPage>
-        <div className="flex items-center justify-between w-full pr-2">
+        <div className="flex items-center justify-between w-full gap-2 pr-2">
           <DropdownModelProvider useLastUsedModel />
+          {/* Everything about the session that is reference material rather
+              than conversation, closed until asked for. */}
+          <CoworkSessionDetails summary={sessionDetailsSummary}>
+            <CoworkReadinessCard manifest={readiness} />
+            {runContext && <CoworkContextBreakdown context={runContext} />}
+            <CoworkCompatSection
+              manifest={compat}
+              hasFolder={Boolean(folder)}
+              onToggle={(on) =>
+                folder && useClaudeCompat.getState().setEnabled(folder, on)
+              }
+              // Drives Jan's own MCP subsystem, against the definition as it
+              // stands on disk: consent is permission to run *this* server,
+              // not whatever the file says later.
+              onMcpConsent={(server, allowed) => {
+                const probe = mcpProbes.find((one) => one.name === server)
+                if (probe) void setMcpConsent(probe, allowed)
+              }}
+            />
+            <ClaudeSkillRootsSettings
+              roots={skillRoots}
+              onChange={(next) =>
+                useClaudeCompat.getState().setSkillRoots(next)
+              }
+              janData={janDataFolder}
+              onRescan={rescanCompat}
+              pickFolder={async () => {
+                const picked = await serviceHub
+                  .dialog()
+                  .open({ directory: true })
+                return typeof picked === 'string' ? picked : null
+              }}
+              // The backend is the only thing that can tell a directory from a
+              // file, or from a path that has since gone.
+              confirmDirectory={async (path) => {
+                const dataFolder = janDataFolder
+                if (!dataFolder) return false
+                try {
+                  await projectListDir(dataFolder, path, '.')
+                  return true
+                } catch {
+                  return false
+                }
+              }}
+            />
+          </CoworkSessionDetails>
         </div>
       </HeaderPage>
 
@@ -2565,6 +2635,23 @@ function CoworkPage() {
                             />
                           ) : null
                         })()}
+                        {/* Questions the run asked here, in the order they
+                        were asked. A pending one is the card; an answered,
+                        skipped or stale one collapses to what happened, and
+                        stays in the transcript. */}
+                        {(message.parts as { type: string; data?: unknown }[])
+                          .filter((p) => p.type === 'data-ask')
+                          .map((p) => {
+                            const record = p.data as AskRecord
+                            return (
+                              <CoworkAskEntry
+                                key={record.requestId}
+                                record={record}
+                                running={running}
+                                onRespond={respondAsk}
+                              />
+                            )
+                          })}
                         {/* What the model received, at the message it
                         produced. Collapsed, and it fetches nothing until
                         someone opens it. */}
@@ -2655,25 +2742,15 @@ function CoworkPage() {
 
           <div className="pb-4 shrink-0">
             <div className="mx-auto w-full md:w-4/5 xl:w-4/6">
-              {ask && typeof ask.request !== 'string' && (
-                <div className="px-1 pb-2">
-                  <CoworkAskCard
-                    requestId={ask.requestId}
-                    request={ask.request}
-                    onRespond={respondAsk}
-                  />
-                </div>
-              )}
-              {/* Before the first run of a repository-bound session: the
-                  moment where knowing which repository, which mode and which
-                  instructions are in play actually changes what someone
-                  types. It disappears once the session has run. */}
+              {/* Work a crashed or closed run left behind. Shown where the
+                  session is about to start, because that is the moment someone
+                  would otherwise start a second one beside it. Everything else
+                  that used to sit here -- readiness, compatibility, skill
+                  folders, context accounting -- moved behind the session
+                  details control in the header, so the composer sits directly
+                  beneath the conversation. */}
               {folder && (session?.turns.length ?? 0) === 0 && (
                 <div className="px-1 pb-2">
-                  <CoworkReadinessCard manifest={readiness} />
-                  {/* Work a crashed or closed run left behind. Shown where the
-                      session is about to start, because that is the moment
-                      someone would otherwise start a second one beside it. */}
                   <CoworkWorktreeRecovery
                     orphans={orphanWorktrees(foundWorktrees, worktree)}
                     onAdopt={(record) => {
@@ -2706,61 +2783,6 @@ function CoworkPage() {
                       )
                     }}
                   />
-                  {/* Wrapped like its siblings: without this the block ran
-                      edge to edge while everything around it was inset. */}
-                  <div className="px-1 pb-2">
-                  <CoworkCompatSection
-                    manifest={compat}
-                    hasFolder={Boolean(folder)}
-                    onToggle={(on) =>
-                      folder &&
-                      useClaudeCompat.getState().setEnabled(folder, on)
-                    }
-                    // Drives Jan's own MCP subsystem, against the definition
-                    // as it stands on disk: consent is permission to run
-                    // *this* server, not whatever the file says later.
-                    onMcpConsent={(server, allowed) => {
-                      const probe = mcpProbes.find((one) => one.name === server)
-                      if (probe) void setMcpConsent(probe, allowed)
-                    }}
-                  />
-                  </div>
-                  <ClaudeSkillRootsSettings
-                    roots={skillRoots}
-                    onChange={(next) =>
-                      useClaudeCompat.getState().setSkillRoots(next)
-                    }
-                    janData={janDataFolder}
-                    onRescan={rescanCompat}
-                    pickFolder={async () => {
-                      const picked = await serviceHub
-                        .dialog()
-                        .open({ directory: true })
-                      return typeof picked === 'string' ? picked : null
-                    }}
-                    // The backend is the only thing that can tell a directory
-                    // from a file, or from a path that has since gone.
-                    confirmDirectory={async (path) => {
-                      const dataFolder = janDataFolder
-                      if (!dataFolder) return false
-                      try {
-                        await projectListDir(dataFolder, path, '.')
-                        return true
-                      } catch {
-                        return false
-                      }
-                    }}
-                  />
-                </div>
-              )}
-              {/* After the run exists, not before: the breakdown's whole value
-                  is saying what this run's payload actually held, and before a
-                  run is built most of it is honestly unknown. Shown above the
-                  composer so it is answering "what did it get" at the moment
-                  someone is deciding what to say next. */}
-              {runContext && (
-                <div className="px-1 pb-2">
-                  <CoworkContextBreakdown context={runContext} />
                 </div>
               )}
               <ChatInput

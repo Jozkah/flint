@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act, waitFor } from '@testing-library/react'
+import { render, screen, act, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 
@@ -229,7 +229,13 @@ vi.mock('@/containers/ChatInput', () => ({
     </div>
   ),
 }))
-vi.mock('@/containers/HeaderPage', () => ({ default: () => <header /> }))
+// Renders its children: the session-details control lives in the header, and
+// a mock that swallowed them would hide the surface these tests assert on.
+vi.mock('@/containers/HeaderPage', () => ({
+  default: ({ children }: { children?: React.ReactNode }) => (
+    <header>{children}</header>
+  ),
+}))
 vi.mock('@/containers/DropdownModelProvider', () => ({
   default: () => <div />,
 }))
@@ -743,6 +749,16 @@ describe('a team, dispatched by the route', () => {
   })
 })
 
+/**
+ * Readiness, compatibility, skill folders and context accounting live behind
+ * the session-details control now -- they are reference material, not part of
+ * the conversation -- so a test that asserts on them has to open it first.
+ */
+async function openSessionDetails() {
+  fireEvent.click(await screen.findByTestId('session-details-trigger'))
+  return await screen.findByTestId('session-details-body')
+}
+
 describe('what the route says about the run', () => {
   it('names the worktree, its branch and what it cannot see', async () => {
     installInvoke({
@@ -754,6 +770,7 @@ describe('what the route says about the run', () => {
     await renderRoute()
     await chooseAccess('managed-worktree')
 
+    await openSessionDetails()
     const card = await screen.findByRole('region', {
       name: 'common:readiness.title',
     })
@@ -952,6 +969,7 @@ describe('a repository that brings its own configuration', () => {
       skillRoots: [],
     } as any)
     await renderRoute()
+    await openSessionDetails()
 
     await waitFor(() => {
       const section = screen.getByTestId('cowork-compat')
@@ -985,6 +1003,7 @@ describe('a repository that brings its own configuration', () => {
       skillRoots: [],
     } as any)
     await renderRoute()
+    await openSessionDetails()
 
     const section = await screen.findByTestId('cowork-compat')
     expect(section).toHaveTextContent('deployer')

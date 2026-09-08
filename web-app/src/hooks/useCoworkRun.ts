@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 import type {
+  AskAnswer,
+  AskRecord,
   CoworkTurn,
   SubagentRun,
   Usage,
@@ -15,6 +17,7 @@ export type {
   AskQuestion,
   AskRequestPayload,
   AskAnswer,
+  AskRecord,
 } from '@/types/coworkSession'
 
 // StreamEvent shapes emitted by the Rust agent loop (events.rs, tag = "type").
@@ -246,6 +249,15 @@ type CoworkRunState = {
   ) => void
   addPendingAsk: (sid: string, requestId: string, request: AskRequestPayload) => void
   removePendingAsk: (sid: string, requestId: string) => void
+  /** Put a question in the transcript at the point it was asked. */
+  attachAsk: (sid: string, record: AskRecord) => void
+  /** Record what became of a question, in place, without moving it. */
+  settleAsk: (
+    sid: string,
+    requestId: string,
+    state: AskRecord['state'],
+    answers?: AskAnswer[]
+  ) => void
   // Mark running tool turns + subagents done (interrupted). Leaves
   // liveTurns/subagents in place and returns the final values so the caller
   // can commit them before clearCodeRun without a second round of store
@@ -461,6 +473,49 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
         [sid]: (s.pendingAsks[sid] ?? []).filter((a) => a.requestId !== requestId),
       },
     })),
+
+  attachAsk: (sid, record) =>
+    set((s) => {
+      const turns = s.liveTurns[sid] ?? []
+      // The question belongs to the assistant turn that was speaking when it
+      // was asked. A tool turn is the call itself; hanging the card off it
+      // would put the question inside the tool card rather than beside it.
+      const idx = (() => {
+        for (let i = turns.length - 1; i >= 0; i--) {
+          if (turns[i].role === 'assistant') return i
+        }
+        return -1
+      })()
+      if (turns.some((t) => t.asks?.some((a) => a.requestId === record.requestId))) {
+        return {}
+      }
+      const next =
+        idx === -1
+          ? [...turns, { role: 'assistant' as const, content: '', asks: [record] }]
+          : [
+              ...turns.slice(0, idx),
+              { ...turns[idx], asks: [...(turns[idx].asks ?? []), record] },
+              ...turns.slice(idx + 1),
+            ]
+      return { liveTurns: { ...s.liveTurns, [sid]: next } }
+    }),
+
+  settleAsk: (sid, requestId, state, answers) =>
+    set((s) => {
+      const turns = s.liveTurns[sid] ?? []
+      let changed = false
+      const next = turns.map((turn) => {
+        if (!turn.asks?.some((a) => a.requestId === requestId)) return turn
+        changed = true
+        return {
+          ...turn,
+          asks: turn.asks.map((a) =>
+            a.requestId === requestId ? { ...a, state, answers } : a
+          ),
+        }
+      })
+      return changed ? { liveTurns: { ...s.liveTurns, [sid]: next } } : {}
+    }),
 
   finalizeRun: (sid) => {
     // Run-level failure surfaces via `useMessageErrors` (Generation-failed
