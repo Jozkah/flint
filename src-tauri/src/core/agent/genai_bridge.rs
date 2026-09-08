@@ -700,10 +700,27 @@ pub(crate) async fn stream_chat_completions(
 
 /// Exponential backoff for `attempt` (0-based), capped, with a provider-supplied
 /// delay taking precedence when it is longer than what we'd have waited anyway.
+/// The upstream retry ladder, expressed in the harness's shared policy (AH-024)
+/// so the backoff arithmetic lives in exactly one place.
+///
+/// Jitter is zero here on purpose. Spreading retries helps when many clients
+/// back off against one server; this ladder is per-key inside a single run, and
+/// the streaming path can only retry before the first event reaches the
+/// consumer, so the dither would buy nothing and would make the delay a user
+/// waits unpredictable.
+fn upstream_policy() -> crate::core::agent::retry::RetryPolicy {
+    crate::core::agent::retry::RetryPolicy {
+        max_attempts: MAX_ATTEMPTS,
+        base_delay: BASE_RETRY_DELAY,
+        multiplier: 2,
+        max_delay: MAX_RETRY_DELAY,
+        delay_budget: RETRY_BUDGET,
+        jitter: 0.0,
+    }
+}
+
 fn next_delay(attempt: u32, provider: Option<Duration>) -> Duration {
-    let backoff = BASE_RETRY_DELAY
-        .saturating_mul(1u32 << attempt.min(15))
-        .min(MAX_RETRY_DELAY);
+    let backoff = upstream_policy().backoff(attempt);
     match provider {
         Some(p) if p > backoff => p,
         _ => backoff,

@@ -4,7 +4,7 @@
 //! top-level shell. Without this, any command that spawns children (a build, a
 //! `foo &`, a pipeline) leaks orphans when the run is torn down.
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Mutex, OnceLock};
@@ -389,23 +389,84 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
     })
 }
 
-fn running() -> &'static Mutex<HashSet<u32>> {
-    static RUNNING: OnceLock<Mutex<HashSet<u32>>> = OnceLock::new();
-    RUNNING.get_or_init(|| Mutex::new(HashSet::new()))
+/// Identifies the tool call a process was spawned for.
+///
+/// A call abandoned on timeout has its future dropped, which kills the direct
+/// child through `kill_on_drop` -- but only that child. Its descendants are in
+/// the child's process group and survive, which is why the model is told an
+/// abandoned call "may still be running". Attributing each pid to the call that
+/// spawned it makes the group reapable by whoever abandoned it.
+pub type ScopeId = u64;
+
+tokio::task_local! {
+    /// The call whose future is currently executing, if any.
+    static SCOPE: ScopeId;
 }
 
+/// A fresh scope id. Monotonic and process-wide: two concurrent tool calls must
+/// never share one, or reaping either would reap both.
+pub fn new_scope() -> ScopeId {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Runs `future` with `scope` ambient, so anything it spawns is attributed to it.
+pub async fn in_scope<F: std::future::Future>(scope: ScopeId, future: F) -> F::Output {
+    SCOPE.scope(scope, future).await
+}
+
+fn running() -> &'static Mutex<HashMap<u32, Option<ScopeId>>> {
+    static RUNNING: OnceLock<Mutex<HashMap<u32, Option<ScopeId>>>> = OnceLock::new();
+    RUNNING.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Records `pid` against the ambient scope, if there is one.
+///
+/// A pid with no scope is still reaped by [`kill_all`] on shutdown; it is only
+/// unattributable to a single call, which is the right answer for anything
+/// spawned outside one.
 pub fn register(pid: u32) {
-    running().lock().unwrap().insert(pid);
+    let scope = SCOPE.try_with(|s| *s).ok();
+    running().lock().unwrap().insert(pid, scope);
 }
 
 pub fn unregister(pid: u32) {
     running().lock().unwrap().remove(&pid);
 }
 
+/// The scope `pid` was spawned under, or `None` if it is unscoped or gone.
+pub fn scope_of(pid: u32) -> Option<ScopeId> {
+    running().lock().unwrap().get(&pid).copied().flatten()
+}
+
+/// Reap every process tree spawned by one tool call.
+///
+/// Idempotent: a run tearing down while a timeout fires may call this twice for
+/// the same scope, and the second call must be a no-op rather than a panic.
+pub fn kill_scope(scope: ScopeId) {
+    let pids: Vec<u32> = {
+        let mut registry = running().lock().unwrap();
+        let doomed: Vec<u32> = registry
+            .iter()
+            .filter(|(_, owner)| **owner == Some(scope))
+            .map(|(pid, _)| *pid)
+            .collect();
+        for pid in &doomed {
+            registry.remove(pid);
+        }
+        doomed
+    };
+    for pid in pids {
+        // The caller has already given up on this call; there is no better
+        // outcome to report than having tried.
+        let _ = kill_tree(pid);
+    }
+}
+
 /// Reap every still-running bash command. Called on app shutdown so no shell
 /// tree outlives the process that spawned it.
 pub fn kill_all() {
-    let pids: Vec<u32> = running().lock().unwrap().drain().collect();
+    let pids: Vec<u32> = running().lock().unwrap().drain().map(|(pid, _)| pid).collect();
     for pid in pids {
         // Shutdown is best effort: there is nobody left to tell.
         let _ = kill_tree(pid);
@@ -623,9 +684,9 @@ mod tests {
         // other tests' children if called under the parallel harness).
         let fake = u32::MAX - 1;
         register(fake);
-        assert!(running().lock().unwrap().contains(&fake));
+        assert!(running().lock().unwrap().contains_key(&fake));
         unregister(fake);
-        assert!(!running().lock().unwrap().contains(&fake));
+        assert!(!running().lock().unwrap().contains_key(&fake));
     }
 
     #[cfg(unix)]
@@ -646,5 +707,75 @@ mod tests {
         unregister(pid);
         let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
         assert_eq!(val, "1024", "NOFILE soft limit should be capped, got: {val}");
+    }
+}
+
+#[cfg(test)]
+mod scope_tests {
+    use super::*;
+
+    /// A pid registered outside any scope still belongs to `kill_all`, which is
+    /// what shutdown relies on.
+    #[test]
+    fn an_unscoped_pid_is_still_reaped_by_kill_all() {
+        let fake = 4_000_001;
+        register(fake);
+        assert!(running().lock().unwrap().contains_key(&fake));
+        unregister(fake);
+        assert!(!running().lock().unwrap().contains_key(&fake));
+    }
+
+    #[tokio::test]
+    async fn a_spawn_inside_a_scope_is_attributed_to_it() {
+        let scope = new_scope();
+        let fake = 4_000_002;
+        in_scope(scope, async move {
+            register(fake);
+        })
+        .await;
+        assert_eq!(scope_of(fake), Some(scope), "the ambient scope must be recorded");
+        unregister(fake);
+    }
+
+    #[tokio::test]
+    async fn killing_one_scope_leaves_another_scopes_processes_alone() {
+        let (a, b) = (new_scope(), new_scope());
+        let (pid_a, pid_b) = (4_000_003, 4_000_004);
+        in_scope(a, async move { register(pid_a) }).await;
+        in_scope(b, async move { register(pid_b) }).await;
+
+        // Reaping `a` must not touch `b`: concurrent tool calls each own their
+        // own tree, and one abandoning is not the other failing.
+        kill_scope(a);
+        assert!(scope_of(pid_a).is_none(), "the reaped scope's pid is forgotten");
+        assert_eq!(scope_of(pid_b), Some(b), "the untouched scope survives");
+        unregister(pid_b);
+    }
+
+    #[tokio::test]
+    async fn killing_a_scope_that_spawned_nothing_is_not_an_error() {
+        let scope = new_scope();
+        kill_scope(scope);
+    }
+
+    #[test]
+    fn every_scope_id_is_distinct() {
+        let ids: Vec<u64> = (0..64).map(|_| new_scope()).collect();
+        let mut sorted = ids.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), ids.len(), "scope ids must never collide");
+    }
+
+    #[tokio::test]
+    async fn a_scope_reaped_twice_stays_reaped() {
+        let scope = new_scope();
+        let fake = 4_000_005;
+        in_scope(scope, async move { register(fake) }).await;
+        kill_scope(scope);
+        // Idempotent: a run teardown that races the timeout path must not panic
+        // or resurrect anything.
+        kill_scope(scope);
+        assert!(scope_of(fake).is_none());
     }
 }

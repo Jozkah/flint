@@ -32,6 +32,7 @@ pub mod progress;
 pub mod project;
 pub mod project_kind;
 pub mod recorder;
+pub mod retry;
 pub mod search;
 pub mod reminder;
 pub mod session;
