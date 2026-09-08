@@ -678,7 +678,10 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
             if (nextValue !== prevValue) {
               changed.push({ key: s.key, value: nextValue })
             }
-            ;(s.controllerProps as { value?: unknown }).value = nextValue
+            return {
+              ...s,
+              controllerProps: { ...s.controllerProps, value: nextValue },
+            } as SettingComponentProps
           }
           return s
         })
@@ -693,8 +696,29 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
           return arr
         })()
     await writeSettingsFile(updated)
+    const previousConfig = { ...this.config }
+    const previousTimeout = this.timeout
+    const previousEnv = this.llamacpp_env
     for (const { key, value } of changed) {
       this.onSettingUpdate(key, value)
+    }
+    if (this.presetRefreshTimer) {
+      clearTimeout(this.presetRefreshTimer)
+      this.presetRefreshTimer = null
+      // Startup migrations are included in the initial preset. Once loaded,
+      // an awaited settings save must include engine application, not merely
+      // schedule it after the caller has already sent its next request.
+      if (this.backgroundInit) {
+        try {
+          await this.refreshEnginePreset()
+        } catch (error) {
+          this.config = previousConfig
+          this.timeout = previousTimeout
+          this.llamacpp_env = previousEnv
+          await writeSettingsFile(current)
+          throw error
+        }
+      }
     }
   }
 
@@ -2462,10 +2486,9 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   }
 
   /**
-   * Persist a per-model setting from the sidebar into `model.yml`, regenerate
-   * the router preset, and restart the router so the next inference picks up
-   * the new args. In router mode the router reads args exclusively from
-   * `router.preset.ini`, so updating Zustand alone has no effect on inference.
+   * Persist a per-model setting into `model.yml` and apply the engine preset
+   * before resolving. A failed application restores the saved configuration
+   * and rejects so the caller can report the error.
    *
    * Sidebar keys are mapped to the canonical `model.yml` / preset keys here.
    * Keys not in the mapping are silently ignored — they're either Flint-side
@@ -2488,6 +2511,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     const cfg = (await invoke<ModelConfig>('read_yaml', {
       path: configPath,
     })) as ModelConfig & Record<string, unknown>
+    const previousConfig = { ...cfg }
 
     let touched = false
     for (const [sidebarKey, value] of Object.entries(patch)) {
@@ -2512,10 +2536,11 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     try {
       await this.refreshEnginePreset()
     } catch (e) {
-      logger.warn(
-        `Failed to restart router after model settings update for ${modelId}`,
-        e
-      )
+      await invoke<void>('write_yaml', {
+        data: previousConfig,
+        savePath: configPath,
+      })
+      throw e
     }
   }
 
