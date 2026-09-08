@@ -384,6 +384,12 @@ const MAX_RETRY_DELAY: Duration = Duration::from_secs(8);
 /// Total time that may be spent *waiting* between attempts. Bounds the worst
 /// case regardless of attempt count or a hostile `Retry-After`.
 const RETRY_BUDGET: Duration = Duration::from_secs(45);
+/// Fraction of a backoff that jitter may remove.
+///
+/// Jitter only ever *shortens*. Lengthening would let a delay quietly exceed
+/// the [`MAX_RETRY_DELAY`] and [`RETRY_BUDGET`] that the rest of this module --
+/// and anyone reasoning about how long a run can stall -- takes as the ceiling.
+const RETRY_JITTER: f64 = 0.2;
 
 /// What to do about a failed attempt.
 enum Disposition {
@@ -677,7 +683,14 @@ pub(crate) async fn stream_chat_completions(
                             if status == Some(429) && key_index + 1 < keys.len() {
                                 break;
                             }
-                            let delay = next_delay(attempt, headers.and_then(provider_retry_after));
+                            // Independent clients failing against the same
+                            // provider at the same moment would otherwise
+                            // wake together and retry in lockstep.
+                            let delay = next_delay(
+                                attempt,
+                                headers.and_then(provider_retry_after),
+                                rand::random::<f64>(),
+                            );
                             let Some(delay) = budgeted(delay, spent) else {
                                 return Err(format!("{last_err} (retry budget exhausted)"));
                             };
@@ -710,10 +723,17 @@ pub(crate) async fn stream_chat_completions(
 
 /// Exponential backoff for `attempt` (0-based), capped, with a provider-supplied
 /// delay taking precedence when it is longer than what we'd have waited anyway.
-fn next_delay(attempt: u32, provider: Option<Duration>) -> Duration {
+///
+/// `jitter` is `0.0` (wait the full backoff) to `1.0` (shave the whole
+/// [`RETRY_JITTER`] band off it), and is applied to *our* backoff only. A
+/// provider's `Retry-After` is never shortened: a server that asked for a
+/// specific wait is not something to second-guess by hammering it early. So the
+/// jitter is taken first and the provider's value still wins if it is longer.
+fn next_delay(attempt: u32, provider: Option<Duration>, jitter: f64) -> Duration {
     let backoff = BASE_RETRY_DELAY
         .saturating_mul(1u32 << attempt.min(15))
         .min(MAX_RETRY_DELAY);
+    let backoff = backoff.mul_f64(1.0 - RETRY_JITTER * jitter.clamp(0.0, 1.0));
     match provider {
         Some(p) if p > backoff => p,
         _ => backoff,
@@ -1350,10 +1370,10 @@ mod tests {
 
     #[test]
     fn backoff_grows_then_holds_at_the_ceiling() {
-        assert_eq!(next_delay(0, None), BASE_RETRY_DELAY);
-        assert_eq!(next_delay(1, None), BASE_RETRY_DELAY * 2);
+        assert_eq!(next_delay(0, None, 0.0), BASE_RETRY_DELAY);
+        assert_eq!(next_delay(1, None, 0.0), BASE_RETRY_DELAY * 2);
         assert_eq!(
-            next_delay(20, None),
+            next_delay(20, None, 0.0),
             MAX_RETRY_DELAY,
             "capped, not overflowing"
         );
@@ -1362,13 +1382,45 @@ mod tests {
     #[test]
     fn a_provider_retry_after_wins_only_when_it_is_longer() {
         let long = Duration::from_secs(30);
-        assert_eq!(next_delay(0, Some(long)), long);
+        assert_eq!(next_delay(0, Some(long), 0.0), long);
         // A provider asking for less than our backoff does not get to make us
         // hammer it faster than we would have.
         assert_eq!(
-            next_delay(5, Some(Duration::from_millis(1))),
+            next_delay(5, Some(Duration::from_millis(1)), 0.0),
             MAX_RETRY_DELAY
         );
+    }
+
+    #[test]
+    fn jitter_only_ever_shortens_and_stays_inside_the_band() {
+        // Full jitter removes exactly the band, and nothing beyond it.
+        assert_eq!(
+            next_delay(1, None, 1.0),
+            (BASE_RETRY_DELAY * 2).mul_f64(1.0 - RETRY_JITTER)
+        );
+        // Every factor lands between the shortened floor and the full delay, so
+        // a jittered wait can never exceed the ceiling callers reason about.
+        let full = next_delay(3, None, 0.0);
+        let floor = full.mul_f64(1.0 - RETRY_JITTER);
+        for step in 0..=10 {
+            let delay = next_delay(3, None, f64::from(step) / 10.0);
+            assert!(
+                delay <= full && delay >= floor,
+                "jittered {delay:?} outside [{floor:?}, {full:?}]"
+            );
+        }
+        // Out-of-range factors are clamped rather than extrapolated.
+        assert_eq!(next_delay(3, None, 5.0), floor);
+        assert_eq!(next_delay(3, None, -5.0), full);
+    }
+
+    #[test]
+    fn jitter_never_shortens_a_provider_retry_after() {
+        // The server asked for 30s. Jittering our own backoff must not turn
+        // that into an early retry against a provider that said to wait.
+        let asked = Duration::from_secs(30);
+        assert_eq!(next_delay(0, Some(asked), 1.0), asked);
+        assert_eq!(next_delay(9, Some(asked), 1.0), asked);
     }
 
     #[test]
