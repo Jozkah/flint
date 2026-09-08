@@ -475,14 +475,28 @@ export async function runSubagent(
         sessionTokens,
       }
     }
-    if (outcome.stoppedBy === 'steps' || outcome.stoppedBy === 'tokens') {
+    if (
+      outcome.stoppedBy === 'steps' ||
+      outcome.stoppedBy === 'tokens' ||
+      outcome.stoppedBy === 'deadline' ||
+      outcome.stoppedBy === 'timeout' ||
+      outcome.stoppedBy === 'loop'
+    ) {
       // Report the cap plainly with whatever it did produce: the parent can
       // usually finish the errand itself, but not if it thinks the child
-      // answered in full.
+      // answered in full. Every limit lands here, including the ones added
+      // later -- a child stopped for going in circles that reported "no
+      // answer" told the parent nothing it could act on.
       const cap =
         outcome.stoppedBy === 'steps'
           ? `its ${opts.maxSteps ?? MAX_SUBAGENT_STEPS}-step budget`
-          : 'the session token budget'
+          : outcome.stoppedBy === 'tokens'
+            ? 'the session token budget'
+            : outcome.stoppedBy === 'deadline'
+              ? 'the run time limit'
+              : outcome.stoppedBy === 'timeout'
+                ? 'a model stream that stopped responding'
+                : 'a repeating loop it could not get out of'
       return {
         output:
           `The subagent '${resolved.name}' stopped at ${cap} without finishing.` +

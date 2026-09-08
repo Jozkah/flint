@@ -430,3 +430,131 @@ describe('cancelling one child without stopping the run', () => {
     expect(isRunning('s-five')).toBe(false)
   })
 })
+
+/**
+ * The run-level guards, exercised through the loop that enforces them rather
+ * than through their own helpers -- a guard that is correct in isolation and
+ * unwired is worth nothing. AH-018/AH-019/AH-021/AH-024/AH-025/AH-029/AH-030.
+ */
+describe('run guards', () => {
+  const at = Date.parse('2026-09-08T10:00:00Z')
+
+  it('stops before starting a step it has no time for', async () => {
+    const d = deps([toolStep('read'), textStep('done')])
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+      deadline: { at, budgetMs: 60_000 },
+      now: () => at + 1,
+    })
+    expect(out.stoppedBy).toBe('deadline')
+    // Not one more model call spent discovering the deadline had passed.
+    expect(d.sendStep).not.toHaveBeenCalled()
+  })
+
+  it('runs normally while there is time left', async () => {
+    const d = deps([textStep('done')])
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+      deadline: { at: at + 60_000, budgetMs: 60_000 },
+      now: () => at,
+    })
+    expect(out.stoppedBy).toBe('done')
+  })
+
+  it('retries a transient failure and carries on', async () => {
+    const d = deps([textStep('done')])
+    let calls = 0
+    d.sendStep = vi.fn(async () => {
+      calls += 1
+      if (calls === 1) {
+        const failure = new Error('service unavailable') as Error & {
+          status: number
+        }
+        failure.status = 503
+        throw failure
+      }
+      return streamOf(textStep('done'))
+    })
+
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+    })
+    expect(out.stoppedBy).toBe('done')
+    expect(calls).toBe(2)
+  })
+
+  it('does not retry a rejection a second attempt would only repeat', async () => {
+    const d = deps([textStep('done')])
+    let calls = 0
+    d.sendStep = vi.fn(async () => {
+      calls += 1
+      const failure = new Error('unauthorized') as Error & { status: number }
+      failure.status = 401
+      throw failure
+    })
+
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+    })
+    expect(out.stoppedBy).toBe('error')
+    expect(calls).toBe(1)
+  })
+
+  it('stops a run going in circles, and says so to the model', async () => {
+    // The same call, over and over, with the model never answering.
+    const d = deps([toolStep('read')])
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+      maxSteps: 50,
+    })
+    expect(out.stoppedBy).toBe('loop')
+    expect(out.errorText).toContain('not making progress')
+    // Stopped well before the step cap, which is the point of the guard.
+    expect(out.steps).toBeLessThan(50)
+  })
+
+  it('does not call a stop by the user a timeout', async () => {
+    const controller = new AbortController()
+    const d = deps([textStep('done')])
+    d.sendStep = vi.fn(async () => {
+      controller.abort()
+      throw new Error('aborted')
+    })
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: controller.signal,
+    })
+    expect(out.stoppedBy).toBe('aborted')
+  })
+
+  it('reports a stream that never finished as a timeout, not an error', async () => {
+    const d = deps([textStep('done')])
+    d.sendStep = vi.fn(
+      (_messages: UIMessage[], signal: AbortSignal) =>
+        new Promise<ReadableStream<UIMessageChunk>>((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(new Error('timed out')), {
+            once: true,
+          })
+        })
+    ) as never
+
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+      operationTimeoutMs: 5,
+    })
+    expect(out.stoppedBy).toBe('timeout')
+  })
+})

@@ -102,7 +102,30 @@ export type CoworkSession = {
   /** Code panel state: open tabs, active tab, explorer expansion, word wrap.
    * Absent on sessions from before the code workspace existed. */
   codePanel?: CodePanelState
+  /**
+   * What the run in progress has spent, and by when it must be over.
+   * AH-018/AH-019.
+   *
+   * Persisted so a restart does not hand a half-finished run a fresh budget:
+   * the wall clock kept running while the app was closed, and the steps
+   * already taken were still taken. Absent on sessions saved before this
+   * existed and on sessions with nothing running, both of which read as "no
+   * run is outstanding".
+   */
+  runBudget?: RunBudgetRecord
   updated: number
+}
+
+/** One run's spend, as it stands. */
+export type RunBudgetRecord = {
+  runId: string
+  /** Steps taken so far. */
+  steps: number
+  /** The cap in force for this run. */
+  maxSteps: number
+  /** Epoch millis the run must be over by, and the budget it came from. */
+  deadlineAt: number
+  deadlineBudgetMs: number
 }
 
 type CoworkSessionsState = {
@@ -120,6 +143,8 @@ type CoworkSessionsState = {
   setMode: (id: string, mode: CoworkMode) => void
   /** Record, or clear, where the session is in its opening exchange. */
   setContinuity: (id: string, continuity: ContinuityRecord | null) => void
+  /** Record, or clear, what the run in progress has spent. */
+  setRunBudget: (id: string, budget: RunBudgetRecord | null) => void
   setAccess: (id: string, access: AccessMode) => void
   /** Record the user's confirmation to edit `folder` in this session. */
   grantEditConsent: (id: string, folder: string) => void
@@ -293,6 +318,13 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         set((s) => ({
           sessions: s.sessions.map((x) =>
             x.id === id ? { ...x, continuity: continuity ?? undefined } : x
+          ),
+        })),
+
+      setRunBudget: (id, runBudget) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id ? { ...x, runBudget: runBudget ?? undefined } : x
           ),
         })),
 

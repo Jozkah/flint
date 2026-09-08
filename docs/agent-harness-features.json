@@ -557,14 +557,16 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-017"
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/src/core/agent/loop.rs"
+        "web-app/src/lib/coworkRunner.ts",
+        "web-app/src/lib/coworkBudget.ts",
+        "web-app/src/hooks/useCoworkSessions.ts"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -575,10 +577,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/lib/__tests__/coworkRunner.test.ts"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "max_turns == 0 (unlimited) is the documented normal case, so unattended runs have no ceiling."
+      "auditNote": "A step is one model turn; the cap is checked before the step that would exceed it, spend is persisted per step in the session's runBudget so a restart does not hand a half-finished run a fresh allowance, and the run ends with one canonical reason."
     },
     {
       "id": "AH-019",
@@ -586,13 +590,17 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-017"
       ],
       "owner": "lane-02-execution-runtime",
-      "files": [],
+      "files": [
+        "web-app/src/lib/coworkRunner.ts",
+        "web-app/src/lib/runDeadline.ts",
+        "web-app/src/hooks/useCoworkSessions.ts"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A run carries a deadline and terminates cleanly when it expires.",
@@ -602,9 +610,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/lib/__tests__/runDeadline.test.ts",
+        "web-app/src/lib/__tests__/coworkRunner.test.ts"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Absolute wall-clock deadline per run, including time spent waiting on models, tools and permissions. Persisted and restored; a deadline that passed while the app was closed is expired, and a backwards clock jump restarts the budget rather than expiring everything."
     },
     {
       "id": "AH-020",
@@ -648,13 +660,16 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-019"
       ],
       "owner": "lane-02-execution-runtime",
-      "files": [],
+      "files": [
+        "web-app/src/lib/coworkRunner.ts",
+        "web-app/src/lib/runDeadline.ts"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A single deadline bounds the whole orchestration including subagents.",
@@ -664,9 +679,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/lib/__tests__/runDeadline.test.ts",
+        "web-app/src/lib/__tests__/coworkRunner.test.ts"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "operationSignal chains a per-operation timeout to the run's own signal, so a stream that goes quiet and a user's Stop cancel identically; a timeout produces one terminal transition distinct from an abort, and terminalReason collapses simultaneous limits to one."
     },
     {
       "id": "AH-022",
@@ -744,14 +763,15 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-009"
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/src/core/agent/genai_bridge.rs"
+        "web-app/src/lib/coworkRunner.ts",
+        "web-app/src/lib/runRetry.ts"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -762,10 +782,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/lib/__tests__/runRetry.test.ts",
+        "web-app/src/lib/__tests__/coworkRunner.test.ts"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Retry exists for upstream HTTP only, and only before the first streamed event; tool failures are never retried."
+      "auditNote": "Bounded exponential backoff with full jitter, capped, honouring Retry-After in both spellings; waits are cancellable and a cut-short wait is never mistaken for a completed one. Each attempt is a fresh dispatch with its own invocation and snapshot."
     },
     {
       "id": "AH-025",
@@ -773,7 +796,7 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-024",
@@ -781,7 +804,7 @@
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/src/core/agent/genai_bridge.rs"
+        "web-app/src/lib/runRetry.ts"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -792,10 +815,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/lib/__tests__/runRetry.test.ts"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Classification is local to the HTTP client."
+      "auditNote": "Typed classification: transient, rate-limited, auth, invalid, refused, cancelled, deterministic, unknown. Only transient and rate-limited are eligible; auth, permissions, invalid input, refusals, cancellation and deterministic tool failures are never retried."
     },
     {
       "id": "AH-026",
@@ -898,14 +923,15 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-004"
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/src/core/agent/loop.rs"
+        "web-app/src/lib/coworkRunner.ts",
+        "web-app/src/lib/runLoopGuard.ts"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -916,10 +942,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/lib/__tests__/runLoopGuard.test.ts",
+        "web-app/src/lib/__tests__/coworkRunner.test.ts"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Only a mutation-count nudge that injects a reminder; nothing measures progress or halts the run."
+      "auditNote": "detectLoop counts repeated identical calls, canonically equivalent calls, and repeated identical failures from what actually happened, and stops the run. The model cannot waive it."
     },
     {
       "id": "AH-030",
@@ -927,13 +956,16 @@
       "category": "execution",
       "phase": 1,
       "phaseName": "Core execution",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-029"
       ],
       "owner": "lane-02-execution-runtime",
-      "files": [],
+      "files": [
+        "web-app/src/lib/coworkRunner.ts",
+        "web-app/src/lib/runLoopGuard.ts"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Repeated identical tool calls are fingerprinted and broken out of.",
@@ -943,9 +975,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/lib/__tests__/runLoopGuard.test.ts"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "No-progress edit/revert cycles and recursive delegation depth are detected alongside the repeat guards, stopping the run before it spends its whole step budget going in circles."
     },
     {
       "id": "AH-031",

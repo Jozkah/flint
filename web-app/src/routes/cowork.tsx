@@ -70,6 +70,7 @@ import {
   isContextOverflow,
   planTurn,
 } from '@/lib/coworkBudget'
+import { restoreDeadline, startDeadline } from '@/lib/runDeadline'
 import { accountedTotal } from '@/lib/coworkReadiness'
 import {
   formatChangeSummary,
@@ -2187,6 +2188,27 @@ function CoworkPage() {
       })
     }
 
+    /**
+     * The run's wall-clock budget, persisted so a restart cannot reset it.
+     * AH-018/AH-019.
+     */
+    const stored = current?.runBudget
+    const resuming = stored?.runId === runId
+    const runDeadline =
+      (resuming
+        ? restoreDeadline(
+            { at: stored.deadlineAt, budgetMs: stored.deadlineBudgetMs },
+            Date.now()
+          )
+        : null) ?? startDeadline(Date.now())
+    useCoworkSessions.getState().setRunBudget(sid, {
+      runId,
+      steps: resuming ? stored.steps : 0,
+      maxSteps: MAX_AGENT_STEPS,
+      deadlineAt: runDeadline.at,
+      deadlineBudgetMs: runDeadline.budgetMs,
+    })
+
     let outcome: RunOutcome | null = null
     let thrown: Pick<RunOutcome, 'stoppedBy' | 'errorText'> | null = null
     try {
@@ -2197,6 +2219,15 @@ function CoworkPage() {
       outcome = await runTurn({
         messages,
         signal: controller.signal,
+        /**
+         * When this run must be over. AH-019.
+         *
+         * Restored rather than restarted when a run was already under way:
+         * the wall clock kept running while the app was closed, and handing a
+         * resumed run a fresh half hour would make the deadline mean nothing.
+         */
+        deadline: runDeadline,
+        now: Date.now,
         // Starts at zero each request, matching Rust: `SessionBudget` is built
         // inside `run_orchestration_streamed`, so the allowance is per request.
         // The previous turn's `total_tokens` is a context size, not a spend, and
@@ -2497,8 +2528,17 @@ function CoworkPage() {
               },
             }, toolSignal),
           sink,
-          onStep: ({ result, turns, outcomes }) => {
+          onStep: ({ step, result, turns, outcomes }) => {
             if (result.usage) setLiveUsage(result.usage)
+            // Persisted as it goes, not at the end: a run killed mid-flight
+            // must not come back with its steps unspent. AH-018.
+            useCoworkSessions.getState().setRunBudget(sid, {
+              runId,
+              steps: step,
+              maxSteps: MAX_AGENT_STEPS,
+              deadlineAt: runDeadline.at,
+              deadlineBudgetMs: runDeadline.budgetMs,
+            })
             /**
              * Bind the provider's own count to the payload it counted.
              * AH-073.
@@ -2570,6 +2610,9 @@ function CoworkPage() {
     } finally {
       useAppState.getState().updateLoadingModel(false)
       endRun(sid, runId)
+      // The run is over, so its budget is not outstanding any more. Left
+      // behind, it would tell the next run it was resuming this one.
+      useCoworkSessions.getState().setRunBudget(sid, null)
       // Nothing can still be running once the turn is over: the streams are
       // closed and the dispatch loop has stopped awaiting them. Settle before
       // closing the workflow, so its status is derived from settled children.
@@ -2961,6 +3004,15 @@ function CoworkPage() {
                   {stoppedBy === 'error' && (
                     <CoworkRunNotice
                       kind="error"
+                      message={runError}
+                      onRetry={() => void runRequest(null)}
+                    />
+                  )}
+                  {(stoppedBy === 'deadline' ||
+                    stoppedBy === 'timeout' ||
+                    stoppedBy === 'loop') && (
+                    <CoworkRunNotice
+                      kind={stoppedBy}
                       message={runError}
                       onRetry={() => void runRequest(null)}
                     />

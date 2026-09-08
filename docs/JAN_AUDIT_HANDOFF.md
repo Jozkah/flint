@@ -913,3 +913,23 @@ else -- it runs before a request exists. The exact number is the one the server
 that tokenized the payload reports back, and it is now recorded against the
 invocation and that payload's snapshot, so a count is always beside the payload
 it counted rather than beside "the last request".
+
+
+### Run reliability, all seven items (2026-09-08)
+
+Built as one set around the runner rather than seven helpers, because they all
+answer "may this run take another step" and answering it separately is how they
+end up disagreeing.
+
+Two findings worth keeping:
+
+**The loop guard exposed a gap in the subagent.** `runSubagent` handled
+`steps` and `tokens` and let every other limit fall through to "(the subagent
+returned no answer)" -- so a child stopped for going in circles told its parent
+nothing it could act on. Every limit is now reported by name.
+
+**Three identical calls is not a loop.** The first threshold stopped a
+legitimate step-cap test, and on inspection it would have stopped ordinary work
+too: re-reading a file after editing it, running the same test twice while
+fixing it. Identical calls now allow five; a repeating *failure* still allows
+three, because it is stronger evidence.

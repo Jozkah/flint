@@ -5,6 +5,18 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 type Props =
   | { kind: 'stopped' }
   | { kind: 'error'; message?: string; onRetry: () => void }
+  /**
+   * A run stopped by one of its own limits. AH-019/AH-021/AH-029.
+   *
+   * Not styled as a failure: reaching a time limit, or being stopped for going
+   * in circles, is the guard working. It still offers to try again, because
+   * the next attempt may be the one that gets somewhere.
+   */
+  | {
+      kind: 'deadline' | 'timeout' | 'loop'
+      message?: string
+      onRetry: () => void
+    }
 
 /**
  * How a run ended when it ended without an answer.
@@ -17,6 +29,34 @@ type Props =
  */
 export function CoworkRunNotice(props: Props) {
   const { t } = useTranslation()
+
+  if (props.kind !== 'stopped' && props.kind !== 'error') {
+    return (
+      <div
+        role="status"
+        data-testid="cowork-run-notice"
+        className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+      >
+        <CircleSlash size={14} aria-hidden className="shrink-0" />
+        <span className="min-w-0 break-words">
+          {t(`common:run.${props.kind}`)}
+        </span>
+        {props.message?.trim() ? (
+          <span className="min-w-0 break-words text-muted-foreground/80">
+            {props.message}
+          </span>
+        ) : null}
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7"
+          onClick={props.onRetry}
+        >
+          {t('common:run.tryAgain')}
+        </Button>
+      </div>
+    )
+  }
 
   if (props.kind === 'stopped') {
     return (

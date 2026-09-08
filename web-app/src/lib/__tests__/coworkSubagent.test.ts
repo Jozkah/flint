@@ -387,9 +387,11 @@ describe('runSubagent', () => {
   })
 
   it('defaults to the subagent step cap, not the parent one', async () => {
+    // Distinct paths: identical calls would trip the loop guard first, which
+    // is a different stop for a different reason.
     mockSteps(
       Array.from({ length: MAX_SUBAGENT_STEPS + 1 }, (_, i) =>
-        toolStep(`c${i}`, 'read', { path: 'a' })
+        toolStep(`c${i}`, 'read', { path: `a${i}` })
       )
     )
     const out = await runSubagent(baseOpts())

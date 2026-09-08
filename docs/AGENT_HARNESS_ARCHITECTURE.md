@@ -280,3 +280,45 @@ beside the wrong one looks authoritative while being wrong. A provider count
 replaces an estimate for the same invocation; an estimate never replaces a
 count. Lookups are scoped like snapshot lookups: name an invocation, a run or a
 session, or be refused.
+
+
+## Run guards: budgets, deadlines, retries and loops
+
+All four live around one loop (`web-app/src/lib/coworkRunner.ts`), because they
+all answer the same question -- may this run take another step -- and answering
+it in four places is how they disagree.
+
+**Steps (AH-018).** A step is one model turn. The cap is checked *before* the
+step that would exceed it, and the spend is written to the session's
+`runBudget` as it goes, so a run killed mid-flight comes back having spent what
+it spent.
+
+**Wall clock (AH-019).** `runDeadline.ts` holds an absolute deadline, which is
+what makes it survive a restart unchanged. It counts waiting -- a run stuck ten
+minutes on a permission prompt nobody will answer has spent ten minutes.
+`restoreDeadline` treats a remainder larger than the budget as a clock that
+moved, not a run that gained time.
+
+**One operation (AH-021).** `operationSignal` chains a timeout to the run's own
+signal, so a stream that goes quiet and a user's Stop cancel by the same path.
+A timeout is reported as a timeout and an abort as an abort. `terminalReason`
+collapses simultaneous limits to one, because a run that reports itself as both
+timed out and over budget describes something that did not happen.
+
+**Retries (AH-024/AH-025).** `runRetry.ts` classifies before it decides.
+Transient and rate-limited are eligible; auth, invalid input, refusals,
+cancellation and deterministic tool failures are not -- retrying those re-sends
+the same rejection, or works around a person who said no. Backoff is
+exponential with full jitter and honours `Retry-After` in both spellings; waits
+are cancellable, and a wait cut short is never mistaken for a completed one.
+Each attempt is a fresh dispatch, so it gets its own invocation, snapshot and
+accounting.
+
+**Loops (AH-029/AH-030).** `runLoopGuard.ts` takes the run's whole call history
+and looks for the shapes a stuck model produces: the same call, the same call
+spelled differently, the same failure, edits that undo each other, delegation
+that keeps delegating. It is counted from what happened rather than asked of
+the model, because a model in a loop is the one most likely to insist it is
+about to finish. Five identical calls, not three: re-reading a file after
+editing it is ordinary work, and a guard that stops ordinary work gets
+turned off.

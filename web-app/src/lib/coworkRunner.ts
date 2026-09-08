@@ -8,6 +8,59 @@ import {
   recordSpend,
   type BudgetStop,
 } from '@/lib/coworkBudget'
+import {
+  detectLoop,
+  loopStopMessage,
+  type ObservedCall,
+} from '@/lib/runLoopGuard'
+import { isExpired, operationSignal, type Deadline } from '@/lib/runDeadline'
+import { decideRetry, waitFor } from '@/lib/runRetry'
+
+/**
+ * The HTTP status a failure carried, when it carried one.
+ *
+ * Providers surface it in different places -- a `status` field, a `cause`, or
+ * only in the message -- and the difference between a 429 and a 401 decides
+ * whether retrying is sensible or is re-sending the same rejection.
+ */
+function statusOf(failure: unknown): number | null {
+  if (!failure || typeof failure !== 'object') return null
+  const record = failure as Record<string, unknown>
+  for (const key of ['status', 'statusCode']) {
+    const value = record[key]
+    if (typeof value === 'number' && Number.isFinite(value)) return value
+  }
+  if (record.cause) return statusOf(record.cause)
+  const match = /\b(4\d{2}|5\d{2})\b/.exec(
+    failure instanceof Error ? failure.message : ''
+  )
+  return match ? Number(match[1]) : null
+}
+
+/** `Retry-After`, when the endpoint named its own delay. */
+function retryAfterOf(failure: unknown): string | null {
+  if (!failure || typeof failure !== 'object') return null
+  const record = failure as Record<string, unknown>
+  const headers = record.headers as
+    | { get?: (name: string) => string | null }
+    | undefined
+  const header = headers?.get?.('retry-after')
+  if (header) return header
+  const direct = record.retryAfter
+  if (typeof direct === 'string') return direct
+  return record.cause ? retryAfterOf(record.cause) : null
+}
+
+/** The path a tool call acted on, for the no-progress check. */
+function pathOf(input: unknown): string | undefined {
+  if (!input || typeof input !== 'object') return undefined
+  const record = input as Record<string, unknown>
+  for (const key of ['path', 'file_path', 'filePath']) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return undefined
+}
 
 /**
  * The Cowork agent loop.
@@ -371,7 +424,8 @@ export type RunOutcome = {
   steps: number
   usage: Usage | null
   sessionTokens: number
-  stoppedBy: BudgetStop | 'error' | 'aborted' | 'done'
+  /** One reason, chosen by `terminalReason` when more than one was true. */
+  stoppedBy: BudgetStop | 'error' | 'aborted' | 'done' | 'deadline' | 'timeout' | 'loop'
   errorText?: string
 }
 
@@ -389,10 +443,25 @@ export async function runTurn(opts: {
   maxSteps?: number
   /** Tokens already spent by this session, which the caps apply across. */
   sessionTokens?: number
+  /**
+   * When this run must be over. AH-019.
+   *
+   * Absolute, so it means the same thing after a restart as before one. Absent
+   * leaves the run bounded only by steps and tokens, which is what a run
+   * started before deadlines existed had.
+   */
+  deadline?: Deadline | null
+  /** One model stream's limit. AH-021. */
+  operationTimeoutMs?: number
+  /** The clock, so the caps are testable without waiting for them. */
+  now?: () => number
 }): Promise<RunOutcome> {
   const { deps, signal } = opts
   const maxSteps = opts.maxSteps ?? MAX_AGENT_STEPS
+  const now = opts.now ?? Date.now
   const messages = [...opts.messages]
+  /** Every tool call this run made, for the loop guard. AH-029/AH-030. */
+  const observed: ObservedCall[] = []
   let step = 0
   // Not a running sum of each step's `total_tokens`: every step replays the whole
   // conversation, so summing totals charges the same context once per step.
@@ -423,14 +492,72 @@ export async function runTurn(opts: {
       }
     }
 
+    // Checked before the step starts, not after it finishes: a run whose time
+    // is up should not spend another model call discovering that.
+    if (opts.deadline && isExpired(opts.deadline, now())) {
+      return {
+        messages,
+        steps: step,
+        usage,
+        sessionTokens: spend.spent,
+        stoppedBy: 'deadline',
+      }
+    }
+
     // A snapshot, not the live array: the loop pushes to `messages` after the
     // stream is handed over, and the transport rewrites what it is given
     // (trimming, compaction) without expecting it to move underneath.
     let result: StepResult
+    let attempt = 1
+    let timedOut = false
     try {
-      const stream = await deps.sendStep([...messages], signal)
-      result = await consumeStep(stream, deps.sink)
+      /**
+       * One step, retried only where retrying can help. AH-021/AH-024/AH-025.
+       *
+       * The timeout is chained to the run's own signal, so a stream that goes
+       * quiet and a user who pressed Stop end the same way. A retry is a new
+       * dispatch and gets its own invocation and snapshot, because it is a
+       * different request that happens to carry the same messages.
+       */
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const operation = operationSignal(signal, opts.operationTimeoutMs)
+        try {
+          const stream = await deps.sendStep([...messages], operation.signal)
+          result = await consumeStep(stream, deps.sink)
+          break
+        } catch (failure) {
+          timedOut = operation.timedOut()
+          const decision = decideRetry({
+            facts: {
+              status: statusOf(failure),
+              retryAfter: retryAfterOf(failure),
+              message: failure instanceof Error ? failure.message : String(failure),
+              // A timeout is transient by definition; a user's stop is not.
+              aborted: signal.aborted,
+            },
+            attempt,
+            now: now(),
+          })
+          if (!decision.retry) throw failure
+          // A wait that was cut short is a stop, not a completed backoff.
+          if (!(await waitFor(decision.delayMs, signal))) throw failure
+          attempt = decision.attempt
+        } finally {
+          operation.dispose()
+        }
+      }
     } catch (e) {
+      if (timedOut && !signal.aborted) {
+        return {
+          messages,
+          steps: step,
+          usage,
+          sessionTokens: spend.spent,
+          stoppedBy: 'timeout',
+          errorText: e instanceof Error ? e.message : String(e),
+        }
+      }
       // A transport failure is an outcome, not an exception: throwing here left
       // the caller with no steps, no usage and nothing to render but the raw
       // message, and a user-initiated stop arrived down this same path.
@@ -488,7 +615,41 @@ export async function runTurn(opts: {
         })
         continue
       }
-      outcomes.set(call.toolCallId, await deps.dispatch(call, signal))
+      const outcome = await deps.dispatch(call, signal)
+      outcomes.set(call.toolCallId, outcome)
+      observed.push({
+        tool: call.toolName,
+        input: call.input,
+        failed: outcome.isError,
+        error: outcome.isError ? outcome.output : undefined,
+        path: pathOf(call.input),
+        after: outcome.diff,
+      })
+    }
+
+    /**
+     * Stop a run that has stopped getting anywhere. AH-029/AH-030.
+     *
+     * Counted from what happened rather than asked of the model: a model in a
+     * loop is the one most likely to insist it is about to finish, so the
+     * guard is not something it can waive.
+     */
+    const loop = detectLoop(observed)
+    if (loop.tripped) {
+      if (result.text || result.toolCalls.length > 0) {
+        messages.push(
+          assistantMessageFor(deps.nextMessageId(), result, outcomes)
+        )
+      }
+      deps.onStep({ step, result, turns: turnsFor(result, outcomes), outcomes })
+      return {
+        messages,
+        steps: step,
+        usage,
+        sessionTokens: spend.spent,
+        stoppedBy: 'loop',
+        errorText: loopStopMessage(loop),
+      }
     }
 
     if (result.text || result.toolCalls.length > 0) {

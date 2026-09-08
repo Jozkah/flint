@@ -742,7 +742,10 @@
   "run": {
     "stopped": "Stopped.",
     "failed": "The run stopped early.",
-    "tryAgain": "Try again"
+    "tryAgain": "Try again",
+    "deadline": "Stopped — this run reached its time limit.",
+    "timeout": "Stopped — the model stopped responding.",
+    "loop": "Stopped — the run was repeating itself without making progress."
   },
   "modelNoTools": "{{model}} can’t call tools, so it can’t act as an agent. Pick a tool-calling model.",
   "askContinue": "Continue",
