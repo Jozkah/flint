@@ -31,17 +31,35 @@ fn main() {
     // identical icons and version metadata -- rather than a second, divergent
     // manifest maintained by hand.
     //
-    // `-examples` and `-tests` are not enough on their own: `-tests` covers the
-    // integration-test binaries but not the unit-test harness built from the
-    // library itself, which is the one `cargo test --lib` runs and the one that
-    // was dying. `cargo:rustc-link-arg` covers every linked artifact, which is
-    // what this needs.
+    // The plain `cargo:rustc-link-arg` form cannot be used here: it covers every
+    // linked artifact, the application binary included, so that binary received
+    // `resource.lib` twice -- once from `tauri_build` and once from this script
+    // -- and the resource compiler rejected the second copy:
+    //
+    //   CVTRES : fatal error CVT1100: duplicate resource. type:VERSION, name:1
+    //   LINK : fatal error LNK1123: failure during conversion to COFF
+    //
+    // The target-scoped forms exclude bins, which already have the resource.
+    //
+    // Known limitation: `-tests` covers the integration-test binaries and the
+    // examples cover the smoke harness, but neither covers the unit-test
+    // harness cargo builds from the library itself. So
+    // `cargo test --lib --features cowork-smoke` still aborts at load, while
+    // `--features test-tauri` (which does not enable `common-controls-v6`)
+    // runs those same unit tests fine. Cargo offers no selector for that
+    // target, and the plain form that would reach it is the one that breaks
+    // the application binary above.
     #[cfg(all(windows, target_env = "msvc", feature = "tauri-app"))]
     {
         let resource =
             std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("resource.lib");
         if resource.exists() {
-            println!("cargo:rustc-link-arg={}", resource.display());
+            // No `benches`: cargo rejects `rustc-link-arg-benches` outright
+            // ("does not have a benchmark target") when the package declares
+            // none, and this one does not.
+            for target in ["tests", "examples"] {
+                println!("cargo:rustc-link-arg-{target}={}", resource.display());
+            }
         }
     }
 

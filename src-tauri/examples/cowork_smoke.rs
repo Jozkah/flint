@@ -580,7 +580,25 @@ fn start_mock_provider(fixtures: &Path, port: u16) -> Result<(std::process::Chil
                     .join(", ")
             )
         })?;
-    let mut child = std::process::Command::new("python3")
+    // `python3` is the name on unix and usually absent on Windows, where the
+    // interpreter is `python` and `python3` is either missing or a Store alias
+    // that opens a shop page instead of running anything. Ask for the first one
+    // that answers, so the harness runs on whichever the machine has rather
+    // than failing with "program not found" for a name that was never going to
+    // exist here.
+    let interpreter = ["python3", "python", "py"]
+        .into_iter()
+        .find(|name| {
+            std::process::Command::new(name)
+                .arg("--version")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        })
+        .ok_or("no python interpreter found (tried python3, python, py)")?;
+    let mut child = std::process::Command::new(interpreter)
         .arg(script)
         .arg("--model")
         .arg(SMOKE_MODEL)
