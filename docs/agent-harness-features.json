@@ -5776,13 +5776,16 @@
       "category": "sessions",
       "phase": 9,
       "phaseName": "Approved additions",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-078"
       ],
       "owner": "lane-21-sessions",
-      "files": [],
+      "files": [
+        "web-app/src/hooks/useCoworkSessions.ts",
+        "web-app/src/components/left-sidebar/NavCowork.tsx"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A session can be forked at any turn, producing an independent session whose history up to that turn is identical and whose later turns are its own.",
@@ -5801,7 +5804,8 @@
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "evidence": "Not implemented. `useCoworkSessions` has no fork action and no parent/divergence fields on a session."
+      "evidence": null,
+      "auditNote": "forkSession copies the conversation up to a named turn and records parent and divergence. It carries no authority: no folder, access mode, edit consent, write grant or run budget, so forking cannot multiply what was granted once, and two sessions are never pointed at one checkout unknowingly. An unknown session or an out-of-range divergence point is refused rather than clamped. Reachable from the session row menu by keyboard (context menu key or Shift+F10) and announced by a toast."
     },
     {
       "id": "AH-202",

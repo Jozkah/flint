@@ -322,3 +322,21 @@ the model, because a model in a loop is the one most likely to insist it is
 about to finish. Five identical calls, not three: re-reading a file after
 editing it is ordinary work, and a guard that stops ordinary work gets
 turned off.
+
+
+## Forking a session (AH-201)
+
+`useCoworkSessions.forkSession(id, throughTurn)` copies a conversation up to a
+turn and gives it a new session. The messages are rebuilt from the kept turns
+rather than sliced out of the parent's array: the two do not correspond one to
+one, and a message array cut at the wrong index sends the model half a turn.
+
+The rule that matters is what a fork does *not* carry. No folder, no access
+mode, no edit consent, no write grant, no run budget. Inheriting any of them
+would make forking a way to multiply authority that was granted once, and would
+put two sessions on one checkout without either knowing. A fork asks for its
+own.
+
+An unknown session, or a divergence point outside the conversation, is refused
+and returns null -- not clamped to the nearest turn, because a fork silently
+taken somewhere else is not the fork that was asked for.

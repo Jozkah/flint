@@ -113,7 +113,29 @@ export type CoworkSession = {
    * run is outstanding".
    */
   runBudget?: RunBudgetRecord
+  /**
+   * Where this session came from, when it was forked from another. AH-201.
+   *
+   * Provenance only. It grants nothing: a fork carries no folder, no grant, no
+   * consent and no worktree, and asks for its own. Absent on every session
+   * that was started rather than forked.
+   */
+  forkedFrom?: ForkOrigin
   updated: number
+}
+
+/** The session a fork came from, and where it diverged. */
+export type ForkOrigin = {
+  sessionId: string
+  /**
+   * How many turns of the parent this fork copied.
+   *
+   * A count rather than a turn id: turns have no ids of their own, and the
+   * count is what "identical up to here" actually means.
+   */
+  turns: number
+  /** When the fork was taken. */
+  at: number
 }
 
 /** One run's spend, as it stands. */
@@ -139,6 +161,15 @@ type CoworkSessionsState = {
   startSession: (input: { running: boolean; hasDraft: boolean }) => string
   selectSession: (id: string) => void
   deleteSession: (id: string) => void
+  /**
+   * Fork a session at a turn, producing an independent one. AH-201.
+   *
+   * `throughTurn` is how many turns to keep; omitted forks the whole
+   * conversation. Returns the new session's id, or null when there is nothing
+   * to fork -- an unknown session, or a divergence point that is not in the
+   * conversation.
+   */
+  forkSession: (id: string, throughTurn?: number) => string | null
   setFolder: (id: string, folder: string | null) => void
   setMode: (id: string, mode: CoworkMode) => void
   /** Record, or clear, where the session is in its opening exchange. */
@@ -227,6 +258,47 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       },
 
       selectSession: (id) => set({ currentId: id }),
+
+      forkSession: (id, throughTurn) => {
+        const parent = get().sessions.find((x) => x.id === id)
+        // No session, or a divergence point outside the conversation. Refused
+        // rather than clamped: a fork silently taken at a different turn than
+        // the one asked for is not the thing the user asked for.
+        if (!parent) return null
+        const keep = throughTurn ?? parent.turns.length
+        if (!Number.isInteger(keep) || keep < 0 || keep > parent.turns.length) {
+          return null
+        }
+
+        const turns = parent.turns.slice(0, keep)
+        const forkId = crypto.randomUUID()
+        const fork: CoworkSession = {
+          id: forkId,
+          title: parent.title ? `${parent.title} (fork)` : 'New session',
+          turns,
+          // Rebuilt from the kept turns rather than sliced from the parent's
+          // messages: the two arrays do not correspond one to one, and a
+          // message array cut at the wrong index sends the model half a turn.
+          messages: coworkTurnsToUIMessages(turns, forkId),
+          /*
+           * Nothing that grants anything is copied.
+           *
+           * A fork starts unbound: no folder, no write grant, no edit consent,
+           * no worktree, no access mode. Inheriting them would let a user
+           * multiply the authority they were given once by forking, and would
+           * point two sessions at one checkout without either knowing.
+           */
+          folder: null,
+          mode: parent.mode,
+          todos: parent.todos,
+          goal: parent.goal,
+          forkedFrom: { sessionId: parent.id, turns: keep, at: now() },
+          updated: now(),
+        }
+
+        set((s) => ({ sessions: [fork, ...s.sessions], currentId: forkId }))
+        return forkId
+      },
 
       deleteSession: (id) =>
         set((s) => {

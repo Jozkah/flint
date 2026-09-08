@@ -31,6 +31,7 @@ import {
   SlidersHorizontal,
   Copy,
   FileClock,
+  GitFork,
   MoreHorizontal,
   Trash2,
   type LucideIcon,
@@ -134,6 +135,23 @@ const SessionItem = memo(function SessionItem({
             <span>{t('common:fileActivity.menuItem')}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
+          {/* AH-201. Copies the conversation and none of the access: the fork
+              asks for its own folder and its own confirmation, so forking can
+              never multiply authority that was granted once. */}
+          <DropdownMenuItem
+            data-testid="fork-session"
+            onSelect={() => {
+              const forked = useCoworkSessions.getState().forkSession(session.id)
+              if (!forked) {
+                toast.error(t('common:forkRefused'))
+                return
+              }
+              toast.success(t('common:forkedSession'))
+            }}
+          >
+            <GitFork />
+            <span>{t('common:forkSession')}</span>
+          </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
               void navigator.clipboard?.writeText(session.id)
