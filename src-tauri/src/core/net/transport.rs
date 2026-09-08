@@ -24,7 +24,9 @@ use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 
-use tauri_plugin_agent_tools::snapshot::{self, Identity as SnapshotIdentity};
+use tauri_plugin_agent_tools::snapshot::{
+    self, DispatchKind, Identity as SnapshotIdentity,
+};
 
 use crate::core::app::commands::resolve_jan_data_folder;
 
@@ -177,6 +179,21 @@ pub struct ProviderRequest {
     pub agent: Option<String>,
     #[serde(default)]
     pub provider: Option<String>,
+    /// Identifies this dispatch, assigned by the caller before it is sent.
+    ///
+    /// The timeline attaches the snapshot to this id rather than to whichever
+    /// reply happened to arrive next: one turn can hold several dispatches --
+    /// a continuation after tool results, a retry, a compaction -- and a late
+    /// one must not land on a later turn.
+    #[serde(default)]
+    pub invocation_id: Option<String>,
+    #[serde(default)]
+    pub turn_id: Option<String>,
+    #[serde(default)]
+    pub attempt: Option<u32>,
+    /// `initial`, `continuation`, `retry` or `compaction`.
+    #[serde(default)]
+    pub kind: Option<String>,
     /// Names this stream so it can be cancelled.
     ///
     /// A consumer that stops reading -- the AI SDK abandoning a body once it
@@ -248,6 +265,9 @@ pub struct SnapshotRef {
     pub id: String,
     pub hash: String,
     pub redactions: usize,
+    /// The dispatch this snapshot is of, echoed back so the caller can attach
+    /// it to the exact invocation it asked about.
+    pub invocation: String,
 }
 
 /// Record what is about to be sent, if this is a model dispatch.
@@ -274,12 +294,24 @@ fn capture_snapshot(req: &ProviderRequest) -> Option<SnapshotRef> {
         );
         return None;
     };
+    let invocation = req.invocation_id.clone().unwrap_or_default();
     let identity = SnapshotIdentity {
         session: session.to_string(),
         run: req.run.clone().unwrap_or_default(),
         thread: req.thread.clone().unwrap_or_default(),
         agent: req.agent.clone().unwrap_or_default(),
         provider: req.provider.clone().unwrap_or_default(),
+        invocation: invocation.clone(),
+        turn: req.turn_id.clone().unwrap_or_default(),
+        attempt: req.attempt.unwrap_or(1),
+        kind: match req.kind.as_deref() {
+            Some("continuation") => DispatchKind::Continuation,
+            Some("retry") => DispatchKind::Retry,
+            Some("compaction") => DispatchKind::Compaction,
+            // An unrecognised value is not silently treated as a retry: an
+            // unknown dispatch is a first one until something says otherwise.
+            _ => DispatchKind::Initial,
+        },
     };
     let snapshot = snapshot::capture(&payload, &identity);
     snapshot::append(&resolve_jan_data_folder(), &snapshot);
@@ -287,6 +319,7 @@ fn capture_snapshot(req: &ProviderRequest) -> Option<SnapshotRef> {
         id: snapshot.id.clone(),
         hash: snapshot.hash.clone(),
         redactions: snapshot.redactions.len(),
+        invocation,
     })
 }
 
@@ -683,6 +716,58 @@ mod tests {
     #[test]
     fn cancelling_a_stream_nobody_is_running_is_not_an_error() {
         cancel_stream("no-such-stream");
+    }
+
+
+    #[tokio::test]
+    async fn each_attempt_is_its_own_record_under_its_own_invocation() {
+        let (port, _requests) = serve(OK_JSON, 2);
+        let _guard = pin(vec![ip("127.0.0.1")]);
+
+        let dispatch = |invocation: &str, kind: &str, content: &str| ProviderRequest {
+            url: format!("http://v100:{port}/v1/chat/completions"),
+            method: "POST".into(),
+            body: Some(format!(
+                r#"{{"model":"m","messages":[{{"role":"user","content":"{content}"}}]}}"#
+            )),
+            timeout_secs: Some(10),
+            session: Some("s1".into()),
+            invocation_id: Some(invocation.to_string()),
+            turn_id: Some("t1".into()),
+            attempt: Some(if kind == "retry" { 2 } else { 1 }),
+            kind: Some(kind.to_string()),
+            ..Default::default()
+        };
+
+        let first = send(dispatch("inv-1", "initial", "hi")).await.unwrap();
+        let retry = send(dispatch("inv-2", "retry", "hi")).await.unwrap();
+
+        let a = first.snapshot.expect("the first dispatch is recorded");
+        let b = retry.snapshot.expect("the retry is recorded too");
+        // Separate records under separate invocations, so a retry can never be
+        // mistaken for the attempt before it.
+        assert_eq!(a.invocation, "inv-1");
+        assert_eq!(b.invocation, "inv-2");
+        assert_ne!(a.id, b.id);
+        // Same payload, so the same hash: the hash identifies what was sent,
+        // and that is what makes an approved payload verifiable.
+        assert_eq!(a.hash, b.hash);
+
+        let found = tauri_plugin_agent_tools::snapshot::scoped_lookup(
+            &resolve_jan_data_folder(),
+            Some(&b.id),
+            None,
+            Some("s1"),
+        )
+        .unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].invocation, "inv-2");
+        assert_eq!(found[0].attempt, 2);
+        assert_eq!(
+            found[0].kind,
+            tauri_plugin_agent_tools::snapshot::DispatchKind::Retry
+        );
+        assert_eq!(found[0].turn, "t1");
     }
 
     #[test]

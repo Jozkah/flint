@@ -59,6 +59,29 @@ pub enum Unavailable {
     TooLarge,
 }
 
+fn one() -> u32 {
+    1
+}
+
+/// Why a request was sent, which is not the same as when it was sent.
+///
+/// A retry and a continuation both follow an earlier dispatch in the same
+/// turn, and reading one as the other would attribute a repeated payload to
+/// progress that never happened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DispatchKind {
+    /// The first request of a turn.
+    #[default]
+    Initial,
+    /// A further request in the same turn, after tool results.
+    Continuation,
+    /// The same request again, after a transient failure.
+    Retry,
+    /// A request whose history was compacted before sending.
+    Compaction,
+}
+
 /// The exact payload a model was sent, after redaction.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PromptSnapshot {
@@ -78,6 +101,25 @@ pub struct PromptSnapshot {
     pub thread: String,
     #[serde(default)]
     pub agent: String,
+
+    /// The dispatch this record belongs to.
+    ///
+    /// Assigned before the request leaves, unique per attempt, and carried on
+    /// the stream event so the timeline can attach the record to the exact
+    /// invocation rather than guessing from ordering. One assistant turn can
+    /// hold several -- a continuation, a retry, a compaction -- and each has
+    /// its own id.
+    #[serde(default)]
+    pub invocation: String,
+    /// Which turn the invocation belongs to, when the caller knows.
+    #[serde(default)]
+    pub turn: String,
+    /// 1 for the first attempt at this invocation, 2 for its first retry.
+    #[serde(default = "one")]
+    pub attempt: u32,
+    /// What kind of dispatch this was.
+    #[serde(default)]
+    pub kind: DispatchKind,
 
     // -- what was asked of whom -------------------------------------------
     #[serde(default)]
@@ -289,6 +331,11 @@ pub struct Identity {
     pub thread: String,
     pub agent: String,
     pub provider: String,
+    /// Unique per dispatch attempt. Empty only for a caller that predates it.
+    pub invocation: String,
+    pub turn: String,
+    pub attempt: u32,
+    pub kind: DispatchKind,
 }
 
 /// Build a snapshot from the exact payload about to be dispatched.
@@ -303,6 +350,10 @@ pub fn capture(payload: &Value, identity: &Identity) -> PromptSnapshot {
         run: identity.run.clone(),
         thread: identity.thread.clone(),
         agent: identity.agent.clone(),
+        invocation: identity.invocation.clone(),
+        turn: identity.turn.clone(),
+        attempt: identity.attempt.max(1),
+        kind: identity.kind,
         provider: identity.provider.clone(),
         model: redacted
             .get("model")
@@ -331,6 +382,10 @@ pub fn unavailable(identity: &Identity, why: Unavailable) -> PromptSnapshot {
         run: identity.run.clone(),
         thread: identity.thread.clone(),
         agent: identity.agent.clone(),
+        invocation: identity.invocation.clone(),
+        turn: identity.turn.clone(),
+        attempt: identity.attempt.max(1),
+        kind: identity.kind,
         provider: identity.provider.clone(),
         model: String::new(),
         reasoning: Value::Null,

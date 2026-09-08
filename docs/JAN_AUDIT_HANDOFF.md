@@ -769,3 +769,31 @@ before `provider-error-is-actionable`.
 
 This is why several earlier tallies in this batch were wrong: they counted
 cascade victims as defects.
+
+### AH-078 invocation identity: record done, UI attachment not (2026-09-08)
+
+The stored record now carries a real identity. `PromptSnapshot` gained
+`invocation`, `turn`, `attempt` and `kind` (`initial` / `continuation` /
+`retry` / `compaction`); `ProviderRequest` accepts them; `SnapshotRef` echoes
+the invocation back to the caller. A Rust test dispatches the same payload
+twice under two invocation ids and asserts two separate records with the same
+hash, the retry recorded as attempt 2 of kind `retry`, retrievable by its own
+id under its session.
+
+**The UI still attaches by ordinal.** Four attempts to replace the zip -- turn
+snapshot lists, a pending queue drained on push, a store keyed by turn id, and
+a turn-to-message anchor map -- each passed their unit tests and each failed
+`prompt-snapshot-panel` in the real application, with the record on disk and no
+panel rendered. Rather than ship a regression against a verified-green feature,
+the web-app half was reverted to the state that passes.
+
+So AH-078 stays implemented on the behaviour that is actually verified, and the
+ordinal limitation stands: one snapshot per assistant message, matched by
+position. It is wrong for a turn holding a continuation, a retry or a
+compaction, and that is the open acceptance criterion.
+
+Next attempt should start by proving where the chain breaks in the running app
+rather than in vitest: the unit tests pass for every one of those designs, so
+the disagreement is between jsdom and the WebView, not in the mapping logic.
+Instrument `snapshotsByMessage` and the message ids actually rendered, in the
+app, before changing the design again.
