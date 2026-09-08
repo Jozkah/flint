@@ -87,6 +87,27 @@ export type EndpointFailure = {
  * A single sentence naming the provider, the endpoint and the status, followed
  * by the most likely remedy. Never a bare status word, and never a raw object.
  */
+/**
+ * An endpoint failure that has already been explained.
+ *
+ * Marked so callers can re-throw it untouched. Wrapping it in "Unexpected
+ * error while fetching models from X" buried the one sentence that said what
+ * actually happened -- the endpoint, the status, and who answered -- inside a
+ * generic one that said nothing.
+ */
+export class EndpointError extends Error {
+  readonly endpoint = true
+  constructor(message: string) {
+    super(message)
+    this.name = 'EndpointError'
+  }
+}
+
+/** Whether this error already carries an actionable explanation. */
+export function isEndpointError(e: unknown): e is EndpointError {
+  return e instanceof EndpointError || (e as EndpointError)?.endpoint === true
+}
+
 export function describeEndpointFailure(failure: EndpointFailure): string {
   const { provider, url, method = 'GET', status, statusText } = failure
   const scope = endpointScope(url)

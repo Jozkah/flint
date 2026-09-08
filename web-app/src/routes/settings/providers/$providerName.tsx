@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Card, CardItem } from '@/containers/Card'
+import { classifyModelLocation } from '@/lib/modelLocation'
 import HeaderPage from '@/containers/HeaderPage'
 import SettingsMenu from '@/containers/SettingsMenu'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -488,7 +489,22 @@ function ProviderDetail() {
   // This ensures all screens receive the event intermediately
 
   const handleRefreshModels = async () => {
-    if (!provider || !provider.base_url || !providerHasRemoteApiKeys(provider)) {
+    if (!provider || !provider.base_url) {
+      toast.error(t('providers:models'), {
+        description: t('providers:refreshModelsError'),
+      })
+      return
+    }
+    // Only an endpoint that is *definitely* public is asked for a key up
+    // front. A local one needs no credential, and a single-label hostname like
+    // `v100` is not yet known to be either -- refusing those meant Jan told
+    // the user to "configure an API key" for a server that never asked for
+    // one, and never sent the request that would have said what was actually
+    // wrong. Where it is not certain, make the request and report the answer.
+    if (
+      classifyModelLocation({ baseUrl: provider.base_url }) === 'remote' &&
+      !providerHasRemoteApiKeys(provider)
+    ) {
       toast.error(t('providers:models'), {
         description: t('providers:refreshModelsError'),
       })

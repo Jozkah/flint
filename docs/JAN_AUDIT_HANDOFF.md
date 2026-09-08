@@ -704,3 +704,33 @@ snapshot to its own invocation. The ask lifecycle now writes through
 
 Also: the harness gained `--only a,b`. A scenario that wedges the WebView fails
 every scenario after it, so judging one honestly means running it alone.
+
+### `provider-error-is-actionable` closed (2026-09-08)
+
+Three defects behind one failing scenario, all found by making the failure say
+what it saw instead of only that it saw nothing.
+
+1. **The request was never sent.** The model refresh refused up front unless
+   the provider had an API key, so a local server -- which needs none -- was
+   told to "configure an API key", and the request that would have explained
+   the real failure never happened. `isLocalEndpoint` was not enough here
+   either: a single-label name like `v100` is deliberately `unknown`, not
+   private. The guard now demands a key only when the endpoint is *definitely*
+   public (`classifyModelLocation(...) === 'remote'`); where it is not certain,
+   Jan makes the request and reports the answer.
+2. **The explanation was buried.** `fetchModelsFromProvider` wrapped its own
+   structured message in "Unexpected error while fetching models from X",
+   because the prefix list it checked did not match the newer message. Endpoint
+   failures are now thrown as `EndpointError` and re-thrown untouched.
+3. **The toast could not be dismissed.** Sonner was configured without
+   `closeButton`, so a sticky, actionable error had no way to be put away.
+
+The assertion observes the toast lifecycle through a MutationObserver that
+records every toast as it is inserted, rather than sampling the DOM and racing
+the toast's own lifetime.
+
+Observed toast, exactly one:
+`cowork-smoke-mock: GET http://v100:8080/v1/models returned 403 (answered by
+cloudflare). The request reached a proxy on the internet rather than your own
+server, so the hostname is resolving to a public address. Point the provider at
+the machine's address directly, or fix the name resolution.`

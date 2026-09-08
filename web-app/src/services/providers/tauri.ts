@@ -18,7 +18,9 @@ import {
 } from '@/lib/provider-api-keys'
 import { ensureAnthropicHeaders } from '@/lib/anthropicHeaders'
 import {
+  EndpointError,
   describeEndpointFailure,
+  isEndpointError,
   parseModelList,
 } from '@/lib/endpointDiagnostics'
 
@@ -208,7 +210,7 @@ export class TauriProvidersService extends DefaultProvidersService {
           // whoever answered. "Access forbidden: check your API key" was
           // actively misleading for a local server fronted by a proxy, where
           // the key was never the problem.
-          throw new Error(
+          throw new EndpointError(
             describeEndpointFailure({
               provider: provider.provider,
               url: `${provider.base_url}/models`,
@@ -237,6 +239,10 @@ export class TauriProvidersService extends DefaultProvidersService {
       )
     } catch (error) {
       console.error('Error fetching models from provider:', error)
+
+      // Already explained: the endpoint, the status and who answered. Wrapping
+      // it would bury the only sentence that says what happened.
+      if (isEndpointError(error)) throw error
 
       // Preserve structured error messages thrown above
       const structuredErrorPrefixes = [

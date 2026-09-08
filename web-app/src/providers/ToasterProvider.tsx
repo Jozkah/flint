@@ -10,6 +10,10 @@ export function ToasterProvider() {
   return (
     <Toaster
       richColors
+      // A failure message worth reading is worth being able to put away. Some
+      // of them name an endpoint, a status and what to do about it, and until
+      // now the only way to clear one was to wait for it to time out.
+      closeButton
       position={notificationPosition}
       offset={getToastOffset(notificationPosition)}
       visibleToasts={5}

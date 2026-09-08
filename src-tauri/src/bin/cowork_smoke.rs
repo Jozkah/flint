@@ -2219,8 +2219,33 @@ fn scenario_provider_error(ctx: &Ctx) -> ScenarioResult {
         // is disabled while a refresh is in flight and the page mounts its
         // model section asynchronously, so one click is not reliably one
         // request -- press until the toast actually arrives.
-        let toast_present = "return [...document.querySelectorAll('[data-sonner-toast]')]
-             .some(t => (t.textContent || '').includes('403'));";
+        // Record every toast as it is inserted. Sampling the DOM races the
+        // toast's own lifetime: sonner dismisses it after a few seconds, so a
+        // poll that lands either side of that window sees nothing and reports
+        // "no toast" for a toast that was shown.
+        ctx.eval(
+            "if (!globalThis.__toastLog) {
+               globalThis.__toastLog = [];
+               const seen = new WeakSet();
+               const record = (n) => {
+                 if (!(n instanceof HTMLElement)) return;
+                 for (const t of n.matches?.('[data-sonner-toast]')
+                        ? [n]
+                        : [...n.querySelectorAll?.('[data-sonner-toast]') || []]) {
+                   if (seen.has(t)) continue;
+                   seen.add(t);
+                   globalThis.__toastLog.push((t.textContent || '').trim());
+                 }
+               };
+               new MutationObserver((records) => {
+                 for (const r of records) r.addedNodes.forEach(record);
+               }).observe(document.body, { childList: true, subtree: true });
+             }
+             globalThis.__toastLog.length = 0;
+             return true;",
+        )?;
+        let toast_present =
+            "return (globalThis.__toastLog || []).some(t => t.includes('403'));";
         let mut pressed = false;
         for _ in 0..4 {
             let clicked = ctx.eval_bool(
@@ -2248,15 +2273,25 @@ fn scenario_provider_error(ctx: &Ctx) -> ScenarioResult {
 
         // Observe the toast itself. Searching all of document.body raced the
         // toast's own lifetime and matched text from anywhere on the page.
-        ctx.wait_until("the failure toast", toast_present, Duration::from_secs(30))?;
+        if ctx
+            .wait_until("the failure toast", toast_present, Duration::from_secs(30))
+            .is_err()
+        {
+            // Say what did appear. "No toast mentioning 403" and "a toast
+            // saying the refresh succeeded" are different defects.
+            let seen = ctx.eval_string(
+                "return JSON.stringify(globalThis.__toastLog || []);",
+            )?;
+            bail!("no toast mentioned 403; toasts seen: {seen}");
+        }
 
         let toast = ctx.eval_string(
-            "const all = [...document.querySelectorAll('[data-sonner-toast]')];
-             const hit = all.filter(t => (t.textContent || '').includes('403'));
+            "const all = globalThis.__toastLog || [];
+             const hit = all.filter(t => t.includes('403'));
              return JSON.stringify({
                count: hit.length,
                total: all.length,
-               text: hit.map(t => t.textContent || '').join(' | '),
+               text: hit.join(' | '),
              });",
         )?;
         let v: Value = serde_json::from_str(&toast).unwrap_or(Value::Null);
@@ -2276,7 +2311,9 @@ fn scenario_provider_error(ctx: &Ctx) -> ScenarioResult {
             "GET",
             "403",
             "cloudflare",
-            &format!("127.0.0.1:{}", ctx.mock_port),
+            // The endpoint as configured, not the address it resolved to:
+            // the message has to name what the user typed.
+            &format!("{SMOKE_ENDPOINT_HOST}:{SMOKE_ENDPOINT_PORT}"),
         ] {
             ensure!(
                 text.contains(needle),
@@ -2298,12 +2335,21 @@ fn scenario_provider_error(ctx: &Ctx) -> ScenarioResult {
             "the toast leaked the provider's API key: {text}"
         );
 
-        // And it must not stay forever.
+        // And it must be dismissible. An error toast is deliberately sticky --
+        // a message this actionable should not vanish while it is being read --
+        // so the check is that dismissing it works, not that it expires.
+        ctx.eval(
+            "for (const t of document.querySelectorAll('[data-sonner-toast]')) {
+               const b = t.querySelector('[data-close-button], button');
+               if (b) b.click();
+             }
+             return true;",
+        )?;
         ctx.wait_until(
-            "the toast to expire or be dismissed",
+            "the toast to be dismissed",
             "return ![...document.querySelectorAll('[data-sonner-toast]')]
                .some(t => (t.textContent || '').includes('403'));",
-            Duration::from_secs(60),
+            Duration::from_secs(20),
         )?;
 
         Ok(())
