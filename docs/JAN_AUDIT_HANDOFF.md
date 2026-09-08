@@ -825,3 +825,33 @@ the app -- log at the moment `mutateLive` runs, the array length before and
 after, and the same again inside `commitTurns` -- and find which of those two
 writes loses the field. Everything so far has measured the ends, not the step
 between them.
+
+## AH-050: the canonical tool-activity record (2026-09-08)
+
+Every tool call now emits lifecycle events to an append-only log at
+`<jan_data>/audit/tool-activity.jsonl`, separate from the permission log in
+`audit.rs`: that one records *decisions*, this one records what the call did.
+
+**Where it hooks in.** `dispatchCoworkTool` is the single place any tool call
+is routed -- main agent, subagent, background task, MCP server, skill -- so the
+wrapper sits there and nothing has a path around it. Adding a tool later needs
+no change here.
+
+**Phases.** `requested`, `awaiting-permission`, `allowed`, `refused`,
+`running`, `succeeded`, `failed`, `cancelled`, `stale`, `timed-out`. A refusal,
+a cancellation and a failure stay distinguishable on purpose; only `succeeded`
+is hideable, so "Hide completed tool activity" can never hide the events worth
+reading.
+
+**Ordering.** The fold in `activity.rs` orders by when a call was *requested*,
+not when it finished, so two concurrent calls read in the order they were made
+however their results interleave. Recording is queued rather than awaited --
+a tool must not wait on its own audit line -- and the queue is what keeps
+`running` from landing after `succeeded`.
+
+**Restart.** `settle_unfinished` runs in `.setup()` before the window opens: a
+call left `running` by a killed process becomes `stale`, because nothing is
+left that could finish it. It is idempotent.
+
+**Not done yet:** the timeline UI (AH-172) reads `tool_activity_items` but is
+not yet wired into the Cowork conversation column.

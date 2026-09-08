@@ -94,6 +94,8 @@ macro_rules! invoke_commands_with_extras {
         core::net::commands::provider_endpoint_diagnostics,
         core::net::commands::provider_endpoint_refresh,
         core::agent::commands::agent_prompt_snapshots,
+        core::agent::commands::tool_activity_record,
+        core::agent::commands::tool_activity_items,
         core::agent::commands::agent_skill_list,
         core::agent::commands::agent_skill_read,
         core::agent::commands::agent_skill_write,
@@ -349,6 +351,12 @@ pub fn build_app() -> tauri::App {
             mcp_generation: Arc::new(Mutex::new(HashMap::new())),
         })
         .setup(|app| {
+            // Anything a killed run left mid-flight is settled before the
+            // window opens, so a timeline restored from disk never shows a
+            // call as still running when nothing is left to finish it.
+            tauri_plugin_agent_tools::activity::settle_unfinished(
+                &get_jan_data_folder_path(app.handle().clone()),
+            );
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Debug)

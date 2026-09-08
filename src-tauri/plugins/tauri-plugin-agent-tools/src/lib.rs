@@ -9,6 +9,7 @@
 //! available in both configurations; only `init()` and the IPC shims in
 //! `commands` are gated.
 
+pub mod activity;
 pub mod audit;
 pub mod lifecycle;
 pub mod memory;

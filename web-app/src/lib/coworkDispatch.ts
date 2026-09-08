@@ -15,10 +15,23 @@ import {
   type EditConsent,
 } from '@/lib/coworkAccess'
 import type { PendingToolCall, ToolOutcome } from '@/lib/coworkRunner'
+import {
+  recordToolActivity,
+  resourceOf,
+  withToolActivity,
+  type ToolActivityContext,
+} from '@/lib/toolActivity'
 import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
 
 export type DispatchContext = {
   sessionId: string
+  /**
+   * Identity the call's lifecycle events are recorded under. AH-050.
+   *
+   * Optional so a caller that has no run to name still records something
+   * useful rather than nothing: without it the events carry the session alone.
+   */
+  activity?: Partial<ToolActivityContext>
   readOnlyFolder: string | null
   /** What this session is allowed to do. */
   mode: CoworkMode
@@ -233,10 +246,30 @@ function deniedByUser(toolName: string): ToolOutcome {
 }
 
 /**
+ * Route one tool call, recording its whole life on the way. AH-050.
+ *
+ * Every tool call in the app arrives here -- the main agent's, a subagent's, a
+ * background task's, an MCP server's -- so wrapping this one function is what
+ * makes the record complete, and is why no tool has a path around it.
+ */
+export async function dispatchCoworkTool(
+  call: PendingToolCall,
+  ctx: DispatchContext,
+  signal?: AbortSignal
+): Promise<ToolOutcome> {
+  return withToolActivity(
+    call,
+    { session: ctx.sessionId, run: '', ...(ctx.activity ?? {}) },
+    signal,
+    () => routeCoworkTool(call, ctx)
+  )
+}
+
+/**
  * Route one tool call. Always resolves: a rejection here would abort the run,
  * where the model can usually recover from being told what went wrong.
  */
-export async function dispatchCoworkTool(
+async function routeCoworkTool(
   call: PendingToolCall,
   ctx: DispatchContext
 ): Promise<ToolOutcome> {
@@ -285,9 +318,30 @@ export async function dispatchCoworkTool(
     }
 
     if (decision.needsApproval) {
+      // Recorded separately from the outcome: "the user was asked" and "the
+      // user said no" are different facts, and a refused call that was never
+      // put to anyone is a bug worth being able to see.
+      const permission = {
+        call: call.toolCallId,
+        tool: toolName,
+        session: ctx.sessionId,
+        run: ctx.activity?.run ?? '',
+        invocation: ctx.activity?.invocation ?? '',
+        agent: ctx.activity?.agent ?? '',
+        resource: resourceOf(call.input),
+      }
+      await recordToolActivity({ ...permission, phase: 'awaiting-permission' })
+
       // No handler means nothing can present the request. Refusing is the
       // only honest outcome: running it would make "Ask before changes" false.
-      if (!ctx.onApprove) return deniedByUser(toolName)
+      if (!ctx.onApprove) {
+        await recordToolActivity({
+          ...permission,
+          phase: 'refused',
+          detail: 'nothing could present the request',
+        })
+        return deniedByUser(toolName)
+      }
     // A throw here — an aborted run, a closed prompt — is a refusal, not a
     // reason to reject: this function always resolves.
       let allowed = false
@@ -296,6 +350,10 @@ export async function dispatchCoworkTool(
       } catch {
         allowed = false
       }
+      await recordToolActivity({
+        ...permission,
+        phase: allowed ? 'allowed' : 'refused',
+      })
       if (!allowed) return deniedByUser(toolName)
     }
   }

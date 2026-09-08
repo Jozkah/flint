@@ -479,6 +479,7 @@ mod tests {
             thread: "t1".into(),
             agent: "main".into(),
             provider: "openai".into(),
+            ..Default::default()
         }
     }
 
@@ -725,6 +726,7 @@ mod scope_tests {
                 thread: "t".into(),
                 agent: "main".into(),
                 provider: "openai".into(),
+                ..Default::default()
             },
         );
         let theirs = capture(
@@ -735,6 +737,7 @@ mod scope_tests {
                 thread: "t".into(),
                 agent: "main".into(),
                 provider: "openai".into(),
+                ..Default::default()
             },
         );
         append(d, &mine);

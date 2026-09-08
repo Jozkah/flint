@@ -1971,8 +1971,17 @@ function CoworkPage() {
           // A child never gets `todo`/`ask`/`task`, so these refuse
           // rather than execute: a model can still emit a call to a
           // tool that was never advertised.
-          dispatch: (call) =>
+          dispatch: (call, toolSignal) =>
             dispatchCoworkTool(call, {
+              // Recorded under the parent's run and this child's own name, so
+              // the timeline shows which agent did a thing without splitting
+              // the run it belongs to.
+              activity: {
+                session: sid,
+                run: runId,
+                agent: resolved.name,
+                project: workspacePath ?? '',
+              },
               // The owner the grant was issued to, not the run's session: an
               // isolated child's authority is its own, and the backend refuses a
               // grant presented under any other id.
@@ -2031,7 +2040,7 @@ function CoworkPage() {
                 output: 'A subagent cannot dispatch subagents.',
                 isError: true,
               }),
-            }),
+            }, toolSignal),
           events: {
             onQueued: (waiting) => {
               useCoworkRun
@@ -2138,8 +2147,9 @@ function CoworkPage() {
               trigger: 'submit-message',
               messageId: undefined,
             } as any),
-          dispatch: (call) =>
+          dispatch: (call, toolSignal) =>
             dispatchCoworkTool(call, {
+              activity: { session: sid, run: runId, agent: 'main' },
               sessionId: sid,
               readOnlyFolder: runReadRoot,
               mode: runMode,
@@ -2421,7 +2431,7 @@ function CoworkPage() {
                   await plan.release()
                 }
               },
-            }),
+            }, toolSignal),
           sink,
           onStep: ({ result, turns, outcomes }) => {
             if (result.usage) setLiveUsage(result.usage)

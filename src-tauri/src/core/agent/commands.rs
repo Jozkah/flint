@@ -532,3 +532,39 @@ pub async fn agent_prompt_snapshots(
         session.as_deref(),
     )
 }
+
+/// Record one tool lifecycle event. AH-050.
+///
+/// Every tool execution reaches this, whatever ran it -- a built-in, a file
+/// tool, Bash, an MCP server, a skill, a subagent or a background task -- so
+/// the record is the whole story of a run and not the part the UI happened to
+/// keep. The renderer owns dispatch, so it is the renderer that reports; this
+/// command is the only way in, which is what keeps the path canonical.
+#[tauri::command]
+pub async fn tool_activity_record(
+    app: tauri::AppHandle,
+    event: tauri_plugin_agent_tools::activity::ToolActivityEvent,
+) -> Result<(), String> {
+    let data_folder = get_jan_data_folder_path(app);
+    // Redacted here rather than trusting the caller: the caller is renderer
+    // code, and the file outlives the window.
+    tauri_plugin_agent_tools::activity::append(&data_folder, &event.redacted());
+    Ok(())
+}
+
+/// The activity timeline: one durable item per tool call, in the order the
+/// calls were requested. AH-172.
+///
+/// Reads from the same events `tool_activity_record` wrote, so a timeline
+/// rebuilt after a restart is the same timeline, not a summary of one.
+#[tauri::command]
+pub async fn tool_activity_items(
+    app: tauri::AppHandle,
+    session: Option<String>,
+) -> Result<Vec<tauri_plugin_agent_tools::activity::ToolActivityItem>, String> {
+    let data_folder = get_jan_data_folder_path(app);
+    Ok(tauri_plugin_agent_tools::activity::items(
+        &data_folder,
+        session.as_deref(),
+    ))
+}
