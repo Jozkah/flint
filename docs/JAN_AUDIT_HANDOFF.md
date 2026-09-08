@@ -797,3 +797,31 @@ rather than in vitest: the unit tests pass for every one of those designs, so
 the disagreement is between jsdom and the WebView, not in the mapping logic.
 Instrument `snapshotsByMessage` and the message ids actually rendered, in the
 app, before changing the design again.
+
+### AH-078 ordinal matching: still open after a second attempt (2026-09-08)
+
+Instrumenting the running app, as the previous handoff said to, produced one
+real finding and disproved two more hypotheses.
+
+**Found:** `prompt-snapshot-panel` was asserting on a reply that was already on
+screen from an earlier attempt, so it moved on before the dispatch it was
+testing had happened. It now starts a fresh session and waits for the previous
+reply to be gone first. That was a genuine false-pass condition and is fixed.
+
+**Disproved:** the session store does not strip unknown turn fields
+(no `partialize`), and the sink's session guard is not the cause -- comparing
+against the run's own session id as well as the rendered one changed nothing.
+
+With a clean session the probe reads: run finished, two turns committed,
+`turnsWithSnapshots: 0`, and the record present on disk. So the sink's write
+into the rendered turn lane does not survive to the committed turns, and I do
+not know why. Six designs have now failed the same way while passing in vitest.
+
+The web-app changes were reverted again; the ordinal match stands and AH-078
+remains implemented only on that verified behaviour.
+
+**For the next attempt:** stop trying designs. Instrument the sink itself in
+the app -- log at the moment `mutateLive` runs, the array length before and
+after, and the same again inside `commitTurns` -- and find which of those two
+writes loses the field. Everything so far has measured the ends, not the step
+between them.

@@ -2060,6 +2060,23 @@ fn scenario_prompt_snapshot(ctx: &Ctx) -> ScenarioResult {
         Duration::from_secs(90),
     )?;
     ctx.ensure_model_selected()?;
+    // A fresh session first. The reply text is asserted on below, and a
+    // previous attempt's reply is still on screen -- matching that made the
+    // scenario continue before this attempt's dispatch had even happened, and
+    // then blame the panel for not showing a snapshot that did not exist yet.
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    ctx.wait_until(
+        "an empty transcript",
+        "return !document.body.innerText.includes('Hello from the smoke model');",
+        Duration::from_secs(20),
+    )?;
+
     ctx.type_into("[data-testid=\"chat-input\"]", "snapshot probe")?;
     // Sixty seconds, not fifteen: the previous scenario's run may still be
     // streaming when this one starts, and while it is the control is a stop
