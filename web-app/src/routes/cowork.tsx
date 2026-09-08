@@ -2613,7 +2613,10 @@ function CoworkPage() {
   return (
     <div className="flex flex-col h-[calc(100dvh-(env(safe-area-inset-bottom)+env(safe-area-inset-top)))]">
       <HeaderPage>
-        <div className="flex w-full items-center gap-2 pr-2">
+        {/* The same row the chat page uses, so the model selector is the same
+            size and in the same place on both. */}
+        <div className="flex items-center gap-2 w-full">
+          <DropdownModelProvider useLastUsedModel />
           <div className="flex shrink-0 items-center gap-1">
           {/* Everything about the session that is reference material rather
               than conversation, closed until asked for. */}
@@ -2661,9 +2664,6 @@ function CoworkPage() {
               }}
             />
           </CoworkSessionDetails>
-          </div>
-          <div className="min-w-0 flex-1">
-            <DropdownModelProvider useLastUsedModel />
           </div>
         </div>
       </HeaderPage>

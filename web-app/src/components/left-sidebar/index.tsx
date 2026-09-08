@@ -61,24 +61,22 @@ export function LeftSidebar() {
             </>
           )}
         </SidebarContent>
-        {/* Settings sits at the bottom of the nav bar, where it stays put as
-            the session list grows. Cowork replaces `NavMain`, which carries
-            its own Settings entry, so this is the only one that tab has. */}
-        {isCowork && (
-          <SidebarFooter className="px-1 pb-1">
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={() => navigate({ to: route.settings.general })}
-                  data-testid="cowork-settings"
-                >
-                  <IconSettings className="text-foreground/70" size={16} />
-                  <span>{t('common:settings')}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarFooter>
-        )}
+        {/* Settings sits at the bottom of the nav bar on every tab, so it is
+            always in the same place: in the list above it, it moved up and
+            down as the entries around it changed from page to page. */}
+        <SidebarFooter className="px-1 pb-1">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={() => navigate({ to: route.settings.general })}
+                data-testid="cowork-settings"
+              >
+                <IconSettings className="text-foreground/70" size={16} />
+                <span>{t('common:settings')}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
         <SidebarRail />
       </Sidebar>
     </div>

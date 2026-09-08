@@ -28,7 +28,7 @@ export function CoworkSessionDetails({
 }: {
   /** The detail surfaces, rendered only while the dialog is open. */
   children: ReactNode
-  /** A few words for the trigger, e.g. the repository and branch. */
+  /** Named on the trigger's tooltip and label, not on its face. */
   summary?: string
 }) {
   const { t } = useTranslation()
@@ -37,15 +37,21 @@ export function CoworkSessionDetails({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
+        {/* An icon, not a chip: it sits beside the model selector on a bar
+            that has to look the same on every page, and the repository and
+            branch it would have spelled out are the first thing inside. */}
         <button
           type="button"
           data-testid="session-details-trigger"
-          className="flex max-w-[16rem] items-center gap-1.5 rounded-md px-2 py-1 text-xs text-main-view-fg/60 hover:bg-main-view-fg/5 hover:text-main-view-fg focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          title={summary || t('common:sessionDetails.title')}
+          aria-label={
+            summary
+              ? `${t('common:sessionDetails.title')} — ${summary}`
+              : t('common:sessionDetails.title')
+          }
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-main-view-fg/60 hover:bg-main-view-fg/5 hover:text-main-view-fg focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
-          <Info size={13} className="shrink-0" />
-          <span className="truncate">
-            {summary || t('common:sessionDetails.title')}
-          </span>
+          <Info size={15} />
         </button>
       </DialogTrigger>
       <DialogContent className="max-h-[80dvh] max-w-2xl overflow-y-auto">

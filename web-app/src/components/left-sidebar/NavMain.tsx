@@ -26,10 +26,7 @@ import {
   MessageCircleIcon,
   type MessageCircleIconHandle,
 } from '@/components/animated-icon/message-circle'
-import {
-  SettingsIcon,
-  type SettingsIconHandle,
-} from '@/components/animated-icon/settings'
+import { type SettingsIconHandle } from '@/components/animated-icon/settings'
 import { type BlocksIconHandle } from '../animated-icon/blocks'
 import {
   BotIcon,
@@ -133,11 +130,9 @@ const getNavMainItems = (
       </KbdGroup>
     ),
   },
-  {
-    title: 'common:settings',
-    url: route.settings.general,
-    animatedIcon: SettingsIcon,
-  },
+  // Settings is deliberately not in this list. It is pinned to the bottom of
+  // the sidebar for every tab, so it stays in one place instead of moving up
+  // and down as the entries above it change from page to page.
 ]
 
 function NavMainItemWithAnimatedIcon({
