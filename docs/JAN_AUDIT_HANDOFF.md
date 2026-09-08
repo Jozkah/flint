@@ -585,6 +585,37 @@ short-hostname path.
   route) from the Cowork header; `useCoworkView` keeps rail and scroll across
   the trip.
 
+### Two defects the harness found that were not in the report
+
+**A closed dialog swallowed every click.** `DialogOverlay` is `fixed inset-0
+z-50` and declares an exit animation, but carried no `duration` -- unlike the
+`DialogContent` beside it. Radix keeps a closing element mounted until its exit
+animation reports `animationend`, and an animation with no duration may never
+report one, so the overlay stayed in the DOM after close, invisible, absorbing
+every click in the window. `drawer.tsx` and `sheet.tsx` had the same omission
+on the same shape of element. Fixed with `duration-200` on all three. This was
+the cause of an entire tail of smoke failures: once any dialog had been opened
+and closed, later scenarios failed on clicks that could never land.
+
+**`get_jan_data_folder_path` ignored `JAN_DATA_FOLDER`.** It resolves through
+`get_app_configurations`, which reads the app config file. `resolve_jan_data_folder`
+honoured the override; this one did not, so settings resolved to the redirected
+folder while extension storage -- and with it the user's configured providers --
+resolved to the real one. A harness run loaded the developer's real provider
+list and opened connections to their own machines.
+
+### Why AH-078's panel never appeared
+
+`StreamEvent::PromptSnapshot` is emitted only from `core/agent/loop.rs`, and a
+Cowork run does not go through it: the model is driven by the AI SDK in the web
+app. The event had no producer on the path the timeline renders. The snapshot
+is taken in `core/net/transport.rs` now, which is both the last point before a
+request leaves the process and the only point every provider request shares.
+Identity travels on the model instance (`__janDispatch` -> `x-jan-*` headers,
+lifted out before the request goes on the wire) because the model is built per
+conversation and a module-level "current dispatch" would race between two
+sessions streaming at once.
+
 ### Not yet done in this batch
 
 - Item 1 of the second defect message (the Cowork spacing/padding system) is

@@ -37,14 +37,13 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        // `duration-200` is not decoration. Radix keeps a closing element
-        // mounted until its exit animation fires `animationend`; an animation
-        // with no duration may never fire one, and then this overlay --
-        // `fixed inset-0 z-50` -- stays in the DOM after the dialog is closed
-        // and silently swallows every click in the window. The smoke harness
-        // caught it as "header controls cannot be clicked", covered by an
-        // element already in `data-[state=closed]`.
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50 backdrop-blur duration-200",
+        // No exit animation on purpose. Radix keeps a closing element mounted
+        // until its exit animation reports `animationend`; in the app's WebView
+        // that report does not arrive, and this element -- `fixed inset-0
+        // z-50` -- then stayed in the DOM after the dialog closed and absorbed
+        // every click in the window. Entering still animates; leaving is
+        // immediate, which is what makes the overlay actually go away.
+        "data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50 backdrop-blur",
         className
       )}
       {...props}

@@ -37,10 +37,8 @@ function SheetOverlay({
     <SheetPrimitive.Overlay
       data-slot="sheet-overlay"
       className={cn(
-        // See the note on the dialog overlay: an exit animation with no
-        // duration can leave this `fixed inset-0 z-50` element mounted after
-        // close, swallowing every click in the window.
-        "data-[state=open]:animate-in backdrop-blur data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50 duration-200",
+        // See the note on the dialog overlay: same element shape, same fix.
+        "data-[state=open]:animate-in backdrop-blur data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
         className
       )}
       {...props}
