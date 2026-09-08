@@ -752,3 +752,20 @@ registry but does not exist on this branch, so the totals table was recomputed
 from the JSON rather than regenerated, and the file says so.
 
 Appending an entry is documentation. None of AH-201..AH-210 is implemented.
+
+### Full harness green: 36/36 (2026-09-08)
+
+The two remaining failures were never defects in the scenarios that reported
+them. `header-controls-are-clickable` and `prompt-snapshot-panel` both pass in
+isolation; in a full run they inherited an unresponsive WebView from whatever
+ran before, and then failed on a sixty-second timeout evaluating a one-line
+DOM query.
+
+The runner now checks the page is answering before each scenario and reloads it
+if not, and names every scenario that started after such a recovery. One wedge
+is reported as one wedge instead of as a string of unrelated failures. With
+that in place the suite is **36 passed, 0 failed**, with one recovery noted
+before `provider-error-is-actionable`.
+
+This is why several earlier tallies in this batch were wrong: they counted
+cascade victims as defects.

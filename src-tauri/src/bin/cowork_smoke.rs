@@ -294,6 +294,26 @@ impl Ctx {
         }
     }
 
+    /// Get the WebView answering again, reloading it if it will not.
+    ///
+    /// A scenario that leaves the page unresponsive fails every scenario after
+    /// it on a sixty-second timeout evaluating a one-line query, and those
+    /// read as defects in whatever ran next. Recovering between scenarios
+    /// keeps one wedge from being reported as five failures.
+    ///
+    /// Returns whether a reload was needed, so the run can say so.
+    fn recover(&self) -> bool {
+        if self
+            .eval_with_timeout("return 1;", Duration::from_secs(5))
+            .is_ok()
+        {
+            return false;
+        }
+        let _ = self.window.eval("window.location.replace('/')");
+        self.settle();
+        true
+    }
+
     /// Click a Cowork rail by its exact accessible name.
     /// Open a rail, leaving it open if it already was.
     ///
@@ -3010,8 +3030,16 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
     }
 
     let mut failed = 0usize;
+    let mut wedged: Vec<&str> = Vec::new();
     for scenario in &scenarios {
         ctx.settle();
+        if ctx.recover() {
+            // Whatever ran before left the page unresponsive. Say so against
+            // the scenario that inherits it, so a cascade is never read as a
+            // string of unrelated defects.
+            println!("      (recovered a wedged WebView before {})", scenario.name);
+            wedged.push(scenario.name);
+        }
         // Up to three attempts. The WebView stalls for tens of seconds while
         // it highlights a large file or rescans the tree, and one stall
         // cascades into every scenario that follows until it recovers. A stall
@@ -3061,6 +3089,15 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
         scenarios.len() - failed,
         failed
     );
+    if !wedged.is_empty() {
+        // Named, so a failure inherited from a wedged page is never read as a
+        // defect in the scenario that inherited it.
+        println!(
+            "{} scenario(s) started after a wedged WebView had to be reloaded: {}",
+            wedged.len(),
+            wedged.join(", ")
+        );
+    }
     i32::from(failed > 0)
 }
 
