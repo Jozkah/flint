@@ -2513,8 +2513,14 @@ fn scenario_cowork_search_and_settings(ctx: &Ctx) -> ScenarioResult {
         "return !!document.querySelector('[role=\"dialog\"]');",
         Duration::from_secs(15),
     )?;
+    // Closed through its own control. A synthetic Escape does not reach the
+    // dismissable layer here, and a dialog that never closes leaves its
+    // `fixed inset-0` overlay over everything after it.
     ctx.eval(
-        "document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
+        "const c = [...document.querySelectorAll('[data-slot=\"dialog-content\"] button')]
+           .find(b => (b.textContent || '').trim() === 'Close');
+         if (c) { c.click(); return true; }
+         document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
          return true;",
     )?;
     // The overlay is `fixed inset-0`, so anything hit-tested while it is still
