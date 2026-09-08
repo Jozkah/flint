@@ -58,6 +58,7 @@ import {
 import { CoworkWorkflowCard } from '@/containers/CoworkWorkflowCard'
 import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
+import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { MessageItem } from '@/containers/MessageItem'
 import SkillSelector from '@/containers/SkillSelector'
@@ -2613,11 +2614,10 @@ function CoworkPage() {
   return (
     <div className="flex flex-col h-[calc(100dvh-(env(safe-area-inset-bottom)+env(safe-area-inset-top)))]">
       <HeaderPage>
-        {/* The same row the chat page uses, so the model selector is the same
-            size and in the same place on both. */}
-        <div className="flex items-center gap-2 w-full">
+        {/* The same row component the chat page uses, so the selector and the
+            control beside it match in size, spacing and order. */}
+        <PageHeaderRow>
           <DropdownModelProvider useLastUsedModel />
-          <div className="flex shrink-0 items-center gap-1">
           {/* Everything about the session that is reference material rather
               than conversation, closed until asked for. */}
           <CoworkSessionDetails summary={sessionDetailsSummary}>
@@ -2664,8 +2664,7 @@ function CoworkPage() {
               }}
             />
           </CoworkSessionDetails>
-          </div>
-        </div>
+        </PageHeaderRow>
       </HeaderPage>
 
       <div className="flex flex-1 h-full overflow-hidden">

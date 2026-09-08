@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { Info } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -37,11 +38,13 @@ export function CoworkSessionDetails({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        {/* An icon, not a chip: it sits beside the model selector on a bar
-            that has to look the same on every page, and the repository and
-            branch it would have spelled out are the first thing inside. */}
-        <button
-          type="button"
+        {/* The same primitive, variant and icon size as the chat page's
+            header control, so the two headers match without either page
+            describing its own padding. The repository and branch this would
+            have spelled out are on the label, and first inside when it opens. */}
+        <Button
+          variant="ghost"
+          size="icon-sm"
           data-testid="session-details-trigger"
           title={summary || t('common:sessionDetails.title')}
           aria-label={
@@ -49,10 +52,9 @@ export function CoworkSessionDetails({
               ? `${t('common:sessionDetails.title')} — ${summary}`
               : t('common:sessionDetails.title')
           }
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-main-view-fg/60 hover:bg-main-view-fg/5 hover:text-main-view-fg focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
-          <Info size={15} />
-        </button>
+          <Info size={18} />
+        </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[80dvh] max-w-2xl overflow-y-auto">
         <DialogHeader>
