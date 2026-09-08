@@ -251,7 +251,7 @@ import {
   type SubagentRequest,
 } from '@/lib/coworkSubagent'
 import { errorText } from '@/lib/errorText'
-import { EmergencyStop } from '@/containers/EmergencyStop'
+import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
 import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 
 /** How often the backend's background-job list is re-read. Slower than the
@@ -2893,6 +2893,17 @@ function CoworkPage() {
                 onSubmit={handleSubmit}
                 onStop={handleStop}
                 chatStatus={running ? 'streaming' : 'ready'}
+                // One stop control for this surface, in the composer's own
+                // action slot: it asks how far to stop rather than sitting
+                // beside a second, destructive button.
+                stopControl={
+                  <CoworkStopMenu
+                    running={running}
+                    sessionId={session?.id}
+                    runId={session?.id}
+                    onStopCurrent={handleStop}
+                  />
+                }
                 tokenSource={tokenSource}
                 surfaceControls={
                   <>
@@ -2924,14 +2935,6 @@ function CoworkPage() {
                       onDetach={detachFolder}
                     />
                     <CoworkSandboxChip />
-                    {/* Reachable while a run is going, which is the only time
-                        an emergency stop is any use. */}
-                    {running && (
-                      <EmergencyStop
-                        sessionId={session?.id}
-                        runId={session?.id}
-                      />
-                    )}
                     <CoworkRailToolbar
                       active={activeRail}
                       onSelect={selectRail}

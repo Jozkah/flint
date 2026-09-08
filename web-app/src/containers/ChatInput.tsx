@@ -161,6 +161,14 @@ type ChatInputProps = {
    */
   surfaceControls?: ReactNode
   /**
+   * Replaces the default stop button while streaming.
+   *
+   * Cowork supplies one control that asks how far to stop; without this slot
+   * it would have to render a second stop button beside this one, which is
+   * exactly the thing being removed.
+   */
+  stopControl?: ReactNode
+  /**
    * Usage for a surface that keeps no thread messages (Cowork). Rendering the
    * counter here rather than in the caller is what keeps its placement, the
    * `tokenCounterCompact` setting and the spacing to the send button identical
@@ -198,6 +206,7 @@ const ChatInput = memo(function ChatInput({
   scopeKey,
   ownsToolSet = true,
   surfaceControls,
+  stopControl,
   tokenSource,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -2829,7 +2838,12 @@ const ChatInput = memo(function ChatInput({
                 </div>
               )}
 
-              {isStreaming ? (
+              {/* A surface that owns its own stop control -- Cowork, which
+                  asks how far to stop -- supplies it here, in the same slot,
+                  so there is never a second stop button beside this one. */}
+              {isStreaming && stopControl ? (
+                stopControl
+              ) : isStreaming ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button

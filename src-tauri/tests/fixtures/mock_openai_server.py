@@ -98,7 +98,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
+        # `close`, not `keep-alive`. With keep-alive and no Content-Length the
+        # response is framed "until the connection closes", so a client reading
+        # the body to completion waits forever after [DONE] -- which is not how
+        # a real SSE endpoint behaves, and made runs look like they never
+        # finished.
+        self.send_header("Connection", "close")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
@@ -233,6 +238,8 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(sse(chunk({}, finish="stop")))
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
+            # End the response, so the body is complete by HTTP framing.
+            self.close_connection = True
         except (BrokenPipeError, ConnectionResetError):
             # The client cancelled. That is a scenario, not an error.
             pass

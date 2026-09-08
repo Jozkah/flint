@@ -1222,5 +1222,18 @@
     "hiddenCount": "{{count}} completed tool activities hidden",
     "hiddenCount_one": "1 completed tool activity hidden",
     "showAgain": "Show them again"
+  },
+  "stopMenu": {
+    "trigger": "Stop…",
+    "current": "Stop current task",
+    "currentDescription": "Ends this response and everything under it. Other sessions keep running.",
+    "all": "Stop all activity",
+    "allDescription": "Ends every run, tool, command and agent everywhere in Jan.",
+    "confirm": "Stop everything?",
+    "allConfirm": "Stop all",
+    "stopping": "Stopping…",
+    "currentStopped": "Stopped this task.",
+    "allStopped": "Stopped all activity ({{count}} stopped).",
+    "incomplete": "Stopped, but {{count}} process(es) are still running."
   }
 }
