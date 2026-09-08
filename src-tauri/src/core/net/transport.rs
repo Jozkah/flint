@@ -257,13 +257,23 @@ pub struct SnapshotRef {
 /// prompt snapshot has to be taken at. A request with no session is not a
 /// dispatch (discovery, a health check) and is not recorded.
 fn capture_snapshot(req: &ProviderRequest) -> Option<SnapshotRef> {
-    let session = req.session.as_deref()?;
     let body = req.body.as_deref()?;
     let payload: serde_json::Value = serde_json::from_str(body).ok()?;
     // A chat dispatch, not an arbitrary POST.
     if !payload.get("messages").is_some_and(|m| m.is_array()) {
         return None;
     }
+    let Some(session) = req.session.as_deref() else {
+        // A dispatch that arrived without knowing whose conversation it is
+        // cannot be filed against one, and the panel would have nothing to
+        // look up. Say so rather than dropping it silently.
+        log::warn!(
+            "prompt snapshot: a dispatch to {} carried no session; \
+             the x-jan-session header did not survive the fetch chain",
+            req.url
+        );
+        return None;
+    };
     let identity = SnapshotIdentity {
         session: session.to_string(),
         run: req.run.clone().unwrap_or_default(),

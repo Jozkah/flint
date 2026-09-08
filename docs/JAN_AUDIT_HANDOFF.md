@@ -655,17 +655,22 @@ refusing to finish.
 
 Smoke: **34 pass, 2 fail** of 36.
 
-`prompt-snapshot-panel` — the panel still does not appear. Everything is in
-place and unit-tested on both sides: `capture_snapshot` records a dispatch and
-returns its id on the head chunk (Rust tests), `providerFetch` lifts the
-`x-jan-*` identity headers into the request and hands the reference to the
-sink, the Cowork route registers that sink, and `attachPromptSnapshot` puts the
-reference on the open assistant turn. What is not proven is the join between
-them in the running app. Next place to look: `model-factory.ts` wraps `fetch`
-more than once (`createCustomFetch`, then another wrapper further down), so an
-outer layer may be rebuilding `init` without the headers the inner one added.
-Log the payload `session` field in `capture_snapshot` and see whether it
-arrives.
+`prompt-snapshot-panel` — the panel still does not appear, and the cause is
+now narrowed by measurement rather than guessed at.
+
+The scenario reads `<jan_data>/audit/prompts.jsonl` directly after a chat, and
+it holds **zero records**. So the break is not in the timeline: nothing is ever
+captured. `capture_snapshot` also logs a warning when a dispatch arrives with a
+`messages` body but no session -- the case where the `x-jan-*` headers would
+have been lost in the fetch chain -- and that warning never fires either.
+
+Both together rule out the header path and point at the body: `capture_snapshot`
+returns before the session check, which means `req.body` is absent, does not
+parse as JSON, or carries no top-level `messages` array. Next step: log the
+first 200 characters of `req.body` and its parse result for any POST to a
+`/chat/completions` URL, and compare with what `providerFetch`'s `bodyText`
+produced -- the AI SDK may be sending the body in a form `bodyText` turns into
+`None`.
 
 `provider-error-is-actionable` — the toast naming a 403 does not appear. This
 has been failing since the start of this batch, before the transport landed,

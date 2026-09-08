@@ -2055,6 +2055,26 @@ fn scenario_prompt_snapshot(ctx: &Ctx) -> ScenarioResult {
          return true;",
     )?;
 
+    // Was one recorded at all? This separates "the transport never captured
+    // it" from "it was captured and the timeline did not show it", which look
+    // identical from the DOM.
+    let log = std::env::var("JAN_DATA_FOLDER")
+        .map(|d| Path::new(&d).join("audit/prompts.jsonl"))
+        .ok();
+    let recorded = log
+        .as_ref()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .unwrap_or_default();
+    println!(
+        "      snapshots on disk: {} record(s){}",
+        recorded.lines().filter(|l| !l.trim().is_empty()).count(),
+        recorded
+            .lines()
+            .last()
+            .map(|l| format!("; last: {}", &l[..l.len().min(220)]))
+            .unwrap_or_default()
+    );
+
     // The panel appears on the assistant message the snapshot produced.
     ctx.wait_until(
         "the prompt snapshot panel",
