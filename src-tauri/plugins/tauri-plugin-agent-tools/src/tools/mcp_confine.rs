@@ -24,7 +24,7 @@
 use std::path::{Path, PathBuf};
 
 use super::jail::{self, Backend, Policy};
-use super::proc::ShellConfig;
+use super::proc::{self, ShellConfig};
 
 /// What a session may let a local MCP server do.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,6 +195,10 @@ pub fn confined_command(
         args: args.to_vec(),
         via_stdin: false,
         description: "mcp",
+        // An MCP server is an executable, not a shell: nothing appends a
+        // command string to it, so the flavor is only ever carried through the
+        // wrapper unchanged.
+        flavor: proc::ShellFlavor::Posix,
     };
     jail::wrap(&inner, &policy).ok_or(ConfineError::WrapperUnavailable)
 }

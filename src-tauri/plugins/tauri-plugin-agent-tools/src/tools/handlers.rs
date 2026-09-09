@@ -1062,14 +1062,38 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     // `denial_hint` reads, and an unconfined command can still hit a plain
     // filesystem permission error worth explaining.
     let shell = if ctx.sandbox {
-        // No confinement available means no shell: running unsandboxed would give
-        // the command the whole machine, which is never what the caller asked for.
-        let Some(wrapped) = jail::wrap(proc::shell(), &policy) else {
-            return "ERROR: bash is unavailable because no OS sandbox could be established on \
-                    this system. Use the read/ls/find/grep tools instead."
-                .to_string();
+        // Which shell can be confined is decided by probing, not by assuming.
+        // A shell that starts fine on its own can still fail inside the
+        // sandbox: on Windows, Git Bash is built on the MSYS2 runtime, which
+        // cannot initialise inside an AppContainer however it was installed.
+        // No confinement available means no shell either: running unsandboxed
+        // would give the command the whole machine, which is never what the
+        // caller asked for.
+        let selected = match jail::select_shell(&policy) {
+            Ok(selected) => selected,
+            Err(detail) => {
+                return format!(
+                    "ERROR: bash is unavailable because no shell could be started in a                      sandbox on this system. Use the read/ls/find/grep tools instead.
+{detail}"
+                )
+            }
         };
-        wrapped
+        // A command written for bash is refused rather than handed to PowerShell
+        // or cmd, which would not fail cleanly: `cmd` given `foo $(bar)` runs
+        // something, just not what was asked for.
+        if selected.report.cfg.flavor != proc::ShellFlavor::Posix {
+            if let Some(construct) = proc::requires_posix_shell(command) {
+                return proc::posix_unavailable_error(
+                    construct,
+                    &selected.report.cfg,
+                    selected
+                        .posix_rejected
+                        .as_deref()
+                        .unwrap_or("no POSIX shell could be started in the sandbox"),
+                );
+            }
+        }
+        selected.wrapped
     } else {
         proc::shell().clone()
     };

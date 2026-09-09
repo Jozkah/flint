@@ -18,6 +18,9 @@ pub mod proc;
 pub mod sandbox;
 pub mod schema;
 pub mod web;
+/// Windows sandbox environment construction. Compiled on every host so its
+/// rules stay unit-testable off Windows; only the AppContainer backend calls it.
+pub mod win_env;
 
 /// A single OpenAI `image_url` content part: the `data:<mime>;base64,<bytes>`
 /// URL plus a display name. This is what the `read` tool returns for an image

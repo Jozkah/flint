@@ -214,6 +214,233 @@ pub fn release(workspace: &Path) {
 #[cfg(not(windows))]
 pub fn release(_workspace: &Path) {}
 
+/// Where a sandboxed launch got to before it failed.
+///
+/// The point of naming the stage is that the fixes are completely different.
+/// A failure at [`Stage::ProcessCreation`] means no process exists and the
+/// request itself was rejected -- a bad environment block, an unreadable
+/// executable, the wrong architecture. A failure at [`Stage::RuntimeStartup`]
+/// means the process was created and its own loader gave up, which no amount of
+/// changing the spawn will fix. Reporting one as the other is how a missing
+/// environment variable came to be described to users as a Git installation in
+/// the wrong place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stage {
+    /// Choosing which shell to run.
+    ShellDiscovery,
+    /// Resolving the shell to a real, canonical path.
+    Canonicalize,
+    /// Creating the container profile and applying the workspace ACLs.
+    SandboxPolicy,
+    /// Building the environment block the child will receive.
+    Environment,
+    /// The `CreateProcessW` call. Nothing exists yet when this fails.
+    ProcessCreation,
+    /// The process exists; its loader or language runtime failed to start.
+    RuntimeStartup,
+}
+
+impl Stage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Stage::ShellDiscovery => "shell-discovery",
+            Stage::Canonicalize => "canonicalize",
+            Stage::SandboxPolicy => "sandbox-policy",
+            Stage::Environment => "environment",
+            Stage::ProcessCreation => "process-creation",
+            Stage::RuntimeStartup => "runtime-startup",
+        }
+    }
+
+    /// True once a process has actually been created. The single most useful
+    /// bit in a report: before it, the request was refused; after it, the
+    /// program ran and something inside it failed.
+    pub fn after_process_creation(self) -> bool {
+        matches!(self, Stage::RuntimeStartup)
+    }
+}
+
+/// A launch failure, with enough structure that the message can be assembled
+/// from facts rather than from a guess about what usually goes wrong.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchFailure {
+    pub stage: Stage,
+    /// The Windows API that reported it, verbatim.
+    pub api: &'static str,
+    /// The OS error or exit status, when there is one.
+    pub code: Option<i32>,
+    /// What was being attempted, in the caller's words.
+    pub detail: String,
+    /// The actual unmet requirement, when the code identifies one.
+    pub requirement: Option<String>,
+}
+
+impl LaunchFailure {
+    pub fn new(stage: Stage, api: &'static str, detail: impl Into<String>) -> Self {
+        Self {
+            stage,
+            api,
+            code: None,
+            detail: detail.into(),
+            requirement: None,
+        }
+    }
+
+    pub fn with_code(mut self, code: i32) -> Self {
+        self.code = Some(code);
+        self
+    }
+
+    pub fn with_requirement(mut self, requirement: impl Into<String>) -> Self {
+        self.requirement = Some(requirement.into());
+        self
+    }
+}
+
+impl std::fmt::Display for LaunchFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.detail)?;
+        if let Some(requirement) = &self.requirement {
+            write!(f, " {requirement}")?;
+        }
+        Ok(())
+    }
+}
+
+/// `ERROR_ENVVAR_NOT_FOUND`. `CreateProcessW` returns it for an AppContainer
+/// spawn whose environment block is missing a name Windows needs to resolve the
+/// container's own storage -- `LOCALAPPDATA` above all. It has nothing to do
+/// with where the program is installed.
+pub const ERROR_ENVVAR_NOT_FOUND: i32 = 203;
+
+/// `STATUS_DLL_INIT_FAILED` as a process exit code: the image was loaded and a
+/// DLL's initialisation refused. The process existed, so the spawn was fine.
+pub const STATUS_DLL_INIT_FAILED: i32 = -1073741502; // 0xC0000142
+
+/// The real unmet requirement behind a `CreateProcessW` failure code.
+///
+/// Every arm names something checkable. None of them guesses at an install
+/// layout: the code says which precondition was not met, and the message says
+/// that and nothing more.
+pub fn create_process_requirement(code: i32, missing_env: &[&str]) -> String {
+    match code {
+        2 | 3 => "The executable does not exist at that path.".to_string(),
+        5 => "The sandbox has no read/execute access to the executable or to a \
+              directory on the way to it."
+            .to_string(),
+        193 => "The executable is not a Windows program this machine can run \
+                (wrong architecture, or not an executable image)."
+            .to_string(),
+        ERROR_ENVVAR_NOT_FOUND => {
+            if missing_env.is_empty() {
+                "The environment block handed to the sandbox is missing a variable \
+                 Windows needs in order to create a sandboxed process. This is a \
+                 fault in Jan's environment builder, not in the shell installation."
+                    .to_string()
+            } else {
+                format!(
+                    "The environment block handed to the sandbox is missing {}, \
+                     which Windows needs to resolve the sandbox's own storage. This \
+                     is a fault in Jan's environment builder, not in the shell \
+                     installation.",
+                    missing_env.join(", ")
+                )
+            }
+        }
+        1260 => "A software restriction policy on this machine blocked the \
+                 executable."
+            .to_string(),
+        _ => "The sandbox could not start the program; the Windows error above is \
+              the whole of what it reported."
+            .to_string(),
+    }
+}
+
+/// Explain an exit status that is really a startup failure, or `None` when the
+/// program simply ran and exited with that code.
+pub fn runtime_startup_requirement(exit_code: i32, program: &Path) -> Option<String> {
+    if exit_code != STATUS_DLL_INIT_FAILED {
+        return None;
+    }
+    let mut message = String::from(
+        "The program started and then its runtime failed to initialise \
+         (STATUS_DLL_INIT_FAILED).",
+    );
+    if uses_msys_runtime(program) {
+        message.push_str(
+            " Git Bash and the other MSYS2 programs shipped with Git for Windows \
+             cannot initialise inside a Windows AppContainer: the MSYS runtime needs \
+             the global object namespace, which the sandbox does not grant. That is a \
+             property of the shell, not of where it is installed -- a system-wide \
+             install fails identically. Use PowerShell or cmd for sandboxed commands, \
+             or turn the sandbox off for this project.",
+        );
+    }
+    Some(message)
+}
+
+/// True for a program that runs on the MSYS2 runtime (`msys-2.0.dll`), which is
+/// every shell and coreutil under a Git for Windows or MSYS2 installation.
+/// Matched on the install layout rather than by reading the image, because the
+/// caller needs the answer before anything has been loaded.
+pub fn uses_msys_runtime(program: &Path) -> bool {
+    let lower = program.to_string_lossy().to_lowercase().replace('/', "\\");
+    if lower.contains("\\usr\\bin\\") || lower.contains("\\msys64\\") || lower.contains("\\msys2\\")
+    {
+        return true;
+    }
+    // `<git>\bin\bash.exe` is a launcher for the MSYS2 bash two directories
+    // over, so it fails in exactly the same way and for the same reason.
+    let under_git_bin = lower.contains("\\git\\bin\\") || lower.contains("\\git\\usr\\bin\\");
+    let shellish = ["bash.exe", "sh.exe", "dash.exe", "zsh.exe"]
+        .iter()
+        .any(|name| lower.ends_with(&format!("\\{name}")));
+    under_git_bin && shellish
+}
+
+/// Directories a shell's own installation needs on `PATH` to work at all.
+///
+/// A Git for Windows `bash.exe` is a launcher for the MSYS2 bash two
+/// directories over, and every external command it runs (`ls`, `grep`, `git`)
+/// lives in a sibling directory. Handing the sandbox only the system `PATH`
+/// gives it a shell that cannot find its own coreutils.
+///
+/// Returns candidates in preference order; the caller keeps the ones that exist.
+pub fn shell_runtime_dirs(program: &Path) -> Vec<PathBuf> {
+    let Some(bin) = program.parent() else {
+        return Vec::new();
+    };
+    let mut out = vec![bin.to_path_buf()];
+    // `<root>\bin\bash.exe` and `<root>\usr\bin\bash.exe` are both real layouts,
+    // so the installation root is found by walking up past a `usr`.
+    let root = match bin.parent() {
+        Some(parent)
+            if parent
+                .file_name()
+                .is_some_and(|n| n.eq_ignore_ascii_case("usr")) =>
+        {
+            parent.parent()
+        }
+        other => other,
+    };
+    if let Some(root) = root {
+        for relative in [
+            "bin",
+            "usr\\bin",
+            "mingw64\\bin",
+            "mingw32\\bin",
+            "usr\\local\\bin",
+            "cmd",
+        ] {
+            let candidate = root.join(relative);
+            if !out.contains(&candidate) {
+                out.push(candidate);
+            }
+        }
+    }
+    out
+}
+
 /// Run the confined spawn and exit with the child's status, when this process
 /// was re-exec'd as the helper. Returns immediately on a normal launch, so it is
 /// safe (and required) to call first thing in `main`.
@@ -224,8 +451,21 @@ pub fn run_helper_if_requested() {
     };
     match win::run(&req) {
         Ok(code) => std::process::exit(code),
-        Err(message) => {
-            eprintln!("ERROR: sandbox setup failed: {message}");
+        Err(failure) => {
+            // One structured line for a machine, then the sentence a person
+            // reads. Neither carries an environment value, a command, or a
+            // credential.
+            eprintln!(
+                "ERROR: sandbox setup failed [stage={} api={} code={} after_process_creation={}]",
+                failure.stage.as_str(),
+                failure.api,
+                failure
+                    .code
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                failure.stage.after_process_creation(),
+            );
+            eprintln!("ERROR: {failure}");
             std::process::exit(HELPER_FAILURE);
         }
     }
@@ -236,10 +476,14 @@ pub fn run_helper_if_requested() {}
 
 #[cfg(windows)]
 mod win {
-    use super::{command_line, moniker, Request};
-    use std::ffi::{c_void, OsStr};
+    use super::{
+        command_line, create_process_requirement, moniker, runtime_startup_requirement,
+        shell_runtime_dirs, LaunchFailure, Request, Stage,
+    };
+    use crate::tools::win_env::{self, ProcessEnv, SandboxEnv, SandboxEnvSpec};
+    use std::ffi::{c_void, OsStr, OsString};
     use std::os::windows::ffi::OsStrExt;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use windows_sys::core::{HRESULT, PWSTR};
     use windows_sys::Win32::Foundation::{
@@ -286,6 +530,10 @@ mod win {
 
     fn last_error() -> String {
         std::io::Error::last_os_error().to_string()
+    }
+
+    fn last_error_code() -> i32 {
+        std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
     }
 
     /// Owns a `PSID` allocated by the isolation APIs.
@@ -497,33 +745,174 @@ mod win {
         unsafe { AssignProcessToJobObject(job, GetCurrentProcess()) };
     }
 
+    /// The private profile directory the sandboxed shell is told is its home.
+    ///
+    /// Inside the session scratch when there is one, so it dies with the session;
+    /// otherwise inside the container's own `AC` folder, which Windows creates for
+    /// the profile and ACLs to the container and to nobody else. Either way the
+    /// real `C:\Users\<name>` is never named, and a shell that goes looking for
+    /// `.bashrc` finds an empty directory belonging to the sandbox.
+    fn synthetic_home(req: &Request, moniker: &str) -> Result<PathBuf, LaunchFailure> {
+        let base = match &req.scratch {
+            Some(scratch) => scratch.join("home"),
+            None => {
+                let local = std::env::var_os("LOCALAPPDATA").ok_or_else(|| {
+                    LaunchFailure::new(
+                        Stage::Environment,
+                        "GetEnvironmentVariableW",
+                        "the sandbox has nowhere to put its private profile",
+                    )
+                    .with_requirement(
+                        "LOCALAPPDATA is not set for the Jan process, so neither the \
+                         sandbox's storage nor its home directory can be located.",
+                    )
+                })?;
+                PathBuf::from(local)
+                    .join("Packages")
+                    .join(moniker)
+                    .join("AC")
+                    .join("home")
+            }
+        };
+        std::fs::create_dir_all(&base).map_err(|e| {
+            LaunchFailure::new(
+                Stage::Environment,
+                "CreateDirectoryW",
+                format!("could not create the sandbox home ({})", base.display()),
+            )
+            .with_code(e.raw_os_error().unwrap_or(0))
+        })?;
+        Ok(base)
+    }
+
+    /// `PATH` for the confined shell: the system directories, then the shell's own
+    /// installation. Built rather than inherited so a host `PATH` entry under the
+    /// user's profile -- which the sandbox cannot read -- does not turn into an
+    /// unexplained "command not found" inside it.
+    fn sandbox_path(program: &Path) -> OsString {
+        let mut dirs: Vec<PathBuf> = Vec::new();
+        if let Some(root) = std::env::var_os("SystemRoot") {
+            let root = PathBuf::from(root);
+            let system32 = root.join("system32");
+            dirs.push(system32.clone());
+            dirs.push(root.clone());
+            dirs.push(system32.join("Wbem"));
+            dirs.push(system32.join("WindowsPowerShell").join("v1.0"));
+        }
+        for dir in shell_runtime_dirs(program) {
+            if dir.is_dir() && !dirs.contains(&dir) {
+                dirs.push(dir);
+            }
+        }
+        OsString::from(
+            dirs.iter()
+                .map(|d| d.to_string_lossy().to_string())
+                .collect::<Vec<_>>()
+                .join(";"),
+        )
+    }
+
+    /// Assemble the environment the confined process receives.
+    fn sandbox_env(req: &Request, home: &Path) -> Result<SandboxEnv, LaunchFailure> {
+        let temp = req.scratch.clone().unwrap_or_else(|| home.to_path_buf());
+        win_env::build(
+            &ProcessEnv,
+            &SandboxEnvSpec {
+                home,
+                temp: &temp,
+                path: Some(sandbox_path(&req.program)),
+                extra: &[],
+            },
+        )
+        .map_err(|e| {
+            let missing = match &e {
+                win_env::EnvError::MissingRequired { name } => Some(*name),
+                _ => None,
+            };
+            let failure = LaunchFailure::new(
+                Stage::Environment,
+                "environment builder",
+                format!("could not build the sandbox environment: {e}"),
+            );
+            match missing {
+                Some(name) => failure.with_requirement(format!(
+                    "{name} is not set for the Jan process. Windows needs it to create \
+                     a sandboxed process; without it CreateProcessW fails with \
+                     ERROR_ENVVAR_NOT_FOUND (203)."
+                )),
+                None => failure,
+            }
+        })
+    }
+
     /// Set up the container, then spawn the shell inside it and wait. Returns the
     /// shell's exit code so the helper is transparent to the caller.
-    pub fn run(req: &Request) -> Result<i32, String> {
+    pub fn run(req: &Request) -> Result<i32, LaunchFailure> {
         if !req.workspace.is_dir() {
-            return Err(format!(
-                "workspace does not exist: {}",
-                req.workspace.display()
+            return Err(LaunchFailure::new(
+                Stage::SandboxPolicy,
+                "GetFileAttributesW",
+                format!("workspace does not exist: {}", req.workspace.display()),
             ));
         }
         if let Some(scratch) = &req.scratch {
             if !scratch.is_dir() {
-                return Err(format!("scratch does not exist: {}", scratch.display()));
+                return Err(LaunchFailure::new(
+                    Stage::SandboxPolicy,
+                    "GetFileAttributesW",
+                    format!("scratch does not exist: {}", scratch.display()),
+                ));
             }
         }
+        if !req.program.is_file() {
+            return Err(LaunchFailure::new(
+                Stage::Canonicalize,
+                "GetFileAttributesW",
+                format!("the shell does not exist: {}", req.program.display()),
+            )
+            .with_requirement(
+                "Nothing was found at that path, so no sandbox setting can make it \
+                 start.",
+            ));
+        }
         reap_children_with_this_process();
-        let sid = ensure_profile(&moniker(&req.workspace))?;
-        grant_path(&req.workspace, sid.0)?;
-        // The scratch is the shell's `TEMP`/`TMP`, so without this every
-        // temp-file write in the container is denied.
-        if let Some(scratch) = &req.scratch {
-            grant_path(scratch, sid.0)?;
+        let name = moniker(&req.workspace);
+        let sid = ensure_profile(&name).map_err(|detail| {
+            LaunchFailure::new(Stage::SandboxPolicy, "CreateAppContainerProfile", detail)
+        })?;
+        // The home is created before the grants so the inheritable ACE a grant
+        // installs on the scratch reaches it.
+        let home = synthetic_home(req, &name)?;
+        grant_path(&req.workspace, sid.0).map_err(|detail| {
+            LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
+        })?;
+        // The scratch is the shell's `TEMP`/`TMP`, so without this every temp-file
+        // write in the container is denied. With no scratch the synthetic home
+        // takes that role and needs the same grant.
+        let granted = req.scratch.clone().unwrap_or_else(|| home.clone());
+        grant_path(&granted, sid.0).map_err(|detail| {
+            LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
+        })?;
+
+        let env = sandbox_env(req, &home)?;
+        let mut env_block = env.encode().map_err(|e| {
+            LaunchFailure::new(
+                Stage::Environment,
+                "environment builder",
+                format!("the sandbox environment block is malformed: {e}"),
+            )
+        })?;
+        if std::env::var_os("JAN_SANDBOX_DEBUG").is_some() {
+            // Names and lengths only: see `SandboxEnv::redacted`.
+            eprintln!("sandbox: stage=environment {}", env.redacted().join(" "));
         }
 
         let mut capability_sid = Vec::new();
         let mut capabilities = Vec::new();
         if req.allow_network {
-            capabilities.push(internet_capability(&mut capability_sid)?);
+            capabilities.push(internet_capability(&mut capability_sid).map_err(|detail| {
+                LaunchFailure::new(Stage::SandboxPolicy, "CreateWellKnownSid", detail)
+            })?);
         }
         let mut security = SECURITY_CAPABILITIES {
             AppContainerSid: sid.0,
@@ -545,10 +934,15 @@ mod win {
         let mut attribute_buffer = vec![0u8; size];
         let attributes = attribute_buffer.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
         if unsafe { InitializeProcThreadAttributeList(attributes, 1, 0, &mut size) } == 0 {
-            return Err(format!(
-                "could not initialize the spawn attributes: {}",
-                last_error()
-            ));
+            return Err(LaunchFailure::new(
+                Stage::SandboxPolicy,
+                "InitializeProcThreadAttributeList",
+                format!(
+                    "could not initialize the spawn attributes: {}",
+                    last_error()
+                ),
+            )
+            .with_code(last_error_code()));
         }
         let applied = unsafe {
             UpdateProcThreadAttribute(
@@ -563,10 +957,14 @@ mod win {
         };
         if applied == 0 {
             let message = last_error();
+            let code = last_error_code();
             unsafe { DeleteProcThreadAttributeList(attributes) };
-            return Err(format!(
-                "could not attach the AppContainer token: {message}"
-            ));
+            return Err(LaunchFailure::new(
+                Stage::SandboxPolicy,
+                "UpdateProcThreadAttribute",
+                format!("could not attach the AppContainer token: {message}"),
+            )
+            .with_code(code));
         }
 
         let (stdin, stdout, stderr) = inheritable_std_handles();
@@ -581,6 +979,11 @@ mod win {
         let mut line = wide(OsStr::new(&command_line(&req.program, &req.args)));
         let cwd = wide(req.workspace.as_os_str());
         let mut process: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
+        // The environment is passed explicitly. A null pointer here means "give
+        // the child the parent's environment", and the parent's is deliberately
+        // stripped of the very names an AppContainer spawn resolves the
+        // container's storage through -- which is what returned
+        // ERROR_ENVVAR_NOT_FOUND (203) and no process at all.
         let spawned = unsafe {
             CreateProcessW(
                 std::ptr::null(),
@@ -589,7 +992,7 @@ mod win {
                 std::ptr::null(),
                 1,
                 EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
-                std::ptr::null(),
+                env_block.as_mut_ptr() as *const c_void,
                 cwd.as_ptr(),
                 &startup.StartupInfo,
                 &mut process,
@@ -597,16 +1000,26 @@ mod win {
         };
         unsafe { DeleteProcThreadAttributeList(attributes) };
         if spawned == 0 {
-            // Easily the most likely failure: the shell lives somewhere the
-            // container cannot read, such as a per-user Git install under
-            // AppData, which grants nothing to application packages.
-            return Err(format!(
-                "could not start {} inside the sandbox: {}. A shell installed \
-                 under your user profile is unreadable to the sandbox; install \
-                 Git for Windows system-wide instead.",
-                req.program.display(),
-                last_error()
-            ));
+            let code = last_error_code();
+            let message = last_error();
+            // Which required name, if any, the block actually lacked. Reported
+            // rather than assumed, so a 203 that is not about a missing variable
+            // does not get described as one that is.
+            let missing: Vec<&str> = win_env::REQUIRED
+                .iter()
+                .copied()
+                .filter(|name| !env.contains(name))
+                .collect();
+            return Err(LaunchFailure::new(
+                Stage::ProcessCreation,
+                "CreateProcessW",
+                format!(
+                    "could not start {} inside the sandbox: {message}",
+                    req.program.display()
+                ),
+            )
+            .with_code(code)
+            .with_requirement(create_process_requirement(code, &missing)));
         }
 
         let code = wait_for(process.hProcess);
@@ -614,22 +1027,42 @@ mod win {
             CloseHandle(process.hThread);
             CloseHandle(process.hProcess);
         }
-        code
+        let code = code?;
+        // The process existed, so this is not a spawn failure -- but an exit
+        // status that is really a loader failure must not reach the model as
+        // "the command exited 3221225794".
+        if let Some(requirement) = runtime_startup_requirement(code, &req.program) {
+            return Err(LaunchFailure::new(
+                Stage::RuntimeStartup,
+                "CreateProcessW",
+                format!(
+                    "{} started inside the sandbox but could not initialise",
+                    req.program.display()
+                ),
+            )
+            .with_code(code)
+            .with_requirement(requirement));
+        }
+        Ok(code)
     }
 
-    fn wait_for(process: HANDLE) -> Result<i32, String> {
+    fn wait_for(process: HANDLE) -> Result<i32, LaunchFailure> {
         if unsafe { WaitForSingleObject(process, INFINITE) } == WAIT_FAILED {
-            return Err(format!(
-                "could not wait for the sandboxed shell: {}",
-                last_error()
-            ));
+            return Err(LaunchFailure::new(
+                Stage::RuntimeStartup,
+                "WaitForSingleObject",
+                format!("could not wait for the sandboxed shell: {}", last_error()),
+            )
+            .with_code(last_error_code()));
         }
         let mut code: u32 = 0;
         if unsafe { GetExitCodeProcess(process, &mut code) } == 0 {
-            return Err(format!(
-                "could not read the shell's exit code: {}",
-                last_error()
-            ));
+            return Err(LaunchFailure::new(
+                Stage::RuntimeStartup,
+                "GetExitCodeProcess",
+                format!("could not read the shell's exit code: {}", last_error()),
+            )
+            .with_code(last_error_code()));
         }
         Ok(code as i32)
     }
@@ -774,6 +1207,142 @@ mod tests {
         assert_eq!(
             line,
             r#""C:\Program Files\Git\bin\bash.exe" -c "ls -la && echo \"done\"""#
+        );
+    }
+
+    /// The whole bug report in one assertion. 203 is an environment fault; the
+    /// message must say so and must not mention where the shell is installed.
+    #[test]
+    fn error_203_is_diagnosed_as_an_environment_fault() {
+        let named = create_process_requirement(ERROR_ENVVAR_NOT_FOUND, &["LOCALAPPDATA"]);
+        assert!(named.contains("LOCALAPPDATA"), "{named}");
+        assert!(named.contains("environment block"), "{named}");
+        assert!(!named.to_lowercase().contains("user profile"), "{named}");
+        assert!(!named.to_lowercase().contains("install git"), "{named}");
+
+        // Even with nothing identified as missing, the fault is still located
+        // in Jan's environment builder rather than in the user's machine.
+        let unnamed = create_process_requirement(ERROR_ENVVAR_NOT_FOUND, &[]);
+        assert!(unnamed.contains("environment block"), "{unnamed}");
+        assert!(
+            !unnamed.to_lowercase().contains("user profile"),
+            "{unnamed}"
+        );
+    }
+
+    #[test]
+    fn each_create_process_code_names_its_own_requirement() {
+        assert!(create_process_requirement(2, &[]).contains("does not exist"));
+        assert!(create_process_requirement(5, &[]).contains("read/execute"));
+        assert!(create_process_requirement(193, &[]).contains("architecture"));
+        assert!(create_process_requirement(1260, &[]).contains("restriction policy"));
+        // An unrecognised code must not be given a made-up explanation.
+        let unknown = create_process_requirement(99999, &[]);
+        assert!(
+            unknown.contains("the whole of what it reported"),
+            "{unknown}"
+        );
+    }
+
+    /// A loader failure is not a spawn failure, and the report has to keep them
+    /// apart -- the fix for one has nothing to do with the fix for the other.
+    #[test]
+    fn a_dll_init_failure_is_reported_as_a_startup_failure() {
+        let bash = Path::new(r"C:\Program Files\Git\bin\bash.exe");
+        let message = runtime_startup_requirement(STATUS_DLL_INIT_FAILED, bash).expect("named");
+        assert!(message.contains("STATUS_DLL_INIT_FAILED"), "{message}");
+        assert!(message.contains("MSYS2"), "{message}");
+        assert!(
+            message.contains("a system-wide install fails identically"),
+            "{message}"
+        );
+        assert!(
+            !message.to_lowercase().contains("user profile"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn an_ordinary_exit_status_is_not_turned_into_a_startup_failure() {
+        let bash = Path::new(r"C:\Program Files\Git\bin\bash.exe");
+        assert_eq!(runtime_startup_requirement(0, bash), None);
+        assert_eq!(runtime_startup_requirement(1, bash), None);
+        assert_eq!(runtime_startup_requirement(127, bash), None);
+    }
+
+    #[test]
+    fn a_non_msys_program_gets_the_generic_startup_explanation() {
+        let native = Path::new(r"C:\Windows\System32\cmd.exe");
+        let message = runtime_startup_requirement(STATUS_DLL_INIT_FAILED, native).expect("named");
+        assert!(message.contains("STATUS_DLL_INIT_FAILED"), "{message}");
+        assert!(!message.contains("MSYS2"), "{message}");
+    }
+
+    #[test]
+    fn msys_programs_are_recognised_wherever_they_are_installed() {
+        for path in [
+            r"C:\Program Files\Git\bin\bash.exe",
+            r"C:\Program Files\Git\usr\bin\bash.exe",
+            r"C:\Users\me\AppData\Local\Programs\Git\bin\bash.exe",
+            r"C:\msys64\usr\bin\bash.exe",
+            r"C:/Program Files/Git/bin/bash.exe",
+        ] {
+            assert!(uses_msys_runtime(Path::new(path)), "{path}");
+        }
+        for path in [
+            r"C:\Windows\System32\cmd.exe",
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+            r"C:\Program Files\Git\mingw64\bin\git.exe",
+        ] {
+            assert!(!uses_msys_runtime(Path::new(path)), "{path}");
+        }
+    }
+
+    /// A shell that cannot find its own coreutils is a shell that fails on the
+    /// second command, so the installation's directories go on `PATH`.
+    #[test]
+    fn a_shells_own_runtime_directories_are_offered_for_path() {
+        let dirs = shell_runtime_dirs(Path::new(r"C:\Program Files\Git\bin\bash.exe"));
+        for expected in [
+            r"C:\Program Files\Git\bin",
+            r"C:\Program Files\Git\usr\bin",
+            r"C:\Program Files\Git\mingw64\bin",
+            r"C:\Program Files\Git\cmd",
+        ] {
+            assert!(
+                dirs.contains(&PathBuf::from(expected)),
+                "{expected} missing from {dirs:?}"
+            );
+        }
+        // The `usr\bin` layout resolves to the same installation root.
+        let from_usr = shell_runtime_dirs(Path::new(r"C:\Program Files\Git\usr\bin\bash.exe"));
+        assert!(from_usr.contains(&PathBuf::from(r"C:\Program Files\Git\mingw64\bin")));
+    }
+
+    #[test]
+    fn a_stage_says_whether_a_process_was_ever_created() {
+        assert!(Stage::RuntimeStartup.after_process_creation());
+        for stage in [
+            Stage::ShellDiscovery,
+            Stage::Canonicalize,
+            Stage::SandboxPolicy,
+            Stage::Environment,
+            Stage::ProcessCreation,
+        ] {
+            assert!(!stage.after_process_creation(), "{}", stage.as_str());
+        }
+    }
+
+    #[test]
+    fn a_failure_prints_its_detail_and_its_requirement() {
+        let failure =
+            LaunchFailure::new(Stage::ProcessCreation, "CreateProcessW", "could not start")
+                .with_code(203)
+                .with_requirement("LOCALAPPDATA was missing.");
+        assert_eq!(failure.code, Some(203));
+        assert_eq!(
+            failure.to_string(),
+            "could not start LOCALAPPDATA was missing."
         );
     }
 }

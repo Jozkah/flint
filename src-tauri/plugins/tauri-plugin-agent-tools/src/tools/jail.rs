@@ -28,18 +28,19 @@
 //! Windows has no argv to wrap -- see [`super::appcontainer`], which re-execs this
 //! binary because the confinement is a `CreateProcessW` token attribute.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use super::appcontainer;
-use super::proc::ShellConfig;
+use super::proc::{self, OriginRoots, ProbeOutcome, ShellConfig, ShellReport};
 
 /// `sandbox-exec` is only trusted at its absolute system path: resolving it via
 /// `PATH` would let anything that can prepend to `PATH` defeat the sandbox.
 #[cfg(target_os = "macos")]
 const SEATBELT: &str = "/usr/bin/sandbox-exec";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
     Seatbelt,
     Bubblewrap,
@@ -282,12 +283,18 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
             args: bwrap_args(policy, cfg),
             via_stdin: cfg.via_stdin,
             description: cfg.description,
+            // The wrapper is a different program; the command language the
+            // command string will meet is still the wrapped shell's.
+            flavor: cfg.flavor,
         }),
         Backend::Seatbelt => Some(ShellConfig {
             program: PathBuf::from(seatbelt_program()),
             args: seatbelt_args(policy, cfg),
             via_stdin: cfg.via_stdin,
             description: cfg.description,
+            // The wrapper is a different program; the command language the
+            // command string will meet is still the wrapped shell's.
+            flavor: cfg.flavor,
         }),
         // AppContainer is a token attribute on the spawn rather than an argv
         // prefix, and `tokio::process::Command` cannot set one, so the wrapper is
@@ -295,7 +302,7 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
         // the running binary cannot be located there is no wrapper to run, and
         // returning `cfg` unchanged would run the command with no confinement.
         Backend::AppContainer => Some(ShellConfig {
-            program: std::env::current_exe().ok()?,
+            program: helper_exe()?,
             args: appcontainer::helper_args(
                 &policy.workspace,
                 policy.scratch_root.as_deref(),
@@ -305,6 +312,9 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
             ),
             via_stdin: cfg.via_stdin,
             description: cfg.description,
+            // The wrapper is a different program; the command language the
+            // command string will meet is still the wrapped shell's.
+            flavor: cfg.flavor,
         }),
         Backend::None => None,
     }
@@ -707,6 +717,301 @@ pub fn denial_hint(policy: &Policy) -> String {
     )
 }
 
+/// The program that performs the confined spawn.
+///
+/// Normally this binary, re-exec'd with a helper argv -- the app and the CLI
+/// both call [`appcontainer::run_helper_if_requested`] first thing in `main`,
+/// so a re-exec lands in the helper. `JAN_SANDBOX_HELPER_EXE` overrides it for
+/// an embedder whose `main` is not ours; a test binary is the case that forced
+/// the knob to exist, because libtest owns `main` there and rejects the helper
+/// argv before any of this crate runs.
+fn helper_exe() -> Option<PathBuf> {
+    if let Some(explicit) = std::env::var_os("JAN_SANDBOX_HELPER_EXE") {
+        let path = PathBuf::from(explicit);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    #[cfg(test)]
+    if let Some(path) = test_helper_exe() {
+        return Some(path);
+    }
+    std::env::current_exe().ok()
+}
+
+/// The `jan-sandbox-helper` binary cargo builds alongside a test run.
+///
+/// A unit test cannot read `CARGO_BIN_EXE_*` (only integration tests can), so
+/// the path is derived from the test executable's own: cargo puts unit-test
+/// binaries in `target/<profile>/deps/` and bins in `target/<profile>/`.
+/// Returns `None` when it is not there, so a missing helper is a normal
+/// sandbox-unavailable result rather than a panic.
+#[cfg(test)]
+fn test_helper_exe() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let deps = exe.parent()?;
+    let name = format!("jan-sandbox-helper{}", std::env::consts::EXE_SUFFIX);
+    for dir in [deps, deps.parent()?] {
+        let candidate = dir.join(&name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
+// Shell probing and selection
+// ---------------------------------------------------------------------------
+
+/// How long a probe is given before it is treated as a failure. Generous for
+/// what it runs -- `exit 0` -- and bounded so a wedged shell cannot hold up the
+/// first command of a session.
+const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Probe results for this process, keyed by backend and shell path.
+///
+/// Cached because the answer is a property of the machine, not of the command,
+/// and the probe costs a process launch. Invalidated wholesale by
+/// [`invalidate_probe_cache`] whenever something that could change the answer
+/// changes -- a settings edit, a different sandbox mode, a new `JAN_AGENT_SHELL`.
+fn probe_cache() -> &'static Mutex<HashMap<(Backend, PathBuf), ProbeOutcome>> {
+    static CACHE: OnceLock<Mutex<HashMap<(Backend, PathBuf), ProbeOutcome>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Forget every cached probe. Call after anything that could change whether a
+/// shell starts: the sandbox setting, the shell setting, the environment.
+pub fn invalidate_probe_cache() {
+    if let Ok(mut cache) = probe_cache().lock() {
+        cache.clear();
+    }
+}
+
+/// Start `cfg` under `policy` and run a harmless command, to find out whether
+/// it can run at all here.
+///
+/// This is the only thing that establishes a shell is usable. Everything else
+/// -- the path exists, the file is executable, the ACLs look right -- is
+/// necessary and not sufficient: Git Bash on Windows satisfies all of them and
+/// still cannot start inside an AppContainer, because the MSYS2 runtime it is
+/// built on needs the global object namespace that the container withholds.
+/// The only way to know is to try it.
+pub fn probe(cfg: &ShellConfig, policy: &Policy) -> ProbeOutcome {
+    if !cfg.program.is_file() && proc::which(&cfg.program.to_string_lossy()).is_none() {
+        return ProbeOutcome::Missing;
+    }
+    let key = (backend(), cfg.program.clone());
+    if let Ok(cache) = probe_cache().lock() {
+        if let Some(hit) = cache.get(&key) {
+            return hit.clone();
+        }
+    }
+    let outcome = probe_uncached(cfg, policy);
+    if let Ok(mut cache) = probe_cache().lock() {
+        cache.insert(key, outcome.clone());
+    }
+    outcome
+}
+
+fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> ProbeOutcome {
+    let Some(wrapped) = wrap(cfg, policy) else {
+        return ProbeOutcome::NoSandbox;
+    };
+    let mut command = std::process::Command::new(&wrapped.program);
+    command.args(&wrapped.args);
+    if !wrapped.via_stdin {
+        command.arg(proc::PROBE_COMMAND);
+    }
+    // The same curated environment a real command gets, so the probe tests what
+    // will actually happen rather than a friendlier version of it.
+    command.env_clear();
+    for name in proc::SANDBOX_ENV_ALLOW {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+    command
+        .current_dir(&policy.workspace)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            return ProbeOutcome::Unusable {
+                reason: format!("the shell could not be started: {e}"),
+            }
+        }
+    };
+
+    // `wait_with_output` has no timeout, so the wait happens on a thread and the
+    // probe gives up rather than hanging the first command of a session. A
+    // probe that times out is killed: it was told to exit immediately.
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let result = child.wait_with_output();
+        let _ = tx.send(result);
+    });
+    let output = match rx.recv_timeout(PROBE_TIMEOUT) {
+        Ok(Ok(output)) => output,
+        Ok(Err(e)) => {
+            let _ = handle.join();
+            return ProbeOutcome::Unusable {
+                reason: format!("the shell could not be waited for: {e}"),
+            };
+        }
+        Err(_) => {
+            return ProbeOutcome::Unusable {
+                reason: format!(
+                    "the shell did not finish `{}` within {} seconds",
+                    proc::PROBE_COMMAND,
+                    PROBE_TIMEOUT.as_secs()
+                ),
+            }
+        }
+    };
+    let _ = handle.join();
+
+    if output.status.success() {
+        return ProbeOutcome::Usable;
+    }
+    // The helper's own diagnostic is the most specific thing available, so it is
+    // passed through rather than replaced by a summary of it.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let detail = stderr
+        .lines()
+        .find(|line| line.starts_with("ERROR: ") && !line.contains("[stage="))
+        .map(|line| line.trim_start_matches("ERROR: ").to_string())
+        .unwrap_or_else(|| {
+            format!(
+                "the shell exited {} without running `{}`",
+                output
+                    .status
+                    .code()
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "abnormally".to_string()),
+                proc::PROBE_COMMAND
+            )
+        });
+    ProbeOutcome::Unusable { reason: detail }
+}
+
+/// Every shell this host has, with where it came from and whether it starts
+/// under `policy`. What a readiness view renders and what a redacted
+/// diagnostics copy contains.
+///
+/// Probing stops after the first usable shell: the ones below it in preference
+/// order are reported as untried rather than launched, because the point of the
+/// list is to pick one, not to inventory the machine.
+pub fn shell_reports(policy: &Policy) -> Vec<ShellReport> {
+    let roots = OriginRoots::from_host();
+    let configured = std::env::var_os("JAN_AGENT_SHELL").map(PathBuf::from);
+    let mut out = Vec::new();
+    let mut settled = false;
+    for cfg in proc::candidates() {
+        let origin = proc::classify_origin(
+            &cfg.program,
+            configured.as_deref() == Some(cfg.program.as_path()),
+            &roots,
+        );
+        let outcome = if settled {
+            ProbeOutcome::Unusable {
+                reason: "not tried: an earlier shell in preference order works".to_string(),
+            }
+        } else {
+            let outcome = probe(&cfg, policy);
+            settled = outcome.usable();
+            outcome
+        };
+        out.push(ShellReport {
+            cfg,
+            origin,
+            outcome,
+        });
+    }
+    out
+}
+
+/// The shell a sandboxed run will use, and what was rejected on the way to it.
+#[derive(Debug, Clone)]
+pub struct SelectedShell {
+    /// The chosen shell, with its origin and its probe result.
+    pub report: ShellReport,
+    /// Ready to spawn: [`wrap`] already applied.
+    pub wrapped: ShellConfig,
+    /// Why no POSIX shell is being used, when the chosen one is not POSIX.
+    ///
+    /// Carried so a refusal can name the real reason -- "Git Bash cannot start
+    /// inside an AppContainer" -- rather than saying bash is missing on a
+    /// machine where it is plainly installed.
+    pub posix_rejected: Option<String>,
+}
+
+/// Pick the shell a sandboxed run should use: the first candidate that actually
+/// starts under `policy`.
+///
+/// `Err` carries what every candidate reported, because at that point the user
+/// needs the list rather than a verdict. Nothing in it is inferred -- each line
+/// is what that shell's own probe said.
+pub fn select_shell(policy: &Policy) -> Result<SelectedShell, String> {
+    let reports = shell_reports(policy);
+    if let Some(usable) = reports.iter().find(|r| r.outcome.usable()) {
+        let Some(wrapped) = wrap(&usable.cfg, policy) else {
+            return Err(
+                "no OS sandbox backend is available on this system, so no shell can be                  confined here"
+                    .to_string(),
+            );
+        };
+        let posix_rejected = if usable.cfg.flavor == proc::ShellFlavor::Posix {
+            None
+        } else {
+            reports
+                .iter()
+                .find(|r| r.cfg.flavor == proc::ShellFlavor::Posix)
+                .map(|r| match &r.outcome {
+                    ProbeOutcome::Unusable { reason } => format!(
+                        "{} could not start in the sandbox: {reason}",
+                        r.cfg.program.display()
+                    ),
+                    ProbeOutcome::Missing => format!(
+                        "{} is not installed on this machine",
+                        r.cfg.program.display()
+                    ),
+                    ProbeOutcome::NoSandbox => {
+                        "no OS sandbox backend is available on this system".to_string()
+                    }
+                    ProbeOutcome::Usable => "it is usable".to_string(),
+                })
+                .or_else(|| Some("no POSIX shell is installed on this machine".to_string()))
+        };
+        return Ok(SelectedShell {
+            report: usable.clone(),
+            wrapped,
+            posix_rejected,
+        });
+    }
+    let mut message = String::from("no shell on this machine could be started in the sandbox:");
+    for report in &reports {
+        message.push_str(&format!(
+            "
+  - {} ({}, {}): {}",
+            report.cfg.program.display(),
+            report.cfg.description,
+            report.origin.as_str(),
+            match &report.outcome {
+                ProbeOutcome::Missing => "not installed".to_string(),
+                ProbeOutcome::NoSandbox =>
+                    "no OS sandbox backend is available on this system".to_string(),
+                ProbeOutcome::Unusable { reason } => reason.clone(),
+                ProbeOutcome::Usable => "usable".to_string(),
+            }
+        ));
+    }
+    Err(message)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -717,6 +1022,7 @@ mod tests {
             args: vec!["-c".to_string()],
             via_stdin: false,
             description: "bash",
+            flavor: proc::ShellFlavor::Posix,
         }
     }
 
