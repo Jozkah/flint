@@ -52,8 +52,12 @@ for (const name of files.sort()) {
   if (/\.(exe|dll)$/i.test(name)) {
     if (!header) bad(`${name} is not a PE image -- placeholder or truncated`)
     else if (header.machine !== 'x86_64') bad(`${name} is ${header.machine}, not x86_64`)
-    // A real toolchain binary is megabytes. A stub is a few hundred bytes.
-    if (bytes < 100_000) bad(`${name} is implausibly small for a real binary`)
+    // A stub is zero bytes or a few hundred; a real artifact is at least tens
+    // of kilobytes. The floor is deliberately low because it has to clear
+    // `ggml.dll`, which is a genuine 86KB dispatch shim in front of the
+    // per-architecture backends -- the PE and architecture checks above are
+    // what actually distinguish a real binary from a placeholder.
+    if (bytes < 20_000) bad(`${name} is implausibly small for a real binary`)
   }
   console.log()
 }
