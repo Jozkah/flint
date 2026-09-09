@@ -343,6 +343,45 @@ export type MemorySettings = {
   schemaVersion: number
 }
 
+/**
+ * The memories one dispatch may use, and which records they were.
+ *
+ * `block` is already delimited and goes into the system prompt verbatim. The
+ * ids and hashes are what a prompt snapshot records, so a later reader can tell
+ * not just which memory the model saw but which *version* of it.
+ */
+export type MemoryRetrieved = {
+  block: string | null
+  injectedIds: string[]
+  injectedHashes: string[]
+  /** Both sides of every conflict. Withheld from the prompt, never injected. */
+  conflictIds: string[]
+  /** Applicable records the budget had no room for. */
+  droppedIds: string[]
+  charsUsed: number
+}
+
+/**
+ * Select the memories for one dispatch.
+ *
+ * The desktop drives its own tool loop, so it reaches the same selection the
+ * CLI agent calls in process. One function decides for both: a memory the CLI
+ * would inject and the desktop would not is a disagreement nobody would find.
+ *
+ * A temporary chat is answered before any store is opened -- it neither reads
+ * nor records.
+ */
+export async function memoryRetrieve(
+  location: MemoryLocation,
+  options?: { temporary?: boolean; budgetChars?: number }
+): Promise<MemoryRetrieved> {
+  return await invoke('plugin:agent-tools|memory_retrieve', {
+    location,
+    temporary: options?.temporary,
+    budgetChars: options?.budgetChars,
+  })
+}
+
 /** One page of memories in a scope. Rejects a scope the caller has no standing
  * in, rather than returning an empty list. */
 export async function memoryRecordsList(

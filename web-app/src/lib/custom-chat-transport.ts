@@ -29,6 +29,11 @@ import {
 } from '@/lib/webSearchTool'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getAgentToolSchemas, sandboxEnforces } from '@/lib/agentTools'
+import { errorText } from '@/lib/errorText'
+import {
+  memoryRetrieve,
+  type MemoryRetrieved,
+} from '@janhq/tauri-plugin-agent-tools-api'
 import { useAppState } from '@/hooks/useAppState'
 import { unloadLlamaModel, getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import { engineFailure } from '@/lib/engineError'
@@ -794,6 +799,32 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   protected systemMessage?: string
   protected serviceHub: ServiceHub | null
   protected threadId?: string
+  /**
+   * The memories this dispatch is carrying, resolved once per request.
+   *
+   * Frozen for the invocation on purpose: a retry has to record the selection
+   * it actually sent, and re-running retrieval between the send and the record
+   * would attribute the wrong memories to it. Cleared and refetched at the top
+   * of each `sendMessages`.
+   */
+  protected memorySelection: MemoryRetrieved | null = null
+  /**
+   * The project this chat belongs to, when it belongs to one.
+   *
+   * Undefined for an ordinary chat, which is the common case and means project
+   * memories simply do not apply -- not that they are hidden. Cowork sets it,
+   * which is what makes a project memory cross that project's chats and no
+   * others.
+   */
+  protected projectRoot?: string
+  /**
+   * A temporary chat neither reads nor records memory.
+   *
+   * Carried here rather than inferred from the absence of a thread id: an
+   * unsaved chat and a deliberately temporary one are different things, and
+   * only the second should be denied its own memory.
+   */
+  protected temporary = false
   private continueFromContent: ContinuationContent | null = null
   /** Latest user message text — used by the MCP orchestrator for tool routing. */
   private lastUserMessage = ''
@@ -813,6 +844,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
   setLastUserMessage(message: string): void {
     this.lastUserMessage = message
+  }
+
+  /**
+   * Bind this transport to a project and say whether the chat is temporary.
+   *
+   * Both decide which memories apply, so they are set together: a caller that
+   * knew one and forgot the other would silently change what is remembered.
+   */
+  setMemoryBinding(binding: {
+    projectRoot?: string
+    temporary?: boolean
+  }): void {
+    this.projectRoot = binding.projectRoot
+    this.temporary = binding.temporary ?? false
   }
 
   updateSystemMessage(systemMessage: string | undefined) {
@@ -884,6 +929,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const raw =
       [
         this.systemMessage,
+        // Remembered facts are data the model may use, not instructions it must
+        // follow. The block arrives already delimited from the backend, which
+        // is what keeps that distinction visible in the prompt itself.
+        this.memorySelection?.block ?? undefined,
         this.buildFilesSystemInstruction(messages),
         this.buildWebSearchSystemInstruction(),
         this.buildAgentToolsSystemInstruction(),
@@ -904,6 +953,48 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         'This conversation has no user message to respond to. Add a message, or regenerate from a turn that includes your question.'
       )
     }
+  }
+
+  /**
+   * Resolve what this dispatch may remember.
+   *
+   * The selection is the backend's: which records apply, how they are ordered,
+   * what the budget allows and which conflicts are withheld are all decided in
+   * one place that the CLI agent calls in process. This is the desktop reaching
+   * the same function over IPC rather than a second implementation of it.
+   *
+   * A failure leaves the prompt without a memory block rather than failing the
+   * turn: not remembering is a degraded answer, and refusing to answer is not.
+   */
+  protected async refreshMemory(): Promise<void> {
+    this.memorySelection = null
+    let dataFolder: string | null = null
+    try {
+      // Guarded rather than optional-chained one level: a hub without an app
+      // service is a degraded environment, not a reason to fail the turn, and
+      // it is what a partially-stubbed host looks like.
+      dataFolder = (await this.serviceHub?.app()?.getJanDataFolder()) ?? null
+    } catch {
+      return
+    }
+    if (!dataFolder) return
+    try {
+      this.memorySelection = await memoryRetrieve(
+        {
+          dataFolder,
+          projectRoot: this.projectRoot,
+          sessionId: this.threadId,
+        },
+        { temporary: this.temporary }
+      )
+    } catch (e) {
+      console.warn('[memory] retrieval failed:', errorText(e))
+    }
+  }
+
+  /** The memories the last dispatch carried, for the snapshot and accounting. */
+  memoryUsed(): MemoryRetrieved | null {
+    return this.memorySelection
   }
 
   async refreshTools(abortSignal?: AbortSignal) {
@@ -1358,6 +1449,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const selectedModel = useModelProvider.getState().selectedModel
 
+    await this.refreshMemory()
     const effectiveSystem = this.buildSystemPrompt(messagesToConvert)
 
     const maxOutputTokens: number | undefined = (() => {

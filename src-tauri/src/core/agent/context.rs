@@ -264,7 +264,9 @@ pub(crate) fn build_system_prompt(
 /// tokeniser. A ceiling rather than a target: what matters is that memory can
 /// never crowd out the conversation, and that when the cap bites it drops the
 /// least specific record rather than whichever happened to be last.
-const MEMORY_BUDGET_CHARS: usize = 4 * 512;
+// Shared with the desktop's own retrieval command, so the same conversation
+// cannot remember different things depending on which surface asked.
+use tauri_plugin_agent_tools::memory::retrieve::DEFAULT_BUDGET_CHARS as MEMORY_BUDGET_CHARS;
 
 /// The permanent store root, or `None` when the data folder cannot be resolved.
 ///

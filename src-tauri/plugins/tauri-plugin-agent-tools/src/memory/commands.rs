@@ -411,6 +411,118 @@ fn fnv(text: &str) -> u64 {
     hash
 }
 
+/// What one dispatch is allowed to remember, and which records that was.
+///
+/// The desktop drives its own tool loop in TypeScript, so unlike the CLI agent
+/// -- which calls [`super::retrieve::select`] in process -- it has to reach the
+/// same selection over IPC. This is that reach. Both surfaces end in one
+/// function, which is the point: a memory the CLI would inject and the desktop
+/// would not is a disagreement nobody would find.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Retrieved {
+    /// The rendered block for the system prompt, or `None` when nothing
+    /// applies. Already delimited; the caller inserts it verbatim.
+    pub block: Option<String>,
+    /// The ids injected, for the prompt snapshot and the activity record.
+    pub injected_ids: Vec<String>,
+    /// Content hashes of what was injected, so a snapshot can prove which
+    /// *version* of a memory the model saw rather than only which record.
+    pub injected_hashes: Vec<String>,
+    /// Records in conflict. Both sides were withheld, so neither reached the
+    /// model as authoritative.
+    pub conflict_ids: Vec<String>,
+    /// Applicable records dropped because the budget ran out.
+    pub dropped_ids: Vec<String>,
+    /// Characters injected, for context accounting.
+    pub chars_used: usize,
+}
+
+impl Retrieved {
+    /// Nothing remembered, nothing recorded. The answer for a temporary chat.
+    fn empty() -> Self {
+        Self {
+            block: None,
+            injected_ids: Vec::new(),
+            injected_hashes: Vec::new(),
+            conflict_ids: Vec::new(),
+            dropped_ids: Vec::new(),
+            chars_used: 0,
+        }
+    }
+}
+
+/// Select the memories one dispatch may use.
+///
+/// `temporary` is the whole of the temporary-chat rule, and it is answered
+/// before any store is opened rather than filtered afterwards: a temporary chat
+/// should not even read.
+#[tauri::command]
+pub async fn memory_retrieve(
+    location: Where,
+    temporary: Option<bool>,
+    budget_chars: Option<usize>,
+) -> Result<Retrieved, AgentToolsError> {
+    if temporary.unwrap_or(false) {
+        return Ok(Retrieved::empty());
+    }
+
+    let access = location.access();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    // Every scope this caller is entitled to and no other. The session and
+    // project ids come from `Access`, which derives them rather than believing
+    // the renderer, so naming another chat does not fetch its records.
+    let mut records = Vec::new();
+    if let Some(store) = access.project_store.as_deref() {
+        records.extend(super::store::load(store, Scope::Project).records);
+    }
+    let permanent = crate::workspace::permanent_store(std::path::Path::new(
+        &location.data_folder,
+    ));
+    records.extend(super::store::load(&permanent, Scope::User).records);
+    records.extend(super::store::load(&permanent, Scope::Session).records);
+
+    let selection = super::retrieve::select(
+        &records,
+        &super::retrieve::RetrievalContext {
+            session_id: access.session_id.as_deref(),
+            project_id: access.project_id.as_deref(),
+            now,
+            budget_chars: budget_chars.unwrap_or(super::retrieve::DEFAULT_BUDGET_CHARS),
+            temporary: false,
+        },
+    );
+
+    Ok(Retrieved {
+        block: selection.render(),
+        injected_ids: selection
+            .injected
+            .iter()
+            .map(|i| i.id.as_str().to_string())
+            .collect(),
+        injected_hashes: selection
+            .injected
+            .iter()
+            .map(|i| super::record::content_hash(&i.content))
+            .collect(),
+        conflict_ids: selection
+            .conflicts
+            .iter()
+            .flat_map(|c| [c.left.as_str().to_string(), c.right.as_str().to_string()])
+            .collect(),
+        dropped_ids: selection
+            .dropped_for_budget
+            .iter()
+            .map(|id| id.as_str().to_string())
+            .collect(),
+        chars_used: selection.chars_used,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

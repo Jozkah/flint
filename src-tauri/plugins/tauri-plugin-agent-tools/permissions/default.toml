@@ -36,6 +36,7 @@ permissions = [
     "allow-memory-storage-summary",
     "allow-memory-settings-get",
     "allow-memory-settings-update",
+    "allow-memory-retrieve",
     "allow-tool-schemas",
     "allow-sandbox-status",
     "allow-environment-readiness",

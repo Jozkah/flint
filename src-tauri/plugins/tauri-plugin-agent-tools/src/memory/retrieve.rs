@@ -36,6 +36,14 @@ pub struct RetrievalContext<'a> {
     pub temporary: bool,
 }
 
+/// Characters of memory one dispatch may carry.
+///
+/// Shared rather than defined per caller: the CLI agent and the desktop reach
+/// this selection by different routes, and a budget that differed between them
+/// would mean the same conversation remembered different things depending on
+/// which surface asked.
+pub const DEFAULT_BUDGET_CHARS: usize = 4 * 512;
+
 /// One record that was injected, and why it survived.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Injected {
