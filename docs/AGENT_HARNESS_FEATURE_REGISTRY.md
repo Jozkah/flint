@@ -29,13 +29,13 @@ and the latter two require a recorded `blockedReason`.
 | 1 | Core execution | 0 | 0 | 2 | 18 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 1 | 0 | 4 | 15 | 0 | 0 | 0 | 20 |
 | 3 | Repository intelligence | 18 | 0 | 2 | 0 | 0 | 0 | 0 | 20 |
-| 4 | Context and memory | 5 | 0 | 6 | 5 | 0 | 0 | 0 | 16 |
+| 4 | Context and memory | 2 | 0 | 6 | 8 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 8 | 0 | 6 | 11 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 22 | 0 | 2 | 2 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 17 | 0 | 6 | 6 | 0 | 0 | 0 | 29 |
 | 9 | Approved additions | 9 | 0 | 0 | 1 | 0 | 0 | 0 | 10 |
-| **all** | | **91** | **0** | **35** | **84** | **0** | **0** | **0** | **210** |
+| **all** | | **88** | **0** | **35** | **87** | **0** | **0** | **0** | **210** |
 
 ## Ownership lanes
 
@@ -150,11 +150,11 @@ per-OS evidence log rather than backlog items.
 | `AH-078` | Prompt snapshots | 4 | context-memory | P0 | `in-progress` | medium | `AH-010` |
 | `AH-079` | Context replay | 4 | context-memory | P1 | `missing` | medium | `AH-078` |
 | `AH-080` | Project memory | 4 | context-memory | P0 | `implemented` | medium | `AH-114` |
-| `AH-081` | Session memory | 4 | context-memory | P1 | `in-progress` | medium | `AH-010` |
-| `AH-082` | User-level memory | 4 | context-memory | P1 | `missing` | medium | `AH-081` |
+| `AH-081` | Session memory | 4 | context-memory | P1 | `implemented` | medium | `AH-010` |
+| `AH-082` | User-level memory | 4 | context-memory | P1 | `implemented` | medium | `AH-081` |
 | `AH-083` | Memory provenance | 4 | context-memory | P1 | `in-progress` | low | `AH-081` |
-| `AH-084` | Memory precedence resolution | 4 | context-memory | P1 | `missing` | medium | `AH-083` |
-| `AH-085` | Instruction conflict detection | 4 | context-memory | P2 | `missing` | medium | `AH-084` |
+| `AH-084` | Memory precedence resolution | 4 | context-memory | P1 | `implemented` | medium | `AH-083` |
+| `AH-085` | Instruction conflict detection | 4 | context-memory | P2 | `in-progress` | medium | `AH-084` |
 | `AH-086` | Context diffing between turns | 4 | context-memory | P2 | `missing` | low | `AH-078` |
 | `AH-087` | What-the-model-saw inspector | 4 | context-memory | P1 | `in-progress` | medium | `AH-078` |
 | `AH-088` | Context budget planner | 4 | context-memory | P2 | `implemented` | low | `AH-073` |
@@ -332,9 +332,12 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-076` Compaction strategy configuration** - Two independent implementations (Rust and TypeScript) with different behaviour and thresholds.
 - **`AH-077` Context pressure warnings** - Desktop shows a percentage ring; the CLI warns only when /context is invoked.
 - **`AH-078` Prompt snapshots** - The snapshot is taken in HttpModelInvoker::invoke from `normalized` -- the exact serialized request, after context construction and after the model id is rewritten, at the last point before dispatch. Not reconstructed from earlier state. It carries schema version, stable id, RFC3339 UTC timestamp, session, run, thread, agent, provider, model, reasoning configuration, the redacted payload, its hash, and the redaction list; message count, tool names and system prompt are derived from the payload rather than stored twice. Redaction runs while the record is built, walks the whole document (a credential in a nested tool argument leaks as surely as one in a header), matches credential fields by name because an auth header's value is opaque, and still applies the value-shaped pass to free text for an env line pasted into a prompt. Each removal records its path and reason, so an empty field is distinguishable from a redacted one. The hash is FNV-1a over a canonical key-sorted serialization of the *redacted* payload: identical payloads hash identically however built, any change to a retry produces a different hash, and a reader can verify the record against its own hash. Storage is append-only JSONL at <jan_data>/audit/prompts.jsonl, flushed per record, with a reader that drops an unparseable line so a truncated tail costs one record. Lookup by id, run and session. A snapshot that cannot be taken is recorded as explicitly unavailable with its reason and identity intact. StreamEvent::PromptSnapshot carries id, hash and redaction count to the activity timeline, never the payload. Guards mutation-checked: removing redaction, and making the hash ignore its input, each turn the relevant tests red. NOT YET IMPLEMENTED, which is why this is in-progress rather than implemented: the UI action to inspect a snapshot is not built; the event and the lookup functions exist for it.
-- **`AH-081` Session memory** - Recall is BM25 over past turns keyed by project path, not session; subagents are excluded.
-- **`AH-082` User-level memory** - permanent_store exists in the workspace layer but no memory caller resolves to it.
-- **`AH-083` Memory provenance** - Project files carry a path; curated notes carry a name only; BM25 recall carries neither.
+- **`AH-080` Project memory** - Project scope is on the canonical record and resolves through a project id derived from the checkout rather than its path, so moving a checkout takes its memories along and a project that cannot be identified retrieves nothing rather than everything. migrate::migrate_project_notes carries the legacy <name>.md notes into the store once, keyed by content so it is a no-op afterwards and never re-imports a renamed note; the legacy files are left untouched.
+- **`AH-081` Session memory** - Session scope is a first-class scope on the canonical record, stored per scope and selected by session id in retrieve::select. Both production dispatch paths reach one selection: the CLI agent calls it in process, the desktop through the memory_retrieve command. Proved end to end against a real OpenAI-compatible server -- a session memory does not appear in another chat's serialized request, and a temporary chat selects nothing because it is answered before any store is opened.
+- **`AH-082` User-level memory** - User scope resolves to the permanent store and reaches the model. The gap this closes was not storage but dispatch: retrieval was wired into the Rust agent loop only, so the desktop -- which drives its own tool loop -- never carried a remembered fact. Proved against a real server: a marker saved in one chat is present by memory id and by content in a different chat's serialized request body, and absent from a third chat's after forget.
+- **`AH-083` Memory provenance** - Every record carries a Provenance -- creator, origin, source session and message, timestamps -- written at creation and preserved through edits and supersession. What is missing is the user-facing half: 'Why does Jan remember this?' does not navigate to the source message, and there is no unavailable-source state for a deleted origin.
+- **`AH-084` Memory precedence resolution** - record::prefer applies a deterministic order -- scope specificity, then creator trust, then recency -- and records why, so a displaced record can say what displaced it. Applied inside retrieve::select, which is the only path either surface reaches, and covered by the focused memory tests.
+- **`AH-085` Instruction conflict detection** - detect_conflicts finds instruction pairs that cannot both be followed, and retrieve::select withholds BOTH sides rather than picking one, so an unresolved conflict never reaches the model as authoritative -- asserted in the renderer tests. What is missing is the resolution UI: keep-first, keep-second, merge, narrow to chat or project, dismiss, bound to the conflict hash. Conflicts are reported to the renderer and cannot yet be acted on there.
 - **`AH-087` What-the-model-saw inspector** - /context shows category sizes re-derived from disk, omits the date line and memory recall, and offers no text view.
 - **`AH-088` Context budget planner** - planTurn reserves reply headroom and classifies the turn before dispatch; an over-capacity request raises ContextOverflowError instead of being sent. An undiscoverable window is reported, never refused. max_tokens: 0 is never dispatched: llama.cpp gets its -1 "no cap" spelling and every other provider gets the key omitted, because a zero reply cap asks for an empty answer. A context-overflow refusal is now read for the window the server itself named -- structured fields first, then only known message shapes, and only when the numbers agree -- and stored as a `server-response` capability bound to provider, base URL and model, forgotten when any of the three changes. Recovery allows one compaction and one retry, never a loop.
 - **`AH-100` Forked contexts** - Children are isolated, not forked: they start from a fresh single-message history.

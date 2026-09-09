@@ -2445,7 +2445,15 @@
       ],
       "owner": "lane-05-context-memory",
       "files": [
-        "src-tauri/src/core/agent/context.rs"
+        "src-tauri/src/core/agent/context.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/record.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/service.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
+        "web-app/src/lib/custom-chat-transport.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/migrate.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -2456,9 +2464,16 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/record.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
+        "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
+        "scripts/memory-e2e.mjs"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Project scope is on the canonical record and resolves through a project id derived from the checkout rather than its path, so moving a checkout takes its memories along and a project that cannot be identified retrieves nothing rather than everything. migrate::migrate_project_notes carries the legacy <name>.md notes into the store once, keyed by content so it is a no-op afterwards and never re-imports a renamed note; the legacy files are left untouched."
     },
     {
       "id": "AH-081",
@@ -2466,14 +2481,22 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-010"
       ],
       "owner": "lane-05-context-memory",
       "files": [
-        "src-tauri/src/core/agent/memory.rs"
+        "src-tauri/src/core/agent/memory.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/record.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/service.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
+        "src-tauri/src/core/agent/context.rs",
+        "web-app/src/lib/custom-chat-transport.ts"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -2484,10 +2507,16 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/record.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
+        "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
+        "scripts/memory-e2e.mjs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Recall is BM25 over past turns keyed by project path, not session; subagents are excluded."
+      "auditNote": "Session scope is a first-class scope on the canonical record, stored per scope and selected by session id in retrieve::select. Both production dispatch paths reach one selection: the CLI agent calls it in process, the desktop through the memory_retrieve command. Proved end to end against a real OpenAI-compatible server -- a session memory does not appear in another chat's serialized request, and a temporary chat selects nothing because it is answered before any store is opened."
     },
     {
       "id": "AH-082",
@@ -2495,13 +2524,22 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-081"
       ],
       "owner": "lane-05-context-memory",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/record.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/service.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
+        "src-tauri/src/core/agent/context.rs",
+        "web-app/src/lib/custom-chat-transport.ts"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A user-scoped memory store applies across every project.",
@@ -2511,10 +2549,16 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/record.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
+        "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
+        "scripts/memory-e2e.mjs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "permanent_store exists in the workspace layer but no memory caller resolves to it."
+      "auditNote": "User scope resolves to the permanent store and reaches the model. The gap this closes was not storage but dispatch: retrieval was wired into the Rust agent loop only, so the desktop -- which drives its own tool loop -- never carried a remembered fact. Proved against a real server: a marker saved in one chat is present by memory id and by content in a different chat's serialized request body, and absent from a third chat's after forget."
     },
     {
       "id": "AH-083",
@@ -2529,7 +2573,14 @@
       ],
       "owner": "lane-05-context-memory",
       "files": [
-        "src-tauri/src/core/agent/context.rs"
+        "src-tauri/src/core/agent/context.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/record.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/service.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
+        "web-app/src/lib/custom-chat-transport.ts"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -2540,10 +2591,16 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/record.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
+        "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
+        "scripts/memory-e2e.mjs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Project files carry a path; curated notes carry a name only; BM25 recall carries neither."
+      "auditNote": "Every record carries a Provenance -- creator, origin, source session and message, timestamps -- written at creation and preserved through edits and supersession. What is missing is the user-facing half: 'Why does Jan remember this?' does not navigate to the source message, and there is no unavailable-source state for a deleted origin."
     },
     {
       "id": "AH-084",
@@ -2551,13 +2608,22 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-083"
       ],
       "owner": "lane-05-context-memory",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/record.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/service.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
+        "src-tauri/src/core/agent/context.rs",
+        "web-app/src/lib/custom-chat-transport.ts"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Precedence between user, project, session and skill instructions is explicit and stated to the model.",
@@ -2567,9 +2633,16 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/record.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
+        "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
+        "scripts/memory-e2e.mjs"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "record::prefer applies a deterministic order -- scope specificity, then creator trust, then recency -- and records why, so a displaced record can say what displaced it. Applied inside retrieve::select, which is the only path either surface reaches, and covered by the focused memory tests."
     },
     {
       "id": "AH-085",
@@ -2577,13 +2650,22 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P2",
       "dependencies": [
         "AH-084"
       ],
       "owner": "lane-05-context-memory",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/record.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/service.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
+        "src-tauri/src/core/agent/context.rs",
+        "web-app/src/lib/custom-chat-transport.ts"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Contradictory instructions across scopes are detected and surfaced rather than silently concatenated.",
@@ -2593,9 +2675,16 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/record.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
+        "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
+        "scripts/memory-e2e.mjs"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "detect_conflicts finds instruction pairs that cannot both be followed, and retrieve::select withholds BOTH sides rather than picking one, so an unresolved conflict never reaches the model as authoritative -- asserted in the renderer tests. What is missing is the resolution UI: keep-first, keep-second, merge, narrow to chat or project, dismiss, bound to the conflict hash. Conflicts are reported to the renderer and cannot yet be acted on there."
     },
     {
       "id": "AH-086",
