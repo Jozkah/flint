@@ -20,6 +20,7 @@ pub mod resource;
 pub mod secrets;
 pub mod skills;
 pub mod snapshot;
+pub mod subject;
 pub mod tools;
 pub mod usage;
 pub mod workspace;

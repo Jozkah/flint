@@ -466,6 +466,9 @@ fn split_words(line: &str) -> Option<Vec<String>> {
 /// resource, so `bash(git push*)` and `read(**/.ssh/**)` become expressible.
 #[derive(Debug, Clone)]
 pub struct ResourceRule {
+    /// Who the rule is about. `Any` for the unqualified rules that predate
+    /// subjects, which means "whoever is acting, if they can be identified".
+    subject: crate::subject::SubjectPattern,
     tool: Pattern,
     /// `None` matches the tool whatever it touches.
     resource: Option<Pattern>,
@@ -475,16 +478,39 @@ pub struct ResourceRule {
 impl ResourceRule {
     /// Parse a rule. An unparseable pattern yields `None`; the caller drops it
     /// rather than compiling a rule that would match unpredictably.
+    ///
+    /// Grammar: `[subject/]tool[(pattern)]`, so all three forms coexist:
+    /// `bash`, `bash(git:force-push)`, `agent:reviewer/bash(git:push)`. The
+    /// subject is split off before any `(`, so a `/` inside a resource pattern
+    /// is left alone -- `read(**/.ssh/**)` has no subject.
     pub fn parse(rule: &str) -> Option<Self> {
+        use crate::subject::{Subject, SubjectPattern};
+
         let rule = rule.trim();
-        let (tool, resource) = match rule.strip_suffix(')').and_then(|r| r.split_once('(')) {
+        let head_end = rule.find('(').unwrap_or(rule.len());
+        let (subject, rest) = match rule[..head_end].find('/') {
+            Some(slash) => (
+                SubjectPattern::parse(&rule[..slash]),
+                rule[slash + 1..].trim(),
+            ),
+            None => (SubjectPattern::Any, rule),
+        };
+        // A qualifier naming no recognisable subject is a typo, and a rule
+        // nobody matches is worse than no rule: drop it rather than silently
+        // widening it to everyone.
+        if matches!(subject, SubjectPattern::Exactly(Subject::Unknown)) {
+            return None;
+        }
+
+        let (tool, resource) = match rest.strip_suffix(')').and_then(|r| r.split_once('(')) {
             Some((tool, inner)) => (tool.trim(), Some(inner.trim())),
-            None => (rule, None),
+            None => (rest, None),
         };
         if tool.is_empty() {
             return None;
         }
         Some(Self {
+            subject,
             tool: Pattern::new(tool).ok()?,
             resource: match resource {
                 Some(pattern) => Some(Pattern::new(pattern).ok()?),
@@ -492,6 +518,20 @@ impl ResourceRule {
             },
             source: rule.to_string(),
         })
+    }
+
+    /// Whether this rule is about `authority`.
+    ///
+    /// Every level of the delegation chain must be permitted, so a subagent is
+    /// bound by its parent's rules as well as its own, and an unidentified
+    /// subject anywhere denies the whole chain.
+    pub fn applies_to(&self, authority: &crate::subject::Authority) -> bool {
+        authority.permits(&self.subject)
+    }
+
+    /// The subject qualifier, for audit records and the rules UI.
+    pub fn subject(&self) -> &crate::subject::SubjectPattern {
+        &self.subject
     }
 
     /// Whether this rule names `tool_name` at all, ignoring resources. Used by
