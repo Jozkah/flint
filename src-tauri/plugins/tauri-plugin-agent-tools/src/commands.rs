@@ -36,6 +36,7 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 use crate::memory;
+use crate::readiness;
 use crate::skills::{self, SkillMeta};
 use crate::tools::gate::{self, Decision, PromptKind, SessionGrants};
 use crate::tools::jail;
@@ -342,6 +343,118 @@ pub async fn sandbox_status() -> Result<SandboxStatus, AgentToolsError> {
         backend: backend.as_str().to_string(),
         enforces: backend.enforces(),
     })
+}
+
+/// What a session can do right now, component by component.
+///
+/// The tool list, the run preflight and the Environment readiness card all read
+/// this one report, so they cannot disagree about whether a shell works. The
+/// renderer supplies the facts only its own stores hold -- whether a provider
+/// answered, what context window was resolved, which MCP servers connected --
+/// and `readiness` decides what those facts mean; it will not accept a claim
+/// about a component the backend probes itself.
+///
+/// `project_root` is optional because a session with no folder attached is a
+/// normal state with a real answer, not a missing argument.
+#[tauri::command]
+pub async fn environment_readiness(
+    project_root: Option<String>,
+    reported: Option<Vec<readiness::ComponentReport>>,
+) -> Result<readiness::EnvironmentReadiness, AgentToolsError> {
+    let root = project_root.map(PathBuf::from);
+    // The shell probe starts a process; keep it off the async runtime's threads.
+    let mut report = tokio::task::spawn_blocking(move || readiness::current(root.as_deref()))
+        .await
+        .map_err(|e| AgentToolsError::from(format!("readiness probe failed: {e}")))?;
+    if let Some(reported) = reported {
+        readiness::merge_reported(&mut report, reported);
+    }
+    Ok(report)
+}
+
+/// Re-probe one component, or every backend-owned component when `component` is
+/// absent.
+///
+/// One component at a time by default, because the timestamps beside the other
+/// rows would otherwise start lying about when they were last checked.
+#[tauri::command]
+pub async fn environment_readiness_retry(
+    project_root: Option<String>,
+    component: Option<readiness::Component>,
+    reported: Option<Vec<readiness::ComponentReport>>,
+) -> Result<readiness::EnvironmentReadiness, AgentToolsError> {
+    let root = project_root.map(PathBuf::from);
+    let mut report = tokio::task::spawn_blocking(move || match component {
+        Some(component) => readiness::retry(root.as_deref(), component),
+        None => readiness::retry_all(root.as_deref()),
+    })
+    .await
+    .map_err(|e| AgentToolsError::from(format!("readiness probe failed: {e}")))?;
+    if let Some(reported) = reported {
+        readiness::merge_reported(&mut report, reported);
+    }
+    Ok(report)
+}
+
+/// Which built-in tools this environment allows, and why the others are held
+/// back.
+///
+/// The one place the advertised tool list is decided. Returning the omissions
+/// alongside the schemas is deliberate: a tool that vanished with no
+/// explanation is indistinguishable from a bug, and the reason is what the
+/// activity log and the readiness card both render.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvertisedTools {
+    pub schemas: Vec<serde_json::Value>,
+    pub omitted: Vec<OmittedTool>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmittedTool {
+    pub name: String,
+    pub component: readiness::Component,
+    pub reason: readiness::Reason,
+    pub message: String,
+}
+
+/// OpenAI-shaped function schemas for the tools this environment can actually
+/// run, plus the ones it cannot and why.
+///
+/// Replaces advertising every built-in and letting execution refuse: a tool the
+/// model calls and cannot use costs a turn and reads as a defect.
+#[tauri::command]
+pub async fn advertised_tool_schemas(
+    project_root: Option<String>,
+    reported: Option<Vec<readiness::ComponentReport>>,
+) -> Result<AdvertisedTools, AgentToolsError> {
+    let report = environment_readiness(project_root, reported).await?;
+    let mut schemas = Vec::new();
+    let mut omitted = Vec::new();
+    for value in schema::builtin_tool_schemas() {
+        let Some(name) = value
+            .get("function")
+            .and_then(|f| f.get("name"))
+            .and_then(|n| n.as_str())
+        else {
+            continue;
+        };
+        match readiness::tool_availability(&report, name) {
+            readiness::ToolAvailability::Available => schemas.push(value.clone()),
+            readiness::ToolAvailability::Unavailable {
+                component,
+                reason,
+                message,
+            } => omitted.push(OmittedTool {
+                name: name.to_string(),
+                component,
+                reason,
+                message,
+            }),
+        }
+    }
+    Ok(AdvertisedTools { schemas, omitted })
 }
 
 /// One fragment of a tool's live output.

@@ -16,6 +16,7 @@ pub mod memory;
 pub mod permissions;
 pub mod policy;
 pub mod project_browse;
+pub mod readiness;
 pub mod resource;
 pub mod secrets;
 pub mod skills;
@@ -65,6 +66,9 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::memory_delete,
             commands::tool_schemas,
             commands::sandbox_status,
+            commands::environment_readiness,
+            commands::environment_readiness_retry,
+            commands::advertised_tool_schemas,
             commands::execute_tool,
             commands::execute_tool_streaming,
             commands::project_list_dir,

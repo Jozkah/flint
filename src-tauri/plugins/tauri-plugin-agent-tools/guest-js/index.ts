@@ -349,6 +349,140 @@ export type SandboxStatus = {
   enforces: boolean
 }
 
+/** One independently-probed part of a session's environment. */
+export type ReadinessComponent =
+  | 'model'
+  | 'context'
+  | 'filesystem'
+  | 'shell'
+  | 'sandbox'
+  | 'mcp'
+  | 'workspace'
+  | 'local-runtime'
+
+/**
+ * How a component is doing.
+ *
+ * `checking` is not a failure and `degraded` is not `unavailable`: a shell that
+ * can only run `cmd` still runs shell-neutral commands, and treating the two
+ * the same would withhold work that would have succeeded.
+ */
+export type ReadinessState =
+  | 'checking'
+  | 'ready'
+  | 'degraded'
+  | 'unavailable'
+  | 'blocked'
+
+/**
+ * A stable machine-readable cause. Chosen to survive rewording of the message
+ * beside it, because tests and UI guidance key off these.
+ */
+export type ReadinessReason =
+  | 'ok'
+  | 'not-probed'
+  | 'workspace-missing'
+  | 'workspace-unattached'
+  | 'filesystem-unreadable'
+  | 'filesystem-read-only'
+  | 'shell-missing'
+  | 'shell-runtime-incompatible'
+  | 'shell-probe-failed'
+  | 'shell-non-posix-only'
+  | 'sandbox-unavailable'
+  | 'sandbox-disabled'
+  | 'model-unselected'
+  | 'model-unreachable'
+  | 'context-unknown'
+  | 'mcp-none-configured'
+  | 'mcp-unreachable'
+  | 'local-runtime-absent'
+  | 'local-runtime-stopped'
+
+export type ComponentReport = {
+  component: ReadinessComponent
+  state: ReadinessState
+  reason: ReadinessReason
+  /** One actionable sentence. Never a value, a path, a command or a secret. */
+  message: string
+  /** Unix milliseconds; null when the component has not been probed. */
+  checkedAtMs: number | null
+  retryable: boolean
+  /** What this component grants right now. Empty when it is not usable. */
+  capabilities: string[]
+  /** Extra lines for a copied diagnostic, under the same redaction rules. */
+  details: string[]
+}
+
+export type EnvironmentReadiness = {
+  components: ComponentReport[]
+  generatedAtMs: number
+}
+
+/** A tool held back, and which component is responsible. */
+export type OmittedTool = {
+  name: string
+  component: ReadinessComponent
+  reason: ReadinessReason
+  message: string
+}
+
+export type AdvertisedTools = {
+  schemas: ToolSchema[]
+  omitted: OmittedTool[]
+}
+
+/**
+ * What this session can do right now, component by component.
+ *
+ * `reported` carries the components only the renderer's stores can answer for
+ * -- whether a provider replied, what context window was resolved, which MCP
+ * servers connected. Rust decides what those facts mean and refuses any claim
+ * about a component it probes itself, so a caller cannot assert that a shell
+ * works.
+ */
+export async function environmentReadiness(
+  projectRoot?: string,
+  reported?: ComponentReport[]
+): Promise<EnvironmentReadiness> {
+  return await invoke('plugin:agent-tools|environment_readiness', {
+    projectRoot,
+    reported,
+  })
+}
+
+/**
+ * Re-probe one component, or every backend-owned component when `component` is
+ * omitted. One at a time by default, so the timestamps beside the untouched
+ * rows keep telling the truth about when they were last checked.
+ */
+export async function environmentReadinessRetry(
+  projectRoot?: string,
+  component?: ReadinessComponent,
+  reported?: ComponentReport[]
+): Promise<EnvironmentReadiness> {
+  return await invoke('plugin:agent-tools|environment_readiness_retry', {
+    projectRoot,
+    component,
+    reported,
+  })
+}
+
+/**
+ * The tools this environment can actually run, and the ones it cannot with the
+ * reason. Prefer this to `toolSchemas` when building what a model is offered:
+ * a tool the model calls and cannot use costs a turn and reads as a defect.
+ */
+export async function advertisedToolSchemas(
+  projectRoot?: string,
+  reported?: ComponentReport[]
+): Promise<AdvertisedTools> {
+  return await invoke('plugin:agent-tools|advertised_tool_schemas', {
+    projectRoot,
+    reported,
+  })
+}
+
 /**
  * Report the sandbox backend. Callers should advertise `bash` to a model only
  * when this reports `enforces`: without a backend every call is refused, and

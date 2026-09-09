@@ -1,9 +1,11 @@
 import {
-  toolSchemas,
+  advertisedToolSchemas,
   executeTool,
   sandboxStatus,
   threadWorkspaceDelete,
   threadWorkspaceSweep,
+  type ComponentReport,
+  type OmittedTool,
   type SandboxStatus,
   type ToolSchema,
   type WorkspaceScope,
@@ -42,20 +44,17 @@ export const AGENT_TOOL_NAMES = new Set([
   'screenshot',
 ])
 
-/**
- * Tools that only run under an enforcing OS sandbox. They stay in
- * `AGENT_TOOL_NAMES` -- the desktop still owns dispatching them -- but are held
- * back from the advertised schemas when no backend can confine them.
- */
-const SANDBOX_REQUIRED_TOOLS = new Set(['bash'])
-
 let schemaCache: ToolSchema[] | null = null
+let omittedCache: OmittedTool[] = []
 let statusCache: Promise<SandboxStatus> | null = null
 
 /**
  * The sandbox backend for this machine, fetched once. A failure is treated as
  * "no sandbox", which withholds `bash` rather than offering something that
  * cannot run.
+ *
+ * Kept alongside readiness rather than replaced by it: the system prompt needs
+ * a synchronous answer to this one question, and `sandboxEnforces()` is that.
  */
 export function getSandboxStatus(): Promise<SandboxStatus> {
   statusCache ??= sandboxStatus()
@@ -73,14 +72,18 @@ export function getSandboxStatus(): Promise<SandboxStatus> {
 let enforcesNow = false
 
 /**
- * Re-probe the sandbox, dropping both caches. Installing a backend (bubblewrap
- * on Linux) cannot take effect otherwise: `statusCache` is module-level, and
- * leaving `schemaCache` behind would keep `bash` withheld even once a backend
- * enforces.
+ * Re-probe the environment, dropping every cache.
+ *
+ * Installing a sandbox backend, fixing a permission or attaching a folder
+ * cannot take effect otherwise: the caches are module-level, and leaving
+ * `schemaCache` behind would keep a tool withheld after the thing that withheld
+ * it was fixed. Readiness changes must reach the next dispatch without a
+ * restart, and this is how.
  */
 export function refreshSandboxStatus(): Promise<SandboxStatus> {
   statusCache = null
   schemaCache = null
+  omittedCache = []
   return getSandboxStatus()
 }
 
@@ -94,17 +97,49 @@ export function sandboxEnforces(): boolean {
 }
 
 /**
- * Schemas for the advertised subset. Rust's `schema.rs` is the only source, and
- * the sandbox decides whether `bash` is among them.
+ * Which tools were held back last time the list was built, and why.
+ *
+ * Recorded rather than discarded because a tool that silently disappears is
+ * indistinguishable from a bug. This is what the activity log and the
+ * Environment readiness card render, and what "what the model received" reports
+ * as the reason a tool is not in the payload.
  */
-export async function getAgentToolSchemas(): Promise<ToolSchema[]> {
+export function omittedAgentTools(): OmittedTool[] {
+  return omittedCache
+}
+
+/**
+ * The schemas this environment can actually run.
+ *
+ * The single production decision about what a model is offered. Rust's
+ * `schema.rs` is still the only source of the schemas themselves; what changed
+ * is that the subset is chosen by capability rather than by one sandbox
+ * boolean, so a machine with no shell keeps its filesystem tools and a machine
+ * whose only shell is `cmd` keeps `bash` (a POSIX-only command is refused per
+ * call, where the construct can be named, rather than reinterpreted).
+ *
+ * `reported` carries the components only the renderer's stores can answer for.
+ * A failure to reach the backend withholds nothing beyond what the environment
+ * already withholds: the previous list is kept if there is one, since an empty
+ * tool set would silently turn an agent into a chatbot.
+ */
+export async function getAgentToolSchemas(
+  projectRoot?: string,
+  reported?: ComponentReport[]
+): Promise<ToolSchema[]> {
   if (schemaCache) return schemaCache
-  const [all, sandbox] = await Promise.all([toolSchemas(), getSandboxStatus()])
-  schemaCache = all.filter(
-    (s) =>
-      AGENT_TOOL_NAMES.has(s.function.name) &&
-      (sandbox.enforces || !SANDBOX_REQUIRED_TOOLS.has(s.function.name))
+  const [advertised] = await Promise.all([
+    advertisedToolSchemas(projectRoot, reported).catch((e) => {
+      console.warn('[agentTools] Failed to read readiness:', messageOf(e))
+      return null
+    }),
+    getSandboxStatus(),
+  ])
+  if (!advertised) return schemaCache ?? []
+  schemaCache = advertised.schemas.filter((s) =>
+    AGENT_TOOL_NAMES.has(s.function.name)
   )
+  omittedCache = advertised.omitted.filter((o) => AGENT_TOOL_NAMES.has(o.name))
   return schemaCache
 }
 

@@ -9,6 +9,7 @@
 import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
+import type { ComponentReport } from '@janhq/tauri-plugin-agent-tools-api'
 import {
   WEB_FETCH_DESCRIPTION,
   WEB_FETCH_INPUT_SCHEMA,
@@ -231,6 +232,17 @@ export type CoworkToolOptions = {
    * this is a Settings-level capability rather than a per-session choice.
    */
   webSearch: boolean
+  /**
+   * The folder this session is attached to, so readiness is probed for the
+   * project the tools will actually work in rather than for nothing.
+   */
+  projectRoot?: string
+  /**
+   * The components only the renderer's stores can answer for -- provider
+   * reachability, the resolved context window, MCP connection state. Rust
+   * decides what they mean; see `environmentReadiness`.
+   */
+  reported?: ComponentReport[]
 }
 
 /**
@@ -249,7 +261,26 @@ export function coworkToolSignature(
     sandboxEnforces ? 'jail' : 'nojail',
     opts.allowSubagents ? opts.subagentNames.join(',') : 'nosub',
     opts.webSearch ? 'web' : 'noweb',
+    // Readiness is part of the signature because it changes the advertised
+    // tools: a shell that starts after a retry must produce a different tool
+    // set on the next message, and a signature that ignored it would keep
+    // serving the old one for the life of the run.
+    readinessSignature(opts.reported),
   ].join('|')
+}
+
+/**
+ * The part of readiness that can change which tools are advertised.
+ *
+ * State and reason only -- not timestamps, which change on every probe and
+ * would re-prefill a 20-turn agent run for no reason at all.
+ */
+function readinessSignature(reported: ComponentReport[] | undefined): string {
+  if (!reported?.length) return 'noready'
+  return reported
+    .map((r) => `${r.component}:${r.state}`)
+    .sort()
+    .join(',')
 }
 
 /** Filter a name list down to what this mode may call. */
@@ -267,7 +298,7 @@ export function allowedToolNames(
 export async function buildCoworkTools(
   opts: CoworkToolOptions
 ): Promise<Record<string, Tool>> {
-  const schemas = await getAgentToolSchemas()
+  const schemas = await getAgentToolSchemas(opts.projectRoot, opts.reported)
   const tools: Record<string, Tool> = {}
 
   for (const s of schemas) {

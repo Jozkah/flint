@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const toolSchemas = vi.fn()
+const advertisedToolSchemas = vi.fn()
 const executeTool = vi.fn()
 const threadWorkspaceDelete = vi.fn()
 const threadWorkspaceSweep = vi.fn()
@@ -8,7 +8,8 @@ const sandboxStatus = vi.fn()
 const getJanDataFolder = vi.fn()
 
 vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
-  toolSchemas: () => toolSchemas(),
+  advertisedToolSchemas: (...args: unknown[]) =>
+    advertisedToolSchemas(...args),
   executeTool: (...args: unknown[]) => executeTool(...args),
   threadWorkspaceDelete: (...args: unknown[]) => threadWorkspaceDelete(...args),
   threadWorkspaceSweep: (...args: unknown[]) => threadWorkspaceSweep(...args),
@@ -24,10 +25,28 @@ const schemaFor = (name: string) => ({
   function: { name, description: `${name} desc`, parameters: {} },
 })
 
+/**
+ * What the backend answers. The environment decides which tools exist, so a
+ * test that wants `bash` withheld says so the way production does -- by having
+ * the backend omit it with a reason -- rather than by faking a sandbox probe.
+ */
+const advertising = (
+  schemas: string[],
+  omitted: { name: string; component?: string; reason?: string }[] = []
+) => ({
+  schemas: schemas.map(schemaFor),
+  omitted: omitted.map((o) => ({
+    name: o.name,
+    component: o.component ?? 'sandbox',
+    reason: o.reason ?? 'sandbox-unavailable',
+    message: o.name + ' needs something this machine does not have.',
+  })),
+})
+
 describe('agentTools', () => {
   beforeEach(() => {
     vi.resetModules()
-    toolSchemas.mockReset()
+    advertisedToolSchemas.mockReset()
     executeTool.mockReset()
     threadWorkspaceDelete.mockReset().mockResolvedValue(undefined)
     threadWorkspaceSweep.mockReset().mockResolvedValue(0)
@@ -54,16 +73,34 @@ describe('agentTools', () => {
     }
   })
 
-  it('filters Rust schemas down to the advertised subset', async () => {
-    toolSchemas.mockResolvedValue([
-      schemaFor('read'),
-      schemaFor('write'),
-      schemaFor('memory_write'),
-      schemaFor('web_search'),
-    ])
+  it('filters the backend list down to the tools this surface dispatches', async () => {
+    advertisedToolSchemas.mockResolvedValue(
+      advertising(['read', 'write', 'memory_write', 'web_search'])
+    )
     const { getAgentToolSchemas } = await import('../agentTools')
     const names = (await getAgentToolSchemas()).map((s) => s.function.name)
+    // `web_search` is advertised through the websearch plugin instead, so it
+    // is dropped here even though the environment allows it.
     expect(names).toEqual(['read', 'write', 'memory_write'])
+  })
+
+  it('probes readiness for the project the tools will work in', async () => {
+    advertisedToolSchemas.mockResolvedValue(advertising(['read']))
+    const { getAgentToolSchemas } = await import('../agentTools')
+    const reported = [
+      {
+        component: 'model',
+        state: 'ready',
+        reason: 'ok',
+        message: 'fine',
+        checkedAtMs: 1,
+        retryable: false,
+        capabilities: ['model.dispatch'],
+        details: [],
+      },
+    ]
+    await getAgentToolSchemas('/proj', reported as never)
+    expect(advertisedToolSchemas).toHaveBeenCalledWith('/proj', reported)
   })
 
   /// The diff must reach the caller so the UI can render it, but stay out of
@@ -92,8 +129,8 @@ describe('agentTools', () => {
     expect(result.diff).toBeUndefined()
   })
 
-  it('offers bash when the sandbox can enforce', async () => {
-    toolSchemas.mockResolvedValue([schemaFor('read'), schemaFor('bash')])
+  it('offers bash when the environment can run it', async () => {
+    advertisedToolSchemas.mockResolvedValue(advertising(['read', 'bash']))
     const { getAgentToolSchemas } = await import('../agentTools')
     const names = (await getAgentToolSchemas()).map((s) => s.function.name)
     expect(names).toEqual(['read', 'bash'])
@@ -101,22 +138,87 @@ describe('agentTools', () => {
 
   // Offering a tool the executor will always refuse wastes a model turn, so an
   // unconfinable host must not see bash at all.
-  it('withholds bash when no sandbox backend exists', async () => {
-    sandboxStatus.mockResolvedValue({ backend: 'none', enforces: false })
-    toolSchemas.mockResolvedValue([schemaFor('read'), schemaFor('bash')])
+  it('withholds bash when the environment cannot run it', async () => {
+    advertisedToolSchemas.mockResolvedValue(
+      advertising(['read'], [{ name: 'bash' }])
+    )
     const { getAgentToolSchemas } = await import('../agentTools')
     const names = (await getAgentToolSchemas()).map((s) => s.function.name)
     expect(names).toEqual(['read'])
   })
 
-  it('withholds bash when the sandbox probe itself fails', async () => {
-    sandboxStatus.mockRejectedValue(new Error('probe exploded'))
-    toolSchemas.mockResolvedValue([schemaFor('read'), schemaFor('bash')])
-    const { getAgentToolSchemas, sandboxEnforces } = await import(
+  // A shell that cannot start must cost the session its shell tool and nothing
+  // else. This is the whole point of per-component readiness.
+  it('keeps the file tools when the shell is the thing that failed', async () => {
+    advertisedToolSchemas.mockResolvedValue(
+      advertising(
+        ['read', 'ls', 'grep', 'write', 'edit'],
+        [
+          {
+            name: 'bash',
+            component: 'shell',
+            reason: 'shell-runtime-incompatible',
+          },
+        ]
+      )
+    )
+    const { getAgentToolSchemas, omittedAgentTools } = await import(
       '../agentTools'
     )
     const names = (await getAgentToolSchemas()).map((s) => s.function.name)
-    expect(names).toEqual(['read'])
+    expect(names).toEqual(['read', 'ls', 'grep', 'write', 'edit'])
+    // The reason is kept, so a tool that vanished stays distinguishable from a
+    // bug.
+    expect(omittedAgentTools()).toEqual([
+      expect.objectContaining({
+        name: 'bash',
+        component: 'shell',
+        reason: 'shell-runtime-incompatible',
+      }),
+    ])
+  })
+
+  it('keeps the previous list when the readiness call itself fails', async () => {
+    advertisedToolSchemas.mockRejectedValue(new Error('probe exploded'))
+    const { getAgentToolSchemas } = await import('../agentTools')
+    // An empty tool set would silently turn an agent into a chatbot, so a
+    // transport failure withholds nothing beyond what is already withheld.
+    expect(await getAgentToolSchemas()).toEqual([])
+    expect(advertisedToolSchemas).toHaveBeenCalled()
+  })
+
+  // Installing a backend, fixing a permission or attaching a folder has to
+  // reach the next dispatch without restarting the session.
+  it('rebuilds the list after a readiness refresh', async () => {
+    advertisedToolSchemas.mockResolvedValue(
+      advertising(['read'], [{ name: 'bash' }])
+    )
+    const { getAgentToolSchemas, refreshSandboxStatus } = await import(
+      '../agentTools'
+    )
+    expect((await getAgentToolSchemas()).map((s) => s.function.name)).toEqual([
+      'read',
+    ])
+
+    advertisedToolSchemas.mockResolvedValue(advertising(['read', 'bash']))
+    // Without the refresh the cache would keep serving the old answer.
+    expect((await getAgentToolSchemas()).map((s) => s.function.name)).toEqual([
+      'read',
+    ])
+    await refreshSandboxStatus()
+    expect((await getAgentToolSchemas()).map((s) => s.function.name)).toEqual([
+      'read',
+      'bash',
+    ])
+  })
+
+  it('still reports the sandbox backend for the system prompt', async () => {
+    sandboxStatus.mockRejectedValue(new Error('probe exploded'))
+    advertisedToolSchemas.mockResolvedValue(advertising(['read']))
+    const { getAgentToolSchemas, sandboxEnforces } = await import(
+      '../agentTools'
+    )
+    await getAgentToolSchemas()
     expect(sandboxEnforces()).toBe(false)
   })
 
@@ -157,11 +259,13 @@ describe('agentTools', () => {
   })
 
   it('caches the schemas so every turn does not re-cross IPC', async () => {
-    toolSchemas.mockResolvedValue([schemaFor('read')])
+    // The backend probe starts a sandboxed shell, so re-asking per turn would
+    // put a process launch in front of every model reply.
+    advertisedToolSchemas.mockResolvedValue(advertising(['read']))
     const { getAgentToolSchemas } = await import('../agentTools')
     await getAgentToolSchemas()
     await getAgentToolSchemas()
-    expect(toolSchemas).toHaveBeenCalledTimes(1)
+    expect(advertisedToolSchemas).toHaveBeenCalledTimes(1)
   })
 
   /// The thread id scopes the sandbox, so it must reach the plugin on every
