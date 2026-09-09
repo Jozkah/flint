@@ -1,1 +1,6 @@
-yarn lint --fix --quiet
+#!/usr/bin/env sh
+# Find Node and hand over. Everything that decides anything lives in the
+# script, so the checks are testable and run the same on every platform.
+# Git runs hooks from the top of the working tree, which is what makes the
+# relative path correct in a worktree as well as in the main checkout.
+exec node "./scripts/pre-commit.mjs" "$@"
