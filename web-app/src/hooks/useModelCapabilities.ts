@@ -15,6 +15,7 @@ import {
   type ModelCapabilities,
 } from '@/lib/modelCapabilities'
 import { getLocalPropsExtension } from '@/lib/llamacppRouterProps'
+import { serverReportedLimit } from '@/lib/contextLimitRecovery'
 
 type ModelLike = { id?: string | null } & Record<string, unknown>
 
@@ -55,9 +56,20 @@ export function useModelCapabilities(
   // user override, which is the one thing the source field exists to tell
   // apart.
   const { settings, ...metadata } = model
+  // What the server said when it last refused a request from this exact
+  // endpoint. For a local OpenAI-compatible server that reports no metadata at
+  // all, this is frequently the only real answer that exists.
+  const learned = modelId
+    ? serverReportedLimit({
+        provider: (provider?.provider as string) ?? '',
+        baseUrl: (provider?.base_url as string) ?? '',
+        model: modelId,
+      })
+    : null
   return resolveModelCapabilities({
     modelId,
     override: settings ? { settings } : null,
+    serverReported: learned ? { n_ctx: learned.contextTokens } : null,
     providerMetadata: metadata,
     localRuntime: runtime,
     providerDefault: provider,

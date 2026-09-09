@@ -72,6 +72,10 @@ import {
   parseContextOverflow,
 } from '@/utils/error'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import {
+  parseServerContextLimit,
+  rememberServerLimit,
+} from '@/lib/contextLimitRecovery'
 import { Button } from '@/components/ui/button'
 import { IconAlertCircle, IconRefresh, IconLoader2 } from '@tabler/icons-react'
 import { useToolApproval } from '@/hooks/useToolApproval'
@@ -242,6 +246,21 @@ function ThreadDetail() {
   const contextBannerMessage = useMemo(() => {
     const raw = contextLimitError?.message
     if (!raw) return undefined
+    // A refusal is the one moment a server names its own window without being
+    // asked. Recorded against this exact provider/endpoint/model before the
+    // message is turned into prose, so the next turn plans against the real
+    // number instead of the same guess that just failed.
+    if (selectedModel?.id) {
+      const provider = getProviderByName(selectedProvider)
+      rememberServerLimit(
+        {
+          provider: selectedProvider ?? '',
+          baseUrl: (provider?.base_url as string) ?? '',
+          model: selectedModel.id,
+        },
+        parseServerContextLimit(contextLimitError, raw)
+      )
+    }
     const info = parseContextOverflow(raw)
     if (info)
       return t('model-errors:contextOverflowDetail', {

@@ -21,6 +21,13 @@
 
 export type CapabilitySource =
   | 'user-override'
+  /**
+   * A window the server itself named while refusing a request for exceeding
+   * it. Ranked below an explicit user decision and above everything the app
+   * merely read, because it is the only source that was measured against the
+   * request that failed rather than described in advance.
+   */
+  | 'server-response'
   | 'provider-metadata'
   | 'local-runtime'
   | 'provider-default'
@@ -182,6 +189,12 @@ export type CapabilityInputs = {
   modelId?: string | null
   /** What the user set for this model in Jan. A decision, not a discovery. */
   override?: unknown
+  /**
+   * A window learned from a server's own overflow refusal. See
+   * `contextLimitRecovery`; it is bound to provider, endpoint and model there,
+   * so a value that reaches here is already known to be about this model.
+   */
+  serverReported?: unknown
   /** The provider's own description of this model. */
   providerMetadata?: unknown
   /** What the loaded local runtime reports. llama.cpp's effective `n_ctx`. */
@@ -205,6 +218,9 @@ export function resolveModelCapabilities(
 ): ModelCapabilities {
   const ordered: [CapabilitySource, unknown][] = [
     ['user-override', inputs.override],
+    // Above the described sources: a refusal is the one answer that was
+    // measured against a real request rather than advertised in advance.
+    ['server-response', inputs.serverReported],
     ['provider-metadata', inputs.providerMetadata],
     ['local-runtime', inputs.localRuntime],
     ['provider-default', inputs.providerDefault],

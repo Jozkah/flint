@@ -5,6 +5,7 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 import { backendStorage } from '@/lib/backendStorage'
 import { modelSettings } from '@/lib/predefined'
 import { usableContextValue } from '@/lib/modelCapabilities'
+import { forgetAllServerLimits } from '@/lib/contextLimitRecovery'
 import { predefinedProviders } from '@/constants/providers'
 import { isLocalProvider } from '@/lib/utils'
 import { API_KEY_FALLBACKS_SETTING_KEY } from '@/lib/provider-api-keys'
@@ -248,6 +249,10 @@ export const useModelProvider = create<ModelProviderState>()(
           'api_key' in data ||
           'api_key_fallbacks' in data
         ) {
+          // A context window learned from the old endpoint's own refusal would
+          // be enforced silently against the new one. Forgetting returns it to
+          // unknown, which still dispatches; a stale limit does not.
+          forgetAllServerLimits()
           const previous = get().providers.find(
             (p) => p.provider === providerName
           )
