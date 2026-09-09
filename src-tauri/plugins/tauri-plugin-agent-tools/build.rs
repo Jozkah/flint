@@ -1,3 +1,11 @@
+// The commands the plugin exposes, and the source the permission generator and
+// the `permission_tests` in `lib.rs` both read. Those tests parse this array as
+// text, so entries stay one plain string literal per line: a comment inside the
+// brackets is picked up as a command name and fails the check.
+//
+// `memory_*` covers the flat `<name>.md` notes; `memory_record*` covers the
+// canonical records behind Settings > Memory. Two stores answering different
+// questions, deliberately not sharing an entry point.
 const COMMANDS: &[&str] = &[
     "workspace_path",
     "thread_workspace_path",
@@ -18,6 +26,19 @@ const COMMANDS: &[&str] = &[
     "memory_read",
     "memory_write",
     "memory_delete",
+    "memory_records_list",
+    "memory_record_get",
+    "memory_record_edit",
+    "memory_record_propose",
+    "memory_record_commit",
+    "memory_record_forget",
+    "memory_record_restore",
+    "memory_record_pin",
+    "memory_record_set_expiration",
+    "memory_record_move_scope",
+    "memory_storage_summary",
+    "memory_settings_get",
+    "memory_settings_update",
     "tool_schemas",
     "sandbox_status",
     "execute_tool",

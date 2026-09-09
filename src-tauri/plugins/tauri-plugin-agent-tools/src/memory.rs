@@ -13,12 +13,15 @@
 //! Error strings carry the `ERROR:` prefix the tool protocol expects; the
 //! command layer strips it for display.
 
+#[cfg(feature = "tauri")]
+pub mod commands;
 pub mod create;
 pub mod identity;
 pub mod migrate;
 pub mod record;
 pub mod retrieve;
 pub mod service;
+pub mod settings;
 pub mod store;
 
 use std::path::{Path, PathBuf};

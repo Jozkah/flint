@@ -20,6 +20,22 @@ permissions = [
     "allow-memory-read",
     "allow-memory-write",
     "allow-memory-delete",
+    # Canonical memory records: the management surface behind Settings > Memory.
+    # Reading is bounded and scope-checked in the backend, and every write goes
+    # through the same validation the agent's own path does.
+    "allow-memory-records-list",
+    "allow-memory-record-get",
+    "allow-memory-record-edit",
+    "allow-memory-record-propose",
+    "allow-memory-record-commit",
+    "allow-memory-record-forget",
+    "allow-memory-record-restore",
+    "allow-memory-record-pin",
+    "allow-memory-record-set-expiration",
+    "allow-memory-record-move-scope",
+    "allow-memory-storage-summary",
+    "allow-memory-settings-get",
+    "allow-memory-settings-update",
     "allow-tool-schemas",
     "allow-sandbox-status",
     "allow-execute-tool",
