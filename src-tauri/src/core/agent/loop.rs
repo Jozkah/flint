@@ -1645,12 +1645,19 @@ fn build_run_system_prompt(
             // real `/tmp`, and advertising a scratch nothing binds would send
             // the model to a directory only the filesystem tools can see.
             let scratch = sandbox.then(|| scratch_root_for(session_id, root));
-            crate::core::agent::context::build_system_prompt(
+            // The session goes in, so session-scoped memory can be retrieved
+            // and so project memory is matched against this run's project
+            // rather than every project's. A run with no session gets user and
+            // project memory only -- never another session's.
+            crate::core::agent::context::build_system_prompt_for(
                 base,
                 root,
                 scratch.as_deref(),
                 subagents_enabled,
+                session_id,
+                false,
             )
+            .0
         }
         None => base.map(str::to_string),
     }

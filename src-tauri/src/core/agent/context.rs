@@ -254,6 +254,84 @@ pub(crate) fn build_system_prompt(
     scratch: Option<&Path>,
     subagents_enabled: bool,
 ) -> Option<String> {
+    build_system_prompt_for(base, project_root, scratch, subagents_enabled, None, false).0
+}
+
+/// Roughly how much of the prompt remembered facts may occupy.
+///
+/// Characters, converted from a token budget by the usual
+/// four-characters-to-a-token rule of thumb, because this crate has no
+/// tokeniser. A ceiling rather than a target: what matters is that memory can
+/// never crowd out the conversation, and that when the cap bites it drops the
+/// least specific record rather than whichever happened to be last.
+const MEMORY_BUDGET_CHARS: usize = 4 * 512;
+
+/// The permanent store root, or `None` when the data folder cannot be resolved.
+///
+/// `None` costs user and session memory for this turn. It never falls back to a
+/// guessed directory, which could read another profile's records.
+fn permanent_store_root() -> Option<std::path::PathBuf> {
+    let data = crate::core::app::commands::resolve_jan_data_folder();
+    (!data.as_os_str().is_empty()).then(|| workspace::permanent_store(&data))
+}
+
+/// Remembered facts for this session and project: filtered, ranked and capped.
+///
+/// Returns the block *and* the selection, so a caller can report the exact
+/// memory ids the model received rather than re-deriving them from the rendered
+/// text, which could disagree with it.
+///
+/// Session and user records live in the permanent store; project records live
+/// with the project, so moving a checkout takes its memories along. A project
+/// that cannot be identified retrieves nothing rather than everything.
+pub(crate) fn load_memories(
+    project_root: &Path,
+    session_id: Option<&str>,
+    temporary: bool,
+) -> (Option<String>, memory::retrieve::Selection) {
+    use memory::record::Scope;
+
+    let project_id = memory::identity::project_id(project_root);
+    let project_store = workspace::project_store(project_root);
+
+    let mut records = memory::store::load(&project_store, Scope::Project).records;
+    if let Some(permanent) = permanent_store_root() {
+        records.extend(memory::store::load(&permanent, Scope::User).records);
+        records.extend(memory::store::load(&permanent, Scope::Session).records);
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    let selection = memory::retrieve::select(
+        &records,
+        &memory::retrieve::RetrievalContext {
+            session_id,
+            project_id: project_id.as_deref(),
+            now,
+            budget_chars: MEMORY_BUDGET_CHARS,
+            temporary,
+        },
+    );
+    (selection.render(), selection)
+}
+
+/// [`build_system_prompt`] with the session it is being built for.
+///
+/// Split out rather than widening the old signature, so every existing caller
+/// keeps compiling and keeps its behaviour. This is the path production
+/// dispatch takes, and it hands back the memory selection alongside the prompt
+/// so the injected ids can be recorded against the invocation.
+pub(crate) fn build_system_prompt_for(
+    base: Option<&str>,
+    project_root: &Path,
+    scratch: Option<&Path>,
+    subagents_enabled: bool,
+    session_id: Option<&str>,
+    temporary: bool,
+) -> (Option<String>, memory::retrieve::Selection) {
     let mut blocks: Vec<String> = Vec::new();
     match base {
         Some(b) => blocks.push(b.to_string()),
@@ -279,7 +357,13 @@ pub(crate) fn build_system_prompt(
     if let Some(memory) = load_memory_catalog(project_root) {
         blocks.push(memory);
     }
-    Some(blocks.join("\n\n"))
+    // Remembered facts last: nothing already in the prompt is displaced by
+    // them, and the block sits closest to the conversation it describes.
+    let (remembered, selection) = load_memories(project_root, session_id, temporary);
+    if let Some(remembered) = remembered {
+        blocks.push(remembered);
+    }
+    (Some(blocks.join("\n\n")), selection)
 }
 
 #[cfg(test)]
@@ -293,6 +377,52 @@ mod tests {
     fn scratch_project(tag: &str) -> PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
         std::env::temp_dir().join(format!("jan_ctx_test_{tag}_{n}"))
+    }
+
+    /// Save a canonical memory record the way production reads it back.
+    fn save_memory(
+        store_root: &Path,
+        id: &str,
+        content: &str,
+        scope: memory::record::Scope,
+        project_id: Option<&str>,
+        session_id: Option<&str>,
+    ) {
+        use memory::record::{Creator, MemoryId, MemoryRecord, Origin};
+        let mut record = MemoryRecord::new(
+            MemoryId::new(id),
+            content,
+            scope,
+            Creator::User,
+            Origin::Explicit,
+            1_000,
+        );
+        record.project_id = project_id.map(str::to_string);
+        record.session_id = session_id.map(str::to_string);
+        memory::store::upsert(store_root, &record).expect("save memory");
+    }
+
+    /// Point the permanent store (user and session memory) at a scratch tree,
+    /// so a test never reads or writes the developer's real Jan data folder.
+    fn with_temp_data_folder<T>(f: impl FnOnce(&Path) -> T) -> T {
+        use std::sync::Mutex;
+        static LOCK: Mutex<()> = Mutex::new(());
+        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        let dir = scratch_project("data");
+        std::fs::create_dir_all(&dir).unwrap();
+        let previous = std::env::var_os("JAN_DATA_FOLDER");
+        std::env::set_var("JAN_DATA_FOLDER", &dir);
+
+        let permanent = workspace::permanent_store(&dir);
+        let out = f(&permanent);
+
+        match previous {
+            Some(p) => std::env::set_var("JAN_DATA_FOLDER", p),
+            None => std::env::remove_var("JAN_DATA_FOLDER"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        out
     }
 
     fn write_skill(root: &Path, name: &str, body: &str) {
@@ -404,6 +534,163 @@ mod tests {
         );
         assert!(!block.contains("user body"), "body leaked: {block}");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The property persistent memory exists for: something remembered in one
+    /// conversation is present in the prompt a *different* conversation sends.
+    ///
+    /// Asserted on the serialized prompt rather than on the store, because the
+    /// store having a record proves nothing about what the model receives.
+    #[test]
+    fn a_memory_saved_across_chats_reaches_a_different_chat() {
+        with_temp_data_folder(|permanent| {
+            let root = scratch_project("cross-chat");
+            std::fs::create_dir_all(&root).unwrap();
+
+            // Chat A remembers something "across chats".
+            save_memory(
+                permanent,
+                "m-user",
+                "The user prefers yarn over npm",
+                memory::record::Scope::User,
+                None,
+                None,
+            );
+
+            // Chat B is a different session and has never seen chat A.
+            let (prompt, selection) =
+                build_system_prompt_for(Some("You are Jan."), &root, None, false, Some("chat-b"), false);
+            let prompt = prompt.expect("prompt");
+
+            assert!(
+                prompt.contains("The user prefers yarn over npm"),
+                "the memory never reached the second chat's prompt"
+            );
+            assert!(prompt.contains("[m-user]"), "the block must name the memory id");
+            assert_eq!(
+                selection.injected_ids(),
+                vec![&memory::record::MemoryId::new("m-user")],
+                "the selection must report exactly what was injected"
+            );
+            let _ = std::fs::remove_dir_all(&root);
+        });
+    }
+
+    /// Session memory is the opposite promise: it must not travel.
+    #[test]
+    fn session_memory_does_not_reach_another_chat() {
+        with_temp_data_folder(|permanent| {
+            let root = scratch_project("session-iso");
+            std::fs::create_dir_all(&root).unwrap();
+
+            save_memory(
+                permanent,
+                "m-session",
+                "Only chat A should know this",
+                memory::record::Scope::Session,
+                None,
+                Some("chat-a"),
+            );
+
+            let (in_a, _) =
+                build_system_prompt_for(None, &root, None, false, Some("chat-a"), false);
+            assert!(in_a.unwrap().contains("Only chat A should know this"));
+
+            let (in_b, selection) =
+                build_system_prompt_for(None, &root, None, false, Some("chat-b"), false);
+            assert!(
+                !in_b.unwrap().contains("Only chat A should know this"),
+                "session memory leaked into another chat"
+            );
+            assert!(selection.injected.is_empty());
+            let _ = std::fs::remove_dir_all(&root);
+        });
+    }
+
+    /// Project memory reaches another chat in the same project, and no other
+    /// project -- checked through the real prompt, with real project identity.
+    #[test]
+    fn project_memory_is_shared_within_a_project_and_nowhere_else() {
+        with_temp_data_folder(|_| {
+            let mine = scratch_project("proj-mine");
+            let other = scratch_project("proj-other");
+            std::fs::create_dir_all(&mine).unwrap();
+            std::fs::create_dir_all(&other).unwrap();
+
+            let id = memory::identity::project_id(&mine).expect("project id");
+            save_memory(
+                &workspace::project_store(&mine),
+                "m-proj",
+                "This project builds with make",
+                memory::record::Scope::Project,
+                Some(&id),
+                None,
+            );
+
+            let (here, _) =
+                build_system_prompt_for(None, &mine, None, false, Some("chat-b"), false);
+            assert!(
+                here.unwrap().contains("This project builds with make"),
+                "another chat in the same project did not get project memory"
+            );
+
+            let (elsewhere, _) =
+                build_system_prompt_for(None, &other, None, false, Some("chat-b"), false);
+            assert!(
+                !elsewhere.unwrap().contains("This project builds with make"),
+                "project memory leaked into a different project"
+            );
+            let _ = std::fs::remove_dir_all(&mine);
+            let _ = std::fs::remove_dir_all(&other);
+        });
+    }
+
+    /// A temporary chat is memory-free in the backend, not merely in the UI.
+    #[test]
+    fn a_temporary_chat_gets_no_memory_in_its_prompt() {
+        with_temp_data_folder(|permanent| {
+            let root = scratch_project("temp-chat");
+            std::fs::create_dir_all(&root).unwrap();
+            save_memory(
+                permanent,
+                "m-user",
+                "Remembered across chats",
+                memory::record::Scope::User,
+                None,
+                None,
+            );
+
+            let (prompt, selection) =
+                build_system_prompt_for(None, &root, None, false, Some("chat-t"), true);
+            assert!(
+                !prompt.unwrap().contains("Remembered across chats"),
+                "a temporary chat received memory"
+            );
+            assert!(selection.injected.is_empty());
+            let _ = std::fs::remove_dir_all(&root);
+        });
+    }
+
+    /// Memory is context, not instruction. The prompt has to say so, or a
+    /// remembered line reads as an order that outranks the user's request.
+    #[test]
+    fn the_memory_block_does_not_present_itself_as_authority() {
+        with_temp_data_folder(|permanent| {
+            let root = scratch_project("authority");
+            std::fs::create_dir_all(&root).unwrap();
+            save_memory(
+                permanent,
+                "m-user",
+                "Prefer concise answers",
+                memory::record::Scope::User,
+                None,
+                None,
+            );
+            let (prompt, _) = build_system_prompt_for(None, &root, None, false, None, false);
+            let prompt = prompt.unwrap();
+            assert!(prompt.contains("not instructions that override the current request"));
+            let _ = std::fs::remove_dir_all(&root);
+        });
     }
 
     #[test]
