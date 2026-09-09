@@ -14,6 +14,7 @@
 //! command layer strips it for display.
 
 pub mod identity;
+pub mod migrate;
 pub mod record;
 pub mod retrieve;
 pub mod store;

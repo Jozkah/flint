@@ -294,6 +294,22 @@ pub(crate) fn load_memories(
     let project_id = memory::identity::project_id(project_root);
     let project_store = workspace::project_store(project_root);
 
+    // Bring the legacy `<name>.md` notes across, once. Idempotent and keyed by
+    // content, so this is a no-op on every run after the first and does not
+    // re-import a note that was renamed in between. The legacy files are never
+    // touched, so nothing is lost if this fails -- and if it does fail, that is
+    // logged and retrieval continues with whatever is already canonical, rather
+    // than costing the user their memories over a failed copy.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    match memory::migrate::migrate_project_notes(&project_store, project_id.as_deref(), now) {
+        Ok(report) if report.changed_anything() => log::info!("{}", report.summary()),
+        Ok(_) => {}
+        Err(e) => log::warn!("memory migration skipped: {e}"),
+    }
+
     let mut records = memory::store::load(&project_store, Scope::Project).records;
     if let Some(permanent) = permanent_store_root() {
         records.extend(memory::store::load(&permanent, Scope::User).records);
@@ -667,6 +683,54 @@ mod tests {
                 "a temporary chat received memory"
             );
             assert!(selection.injected.is_empty());
+            let _ = std::fs::remove_dir_all(&root);
+        });
+    }
+
+    /// The legacy notes AH-080 already wrote must keep working after the
+    /// canonical store arrives -- through the real prompt, not a unit call.
+    #[test]
+    fn a_legacy_note_is_migrated_and_reaches_the_prompt() {
+        with_temp_data_folder(|_| {
+            let root = scratch_project("legacy");
+            let dir = root.join(".jan").join("agent").join("memory");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("conventions.md"), "# Conventions
+We build with make.")
+                .unwrap();
+
+            let (prompt, selection) =
+                build_system_prompt_for(None, &root, None, false, Some("chat-a"), false);
+            let prompt = prompt.unwrap();
+            assert!(
+                prompt.contains("We build with make."),
+                "a legacy note did not reach the prompt after migration"
+            );
+            assert_eq!(selection.injected.len(), 1);
+
+            // The legacy file is still there: migration copies, never moves.
+            assert!(dir.join("conventions.md").exists());
+            let _ = std::fs::remove_dir_all(&root);
+        });
+    }
+
+    /// Running the prompt twice must not import the note twice.
+    #[test]
+    fn migration_through_the_prompt_is_idempotent() {
+        with_temp_data_folder(|_| {
+            let root = scratch_project("legacy-twice");
+            let dir = root.join(".jan").join("agent").join("memory");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("a.md"), "one fact").unwrap();
+
+            let _ = build_system_prompt_for(None, &root, None, false, Some("s"), false);
+            let (_, second) =
+                build_system_prompt_for(None, &root, None, false, Some("s"), false);
+            assert_eq!(
+                second.injected.len(),
+                1,
+                "the note was imported more than once"
+            );
             let _ = std::fs::remove_dir_all(&root);
         });
     }
