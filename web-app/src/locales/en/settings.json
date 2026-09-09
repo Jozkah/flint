@@ -396,5 +396,13 @@
     "mediumModelDesc": "Sonnet",
     "smallModel": "Small Model",
     "smallModelDesc": "Haiku"
+  },
+  "memory": {
+    "automaticallySave": "Automatically save local memories",
+    "automaticallySaveDesc": "When this is off, anything Jan infers is offered for your approval before it is kept. Explicit saves always work. Memories never leave this machine.",
+    "stored": "Stored on this machine",
+    "storedDesc": "How many memories are kept in each scope, and how much space they use.",
+    "remembered": "Remembered",
+    "rememberedDesc": "Search, edit, pin and forget what Jan remembers for this chat, this project, or across chats."
   }
 }

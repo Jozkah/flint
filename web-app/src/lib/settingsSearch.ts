@@ -111,6 +111,20 @@ export const SETTINGS_PAGES = [
     keywords: ['internet', 'browse', 'search engine'],
   },
   {
+    id: 'memory',
+    route: route.settings.memory,
+    titleKey: 'common:memory',
+    group: 'core',
+    keywords: [
+      'remember',
+      'forget',
+      'recall',
+      'across chats',
+      'project memory',
+      'personalisation',
+    ],
+  },
+  {
     id: 'agent-tools',
     route: route.settings.agent_tools,
     titleKey: 'common:agent_tools',
@@ -175,6 +189,12 @@ export type SettingsPageId = (typeof SETTINGS_PAGES)[number]['id']
  */
 export const WEB_SEARCH_PROVIDER_CONFIG_ANCHOR =
   'settings-web-search-provider-config'
+
+/** Anchors on the Memory page, so a search result can scroll to the control it
+ * names rather than dropping the reader at the top of the page. */
+export const MEMORY_AUTOSAVE_ANCHOR = 'settings-memory-automatically-save'
+export const MEMORY_STORAGE_ANCHOR = 'settings-memory-stored'
+export const MEMORY_LIST_ANCHOR = 'settings-memory-remembered'
 
 const sectionOf = (pageId: string): string =>
   SETTINGS_PAGES.find((p) => p.id === pageId)?.titleKey ?? 'common:settings'
@@ -282,6 +302,22 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     anchor: WEB_SEARCH_PROVIDER_CONFIG_ANCHOR,
     descriptionKey: 'settings:webSearch.endpointSearchDesc',
     keywords: ['url', 'searxng'],
+  }),
+  // Memory
+  item('memory', 'automatically-save', 'settings:memory.automaticallySave', {
+    anchor: MEMORY_AUTOSAVE_ANCHOR,
+    descriptionKey: 'settings:memory.automaticallySaveDesc',
+    keywords: ['remember automatically', 'inferred', 'approval', 'consent'],
+  }),
+  item('memory', 'stored', 'settings:memory.stored', {
+    anchor: MEMORY_STORAGE_ANCHOR,
+    descriptionKey: 'settings:memory.storedDesc',
+    keywords: ['storage', 'size', 'how many'],
+  }),
+  item('memory', 'remembered', 'settings:memory.remembered', {
+    anchor: MEMORY_LIST_ANCHOR,
+    descriptionKey: 'settings:memory.rememberedDesc',
+    keywords: ['edit memory', 'forget', 'pin', 'across chats', 'this project'],
   }),
   // Agent tools
   item('agent-tools', 'enable', 'settings:agentTools.enable', {
