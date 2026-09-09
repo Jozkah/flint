@@ -13,6 +13,7 @@
 //! Error strings carry the `ERROR:` prefix the tool protocol expects; the
 //! command layer strips it for display.
 
+pub mod create;
 pub mod identity;
 pub mod migrate;
 pub mod record;
