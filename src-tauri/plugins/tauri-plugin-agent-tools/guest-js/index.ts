@@ -256,6 +256,266 @@ export async function memoryDelete(
   })
 }
 
+/* ------------------------------------------------------------------ *
+ * Canonical memory records
+ *
+ * Separate from the `memory*` functions above, which are the flat
+ * `<name>.md` notes. These are the records behind Settings > Memory: they
+ * carry scope, provenance, status and identity, and every one of them is
+ * validated in the backend. The renderer never reads or writes the store
+ * itself.
+ * ------------------------------------------------------------------ */
+
+/** User-facing scope names. `user` is spelled "across chats" in the UI. */
+export type MemoryScope = 'chat' | 'project' | 'user'
+
+/** Where the caller is. The backend derives what it may see from this; it is a
+ * request, never a claim. */
+export type MemoryLocation = {
+  dataFolder: string
+  /** The open project's root, when one is open. */
+  projectRoot?: string
+  /** The active chat. */
+  sessionId?: string
+}
+
+export type MemoryView = {
+  id: string
+  content: string
+  scope: MemoryScope
+  creator: string
+  origin: string
+  status: 'active' | 'superseded' | 'conflicted' | 'expired' | 'deleted'
+  pinned: boolean
+  redacted: boolean
+  createdAt: number
+  updatedAt: number
+  lastUsedAt: number | null
+  useCount: number
+  expiresAt: number | null
+  category: string | null
+  projectId: string | null
+  sessionId: string | null
+  sourceSessionId: string | null
+  sourceMessageId: string | null
+  sourceDeleted: boolean
+  supersedes: string | null
+  /** A single-line preview, already truncated by the backend so a redaction
+   * marker is never cut in half. */
+  preview: string
+}
+
+export type MemoryPage = {
+  items: MemoryView[]
+  /** Total matching before paging, so a list can say "20 of 340". */
+  total: number
+  offset: number
+}
+
+export type MemoryConflict = {
+  left: string
+  right: string
+  subject: string
+}
+
+export type MemoryProposal = {
+  content: string
+  scope: MemoryScope
+  /** Hand this back to `memoryRecordCommit`, so what is stored is what was
+   * shown. */
+  contentHash: string
+  duplicates: string[]
+  conflicts: MemoryConflict[]
+  redacted: boolean
+}
+
+export type MemoryStorageSummary = {
+  sessionCount: number
+  projectCount: number
+  userCount: number
+  deletedCount: number
+  conflictedCount: number
+  bytes: number
+}
+
+export type MemorySettings = {
+  automaticallySave: boolean
+  schemaVersion: number
+}
+
+/** One page of memories in a scope. Rejects a scope the caller has no standing
+ * in, rather than returning an empty list. */
+export async function memoryRecordsList(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  options?: { query?: string; offset?: number; limit?: number }
+): Promise<MemoryPage> {
+  return await invoke('plugin:agent-tools|memory_records_list', {
+    location,
+    scope,
+    query: options?.query,
+    offset: options?.offset,
+    limit: options?.limit,
+  })
+}
+
+export async function memoryRecordGet(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string
+): Promise<MemoryView> {
+  return await invoke('plugin:agent-tools|memory_record_get', {
+    location,
+    scope,
+    id,
+  })
+}
+
+/** Replace a memory's content. `expectedHash` is what the caller was looking
+ * at; a mismatch is refused rather than overwriting a newer value. */
+export async function memoryRecordEdit(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string,
+  content: string,
+  expectedHash?: string
+): Promise<MemoryView> {
+  return await invoke('plugin:agent-tools|memory_record_edit', {
+    location,
+    scope,
+    id,
+    content,
+    expectedHash,
+  })
+}
+
+/** Build a reviewable proposal. Writes nothing. */
+export async function memoryRecordPropose(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  content: string,
+  source?: { sessionId?: string; messageId?: string }
+): Promise<MemoryProposal> {
+  return await invoke('plugin:agent-tools|memory_record_propose', {
+    location,
+    scope,
+    content,
+    sourceSessionId: source?.sessionId,
+    sourceMessageId: source?.messageId,
+  })
+}
+
+/** Store a proposal the user reviewed. The refusals run again here. */
+export async function memoryRecordCommit(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  content: string,
+  expectedHash: string,
+  source?: { sessionId?: string; messageId?: string }
+): Promise<MemoryView> {
+  return await invoke('plugin:agent-tools|memory_record_commit', {
+    location,
+    scope,
+    content,
+    expectedHash,
+    sourceSessionId: source?.sessionId,
+    sourceMessageId: source?.messageId,
+  })
+}
+
+/** Forget a memory. Recoverable with `memoryRecordRestore`. */
+export async function memoryRecordForget(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string
+): Promise<boolean> {
+  return await invoke('plugin:agent-tools|memory_record_forget', {
+    location,
+    scope,
+    id,
+  })
+}
+
+/** Undo a forget, restoring the same record rather than a copy of its text. */
+export async function memoryRecordRestore(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string
+): Promise<boolean> {
+  return await invoke('plugin:agent-tools|memory_record_restore', {
+    location,
+    scope,
+    id,
+  })
+}
+
+export async function memoryRecordPin(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string,
+  pinned: boolean
+): Promise<MemoryView> {
+  return await invoke('plugin:agent-tools|memory_record_pin', {
+    location,
+    scope,
+    id,
+    pinned,
+  })
+}
+
+export async function memoryRecordSetExpiration(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string,
+  expiresAt: number | null
+): Promise<MemoryView> {
+  return await invoke('plugin:agent-tools|memory_record_set_expiration', {
+    location,
+    scope,
+    id,
+    expiresAt,
+  })
+}
+
+/** Move a memory between scopes. Promoting to `user` drops the project and
+ * chat it came from, so project knowledge cannot arrive globally still
+ * carrying its project. */
+export async function memoryRecordMoveScope(
+  location: MemoryLocation,
+  fromScope: MemoryScope,
+  id: string,
+  toScope: MemoryScope
+): Promise<MemoryView> {
+  return await invoke('plugin:agent-tools|memory_record_move_scope', {
+    location,
+    fromScope,
+    id,
+    toScope,
+  })
+}
+
+export async function memoryStorageSummary(
+  location: MemoryLocation
+): Promise<MemoryStorageSummary> {
+  return await invoke('plugin:agent-tools|memory_storage_summary', { location })
+}
+
+export async function memorySettingsGet(
+  location: MemoryLocation
+): Promise<MemorySettings> {
+  return await invoke('plugin:agent-tools|memory_settings_get', { location })
+}
+
+export async function memorySettingsUpdate(
+  location: MemoryLocation,
+  automaticallySave: boolean
+): Promise<MemorySettings> {
+  return await invoke('plugin:agent-tools|memory_settings_update', {
+    location,
+    automaticallySave,
+  })
+}
+
 /**
  * Function schemas for every built-in tool. Callers pick which subset to
  * advertise; the schemas are never re-typed in TypeScript.

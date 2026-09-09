@@ -121,6 +121,15 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
         || name.contains("access_key")
     {
         SecretKind::ApiKey
+    } else if name.contains("authorization")
+        || name.ends_with("auth")
+        || name.contains("proxy-authorization")
+    {
+        // `Authorization: Bearer …` and `Authorization: Basic …` are the most
+        // common way a credential appears in tool output and in anything
+        // pasted from a terminal, and the header's name says nothing about
+        // tokens or keys -- so the rules above walked straight past it.
+        SecretKind::Token
     } else {
         return None;
     };

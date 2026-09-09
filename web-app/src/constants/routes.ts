@@ -20,6 +20,7 @@ export const route = {
     https_proxy: '/settings/https-proxy',
     web_search: '/settings/web-search',
     agent_tools: '/settings/agent-tools',
+    memory: '/settings/memory',
     hardware: '/settings/hardware',
     assistant: '/settings/assistant',
     claude_code: '/settings/claude-code',

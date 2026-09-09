@@ -427,6 +427,162 @@
           "markdownDescription": "Denies the memory_read command without any pre-configured scope."
         },
         {
+          "description": "Enables the memory_record_commit command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-record-commit",
+          "markdownDescription": "Enables the memory_record_commit command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_record_commit command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-record-commit",
+          "markdownDescription": "Denies the memory_record_commit command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_record_edit command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-record-edit",
+          "markdownDescription": "Enables the memory_record_edit command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_record_edit command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-record-edit",
+          "markdownDescription": "Denies the memory_record_edit command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_record_forget command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-record-forget",
+          "markdownDescription": "Enables the memory_record_forget command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_record_forget command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-record-forget",
+          "markdownDescription": "Denies the memory_record_forget command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_record_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-record-get",
+          "markdownDescription": "Enables the memory_record_get command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_record_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-record-get",
+          "markdownDescription": "Denies the memory_record_get command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_record_move_scope command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-record-move-scope",
+          "markdownDescription": "Enables the memory_record_move_scope command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_record_move_scope command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-record-move-scope",
+          "markdownDescription": "Denies the memory_record_move_scope command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_record_pin command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-record-pin",
+          "markdownDescription": "Enables the memory_record_pin command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_record_pin command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-record-pin",
+          "markdownDescription": "Denies the memory_record_pin command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_record_propose command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-record-propose",
+          "markdownDescription": "Enables the memory_record_propose command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_record_propose command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-record-propose",
+          "markdownDescription": "Denies the memory_record_propose command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_record_restore command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-record-restore",
+          "markdownDescription": "Enables the memory_record_restore command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_record_restore command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-record-restore",
+          "markdownDescription": "Denies the memory_record_restore command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_record_set_expiration command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-record-set-expiration",
+          "markdownDescription": "Enables the memory_record_set_expiration command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_record_set_expiration command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-record-set-expiration",
+          "markdownDescription": "Denies the memory_record_set_expiration command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_records_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-records-list",
+          "markdownDescription": "Enables the memory_records_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_records_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-records-list",
+          "markdownDescription": "Denies the memory_records_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_settings_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-settings-get",
+          "markdownDescription": "Enables the memory_settings_get command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_settings_get command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-settings-get",
+          "markdownDescription": "Denies the memory_settings_get command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_settings_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-settings-update",
+          "markdownDescription": "Enables the memory_settings_update command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_settings_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-settings-update",
+          "markdownDescription": "Denies the memory_settings_update command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_storage_summary command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-storage-summary",
+          "markdownDescription": "Enables the memory_storage_summary command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_storage_summary command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-storage-summary",
+          "markdownDescription": "Denies the memory_storage_summary command without any pre-configured scope."
+        },
+        {
           "description": "Enables the memory_write command without any pre-configured scope.",
           "type": "string",
           "const": "allow-memory-write",
@@ -631,10 +787,10 @@
           "markdownDescription": "Denies the workspace_path command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`",
+          "description": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-memory-records-list`\n- `allow-memory-record-get`\n- `allow-memory-record-edit`\n- `allow-memory-record-propose`\n- `allow-memory-record-commit`\n- `allow-memory-record-forget`\n- `allow-memory-record-restore`\n- `allow-memory-record-pin`\n- `allow-memory-record-set-expiration`\n- `allow-memory-record-move-scope`\n- `allow-memory-storage-summary`\n- `allow-memory-settings-get`\n- `allow-memory-settings-update`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`"
+          "markdownDescription": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-memory-records-list`\n- `allow-memory-record-get`\n- `allow-memory-record-edit`\n- `allow-memory-record-propose`\n- `allow-memory-record-commit`\n- `allow-memory-record-forget`\n- `allow-memory-record-restore`\n- `allow-memory-record-pin`\n- `allow-memory-record-set-expiration`\n- `allow-memory-record-move-scope`\n- `allow-memory-storage-summary`\n- `allow-memory-settings-get`\n- `allow-memory-settings-update`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`"
         }
       ]
     }
