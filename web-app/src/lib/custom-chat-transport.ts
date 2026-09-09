@@ -1541,9 +1541,27 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const uiStream = result.toUIMessageStream({
       messageMetadata: ({ part }) => {
+        // Start the clock at the first sign of output, whatever shape it
+        // arrives in.
+        //
+        // This used to wait for `text-start` or `reasoning-start`. A provider
+        // whose stream does not announce those -- an OpenAI-compatible server
+        // that goes straight to deltas, for one -- left `streamStartTime`
+        // unset, so `durationMs` was 0, so `tokenSpeed` was 0. The indicator
+        // then showed the token count and no speed at all, which reads as the
+        // speed having disappeared. The token count was right there in the
+        // metadata the whole time, which is what made it look like a display
+        // bug rather than a measurement one.
+        //
+        // The starts are still preferred and still checked first, so nothing
+        // changes for providers that send them; the deltas are only a floor for
+        // providers that do not.
         if (
           !streamStartTime &&
-          (part.type === 'text-start' || part.type === 'reasoning-start')
+          (part.type === 'text-start' ||
+            part.type === 'reasoning-start' ||
+            part.type === 'text-delta' ||
+            part.type === 'reasoning-delta')
         ) {
           streamStartTime = Date.now()
         }

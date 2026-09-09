@@ -287,7 +287,14 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
 #[cfg(not(feature = "cli"))]
 pub fn build_app() -> tauri::App {
     let mut builder = tauri::Builder::default();
-    #[cfg(desktop)]
+    // Not under `cowork-smoke`. The plugin's namespace is the bundle
+    // identifier, so a harness build joined the same one as the user's own Jan:
+    // starting the harness while Jan was running made the harness the *second*
+    // instance, and it exited immediately, forwarding its argv to Jan. The
+    // harness then reported success having run no scenarios at all, because its
+    // driver thread never got an app to drive. A test driver has no business
+    // claiming the application's single-instance identity.
+    #[cfg(all(desktop, not(feature = "cowork-smoke")))]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
           println!("a new app instance was opened with {argv:?} and the deep link event was already triggered");

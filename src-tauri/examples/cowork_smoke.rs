@@ -242,39 +242,39 @@ impl Ctx {
             .map_err(|e| Failure(format!("eval dispatch failed: {e}")))
     }
 
-    /// Clear the WebView's own persisted state and reload.
+    /// Wait for the app to mount, and prove it started with no inherited state.
     ///
-    /// `CI=e2e` redirects the *app data folder*, but the Cowork session store
-    /// lives in the WebView's `localStorage`, which is keyed by the bundle
-    /// identifier and survives between runs. Without this, a run inherits the
-    /// previous run's attached folder -- a path in a temp workspace that has
-    /// since been deleted -- and every file scenario fails against a folder
-    /// that no longer exists.
+    /// This used to clear `localStorage` and reload the page, because the Cowork
+    /// session store is keyed by the bundle identifier and outlived the run --
+    /// so a run inherited the previous one's attached folder, a path in a temp
+    /// workspace since deleted. Clearing and reloading is the wrong shape of
+    /// fix: it depends on the page surviving a reload mid-teardown, and it hung
+    /// for ninety seconds waiting for a React root that never remounted.
+    ///
+    /// The run now gets its own WebView2 user-data folder (see `main`), so the
+    /// profile is empty because it is new. There is nothing to clear and no
+    /// reload to survive. What is left is worth asserting rather than assuming:
+    /// if the isolation ever breaks, this fails immediately and says so,
+    /// instead of a later scenario failing against somebody else's session.
     fn reset_persisted_state(&self) -> ScenarioResult {
         self.wait_until(
             "React root to mount",
             "return !!document.querySelector('#root') && document.querySelector('#root').children.length > 0;",
             Duration::from_secs(90),
         )?;
-        self.eval(
-            "try { localStorage.clear() } catch (e) {}
-             try { sessionStorage.clear() } catch (e) {}
-             if (window.indexedDB && indexedDB.databases) {
-               try {
-                 for (const db of await indexedDB.databases()) {
-                   if (db.name) indexedDB.deleteDatabase(db.name);
-                 }
-               } catch (e) {}
-             }
-             return true;",
+        let leftovers = self.eval(
+            "const keys = [];
+             try { for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i)); }
+             catch (e) { return 'unreadable: ' + e; }
+             return keys.filter(k => k && k.startsWith('cowork')).join(',');",
         )?;
-        self.eval_detached("window.location.reload();")?;
-        std::thread::sleep(Duration::from_secs(2));
-        self.wait_until(
-            "React root to remount after the reset",
-            "return !!document.querySelector('#root') && document.querySelector('#root').children.length > 0;",
-            Duration::from_secs(90),
-        )
+        let leftovers = leftovers.as_str().unwrap_or_default().to_string();
+        if !leftovers.is_empty() {
+            return Err(Failure(format!(
+                "the WebView profile was not isolated: it already holds Cowork state ({leftovers}).                  WEBVIEW2_USER_DATA_FOLDER should point at this run's own directory."
+            )));
+        }
+        Ok(())
     }
 
     /// Wait for the WebView to answer a trivial script again.
@@ -3112,6 +3112,23 @@ fn main() {
     }
     std::env::set_var("JAN_DATA_FOLDER", &data_folder);
     std::env::set_var("CI", "e2e");
+    // A WebView profile of this run's own.
+    //
+    // `JAN_DATA_FOLDER` moves what the *app* writes; it does nothing about what
+    // the *WebView* keeps. localStorage, sessionStorage, IndexedDB, the service
+    // worker registration and the HTTP cache all live in the WebView2 user-data
+    // folder, which is keyed by the bundle identifier and shared with the user's
+    // own Jan. So a run inherited the previous run's Cowork session -- an
+    // attached folder in a temp directory long since deleted -- and the harness
+    // tried to paper over it by clearing storage and reloading, which is where
+    // it hung waiting ninety seconds for a React root that never came back.
+    //
+    // Pointing WebView2 at a fresh directory makes that whole problem not exist:
+    // storage starts empty because it is a new profile, no reload is needed, and
+    // two runs cannot see each other's state even if one crashes half way.
+    let webview_profile = workspace.join("webview");
+    std::fs::create_dir_all(&webview_profile).expect("failed to create webview profile");
+    std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", &webview_profile);
     std::env::set_current_dir(&workspace).expect("failed to enter smoke workspace");
 
     let app = app_lib::build_app();

@@ -44,6 +44,14 @@ const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
       }}
     >
       <div
+        // Also a drag region. Tauri drags only when the pressed element *is*
+        // one, and this row is `w-full`, so it covered the header end to end
+        // and swallowed every press the outer div was supposed to receive.
+        // The only draggable strip left was the outer padding, which is why
+        // the window would move only when the pointer was near the edge.
+        // Buttons inside remain unaffected: they are their own elements and do
+        // not carry the attribute.
+        data-tauri-drag-region
         className={cn(
           'flex items-center w-full gap-1',
         )}
@@ -64,6 +72,9 @@ const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
           </>
         )}
         <div
+          // The stretch that fills the rest of the bar. Whatever a page puts
+          // in `children` keeps its own hit area; the empty remainder drags.
+          data-tauri-drag-region
           className={cn(
             'flex-1 min-w-0'
           )}

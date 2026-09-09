@@ -13,6 +13,10 @@
 //! Error strings carry the `ERROR:` prefix the tool protocol expects; the
 //! command layer strips it for display.
 
+pub mod record;
+pub mod retrieve;
+pub mod store;
+
 use std::path::{Path, PathBuf};
 
 use crate::workspace::{store_dir, workspace_filename};
