@@ -14,6 +14,7 @@
 //! command layer strips it for display.
 
 pub mod record;
+pub mod store;
 
 use std::path::{Path, PathBuf};
 
