@@ -59,6 +59,7 @@ import { encodeVideoSentinel, parseVideoDataUrl } from '@/lib/video-sentinel'
 import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
 import { paramsSettings } from '@/lib/predefinedParams'
 import { CHAT_SLOT_ID } from '@/constants/models'
+import { usableContextValue } from '@/lib/modelCapabilities'
 
 export type TokenUsageCallback = (
   usage: LanguageModelUsage,
@@ -1366,10 +1367,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       return isNaN(n) ? undefined : n
     })()
 
-    const configuredContextTokens = (() => {
-      const raw = inferenceParams.max_context_tokens
-      return typeof raw === 'number' ? raw : (Number(raw) || 0)
-    })()
+    // Zero means "not known", never "a window with no room in it". It reaches
+    // `effectiveContextWindow` and then the `> 0` guard below, which is what
+    // lets an undiscoverable window still dispatch: Jan's own budgets still
+    // apply, but no context limit is enforced against a number nobody has.
+    const configuredContextTokens =
+      usableContextValue(inferenceParams.max_context_tokens) ?? 0
     const contextShiftEnabled =
       providerId === 'llamacpp' &&
       provider.settings?.some(

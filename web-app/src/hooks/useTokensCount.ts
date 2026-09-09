@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ThreadMessage } from '@janhq/core'
 import { parseContextOverflow } from '@/utils/error'
+import { usableContextValue } from '@/lib/modelCapabilities'
 import {
   getLocalPropsExtension,
   type LlamacppModelProps,
@@ -69,14 +70,16 @@ const getLatestServerUsage = (messages: ThreadMessage[]): UsageMeta => {
   return {}
 }
 
-const readSettingNumber = (v: unknown): number | undefined => {
-  if (typeof v === 'number' && Number.isFinite(v)) return v
-  if (typeof v === 'string') {
-    const n = parseInt(v, 10)
-    return Number.isFinite(n) ? n : undefined
-  }
-  return undefined
-}
+/**
+ * The configured context size, or `undefined` when there is not one.
+ *
+ * Goes through the same gate as every other context number
+ * ([`usableContextValue`]), so a stored `0` reads as "not configured" rather
+ * than as a model that can hold nothing. Showing `Configured ctx_len: 0` was
+ * the visible half of that bug.
+ */
+const readSettingNumber = (v: unknown): number | undefined =>
+  usableContextValue(v) ?? undefined
 
 export const useTokensCount = (
   messages: ThreadMessage[] = [],
@@ -175,7 +178,13 @@ export const useTokensCount = (
         }
       : (source?.usage ?? getLatestServerUsage(messages))
     const tokenCount = overflow?.requestTokens ?? usage.totalTokens ?? 0
-    const maxTokens = overflow?.contextTokens ?? modelProps?.nCtx
+    // A runtime that reports `n_ctx: 0`, or a server whose overflow error
+    // carried a zero limit, has told us nothing about the window. Left as `0`
+    // it renders as `0 / 0` and reads as a model with no room at all.
+    const maxTokens =
+      usableContextValue(overflow?.contextTokens) ??
+      usableContextValue(modelProps?.nCtx) ??
+      undefined
     const percentage = maxTokens ? (tokenCount / maxTokens) * 100 : undefined
     const isNearLimit = overflow != null || (percentage ? percentage > 85 : false)
 

@@ -97,7 +97,7 @@ vi.mock('@/lib/provider-api-keys', () => ({
   }),
 }))
 
-import { ModelFactory } from '../model-factory'
+import { ModelFactory, createCustomFetch } from '../model-factory'
 import { invoke } from '@tauri-apps/api/core'
 import { providerFetch as httpFetch } from '@/lib/providerFetch'
 
@@ -233,6 +233,37 @@ describe('model-factory deep coverage', () => {
   })
 
   /* llamacpp internals */
+  /**
+   * A zero reply cap is never what anyone means, and only llama.cpp has a
+   * spelling for "no cap". Everyone else takes `max_tokens: 0` literally and
+   * returns an empty answer, so the key is left out of the request instead.
+   */
+  describe('a zero reply cap', () => {
+    const bodySentBy = async (keepLlamacppOnly: boolean) => {
+      const fetchImpl = createCustomFetch(
+        vi.mocked(httpFetch) as unknown as typeof globalThis.fetch,
+        { max_output_tokens: 0 },
+        keepLlamacppOnly
+      )
+      await fetchImpl('http://x', {
+        method: 'POST',
+        body: JSON.stringify({ messages: [] }),
+      })
+      const call = vi.mocked(httpFetch).mock.calls.at(-1)
+      return JSON.parse(call![1]!.body as string)
+    }
+
+    it("becomes llama-server's unlimited for llamacpp", async () => {
+      expect((await bodySentBy(true)).max_tokens).toBe(-1)
+    })
+
+    it('is omitted for an OpenAI-compatible provider', async () => {
+      const body = await bodySentBy(false)
+      expect('max_tokens' in body).toBe(false)
+      expect('max_output_tokens' in body).toBe(false)
+    })
+  })
+
   describe('llamacpp internals', () => {
     it('url and headers', async () => {
       vi.mocked(invoke).mockResolvedValue({ port: 8080, api_key: 'llama-key' })
@@ -258,6 +289,17 @@ describe('model-factory deep coverage', () => {
       expect(body.max_tokens).toBe(1024)
       expect(body.ctx_len).toBeUndefined()
       expect(body.auto_compact).toBeUndefined()
+    })
+
+    it("turns a zero reply cap into llama-server's unlimited", async () => {
+      vi.mocked(invoke).mockResolvedValue({ port: 8080, api_key: 'k' })
+      await ModelFactory.createModel('m', mkProvider('llamacpp'), {
+        max_output_tokens: 0,
+      })
+      const opts = getOpts()
+      await opts.fetch('http://x', { method: 'POST', body: JSON.stringify({ messages: [] }) })
+      const body = JSON.parse(vi.mocked(httpFetch).mock.calls[0][1]!.body as string)
+      expect(body.max_tokens).toBe(-1)
     })
 
     it('throws when startModel fails with Error', async () => {

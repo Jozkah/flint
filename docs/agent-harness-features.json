@@ -1210,7 +1210,11 @@
       ],
       "owner": "lane-03-permission-security",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/cmdscan.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/cmdscan.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/jail.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/win_env.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/appcontainer.rs"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -1222,9 +1226,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/tests/windows_sandbox.rs"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": null,
+      "auditNote": "Each shell now declares the command language it speaks and is chosen by probing it under the real sandbox policy, not by assuming: on Windows the MSYS2 runtime Git Bash is built on cannot initialise inside an AppContainer, so a command needing POSIX syntax is refused with that reason rather than reinterpreted by cmd or PowerShell. The sandboxed environment block is built in one place (win_env), which is what fixes CreateProcessW failing with ERROR_ENVVAR_NOT_FOUND (203) for a missing LOCALAPPDATA."
     },
     {
       "id": "AH-039",
@@ -2220,7 +2227,9 @@
       "files": [
         "web-app/src/lib/payloadUsage.ts",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/usage.rs",
-        "src-tauri/src/core/agent/commands.rs"
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/hooks/useTokensCount.ts",
+        "web-app/src/lib/custom-chat-transport.ts"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -2238,7 +2247,7 @@
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The provider's own count for the dispatched payload is recorded against the invocation and that payload's snapshot; Jan's byte estimate stays separate and labelled, and never overwrites a real count."
+      "auditNote": "The provider's own count for the dispatched payload is recorded against the invocation and that payload's snapshot; Jan's byte estimate stays separate and labelled, and never overwrites a real count. A window of zero from a runtime or an overflow error is now reported as not known rather than counted as a real capacity, so the indicator no longer renders 0 / 0."
     },
     {
       "id": "AH-074",
@@ -2650,7 +2659,8 @@
       "owner": "lane-05-context-memory",
       "files": [
         "web-app/src/lib/coworkBudget.ts",
-        "web-app/src/routes/cowork.tsx"
+        "web-app/src/routes/cowork.tsx",
+        "web-app/src/lib/model-factory.ts"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -2662,11 +2672,12 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "web-app/src/lib/__tests__/coworkBudgetPlanner.test.ts"
+        "web-app/src/lib/__tests__/coworkBudgetPlanner.test.ts",
+        "web-app/src/lib/__tests__/model-factory.deep.test.ts"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "planTurn reserves reply headroom and classifies the turn before dispatch; an over-capacity request raises ContextOverflowError instead of being sent. An undiscoverable window is reported, never refused."
+      "auditNote": "planTurn reserves reply headroom and classifies the turn before dispatch; an over-capacity request raises ContextOverflowError instead of being sent. An undiscoverable window is reported, never refused. max_tokens: 0 is never dispatched: llama.cpp gets its -1 \"no cap\" spelling and every other provider gets the key omitted, because a zero reply cap asks for an empty answer."
     },
     {
       "id": "AH-089",
@@ -5614,7 +5625,9 @@
       "files": [
         "web-app/src/lib/modelCapabilities.ts",
         "web-app/src/hooks/useModelCapabilities.ts",
-        "web-app/src/lib/modelLocation.ts"
+        "web-app/src/lib/modelLocation.ts",
+        "web-app/src/hooks/useModelProvider.ts",
+        "web-app/src/lib/model-factory.ts"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -5626,13 +5639,14 @@
       ],
       "tests": [
         "web-app/src/lib/__tests__/modelCapabilities.test.ts",
-        "web-app/src/lib/__tests__/modelLocation.test.ts"
+        "web-app/src/lib/__tests__/modelLocation.test.ts",
+        "web-app/src/hooks/__tests__/useModelProvider.contextZero.test.ts"
       ],
       "platformRequirements": [
         "a desktop build; the headless CLI has no local inference backend"
       ],
       "blockedReason": null,
-      "auditNote": "Canonical ModelCapabilities with a fixed discovery order over sources the app already has; no network lookup. llama.cpp's effective n_ctx is distinguished from n_ctx_train, and an unknown window stays unknown."
+      "auditNote": "Canonical ModelCapabilities with a fixed discovery order over sources the app already has; no network lookup. llama.cpp's effective n_ctx is distinguished from n_ctx_train, and an unknown window stays unknown. usableContextValue is the single gate every context number passes: zero, negative, NaN, Infinity and malformed strings are non-answers, not capacities. Migration 19 rewrites already-persisted ones to \"not set\" without touching a positive value, so no profile has to be deleted."
     },
     {
       "id": "AH-196",

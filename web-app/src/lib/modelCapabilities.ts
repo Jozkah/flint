@@ -79,7 +79,20 @@ export const TRAINING_FIELDS = [
   'nCtxTrain',
 ] as const
 
-/** A positive integer, however the source spelled it. */
+/**
+ * A positive integer, however the source spelled it, or `null`.
+ *
+ * The only gate a context number passes through. Zero is rejected here rather
+ * than anywhere downstream: a model whose window is genuinely zero cannot hold
+ * a prompt, so a zero on the wire is bad metadata, and treating it as a real
+ * capacity is what produced `0 / 0` in the UI and `max_tokens: 0` in the
+ * request. `NaN`, `Infinity`, negatives and unparseable strings are the same
+ * kind of non-answer and get the same one.
+ */
+export function usableContextValue(value: unknown): number | null {
+  return positiveInteger(value)
+}
+
 function positiveInteger(value: unknown): number | null {
   if (typeof value === 'number') {
     return Number.isFinite(value) && value > 0 ? Math.floor(value) : null

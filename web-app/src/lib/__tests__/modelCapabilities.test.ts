@@ -6,6 +6,7 @@ import {
   formatContextUsage,
   readCapabilityField,
   resolveModelCapabilities,
+  usableContextValue,
   CONTEXT_FIELDS,
   TRAINING_FIELDS,
 } from '../modelCapabilities'
@@ -135,5 +136,64 @@ describe('what the user is shown', () => {
         source: 'local-runtime',
       })
     ).toBe(null)
+  })
+})
+
+/**
+ * The one gate every context number goes through. Zero is the interesting
+ * case: a model whose window is genuinely zero cannot hold a prompt, so a zero
+ * on the wire is bad metadata rather than a small capacity -- and reading it as
+ * a capacity is what produced `0 / 0` in the indicator and `max_tokens: 0` in
+ * the request.
+ */
+describe('what counts as a usable context value', () => {
+  it.each([
+    ['integer zero', 0],
+    ['the string "0"', '0'],
+    ['a negative number', -1],
+    ['a negative string', '-8192'],
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+    ['-Infinity', Number.NEGATIVE_INFINITY],
+    ['a malformed string', 'lots'],
+    ['whitespace', '   '],
+    ['an empty string', ''],
+    ['null', null],
+    ['undefined', undefined],
+    ['a boolean', true],
+    ['an object', {}],
+    ['an array', [8192]],
+  ])('rejects %s', (_label, value) => {
+    expect(usableContextValue(value)).toBeNull()
+  })
+
+  it.each([
+    ['a plain number', 8192, 8192],
+    ['a numeric string', '32768', 32768],
+    ['a float', 4096.7, 4096],
+    ['one token', 1, 1],
+    ['a very large window', 1_048_576, 1_048_576],
+  ])('accepts %s', (_label, value, expected) => {
+    expect(usableContextValue(value)).toBe(expected)
+  })
+
+  it('is what discovery already applies to every source', () => {
+    // A provider reporting a zero window must leave the capacity unknown
+    // rather than resolving to a real window of nothing.
+    const caps = resolveModelCapabilities({
+      modelId: 'some-unlisted-model',
+      providerMetadata: { context_length: 0 },
+    })
+    expect(caps.contextTokens).toBeNull()
+    expect(caps.source).toBe('unknown')
+  })
+
+  it('never renders a window of zero as a usage string', () => {
+    expect(formatContextUsage(10, 0)).toBeNull()
+    expect(formatContextUsage(10, -1)).toBeNull()
+    expect(formatContextUsage(10, null)).toBeNull()
+    // Grouping separators are the host locale's business; what matters here
+    // is that a real window renders and a zero one does not.
+    expect(formatContextUsage(3367, 32768)).toContain('tokens')
   })
 })

@@ -837,7 +837,7 @@ fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> ProbeOutcome {
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
-    let mut child = match command.spawn() {
+    let child = match command.spawn() {
         Ok(child) => child,
         Err(e) => {
             return ProbeOutcome::Unusable {

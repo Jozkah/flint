@@ -367,9 +367,18 @@ describe('createCustomFetch — max_tokens coercion', () => {
     expect(sent.max_tokens).toBe(-1)
   })
 
-  it('does not coerce when keepLlamacppOnly is false (non-llamacpp providers)', async () => {
+  // `-1` is llama-server's spelling of "no cap" and every other provider
+  // rejects it, so a zero cannot be coerced for them -- but it cannot be sent
+  // either: an OpenAI-compatible server reads `max_tokens: 0` as a request for
+  // an empty answer. Omitting the key is what "no cap" means on that wire.
+  it('omits a zero cap when keepLlamacppOnly is false (non-llamacpp providers)', async () => {
     const sent = await captureSentBody({}, false, { max_tokens: 0 })
-    expect(sent.max_tokens).toBe(0)
+    expect('max_tokens' in sent).toBe(false)
+  })
+
+  it('leaves a real cap alone for non-llamacpp providers', async () => {
+    const sent = await captureSentBody({}, false, { max_tokens: 512 })
+    expect(sent.max_tokens).toBe(512)
   })
 
   it('sets timings_per_token when keepLlamacppOnly and streaming', async () => {

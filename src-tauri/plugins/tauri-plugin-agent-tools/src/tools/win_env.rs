@@ -163,10 +163,9 @@ impl SandboxEnv {
 
     /// Insert only when the name is not already present.
     pub fn set_if_absent(&mut self, name: &str, value: impl Into<OsString>) {
-        let key = fold(name);
-        if !self.entries.contains_key(&key) {
-            self.entries.insert(key, (name.to_string(), value.into()));
-        }
+        self.entries
+            .entry(fold(name))
+            .or_insert_with(|| (name.to_string(), value.into()));
     }
 
     pub fn get(&self, name: &str) -> Option<&OsStr> {

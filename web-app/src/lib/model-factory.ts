@@ -539,8 +539,16 @@ export function createCustomFetch(
     // set max_output_tokens = 0 in assistant params mean "no cap", not
     // "produce zero tokens" — coerce here, gated to llamacpp only because
     // OpenAI/Anthropic reject negative values.
-    if (keepLlamacppOnly && merged.max_tokens === 0) {
-      merged.max_tokens = -1
+    if (merged.max_tokens === 0) {
+      if (keepLlamacppOnly) {
+        merged.max_tokens = -1
+      } else {
+        // Every other provider takes a zero literally, and a reply capped at
+        // zero tokens is an empty answer, not an unlimited one. A cap nobody
+        // meaningfully set is left out of the request entirely, which is what
+        // "no cap" means on the wire.
+        delete merged.max_tokens
+      }
     }
     decodeAudioSentinelsInBody(merged)
     decodeVideoSentinelsInBody(merged)
