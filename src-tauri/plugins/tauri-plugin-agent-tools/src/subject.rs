@@ -243,7 +243,10 @@ mod tests {
             Subject::AgentRole("implementer".into())
         );
         assert_eq!(Subject::parse("skill:fmt"), Subject::Skill("fmt".into()));
-        assert_eq!(Subject::parse("mcp:github"), Subject::McpServer("github".into()));
+        assert_eq!(
+            Subject::parse("mcp:github"),
+            Subject::McpServer("github".into())
+        );
         assert_eq!(Subject::parse("session:s1"), Subject::Session("s1".into()));
         assert_eq!(Subject::parse("project:p1"), Subject::Project("p1".into()));
     }
@@ -251,7 +254,9 @@ mod tests {
     /// Anything unrecognised is `Unknown`, and `Unknown` is not a wildcard.
     #[test]
     fn unrecognised_subjects_fail_closed() {
-        for raw in ["", "   ", "nonsense", "agent:", "role:", "mcp:", ":name", "user:bob"] {
+        for raw in [
+            "", "   ", "nonsense", "agent:", "role:", "mcp:", ":name", "user:bob",
+        ] {
             assert_eq!(Subject::parse(raw), Subject::Unknown, "{raw:?}");
         }
         assert!(!SubjectPattern::Any.matches(&Subject::Unknown));
@@ -286,12 +291,18 @@ mod tests {
         // A rule for the parent alone does not reach the child.
         let only_main = SubjectPattern::Exactly(Subject::MainAgent);
         assert!(parent.permits(&only_main));
-        assert!(!child.permits(&only_main), "child inherited a parent-only rule");
+        assert!(
+            !child.permits(&only_main),
+            "child inherited a parent-only rule"
+        );
 
         // A rule naming the child does not escape the parent's ceiling either:
         // the parent must satisfy it too.
         let only_child = SubjectPattern::Exactly(Subject::NamedAgent("reviewer".into()));
-        assert!(!child.permits(&only_child), "child escaped its parent's ceiling");
+        assert!(
+            !child.permits(&only_child),
+            "child escaped its parent's ceiling"
+        );
 
         // What both satisfy is what the child may do.
         assert!(child.permits(&SubjectPattern::AnyAgent));
@@ -306,7 +317,10 @@ mod tests {
         let renamed = Authority::root(Subject::NamedAgent("privileged-v2".into()));
         let rule = SubjectPattern::Exactly(Subject::NamedAgent("privileged".into()));
         assert!(parent.permits(&rule));
-        assert!(!renamed.permits(&rule), "a rename inherited the old authority");
+        assert!(
+            !renamed.permits(&rule),
+            "a rename inherited the old authority"
+        );
 
         // And a child that renames itself to the parent's name gains nothing,
         // because the chain is still checked in full.

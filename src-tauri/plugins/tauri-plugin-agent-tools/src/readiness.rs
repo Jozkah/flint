@@ -709,8 +709,14 @@ pub fn probe_shell(project_root: Option<&Path>, now_ms: i64) -> ComponentReport 
                     .to_string(),
             )
         };
-        return ComponentReport::new(Component::Shell, State::Unavailable, reason, message, now_ms)
-            .detailed(details);
+        return ComponentReport::new(
+            Component::Shell,
+            State::Unavailable,
+            reason,
+            message,
+            now_ms,
+        )
+        .detailed(details);
     };
 
     if chosen.cfg.flavor == ShellFlavor::Posix {
@@ -888,10 +894,7 @@ pub fn invalidate_all() {
 /// state machine and gated through the same capability lookup -- so "the
 /// renderer must not decide readiness" holds where it matters: the renderer
 /// supplies facts, this module decides what they mean.
-pub fn merge_reported(
-    readiness: &mut EnvironmentReadiness,
-    reported: Vec<ComponentReport>,
-) {
+pub fn merge_reported(readiness: &mut EnvironmentReadiness, reported: Vec<ComponentReport>) {
     for report in reported {
         match report.component {
             // Backend-owned components are not overridable from outside. A
@@ -930,7 +933,10 @@ mod tests {
             Component::Filesystem,
             &[capability::FS_READ, capability::FS_WRITE],
         ));
-        r.set(ready(Component::Workspace, &[capability::WORKSPACE_ATTACHED]));
+        r.set(ready(
+            Component::Workspace,
+            &[capability::WORKSPACE_ATTACHED],
+        ));
         r.set(ready(Component::Sandbox, &[capability::SANDBOX_ENFORCED]));
         r.set(broken(
             Component::Shell,
@@ -1193,7 +1199,10 @@ mod tests {
     fn a_missing_directory_is_reported_as_missing_not_unreadable() {
         let gone = std::env::temp_dir().join("jan-readiness-definitely-not-here");
         let _ = std::fs::remove_dir_all(&gone);
-        assert_eq!(probe_workspace(Some(&gone), 3).reason, Reason::WorkspaceMissing);
+        assert_eq!(
+            probe_workspace(Some(&gone), 3).reason,
+            Reason::WorkspaceMissing
+        );
         assert_eq!(
             probe_filesystem(Some(&gone), 3).reason,
             Reason::FilesystemUnreadable
@@ -1291,21 +1300,21 @@ mod tests {
                 text.contains("will not change this"),
                 "the message must say reinstalling is not a remedy: {text}"
             );
-            assert!(!shell.retryable, "a runtime incompatibility is not retryable");
+            assert!(
+                !shell.retryable,
+                "a runtime incompatibility is not retryable"
+            );
         }
         // Whatever happened, the classification of where each shell lives is a
         // fact about its path and is reported as such.
         if !shell.details.is_empty() {
             assert!(
-                shell
-                    .details
-                    .iter()
-                    .any(|d| d.contains("system-install")
-                        || d.contains("windows-system")
-                        || d.contains("user-install")
-                        || d.contains("elsewhere")
-                        || d.contains("configured")
-                        || d.contains("bundled")),
+                shell.details.iter().any(|d| d.contains("system-install")
+                    || d.contains("windows-system")
+                    || d.contains("user-install")
+                    || d.contains("elsewhere")
+                    || d.contains("configured")
+                    || d.contains("bundled")),
                 "{:?}",
                 shell.details
             );
@@ -1326,9 +1335,6 @@ mod tests {
                 .contains(&capability::SANDBOX_ENFORCED.to_string()),
             enforces
         );
-        assert!(report
-            .details
-            .iter()
-            .any(|d| d.starts_with("backend=")));
+        assert!(report.details.iter().any(|d| d.starts_with("backend=")));
     }
 }

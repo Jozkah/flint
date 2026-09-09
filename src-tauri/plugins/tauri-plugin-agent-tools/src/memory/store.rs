@@ -213,13 +213,29 @@ mod tests {
     fn scopes_are_separate_files_and_never_mix() {
         let root = unique_root();
         save(&root, Scope::User, &[rec("u", "user", Scope::User)]).unwrap();
-        save(&root, Scope::Project, &[rec("p", "project", Scope::Project)]).unwrap();
-        save(&root, Scope::Session, &[rec("s", "session", Scope::Session)]).unwrap();
+        save(
+            &root,
+            Scope::Project,
+            &[rec("p", "project", Scope::Project)],
+        )
+        .unwrap();
+        save(
+            &root,
+            Scope::Session,
+            &[rec("s", "session", Scope::Session)],
+        )
+        .unwrap();
 
         assert_eq!(load(&root, Scope::User).records.len(), 1);
         assert_eq!(load(&root, Scope::User).records[0].id, MemoryId::new("u"));
-        assert_eq!(load(&root, Scope::Project).records[0].id, MemoryId::new("p"));
-        assert_eq!(load(&root, Scope::Session).records[0].id, MemoryId::new("s"));
+        assert_eq!(
+            load(&root, Scope::Project).records[0].id,
+            MemoryId::new("p")
+        );
+        assert_eq!(
+            load(&root, Scope::Session).records[0].id,
+            MemoryId::new("s")
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -230,7 +246,10 @@ mod tests {
         save(
             &root,
             Scope::User,
-            &[rec("a", "first", Scope::User), rec("b", "second", Scope::User)],
+            &[
+                rec("a", "first", Scope::User),
+                rec("b", "second", Scope::User),
+            ],
         )
         .unwrap();
 
@@ -252,7 +271,10 @@ mod tests {
         save(
             &root,
             Scope::User,
-            &[rec("a", "first", Scope::User), rec("b", "second", Scope::User)],
+            &[
+                rec("a", "first", Scope::User),
+                rec("b", "second", Scope::User),
+            ],
         )
         .unwrap();
 
@@ -324,7 +346,11 @@ mod tests {
         upsert(&root, &m).unwrap();
 
         let loaded = load(&root, Scope::User);
-        assert_eq!(loaded.records.len(), 1, "undo needs the record to still exist");
+        assert_eq!(
+            loaded.records.len(),
+            1,
+            "undo needs the record to still exist"
+        );
         assert!(!loaded.records[0].is_usable(1_000));
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -334,7 +360,10 @@ mod tests {
     fn a_save_leaves_no_temp_file_behind() {
         let root = unique_root();
         save(&root, Scope::User, &[rec("a", "x", Scope::User)]).unwrap();
-        let dir = records_path(&root, Scope::User).parent().unwrap().to_path_buf();
+        let dir = records_path(&root, Scope::User)
+            .parent()
+            .unwrap()
+            .to_path_buf();
         let leftovers: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| e.ok())

@@ -1214,7 +1214,12 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/jail.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/win_env.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/appcontainer.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/appcontainer.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/readiness.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "web-app/src/lib/agentTools.ts",
+        "web-app/src/lib/coworkTools.ts",
+        "web-app/src/containers/CoworkEnvironmentReadiness.tsx"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -1227,11 +1232,13 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/tests/windows_sandbox.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/tests/windows_sandbox.rs",
+        "web-app/src/lib/__tests__/agentTools.test.ts",
+        "web-app/src/containers/__tests__/CoworkEnvironmentReadiness.test.tsx"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Each shell now declares the command language it speaks and is chosen by probing it under the real sandbox policy, not by assuming: on Windows the MSYS2 runtime Git Bash is built on cannot initialise inside an AppContainer, so a command needing POSIX syntax is refused with that reason rather than reinterpreted by cmd or PowerShell. The sandboxed environment block is built in one place (win_env), which is what fixes CreateProcessW failing with ERROR_ENVVAR_NOT_FOUND (203) for a missing LOCALAPPDATA."
+      "auditNote": "Each shell now declares the command language it speaks and is chosen by probing it under the real sandbox policy, not by assuming: on Windows the MSYS2 runtime Git Bash is built on cannot initialise inside an AppContainer, so a command needing POSIX syntax is refused with that reason rather than reinterpreted by cmd or PowerShell. The sandboxed environment block is built in one place (win_env), which is what fixes CreateProcessW failing with ERROR_ENVVAR_NOT_FOUND (203) for a missing LOCALAPPDATA. Readiness is now eight independently probed components rather than one boolean: a shell that cannot start costs the session its shell tool and nothing else. `advertised_tool_schemas` is the single production decision about what a model is offered, and both call sites (Cowork's tool builder, the chat transport) go through it; omissions keep their reason. The Cowork tool signature includes readiness state, so a retry that fixes a shell changes the tool set on the next message. A collapsed Environment section in session details renders the same report, and its Git Bash row names MSYS2 rather than an install location."
     },
     {
       "id": "AH-039",
@@ -2660,7 +2667,9 @@
       "files": [
         "web-app/src/lib/coworkBudget.ts",
         "web-app/src/routes/cowork.tsx",
-        "web-app/src/lib/model-factory.ts"
+        "web-app/src/lib/model-factory.ts",
+        "web-app/src/lib/contextLimitRecovery.ts",
+        "web-app/src/hooks/useModelCapabilities.ts"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -2673,11 +2682,12 @@
       ],
       "tests": [
         "web-app/src/lib/__tests__/coworkBudgetPlanner.test.ts",
-        "web-app/src/lib/__tests__/model-factory.deep.test.ts"
+        "web-app/src/lib/__tests__/model-factory.deep.test.ts",
+        "web-app/src/lib/__tests__/contextLimitRecovery.test.ts"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "planTurn reserves reply headroom and classifies the turn before dispatch; an over-capacity request raises ContextOverflowError instead of being sent. An undiscoverable window is reported, never refused. max_tokens: 0 is never dispatched: llama.cpp gets its -1 \"no cap\" spelling and every other provider gets the key omitted, because a zero reply cap asks for an empty answer."
+      "auditNote": "planTurn reserves reply headroom and classifies the turn before dispatch; an over-capacity request raises ContextOverflowError instead of being sent. An undiscoverable window is reported, never refused. max_tokens: 0 is never dispatched: llama.cpp gets its -1 \"no cap\" spelling and every other provider gets the key omitted, because a zero reply cap asks for an empty answer. A context-overflow refusal is now read for the window the server itself named -- structured fields first, then only known message shapes, and only when the numbers agree -- and stored as a `server-response` capability bound to provider, base URL and model, forgotten when any of the three changes. Recovery allows one compaction and one retry, never a loop."
     },
     {
       "id": "AH-089",
@@ -5627,7 +5637,8 @@
         "web-app/src/hooks/useModelCapabilities.ts",
         "web-app/src/lib/modelLocation.ts",
         "web-app/src/hooks/useModelProvider.ts",
-        "web-app/src/lib/model-factory.ts"
+        "web-app/src/lib/model-factory.ts",
+        "web-app/src/lib/contextLimitRecovery.ts"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -5646,7 +5657,7 @@
         "a desktop build; the headless CLI has no local inference backend"
       ],
       "blockedReason": null,
-      "auditNote": "Canonical ModelCapabilities with a fixed discovery order over sources the app already has; no network lookup. llama.cpp's effective n_ctx is distinguished from n_ctx_train, and an unknown window stays unknown. usableContextValue is the single gate every context number passes: zero, negative, NaN, Infinity and malformed strings are non-answers, not capacities. Migration 19 rewrites already-persisted ones to \"not set\" without touching a positive value, so no profile has to be deleted."
+      "auditNote": "Canonical ModelCapabilities with a fixed discovery order over sources the app already has; no network lookup. llama.cpp's effective n_ctx is distinguished from n_ctx_train, and an unknown window stays unknown. usableContextValue is the single gate every context number passes: zero, negative, NaN, Infinity and malformed strings are non-answers, not capacities. Migration 19 rewrites already-persisted ones to \"not set\" without touching a positive value, so no profile has to be deleted. `server-response` ranks above every described source and below an explicit user decision, because a refusal is the one answer measured against a real request."
     },
     {
       "id": "AH-196",

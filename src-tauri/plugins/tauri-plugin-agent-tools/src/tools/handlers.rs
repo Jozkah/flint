@@ -2037,6 +2037,17 @@ mod bash_job_registry_tests {
 
     /// A kill the OS refuses must not be reported as a kill, and must leave the
     /// pid in place so the request can be made again.
+    ///
+    /// Unix only, and not for want of trying. The test needs a pid that exists,
+    /// cannot be signalled, and is safe to *attempt* -- on Unix that is pid 1.
+    /// Windows has no equivalent: the processes that refuse termination are
+    /// System (pid 4) and Idle (pid 0), and a test that fired `taskkill /F` at
+    /// System on a developer's machine would be betting their uptime on the
+    /// refusal working. The refusal path itself is covered on Windows by
+    /// `proc::windows_tests::a_refusal_is_reported_with_the_reason_taskkill_gave`,
+    /// which reads the outcome out of a real `taskkill` failure without
+    /// aiming one at anything.
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_refused_kill_is_reported_and_the_job_stays_killable() {
         // pid 1 is init/launchd: it exists, and an unprivileged process may not
@@ -2292,6 +2303,142 @@ mod tests {
             std::env::temp_dir().join(format!("jan_handlers_test_{}_{}", std::process::id(), n));
         std::fs::create_dir_all(&dir).expect("create test root");
         dir
+    }
+
+    // -- shell-aware command fixtures ----------------------------------------
+    //
+    // These tests are about what the `bash` tool does with a command's *output*
+    // -- truncation, spilling, carriage-return collapsing, where the exit
+    // marker goes. None of that is about POSIX, but every one of them was
+    // written as a POSIX one-liner, so on a host whose sandboxed shell is not
+    // POSIX they failed for a reason that had nothing to do with what they
+    // test. On Windows that is every one of them: the MSYS2 runtime Git Bash
+    // is built on cannot start inside an AppContainer, so the confined shell is
+    // PowerShell.
+    //
+    // The fix is to say what shape of output is wanted and let the fixture
+    // write it in whatever language the shell that will actually run it
+    // speaks. The assertions are unchanged: they were never the problem.
+
+    /// An output shape a test needs, independent of how it is produced.
+    #[derive(Debug, Clone, Copy)]
+    enum Shape {
+        /// `count` newline-terminated lines, each `L1`, `L2`, ...
+        Lines { count: usize },
+        /// `count` newline-terminated lines, each a 64-character zero-padded
+        /// number. Used to make output cross a byte cap predictably.
+        PaddedLines { count: usize },
+        /// Text on stderr with no trailing newline, like `git push`.
+        StderrNoNewline(&'static str),
+        /// One logical line redrawn `count` times with `\r` and no `\n`, on
+        /// stderr. Mimics git progress.
+        StderrRedraw { count: usize, prefix: &'static str },
+        /// Read stdin to end and echo nothing.
+        ReadStdin,
+        /// Exactly this text, no trailing newline.
+        Literal(&'static str),
+        /// Wait, producing nothing. For deadline and cancellation tests.
+        Sleep { seconds: u32 },
+        /// Print a line, then wait. The line has to arrive before the deadline
+        /// does, which is the whole point of the tests that use it.
+        PrintThenSleep { text: &'static str, seconds: u32 },
+        /// Wait, then print a line.
+        SleepThenPrint { seconds: u32, text: &'static str },
+    }
+
+    /// The command language the sandboxed shell for `root` actually speaks.
+    ///
+    /// Asked of the same code the handler asks, so a fixture cannot be written
+    /// for one shell while the command runs in another.
+    fn sandbox_flavor(root: &Path) -> Option<proc::ShellFlavor> {
+        let policy = jail::Policy::new(root, false);
+        jail::select_shell(&policy)
+            .ok()
+            .map(|selected| selected.report.cfg.flavor)
+    }
+
+    /// `shape` as a command, or `None` when the sandboxed shell speaks a
+    /// language this fixture cannot express it in.
+    ///
+    /// `cmd.exe` is the `None` case. It has no loop that can emit 16,000 lines
+    /// without a temporary batch file, and writing one would be testing the
+    /// fixture rather than the tool. A host with only `cmd` is real, and these
+    /// tests skip there loudly rather than asserting something weaker.
+    fn script(root: &Path, shape: Shape) -> Option<String> {
+        match sandbox_flavor(root)? {
+            proc::ShellFlavor::Posix => Some(match shape {
+                Shape::Lines { count } => {
+                    format!("for i in $(seq 1 {count}); do echo \"L$i\"; done")
+                }
+                Shape::PaddedLines { count } => format!(
+                    "for i in $(seq 1 {count}); do printf '%064d\\n' \"$i\"; done"
+                ),
+                Shape::StderrNoNewline(text) => format!("printf '{text}' 1>&2"),
+                Shape::StderrRedraw { count, prefix } => format!(
+                    "for i in $(seq 1 {count}); do printf '{prefix}%d\\r' \"$i\"; done 1>&2"
+                ),
+                Shape::ReadStdin => "cat".to_string(),
+                Shape::Literal(text) => format!("printf '{text}'"),
+                Shape::Sleep { seconds } => format!("sleep {seconds}"),
+                Shape::PrintThenSleep { text, seconds } => {
+                    format!("printf '{text}\\n'; sleep {seconds}")
+                }
+                Shape::SleepThenPrint { seconds, text } => {
+                    format!("sleep {seconds}; printf '{text}\\n'")
+                }
+            }),
+            proc::ShellFlavor::PowerShell => Some(match shape {
+                Shape::Lines { count } => {
+                    format!("1..{count} | ForEach-Object {{ \"L$_\" }}")
+                }
+                // `-f` formatting rather than string padding: it produces the
+                // same 64 characters as `%064d` without a second allocation
+                // per line, which matters at 16,000 lines.
+                Shape::PaddedLines { count } => format!(
+                    "1..{count} | ForEach-Object {{ '{{0:D64}}' -f $_ }}"
+                ),
+                // `[Console]::Error.Write` rather than `Write-Error`: the
+                // latter emits a formatted error record, and the shape wanted
+                // here is bare text with no trailing newline.
+                Shape::StderrNoNewline(text) => {
+                    format!("[Console]::Error.Write('{text}')")
+                }
+                Shape::StderrRedraw { count, prefix } => format!(
+                    "1..{count} | ForEach-Object {{ [Console]::Error.Write('{prefix}' + $_ + [char]13) }}"
+                ),
+                Shape::ReadStdin => {
+                    "$input | Out-Null".to_string()
+                }
+                Shape::Literal(text) => format!("[Console]::Out.Write('{text}')"),
+                Shape::Sleep { seconds } => format!("Start-Sleep -Seconds {seconds}"),
+                // The write is flushed before the sleep starts, so the line is
+                // already through the pipe when the deadline fires.
+                Shape::PrintThenSleep { text, seconds } => format!(
+                    "[Console]::Out.WriteLine('{text}'); [Console]::Out.Flush(); Start-Sleep -Seconds {seconds}"
+                ),
+                Shape::SleepThenPrint { seconds, text } => format!(
+                    "Start-Sleep -Seconds {seconds}; [Console]::Out.WriteLine('{text}')"
+                ),
+            }),
+            proc::ShellFlavor::Cmd => None,
+        }
+    }
+
+    /// Skip the body when the sandboxed shell cannot express `shape`, saying
+    /// so rather than passing quietly.
+    macro_rules! command_or_skip {
+        ($root:expr, $shape:expr) => {
+            match script($root, $shape) {
+                Some(command) => command,
+                None => {
+                    eprintln!(
+                        "skipped: the sandboxed shell here cannot express {:?}",
+                        $shape
+                    );
+                    return;
+                }
+            }
+        };
     }
 
     #[tokio::test]
@@ -2803,6 +2950,10 @@ mod tests {
     async fn write_reports_resolved_path_when_it_escapes_the_project() {
         let root = unique_root();
         let outside = root.parent().unwrap().join("jan_escape_probe.txt");
+        // The probe lands in the shared temp directory, so a leftover from an
+        // earlier run turns the write into "No change" and the test into a
+        // check of nothing. Removed before and after rather than trusted.
+        let _ = std::fs::remove_file(&outside);
         let out = execute_builtin(
             lookup("write").unwrap(),
             &json!({"path": "../jan_escape_probe.txt", "content": "x"}),
@@ -2810,11 +2961,17 @@ mod tests {
         )
         .await;
         assert!(outside.exists(), "precondition: the write escapes the root");
+        // Compared in the separator the tool reports in. It normalises to
+        // forward slashes so one path has one spelling everywhere; asserting
+        // against the raw `PathBuf` would be asserting Windows' separator
+        // rather than the destination.
+        let expected = outside.to_string_lossy().replace('\\', "/");
         assert!(
-            out.contains(outside.to_str().unwrap()),
+            out.contains(&expected),
             "must name the real destination, got: {out}"
         );
         assert!(!out.contains(".."), "must not echo the raw path: {out}");
+        let _ = std::fs::remove_file(&outside);
         let _ = std::fs::remove_file(&outside);
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -3486,6 +3643,13 @@ mod tests {
     #[tokio::test]
     async fn a_backgrounded_command_keeps_streaming() {
         let root = unique_root();
+        let command = command_or_skip!(
+            &root,
+            Shape::SleepThenPrint {
+                seconds: 1,
+                text: "late",
+            }
+        );
         let seen = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
         let sink = {
             let seen = seen.clone();
@@ -3500,7 +3664,7 @@ mod tests {
         // timeout 0 => backgrounds immediately, before the command prints.
         let out = super::execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "sleep 0.2; printf 'late\n'", "timeout": 0, "background": true}),
+            &json!({ "command": command, "timeout": 0, "background": true }),
             &ctx,
         )
         .await
@@ -3565,9 +3729,10 @@ mod tests {
         // its deadline was shelved and kept running. An unowned process that
         // outlives every limit placed on it is the defect, not the feature.
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::Sleep { seconds: 5 });
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "sleep 5", "timeout": 0}),
+            &json!({ "command": command, "timeout": 0 }),
             &root,
         )
         .await;
@@ -3590,9 +3755,16 @@ mod tests {
         // Partial output survives the kill: the run still gets to see what the
         // command managed to say before its deadline.
         let root = unique_root();
+        let command = command_or_skip!(
+            &root,
+            Shape::PrintThenSleep {
+                text: "partial",
+                seconds: 5,
+            }
+        );
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "printf 'partial\\n'; sleep 5", "timeout": 1}),
+            &json!({ "command": command, "timeout": 1 }),
             &root,
         )
         .await;
@@ -3607,9 +3779,10 @@ mod tests {
     #[tokio::test]
     async fn backgrounding_is_available_when_it_is_asked_for() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::Sleep { seconds: 2 });
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "sleep 2", "timeout": 0, "background": true}),
+            &json!({ "command": command, "timeout": 0, "background": true }),
             &root,
         )
         .await;
@@ -3622,9 +3795,16 @@ mod tests {
     #[tokio::test]
     async fn bash_job_id_waits_for_and_collects_background_output() {
         let root = unique_root();
+        let command = command_or_skip!(
+            &root,
+            Shape::SleepThenPrint {
+                seconds: 1,
+                text: "done",
+            }
+        );
         let started = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "sleep 0.2; echo done", "timeout": 0, "background": true}),
+            &json!({ "command": command, "timeout": 0, "background": true }),
             &root,
         )
         .await;
@@ -3665,10 +3845,11 @@ mod tests {
     #[tokio::test]
     async fn bash_command_takes_precedence_over_spurious_job_id() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::Literal("hello"));
         for job_id in ["", " ", "x"] {
             let out = execute_builtin(
                 lookup("bash").unwrap(),
-                &json!({"command": "printf hello", "job_id": job_id}),
+                &json!({ "command": command, "job_id": job_id }),
                 &root,
             )
             .await;
@@ -3732,10 +3913,11 @@ mod tests {
     #[tokio::test]
     async fn bash_exit_marker_is_on_its_own_line() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::StderrNoNewline("to remote"));
         // stderr-only output with no trailing newline (mirrors `git push`).
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "printf 'to remote' 1>&2"}),
+            &json!({ "command": command }),
             &root,
         )
         .await;
@@ -3749,10 +3931,11 @@ mod tests {
     #[tokio::test]
     async fn bash_output_past_old_64kb_cap_survives_intact() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::PaddedLines { count: 2000 });
         // ~128KB of output: over the shared 64KB cap, under the bash cap.
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "for i in $(seq 1 2000); do printf '%064d\\n' \"$i\"; done"}),
+            &json!({ "command": command }),
             &root,
         )
         .await;
@@ -3769,12 +3952,19 @@ mod tests {
     #[tokio::test]
     async fn bash_cr_progress_is_collapsed_not_truncated() {
         let root = unique_root();
+        let command = command_or_skip!(
+            &root,
+            Shape::StderrRedraw {
+                count: 30000,
+                prefix: "Receiving objects: ",
+            }
+        );
         // Mimics git progress: one logical line redrawn thousands of times with
         // \r (no \n). Raw bytes exceed the byte cap, but only the final redraw
         // is visible, so the model must see it intact with no truncation notice.
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "for i in $(seq 1 30000); do printf 'Receiving objects: %d\\r' \"$i\"; done 1>&2"}),
+            &json!({ "command": command }),
             &root,
         )
         .await;
@@ -3793,11 +3983,12 @@ mod tests {
     #[tokio::test]
     async fn bash_output_overflow_spills_to_readable_temp_file() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::PaddedLines { count: 16000 });
         // ~1MB of output: over the bash cap, so it must spill to a temp file
         // and tell the agent how to read the rest.
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "for i in $(seq 1 16000); do printf '%064d\\n' \"$i\"; done"}),
+            &json!({ "command": command }),
             &root,
         )
         .await;
@@ -3834,12 +4025,13 @@ mod tests {
     #[tokio::test]
     async fn bash_spill_is_readable_when_a_scratch_is_set() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::PaddedLines { count: 16000 });
         let scratch = unique_root();
         let store = crate::workspace::project_store(&root);
         let ctx = ToolContext::new(&root, &store, &[]).with_scratch_root(&scratch);
         let out = super::execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "for i in $(seq 1 16000); do printf '%064d\\n' \"$i\"; done"}),
+            &json!({ "command": command }),
             &ctx,
         )
         .await
@@ -3929,12 +4121,13 @@ mod tests {
     #[tokio::test]
     async fn bash_line_overflow_keeps_the_tail_not_the_head() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::Lines { count: 12000 });
         // 12000 short lines: over the 10000-line cap but under the byte cap.
         // Tail truncation must keep the LAST lines (final result/errors) and
         // drop the earliest ones.
         let out = execute_builtin(
             lookup("bash").unwrap(),
-            &json!({"command": "for i in $(seq 1 12000); do echo \"L$i\"; done"}),
+            &json!({ "command": command }),
             &root,
         )
         .await;
@@ -3974,12 +4167,17 @@ mod tests {
     #[tokio::test]
     async fn bash_command_reading_stdin_does_not_hang() {
         let root = unique_root();
+        let command = command_or_skip!(&root, Shape::ReadStdin);
         // stdin is /dev/null, so a command that reads it gets immediate EOF and
         // returns instead of blocking the agent loop forever (e.g. a `sudo`
         // password prompt). The failure/output comes back as a normal result.
         let out = tokio::time::timeout(
             std::time::Duration::from_secs(10),
-            execute_builtin(lookup("bash").unwrap(), &json!({"command": "cat"}), &root),
+            execute_builtin(
+                lookup("bash").unwrap(),
+                &json!({ "command": command }),
+                &root,
+            ),
         )
         .await
         .expect("must not hang on stdin read");

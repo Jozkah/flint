@@ -232,7 +232,12 @@ mod tests {
     #[test]
     fn user_memory_reaches_an_unrelated_conversation() {
         let records = [rec("a", "Prefer concise answers", Scope::User)];
-        assert_eq!(select(&records, &ctx(Some("s9"), Some("p9"))).injected.len(), 1);
+        assert_eq!(
+            select(&records, &ctx(Some("s9"), Some("p9")))
+                .injected
+                .len(),
+            1
+        );
         assert_eq!(select(&records, &ctx(None, None)).injected.len(), 1);
     }
 
@@ -241,7 +246,9 @@ mod tests {
         let mut expired = rec("a", "old", Scope::User);
         expired.expires_at = Some(500);
         let mut superseded = rec("b", "replaced", Scope::User);
-        superseded.status = Status::Superseded { by: MemoryId::new("z") };
+        superseded.status = Status::Superseded {
+            by: MemoryId::new("z"),
+        };
         let mut deleted = rec("c", "gone", Scope::User);
         deleted.status = Status::Deleted;
 
@@ -259,7 +266,10 @@ mod tests {
         b.project_id = Some("p1".into());
 
         let selection = select(&[a, b], &ctx(None, Some("p1")));
-        assert!(selection.injected.is_empty(), "a conflict was injected anyway");
+        assert!(
+            selection.injected.is_empty(),
+            "a conflict was injected anyway"
+        );
         assert_eq!(selection.conflicts.len(), 1);
         assert_eq!(selection.conflicts[0].subject, "package manager");
     }
@@ -287,7 +297,11 @@ mod tests {
 
         let selection = select(&[user, project], &ctx(None, Some("p1")));
         assert_eq!(selection.injected.len(), 1);
-        assert_eq!(selection.injected[0].id, MemoryId::new("b"), "kept the narrower");
+        assert_eq!(
+            selection.injected[0].id,
+            MemoryId::new("b"),
+            "kept the narrower"
+        );
     }
 
     #[test]
@@ -299,7 +313,11 @@ mod tests {
         session.session_id = Some("s1".into());
 
         let selection = select(&[user, project, session], &ctx(Some("s1"), Some("p1")));
-        let order: Vec<_> = selection.injected.iter().map(|i| i.id.to_string()).collect();
+        let order: Vec<_> = selection
+            .injected
+            .iter()
+            .map(|i| i.id.to_string())
+            .collect();
         assert_eq!(order, vec!["s", "p", "u"]);
     }
 
@@ -337,7 +355,11 @@ mod tests {
         let selection = select(&[user, session], &c);
 
         assert_eq!(selection.injected.len(), 1);
-        assert_eq!(selection.injected[0].id, MemoryId::new("s"), "kept the narrower");
+        assert_eq!(
+            selection.injected[0].id,
+            MemoryId::new("s"),
+            "kept the narrower"
+        );
         assert_eq!(selection.dropped_for_budget, vec![MemoryId::new("u")]);
     }
 
@@ -350,7 +372,10 @@ mod tests {
     /// be traced back to records.
     #[test]
     fn the_rendered_block_names_ids_and_scopes() {
-        let selection = select(&[rec("a", "Prefer concise answers", Scope::User)], &ctx(None, None));
+        let selection = select(
+            &[rec("a", "Prefer concise answers", Scope::User)],
+            &ctx(None, None),
+        );
         let block = selection.render().expect("a block");
         assert!(block.contains("[a]"), "{block}");
         assert!(block.contains("(user)"), "{block}");

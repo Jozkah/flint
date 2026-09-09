@@ -672,9 +672,6 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
 /// process", which means the command had already finished.
 #[cfg(windows)]
 pub fn kill_tree(pid: u32) -> KillOutcome {
-    /// `taskkill` exit code for "the process is not running".
-    const ERROR_NOT_FOUND: i32 = 128;
-
     let output = match std::process::Command::new("taskkill")
         .args(["/F", "/T", "/PID", &pid.to_string()])
         .output()
@@ -682,18 +679,38 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
         Ok(output) => output,
         Err(e) => return KillOutcome::Failed(format!("could not run taskkill: {e}")),
     };
-    if output.status.success() {
-        return KillOutcome::Signalled;
-    }
-    if output.status.code() == Some(ERROR_NOT_FOUND) {
-        return KillOutcome::Gone;
+    classify_taskkill(output.status.code(), &output.stderr)
+}
+
+/// What `taskkill`'s exit status and stderr mean.
+///
+/// Split out from [`kill_tree`] so all three outcomes can be tested without
+/// firing a real `taskkill` at a real process. The refusal branch used to be
+/// covered by terminating the System Idle Process, which stopped refusing on
+/// current Windows builds and reported "not running" instead -- and the only
+/// processes that *do* still refuse are System and Idle, which no test should
+/// be aiming `/F` at on a developer's machine.
+#[cfg(windows)]
+fn classify_taskkill(code: Option<i32>, stderr: &[u8]) -> KillOutcome {
+    /// `taskkill` exit code for "the process is not running".
+    const ERROR_NOT_FOUND: i32 = 128;
+
+    match code {
+        Some(0) => return KillOutcome::Signalled,
+        // Nothing left to kill is not a failure: the command had already
+        // finished, which is the outcome the caller wanted.
+        Some(ERROR_NOT_FOUND) => return KillOutcome::Gone,
+        _ => {}
     }
     // taskkill explains itself on stderr; its first line is the useful part
     // and names no path of ours.
-    let reason = String::from_utf8_lossy(&output.stderr);
+    let reason = String::from_utf8_lossy(stderr);
     let first = reason.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
     KillOutcome::Failed(if first.is_empty() {
-        format!("taskkill exited with {}", output.status)
+        match code {
+            Some(code) => format!("taskkill exited with {code}"),
+            None => "taskkill was terminated before it answered".to_string(),
+        }
     } else {
         first.trim().to_string()
     })
@@ -759,18 +776,45 @@ mod windows_tests {
         std::env::temp_dir()
     }
 
+    /// A command that waits, in whatever language the resolved shell speaks.
+    ///
+    /// `timeout /t 300` is a `cmd` builtin, and the shell here is whichever one
+    /// `shell()` resolved -- on a machine with Git for Windows that is bash,
+    /// which runs `timeout` as its own coreutil, rejects the arguments and
+    /// exits immediately. The process was then already gone by the time the
+    /// kill was attempted, so the test proved nothing about killing.
+    fn wait_command() -> &'static str {
+        match shell().flavor {
+            ShellFlavor::Posix => "sleep 300",
+            ShellFlavor::PowerShell => "Start-Sleep -Seconds 300",
+            ShellFlavor::Cmd => "timeout /t 300 /nobreak",
+        }
+    }
+
     /// `taskkill /T` walks the tree and reports success.
+    ///
+    /// Spawned directly rather than through [`spawn`], which registers the pid
+    /// in the process-wide table `kill_all` reaps from. Sharing that table with
+    /// every other test in the binary meant this one's process could be gone
+    /// before the kill it is testing, and the failure looked like `kill_tree`
+    /// misreporting rather than like a test racing its neighbours.
     #[tokio::test]
     async fn kills_a_running_command_and_reports_it() {
-        // `timeout` is a stock Windows command that simply waits.
-        let mut child = spawn(shell(), "timeout /t 300 /nobreak", &tmp(), None)
-            .await
-            .unwrap();
+        let cfg = shell();
+        let mut command = Command::new(&cfg.program);
+        command
+            .args(&cfg.args)
+            .arg(wait_command())
+            .current_dir(tmp())
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .kill_on_drop(true);
+        let mut child = command.spawn().unwrap();
         let pid = child.id().unwrap();
 
         assert_eq!(kill_tree(pid), KillOutcome::Signalled);
         let _ = tokio::time::timeout(std::time::Duration::from_secs(10), child.wait()).await;
-        unregister(pid);
     }
 
     /// taskkill exits 128 for "the process is not running", which is not a
@@ -780,20 +824,50 @@ mod windows_tests {
         assert_eq!(kill_tree(u32::MAX - 7), KillOutcome::Gone);
     }
 
-    /// A nonzero exit that is *not* 128 is a refusal, and must be reported as
-    /// a failure carrying taskkill's own explanation. pid 0 is the System Idle
-    /// Process, which cannot be terminated.
+    /// A nonzero exit that is *not* 128 is a refusal, and must be reported as a
+    /// failure carrying taskkill's own explanation.
+    ///
+    /// Tested through the classifier rather than by refusing a real kill. The
+    /// only processes on Windows that still refuse `/F` are System and Idle,
+    /// and a test that aimed one at either would be betting the developer's
+    /// uptime on the refusal working. Idle used to serve here and no longer
+    /// does: current builds report it as "not running".
     #[test]
     fn a_refusal_is_reported_with_the_reason_taskkill_gave() {
-        match kill_tree(0) {
+        match classify_taskkill(Some(1), b"ERROR: The process cannot be terminated.\r\n") {
             KillOutcome::Failed(reason) => {
-                assert!(!reason.is_empty(), "a refusal must say why");
+                assert_eq!(reason, "ERROR: The process cannot be terminated.");
                 assert!(
                     !reason.contains('\\'),
                     "the reason is shown to the user and must name no path: {reason}"
                 );
             }
-            other => panic!("terminating the idle process must fail, got {other:?}"),
+            other => panic!("a nonzero exit that is not 128 is a refusal, got {other:?}"),
+        }
+    }
+
+    /// A refusal with nothing on stderr still has to say something.
+    #[test]
+    fn a_silent_refusal_still_reports_the_status() {
+        match classify_taskkill(Some(5), b"") {
+            KillOutcome::Failed(reason) => assert!(reason.contains('5'), "{reason}"),
+            other => panic!("expected a failure, got {other:?}"),
+        }
+        // taskkill killed by a signal before it answered: no code at all.
+        match classify_taskkill(None, b"") {
+            KillOutcome::Failed(reason) => assert!(!reason.is_empty()),
+            other => panic!("expected a failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn the_classifier_agrees_with_the_outcomes_kill_tree_reports() {
+        assert_eq!(classify_taskkill(Some(0), b""), KillOutcome::Signalled);
+        assert_eq!(classify_taskkill(Some(128), b""), KillOutcome::Gone);
+        // Blank stderr lines must not become the explanation.
+        match classify_taskkill(Some(1), b"\r\n\r\nERROR: Access is denied.\r\n") {
+            KillOutcome::Failed(reason) => assert_eq!(reason, "ERROR: Access is denied."),
+            other => panic!("expected a failure, got {other:?}"),
         }
     }
 }

@@ -103,12 +103,16 @@ pub enum Origin {
 pub enum Status {
     Active,
     /// Replaced by another record, kept for provenance rather than deleted.
-    Superseded { by: MemoryId },
+    Superseded {
+        by: MemoryId,
+    },
     /// Disagrees with another applicable record and has not been resolved.
     ///
     /// Never injected: an unresolved conflict is exactly the situation where
     /// picking one and saying nothing is the wrong thing to do.
-    Conflicted { with: MemoryId },
+    Conflicted {
+        with: MemoryId,
+    },
     /// Past its expiry.
     Expired,
     /// Removed by the user. Retained briefly so deletion can be undone.
@@ -378,12 +382,8 @@ pub fn prefer<'a>(
 
     // 4. Explicit over inferred, for the same creator.
     match (a.origin, b.origin) {
-        (Origin::Explicit, Origin::Inferred) => {
-            return (a, PrecedenceReason::ExplicitOverInferred)
-        }
-        (Origin::Inferred, Origin::Explicit) => {
-            return (b, PrecedenceReason::ExplicitOverInferred)
-        }
+        (Origin::Explicit, Origin::Inferred) => return (a, PrecedenceReason::ExplicitOverInferred),
+        (Origin::Inferred, Origin::Explicit) => return (b, PrecedenceReason::ExplicitOverInferred),
         _ => {}
     }
 
@@ -482,7 +482,11 @@ pub fn deduplicate(records: Vec<MemoryRecord>) -> Vec<MemoryRecord> {
                 };
                 best.insert(
                     record.content_hash.clone(),
-                    if keep == existing.id { existing } else { record },
+                    if keep == existing.id {
+                        existing
+                    } else {
+                        record
+                    },
                 );
             }
             None => {
@@ -574,8 +578,12 @@ mod tests {
 
         m.expires_at = None;
         for status in [
-            Status::Superseded { by: MemoryId::new("m2") },
-            Status::Conflicted { with: MemoryId::new("m2") },
+            Status::Superseded {
+                by: MemoryId::new("m2"),
+            },
+            Status::Conflicted {
+                with: MemoryId::new("m2"),
+            },
             Status::Expired,
             Status::Deleted,
         ] {
@@ -589,7 +597,10 @@ mod tests {
         let session = rec("a", "x", Scope::Session);
         let project = rec("b", "x", Scope::Project);
         let user = rec("c", "x", Scope::User);
-        assert_eq!(prefer(&session, &project).1, PrecedenceReason::MoreSpecificScope);
+        assert_eq!(
+            prefer(&session, &project).1,
+            PrecedenceReason::MoreSpecificScope
+        );
         assert_eq!(prefer(&session, &project).0.id, session.id);
         assert_eq!(prefer(&project, &user).0.id, project.id);
         assert_eq!(prefer(&user, &session).0.id, session.id);
@@ -605,7 +616,10 @@ mod tests {
 
         let plain_user = rec("c", "x", Scope::User);
         assert_eq!(prefer(&pinned_user, &plain_user).0.id, pinned_user.id);
-        assert_eq!(prefer(&pinned_user, &plain_user).1, PrecedenceReason::Pinned);
+        assert_eq!(
+            prefer(&pinned_user, &plain_user).1,
+            PrecedenceReason::Pinned
+        );
     }
 
     /// The negative-authority case: inference and imports cannot overrule the
