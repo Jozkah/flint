@@ -18,6 +18,7 @@ pub mod identity;
 pub mod migrate;
 pub mod record;
 pub mod retrieve;
+pub mod service;
 pub mod store;
 
 use std::path::{Path, PathBuf};
