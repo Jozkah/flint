@@ -122,6 +122,7 @@ import { CoworkHiddenTools } from '@/containers/CoworkHiddenTools'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import type { AskRecord } from '@/types/coworkSession'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
+import { CoworkEnvironmentReadiness } from '@/containers/CoworkEnvironmentReadiness'
 import { usePrompt } from '@/hooks/usePrompt'
 import { setSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
 import { recordPayloadUsage } from '@/lib/payloadUsage'
@@ -2815,6 +2816,9 @@ function CoworkPage() {
               than conversation, closed until asked for. */}
           <CoworkSessionDetails summary={sessionDetailsSummary}>
             <CoworkReadinessCard manifest={readiness} />
+            {/* Collapsed, and inside session details rather than above the
+                composer: someone whose session works should never read it. */}
+            <CoworkEnvironmentReadiness projectRoot={folder ?? undefined} />
             {runContext && <CoworkContextBreakdown context={runContext} />}
             <CoworkCompatSection
               manifest={compat}
