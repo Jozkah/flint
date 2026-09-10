@@ -83,3 +83,4 @@ JAN.md
 # `make engine-source`. Never committed -- the pin lives in build.rs.
 src-tauri/plugins/tauri-plugin-llamacpp/vendor/
 target-windows-final/
+.upstream-cache/

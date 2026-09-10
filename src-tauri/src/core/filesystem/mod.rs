@@ -3,6 +3,8 @@ pub mod helpers;
 pub mod models;
 
 #[cfg(test)]
+mod scope_tests;
+#[cfg(test)]
 mod tests;
 
 /// Test-only scripting seam for the native picker. Compiled out of release
