@@ -19,5 +19,7 @@ pub mod helpers;
 pub mod utils;
 
 #[cfg(test)]
+mod durability_tests;
+#[cfg(test)]
 #[cfg(not(feature = "cli"))]
 mod tests;

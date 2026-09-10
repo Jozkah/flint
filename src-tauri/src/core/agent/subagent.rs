@@ -81,8 +81,7 @@ impl std::fmt::Display for SubagentError {
 
 /// `~/.jan/agent/subagents/`. `None` when the home directory can't be resolved.
 pub fn user_subagents_dir() -> Option<PathBuf> {
-    crate::core::app::commands::jan_home_dir()
-        .map(|h| h.join(".jan").join("agent").join(SUBAGENTS))
+    crate::core::app::commands::jan_home_dir().map(|h| h.join(".jan").join("agent").join(SUBAGENTS))
 }
 
 /// `<project_root>/.jan/agent/subagents/`.
@@ -763,8 +762,7 @@ async fn run_subagent(
     // qualified `agent(<name>)` binds this subagent and not its parent. An
     // unqualified rule still covers every subject, so a project that never
     // names one is unaffected.
-    child_args.subject =
-        tauri_plugin_agent_tools::subject::Subject::NamedAgent(name.clone());
+    child_args.subject = tauri_plugin_agent_tools::subject::Subject::NamedAgent(name.clone());
     // A subagent's own interactive question (if any) belongs to its parent's
     // conversation, not a client waiting on this child's ask_requests -- and
     // no client is attached to a background/child run anyway.
