@@ -4861,9 +4861,14 @@ mod tests {
     ///
     /// `agent:reviewer/bash` compiled and was accepted long before it did
     /// anything: the gate never asked who was calling, so the rule bound the
-    /// main agent exactly as hard as it bound the reviewer. These two cases are
-    /// the same call, the same project policy, and different subjects, and they
-    /// fail together if the subject stops reaching `resolve_decision`.
+    /// main agent exactly as hard as it bound the reviewer. The same call, the
+    /// same project policy, two subjects.
+    ///
+    /// The main agent is not refused by policy -- it reaches the ordinary exec
+    /// prompt, which this test answers with Deny so the call returns. An earlier
+    /// version left that prompt unanswered and hung the whole suite forever,
+    /// which is why the answer is explicit here and the assertion is on *which*
+    /// refusal came back.
     #[tokio::test]
     async fn a_rule_naming_a_subagent_binds_that_subagent_and_nobody_else() {
         let root = std::env::temp_dir().join(format!(
@@ -4888,34 +4893,56 @@ mod tests {
             "function": { "name": "bash", "arguments": "{\"command\":\"echo hi\"}" }
         })];
 
-        let run = |subject: tauri_plugin_agent_tools::subject::Subject| {
-            let root = root.clone();
-            let permissions = permissions.clone();
-            let call = call.clone();
-            async move {
-                let (tx, _rx) = mpsc::unbounded_channel::<StreamEvent>();
-                let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
-                let invoker = build_invoker_for(root, tx, registry, permissions, subject);
-                invoker.invoke(&call).await.expect("dispatch")[0]
-                    .content
-                    .clone()
-            }
-        };
-
-        let reviewer = run(tauri_plugin_agent_tools::subject::Subject::NamedAgent(
-            "reviewer".to_string(),
-        ))
-        .await;
+        // The reviewer: refused by the policy, before any prompt.
+        let (tx, _rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let reviewer = build_invoker_for(
+            root.clone(),
+            tx,
+            registry,
+            permissions.clone(),
+            tauri_plugin_agent_tools::subject::Subject::NamedAgent("reviewer".to_string()),
+        );
+        let out = tokio::time::timeout(std::time::Duration::from_secs(20), reviewer.invoke(&call))
+            .await
+            .expect("a policy refusal must not wait on a prompt")
+            .expect("dispatch");
         assert!(
-            reviewer.contains("denied"),
-            "the rule names the reviewer, so the reviewer must be refused: {reviewer}"
+            out[0].content.contains("denied by project policy"),
+            "the rule names the reviewer, so the reviewer must be refused: {}",
+            out[0].content
         );
 
-        // The negative half. Without it, a gate that denied everyone would pass.
-        let main = run(tauri_plugin_agent_tools::subject::Subject::MainAgent).await;
+        // The main agent: the rule does not bind it, so it gets as far as the
+        // exec prompt. Answering Deny there shows it was *asked*, which a
+        // policy refusal never is.
+        let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let main = build_invoker_for(
+            root.clone(),
+            tx,
+            registry.clone(),
+            permissions,
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        let (out, ()) = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+            tokio::join!(
+                main.invoke(&call),
+                respond_once(&mut rx, &registry, PermissionDecision::Deny)
+            )
+        })
+        .await
+        .expect("the main agent's prompt must be raised and answered, not left hanging");
+        let out = out.expect("dispatch");
         assert!(
-            !main.contains("denied by project policy"),
-            "a rule about the reviewer must not bind the main agent: {main}"
+            !out[0].content.contains("denied by project policy"),
+            "a rule about the reviewer must not bind the main agent: {}",
+            out[0].content
+        );
+        assert!(
+            out[0].content.contains("denied by user"),
+            "the main agent should have reached the prompt: {}",
+            out[0].content
         );
 
         let _ = std::fs::remove_dir_all(&root);

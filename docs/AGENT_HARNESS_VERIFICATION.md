@@ -119,12 +119,20 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 
 ## Known blockers
 
-- **The `Jan` lib test binary does not start on this Windows host.** Every
-  `cargo test -p Jan --lib` run exits `0xc0000139`
-  (`STATUS_ENTRYPOINT_NOT_FOUND`) before the harness prints a line, including
-  tests untouched by any recent change. The main crate's unit tests therefore
-  compile here but are not executed; anything that must be *run* on Windows goes
-  through `cowork-smoke`, which drives the real application and does start.
+- **Correction (2026-09-10): the `Jan` lib tests do run on Windows.** An
+  earlier entry here said `cargo test -p Jan --lib` could not start on this host
+  (`0xc0000139`). That was a misdiagnosis of a *feature combination*, not the
+  host. Under `--features cowork-smoke` the unit-test harness imports
+  `TaskDialogIndirect` with no Common-Controls v6 manifest and dies at load --
+  exactly the limitation `src-tauri/build.rs` documents, since cargo has no
+  selector for the lib test target. Run the way CI runs it,
+  `cargo test --lib --no-default-features --features test-tauri`, the suite
+  starts and 786 tests passed before the run was stopped (see the next entry).
+- **A test that hung the suite, fixed.** `a_rule_naming_a_subagent_binds_that_subagent_and_nobody_else`
+  left the main agent's exec prompt unanswered and waited forever; under
+  `--test-threads=1` (CI) that stops the whole job. It now answers the prompt
+  with Deny, bounds both halves with a timeout, and asserts which refusal came
+  back.
 
 ## Tool activity record and timeline (AH-050 / AH-172)
 
@@ -168,8 +176,8 @@ and `... handlers::tests::a_file_changed_after_staging`.
 
 The approval flow in `core/agent/loop.rs` stages the change when the prompt is
 shown and re-stamps the file before acting on the answer. That wiring is
-compile-checked on default, `cowork-smoke` and `cli`, but not executed here --
-see Known blockers.
+compile-checked on default, `cowork-smoke` and `cli`; the lib tests run under
+`--no-default-features --features test-tauri`.
 
 AH-147 is `in-progress`: `StagedPatch::select` is built and tested, but no
 decision can yet carry a hunk selection and the TUI has no per-hunk controls.
@@ -266,7 +274,7 @@ Two design points worth keeping:
 | --- | --- | --- |
 | 8 unit tests | `plugins/tauri-plugin-agent-tools/src/permissions.rs` (`mod subject_rules`) | a qualified rule does not bind another subject; a deny for one agent does not deny the others; an allow for one agent does not allow the others; a subagent allow cannot escape a blanket deny; an unqualified rule still covers everyone; every subject kind is matched; a rule about one subagent hides the tool from that subagent only, in execution *and* in advertising; an unqualified deny still binds every subject |
 | Rule-grammar tests | `plugins/tauri-plugin-agent-tools/src/resource.rs` | `[subject/]tool[(pattern)]` parsing, including `agent:reviewer/write` |
-| Dispatcher test | `src/core/agent/loop.rs` (`a_rule_naming_a_subagent_binds_that_subagent_and_nobody_else`) | the same call, the same policy, two subjects: the reviewer is refused and the main agent is not. **Compiled, not executed on this host** -- see Known blockers |
+| Dispatcher test | `src/core/agent/loop.rs` (`a_rule_naming_a_subagent_binds_that_subagent_and_nobody_else`) | the same call, the same policy, two subjects: the reviewer is refused by policy; the main agent reaches the exec prompt instead. Runs under `--features test-tauri` |
 
 Run: `cargo test -p tauri-plugin-agent-tools --lib -- --test-threads=4 subject_rules`.
 

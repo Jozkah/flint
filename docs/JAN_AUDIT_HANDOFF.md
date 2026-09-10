@@ -1410,3 +1410,31 @@ struct is checked on **all three** configurations — default,
 `--features cowork-smoke`, and `--no-default-features --features cli`, each with
 `--tests` — before it is called compiled. Checking one and inferring the others
 is how both this and `f318081` shipped broken.
+
+## Corrections (2026-09-10, continuing from `e213b3c`)
+
+**AH-146 and AH-148 are back to `in-progress`.** `e213b3c` marked them
+`implemented` on the strength of a staged patch and a base check in the Rust
+approval loop. Held to the completion standard now in force — persisted,
+restart-safe, UI-accessible, permission-enforced, Windows-tested — they are not:
+the patch is not stored as a versioned record before approval, approval does
+not bind to an immutable patch hash and base-state hash, there is no desktop
+review UI and no real-WebView scenario. Registry after this correction:
+89 implemented / 35 in-progress / 86 missing.
+
+**The `Jan` lib tests were never unrunnable.** Earlier entries in this file say
+`cargo test -p Jan --lib` "exits 0xc0000139 on this host". Wrong diagnosis: that
+is the `cowork-smoke` feature combination, whose unit-test harness gets no
+Common-Controls v6 manifest — the limitation `build.rs` already documents. CI's
+command, `cargo test --lib --no-default-features --features test-tauri`, runs:
+786 passed before the run was stopped. Every "compiled, not executed here"
+caveat written on that premise was unnecessary.
+
+**A test I added hung the suite.** Running it for real exposed it:
+`a_rule_naming_a_subagent_binds_that_subagent_and_nobody_else` left the main
+agent's exec prompt unanswered and waited forever. Under CI's
+`--test-threads=1` that stalls the whole Jan test job. It now answers the prompt
+with Deny, bounds both halves with a timeout, and asserts *which* refusal came
+back — policy for the reviewer, the user's Deny for the main agent. Another
+session's `cargo test ... --test-threads=1` (PID 21452, not mine) was running
+against this tree at the time and would have hit it; it was left alone.
