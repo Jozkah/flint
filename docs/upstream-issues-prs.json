@@ -30,12 +30,12 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1231,
+      "untriaged": 1229,
       "needs-user-hardware": 7,
       "fixed": 20,
       "already-fixed": 3,
       "cannot-reproduce": 2,
-      "not-applicable": 1,
+      "not-applicable": 3,
       "adapted": 9,
       "implementation-ready": 3,
       "rejected": 2
@@ -57937,7 +57937,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8636
+      ],
       "affectedAreas": [
         "model-management",
         "ui",
@@ -57966,9 +57968,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "not-applicable",
+      "decisionReason": "See janhq/jan#8636: the link does not exist in this fork.",
+      "implementationStatus": "not-applicable",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -58080,9 +58082,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "not-applicable",
+      "decisionReason": "The fork has no View on HuggingFace link (no DownloadButton component); the duplicated-org URL cannot be built here.",
+      "implementationStatus": "not-applicable",
       "forkCommits": [],
       "tests": [],
       "verification": null,
