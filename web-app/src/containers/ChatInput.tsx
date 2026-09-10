@@ -72,7 +72,7 @@ import {
   SESSION_STORAGE_KEY,
   SESSION_STORAGE_PREFIX,
 } from '@/constants/chat'
-import { defaultModel } from '@/lib/models'
+import { resolveThreadModelId } from '@/lib/models'
 import { useAssistant } from '@/hooks/useAssistant'
 import { AssistantSwitcher } from '@/containers/AssistantSwitcher'
 import DropdownToolsAvailable from '@/containers/DropdownToolsAvailable'
@@ -723,9 +723,21 @@ const ChatInput = memo(function ChatInput({
 
         setCurrentAssistant(assistant)
 
+        // Never pin a thread to a model the provider cannot serve — a local
+        // engine has no cloud catalogue to borrow an id from (janhq/jan#8007).
+        const threadModelId = resolveThreadModelId(
+          selectedProvider,
+          selectedModel?.id,
+          (getProviderByName(selectedProvider)?.models ?? []).map((m) => m.id)
+        )
+        if (!threadModelId) {
+          setMessage('Please select a model to start chatting.')
+          return
+        }
+
         const newThread = await createThread(
           {
-            id: selectedModel?.id ?? defaultModel(selectedProvider),
+            id: threadModelId,
             provider: selectedProvider,
           },
           prompt, // Use prompt as thread title

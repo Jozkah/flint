@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   defaultModel,
+  resolveThreadModelId,
   extractDescription,
   removeYamlFrontMatter,
   extractModelName,
@@ -36,12 +37,16 @@ vi.mock('token.js', () => ({
 }))
 
 describe('defaultModel', () => {
-  it('returns first OpenAI model when no provider is given', () => {
-    expect(defaultModel()).toBe('gpt-5')
+  it('returns nothing when no provider is given', () => {
+    expect(defaultModel()).toBeUndefined()
   })
 
-  it('returns first OpenAI model when unknown provider is given', () => {
-    expect(defaultModel('unknown')).toBe('gpt-5')
+  // janhq/jan#8007: an unknown provider used to borrow OpenAI's catalogue, so a
+  // local engine could end up owning a thread pinned to `gpt-5`.
+  it('returns nothing for a provider with no built-in catalogue', () => {
+    expect(defaultModel('unknown')).toBeUndefined()
+    expect(defaultModel('llamacpp')).toBeUndefined()
+    expect(defaultModel('mlx')).toBeUndefined()
   })
 
   it('returns first model for known providers', () => {
@@ -50,7 +55,32 @@ describe('defaultModel', () => {
   })
 
   it('handles empty string provider', () => {
-    expect(defaultModel('')).toBe('gpt-5')
+    expect(defaultModel('')).toBeUndefined()
+  })
+})
+
+describe('resolveThreadModelId', () => {
+  it('prefers the model the user selected', () => {
+    expect(
+      resolveThreadModelId('llamacpp', 'qwen3-8b', ['gemma-3-4b'])
+    ).toBe('qwen3-8b')
+  })
+
+  it('falls back to the local provider own first model', () => {
+    expect(
+      resolveThreadModelId('llamacpp', undefined, ['gemma-3-4b', 'qwen3-8b'])
+    ).toBe('gemma-3-4b')
+  })
+
+  it('never hands a local provider a cloud catalogue id', () => {
+    expect(resolveThreadModelId('llamacpp', undefined, [])).toBeUndefined()
+    expect(resolveThreadModelId('mlx', undefined)).toBeUndefined()
+  })
+
+  it('falls back to the cloud catalogue only for cloud providers', () => {
+    expect(resolveThreadModelId('anthropic', undefined, [])).toBe(
+      'claude-sonnet-4-5'
+    )
   })
 })
 
