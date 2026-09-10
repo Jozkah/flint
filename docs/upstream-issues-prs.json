@@ -30,13 +30,13 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1229,
+      "untriaged": 1228,
       "needs-user-hardware": 7,
       "fixed": 20,
       "already-fixed": 3,
       "cannot-reproduce": 2,
       "not-applicable": 3,
-      "adapted": 9,
+      "adapted": 10,
       "implementation-ready": 3,
       "rejected": 2
     }
@@ -68938,12 +68938,14 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Local keyless OpenAI-compatible provider preset; loopback only, never registered at startup because it has no key.",
+      "implementationStatus": "adapted",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "web-app/src/constants/__tests__/providers.llmman.test.ts"
+      ],
+      "verification": "64 passed; typecheck clean.",
       "blockers": [],
       "notes": null
     },
