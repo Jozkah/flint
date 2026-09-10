@@ -939,3 +939,16 @@ export async function executeToolStreaming(
     callId: options?.callId,
   })
 }
+
+/**
+ * Strip credentials out of text before it is persisted.
+ *
+ * One implementation, in Rust, shared with the audit log, the activity record
+ * and the prompt snapshot. A second copy of the matching rules in TypeScript
+ * would drift the first time either side was extended, and a redactor that is
+ * subtly weaker than the one it is named after is worse than none: it reads as
+ * a guarantee.
+ */
+export async function secretsRedact(text: string): Promise<string> {
+  return await invoke('plugin:agent-tools|secrets_redact', { text })
+}

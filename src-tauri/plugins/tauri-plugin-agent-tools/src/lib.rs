@@ -56,6 +56,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::direct_edit_authorize,
             commands::direct_edit_revoke,
             commands::direct_edit_revoke_session,
+            commands::secrets_redact,
             commands::skill_list,
             commands::skill_read,
             commands::skill_write,

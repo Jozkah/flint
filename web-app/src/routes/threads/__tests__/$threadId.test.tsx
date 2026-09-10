@@ -11,6 +11,7 @@ const h = vi.hoisted(() => {
   const mockSendMessage = vi.fn()
   const mockRegenerate = vi.fn()
   const mockStop = vi.fn()
+  const SMOKE_KEY = 'sk-live-abcdefghijklmnopqrstuvwxyz012345'
   const mockAddToolOutput = vi.fn()
   const mockSetChatMessages = vi.fn()
   const mockUpdateRag = vi.fn()
@@ -150,6 +151,7 @@ const h = vi.hoisted(() => {
     mockSendMessage,
     mockRegenerate,
     mockStop,
+    SMOKE_KEY,
     mockAddToolOutput,
     mockSetChatMessages,
     mockUpdateRag,
@@ -379,6 +381,15 @@ vi.mock('@/hooks/useTools', () => ({ useTools: vi.fn() }))
 vi.mock('@/hooks/useAppState', () => ({ useAppState: h.useAppStateMock }))
 vi.mock('@/hooks/useModelProvider', () => ({ useModelProvider: h.useModelProviderMock }))
 vi.mock('@/stores/chat-session-store', () => ({ useChatSessions: h.useChatSessionsMock }))
+// The redaction seam. `@/lib/redactToolOutput` itself is NOT mocked: the point
+// of the test below is that the route routes tool output through it, so only
+// the IPC call underneath is replaced.
+vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
+  secretsRedact: (text: string) =>
+    Promise.resolve(text.split(h.SMOKE_KEY).join('sk-[redacted]')),
+  memoryProposalsList: () => Promise.resolve([]),
+  memoryProposalResolve: () => Promise.resolve(null),
+}))
 vi.mock('@/hooks/useChatAttachments', () => ({
   useChatAttachments: h.useChatAttachmentsMock,
   NEW_THREAD_ATTACHMENT_KEY: '__new-thread__',
@@ -812,6 +823,38 @@ describe('ThreadDetail route', () => {
       expect(h.mockAddToolOutput).toHaveBeenCalledWith(
         expect.objectContaining({ toolCallId: 'tc2', tool: 'fetch' })
       )
+    })
+
+    // AH-045. A transcript is a file that outlives the run and gets exported,
+    // and a tool prints whatever it prints -- a `curl -v` trace, a config file
+    // it read back. The credential must not reach the message store, and the
+    // assertion is on what is absent, because a redactor that silently returns
+    // its input passes any check for what is present.
+    it('never persists a credential a tool printed', async () => {
+      h.appStateState.mcpToolNames = new Set(['fetch'])
+      const callTool = vi.fn().mockResolvedValue({
+        error: '',
+        content: [{ type: 'text', text: `Authorization: ${h.SMOKE_KEY}` }],
+      })
+      hub.mcp = () => ({ callTool }) as never
+      try {
+        renderComponent()
+        await act(async () => {
+          await (h as any).capturedOnToolCall(toolCall('tcRedact'))
+        })
+        await act(async () => {
+          await finishWithToolCalls()
+        })
+
+        const stored = JSON.stringify(h.mockAddToolOutput.mock.calls)
+        expect(stored).not.toContain(h.SMOKE_KEY)
+        // And the call still happened, so this cannot pass by doing nothing.
+        expect(h.mockAddToolOutput).toHaveBeenCalledWith(
+          expect.objectContaining({ toolCallId: 'tcRedact' })
+        )
+      } finally {
+        hub.mcp = realMcp
+      }
     })
 
     it('reuses the early approval instead of prompting twice', async () => {

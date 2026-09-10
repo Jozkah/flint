@@ -214,6 +214,27 @@ pub async fn session_workspace_sweep(
         .map_err(Into::into)
 }
 
+/// Strip credentials out of text before the renderer persists it. AH-045.
+///
+/// The renderer writes tool output into the session transcript, and that
+/// transcript is a file on disk that outlives the run, gets exported, and gets
+/// pasted into bug reports. Anything a tool printed -- a `curl -v` trace, an
+/// error quoting an `Authorization` header, a config file it read back -- lands
+/// there verbatim unless something takes the credential out first.
+///
+/// It lives here rather than in TypeScript on purpose. A second implementation
+/// of the matching rules is a second thing to keep correct, and the two would
+/// drift the first time either was extended -- so the renderer asks the same
+/// code the audit log, the activity record and the prompt snapshot already use.
+///
+/// Infallible by construction: pure string work, no I/O. That matters, because
+/// a caller that has to handle a redaction failure will eventually handle it by
+/// persisting the unredacted text.
+#[tauri::command]
+pub async fn secrets_redact(text: String) -> String {
+    crate::secrets::redact_secrets(&text)
+}
+
 /// Every discovered skill with its description, including empty stubs so the
 /// user can see and edit them.
 #[tauri::command]

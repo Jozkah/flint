@@ -156,6 +156,30 @@ renders from renderer state while nothing is written, and a record written while
 no card renders, are both failures a DOM-only or file-only check reports as a
 pass.
 
+## Secret redaction in transcripts (AH-045)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 16 unit tests | `plugins/tauri-plugin-agent-tools/src/secrets.rs` | a credential in prose, in an `Authorization` header, and as a JWT; several on one line; the assignment shape; a private-key header; **ordinary output is returned byte-identical** |
+| 10 unit tests | `web-app/src/lib/__tests__/redactToolOutput.test.ts` | the renderer asks the backend rather than matching locally; nested content parts are reached; one round trip per result; non-strings untouched; withheld when the backend fails, when it returns a non-string, and when the parts cannot be matched back up |
+| 1 route test | `web-app/src/routes/threads/__tests__/$threadId.test.tsx` (`never persists a credential a tool printed`) | a credential an MCP tool printed does not reach the message store |
+
+Run: `cargo test -p tauri-plugin-agent-tools --lib -- --test-threads=4 secrets::`
+and `yarn test:web`.
+
+The route test was mutation-checked: replacing `redactDeep(part.output)` with
+`part.output` fails it. It mocks only the IPC hop, not `redactToolOutput`
+itself, so it fails if the route stops routing output through the redactor.
+
+Two design points worth keeping:
+
+- **One implementation.** The matching rules stay in Rust, shared with the audit
+  log, the activity record and the prompt snapshot. A TypeScript copy would be a
+  second, quietly weaker redactor wearing the same name.
+- **No fallback to the original.** When redaction cannot be confirmed the text is
+  withheld, not stored raw. A fallback that persists the input on error persists
+  exactly what this exists to remove, on the one branch nobody exercises by hand.
+
 ## Subject-aware permission rules (AH-007)
 
 | Evidence | Where | Covers |

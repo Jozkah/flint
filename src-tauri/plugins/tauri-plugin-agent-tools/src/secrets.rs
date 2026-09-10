@@ -325,12 +325,104 @@ fn hunk_start(header: &str) -> Option<usize> {
 /// line loses the part that was worth keeping.
 pub fn redact_secrets(text: &str) -> String {
     text.lines()
+        // The word-level pass first, wherever it can do the job: it replaces
+        // the credential and leaves the rest of the line standing. Falling back
+        // to the line-level pass matters for the shape configuration has, where
+        // the value need not look like anything in particular -- `PASSWORD =
+        // hunter2` is a secret that no shape rule can recognise, and there the
+        // only safe move is to take the whole value.
+        //
+        // Ordering them the other way round is what made this wrong before:
+        // `classify_line` recognises a credential in prose too, and answering
+        // it with `redact_line` threw away the sentence that said where the
+        // credential came from.
         .map(|line| match classify_line(line) {
-            None => line.to_string(),
-            Some((_, _)) => redact_line(line),
+            Some((_, _)) => redact_tokens_in_line(line).unwrap_or_else(|| redact_line(line)),
+            None => redact_tokens_in_line(line).unwrap_or_else(|| line.to_string()),
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Replace credentials sitting in prose, leaving the rest of the line alone.
+///
+/// `None` when the line holds none, so the caller can keep the original string
+/// rather than a rebuilt copy of it.
+///
+/// Every match keeps its prefix (`sk-live-[redacted]`), because which kind of
+/// credential leaked is exactly what someone reading this later needs to know,
+/// and the prefix alone identifies nobody.
+fn redact_tokens_in_line(line: &str) -> Option<String> {
+    let is_sep = |c: char| c.is_whitespace() || c == '"' || c == '\'' || c == ',';
+    let mut out = String::with_capacity(line.len());
+    let mut changed = false;
+    // `Bearer <token>` and `Basic <token>` carry no variable name and no
+    // recognisable prefix of their own: the scheme word in front is the only
+    // thing that marks the next word as a credential.
+    let mut after_scheme = false;
+    let mut index = 0;
+
+    while index < line.len() {
+        let rest = &line[index..];
+        let separators: usize = rest
+            .chars()
+            .take_while(|c| is_sep(*c))
+            .map(char::len_utf8)
+            .sum();
+        if separators > 0 {
+            out.push_str(&rest[..separators]);
+            index += separators;
+            continue;
+        }
+        let length: usize = rest
+            .chars()
+            .take_while(|c| !is_sep(*c))
+            .map(char::len_utf8)
+            .sum();
+        let word = &rest[..length];
+
+        match redacted_word(word, after_scheme) {
+            Some(replacement) => {
+                out.push_str(&replacement);
+                changed = true;
+            }
+            None => out.push_str(word),
+        }
+        after_scheme = matches!(
+            word.trim_end_matches(':').to_ascii_lowercase().as_str(),
+            "bearer" | "basic"
+        );
+        index += length;
+    }
+
+    changed.then_some(out)
+}
+
+/// One word, replaced when it is a credential by its own shape.
+///
+/// Sentence punctuation after the value is kept, so a redacted line still reads
+/// as a line; the value itself never survives.
+fn redacted_word(word: &str, after_scheme: bool) -> Option<String> {
+    let trimmed = word.trim_end_matches(['.', ';', ':', ')', ']', '}']);
+    let tail = &word[trimmed.len()..];
+    // Sixteen characters is the shortest of the issued formats below. Shorter
+    // than that and a match would be a coincidence, not a credential.
+    if trimmed.len() < 16 {
+        return None;
+    }
+    if after_scheme {
+        return Some(format!("{REDACTED}{tail}"));
+    }
+    // A JWT: three base64url segments, and the header always starts `eyJ`.
+    if trimmed.starts_with("eyJ") && trimmed.matches('.').count() == 2 {
+        return Some(format!("{REDACTED}{tail}"));
+    }
+    for (prefix, min_len, _) in ISSUED_PREFIXES {
+        if trimmed.len() >= *min_len && trimmed.starts_with(prefix) {
+            return Some(format!("{prefix}{REDACTED}{tail}"));
+        }
+    }
+    None
 }
 
 fn redact_line(line: &str) -> String {
@@ -474,6 +566,63 @@ mod tests {
         assert_eq!(findings.len(), 1);
         assert_eq!(findings[0].file, "src/config.ts");
         assert_eq!(findings[0].line, 11);
+    }
+
+    /// The case tool output actually produces. A credential in a sentence is
+    /// not an assignment, so the line-level pass declines it -- and before the
+    /// word-level pass existed, that meant it went into the transcript intact.
+    #[test]
+    fn a_credential_in_prose_is_redacted() {
+        let out = redact_secrets(
+            "Authenticated with sk-live-abcdefghijklmnopqrstuvwxyz012345 successfully.",
+        );
+        assert!(!out.contains("abcdefghijklmnopqrstuvwxyz"), "{out}");
+        assert!(out.contains("[redacted]"), "{out}");
+        // The sentence survives: which kind of credential leaked, and where, is
+        // the part worth keeping.
+        assert!(out.starts_with("Authenticated with sk-"), "{out}");
+        assert!(out.ends_with("successfully."), "{out}");
+    }
+
+    #[test]
+    fn an_authorization_header_in_output_is_redacted() {
+        let out = redact_secrets("< Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345");
+        assert!(!out.contains("abcdefghijklmnopqrstuvwxyz"), "{out}");
+        assert!(out.contains("[redacted]"), "{out}");
+    }
+
+    #[test]
+    fn a_jwt_in_output_is_redacted() {
+        let jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1rXwW1gFWFOEjXk";
+        let out = redact_secrets(&format!("the response carried {jwt} in the body"));
+        assert!(!out.contains("dBjftJeZ4CVPmB92K27uhbUJU1p1r"), "{out}");
+        assert!(out.contains("[redacted]"), "{out}");
+    }
+
+    /// The other half, and the one that decides whether anybody leaves this
+    /// turned on. A redactor that eats ordinary output protects nothing,
+    /// because it gets switched off.
+    #[test]
+    fn ordinary_output_is_left_exactly_as_it_was() {
+        let text = concat!(
+            "Compiling jan v0.1.0\n",
+            "  Finished in 12.34s\n",
+            "file: src/main.rs:42:8\n",
+            "https://example.com/a/very/long/path/that/is/not/a/credential\n",
+            "hash 9f8e7d6c5b4a39281706f5e4d3c2b1a0"
+        );
+        assert_eq!(redact_secrets(text), text);
+    }
+
+    /// Several on one line, and the line still reads.
+    #[test]
+    fn every_credential_on_a_line_is_replaced_not_just_the_first() {
+        let out = redact_secrets(
+            "keys: ghp_abcdefghijklmnopqrstuvwxyz0123 and AKIAIOSFODNN7EXAMPLE done",
+        );
+        assert!(!out.contains("abcdefghijklmnopqrstuvwxyz"), "{out}");
+        assert!(!out.contains("IOSFODNN7EXAMPLE"), "{out}");
+        assert!(out.ends_with(" done"), "{out}");
     }
 
     #[test]

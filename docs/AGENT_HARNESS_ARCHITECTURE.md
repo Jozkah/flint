@@ -111,6 +111,24 @@ A run's subject is decided once, in `orchestrate_inner`, from
 sets it on the child's cloned args. A subagent cannot dispatch its own children,
 so there is no chain to carry.
 
+### AHD-005b: one redactor, and it never falls back to the original
+
+Credentials are removed by `secrets::redact_secrets` in Rust, and every writer
+goes through it: the audit log, the activity record, the prompt snapshot, memory,
+and -- via the `secrets_redact` command -- tool output the renderer persists into
+a thread. A transcript is a file that outlives the run and gets exported, so
+anything a tool printed is in it verbatim otherwise.
+
+Two rules hold everywhere:
+
+* **The word-level pass runs first, the line-level pass is the fallback.** A
+  credential in prose gets replaced in place, leaving the sentence that says
+  where it came from; a value in an assignment shape need not look like anything
+  in particular (`PASSWORD = hunter2`), so there the whole value goes.
+* **Failure withholds, it does not pass through.** A caller that cannot confirm
+  redaction ran stores a placeholder. A fallback to the unredacted text is a
+  fallback that leaks on precisely the path least likely to be tested.
+
 ### AHD-006: the capability model covers every dispatchable tool
 
 `Capability::{Read, Write, Exec, Net}` classifies the 16 built-ins and drives

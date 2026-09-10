@@ -18,6 +18,7 @@ const COMMANDS: &[&str] = &[
     "direct_edit_authorize",
     "direct_edit_revoke",
     "direct_edit_revoke_session",
+    "secrets_redact",
     "skill_list",
     "skill_read",
     "skill_write",

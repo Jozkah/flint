@@ -1452,13 +1452,18 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-044"
       ],
       "owner": "lane-03-permission-security",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/secrets.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "web-app/src/lib/redactToolOutput.ts",
+        "web-app/src/routes/threads/$threadId.tsx"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "Secrets that do enter tool output are redacted before they reach logs, journals or the model.",
@@ -1469,10 +1474,18 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::secrets::tests::a_credential_in_prose_is_redacted",
+        "tauri-plugin-agent-tools::secrets::tests::an_authorization_header_in_output_is_redacted",
+        "tauri-plugin-agent-tools::secrets::tests::a_jwt_in_output_is_redacted",
+        "tauri-plugin-agent-tools::secrets::tests::every_credential_on_a_line_is_replaced_not_just_the_first",
+        "tauri-plugin-agent-tools::secrets::tests::ordinary_output_is_left_exactly_as_it_was",
+        "web-app/src/lib/__tests__/redactToolOutput.test.ts",
+        "web-app/src/routes/threads/__tests__/$threadId.test.tsx::never persists a credential a tool printed"
+      ],
       "platformRequirements": [],
-      "blockedReason": "audit, activity and snapshot records redact before writing, and secrets::redact_secrets exists for the shape-based cases. Tool output persisted into the session transcript by the renderer does not yet pass through it.",
-      "auditNote": "audit, activity and snapshot records redact before writing, and secrets::redact_secrets exists for the shape-based cases. Tool output persisted into the session transcript by the renderer does not yet pass through it."
+      "blockedReason": "Tool output the renderer persists into a thread now passes through `secrets::redact_secrets` via the `secrets_redact` command, at a single gate in the thread route -- every `addToolOutput` call site goes through it and none bypasses it. `redact_secrets` gained the word-level pass it was missing: it previously only recognised the assignment shape, so a credential in prose (a `curl -v` trace, an error quoting an `Authorization` header) was written verbatim, and when `classify_line` did recognise one the whole line was replaced, losing the sentence saying where it came from. Word-level replacement now runs first and the line-level pass is the fallback for values with no recognisable shape. Failure withholds the text rather than storing it raw, including when the call returns a non-string. The route test is mutation-checked: removing the redaction call fails it. Not `verified`: no test covers the generic cancellation criterion on this path, and redaction of MCP output happens at the renderer boundary rather than inside the MCP client, so a future second consumer of that client would need its own gate.",
+      "auditNote": "Tool output the renderer persists into a thread now passes through `secrets::redact_secrets` via the `secrets_redact` command, at a single gate in the thread route -- every `addToolOutput` call site goes through it and none bypasses it. `redact_secrets` gained the word-level pass it was missing: it previously only recognised the assignment shape, so a credential in prose (a `curl -v` trace, an error quoting an `Authorization` header) was written verbatim, and when `classify_line` did recognise one the whole line was replaced, losing the sentence saying where it came from. Word-level replacement now runs first and the line-level pass is the fallback for values with no recognisable shape. Failure withholds the text rather than storing it raw, including when the call returns a non-string. The route test is mutation-checked: removing the redaction call fails it. Not `verified`: no test covers the generic cancellation criterion on this path, and redaction of MCP output happens at the renderer boundary rather than inside the MCP client, so a future second consumer of that client would need its own gate."
     },
     {
       "id": "AH-046",

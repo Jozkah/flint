@@ -91,6 +91,7 @@ import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { TemporaryChatBanner } from '@/containers/TemporaryChatBanner'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
+import { redactDeep, redactText } from '@/lib/redactToolOutput'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 import { route } from '@/constants/routes'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
@@ -500,6 +501,26 @@ function ThreadDetail() {
         }
       }
 
+      // Everything a tool produced is written through here, never through
+      // `addToolOutput` directly. The transcript is a file that outlives the
+      // run and gets exported, so a credential a tool happened to print -- a
+      // `curl -v` trace, an error quoting a header -- must not reach it. One
+      // entry point, because a call site that forgets is a call site that
+      // silently persists the credential. AH-045.
+      const persistToolOutput = async (
+        part: Parameters<typeof addToolOutput>[0]
+      ) => {
+        if ('errorText' in part && typeof part.errorText === 'string') {
+          addToolOutput({ ...part, errorText: await redactText(part.errorText) })
+          return
+        }
+        if ('output' in part) {
+          addToolOutput({ ...part, output: await redactDeep(part.output) })
+          return
+        }
+        addToolOutput(part)
+      }
+
       // Execute tool calls here, after the assistant message has completed, so
       // each addToolOutput lands on a finished message and the SDK's
       // auto-resubmit (sendAutomaticallyWhen) fires. Approval is requested
@@ -543,7 +564,7 @@ function ThreadDetail() {
             toolApprovalPromises.current.delete(toolCall.toolCallId)
 
             if (!approved) {
-              addToolOutput({
+              await persistToolOutput({
                 state: 'output-error',
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
@@ -605,14 +626,14 @@ function ThreadDetail() {
             }
 
             if (result.error) {
-              addToolOutput({
+              await persistToolOutput({
                 state: 'output-error',
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
                 errorText: `Error: ${result.error}`,
               })
             } else {
-              addToolOutput({
+              await persistToolOutput({
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
                 output: result.content,
@@ -621,7 +642,7 @@ function ThreadDetail() {
           } catch (error) {
             if ((error as Error).name !== 'AbortError') {
               console.error('Tool call error:', error)
-              addToolOutput({
+              await persistToolOutput({
                 state: 'output-error',
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,

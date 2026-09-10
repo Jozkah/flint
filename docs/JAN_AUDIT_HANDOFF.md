@@ -1164,3 +1164,41 @@ on `ERR_MODULE_NOT_FOUND` for a path that was never going to exist. Anchored to
 the test file's own location instead.
 
 Full web suite after both: **5484 passed, 3 skipped, 0 failed** (400 files).
+
+## 2026-09-10 — AH-045: the transcript stops carrying credentials
+
+`redact_secrets` was named as though it covered everything and covered one
+shape. It matched assignments (`API_KEY = "..."`), which is what configuration
+looks like and almost never what *tool output* looks like: a `curl -v` trace, an
+error quoting an `Authorization` header, a sentence naming a key. Those went
+into the session transcript verbatim.
+
+Worse, where `classify_line` *did* recognise a credential in prose, the answer
+was `redact_line`, which replaces the whole line -- so the redaction destroyed
+the sentence that said where the credential came from. The word-level pass now
+runs first and replaces the credential in place; the line-level pass is the
+fallback for the assignment shape, where the value need not look like anything
+recognisable (`PASSWORD = hunter2` is a secret no shape rule can spot).
+
+The renderer reaches it through a new `secrets_redact` command rather than a
+TypeScript reimplementation. Two copies of a matching rule drift the first time
+either is extended, and the copy that drifts is the one wearing the name.
+
+**No fallback to the original.** When redaction cannot be confirmed -- the call
+threw, or returned something that is not a string -- the text is withheld, not
+stored. A fallback that persists the input on error persists exactly what this
+exists to remove, on the branch least likely to be exercised.
+
+One gate in the thread route: every `addToolOutput` call site goes through
+`persistToolOutput`, and none bypasses it. The route test is mutation-checked --
+replacing `redactDeep(part.output)` with `part.output` fails it, and it mocks
+only the IPC hop, not the redaction module, so it fails if the route ever stops
+routing output through it.
+
+Evidence: 16 secrets tests (including one asserting ordinary build output comes
+back byte-identical -- a redactor that eats normal text is one people switch
+off), 10 wiring tests, 1 route test. 687 plugin tests pass.
+
+Registry: AH-045 `in-progress` to `implemented` (86/36/88). Not `verified`: no
+test covers the generic cancellation criterion here, and MCP output is redacted
+at the renderer boundary rather than inside the MCP client.

@@ -12,6 +12,7 @@ permissions = [
     "allow-direct-edit-authorize",
     "allow-direct-edit-revoke",
     "allow-direct-edit-revoke-session",
+    "allow-secrets-redact",
     "allow-skill-list",
     "allow-skill-read",
     "allow-skill-write",
