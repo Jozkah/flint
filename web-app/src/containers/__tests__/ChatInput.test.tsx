@@ -317,7 +317,11 @@ const references = vi.hoisted(() => ({
   searchReferences: vi.fn(),
   resolveReference: vi.fn(),
 }))
-vi.mock('@/lib/safeReferences', () => references)
+// The lexical check stays real: aliases are validated with it.
+vi.mock('@/lib/safeReferences', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/safeReferences')>()),
+  ...references,
+}))
 
 // Import component AFTER all mocks
 import ChatInput from '../ChatInput'
@@ -730,6 +734,119 @@ describe('ChatInput', () => {
         )
       )
       expect(await screen.findByText('src/index.ts')).toBeInTheDocument()
+    })
+
+    const sources = {
+      skills: [{ name: 'reviewer', description: 'Reviews a diff' }],
+      agents: [{ name: 'review-bot', description: 'Second opinion' }],
+    }
+
+    it('offers files, skills and agents in one list', async () => {
+      references.searchReferences.mockResolvedValue([
+        { path: 'src/review.ts', name: 'review.ts', kind: 'file' },
+      ])
+      renderInput({ referenceRoot: '/repo', referenceSources: sources })
+      await act(async () => {})
+      await typeAt('@rev')
+      const rows = await screen.findAllByRole('option')
+      expect(rows.map((r) => r.getAttribute('data-token'))).toEqual([
+        'skill:reviewer',
+        'agent:review-bot',
+        'src/review.ts',
+      ])
+    })
+
+    // Keyboard alone: the arrows move the active row, announced through
+    // aria-activedescendant, and Enter inserts it instead of sending.
+    it('is driven from the composer by the keyboard', async () => {
+      const onSubmit = vi.fn()
+      renderInput({
+        referenceRoot: '/repo',
+        referenceSources: sources,
+        onSubmit,
+      })
+      await act(async () => {})
+      await typeAt('@rev')
+      await screen.findAllByRole('option')
+      const ta = getTextarea()
+      expect(ta).toHaveAttribute('aria-expanded', 'true')
+      const first = ta.getAttribute('aria-activedescendant')
+      fireEvent.keyDown(ta, { key: 'ArrowDown' })
+      const second = ta.getAttribute('aria-activedescendant')
+      expect(second).not.toBe(first)
+      expect(document.getElementById(second!)).toHaveAttribute(
+        'data-token',
+        'agent:review-bot'
+      )
+      fireEvent.keyDown(ta, { key: 'Enter' })
+      expect(setPromptMock).toHaveBeenLastCalledWith('@agent:review-bot ')
+      expect(onSubmit).not.toHaveBeenCalled()
+      expect(screen.getByTestId('reference-status').textContent).toMatch(
+        /references?/
+      )
+    })
+
+    it('closes on Escape without sending', async () => {
+      const onSubmit = vi.fn()
+      renderInput({ referenceRoot: '/repo', onSubmit })
+      await act(async () => {})
+      await typeAt('@ind')
+      await screen.findAllByRole('option')
+      fireEvent.keyDown(getTextarea(), { key: 'Escape' })
+      expect(screen.queryByRole('listbox')).toBeNull()
+      expect(onSubmit).not.toHaveBeenCalled()
+    })
+
+    // AH-205: the active file is named from the keyboard, and the name is
+    // offered back in the same list.
+    it('names the active file as an alias with Alt+A', async () => {
+      const { useReferenceAliases } = await import('@/lib/referenceAliases')
+      useReferenceAliases.setState({ byFolder: {} })
+      renderInput({ referenceRoot: '/repo' })
+      await act(async () => {})
+      await typeAt('@ind')
+      await screen.findAllByRole('option')
+      fireEvent.keyDown(getTextarea(), { key: 'a', altKey: true })
+      const input = await screen.findByTestId('alias-name')
+      expect(input).toHaveAccessibleName(/Alias for src\/index\.ts/)
+      fireEvent.change(input, { target: { value: 'entry' } })
+      fireEvent.submit(screen.getByTestId('alias-form'))
+      expect(useReferenceAliases.getState().list('/repo')).toMatchObject([
+        { name: 'entry', target: 'src/index.ts' },
+      ])
+      expect(screen.getByTestId('reference-status')).toHaveTextContent(
+        'Saved @alias:entry for src/index.ts'
+      )
+      await waitFor(() => expect(getTextarea()).toHaveFocus())
+    })
+
+    it('says why an alias name was refused, and saves nothing', async () => {
+      const { useReferenceAliases } = await import('@/lib/referenceAliases')
+      useReferenceAliases.setState({ byFolder: {} })
+      renderInput({ referenceRoot: '/repo' })
+      await act(async () => {})
+      await typeAt('@ind')
+      await screen.findAllByRole('option')
+      fireEvent.keyDown(getTextarea(), { key: 'a', altKey: true })
+      fireEvent.change(await screen.findByTestId('alias-name'), {
+        target: { value: 'two words' },
+      })
+      fireEvent.submit(screen.getByTestId('alias-form'))
+      expect(await screen.findByRole('alert')).toHaveTextContent(/alias name/)
+      expect(useReferenceAliases.getState().list('/repo')).toEqual([])
+    })
+
+    it('tells the model how to reach a referenced agent, and names one that is not saved', async () => {
+      promptState = 'check with @agent:review-bot and @agent:ghost'
+      const onSubmit = vi.fn()
+      renderInput({ referenceRoot: '/repo', referenceSources: sources, onSubmit })
+      await act(async () => {})
+      fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+      await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+      const sent = onSubmit.mock.calls[0][0] as string
+      expect(sent).toContain('@agent:review-bot')
+      expect(sent).toContain('call the task tool with agent "review-bot"')
+      expect(sent).toContain('there is no saved agent named ghost')
     })
 
     it('offers nothing and searches nothing without an attached folder', async () => {

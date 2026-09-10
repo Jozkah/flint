@@ -6243,15 +6243,19 @@
       "category": "composer",
       "phase": 9,
       "phaseName": "Approved additions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [],
       "owner": "lane-23-composer",
       "files": [
-        "web-app/src/lib/safeReferences.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/project_browse.rs",
+        "web-app/src/components/FilePickerPopover.tsx",
         "web-app/src/containers/ChatInput.tsx",
+        "web-app/src/lib/coworkReadiness.ts",
         "web-app/src/lib/path-references.ts",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/project_browse.rs"
+        "web-app/src/lib/referenceMenu.ts",
+        "web-app/src/lib/safeReferences.ts",
+        "web-app/src/routes/cowork.tsx"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -6267,15 +6271,18 @@
         "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
       ],
       "tests": [
+        "web-app::referenceMenu.test.ts",
         "web-app::safeReferences.test.ts",
+        "web-app::path-references.test.ts",
+        "web-app::coworkReadiness.test.ts",
         "web-app::ChatInput.test.tsx",
         "cowork-smoke::at-references-confined",
-        "web-app::coworkReadiness.test.ts"
+        "cowork-smoke::unified-at-menu"
       ],
       "platformRequirements": [],
-      "blockedReason": "MISSING for implemented: one ranked menu that also offers skills, agents and saved aliases; references that survive a rename of the display text.",
+      "blockedReason": null,
       "evidence": "Not implemented. The composer has no unified `@` menu; file mentions and skills are separate surfaces.",
-      "auditNote": "Containment is done: a reference is a path relative to the attached folder, checked lexically (no absolute path, drive, UNC, ~, scheme or ..) and then by project_browse, which canonicalizes against the folder (symlink escapes refused) and refuses credential-shaped files. A refused reference is stated in the message. No folder, no picker and no resolution; the unconfined home-directory search and reader were removed. The picker was drawn only in chat agent mode, so Cowork never showed it -- fixed and mutation-checked. Windows: at-references-confined offers src/index.ts and no absolute path, and a message naming @src/index.ts, @../outside-secret.txt and an absolute path sends only the in-folder content and says twice that a reference was not included. A file reference was also read as a skill request (@src/index.ts asked for a skill named src, which resolved as missing and stopped every change); a mention that reads as a path is now a path unless a skill has exactly that name."
+      "auditNote": "One `@` menu ranks files and folders in the attached folder, the folder's skills, the saved agents and the folder's aliases in a single list. Each row inserts its identifier, not its label: a folder-relative path, or `@skill:name`, `@agent:name` or `@alias:name`. Containment: a reference is a relative path checked lexically (no absolute path, drive, UNC, ~, scheme or ..) and again by project_browse, which canonicalizes against the folder (symlink escapes refused) and refuses credential-shaped files; a refused reference is stated in the message; no folder means no picker and no resolution. A file reference is no longer read as a missing-skill request. Keyboard alone: focus stays in the composer, the arrows move the active row (aria-activedescendant), Enter and Tab insert without sending, and Escape closes the menu; a live region announces the match count. A missing file index leaves the other kinds offered. Windows: at-references-confined and unified-at-menu pass in the real WebView. macOS and Linux were not run."
     },
     {
       "id": "AH-205",
@@ -6283,13 +6290,18 @@
       "category": "composer",
       "phase": 9,
       "phaseName": "Approved additions",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P2",
       "dependencies": [
         "AH-204"
       ],
       "owner": "lane-23-composer",
-      "files": [],
+      "files": [
+        "web-app/src/lib/referenceAliases.ts",
+        "web-app/src/components/FilePickerPopover.tsx",
+        "web-app/src/containers/ChatInput.tsx",
+        "web-app/src/lib/hydrateStores.ts"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A user can name a file, folder or selection and reuse that name in later turns and sessions.",
@@ -6303,12 +6315,16 @@
         "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
       ],
       "tests": [
-        "web-app/src/lib/__tests__/referenceAliases.test.ts"
+        "web-app::referenceAliases.test.ts",
+        "web-app::ChatInput.test.tsx",
+        "cowork-smoke::unified-at-menu",
+        "cowork-smoke::alias-persist-1",
+        "cowork-smoke::alias-persist-2"
       ],
       "platformRequirements": [],
-      "blockedReason": null,
+      "blockedReason": "MISSING for implemented: a selection (`@path:start-end`) cannot be named; only files and folders can.",
       "evidence": "Not implemented. No alias store exists.",
-      "auditNote": ""
+      "auditNote": "Alt+A in the `@` menu names the active file or folder; the name belongs to that folder and persists through the backend settings store. Only the relative path is stored. It is resolved again through the confined reader at each use, so a target that now escapes the folder is refused, and a broken alias names the path it cannot find. A taken name is not silently repointed. The name field is labelled with the path, a refusal is announced with role=alert, and focus returns to the composer. Windows: unified-at-menu saves and uses an alias from the keyboard; alias-persist-1/2 prove it survives an application restart."
     },
     {
       "id": "AH-206",

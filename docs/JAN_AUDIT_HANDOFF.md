@@ -1817,6 +1817,36 @@ are not offered for review. AH-204 stays `in-progress`: containment is done, but
 the one ranked menu of files, folders, skills, agents and aliases, and
 references that survive a rename, are not built.
 
+**AH-204/AH-205: one `@` menu, and aliases.** The composer's `@` menu is a
+single ranked list of files and folders in the attached folder, the folder's
+skills, the saved agents, and the folder's aliases. Each row inserts its
+identifier rather than its label: a folder-relative path, or a typed reference
+(`@skill:name`, `@agent:name`, `@alias:name`). The prefix keeps a skill, an
+agent and a file of the same name apart, and it is what `parseSkillRequests`,
+the reference parser and the resolver key on. A skill reference stays in the
+text for the skill machinery. An agent reference adds a note that tells the
+model to use the `task` tool with that agent, or says that no such agent is
+saved. An alias is replaced by the file it names, which is read through the
+confined reader at use time. So an alias whose target has since escaped the
+folder is refused, and a broken one reports the path it can no longer find.
+Aliases belong to one folder and persist through the backend settings store.
+
+The menu works from the keyboard alone. Focus stays in the composer, the
+arrows move the active row through `aria-activedescendant`, Enter and Tab
+insert it without sending, and Escape closes the menu. Alt+A opens a labelled
+name field for the active file or folder, and closing that field returns focus
+to the composer. A polite live region announces the match count and the
+outcome of each alias save or refusal.
+
+**Found on the way:** the first alias restart run failed because phase one
+exited inside the settings debounce, before the write had left the WebView.
+The app flushes on exit what it has received; it cannot flush what it was never
+sent. The scenario now waits for the alias to reach `settings.json` before
+exiting, as a person would.
+
+Not done: a selection (`@path:start-end`) cannot be named, so AH-205 stays
+`in-progress`.
+
 **Stopping a process tree on Windows no longer goes through `taskkill`.**
 `kill_tree` takes one process snapshot, then calls `TerminateProcess` on the
 root and on every descendant. A process counts as a child only if it was created

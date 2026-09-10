@@ -176,6 +176,12 @@ describe('finding a skill request in a message', () => {
     expect(parseSkillRequests(text, known)).toEqual([])
   })
 
+  it('reads the typed @skill: form, and never @agent: or @alias:', () => {
+    expect(
+      parseSkillRequests('@skill:reviewer with @agent:bot and @alias:spec', known)
+    ).toEqual(['reviewer'])
+  })
+
   it('still reads an @mention that names a known skill, even with a dot', () => {
     expect(parseSkillRequests('@my.skill now', ['my.skill'])).toEqual([
       'my.skill',

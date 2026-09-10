@@ -921,6 +921,20 @@ const SCENARIOS: &[Scenario] = &[
         name: "at-references-confined",
         run: scenario_at_references_confined,
     },
+    Scenario {
+        name: "unified-at-menu",
+        run: scenario_unified_at_menu,
+    },
+    // A pair, like restart-persist: an alias saved in one process is offered
+    // and resolved by the next.
+    Scenario {
+        name: "alias-persist-1",
+        run: scenario_alias_persist_first,
+    },
+    Scenario {
+        name: "alias-persist-2",
+        run: scenario_alias_persist_second,
+    },
     // Run as two invocations against one `COWORK_SMOKE_KEEP` workspace: the
     // first changes state, the app exits, the second starts it again and
     // checks the state came back.
@@ -2742,6 +2756,271 @@ fn scenario_at_references_confined(ctx: &Ctx) -> ScenarioResult {
         "the refused references were not stated in the message"
     );
     let _ = std::fs::remove_file(&outside);
+    Ok(())
+}
+
+/// Attach the fixture project through the pill, as a person would.
+fn attach_project(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_dialog(Some(&ctx.project));
+    let opened = open_picker_through_the_pill(ctx);
+    let name = ctx
+        .project
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let landed = opened.and_then(|()| {
+        ctx.wait_until(
+            "the project to attach",
+            &format!("return document.body.innerText.includes({name:?}) && !{PILL_JS};"),
+            Duration::from_secs(45),
+        )
+    });
+    ctx.clear_dialog_script();
+    landed
+}
+
+/// Press a key in the composer, the way the keyboard does: a keydown on the
+/// focused textarea.
+fn key_in_composer(ctx: &Ctx, key: &str, alt: bool) -> ScenarioResult {
+    ctx.eval(&format!(
+        "const el = document.querySelector('[data-testid=\"chat-input\"]');
+         el.focus();
+         el.dispatchEvent(new KeyboardEvent('keydown',
+           {{ key: {key:?}, altKey: {alt}, bubbles: true, cancelable: true }}));
+         return true;"
+    ))?;
+    Ok(())
+}
+
+/// The tokens the `@` menu offers, in order.
+fn menu_tokens(ctx: &Ctx) -> Result<Vec<String>, Failure> {
+    let raw = ctx.eval_string(
+        "return JSON.stringify([...document.querySelectorAll(
+           '[data-testid=\"reference-menu\"] [role=\"option\"]')].map(o => o.dataset.token));",
+    )?;
+    serde_json::from_str(&raw).map_err(|e| Failure(format!("menu tokens: {e}: {raw}")))
+}
+
+/// Name the file `@query` finds first as `name`, from the keyboard: Alt+A,
+/// type the name, submit.
+fn save_alias_from_keyboard(ctx: &Ctx, query: &str, target: &str, name: &str) -> ScenarioResult {
+    ctx.type_into("[data-testid=\"chat-input\"]", &format!("@{query}"))?;
+    ctx.wait_until(
+        "the file to be offered",
+        &format!(
+            "return !!document.querySelector('[data-testid=\"reference-menu\"] [role=\"option\"][data-token={target:?}]');"
+        ),
+        Duration::from_secs(20),
+    )?;
+    let first = menu_tokens(ctx)?;
+    ensure!(
+        first.first().map(String::as_str) == Some(target),
+        "{target} is not the active row: {first:?}"
+    );
+    key_in_composer(ctx, "a", true)?;
+    ctx.wait_until(
+        "the alias name field",
+        "return document.activeElement && document.activeElement.dataset.testid === 'alias-name';",
+        Duration::from_secs(10),
+    )?;
+    ctx.eval(&format!(
+        "const el = document.querySelector('[data-testid=\"alias-name\"]');
+         const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+         set.call(el, {name:?});
+         el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+         return true;"
+    ))?;
+    ctx.eval("document.querySelector('[data-testid=\"alias-form\"]').requestSubmit(); return true;")?;
+    ctx.wait_until(
+        "the alias to be saved and announced",
+        &format!(
+            "const s = document.querySelector('[data-testid=\"reference-status\"]');
+             return !!s && s.textContent.includes('Saved @alias:{name} for {target}');"
+        ),
+        Duration::from_secs(10),
+    )?;
+    ctx.wait_until(
+        "focus to return to the composer",
+        "return document.activeElement && document.activeElement.dataset.testid === 'chat-input';",
+        Duration::from_secs(5),
+    )
+}
+
+/// Send `text` from the composer and return what the model was sent.
+fn send_and_capture(ctx: &Ctx, text: &str, marker: &str) -> Result<String, Failure> {
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let prompts = Path::new(&data).join("audit").join("prompts.jsonl");
+    let before = std::fs::read_to_string(&prompts).unwrap_or_default().len();
+    ctx.type_into("[data-testid=\"chat-input\"]", text)?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+    let mut sent = String::new();
+    for _ in 0..240 {
+        let all = std::fs::read_to_string(&prompts).unwrap_or_default();
+        sent = all.get(before..).unwrap_or_default().to_string();
+        if sent.contains(marker) {
+            return Ok(sent);
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    bail!("no prompt snapshot containing {marker:?} was recorded; got: {}", &sent[..sent.len().min(400)])
+}
+
+/// One `@` menu for files, skills, saved agents and aliases (AH-204/AH-205),
+/// driven by the keyboard alone, in the real WebView.
+fn scenario_unified_at_menu(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    // One of each kind for the menu to offer: a skill in the folder, and a
+    // saved agent in Jan's own store.
+    let skills = ctx.project.join(".jan").join("agent").join("skills");
+    std::fs::create_dir_all(&skills).map_err(|e| fail(e.to_string()))?;
+    std::fs::write(
+        skills.join("reviewer.md"),
+        "---\nname: reviewer\ndescription: Reviews a diff\n---\nRead the diff and say what is wrong.\n",
+    )
+    .map_err(|e| fail(e.to_string()))?;
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let agents = Path::new(&data).join("agent-workspace").join("subagents");
+    std::fs::create_dir_all(&agents).map_err(|e| fail(e.to_string()))?;
+    std::fs::write(
+        agents.join("review-bot.toml"),
+        "name = \"review-bot\"\ndescription = \"Second opinion on a change\"\nsystem_prompt = \"Review.\"\n",
+    )
+    .map_err(|e| fail(e.to_string()))?;
+
+    ctx.script_model("plain", &[])?;
+    attach_project(ctx)?;
+    ctx.ensure_model_selected()?;
+
+    // One list, every kind, and no absolute path.
+    ctx.type_into("[data-testid=\"chat-input\"]", "@rev")?;
+    ctx.wait_until(
+        "the skill to be offered",
+        "return !!document.querySelector('[data-testid=\"reference-menu\"] [data-token=\"skill:reviewer\"]');",
+        Duration::from_secs(20),
+    )?;
+    let tokens = menu_tokens(ctx)?;
+    ensure!(
+        tokens.iter().any(|t| t == "agent:review-bot"),
+        "the saved agent is not in the menu: {tokens:?}"
+    );
+    ensure!(
+        !tokens.iter().any(|t| t.contains(":\\") || t.starts_with('/')),
+        "the menu offered an absolute path: {tokens:?}"
+    );
+
+    // Keyboard alone: the arrow moves the active row, Enter inserts it.
+    let active = |ctx: &Ctx| {
+        ctx.eval_string(
+            "const id = document.querySelector('[data-testid=\"chat-input\"]').getAttribute('aria-activedescendant');
+             const el = id && document.getElementById(id);
+             return el ? el.dataset.token : '';",
+        )
+    };
+    let first = active(ctx)?;
+    key_in_composer(ctx, "ArrowDown", false)?;
+    let second = active(ctx)?;
+    ensure!(
+        !second.is_empty() && second != first,
+        "ArrowDown did not move the active row ({first:?} -> {second:?})"
+    );
+    key_in_composer(ctx, "Enter", false)?;
+    ctx.wait_until(
+        "the reference to be inserted rather than sent",
+        &format!(
+            "return document.querySelector('[data-testid=\"chat-input\"]').value.trim() === {:?};",
+            format!("@{second}")
+        ),
+        Duration::from_secs(5),
+    )?;
+
+    // Name a file from the keyboard, and find it offered back.
+    save_alias_from_keyboard(ctx, "ind", "src/index.ts", "entry")?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "@alias:")?;
+    ctx.wait_until(
+        "the alias to be offered",
+        "return !!document.querySelector('[data-testid=\"reference-menu\"] [data-token=\"alias:entry\"]');",
+        Duration::from_secs(10),
+    )?;
+
+    // Used: the alias is resolved to the file's content, and the agent is
+    // named with how to reach it.
+    let sent = send_and_capture(ctx, "summarize @alias:entry then ask @agent:review-bot", "summarize")?;
+    ensure!(
+        sent.contains("@alias:entry is src/index.ts"),
+        "the alias was not resolved to its file"
+    );
+    ensure!(
+        sent.contains("hello ${who}") || sent.contains("greet"),
+        "the aliased file's content was not included"
+    );
+    ensure!(
+        sent.contains("call the task tool with agent \\\"review-bot\\\"")
+            || sent.contains("call the task tool with agent \"review-bot\""),
+        "the agent reference did not say how to reach it"
+    );
+    Ok(())
+}
+
+const ALIAS_MARKER: &str = "alias-phase-1.txt";
+
+/// Phase one: save an alias from the keyboard, then let the process exit.
+fn scenario_alias_persist_first(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    attach_project(ctx)?;
+    ctx.ensure_model_selected()?;
+    save_alias_from_keyboard(ctx, "ind", "src/index.ts", "persisted")?;
+    // Saved means on disk: the settings write is debounced, and the first run
+    // of this pair exited inside that window, before the write had left the
+    // WebView. A person does not quit within half a second of saving; this
+    // waits for what they would have waited for.
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let settings = Path::new(&data).join("settings.json");
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let raw = std::fs::read_to_string(&settings).unwrap_or_default();
+        if raw.contains("reference-aliases") && raw.contains("persisted") {
+            break;
+        }
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "the alias never reached settings.json"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    std::fs::write(ctx.workspace.join(ALIAS_MARKER), "saved")
+        .map_err(|e| Failure(e.to_string()))
+}
+
+/// Phase two, a new process on the same data folder: the alias is offered
+/// again and resolves to the same file.
+fn scenario_alias_persist_second(ctx: &Ctx) -> ScenarioResult {
+    ensure!(
+        ctx.workspace.join(ALIAS_MARKER).exists(),
+        "phase one did not run against this workspace"
+    );
+    ctx.script_model("plain", &[])?;
+    attach_project(ctx)?;
+    ctx.ensure_model_selected()?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "@alias:")?;
+    ctx.wait_until(
+        "the alias saved before the restart to be offered",
+        "return !!document.querySelector('[data-testid=\"reference-menu\"] [data-token=\"alias:persisted\"]');",
+        Duration::from_secs(20),
+    )?;
+    let sent = send_and_capture(ctx, "after the restart use @alias:persisted", "after the restart")?;
+    ensure!(
+        sent.contains("@alias:persisted is src/index.ts"),
+        "the alias did not resolve after the restart"
+    );
     Ok(())
 }
 

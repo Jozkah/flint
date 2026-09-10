@@ -502,6 +502,21 @@ function CoworkPage() {
    * reported as one rather than quietly losing.
    */
   const [subagentDefs, setSubagentDefs] = useState<SubagentDefinition[]>([])
+  // What `@` can name besides files (AH-204): this folder's skills and the
+  // saved agents, offered in the composer's one ranked list.
+  const referenceSources = useMemo(
+    () => ({
+      skills: availableSkills.map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+      })),
+      agents: subagentDefs.map((agent) => ({
+        name: agent.name,
+        description: agent.description,
+      })),
+    }),
+    [availableSkills, subagentDefs]
+  )
 
   const {
     manifest: compat,
@@ -3132,6 +3147,7 @@ function CoworkPage() {
                 ownsToolSet={false}
                 // `@` names files in the folder the run works in, nothing else.
                 referenceRoot={treeRoot}
+                referenceSources={referenceSources}
                 onSubmit={handleSubmit}
                 onStop={handleStop}
                 chatStatus={running ? 'streaming' : 'ready'}

@@ -22,7 +22,26 @@ export type { FilePickerEntry }
  * `isReferenceToken` applies the remaining rules (URL, IPv4) on top.
  */
 export const REFERENCE_PATTERN =
-  /(?<![A-Za-z0-9_])@([^\s,;:!?'"`)\]}>]+(?::\d+(?:-\d+)?)?)/g
+  /(?<![A-Za-z0-9_])@((?:skill|agent|alias):[A-Za-z0-9][A-Za-z0-9_.-]*|[^\s,;:!?'"`)\]}>]+(?::\d+(?:-\d+)?)?)/g
+
+/** The kinds of `@` reference that name something other than a path. */
+export type TypedReferenceKind = 'skill' | 'agent' | 'alias'
+
+/**
+ * A reference that names a skill, a saved agent or an alias rather than a
+ * path: `@skill:name`, `@agent:name`, `@alias:name`. AH-204. The prefix is
+ * what keeps the three apart from each other and from a file of the same
+ * name, and what makes the inserted text a stable identifier rather than a
+ * display label.
+ */
+export function typedReference(
+  raw: string
+): { kind: TypedReferenceKind; name: string } | null {
+  const match = /^(skill|agent|alias):([A-Za-z0-9][A-Za-z0-9_.-]*)$/.exec(raw)
+  return match
+    ? { kind: match[1] as TypedReferenceKind, name: match[2] }
+    : null
+}
 
 /**
  * The `:line` or `:start-end` suffix of a reference token, if it has one.
@@ -103,11 +122,15 @@ export function parsePromptForReferences(text: string): string[] {
  * tokens (ssh/email addresses, bare IPs) intact, and normalise whitespace.
  */
 export function stripPromptReferences(text: string): string {
-  const cleaned = text.replace(REFERENCE_PATTERN, (match, raw: string) =>
+  const cleaned = text.replace(REFERENCE_PATTERN, (match, raw: string) => {
+    // A skill or agent reference is an instruction, read from the text by
+    // what acts on it, so it stays. An alias is replaced by what it names.
+    const typed = typedReference(raw)
+    if (typed) return typed.kind === 'alias' ? '' : match
     // An excerpt reference stays in the text: the surface that emitted it
     // expands it downstream, and it is the only trace of what was selected.
-    !lineRangeOf(raw) && isReferenceToken(raw) ? '' : match
-  )
+    return !lineRangeOf(raw) && isReferenceToken(raw) ? '' : match
+  })
   return cleaned.replace(/\s+/g, ' ').trim()
 }
 

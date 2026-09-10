@@ -418,3 +418,18 @@ Mutation-checked: skipping the descendants makes the tree tests fail. Run the
 plugin suite as `cargo test -p tauri-plugin-agent-tools -- --test-threads=4`,
 not with `--lib`: without the `jan-sandbox-helper` binary, the sandbox probe
 re-executes the test binary and every `bash` test reports that no shell starts.
+
+## One `@` menu, and aliases (AH-204 / AH-205)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 6 unit tests | `web-app/src/lib/__tests__/referenceMenu.test.ts` | files, skills, agents and aliases rank in one list, each inserting its identifier (`src/a.ts`, `skill:x`, `agent:x`, `alias:x`); exact above prefix above substring; a `kind:` query narrows to that kind; the others are still offered when the file index is empty; a name a typed token cannot carry is never offered; files only as folder-relative paths |
+| 13 unit tests | `web-app/src/lib/__tests__/referenceAliases.test.ts` | an alias names a path inside its folder and belongs to that folder only; `..`, `/abs` and `C:\` targets refused; a name `@alias:` cannot carry refused; a taken name is not silently repointed and the refusal names what it names; no folder, no alias; only the aliases are persisted; two spellings of a Windows folder are one; resolution goes through the confined reader at use time; a target that now escapes (a swapped symlink) is refused naming the path; a broken alias names the path it cannot find; another folder's alias does not resolve |
+| 2 unit tests | `web-app/src/lib/__tests__/path-references.test.ts` | typed references parse whole; skill and agent references stay in the text, aliases are replaced by what they name |
+| 1 unit test | `web-app/src/lib/__tests__/coworkReadiness.test.ts` | `@skill:x` is a skill request; `@agent:x` and `@alias:x` never are |
+| 6 unit tests | `web-app/src/containers/__tests__/ChatInput.test.tsx` | one list of files, skills and agents; the arrows move the active row (`aria-activedescendant`) and Enter inserts it without sending (mutation-checked); Escape closes without sending; Alt+A names the active file, the field is labelled with its path, the save is announced and focus returns to the composer; a refused name is announced with `role=alert` and nothing is saved; an agent reference tells the model how to reach it and names one that is not saved |
+| Real WebView scenario | `cowork-smoke --only unified-at-menu` | with a skill in the folder and a saved agent in Jan's store, `@rev` offers the skill, the agent and the file in one list and no absolute path; ArrowDown moves the active row and Enter inserts its token instead of sending; Alt+A names `src/index.ts` as `entry` from the keyboard, the save is announced and focus returns; `@alias:` offers it back; sending `@alias:entry` and `@agent:review-bot` gives the model the file's content and how to reach the agent. **Passed on Windows 2026-09-10** |
+| Real application restart | `cowork-smoke --only alias-persist-1`, then `--only alias-persist-2` in a new process | an alias saved from the keyboard reaches `settings.json`; after a restart it is offered again and resolves to the same file |
+
+A selection (`@path:start-end`) cannot be named yet, so AH-205 stays
+`in-progress`.

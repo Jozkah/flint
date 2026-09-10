@@ -2,7 +2,15 @@ import TextareaAutosize from 'react-textarea-autosize'
 import { cn, formatBytes } from '@/lib/utils'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useThreads } from '@/hooks/useThreads'
-import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  memo,
+} from 'react'
 import type { ReactNode } from 'react'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
@@ -121,9 +129,16 @@ import {
   formatPathReferenceText,
   parsePromptForReferences,
   stripPromptReferences,
-  type FilePickerEntry as FileEntry,
+  typedReference,
 } from '@/lib/path-references'
 import { resolveReference, searchReferences } from '@/lib/safeReferences'
+import {
+  optionId,
+  rankReferences,
+  type NamedSource,
+  type ReferenceEntry,
+} from '@/lib/referenceMenu'
+import { resolveAlias, useReferenceAliases } from '@/lib/referenceAliases'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { FilePickerPopover } from '@/components/FilePickerPopover'
 import { readFileAsText } from '@/lib/fileSafety'
@@ -163,6 +178,12 @@ type ChatInputProps = {
    * away from the prompt.
    */
   referenceRoot?: string | null
+  /**
+   * What else `@` can name besides files (AH-204): the skills and saved agents
+   * of the surface. Offered in the same ranked list, inserted as typed
+   * references (`@skill:name`, `@agent:name`).
+   */
+  referenceSources?: { skills?: NamedSource[]; agents?: NamedSource[] }
   /**
    * Surface-specific controls docked in the composer's control row (Cowork's
    * plan toggle and folder chip). They sit outside the streaming dim, because
@@ -215,6 +236,7 @@ const ChatInput = memo(function ChatInput({
   scopeKey,
   ownsToolSet = true,
   referenceRoot,
+  referenceSources,
   surfaceControls,
   stopControl,
   tokenSource,
@@ -296,7 +318,19 @@ const ChatInput = memo(function ChatInput({
 
   const [filePickerOpen, setFilePickerOpen] = useState(false)
   const [filePickerQuery, setFilePickerQuery] = useState('')
-  const [filePickerEntries, setFilePickerEntries] = useState<FileEntry[]>([])
+  const [filePickerEntries, setFilePickerEntries] = useState<ReferenceEntry[]>(
+    []
+  )
+  // The `@` menu's active row, moved from the composer with the arrow keys.
+  const [referenceActive, setReferenceActive] = useState(0)
+  // A file or folder being named as an alias (AH-205), and why a name failed.
+  const [aliasDraft, setAliasDraft] = useState<ReferenceEntry | null>(null)
+  const [aliasError, setAliasError] = useState<string | null>(null)
+  // Announced: how many references match, or what happened to an alias.
+  const [referenceStatus, setReferenceStatus] = useState('')
+  const referenceListId = useId()
+  const referenceSkills = referenceSources?.skills
+  const referenceAgents = referenceSources?.agents
   const [filePickerPosition, setFilePickerPosition] = useState<{
     top: number
     left: number
@@ -346,19 +380,37 @@ const ChatInput = memo(function ChatInput({
       // @ (the @ must not be glued to a preceding word char, so `user@host`
       // never opens the picker)
       const beforeCursor = value.slice(0, cursorIdx)
-      const atMatch = beforeCursor.match(/(?<![A-Za-z0-9_])@([\w./-]*)$/)
+      const atMatch = beforeCursor.match(/(?<![A-Za-z0-9_])@([\w./:-]*)$/)
 
       if (atMatch) {
         const query = atMatch[1] ?? ''
         setFilePickerQuery(query)
 
-        // If we have a working directory, search files
-        if (workingDir && referenceDataFolder) {
-          searchReferences(referenceDataFolder, workingDir, query)
-            .then((entries) => setFilePickerEntries(entries.slice(0, 50)))
-            .catch(() => setFilePickerEntries([]))
+        // One ranked list. The file index is searched through the backend's
+        // confined listing; if it cannot be read the rest are still offered,
+        // and typing is never waited on.
+        const rank = (files: Awaited<ReturnType<typeof searchReferences>>) => {
+          const ranked = rankReferences(query, {
+            files,
+            skills: referenceSkills ?? [],
+            agents: referenceAgents ?? [],
+            aliases: useReferenceAliases.getState().list(workingDir),
+          })
+          setFilePickerEntries(ranked)
+          setReferenceActive(0)
+          setReferenceStatus(
+            ranked.length === 0
+              ? 'No references match'
+              : `${ranked.length} reference${ranked.length === 1 ? '' : 's'}`
+          )
+        }
+        const fileQuery = /^(skill|agent|alias):/.test(query) ? null : query
+        if (referenceDataFolder && fileQuery !== null) {
+          searchReferences(referenceDataFolder, workingDir, fileQuery)
+            .then(rank)
+            .catch(() => rank([]))
         } else {
-          setFilePickerEntries([])
+          rank([])
         }
 
         // Position the picker above the text
@@ -376,22 +428,26 @@ const ChatInput = memo(function ChatInput({
         setFilePickerOpen(false)
       }
     },
-    [workingDir, referenceDataFolder, setPrompt]
+    [workingDir, referenceDataFolder, setPrompt, referenceSkills, referenceAgents]
   )
 
-  // Insert a selected file reference into the prompt
+  // Insert the selected reference into the prompt
   const handleFilePickerSelect = useCallback(
-    (entry: FileEntry) => {
+    (entry: ReferenceEntry) => {
       if (filePickerCursorPos.current == null) return
 
       const beforeCursor = prompt.slice(0, filePickerCursorPos.current)
       const afterCursor = prompt.slice(filePickerCursorPos.current)
 
-      // Replace the `@query` with `path/to/file` (the resolved reference)
-      const textBefore = beforeCursor.replace(/(?<![A-Za-z0-9_])@[\w./-]*$/, '')
-      // A reference relative to the folder: the text resolves the same file
-      // however it is displayed, and cannot name anything outside it.
-      const refText = formatPathReferenceText(entry.path) + ' '
+      // Replace the `@query` with the entry's token
+      const textBefore = beforeCursor.replace(
+        /(?<![A-Za-z0-9_])@[\w./:-]*$/,
+        ''
+      )
+      // The identifier, not the label: a folder-relative path, or a typed
+      // reference. It means the same thing however it is displayed, and a
+      // path cannot name anything outside the folder.
+      const refText = formatPathReferenceText(entry.token) + ' '
       const newPrompt = textBefore + refText + afterCursor
 
       setPrompt(newPrompt)
@@ -406,7 +462,53 @@ const ChatInput = memo(function ChatInput({
 
   const handleFilePickerClose = useCallback(() => {
     setFilePickerOpen(false)
+    setAliasDraft(null)
+    setAliasError(null)
     filePickerCursorPos.current = null
+  }, [])
+
+  // Name the file or folder being drafted as an alias (AH-205). Focus goes
+  // back to the composer either way, where it was when the draft began.
+  const handleAliasSave = useCallback(
+    (name: string) => {
+      if (!aliasDraft) return
+      const out = useReferenceAliases
+        .getState()
+        .add(workingDir, name, aliasDraft.token)
+      if (!out.ok) {
+        setAliasError(out.message)
+        setReferenceStatus(`Alias not saved: ${out.message}`)
+        return
+      }
+      setAliasDraft(null)
+      setAliasError(null)
+      setReferenceStatus(
+        `Saved @alias:${out.alias.name} for ${out.alias.target}`
+      )
+      setFilePickerEntries((entries) =>
+        rankReferences(filePickerQuery, {
+          files: entries
+            .filter((e) => e.kind === 'file' || e.kind === 'directory')
+            .map((e) => ({
+              path: e.token,
+              name: e.name,
+              kind: e.kind as 'file' | 'directory',
+              extension: e.extension,
+            })),
+          skills: referenceSkills ?? [],
+          agents: referenceAgents ?? [],
+          aliases: useReferenceAliases.getState().list(workingDir),
+        })
+      )
+      setTimeout(() => textareaRef.current?.focus(), 0)
+    },
+    [aliasDraft, workingDir, filePickerQuery, referenceSkills, referenceAgents]
+  )
+
+  const handleAliasCancel = useCallback(() => {
+    setAliasDraft(null)
+    setAliasError(null)
+    setTimeout(() => textareaRef.current?.focus(), 0)
   }, [])
 
   // Resolve @path references in the prompt text, returning the resolved content
@@ -423,6 +525,32 @@ const ChatInput = memo(function ChatInput({
 
       const parts: string[] = []
       for (const ref of refs) {
+        const typed = typedReference(ref)
+        // A skill reference is acted on by the skill machinery, which reads
+        // it from the text; it stays there and needs nothing inlined.
+        if (typed?.kind === 'skill') continue
+        if (typed?.kind === 'agent') {
+          const agent = referenceAgents?.find((one) => one.name === typed.name)
+          parts.push(
+            agent
+              ? `[Agent @agent:${agent.name}${agent.description ? `: ${agent.description}` : ''}. To hand work to it, call the task tool with agent "${agent.name}".]`
+              : `[Reference @${ref} was not included: there is no saved agent named ${typed.name}]`
+          )
+          continue
+        }
+        if (typed?.kind === 'alias') {
+          const alias = await resolveAlias(
+            referenceDataFolder ?? '',
+            workingDir,
+            typed.name
+          )
+          parts.push(
+            alias.ok
+              ? alias.content
+              : `[Reference @${ref} was not included: ${alias.message}]`
+          )
+          continue
+        }
         const resolved = await resolveReference(
           referenceDataFolder ?? '',
           workingDir,
@@ -445,7 +573,7 @@ const ChatInput = memo(function ChatInput({
 
       return { text: cleanText, resolvedContents }
     },
-    [workingDir, referenceDataFolder]
+    [workingDir, referenceDataFolder, referenceAgents]
   )
 
   const handleAgentToggle = useCallback(() => {
@@ -2213,6 +2341,20 @@ const ChatInput = memo(function ChatInput({
               maxRows={10}
               value={prompt}
               data-testid={'chat-input'}
+              // The `@` menu is a listbox the composer drives; these tell
+              // assistive technology which row is active without moving focus.
+              aria-autocomplete={workingDir ? 'list' : undefined}
+              aria-expanded={
+                workingDir
+                  ? filePickerOpen && filePickerEntries.length > 0
+                  : undefined
+              }
+              aria-controls={filePickerOpen ? referenceListId : undefined}
+              aria-activedescendant={
+                filePickerOpen && filePickerEntries.length > 0
+                  ? optionId(referenceListId, referenceActive)
+                  : undefined
+              }
               onChange={(e) => {
                 const value = e.target.value
                 const cursorIdx = e.target.selectionStart
@@ -2241,6 +2383,49 @@ const ChatInput = memo(function ChatInput({
                 // e.keyCode 229 is for IME input with Safari
                 const isComposing =
                   e.nativeEvent.isComposing || e.keyCode === 229
+                // The `@` menu owns these keys while it is open: Enter inserts
+                // the reference rather than sending, and the arrows move the
+                // active row rather than walking prompt history.
+                if (filePickerOpen && !aliasDraft && !isComposing) {
+                  const count = filePickerEntries.length
+                  const active =
+                    filePickerEntries[Math.min(referenceActive, count - 1)]
+                  if (count > 0 && e.key === 'ArrowDown') {
+                    e.preventDefault()
+                    setReferenceActive((i) => (i + 1) % count)
+                    return
+                  }
+                  if (count > 0 && e.key === 'ArrowUp') {
+                    e.preventDefault()
+                    setReferenceActive((i) => (i - 1 + count) % count)
+                    return
+                  }
+                  if (
+                    count > 0 &&
+                    (e.key === 'Enter' || e.key === 'Tab') &&
+                    !e.shiftKey
+                  ) {
+                    e.preventDefault()
+                    handleFilePickerSelect(active)
+                    return
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    handleFilePickerClose()
+                    return
+                  }
+                  if (e.altKey && e.key.toLowerCase() === 'a' && active) {
+                    e.preventDefault()
+                    if (active.kind === 'file' || active.kind === 'directory') {
+                      setAliasDraft(active)
+                      setAliasError(null)
+                      setReferenceStatus(`Name ${active.token} as an alias`)
+                    } else {
+                      setReferenceStatus('Only a file or folder can be named')
+                    }
+                    return
+                  }
+                }
                 if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
                   e.preventDefault()
                   // Submit prompt when Enter is pressed without Shift and prompt is not empty.
@@ -2271,17 +2456,6 @@ const ChatInput = memo(function ChatInput({
                     navigateHistory('down')
                   }
                 }
-                // Tab completes the selected @path file reference
-                if (
-                  e.key === 'Tab' &&
-                  filePickerOpen &&
-                  filePickerEntries.length > 0 &&
-                  !isComposing
-                ) {
-                  e.preventDefault()
-                  // Select the first entry as the default Tab completion
-                  handleFilePickerSelect(filePickerEntries[0])
-                }
               }}
               onPaste={handlePaste}
               placeholder={t('common:placeholder.chatInput')}
@@ -2306,12 +2480,27 @@ const ChatInput = memo(function ChatInput({
                   query={filePickerQuery}
                   open={filePickerOpen}
                   position={filePickerPosition}
+                  activeIndex={referenceActive}
+                  onActiveChange={setReferenceActive}
                   onSelect={handleFilePickerSelect}
                   onClose={handleFilePickerClose}
                   textareaRef={textareaRef}
+                  listId={referenceListId}
+                  aliasDraft={aliasDraft}
+                  aliasError={aliasError}
+                  onAliasSave={handleAliasSave}
+                  onAliasCancel={handleAliasCancel}
                 />
               </div>
             )}
+            <span
+              role="status"
+              aria-live="polite"
+              className="sr-only"
+              data-testid="reference-status"
+            >
+              {workingDir ? referenceStatus : ''}
+            </span>
           </div>
         </div>
 
