@@ -40,6 +40,7 @@ const mockServiceHub = {
     getSystemInfo: vi.fn().mockResolvedValue({}),
     relocateJanDataFolder: vi.fn().mockResolvedValue(undefined),
     getJanDataFolder: vi.fn().mockResolvedValue('/mock/jan/data'),
+    getUnavailableJanDataFolder: vi.fn().mockResolvedValue(undefined),
   }),
   messages: () => ({
     createMessage: vi.fn().mockResolvedValue({ id: 'test-message' }),

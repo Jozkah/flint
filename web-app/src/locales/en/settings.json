@@ -43,6 +43,7 @@
   "dataFolder": {
     "appData": "App Data",
     "appDataDesc": "Location for messages, downloaded models and other data.",
+    "unavailable": "Your data folder {{path}} is not available right now: its drive may be disconnected, or the folder was moved. Jan is using the default folder shown above until it is back. Your setting has not been changed.",
     "appLogs": "App Logs",
     "appLogsDesc": "View detailed logs of the App."
   },
