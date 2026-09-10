@@ -1,3 +1,4 @@
+use crate::core::threads::helpers::write_file_atomically;
 use rmcp::model::{CallToolRequestParam, CallToolResult};
 use serde_json::{json, Map, Value};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
@@ -657,6 +658,31 @@ pub async fn clear_mcp_auth<R: Runtime>(app: AppHandle<R>, name: String) -> Resu
     oauth::clear(&folder, &name)
 }
 
+/// Copy an unreadable `mcp_config.json` aside as
+/// `mcp_config.json.corrupt-<millis>` so that nothing written afterwards can
+/// destroy the only copy of the user's server list. Returns whether it was
+/// kept; when it was not, the caller must leave the original in place.
+fn keep_unreadable_config(path: &std::path::Path, raw: &str) -> bool {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let aside = path.with_file_name(format!("mcp_config.json.corrupt-{stamp}"));
+    match fs::write(&aside, raw) {
+        Ok(()) => {
+            log::warn!(
+                "Unreadable MCP config kept at {}; defaults loaded in its place",
+                aside.display()
+            );
+            true
+        }
+        Err(e) => {
+            log::error!("Could not keep the unreadable MCP config ({e}); leaving it untouched");
+            false
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn get_mcp_configs<R: Runtime>(app: AppHandle<R>) -> Result<String, String> {
     let mut path = get_jan_data_folder_path(app.clone());
@@ -665,19 +691,30 @@ pub async fn get_mcp_configs<R: Runtime>(app: AppHandle<R>) -> Result<String, St
     // Create default empty config if file doesn't exist
     if !path.exists() {
         log::info!("mcp_config.json not found, creating default empty config");
-        fs::write(&path, DEFAULT_MCP_CONFIG)
+        write_file_atomically(&path, DEFAULT_MCP_CONFIG.as_bytes())
             .map_err(|e| format!("Failed to create default MCP config: {e}"))?;
     }
 
     let config_string = fs::read_to_string(&path).map_err(|e| e.to_string())?;
 
+    // Whether the file on disk may be overwritten below. False only when it
+    // could not be read *and* could not be kept aside: then the defaults are
+    // served for this session without touching the only copy.
+    let mut may_write_back = true;
     let mut config_value: Value = if config_string.trim().is_empty() {
         json!({})
     } else {
-        serde_json::from_str(&config_string).unwrap_or_else(|error| {
-            log::error!("Failed to parse existing MCP config, regenerating defaults: {error}");
-            json!({})
-        })
+        match serde_json::from_str(&config_string) {
+            Ok(value) => value,
+            Err(error) => {
+                // This used to start over from `{}` and write the defaults
+                // straight back over the file, destroying every server the
+                // user had configured (janhq/jan#8519). Keep the original.
+                log::error!("Failed to parse existing MCP config: {error}");
+                may_write_back = keep_unreadable_config(&path, &config_string);
+                json!({})
+            }
+        }
     };
 
     if !config_value.is_object() {
@@ -727,13 +764,11 @@ pub async fn get_mcp_configs<R: Runtime>(app: AppHandle<R>) -> Result<String, St
     }
 
     // Persist any mutations back to disk
-    if mutated {
-        fs::write(
-            &path,
-            serde_json::to_string_pretty(&config_value)
-                .map_err(|e| format!("Failed to serialize MCP config: {e}"))?,
-        )
-        .map_err(|e| format!("Failed to write MCP config: {e}"))?;
+    if mutated && may_write_back {
+        let serialized = serde_json::to_string_pretty(&config_value)
+            .map_err(|e| format!("Failed to serialize MCP config: {e}"))?;
+        write_file_atomically(&path, serialized.as_bytes())
+            .map_err(|e| format!("Failed to write MCP config: {e}"))?;
     }
 
     // Update in-memory state with latest settings
@@ -909,12 +944,9 @@ pub async fn save_mcp_configs<R: Runtime>(
         config_object.insert("mcpServers".to_string(), json!({}));
     }
 
-    fs::write(
-        &path,
-        serde_json::to_string_pretty(&config_value)
-            .map_err(|e| format!("Failed to serialize MCP config: {e}"))?,
-    )
-    .map_err(|e| e.to_string())?;
+    let serialized = serde_json::to_string_pretty(&config_value)
+        .map_err(|e| format!("Failed to serialize MCP config: {e}"))?;
+    write_file_atomically(&path, serialized.as_bytes())?;
 
     {
         let state = app.state::<AppState>();

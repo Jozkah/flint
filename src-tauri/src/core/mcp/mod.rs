@@ -25,3 +25,6 @@ pub mod truncate;
 #[cfg(test)]
 #[cfg(not(feature = "cli"))]
 mod tests;
+#[cfg(test)]
+#[cfg(not(feature = "cli"))]
+mod config_durability_tests;
