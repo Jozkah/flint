@@ -30,14 +30,14 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1244,
-      "fixed": 16,
+      "untriaged": 1227,
+      "needs-user-hardware": 7,
+      "fixed": 20,
       "already-fixed": 3,
-      "needs-user-hardware": 2,
-      "not-applicable": 1,
-      "adapted": 6,
-      "cannot-reproduce": 1,
-      "implementation-ready": 3,
+      "cannot-reproduce": 2,
+      "not-applicable": 3,
+      "adapted": 10,
+      "implementation-ready": 4,
       "rejected": 2
     }
   },
@@ -7473,13 +7473,15 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Flatpak launch crash on Linux/Wayland. The logs point at WebKitGTK/Wayland (Gdk Error 71 Protocol error) rather than Jan code; the fork ships the same Flatpak manifest, so it may apply, but it cannot be run on this Windows host. The missing mcp_config.json message in #7091 is already handled here: setup_mcp writes the default config before servers start.",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a Linux Wayland host running the Flatpak"
+      ],
       "notes": null
     },
     {
@@ -10012,13 +10014,15 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Flatpak launch crash on Linux/Wayland. The logs point at WebKitGTK/Wayland (Gdk Error 71 Protocol error) rather than Jan code; the fork ships the same Flatpak manifest, so it may apply, but it cannot be run on this Windows host. The missing mcp_config.json message in #7091 is already handled here: setup_mcp writes the default config before servers start.",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a Linux Wayland host running the Flatpak"
+      ],
       "notes": null
     },
     {
@@ -35517,7 +35521,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8911
+      ],
       "affectedAreas": [
         "chat",
         "mcp",
@@ -35546,13 +35552,15 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Flatpak launch crash on Linux; not runnable here. Its log also shows the hosted Exa MCP server dialled at startup, which this fork no longer does: the v5 MCP migration removes the default Exa entry Jan activated itself (see janhq/jan#8911).",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a Linux host running the Flatpak"
+      ],
       "notes": null
     },
     {
@@ -38901,15 +38909,17 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Not reproducible without a Together.ai account. The fork maps max_output_tokens to max_tokens and drops a zero cap for remote providers; the reported 400 may be Together rejecting a value above the model limit.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Needs the remote service to observe the rejection body.",
+      "implementationStatus": "cannot-reproduce",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a Together.ai key to capture the error body"
+      ],
       "notes": null
     },
     {
@@ -39193,15 +39203,17 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Not reproducible here: the reported hang is a loopback connect from the local API proxy to llama-server stalling on Fedora Silverblue. This fork builds the proxy client with a total timeout (proxy_timeout, default 600 s), so a stalled request fails after that rather than hanging forever.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Linux/Silverblue-specific loopback behaviour; cannot be exercised on this Windows host.",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a Fedora Silverblue host running the AppImage"
+      ],
       "notes": null
     },
     {
@@ -41051,15 +41063,21 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "can_override_npx checked AVX2 only on Intel macOS; the bundled regular x64 bun needs AVX2, so Windows/Linux CPUs without it crash every npx-based MCP server (reporter log: Features: no_avx2, Illegal instruction).",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
-      "blockers": [],
+      "decision": "fix",
+      "decisionReason": "P1 Windows: all npx MCP servers fail on non-AVX2 CPUs.",
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "bb13343"
+      ],
+      "tests": [
+        "src-tauri/utils/src/system.rs (bun_cpu_tests)"
+      ],
+      "verification": "3 unit tests pass; fallback not exercised end to end (host has AVX2).",
+      "blockers": [
+        "needs a CPU without AVX2 for end-to-end confirmation"
+      ],
       "notes": null
     },
     {
@@ -45534,14 +45552,18 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "jan cli models list filtered on is_cli_reachable, dropping every model on the desktop local llama.cpp engine (no base_url), so a local-only user saw [] with no explanation.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "decision": "fix",
+      "decisionReason": "CLI hides the user models silently; the fork has no jan launch auto-download path, only the listing half applies.",
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "0e17d54"
+      ],
+      "tests": [
+        "src-tauri/src/core/cli/providers.rs (model_listing test)"
+      ],
+      "verification": "model_listing test passes under --features cli; jan binary builds.",
       "blockers": [],
       "notes": null
     },
@@ -57915,7 +57937,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8636
+      ],
       "affectedAreas": [
         "model-management",
         "ui",
@@ -57944,9 +57968,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "not-applicable",
+      "decisionReason": "See janhq/jan#8636: the link does not exist in this fork.",
+      "implementationStatus": "not-applicable",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -58058,9 +58082,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "not-applicable",
+      "decisionReason": "The fork has no View on HuggingFace link (no DownloadButton component); the duplicated-org URL cannot be built here.",
+      "implementationStatus": "not-applicable",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -62461,9 +62485,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Local-only value: persistent rotating CLI log plus a redacted local bug-report archive; credentials scrubbed at the sink. Large (+1430) and CLI-surface-wide, so it needs a port onto the fork CLI rather than a cherry-pick, and a check that the archive is only written locally, never uploaded.",
+      "implementationStatus": "implementation-ready",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -66121,7 +66145,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8778
+      ],
       "affectedAreas": [
         "tool-calling",
         "mcp",
@@ -66137,22 +66163,22 @@
       ],
       "upstreamCommits": [],
       "severity": "medium",
-      "priority": "P2",
+      "priority": "P0",
       "signals": {
         "p0": [],
         "p1": [],
         "p3": [],
         "reject": []
       },
-      "securityImpact": "none",
+      "securityImpact": "high",
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Closed by the janhq/jan#8778 reimplementation.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -66211,20 +66237,23 @@
         ],
         "reject": []
       },
-      "securityImpact": "review",
+      "securityImpact": "high",
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Permission bypass present in fork: name-only web tool classification auto-approved and misrouted an MCP server web_search when built-in search was off. PR does not apply; reimplemented at the two call sites.",
+      "implementationStatus": "adapted",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "web-app/src/lib/__tests__/webSearchTool.native.test.ts",
+        "web-app/src/routes/threads/__tests__/$threadId.test.tsx"
+      ],
+      "verification": "3 + 38 passed; reverting the gate fails both new tests.",
       "blockers": [],
-      "notes": null
+      "notes": "Cowork refuses native web tools when web access is off and has no MCP dispatch path, so no misrouting there."
     },
     {
       "source": "janhq/jan",
@@ -66638,13 +66667,19 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
+      "decision": "adapt",
+      "decisionReason": "Same NPROC/NOFILE values as upstream base; per-user NPROC starves tool shells on busy Linux hosts. Diff did not apply; intent reapplied by hand.",
+      "implementationStatus": "adapted",
+      "forkCommits": [
+        "e1b1567"
+      ],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs (confine_limits test)"
+      ],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "cfg(unix) code: needs a Linux/macOS run"
+      ],
       "notes": null
     },
     {
@@ -68136,7 +68171,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8831
+      ],
       "affectedAreas": [
         "cowork"
       ],
@@ -68158,9 +68195,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Closed by adapting janhq/jan#8831.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -68901,12 +68938,14 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Local keyless OpenAI-compatible provider preset; loopback only, never registered at startup because it has no key.",
+      "implementationStatus": "adapted",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "web-app/src/constants/__tests__/providers.llmman.test.ts"
+      ],
+      "verification": "64 passed; typecheck clean.",
       "blockers": [],
       "notes": null
     },
@@ -69232,12 +69271,16 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "decision": "adapt",
+      "decisionReason": "Fork selection_text identical to upstream; style-keyed chrome stripping, one file, no side effects.",
+      "implementationStatus": "adapted",
+      "forkCommits": [
+        "dc2afa6"
+      ],
+      "tests": [
+        "src-tauri/src/core/cli/tui.rs (selection_text tests)"
+      ],
+      "verification": "--features cli selection_text: 2 passed.",
       "blockers": [],
       "notes": null
     },
@@ -71596,13 +71639,15 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Flatpak launch crash on Linux/Wayland. The logs point at WebKitGTK/Wayland (Gdk Error 71 Protocol error) rather than Jan code; the fork ships the same Flatpak manifest, so it may apply, but it cannot be run on this Windows host. The missing mcp_config.json message in #7091 is already handled here: setup_mcp writes the default config before servers start.",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a Linux Wayland host running the Flatpak"
+      ],
       "notes": null
     },
     {

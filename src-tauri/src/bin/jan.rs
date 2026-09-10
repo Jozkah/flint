@@ -888,26 +888,15 @@ async fn handle_models(cmd: ModelsCommands) {
                     std::process::exit(1);
                 }
             };
-            let mut output: Vec<serde_json::Value> = configs
-                .values()
-                .filter(|c| app_lib::core::cli::providers::is_cli_reachable(c))
-                .filter(|c| provider.as_ref().is_none_or(|p| &c.provider == p))
-                .flat_map(|c| {
-                    c.models.iter().map(move |m| {
-                        serde_json::json!({
-                            "id": m,
-                            "provider": c.provider,
-                            "base_url": c.base_url,
-                            "api_type": c.api_type,
-                            "has_api_key": app_lib::core::cli::providers::has_credential(c),
-                        })
-                    })
-                })
-                .collect();
-            output.sort_by(|a, b| {
-                (a["provider"].as_str(), a["id"].as_str())
-                    .cmp(&(b["provider"].as_str(), b["id"].as_str()))
-            });
+            let output =
+                app_lib::core::cli::providers::model_listing(&configs, provider.as_deref());
+            if !output.is_empty() && output.iter().all(|m| m["reachable"] == false) {
+                eprintln!(
+                    "None of these models is reachable from the CLI: they run inside the \
+                     Jan app. Enable the app's Local API Server and point the CLI at it:\n  \
+                     jan config set --provider jan --base-url http://localhost:1337/v1 --model <model>"
+                );
+            }
             println!("{}", serde_json::to_string_pretty(&output).unwrap());
         }
     }

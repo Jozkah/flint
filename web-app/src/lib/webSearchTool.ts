@@ -3,6 +3,22 @@ import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 
 export const WEB_TOOL_NAMES = new Set(['web_search', 'web_fetch'])
 
+/**
+ * Whether a call named `web_search` / `web_fetch` is Jan's own native web tool.
+ *
+ * Only while built-in web search is on. With it off, Jan does not advertise the
+ * native tools, so a call by that name came from an MCP server that exposes one
+ * -- and it must get that server's approval prompt and run on that server. The
+ * name alone used to decide, so an MCP server's `web_search` skipped approval
+ * and was sent to Jan's native adapter instead (janhq/jan#8777).
+ */
+export function isNativeWebTool(toolName: string): boolean {
+  return (
+    WEB_TOOL_NAMES.has(toolName) &&
+    useWebSearchConfig.getState().webSearchEnabled
+  )
+}
+
 export const WEB_SEARCH_DESCRIPTION =
   'Search the web and return a ranked list of results (title, URL, snippet, and optional publish date). Use this to find current information, documentation, or sources you can then read with web_fetch. Cite the URLs you rely on.'
 
