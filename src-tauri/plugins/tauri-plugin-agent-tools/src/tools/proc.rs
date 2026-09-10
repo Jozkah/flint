@@ -674,55 +674,141 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
 
 /// Kill the process `pid` and every descendant it spawned.
 ///
-/// Windows has no process groups a signal can reach across, so this shells out
-/// to `taskkill /T`, which walks the tree itself. Two things can go wrong and
-/// both are reported: `taskkill` may fail to launch at all (absent from PATH in
-/// a stripped image), and it may run and refuse — exit code 128 is "no such
-/// process", which means the command had already finished.
+/// Windows has no process groups a signal can reach across, so the tree is
+/// walked here: one snapshot of every process's parent, then `TerminateProcess`
+/// on the root and each descendant. This used to shell out to `taskkill /T`,
+/// which on some hosts takes about a minute and then fails with "the timeout
+/// period expired" -- so stopping a background command hung and reported
+/// failure while the command kept running.
+///
+/// Parent ids are recycled on Windows, so a process whose recorded parent id
+/// matches is only treated as a child when it was created after that parent.
+/// Without that check an unrelated process -- another Jan window, a WebView --
+/// whose original parent happened to have the same id would be killed too.
 #[cfg(windows)]
 pub fn kill_tree(pid: u32) -> KillOutcome {
-    let output = match std::process::Command::new("taskkill")
-        .args(["/F", "/T", "/PID", &pid.to_string()])
-        .output()
-    {
-        Ok(output) => output,
-        Err(e) => return KillOutcome::Failed(format!("could not run taskkill: {e}")),
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER,
     };
-    classify_taskkill(output.status.code(), &output.stderr)
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        PROCESS_TERMINATE,
+    };
+    const STILL_ACTIVE: u32 = 259;
+
+    let root = unsafe {
+        OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
+    };
+    if root.is_null() {
+        return match unsafe { GetLastError() } {
+            // No such process: the command had already finished.
+            ERROR_INVALID_PARAMETER => KillOutcome::Gone,
+            ERROR_ACCESS_DENIED => {
+                KillOutcome::Failed("not permitted to stop this process".into())
+            }
+            code => KillOutcome::Failed(format!("the process could not be opened (error {code})")),
+        };
+    }
+    // Before anything is killed, while the parent links still describe the tree.
+    let descendants = descendants_of(pid, creation_time(root));
+    let outcome = if unsafe { TerminateProcess(root, 1) } != 0 {
+        KillOutcome::Signalled
+    } else {
+        let code = unsafe { GetLastError() };
+        let mut exit = 0u32;
+        let exited = unsafe { GetExitCodeProcess(root, &mut exit) } != 0 && exit != STILL_ACTIVE;
+        if exited {
+            KillOutcome::Gone
+        } else {
+            KillOutcome::Failed(format!("the process could not be stopped (error {code})"))
+        }
+    };
+    unsafe { CloseHandle(root) };
+    for child in descendants {
+        let handle = unsafe { OpenProcess(PROCESS_TERMINATE, 0, child) };
+        if !handle.is_null() {
+            unsafe {
+                TerminateProcess(handle, 1);
+                CloseHandle(handle);
+            }
+        }
+    }
+    outcome
 }
 
-/// What `taskkill`'s exit status and stderr mean.
-///
-/// Split out from [`kill_tree`] so all three outcomes can be tested without
-/// firing a real `taskkill` at a real process. The refusal branch used to be
-/// covered by terminating the System Idle Process, which stopped refusing on
-/// current Windows builds and reported "not running" instead -- and the only
-/// processes that *do* still refuse are System and Idle, which no test should
-/// be aiming `/F` at on a developer's machine.
+/// When `handle`'s process was created, as a FILETIME count. `None` if unknown.
 #[cfg(windows)]
-fn classify_taskkill(code: Option<i32>, stderr: &[u8]) -> KillOutcome {
-    /// `taskkill` exit code for "the process is not running".
-    const ERROR_NOT_FOUND: i32 = 128;
+pub(crate) fn creation_time(handle: windows_sys::Win32::Foundation::HANDLE) -> Option<u64> {
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::Threading::GetProcessTimes;
+    let zero = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+    let ok = unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) };
+    (ok != 0).then(|| ((created.dwHighDateTime as u64) << 32) | created.dwLowDateTime as u64)
+}
 
-    match code {
-        Some(0) => return KillOutcome::Signalled,
-        // Nothing left to kill is not a failure: the command had already
-        // finished, which is the outcome the caller wanted.
-        Some(ERROR_NOT_FOUND) => return KillOutcome::Gone,
-        _ => {}
+/// Every live descendant of `root`, found from one process snapshot.
+///
+/// A process is a child of an ancestor only if its recorded parent id is the
+/// ancestor's *and* it was created no earlier than the ancestor was -- the
+/// check that keeps a recycled parent id from adopting a stranger. With no
+/// creation time for the root, nothing is claimed as a descendant.
+#[cfg(windows)]
+pub(crate) fn descendants_of(root: u32, root_created: Option<u64>) -> Vec<u32> {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+    let Some(root_created) = root_created else {
+        return Vec::new();
+    };
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snapshot == INVALID_HANDLE_VALUE {
+        return Vec::new();
     }
-    // taskkill explains itself on stderr; its first line is the useful part
-    // and names no path of ours.
-    let reason = String::from_utf8_lossy(stderr);
-    let first = reason.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
-    KillOutcome::Failed(if first.is_empty() {
-        match code {
-            Some(code) => format!("taskkill exited with {code}"),
-            None => "taskkill was terminated before it answered".to_string(),
+    let mut pairs: Vec<(u32, u32)> = Vec::new();
+    let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+    let mut more = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
+    while more {
+        pairs.push((entry.th32ProcessID, entry.th32ParentProcessID));
+        more = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
+    }
+    unsafe { CloseHandle(snapshot) };
+
+    let created_at = |pid: u32| -> Option<u64> {
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if handle.is_null() {
+            return None;
         }
-    } else {
-        first.trim().to_string()
-    })
+        let at = creation_time(handle);
+        unsafe { CloseHandle(handle) };
+        at
+    };
+
+    let mut found = Vec::new();
+    let mut frontier = vec![(root, root_created)];
+    while let Some((parent, parent_created)) = frontier.pop() {
+        for &(pid, ppid) in &pairs {
+            if ppid != parent || pid == parent || pid == root || found.contains(&pid) {
+                continue;
+            }
+            match created_at(pid) {
+                Some(at) if at >= parent_created => {
+                    found.push(pid);
+                    frontier.push((pid, at));
+                }
+                _ => {}
+            }
+        }
+    }
+    found
 }
 
 fn running() -> &'static Mutex<HashSet<u32>> {
@@ -774,7 +860,7 @@ mod env_allowlist_tests {
     }
 }
 
-/// Windows-only behaviour of `kill_tree`, which shells out to `taskkill`
+/// Windows-only behaviour of `kill_tree`, which walks the process tree itself
 /// rather than signalling a process group. Compiled and run only on Windows —
 /// a unix test asserting these would prove nothing about them.
 #[cfg(all(test, windows))]
@@ -800,13 +886,42 @@ mod windows_tests {
         }
     }
 
-    /// `taskkill /T` walks the tree and reports success.
+    /// Is `pid` a running process? Asked of the OS directly, not of `taskkill`.
+    fn alive(pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if handle.is_null() {
+            return false;
+        }
+        let mut code = 0u32;
+        let ok = unsafe { GetExitCodeProcess(handle, &mut code) } != 0;
+        unsafe { CloseHandle(handle) };
+        ok && code == 259
+    }
+
+    fn ping(seconds: u32) -> std::process::Child {
+        std::process::Command::new("ping")
+            .args(["-n", &seconds.to_string(), "127.0.0.1"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("ping starts")
+    }
+
+    /// The tree is stopped and the kill reports it, promptly.
     ///
     /// Spawned directly rather than through [`spawn`], which registers the pid
     /// in the process-wide table `kill_all` reaps from. Sharing that table with
     /// every other test in the binary meant this one's process could be gone
     /// before the kill it is testing, and the failure looked like `kill_tree`
     /// misreporting rather than like a test racing its neighbours.
+    ///
+    /// Bounded in time because the `taskkill` this replaced took about a
+    /// minute on some hosts and then reported failure.
     #[tokio::test]
     async fn kills_a_running_command_and_reports_it() {
         let cfg = shell();
@@ -822,62 +937,67 @@ mod windows_tests {
         let mut child = command.spawn().unwrap();
         let pid = child.id().unwrap();
 
+        let started = std::time::Instant::now();
         assert_eq!(kill_tree(pid), KillOutcome::Signalled);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
         let _ = tokio::time::timeout(std::time::Duration::from_secs(10), child.wait()).await;
+        assert!(!alive(pid), "the process is still running");
     }
 
-    /// taskkill exits 128 for "the process is not running", which is not a
-    /// failure — there was nothing left to kill.
+    /// A process that does not exist is not a failure: there was nothing left
+    /// to kill.
     #[test]
     fn a_pid_that_does_not_exist_reports_gone() {
         assert_eq!(kill_tree(u32::MAX - 7), KillOutcome::Gone);
     }
 
-    /// A nonzero exit that is *not* 128 is a refusal, and must be reported as a
-    /// failure carrying taskkill's own explanation.
-    ///
-    /// Tested through the classifier rather than by refusing a real kill. The
-    /// only processes on Windows that still refuse `/F` are System and Idle,
-    /// and a test that aimed one at either would be betting the developer's
-    /// uptime on the refusal working. Idle used to serve here and no longer
-    /// does: current builds report it as "not running".
+    /// A grandchild goes with its parent: `cmd` runs `ping` as a child, and
+    /// killing `cmd` stops `ping` too.
     #[test]
-    fn a_refusal_is_reported_with_the_reason_taskkill_gave() {
-        match classify_taskkill(Some(1), b"ERROR: The process cannot be terminated.\r\n") {
-            KillOutcome::Failed(reason) => {
-                assert_eq!(reason, "ERROR: The process cannot be terminated.");
-                assert!(
-                    !reason.contains('\\'),
-                    "the reason is shown to the user and must name no path: {reason}"
-                );
+    fn kills_the_whole_tree() {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        let mut parent = std::process::Command::new("cmd")
+            .args(["/c", "ping -n 60 127.0.0.1 >nul"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("cmd starts");
+        let pid = parent.id();
+        let root = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        let created = creation_time(root);
+        unsafe { CloseHandle(root) };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let children = loop {
+            let found = descendants_of(pid, created);
+            if !found.is_empty() || std::time::Instant::now() > deadline {
+                break found;
             }
-            other => panic!("a nonzero exit that is not 128 is a refusal, got {other:?}"),
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        };
+        assert!(!children.is_empty(), "cmd never started ping");
+
+        assert_eq!(kill_tree(pid), KillOutcome::Signalled);
+        let _ = parent.wait();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        for child in children {
+            assert!(!alive(child), "descendant {child} survived its parent");
         }
     }
 
-    /// A refusal with nothing on stderr still has to say something.
+    /// Killing one tree leaves a process outside it running.
     #[test]
-    fn a_silent_refusal_still_reports_the_status() {
-        match classify_taskkill(Some(5), b"") {
-            KillOutcome::Failed(reason) => assert!(reason.contains('5'), "{reason}"),
-            other => panic!("expected a failure, got {other:?}"),
-        }
-        // taskkill killed by a signal before it answered: no code at all.
-        match classify_taskkill(None, b"") {
-            KillOutcome::Failed(reason) => assert!(!reason.is_empty()),
-            other => panic!("expected a failure, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn the_classifier_agrees_with_the_outcomes_kill_tree_reports() {
-        assert_eq!(classify_taskkill(Some(0), b""), KillOutcome::Signalled);
-        assert_eq!(classify_taskkill(Some(128), b""), KillOutcome::Gone);
-        // Blank stderr lines must not become the explanation.
-        match classify_taskkill(Some(1), b"\r\n\r\nERROR: Access is denied.\r\n") {
-            KillOutcome::Failed(reason) => assert_eq!(reason, "ERROR: Access is denied."),
-            other => panic!("expected a failure, got {other:?}"),
-        }
+    fn an_unrelated_process_is_left_alone() {
+        let mut target = ping(60);
+        let mut bystander = ping(60);
+        assert_eq!(kill_tree(target.id()), KillOutcome::Signalled);
+        let _ = target.wait();
+        assert!(alive(bystander.id()), "a process outside the tree was killed");
+        let _ = bystander.kill();
+        let _ = bystander.wait();
     }
 }
 

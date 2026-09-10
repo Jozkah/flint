@@ -1,0 +1,189 @@
+/**
+ * Undo and redo the file changes each turn produced. AH-202.
+ *
+ * The backend keeps the journal: the exact bytes before and after every file
+ * a turn's `write` and `edit` calls changed. Undo puts a turn's files back as
+ * they were only if every one is still exactly what the turn left -- a file the
+ * user edited since, or a later turn touched, refuses the whole undo and is
+ * named. Nothing the user wrote themselves is ever in the journal, so nothing
+ * they wrote is ever reverted.
+ */
+import { useCallback, useEffect, useState } from 'react'
+import { Redo2, Undo2 } from 'lucide-react'
+import {
+  redoTurn,
+  undoJournal,
+  undoTurn,
+  type UndoTurnSummary,
+} from '@janhq/tauri-plugin-agent-tools-api'
+import { Button } from '@/components/ui/button'
+import { useTranslation } from '@/i18n/react-i18next-compat'
+import { errorText } from '@/lib/errorText'
+import { getServiceHub } from '@/hooks/useServiceHub'
+
+const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path
+
+export function CoworkTurnUndo({
+  dataFolder: givenDataFolder,
+  sessionId,
+  writeGrant,
+  /** Bumped when a run ends, so a finished turn's changes appear. */
+  refreshKey,
+  onChanged,
+}: {
+  /** Resolved from the service hub when not given. */
+  dataFolder?: string | null
+  sessionId: string
+  writeGrant?: string
+  refreshKey?: unknown
+  /** The files changed; whatever describes them should be re-read. */
+  onChanged?: () => void
+}) {
+  const { t } = useTranslation()
+  const [resolvedDataFolder, setResolvedDataFolder] = useState<string | null>(
+    null
+  )
+  useEffect(() => {
+    if (givenDataFolder !== undefined) return
+    let alive = true
+    getServiceHub()
+      .app()
+      .getJanDataFolder()
+      .then((folder) => {
+        if (alive) setResolvedDataFolder(folder ?? null)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [givenDataFolder])
+  const dataFolder =
+    givenDataFolder !== undefined ? givenDataFolder : resolvedDataFolder
+  const [turns, setTurns] = useState<UndoTurnSummary[]>([])
+  const [busy, setBusy] = useState<string | null>(null)
+  const [status, setStatus] = useState<{
+    ok: boolean
+    text: string
+  } | null>(null)
+
+  const load = useCallback(async () => {
+    if (!dataFolder) return
+    try {
+      const found = await undoJournal(dataFolder, sessionId)
+      // Checked, not trusted: a panel inside the Cowork page must not be able
+      // to take the page down because a reply was not the list it expected.
+      setTurns(Array.isArray(found) ? found : [])
+    } catch {
+      setTurns([])
+    }
+  }, [dataFolder, sessionId])
+
+  useEffect(() => {
+    void load()
+  }, [load, refreshKey])
+
+  const act = async (turn: UndoTurnSummary, undo: boolean) => {
+    if (!dataFolder) return
+    setBusy(turn.run)
+    setStatus(null)
+    try {
+      const report = await (undo ? undoTurn : redoTurn)(
+        dataFolder,
+        sessionId,
+        turn.run,
+        { writeGrant, scope: 'session' }
+      )
+      setStatus({
+        ok: true,
+        text: t(undo ? 'common:turnUndo.undone' : 'common:turnUndo.redone', {
+          count: report.files,
+        }),
+      })
+      onChanged?.()
+    } catch (e) {
+      setStatus({ ok: false, text: errorText(e) })
+    } finally {
+      setBusy(null)
+      await load()
+    }
+  }
+
+  if (turns.length === 0) return null
+
+  // Newest first: the turn someone most likely wants to take back.
+  const ordered = [...turns].reverse()
+  return (
+    <section
+      className="mb-2 rounded-md border border-main-view-fg/10 p-2"
+      aria-label={t('common:turnUndo.title')}
+      data-testid="turn-undo"
+    >
+      <p className="mb-1 text-xs font-medium text-main-view-fg/80">
+        {t('common:turnUndo.title')}
+      </p>
+      <ul className="flex flex-col gap-1">
+        {ordered.map((turn, i) => {
+          const undone = turn.state === 'undone'
+          const label = t('common:turnUndo.turn', {
+            n: turns.length - i,
+            files: turn.paths.map(baseName).join(', '),
+          })
+          return (
+            <li
+              key={turn.run}
+              className="flex items-center gap-2 text-xs"
+              data-testid="turn-undo-row"
+              data-run={turn.run}
+              data-state={turn.state}
+            >
+              <span
+                className="min-w-0 flex-1 truncate"
+                title={turn.paths.join('\n')}
+              >
+                {label}
+              </span>
+              {undone ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy !== null}
+                  onClick={() => void act(turn, false)}
+                  aria-label={`${t('common:turnUndo.redo')}: ${label}`}
+                  data-testid="turn-redo"
+                >
+                  <Redo2 size={12} />
+                  {t('common:turnUndo.redo')}
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={busy !== null}
+                  onClick={() => void act(turn, true)}
+                  aria-label={`${t('common:turnUndo.undo')}: ${label}`}
+                  data-testid="turn-undo-button"
+                >
+                  <Undo2 size={12} />
+                  {t('common:turnUndo.undo')}
+                </Button>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+      {/* Announced: an undo that was refused must be heard, not just seen. */}
+      <p
+        aria-live="polite"
+        role={status && !status.ok ? 'alert' : undefined}
+        className={
+          status?.ok === false
+            ? 'mt-1 text-xs text-destructive'
+            : 'mt-1 text-xs text-main-view-fg/70'
+        }
+        data-testid="turn-undo-status"
+      >
+        {status?.text ?? ''}
+      </p>
+    </section>
+  )
+}

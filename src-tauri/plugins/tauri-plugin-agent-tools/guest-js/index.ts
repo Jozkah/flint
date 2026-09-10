@@ -104,6 +104,16 @@ export async function directEditCapability(): Promise<boolean> {
 }
 
 /**
+ * Can this platform confine a run to a worktree Jan owns?
+ *
+ * True wherever direct editing is, and also on Windows, where the sandbox can
+ * hold a run to a Jan-managed worktree but not to the user's own folder.
+ */
+export async function managedWorktreeCapability(): Promise<boolean> {
+  return await invoke('plugin:agent-tools|managed_worktree_capability')
+}
+
+/**
  * Authorize this session to edit `folder`, returning an opaque grant id.
  *
  * The id is what runs carry afterwards; a path is never accepted at tool time,
@@ -884,7 +894,9 @@ export async function executeTool(
   readOnlyProject?: string,
   writeGrant?: string,
   scope?: WorkspaceScope,
-  callId?: string
+  callId?: string,
+  /** The run this call belongs to; journals its file changes for undo. */
+  undoRun?: string
 ): Promise<ToolResult> {
   return await invoke('plugin:agent-tools|execute_tool', {
     dataFolder,
@@ -898,6 +910,82 @@ export async function executeTool(
     writeGrant,
     scope,
     callId,
+    undoRun,
+  })
+}
+
+/** One turn's file changes that can be undone or redone. AH-202. */
+export type UndoTurnSummary = {
+  run: string
+  at: string
+  state: 'applied' | 'undone'
+  paths: string[]
+}
+
+export async function undoJournal(
+  dataFolder: string,
+  sessionId: string
+): Promise<UndoTurnSummary[]> {
+  return await invoke('plugin:agent-tools|undo_journal', {
+    dataFolder,
+    sessionId,
+  })
+}
+
+/**
+ * Undo the file changes one turn made: all of them or none. Refused, naming
+ * the paths, when any file changed since -- by the user or a later turn.
+ */
+export async function undoTurn(
+  dataFolder: string,
+  sessionId: string,
+  run: string,
+  options?: { writeGrant?: string; scope?: WorkspaceScope }
+): Promise<{ run: string; state: 'applied' | 'undone'; files: number }> {
+  return await invoke('plugin:agent-tools|undo_turn', {
+    dataFolder,
+    sessionId,
+    run,
+    writeGrant: options?.writeGrant,
+    scope: options?.scope,
+  })
+}
+
+/**
+ * The diff a `write` or `edit` call would make, for its approval prompt
+ * (AH-146). `null` for other tools, for a change that changes nothing, and for
+ * a path outside where the call could write. Nothing is written.
+ */
+export async function previewChange(
+  dataFolder: string,
+  sessionId: string,
+  name: string,
+  args: Record<string, unknown>,
+  options?: { writeGrant?: string; scope?: WorkspaceScope }
+): Promise<string | null> {
+  return await invoke('plugin:agent-tools|preview_change', {
+    dataFolder,
+    sessionId,
+    name,
+    args,
+    writeGrant: options?.writeGrant,
+    scope: options?.scope,
+  })
+}
+
+/** Redo the file changes of a turn that was undone: all of them or none. */
+export async function redoTurn(
+  dataFolder: string,
+  sessionId: string,
+  run: string,
+  options?: { writeGrant?: string; scope?: WorkspaceScope }
+): Promise<{ run: string; state: 'applied' | 'undone'; files: number }> {
+  return await invoke('plugin:agent-tools|redo_turn', {
+    dataFolder,
+    sessionId,
+    run,
+    writeGrant: options?.writeGrant,
+    scope: options?.scope,
   })
 }
 
@@ -922,9 +1010,11 @@ export async function executeToolStreaming(
     writeGrant?: string
     scope?: WorkspaceScope
     callId?: string
+    undoRun?: string
   }
 ): Promise<ToolResult> {
   return await invoke('plugin:agent-tools|execute_tool_streaming', {
+    undoRun: options?.undoRun,
     dataFolder,
     threadId,
     name,

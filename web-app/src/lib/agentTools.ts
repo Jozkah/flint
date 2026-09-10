@@ -1,6 +1,7 @@
 import {
   advertisedToolSchemas,
   executeTool,
+  previewChange,
   sandboxStatus,
   threadWorkspaceDelete,
   threadWorkspaceSweep,
@@ -208,6 +209,11 @@ export type AgentToolOptions = {
    * to, so nothing a model emits can widen or redirect where a write lands.
    */
   writeGrant?: string | null
+  /**
+   * The run this call belongs to. Given, the backend journals the files a
+   * `write` or `edit` changes against it, so the turn can be undone (AH-202).
+   */
+  undoRun?: string
 }
 
 export async function executeAgentTool(
@@ -235,12 +241,44 @@ export async function executeAgentTool(
       // binding's parameter list so a change there is visible here.
       options.readOnlyProject ?? undefined,
       options.writeGrant ?? undefined,
-      options.scope ?? ('thread' as WorkspaceScope)
+      options.scope ?? ('thread' as WorkspaceScope),
+      undefined,
+      options.undoRun
     )
     if (result.isError) return { error: result.content }
     return { content: result.content, diff: result.diff ?? undefined }
   } catch (e) {
     return { error: messageOf(e) }
+  }
+}
+
+/**
+ * The diff a `write` or `edit` call would make, for its approval prompt
+ * (AH-146). Computed by the backend against the same path resolution the call
+ * would use, and only where it could write. `undefined` when there is none --
+ * another tool, no change, a path it may not write, or a failure: a missing
+ * preview never stops the prompt, it only leaves it without the diff.
+ */
+export async function previewAgentChange(
+  toolName: string,
+  input: unknown,
+  threadId: string,
+  options: Pick<AgentToolOptions, 'scope' | 'writeGrant'> = {}
+): Promise<string | undefined> {
+  try {
+    const dataFolder = await getServiceHub().app().getJanDataFolder()
+    if (!dataFolder) return undefined
+    const args =
+      input && typeof input === 'object'
+        ? (input as Record<string, unknown>)
+        : {}
+    const diff = await previewChange(dataFolder, threadId, toolName, args, {
+      writeGrant: options.writeGrant ?? undefined,
+      scope: options.scope ?? ('thread' as WorkspaceScope),
+    })
+    return diff ?? undefined
+  } catch {
+    return undefined
   }
 }
 

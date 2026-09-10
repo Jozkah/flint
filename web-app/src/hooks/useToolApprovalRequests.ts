@@ -10,6 +10,8 @@ export type PendingApproval = {
   threadId: string
   /** MCP server the tool belongs to, so the prompt can offer to trust it. */
   serverName?: string
+  /** The diff a file-changing call would make, shown before it is allowed. */
+  preview?: string
   resolve: (approved: boolean) => void
 }
 
@@ -33,7 +35,8 @@ type ToolApprovalRequestsState = {
     toolCallId: string,
     toolName: string,
     threadId: string,
-    serverName?: string
+    serverName?: string,
+    preview?: string
   ) => Promise<boolean>
   resolveApproval: (toolCallId: string, decision: ApprovalDecision) => void
   clearPendingForThread: (threadId: string) => void
@@ -43,7 +46,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
   (set, get) => ({
     pending: {},
 
-    requestApproval: (toolCallId, toolName, threadId, serverName) => {
+    requestApproval: (toolCallId, toolName, threadId, serverName, preview) => {
       return new Promise<boolean>((resolve) => {
         const settings = useToolApproval.getState()
         if (settings.allowAllMCPPermissions) {
@@ -62,6 +65,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               toolName,
               threadId,
               serverName,
+              preview,
               resolve,
             },
           },

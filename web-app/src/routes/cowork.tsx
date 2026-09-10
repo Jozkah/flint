@@ -218,6 +218,7 @@ import {
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
 import { CoworkProposalReview } from '@/containers/CoworkProposalReview'
+import { CoworkTurnUndo } from '@/containers/CoworkTurnUndo'
 import {
   useCoworkWorktrees,
   type WorktreeRecord,
@@ -428,10 +429,12 @@ function CoworkPage() {
   const effective = effectiveAccess({
     persisted: access,
     capability: {
-      // Both write modes rest on the same confinement: an authorized writable
-      // root the tool gate holds to. A worktree needs Git as well, which the
-      // lifecycle reports by refusing to produce one.
-      managedWorktree: capabilityState.known && capabilityState.directEdit,
+      // Both write modes rest on an authorized writable root the tool gate
+      // holds to, but not on the same confinement: on Windows the sandbox can
+      // hold a run to a Jan-owned worktree and not to the user's folder. A
+      // worktree needs Git as well, which the lifecycle reports by refusing
+      // to produce one.
+      managedWorktree: capabilityState.known && capabilityState.managedWorktree,
       directEdit: capabilityState.known && capabilityState.directEdit,
     },
     capabilityKnown: capabilityState.known,
@@ -1792,7 +1795,9 @@ function CoworkPage() {
      * what that screen already says rather than a second story about the same
      * platform.
      */
-    const canIsolate = capabilityState.known && capabilityState.directEdit
+    const canIsolate =
+      capabilityState.known && capabilityState.managedWorktree
+    const canEditDirectly = capabilityState.known && capabilityState.directEdit
     /**
      * The second gate's inputs, frozen with the first.
      *
@@ -1805,7 +1810,7 @@ function CoworkPage() {
      */
     const runCapability = {
       managedWorktree: canIsolate,
-      directEdit: canIsolate,
+      directEdit: canEditDirectly,
     }
     const runConsent = liveGrant
       ? { sessionId: liveGrant.sessionId, folder: liveGrant.folder }
@@ -2071,10 +2076,10 @@ function CoworkPage() {
               webSearch,
               // A subagent's mutations are the session's mutations, so
               // they go through the same prompt rather than around it.
-              onApprove: (callId, toolName) =>
+              onApprove: (callId, toolName, _input, preview) =>
                 useToolApprovalRequests
                   .getState()
-                  .requestApproval(callId, toolName, sid),
+                  .requestApproval(callId, toolName, sid, undefined, preview),
               trackShell: () =>
                 useCoworkActiveWork.getState().acquire({
                   sessionId: sid,
@@ -2290,10 +2295,10 @@ function CoworkPage() {
               // The prompt the chat surface already uses for tool approval,
               // not a second one: it honours grants the user has already made
               // and renders in the tool card the call is reported in.
-              onApprove: (callId, toolName) =>
+              onApprove: (callId, toolName, _input, preview) =>
                 useToolApprovalRequests
                   .getState()
-                  .requestApproval(callId, toolName, sid),
+                  .requestApproval(callId, toolName, sid, undefined, preview),
               // A shell handed to the backend outlives a cancelled run, so it
               // holds the authority it started with until the process is done.
               trackShell: () =>
@@ -3125,6 +3130,8 @@ function CoworkPage() {
                 initialMessage={true}
                 scopeKey={session?.id}
                 ownsToolSet={false}
+                // `@` names files in the folder the run works in, nothing else.
+                referenceRoot={treeRoot}
                 onSubmit={handleSubmit}
                 onStop={handleStop}
                 chatStatus={running ? 'streaming' : 'ready'}
@@ -3209,6 +3216,16 @@ function CoworkPage() {
                   worktree={worktree}
                   session={session.id}
                   onApplied={() => git.refresh()}
+                />
+              ) : null}
+              {/* AH-202: each turn's own file changes, undone or redone
+                  from the turn that made them. */}
+              {session?.id ? (
+                <CoworkTurnUndo
+                  sessionId={session.id}
+                  writeGrant={liveGrant?.grantId}
+                  refreshKey={running}
+                  onChanged={() => git.refresh()}
                 />
               ) : null}
               <CoworkRewind

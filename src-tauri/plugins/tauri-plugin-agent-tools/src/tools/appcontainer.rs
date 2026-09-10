@@ -39,6 +39,8 @@ pub const SANDBOX_EXEC_FLAG: &str = "--internal-sandbox-exec";
 
 const NET_ON: &str = "--net";
 const NET_OFF: &str = "--no-net";
+/// Prefix of a helper argument naming one authorized write root.
+const WRITE_ROOT: &str = "--write-root=";
 
 /// Exit code when the helper itself fails, distinct from anything a shell
 /// reports so a setup failure is not mistaken for a command failure.
@@ -79,6 +81,7 @@ pub fn moniker(workspace: &Path) -> String {
 pub fn helper_args(
     workspace: &Path,
     scratch: Option<&Path>,
+    write_roots: &[PathBuf],
     allow_network: bool,
     program: &Path,
     args: &[String],
@@ -90,9 +93,14 @@ pub fn helper_args(
         scratch
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_default(),
-        "--".to_string(),
-        program.to_string_lossy().to_string(),
     ];
+    // Each authorized root is its own marked argument, so a path can never be
+    // mistaken for the separator or for the shell that follows it.
+    for root in write_roots {
+        out.push(format!("{WRITE_ROOT}{}", root.to_string_lossy()));
+    }
+    out.push("--".to_string());
+    out.push(program.to_string_lossy().to_string());
     out.extend(args.iter().cloned());
     out
 }
@@ -149,6 +157,10 @@ fn command_line(program: &Path, args: &[String]) -> String {
 struct Request {
     workspace: PathBuf,
     scratch: Option<PathBuf>,
+    /// Folders the run was authorized to write besides its workspace. The
+    /// caller only passes Jan-owned worktrees here (see
+    /// [`super::jail::can_confine_write_roots`]); the helper grants each an ACE.
+    write_roots: Vec<PathBuf>,
     allow_network: bool,
     program: PathBuf,
     args: Vec<String>,
@@ -172,13 +184,19 @@ fn parse_request<I: IntoIterator<Item = String>>(argv: I) -> Option<Request> {
         s if s.is_empty() => None,
         s => Some(PathBuf::from(s)),
     };
-    if it.next()? != "--" {
-        return None;
+    let mut write_roots = Vec::new();
+    loop {
+        let next = it.next()?;
+        if next == "--" {
+            break;
+        }
+        write_roots.push(PathBuf::from(next.strip_prefix(WRITE_ROOT)?));
     }
     let program = PathBuf::from(it.next()?);
     Some(Request {
         workspace,
         scratch,
+        write_roots,
         allow_network,
         program,
         args: it.collect(),
@@ -893,6 +911,21 @@ mod win {
         grant_path(&granted, sid.0).map_err(|detail| {
             LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
         })?;
+        // Authorized write roots: Jan-owned worktrees only, checked by the
+        // caller before it asked. A missing one is refused rather than skipped,
+        // so a run is never told it can write somewhere it cannot.
+        for root in &req.write_roots {
+            if !root.is_dir() {
+                return Err(LaunchFailure::new(
+                    Stage::SandboxPolicy,
+                    "GetFileAttributesW",
+                    format!("authorized folder does not exist: {}", root.display()),
+                ));
+            }
+            grant_path(root, sid.0).map_err(|detail| {
+                LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
+            })?;
+        }
 
         let env = sandbox_env(req, &home)?;
         let mut env_block = env.encode().map_err(|e| {
@@ -1111,6 +1144,7 @@ mod tests {
         let args = helper_args(
             &ws(),
             None,
+            &[],
             false,
             Path::new("bash.exe"),
             &["-c".to_string()],
@@ -1125,10 +1159,10 @@ mod tests {
 
     #[test]
     fn helper_args_carry_the_network_decision() {
-        let denied = helper_args(&ws(), None, false, Path::new("bash.exe"), &[]);
+        let denied = helper_args(&ws(), None, &[], false, Path::new("bash.exe"), &[]);
         assert!(denied.contains(&NET_OFF.to_string()));
         assert!(!denied.contains(&NET_ON.to_string()));
-        let allowed = helper_args(&ws(), None, true, Path::new("bash.exe"), &[]);
+        let allowed = helper_args(&ws(), None, &[], true, Path::new("bash.exe"), &[]);
         assert!(allowed.contains(&NET_ON.to_string()));
     }
 
@@ -1137,6 +1171,7 @@ mod tests {
         let args = helper_args(
             &ws(),
             Some(Path::new(r"C:\Temp\jan-agent-s1")),
+            &[],
             true,
             Path::new(r"C:\Program Files\Git\bin\bash.exe"),
             &["-c".to_string(), "echo hi".to_string()],
@@ -1152,11 +1187,42 @@ mod tests {
         assert_eq!(req.args, vec!["-c".to_string(), "echo hi".to_string()]);
     }
 
+    /// Authorized roots cross the re-exec intact and in order, and are never
+    /// confused with the separator or the shell.
+    #[test]
+    fn the_helper_round_trips_its_write_roots() {
+        let roots = vec![
+            PathBuf::from(r"C:\Users\me\.jan\worktrees\repo\session-1"),
+            PathBuf::from(r"C:\dir with space\--"),
+        ];
+        let args = helper_args(&ws(), None, &roots, false, Path::new("bash.exe"), &[]);
+        let req = parse_request(args).expect("parsed");
+        assert_eq!(req.write_roots, roots);
+        assert_eq!(req.program, Path::new("bash.exe"));
+    }
+
+    /// Anything between the scratch and the separator that is not a marked
+    /// write root makes the request malformed, and a malformed request never
+    /// runs anything.
+    #[test]
+    fn an_unmarked_argument_before_the_separator_is_refused() {
+        let argv = vec![
+            SANDBOX_EXEC_FLAG.to_string(),
+            NET_OFF.to_string(),
+            ws().to_string_lossy().to_string(),
+            String::new(),
+            r"C:\Users\me".to_string(),
+            "--".to_string(),
+            "bash.exe".to_string(),
+        ];
+        assert!(parse_request(argv).is_none());
+    }
+
     /// The scratch has to reach the helper, because the ACE that makes it
     /// writable can only be granted on the far side of the re-exec.
     #[test]
     fn the_helper_round_trips_an_absent_scratch() {
-        let args = helper_args(&ws(), None, false, Path::new("bash.exe"), &[]);
+        let args = helper_args(&ws(), None, &[], false, Path::new("bash.exe"), &[]);
         let req = parse_request(args).expect("parsed");
         assert_eq!(req.workspace, ws());
         assert_eq!(req.scratch, None);

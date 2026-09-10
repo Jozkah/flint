@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { Caret, ToolBar } from './ToolBar'
 import { useCodeOpen, toolTargetIsPath } from '@/lib/codeOpen'
+import { ChangeDiff } from '@/components/ChangeDiff'
 
 const asText = (output: unknown): string =>
   typeof output === 'string'
@@ -36,39 +37,11 @@ const OutputBlock = ({ children }: { children: React.ReactNode }) => (
 )
 
 /**
- * Tone for one line of a `write`/`edit` diff. The format comes from
- * `render_edit_diff`/`render_write_diff` in Rust: `@@ ... @@` hunk headers, then
- * `-`/`+` lines carrying their own `   N | text` line numbers.
- */
-const diffLineTone = (line: string): string => {
-  if (line.startsWith('@@')) return 'text-muted-foreground/60'
-  if (line.startsWith('+'))
-    return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-  if (line.startsWith('-')) return 'bg-destructive/10 text-destructive'
-  return 'text-muted-foreground'
-}
-
-/**
  * A `write`/`edit` diff. Kept out of the model-facing tool output on purpose (it
  * would just repeat the file), so it arrives through the runtime store instead.
+ * The same component shows the change in its approval prompt.
  */
-const DiffBlock = memo(({ diff }: { diff: string }) => (
-  <div className="mt-1.5 max-h-56 overflow-auto rounded-md border bg-card/40 py-1 font-mono text-xs">
-    {diff.split('\n').map((line, i) => (
-      <div
-        key={i}
-        className={cn(
-          'whitespace-pre-wrap wrap-break-word px-2',
-          diffLineTone(line)
-        )}
-      >
-        {line || ' '}
-      </div>
-    ))}
-  </div>
-))
-
-DiffBlock.displayName = 'DiffBlock'
+const DiffBlock = ChangeDiff
 
 export type TerminalWidgetProps = {
   bar: Extract<ToolCallBar, { variant: 'terminal' }>

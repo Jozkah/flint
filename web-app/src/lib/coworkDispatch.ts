@@ -1,4 +1,4 @@
-import { executeAgentTool } from '@/lib/agentTools'
+import { executeAgentTool, previewAgentChange } from '@/lib/agentTools'
 import {
   ASK_TOOL_NAME,
   PLAN_DENIED_TOOLS,
@@ -52,7 +52,9 @@ export type DispatchContext = {
   onApprove?: (
     toolCallId: string,
     toolName: string,
-    input: unknown
+    input: unknown,
+    /** The diff the call would make, when it changes a file. AH-146. */
+    preview?: string
   ) => Promise<boolean>
   /**
    * Is the folder this run was bound to still the session's folder?
@@ -346,7 +348,22 @@ async function routeCoworkTool(
     // reason to reject: this function always resolves.
       let allowed = false
       try {
-        allowed = await ctx.onApprove(call.toolCallId, toolName, call.input)
+        // The change itself, so what is approved is the diff that will land
+        // rather than a path and a blob of arguments (AH-146). Computed by the
+        // backend where this call would write; absent, the prompt still asks.
+        const preview =
+          toolName === 'write' || toolName === 'edit'
+            ? await previewAgentChange(toolName, call.input, ctx.sessionId, {
+                scope: 'session',
+                writeGrant: ctx.writeGrant,
+              })
+            : undefined
+        allowed = await ctx.onApprove(
+          call.toolCallId,
+          toolName,
+          call.input,
+          preview
+        )
       } catch {
         allowed = false
       }
@@ -447,6 +464,8 @@ async function routeCoworkTool(
         readOnlyProject: ctx.readOnlyFolder,
         scope: 'session',
         writeGrant: ctx.writeGrant,
+        // The run the change belongs to, so it can be undone from it (AH-202).
+        undoRun: ctx.activity?.run,
       })
     } finally {
       shellDone?.()

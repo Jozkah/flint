@@ -635,6 +635,14 @@ fn start_mock_provider(fixtures: &Path, port: u16) -> Result<(std::process::Chil
 /// provider (one absent from `predefinedProviders`) is usable on models alone
 /// -- no credential -- which is exactly what a harness needs: deterministic,
 /// offline, and never touching a real endpoint.
+/// Seed a fresh data folder; leave a resumed one exactly as the last run left it.
+fn seed_settings_unless(resumed: bool, data_folder: &Path, base_url: &str) -> Result<(), String> {
+    if resumed {
+        return Ok(());
+    }
+    seed_settings(data_folder, base_url)
+}
+
 fn seed_settings(data_folder: &Path, base_url: &str) -> Result<(), String> {
     std::fs::create_dir_all(data_folder).map_err(|e| e.to_string())?;
     let providers = serde_json::json!({
@@ -894,6 +902,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_proposal_review,
     },
     Scenario {
+        name: "managed-worktree-review",
+        run: scenario_managed_worktree_review,
+    },
+    Scenario {
         name: "command-palette-keybindings",
         run: scenario_palette_keybindings,
     },
@@ -904,6 +916,21 @@ const SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "session-export-import",
         run: scenario_session_export_import,
+    },
+    Scenario {
+        name: "at-references-confined",
+        run: scenario_at_references_confined,
+    },
+    // Run as two invocations against one `COWORK_SMOKE_KEEP` workspace: the
+    // first changes state, the app exits, the second starts it again and
+    // checks the state came back.
+    Scenario {
+        name: "restart-persist-1",
+        run: scenario_restart_persist_first,
+    },
+    Scenario {
+        name: "restart-persist-2",
+        run: scenario_restart_persist_second,
     },
     Scenario {
         name: "memory-proposal-approval",
@@ -1698,6 +1725,312 @@ fn scenario_git_vs_sandbox(ctx: &Ctx) -> ScenarioResult {
     Ok(())
 }
 
+/// Open the access menu and choose a mode by its visible label.
+///
+/// Radix opens a dropdown on `pointerdown`, not on `click`. A blocked option
+/// says why in its own text, and that is reported instead of a timeout.
+fn choose_access(ctx: &Ctx, label: &str) -> ScenarioResult {
+    choose_from_menu(ctx, "Where changes go", label)
+}
+
+/// The run mode, chosen the same way: attaching a repository starts a session
+/// in Review first, which withholds every tool that could change anything.
+fn choose_mode(ctx: &Ctx, label: &str) -> ScenarioResult {
+    choose_from_menu(ctx, "What Jan may do", label)
+}
+
+/// Open the dropdown whose trigger is labelled `trigger` and pick `label`.
+fn choose_from_menu(ctx: &Ctx, trigger: &str, label: &str) -> ScenarioResult {
+    let opened = ctx.eval_bool(
+        &format!(r#"const b = [...document.querySelectorAll('button')].find(x =>
+             x.getAttribute('aria-label') === {trigger:?});
+           if (!b) return false;
+           b.dispatchEvent(new PointerEvent('pointerdown',
+             {{ bubbles: true, cancelable: true, button: 0, pointerType: 'mouse' }}));
+           return true;"#
+        ),
+    )?;
+    ensure!(opened, "the {trigger} menu trigger is not on the page");
+    // Toasts fade in seconds, so a refusal reported by one is collected as it
+    // appears rather than looked for after the wait has already timed out.
+    ctx.eval(
+        "window.__smokeToasts = [];
+         if (!window.__smokeToastObserver) {
+           window.__smokeToastObserver = new MutationObserver(() => {
+             document.querySelectorAll('[data-sonner-toast]').forEach(t => {
+               const x = t.textContent || '';
+               if (x && !window.__smokeToasts.includes(x)) window.__smokeToasts.push(x);
+             });
+           });
+           window.__smokeToastObserver.observe(document.body, { childList: true, subtree: true });
+         }
+         return true;",
+    )?;
+    ctx.wait_until(
+        &format!("the {label} option"),
+        &format!(
+            "return [...document.querySelectorAll('[role=\"menuitemradio\"],[role=\"menuitem\"]')]
+               .some(e => (e.textContent || '').includes({label:?}));"
+        ),
+        Duration::from_secs(15),
+    )?;
+    let option = ctx.eval_string(&format!(
+        "const o = [...document.querySelectorAll('[role=\"menuitemradio\"],[role=\"menuitem\"]')]
+           .find(e => (e.textContent || '').includes({label:?}));
+         const blocked = o.getAttribute('aria-disabled') === 'true';
+         if (!blocked) o.click();
+         return (blocked ? 'BLOCKED: ' : '') + (o.textContent || '');"
+    ))?;
+    ensure!(!option.starts_with("BLOCKED"), "{label} is not available here: {option}");
+    let changed = ctx.wait_until(
+        &format!("access to become {label}"),
+        &format!(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               x.getAttribute('aria-label') === {trigger:?});
+             return !!b && (b.textContent || '').includes({label:?});"
+        ),
+        Duration::from_secs(45),
+    );
+    if changed.is_err() {
+        let seen = ctx
+            .eval_string("return (window.__smokeToasts || []).join(' | ');")
+            .unwrap_or_default();
+        bail!("choosing {label} did not take effect; toasts seen: {seen:?}");
+    }
+    Ok(())
+}
+
+/// Managed worktree mode, end to end through the real UI on this platform.
+/// Windows confinement for a Jan-owned worktree; AH-146/147/148/109.
+///
+/// Proves: the access menu offers Managed worktree (on Windows, where editing
+/// the folder directly is not offered); a run's `write` and `bash` land in the
+/// worktree and not in the attached folder -- the shell under the sandbox
+/// writing there is the confinement grant in action; the Changes panel's
+/// review lists the run's work; unticking a hunk and applying lands exactly
+/// what was ticked in the attached folder.
+fn scenario_managed_worktree_review(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    let file = "proposal-target.txt";
+    let base: String = (1..=12).map(|i| format!("line {i}\n")).collect();
+    let with = |lines: &[(usize, &str)]| -> String {
+        (1..=12)
+            .map(|i| match lines.iter().find(|(n, _)| *n == i) {
+                Some((_, text)) => format!("{text}\n"),
+                None => format!("line {i}\n"),
+            })
+            .collect()
+    };
+    let read = |p: &Path| std::fs::read_to_string(p).unwrap_or_default();
+    if git(&ctx.project, &["ls-files", "--error-unmatch", file]).is_err() {
+        std::fs::write(ctx.project.join(file), &base).map_err(|e| fail(e.to_string()))?;
+        git(&ctx.project, &["add", file]).map_err(fail)?;
+        git(&ctx.project, &["commit", "-qm", "proposal base"]).map_err(fail)?;
+    }
+    std::fs::write(ctx.project.join(file), &base).map_err(|e| fail(e.to_string()))?;
+    let _ = std::fs::remove_file(ctx.project.join("shell-made.txt"));
+
+    ctx.script_dialog(Some(&ctx.project));
+    let opened = open_picker_through_the_pill(ctx);
+    let name = ctx
+        .project
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let landed = opened.and_then(|()| {
+        ctx.wait_until(
+            "the project to attach",
+            &format!("return document.body.innerText.includes({name:?}) && !{PILL_JS};"),
+            Duration::from_secs(45),
+        )
+    });
+    ctx.clear_dialog_script();
+    landed?;
+    choose_access(ctx, "Managed worktree")?;
+    choose_mode(ctx, "Ask before changes")?;
+
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let project = ctx.project.to_string_lossy().to_string();
+    let (ok, listed) = ipc(
+        ctx,
+        "agent_worktree_list",
+        &format!("{{ dataFolder: {data:?}, project: {project:?} }}"),
+    )?;
+    ensure!(ok, "could not list worktrees: {listed}");
+    let worktree = listed
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|r| r.get("path").and_then(Value::as_str))
+        .map(PathBuf::from)
+        .max_by_key(|p| {
+            std::fs::metadata(p)
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+        })
+        .ok_or_else(|| fail(format!("choosing Managed worktree made no worktree: {listed}")))?;
+    let _ = git(&worktree, &["checkout", "--", "."]);
+    let _ = std::fs::remove_file(worktree.join("shell-made.txt"));
+    // Explicitly, not only through git: a retry must find the file as it was
+    // before the write, or the write changes nothing and there is no diff to
+    // show in its prompt.
+    std::fs::write(worktree.join(file), &base).map_err(|e| fail(e.to_string()))?;
+
+    // The run: one file write and one shell command, both relative to the
+    // run's root, which in this mode is the worktree.
+    let proposed = with(&[(1, "LINE 1 (agent)"), (10, "LINE 10 (agent)")]);
+    // Absolute paths into the worktree, as the run is told: its tool root is
+    // its own sandbox, and the folder it may change is named by path.
+    let target_path = worktree.join(file).to_string_lossy().to_string();
+    let shell_target = worktree.join("shell-made.txt").to_string_lossy().to_string();
+    let write_call = format!(
+        "write:{}",
+        serde_json::json!({ "path": target_path, "content": proposed })
+    );
+    let bash_call = format!(
+        "bash:{}",
+        serde_json::json!({ "command": format!("echo from-the-shell> \"{shell_target}\"") })
+    );
+    ctx.script_model("tools", &[write_call.as_str(), bash_call.as_str()])?;
+    ctx.ensure_model_selected()?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "update the target file")?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+    // Approve each change as a person would, until the run is over. Generous:
+    // choosing a shell probes each candidate for up to ten seconds.
+    let deadline = std::time::Instant::now() + Duration::from_secs(240);
+    // AH-146: the write's prompt shows the change before it is allowed.
+    let mut saw_preview = false;
+    loop {
+        if !saw_preview {
+            saw_preview = ctx
+                .eval_bool(
+                    "const p = document.querySelector('[data-testid=\"approval-preview\"]');
+                     return !!p && p.textContent.includes('LINE 1 (agent)');",
+                )
+                .unwrap_or(false);
+        }
+        let _ = ctx.eval(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /^allow once$/i.test((x.textContent || '').trim()));
+             if (b) b.click();
+             return true;",
+        );
+        let started = ctx
+            .eval_bool("return !!document.querySelector('[data-testid=\"tool-activity-item\"]');")
+            .unwrap_or(false);
+        let idle = ctx
+            .eval_bool("return !!document.querySelector('[data-test-id=\"send-message-button\"]');")
+            .unwrap_or(false);
+        if started && idle {
+            break;
+        }
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "the run did not finish (tool item shown: {started}, composer idle: {idle}, \
+             prompt preview seen: {saw_preview}); {}",
+            run_state(ctx)
+        );
+        std::thread::sleep(Duration::from_millis(700));
+    }
+
+    ensure!(
+        saw_preview,
+        "the write's approval prompt did not show the change it would make"
+    );
+    ensure!(
+        read(&worktree.join(file)) == proposed,
+        "the write did not land in the worktree: {:?}",
+        read(&worktree.join(file))
+    );
+    ensure!(read(&ctx.project.join(file)) == base, "the run wrote the attached folder");
+    // The shell half is proven only where a shell can be confined at all. A
+    // host where every sandboxed shell fails its start-up probe withholds
+    // `bash`; that is reported as a limitation of this host, never as a pass.
+    let transcript = ctx
+        .eval_string("return (document.body.innerText || '');")
+        .unwrap_or_default();
+    if transcript.contains("bash is unavailable") || transcript.contains("unavailable tool 'bash'") {
+        println!(
+            "      NOTE: no shell could be started inside the sandbox on this host; \
+             the shell's write to the worktree was not exercised"
+        );
+    } else {
+        ensure!(
+            read(&worktree.join("shell-made.txt")).contains("from-the-shell"),
+            "the confined shell could not write the worktree; transcript: {}",
+            &transcript[transcript.len().saturating_sub(900)..]
+        );
+    }
+    ensure!(
+        !ctx.project.join("shell-made.txt").exists(),
+        "the shell wrote the attached folder"
+    );
+
+    // Review through the Changes panel, and land one hunk of two.
+    ctx.eval_bool(
+        r#"const b = [...document.querySelectorAll('button')].find(x =>
+             /^Changes$|changed/i.test(x.getAttribute('aria-label') || ''));
+           if (!b) return false;
+           if (b.getAttribute('aria-pressed') !== 'true') b.click();
+           return true;"#,
+    )?;
+    ctx.wait_until(
+        "the Review changes button",
+        "return !!document.querySelector('[data-testid=\"proposal-create\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.eval("document.querySelector('[data-testid=\"proposal-create\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the proposed file",
+        &format!(
+            "return !!document.querySelector('[data-testid=\"proposal-file\"][data-path={file:?}]');"
+        ),
+        Duration::from_secs(30),
+    )?;
+    ctx.eval(&format!(
+        "const f = document.querySelector('[data-testid=\"proposal-file\"][data-path={file:?}]');
+         f.querySelectorAll('[data-testid=\"proposal-hunk-toggle\"]')[1].click();
+         const other = document.querySelector('[data-testid=\"proposal-file\"][data-path=\"shell-made.txt\"]');
+         if (other) other.querySelector('[data-testid=\"proposal-file-toggle\"]').click();
+         return true;"
+    ))?;
+    ctx.settle();
+    ctx.eval("document.querySelector('[data-testid=\"proposal-apply\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the apply to finish",
+        "return !!(document.querySelector('[data-testid=\"proposal-message\"]')
+           || document.querySelector('[data-testid=\"proposal-error\"]'));",
+        Duration::from_secs(30),
+    )?;
+    let refused = ctx.eval_string(
+        "const e = document.querySelector('[data-testid=\"proposal-error\"]');
+         return e ? e.textContent : '';",
+    )?;
+    ensure!(refused.is_empty(), "applying the selection was refused: {refused}");
+    ensure!(
+        read(&ctx.project.join(file)) == with(&[(1, "LINE 1 (agent)")]),
+        "the folder does not hold exactly the ticked hunk: {:?}",
+        read(&ctx.project.join(file))
+    );
+    ensure!(
+        !ctx.project.join("shell-made.txt").exists(),
+        "an unticked file was applied"
+    );
+
+    let _ = choose_access(ctx, "Review only");
+    std::fs::write(ctx.project.join(file), &base).map_err(|e| fail(e.to_string()))?;
+    Ok(())
+}
+
 /// Call a Tauri command over real IPC and hand back its JSON, or the refusal.
 ///
 /// A refusal is data here, not a harness failure: several steps below exist to
@@ -2308,6 +2641,364 @@ fn scenario_composer_footer(ctx: &Ctx) -> ScenarioResult {
         "the control row covers the bottom {overlap}px of the textarea: {report}"
     );
     Ok(())
+}
+
+/// `@` references name only what is inside the attached folder. AH-204.
+///
+/// In the real composer with the fixture attached: the picker offers
+/// folder-relative paths and nothing outside the folder; a message naming an
+/// in-folder file, a `../` file and an absolute path is sent, and the payload
+/// the model received (the prompt snapshot) carries the in-folder file, says
+/// the other two were not included, and holds none of the outside file.
+fn scenario_at_references_confined(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    let outside = ctx.workspace.join("outside-secret.txt");
+    std::fs::write(&outside, "OUTSIDE-FOLDER-CONTENT\n").map_err(|e| fail(e.to_string()))?;
+
+    ctx.script_model("plain", &[])?;
+    ctx.script_dialog(Some(&ctx.project));
+    let opened = open_picker_through_the_pill(ctx);
+    let name = ctx
+        .project
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let landed = opened.and_then(|()| {
+        ctx.wait_until(
+            "the project to attach",
+            &format!("return document.body.innerText.includes({name:?}) && !{PILL_JS};"),
+            Duration::from_secs(45),
+        )
+    });
+    ctx.clear_dialog_script();
+    landed?;
+    ctx.ensure_model_selected()?;
+
+    // The picker: folder-relative entries only.
+    ctx.type_into("[data-testid=\"chat-input\"]", "@ind")?;
+    let offered = ctx.wait_until(
+        "the picker to offer src/index.ts",
+        "return (document.body.innerText || '').includes('src/index.ts');",
+        Duration::from_secs(20),
+    );
+    let picker_text = ctx
+        .eval_string(
+            "const b = [...document.querySelectorAll('button,li,div')]
+               .filter(e => /index\\.ts/.test(e.textContent || '') && e.children.length < 6)
+               .map(e => e.textContent).join(' | ');
+             return b;",
+        )
+        .unwrap_or_default();
+    offered.map_err(|e| Failure(format!("{} -- picker: {picker_text:?}", e.0)))?;
+    ensure!(
+        !picker_text.contains(":\\") && !picker_text.contains("Users"),
+        "the picker offered an absolute path: {picker_text:?}"
+    );
+
+    // A message naming one path inside, one climbing out, one absolute.
+    let absolute = outside.to_string_lossy().to_string();
+    ctx.type_into(
+        "[data-testid=\"chat-input\"]",
+        &format!("compare @src/index.ts with @../outside-secret.txt and @{absolute}"),
+    )?;
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let prompts = Path::new(&data).join("audit").join("prompts.jsonl");
+    let before = std::fs::read_to_string(&prompts).unwrap_or_default().len();
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the model's reply",
+        "return document.body.textContent.includes('Hello from the smoke model');",
+        Duration::from_secs(90),
+    )?;
+    let mut sent = String::new();
+    for _ in 0..40 {
+        let all = std::fs::read_to_string(&prompts).unwrap_or_default();
+        sent = all.get(before..).unwrap_or_default().to_string();
+        if sent.contains("compare") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    ensure!(sent.contains("compare"), "no prompt snapshot of the message was recorded");
+    ensure!(
+        sent.contains("hello ${who}") || sent.contains("hello $") || sent.contains("greet"),
+        "the in-folder reference was not included"
+    );
+    ensure!(
+        !sent.contains("OUTSIDE-FOLDER-CONTENT"),
+        "a reference outside the attached folder reached the model"
+    );
+    ensure!(
+        sent.matches("was not included").count() >= 2,
+        "the refused references were not stated in the message"
+    );
+    let _ = std::fs::remove_file(&outside);
+    Ok(())
+}
+
+/// The first file named `name` under `dir`, depth first.
+fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_file(&path, name) {
+                return Some(found);
+            }
+        } else if path.file_name().is_some_and(|n| n == name) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+const RESTART_MARKER: &str = "restart-phase-1.txt";
+const UNDO_FILE: &str = "persist-undo.txt";
+
+/// Open the Changes rail and wait for the per-turn undo list.
+fn open_turn_undo(ctx: &Ctx) -> ScenarioResult {
+    // Waited for: right after a navigation the rail is not drawn yet.
+    ctx.wait_until(
+        "the Changes rail button",
+        r#"const b = [...document.querySelectorAll('button')].find(x =>
+             /^Changes$|changed/i.test(x.getAttribute('aria-label') || ''));
+           if (!b) return false;
+           if (b.getAttribute('aria-pressed') !== 'true') b.click();
+           return true;"#,
+        Duration::from_secs(30),
+    )?;
+    ctx.wait_until(
+        "the per-turn undo list",
+        "return !!document.querySelector('[data-testid=\"turn-undo-row\"]');",
+        Duration::from_secs(30),
+    )
+}
+
+/// Phase one of a real restart (AH-207, AH-202): change state the app must
+/// keep, then let the process exit.
+///
+/// Rebinds the command palette to Ctrl+Alt+Y, and runs a Cowork turn whose
+/// `write` creates a file, then undoes that turn from the Changes panel -- so
+/// the second phase can check both the binding and the undo position.
+fn scenario_restart_persist_first(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    // The binding.
+    ctx.goto("/settings/shortcuts")?;
+    ctx.wait_until(
+        "the palette's shortcut row",
+        "return !!document.querySelector('[data-testid=\"rebind-commandPalette\"]');",
+        Duration::from_secs(30),
+    )?;
+    let row = "document.querySelector('[data-testid=\"rebind-commandPalette\"]')";
+    ctx.eval(&format!(
+        "{row}.querySelector('[data-testid=\"rebind-change\"]').click(); return true;"
+    ))?;
+    ctx.wait_until(
+        "recording to start",
+        &format!("return !!{row}.querySelector('[data-testid=\"rebind-recording\"]');"),
+        Duration::from_secs(10),
+    )?;
+    press(ctx, "y", true, false, true)?;
+    ctx.wait_until(
+        "the new binding to be accepted",
+        &format!("return !!{row}.querySelector('[data-testid=\"rebind-reset\"]');"),
+        Duration::from_secs(10),
+    )?;
+
+    // A turn that writes a file, undone from the turn that made it.
+    let write_call = format!(
+        "write:{}",
+        serde_json::json!({ "path": UNDO_FILE, "content": "written by the turn\n" })
+    );
+    ctx.script_model("tools", &[write_call.as_str()])?;
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    ctx.type_into("[data-testid=\"chat-input\"]", "write the persistence file")?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+    let deadline = std::time::Instant::now() + Duration::from_secs(120);
+    loop {
+        let _ = ctx.eval(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /^allow once$/i.test((x.textContent || '').trim()));
+             if (b) b.click();
+             return true;",
+        );
+        let started = ctx
+            .eval_bool("return !!document.querySelector('[data-testid=\"tool-activity-item\"]');")
+            .unwrap_or(false);
+        let idle = ctx
+            .eval_bool("return !!document.querySelector('[data-test-id=\"send-message-button\"]');")
+            .unwrap_or(false);
+        if started && idle {
+            break;
+        }
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "the run did not finish (tool item shown: {started}, composer idle: {idle}); {}",
+            run_state(ctx)
+        );
+        std::thread::sleep(Duration::from_millis(700));
+    }
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let written = find_file(Path::new(&data), UNDO_FILE)
+        .ok_or_else(|| fail("the turn's write is not on disk".into()))?;
+    ensure!(
+        std::fs::read_to_string(&written).unwrap_or_default() == "written by the turn\n",
+        "the turn wrote something else"
+    );
+
+    open_turn_undo(ctx)?;
+    ctx.eval(
+        "document.querySelector('[data-testid=\"turn-undo-row\"][data-state=\"applied\"] [data-testid=\"turn-undo-button\"]').click();
+         return true;",
+    )?;
+    let undone = ctx.wait_until(
+        "the undo to be reported",
+        "return !!document.querySelector('[data-testid=\"turn-undo-row\"][data-state=\"undone\"]');",
+        Duration::from_secs(30),
+    );
+    if undone.is_err() {
+        let status = ctx
+            .eval_string(
+                "const s = document.querySelector('[data-testid=\"turn-undo-status\"]');
+                 return s ? s.textContent : '(no status)';",
+            )
+            .unwrap_or_default();
+        bail!("the undo did not take effect; the panel said: {status:?}");
+    }
+    ensure!(!written.exists(), "undo did not remove the file the turn created");
+    std::fs::write(ctx.workspace.join(RESTART_MARKER), written.to_string_lossy().as_bytes())
+        .map_err(|e| fail(e.to_string()))?;
+    Ok(())
+}
+
+/// Phase two, in a new process on the same data folder and WebView profile:
+/// the binding and the undo position came back, and both still work.
+fn scenario_restart_persist_second(ctx: &Ctx) -> ScenarioResult {
+    let marker = std::fs::read_to_string(ctx.workspace.join(RESTART_MARKER))
+        .map_err(|_| Failure("phase one did not run against this workspace".into()))?;
+    let written = PathBuf::from(marker.trim());
+    ensure!(!written.exists(), "the undone file came back on its own");
+
+    // The binding: the old chord does nothing, the new one opens the palette.
+    let palette_open =
+        "return !!document.querySelector('[data-testid=\"command-palette\"]');";
+    ctx.goto("/")?;
+    ctx.settle();
+    press(ctx, "P", true, true, false)?;
+    std::thread::sleep(Duration::from_millis(800));
+    ensure!(
+        !ctx.eval_bool(palette_open)?,
+        "after a restart the default chord opens the palette again: the binding was lost"
+    );
+    press(ctx, "y", true, false, true)?;
+    ctx.wait_until(
+        "the restored binding to open the palette",
+        palette_open,
+        Duration::from_secs(10),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-testid=\"command-palette-input\"]')
+           .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+         return true;",
+    )?;
+    ctx.settle();
+
+    // The undo position: the turn is still undone, and redo still works.
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    open_turn_undo(ctx)?;
+    ctx.wait_until(
+        "the undone turn to be listed as undone",
+        "return !!document.querySelector('[data-testid=\"turn-undo-row\"][data-state=\"undone\"] [data-testid=\"turn-redo\"]');",
+        Duration::from_secs(20),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-testid=\"turn-undo-row\"][data-state=\"undone\"] [data-testid=\"turn-redo\"]').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the redo to be reported",
+        "return !!document.querySelector('[data-testid=\"turn-undo-row\"][data-state=\"applied\"]');",
+        Duration::from_secs(30),
+    )?;
+    ensure!(
+        std::fs::read_to_string(&written).unwrap_or_default() == "written by the turn\n",
+        "redo after the restart did not put the file back"
+    );
+
+    // Leave the binding as it was.
+    ctx.goto("/settings/shortcuts")?;
+    ctx.wait_until(
+        "the reset button",
+        "return !!document.querySelector('[data-testid=\"rebind-commandPalette\"] [data-testid=\"rebind-reset\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-testid=\"rebind-commandPalette\"] [data-testid=\"rebind-reset\"]').click();
+         return true;",
+    )?;
+    Ok(())
+}
+
+/// What a run that will not finish is waiting on: an approval nobody can see,
+/// a button that is not there, or the conversation's own last words.
+fn run_state(ctx: &Ctx) -> String {
+    ctx.eval_string(
+        r#"const t = document.body.innerText || '';
+           const allow = [...document.querySelectorAll('button')]
+             .filter(x => /^allow once$/i.test((x.textContent || '').trim())).length;
+           const input = document.querySelector('[data-testid="chat-input"]');
+           let pane = input;
+           for (let i = 0; pane && i < 12; i++) pane = pane.parentElement;
+           const tail = ((pane && pane.innerText) || t).slice(-900);
+           return JSON.stringify({
+             approvalAsked: t.includes('needs your approval'),
+             allowOnceButtons: allow,
+             stopShown: !!document.querySelector('[data-test-id="stop-button"], [aria-label*="Stop" i]'),
+             composer: !!input,
+             testIds: [...document.querySelectorAll('[data-test-id]')].map(e => e.getAttribute('data-test-id')).slice(0, 40),
+             footerButtons: input
+               ? [...(input.closest('form') || input.parentElement.parentElement.parentElement).querySelectorAll('button')]
+                   .map(b => (b.getAttribute('aria-label') || b.textContent || '').trim().slice(0, 30)).slice(0, 25)
+               : [],
+             tail,
+           });"#,
+    )
+    .unwrap_or_else(|e| format!("(state unavailable: {})", e.0))
 }
 
 /// Every toast on screen, joined, for asserting what a handler reported.
@@ -3734,8 +4425,21 @@ fn main() {
     // Per-run scratch tree. `CI=e2e` makes the app resolve its data folder
     // relative to the CWD, so chdir'ing here keeps the run out of the real
     // Jan data folder.
-    let workspace = std::env::temp_dir().join(format!("cowork-smoke-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&workspace);
+    //
+    // `COWORK_SMOKE_KEEP=<dir>` names a workspace that outlives this process
+    // instead, so a second invocation starts the app again on the same data
+    // folder and WebView profile: that is what a real restart is. The first
+    // run against it seeds it; a run that finds it seeded resumes it.
+    let kept = std::env::var_os("COWORK_SMOKE_KEEP").map(PathBuf::from);
+    let resumed = kept
+        .as_ref()
+        .is_some_and(|d| d.join("data").join("settings.json").exists());
+    let workspace = kept
+        .clone()
+        .unwrap_or_else(|| std::env::temp_dir().join(format!("cowork-smoke-{}", std::process::id())));
+    if kept.is_none() {
+        let _ = std::fs::remove_dir_all(&workspace);
+    }
     std::fs::create_dir_all(&workspace).expect("failed to create smoke workspace");
     // `JAN_DATA_FOLDER` is the only override `resolve_jan_data_folder` honours,
     // and it is the one that matters: settings.json -- which is where the
@@ -3775,7 +4479,8 @@ fn main() {
     app_lib::core::net::transport::set_probe(std::sync::Arc::new(SmokeDns));
 
     let data_folder = workspace.join("data");
-    if let Err(e) = seed_settings(
+    if let Err(e) = seed_settings_unless(
+        resumed,
         &data_folder,
         &format!("http://{SMOKE_ENDPOINT_HOST}:{SMOKE_ENDPOINT_PORT}/v1"),
     ) {
@@ -3810,7 +4515,9 @@ fn main() {
     let driver_workspace = workspace.clone();
     std::thread::spawn(move || {
         let code = drive(&handle, fixtures, driver_workspace.clone(), mock_port);
-        let _ = std::fs::remove_dir_all(&driver_workspace);
+        if std::env::var_os("COWORK_SMOKE_KEEP").is_none() {
+            let _ = std::fs::remove_dir_all(&driver_workspace);
+        }
         // Never leave the fixture server behind.
         let _ = mock.kill();
         let _ = mock.wait();
@@ -3854,7 +4561,15 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
     std::thread::sleep(Duration::from_millis(800));
 
     let template = fixtures.is_dir().then(|| fixtures.clone());
-    let project = match materialize_project(&workspace, template.as_deref()) {
+    // Resuming a kept workspace: the fixture, its Git history and everything
+    // the app persisted are exactly what the previous process left.
+    let resumed = std::env::var_os("COWORK_SMOKE_KEEP").is_some()
+        && workspace.join("cowork-smoke-fixture").join(".git").exists();
+    let project = match if resumed {
+        Ok(workspace.join("cowork-smoke-fixture"))
+    } else {
+        materialize_project(&workspace, template.as_deref())
+    } {
         Ok(p) => p,
         Err(e) => {
             eprintln!("FATAL: could not materialise the fixture project: {e}");
@@ -3871,7 +4586,11 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
         mock_port,
     };
 
-    if let Err(Failure(e)) = ctx.reset_persisted_state() {
+    if let Err(Failure(e)) = if resumed {
+        Ok(())
+    } else {
+        ctx.reset_persisted_state()
+    } {
         eprintln!("FATAL: could not reset persisted WebView state: {e}");
         return 2;
     }
@@ -3951,7 +4670,13 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
         };
         match outcome {
             Ok(false) => println!("PASS {}", scenario.name),
-            Ok(true) => println!("PASS {} (on retry)", scenario.name),
+            Ok(true) => {
+                println!("PASS {} (on retry)", scenario.name);
+                // What the first attempt hit, so a retry never hides a defect.
+                if let Some(first) = &first_err {
+                    println!("      first attempt failed with: {first}");
+                }
+            }
             Err(Failure(msg)) => {
                 failed += 1;
                 println!(

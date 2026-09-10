@@ -1102,7 +1102,12 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     // backend cannot confine a shell to them, so `bash` is never the loose end
     // that makes an access mode untrue: on such a platform the run keeps its
     // sandbox-only shell and the mode is not offered in the first place.
-    if !ctx.write_roots.is_empty() && jail::supports_write_roots(jail::backend()) {
+    // On AppContainer that means Jan-owned worktrees only: see
+    // [`jail::can_confine_write_roots`].
+    let owned = ctx.mask_root.map(crate::workspace::worktrees_dir);
+    if !ctx.write_roots.is_empty()
+        && jail::can_confine_write_roots(jail::backend(), ctx.write_roots, owned.as_deref())
+    {
         policy = policy.with_write_roots(ctx.write_roots.to_vec());
     }
     // With the sandbox off the shell is spawned bare, the way the user's own

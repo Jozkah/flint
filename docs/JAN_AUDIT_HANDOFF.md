@@ -1682,3 +1682,155 @@ already names each child's worktree.
   this machine's audit log, which records only what happened here; the tool
   turns carry their states.
 - **AH-210 (PC-to-PC handoff)** builds on this and is not started.
+
+## 2026-09-10 — Windows confinement for Jan-owned worktrees; undo by turn; confined `@` references
+
+**Windows confinement for a managed worktree.** AppContainer already confined
+the shell by granting a write ACE on the thread workspace. It refused to grant
+one on the user's own folder, which is still right, but that refusal also made
+Managed worktree mode unavailable on Windows, even though a managed worktree is
+a folder Jan owns under its data folder. Now:
+
+- `jail::supports_owned_write_roots` is true for AppContainer.
+  `jail::can_confine_write_roots` holds a shell to its roots, and on
+  AppContainer only when every root is strictly inside Jan's worktree folder.
+  The helper re-exec carries each root as a marked `--write-root=` argument and
+  grants each an ACE, refusing a missing root rather than skipping it.
+- `grants::authorize` authorizes a Jan-owned worktree on Windows. The user's
+  own folder is still refused, decided on the canonical path, so no spelling of
+  a user folder passes as a worktree.
+- A separate `managed_worktree_capability` command. The renderer asks about each
+  mode separately, so Windows offers Managed worktree while still not offering
+  Edit this folder.
+
+**Bugs found on the way, all fixed with regression tests:**
+
+- *Relative data folder.* The app's configured default data folder is `./data`.
+  With a relative data folder, git resolved the worktree against the repository
+  (inside it) and everything else resolved it against the process's working
+  directory. Authorizing it then failed with "cannot find the file".
+  `worktree::absolute` now resolves the root once, and the ensure/list/discard
+  commands use it.
+- *Leaked shell probes.* When a sandboxed shell probe passed its 10-second
+  timeout it was reported unusable but never killed, because the child had been
+  moved into the wait thread. Each hung probe left its helper and shell running
+  for the life of the app. The first fix killed the tree with `taskkill /T`,
+  and that regressed every Cowork run on this host. Bisected: a scenario that
+  had passed earlier stalled before the model was called, and passed again with
+  only the kill removed. The cause is that `taskkill` itself takes about a minute
+  here and then fails ("the timeout period expired"), even against a plain
+  `ping`, and the probe sits on the readiness check every run waits for.
+  `wait_or_kill` now polls `try_wait` and kills the helper directly (the helper
+  ties its shell to itself). The test checks the pid is gone through
+  `OpenProcess`/`GetExitCodeProcess`, not `taskkill`.
+- *`taskkill` itself, fixed later in this batch:* `proc::kill_tree` (the
+  `taskkill /T /F` path) is also what stopping a background `bash` job uses,
+  and on this host it took about a minute and then reported failure. It now
+  walks the tree natively (see below).
+- *Compatibility manifest ignored late inputs.* Saved subagent names and the
+  advertised tools were read only when a scan finished. If they arrived after
+  the scan, an imported agent reusing a saved name was never reported as a
+  duplicate. Tightening one request's timing exposed this. The hook now
+  re-resolves the last scan when those inputs change. Mutation-checked.
+
+**AH-202 undo/redo by turn.** A backend journal (`undo.rs`) records the exact
+bytes before and after every file a `write` or `edit` changes, against the run
+that changed it. `execute_tool` gains `undo_run` and captures the bytes at the
+path the handler itself resolves. `undo_turn`/`redo_turn` run all-or-nothing
+with rollback. Any file changed since, by the user or a later turn, refuses the
+whole operation and names the path. Scope is re-checked when the undo is asked
+for: the session's workspace, scratch folder and live grant. The position is
+per session, on disk. The Changes panel lists the turns with an Undo or Redo
+button on each, and results are announced through `aria-live`.
+
+**AH-204 containment.** In agent mode the `@` picker searched the user's home
+directory and read references with the unconfined filesystem API, so
+`@../x`, `@/abs` or `@C:\...\.ssh\id_rsa` put that file into the prompt. Now a
+reference is a path relative to the attached folder (`referenceRoot`). It is
+checked lexically (no absolute path, drive letter, UNC path, `~` or `..`) and
+then by the backend's `project_browse` reader, which refuses symlink escapes and
+credential-shaped files. A refused reference is stated in the message rather
+than silently dropped. With no folder attached, nothing is offered and nothing
+resolves. The unconfined `searchFiles`/`resolvePathReference` were removed.
+
+**AH-146: the change is shown before it is allowed.** Cowork's *Ask before
+changes* prompt showed a tool name and an argument table; the diff arrived only
+after the write had landed. `preview_change` returns the diff a `write` or
+`edit` would make -- the same `preview_diff` the executed call reports, against
+the same path resolution -- and only inside the roots the session may write, so
+a preview cannot be used to read a file no tool may read. The dispatcher hands
+it to the prompt, which renders it as a named region above Allow Once. The
+post-run diff and the prompt share one `ChangeDiff` component.
+
+**Found by running the Windows scenarios, all fixed:**
+
+- *The `@` picker never appeared in Cowork.* It was drawn only in chat "agent
+  mode", which Cowork never is. Regression test added and mutation-checked.
+- *The proposal commands froze the window.* `agent_proposal_from_worktree`,
+  `list`, `apply` and `reject` were synchronous Tauri commands, which run on the
+  main thread. During one run the WebView stopped answering for over a minute
+  after *Review changes* was clicked. They now run on a blocking thread. The
+  command itself takes ~150 ms on the fixture, so the length of that stall is
+  not explained by the command alone; it did not recur after the change.
+- *A file reference was read as a skill request.* `parseSkillRequests`
+  counts `@name` as an explicit skill mention, so `@src/index.ts` requested a
+  skill called `src` and `@README.md` requested one called `README.md`. Neither
+  exists, so the request resolved as missing, and a missing requested skill
+  stops every change the run would make. A mention that continues with a path
+  separator, or contains a dot, is now a path unless a skill has exactly that
+  name. Regression tests added.
+- *Examples and integration tests missed a signature change.* `helper_args`
+  gained its write-roots parameter, and `examples/sandbox_probe.rs` and
+  `tests/windows_sandbox.rs` still passed the old five arguments. `--lib` runs
+  never compile them; the full suite did.
+- *A harness race.* Opening the Changes panel right after a navigation looked
+  for its button once; it now waits. A pass on retry now prints what the first
+  attempt hit, so a retry cannot hide a defect.
+- *Open, not diagnosed: WebView stalls on this host.* Four runs of
+  `restart-persist-1` in a row (and one each of `managed-worktree-review` and
+  `session-export-import`) failed the same way: the model's turn finished and
+  its write landed, but the composer never returned to idle, and later `eval`
+  calls got no answer for 60 s. During one stall, the app and its WebView2
+  processes were idle (under 0.1 s of CPU in 10 s), so this is a wait, not a
+  busy loop. The next runs of the same scenarios passed cleanly, with no retry.
+  The harness now reports what a stuck run is waiting on (the approval state,
+  the composer's buttons, the pane text), so the next occurrence names the cause.
+  Each of these runs also waited about 40 s for the environment check to probe
+  shells that cannot start here.
+
+**Windows evidence (mock provider on `v100:8080`; the real model lane is not
+reachable from this host).** Each scenario was run by itself with
+`cowork-smoke --only <name>`:
+
+| Scenario | Result |
+| --- | --- |
+| `managed-worktree-review` | passed: Managed worktree and Ask before changes chosen in the UI, the prompt shows the write's diff, the worktree gets the write, the folder does not, one hunk of two applied through Review changes. The `bash` half is reported, not passed: no sandboxed shell starts on this host |
+| `at-references-confined` | passed |
+| `proposal-review-apply` | passed |
+| `command-palette-keybindings` | passed |
+| `session-export-import` | passed (the probe-kill regression is gone) |
+| `restart-persist-1` then `restart-persist-2` | passed across two processes on one kept data folder: the rebound palette chord and the undone turn both came back, and redo after the restart restored the file |
+
+**Registry.** AH-146, AH-147, AH-148, AH-202 and AH-207 are `implemented`
+(macOS/Linux not run). AH-109 stays `in-progress`: team children's worktrees
+are not offered for review. AH-204 stays `in-progress`: containment is done, but
+the one ranked menu of files, folders, skills, agents and aliases, and
+references that survive a rename, are not built.
+
+**Stopping a process tree on Windows no longer goes through `taskkill`.**
+`kill_tree` takes one process snapshot, then calls `TerminateProcess` on the
+root and on every descendant. A process counts as a child only if it was created
+after its recorded parent, because Windows recycles parent ids and an unrelated
+process (another Jan window, a WebView) could otherwise be adopted and killed.
+Stopping a background `bash` job and the shutdown reaper use it, and so does a
+timed-out shell probe. The probe used to kill only its helper, so the helper's
+shell stayed running. On this host, the five job-registry tests and two
+`kill_tree` tests that failed with "the timeout period expired" now pass in a
+fraction of a second. New tests cover a grandchild killed with its parent, an
+unrelated process left running, and a probe's shell killed with the probe. The
+tree-kill tests were mutation-checked: with descendants skipped, they fail.
+
+**Test-invocation note.** `cargo test -p tauri-plugin-agent-tools --lib` does
+not build the `jan-sandbox-helper` binary, so the sandboxed-shell probe
+re-executes the test binary, which exits with code 101. Seven `bash` tests then
+fail with "no shell could be started". Run the suite without `--lib`.

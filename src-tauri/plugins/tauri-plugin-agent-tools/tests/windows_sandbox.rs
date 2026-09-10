@@ -53,6 +53,7 @@ impl Sandbox {
         let argv = appcontainer::helper_args(
             &self.workspace,
             Some(&self.scratch),
+            &[],
             allow_network,
             program,
             &args.iter().map(|a| a.to_string()).collect::<Vec<_>>(),
@@ -339,6 +340,7 @@ fn diagnostics_never_carry_environment_values() {
     let argv = appcontainer::helper_args(
         &sandbox.workspace,
         Some(&sandbox.scratch),
+        &[],
         false,
         Path::new(r"C:\this\does\not\exist\shell.exe"),
         &["-c".to_string(), "echo hi".to_string()],

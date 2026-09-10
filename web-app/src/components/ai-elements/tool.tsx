@@ -38,6 +38,7 @@ import { ShieldAlertIcon } from 'lucide-react'
 import { Citations } from '@/components/Citations'
 import { parseCitationsFromToolOutput } from '@/lib/citation-parser'
 import { TONE_CLASSES, toneForTool } from '@/lib/semanticTone'
+import { ChangeDiff } from '@/components/ChangeDiff'
 
 /** Payloads shorter than this fit the collapsed box, so no expand control. */
 const OUTPUT_EXPAND_THRESHOLD = 600
@@ -353,6 +354,14 @@ export const ToolApprovalActions = memo(() => {
         <ShieldAlertIcon className="size-4" />
         <span>{t('tools:toolApproval.needsApproval')}</span>
       </div>
+      {/* What will land, before it is allowed (AH-146). */}
+      {pending.preview && (
+        <ChangeDiff
+          diff={pending.preview}
+          label={t('tools:toolApproval.proposedChange')}
+          testId="approval-preview"
+        />
+      )}
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"

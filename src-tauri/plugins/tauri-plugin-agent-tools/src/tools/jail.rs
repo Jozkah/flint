@@ -216,6 +216,44 @@ pub fn supports_write_roots(backend: Backend) -> bool {
     }
 }
 
+/// Can this backend confine a shell to a folder *Jan owns*?
+///
+/// A narrower question than [`supports_write_roots`], and AppContainer can
+/// answer yes to it. Granting a write ACE on the user's own repository is what
+/// this backend refuses to do; granting one on a managed worktree under Jan's
+/// data folder is the same thing it already does for the thread workspace.
+/// That is what makes Managed worktree mode possible on Windows while editing
+/// the user's own folder directly stays unavailable there.
+pub fn supports_owned_write_roots(backend: Backend) -> bool {
+    match backend {
+        Backend::Seatbelt | Backend::Bubblewrap | Backend::AppContainer => true,
+        Backend::None => false,
+    }
+}
+
+/// Whether the shell can be held to exactly `roots` on `backend`.
+///
+/// `owned` is the directory Jan's managed worktrees live under. On
+/// AppContainer every root must be inside it; anywhere else the answer is the
+/// general [`supports_write_roots`].
+pub fn can_confine_write_roots(backend: Backend, roots: &[PathBuf], owned: Option<&Path>) -> bool {
+    if supports_write_roots(backend) {
+        return true;
+    }
+    if backend != Backend::AppContainer {
+        return false;
+    }
+    let Some(owned) = owned.and_then(|o| o.canonicalize().ok()) else {
+        return false;
+    };
+    !roots.is_empty()
+        && roots.iter().all(|root| {
+            root.canonicalize()
+                .map(|r| r.starts_with(&owned) && r != owned)
+                .unwrap_or(false)
+        })
+}
+
 pub fn backend() -> Backend {
     static BACKEND: OnceLock<Backend> = OnceLock::new();
     *BACKEND.get_or_init(detect)
@@ -306,6 +344,7 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
             args: appcontainer::helper_args(
                 &policy.workspace,
                 policy.scratch_root.as_deref(),
+                &policy.write_roots,
                 policy.allow_network,
                 &cfg.program,
                 &cfg.args,
@@ -825,6 +864,62 @@ pub fn probe(cfg: &ShellConfig, policy: &Policy) -> ProbeOutcome {
     outcome
 }
 
+/// Wait for `child` for at most `timeout`; past it, kill its whole tree and
+/// report `None`.
+///
+/// `wait_with_output` has no timeout, so the wait happens on a thread. The
+/// child moves into that thread, which is how the kill used to be lost: the
+/// timeout path returned without it, and every probe that hung -- a sandboxed
+/// shell that never starts -- left its helper and that shell running for the
+/// life of the app, one more each time a probe was retried.
+fn wait_or_kill(
+    mut child: std::process::Child,
+    timeout: std::time::Duration,
+) -> Option<std::io::Result<std::process::Output>> {
+    use std::io::Read;
+    // The pipes are drained on their own threads so a chatty child cannot
+    // fill one and stall; the child itself stays here, where it can be killed.
+    let drain = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut buf);
+            }
+            buf
+        })
+    };
+    let stdout = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let stderr = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return Some(Ok(std::process::Output {
+                    status,
+                    stdout: stdout.join().unwrap_or_default(),
+                    stderr: stderr.join().unwrap_or_default(),
+                }))
+            }
+            Ok(None) if std::time::Instant::now() < deadline => {
+                std::thread::sleep(std::time::Duration::from_millis(25))
+            }
+            Ok(None) => {
+                // The whole tree: the helper and the shell it started. Once
+                // this was `taskkill /T`, which blocked for a minute on some
+                // hosts -- and a blocked probe blocked the readiness check
+                // every run waits on. `kill_tree` now walks the tree itself.
+                // Then the process directly, in case the tree walk could not
+                // open it. The drain threads end when the pipes close.
+                let _ = super::proc::kill_tree(child.id());
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Err(e) => return Some(Err(e)),
+        }
+    }
+}
+
 fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> ProbeOutcome {
     let Some(wrapped) = wrap(cfg, policy) else {
         return ProbeOutcome::NoSandbox;
@@ -857,23 +952,14 @@ fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> ProbeOutcome {
         }
     };
 
-    // `wait_with_output` has no timeout, so the wait happens on a thread and the
-    // probe gives up rather than hanging the first command of a session. A
-    // probe that times out is killed: it was told to exit immediately.
-    let (tx, rx) = std::sync::mpsc::channel();
-    let handle = std::thread::spawn(move || {
-        let result = child.wait_with_output();
-        let _ = tx.send(result);
-    });
-    let output = match rx.recv_timeout(PROBE_TIMEOUT) {
-        Ok(Ok(output)) => output,
-        Ok(Err(e)) => {
-            let _ = handle.join();
+    let output = match wait_or_kill(child, PROBE_TIMEOUT) {
+        Some(Ok(output)) => output,
+        Some(Err(e)) => {
             return ProbeOutcome::Unusable {
                 reason: format!("the shell could not be waited for: {e}"),
             };
         }
-        Err(_) => {
+        None => {
             return ProbeOutcome::Unusable {
                 reason: format!(
                     "the shell did not finish `{}` within {} seconds",
@@ -883,7 +969,6 @@ fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> ProbeOutcome {
             }
         }
     };
-    let _ = handle.join();
 
     if output.status.success() {
         return ProbeOutcome::Usable;
@@ -1559,6 +1644,147 @@ mod tests {
     /// AppContainer grants writes only through an ACE on the thread workspace,
     /// so it cannot yet authorize a repository; reporting it supported would
     /// promise a confinement Windows is not applying.
+    /// The regression: a probe that outlived its timeout was reported unusable
+    /// and left running. Now the process is gone by the time the wait returns.
+    #[test]
+    fn a_probe_that_hangs_is_killed_not_leaked() {
+        use std::time::Duration;
+        #[cfg(windows)]
+        let child = std::process::Command::new("ping")
+            .args(["-n", "60", "127.0.0.1"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        #[cfg(not(windows))]
+        let child = std::process::Command::new("sleep")
+            .arg("60")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let started = std::time::Instant::now();
+        assert!(wait_or_kill(child, Duration::from_millis(500)).is_none());
+        // Bounded: on the host this was found on, `taskkill` itself took a
+        // minute and then failed, which is what the kill used to go through.
+        assert!(started.elapsed() < Duration::from_secs(5), "the wait did not give up");
+        assert!(!process_alive(pid), "the timed-out probe is still running");
+    }
+
+    /// A timed-out probe takes the shell it started with it. `cmd` stands in
+    /// for the sandbox helper and `ping` for its shell: killing only the
+    /// helper used to leave the shell running for the life of the app.
+    #[cfg(windows)]
+    #[test]
+    fn a_probe_that_hangs_takes_the_shell_it_started_with_it() {
+        use std::time::Duration;
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        let child = std::process::Command::new("cmd")
+            .args(["/c", "ping -n 60 127.0.0.1 >nul"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let root = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        let created = super::super::proc::creation_time(root);
+        unsafe { CloseHandle(root) };
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let shells = loop {
+            let found = super::super::proc::descendants_of(pid, created);
+            if !found.is_empty() || std::time::Instant::now() > deadline {
+                break found;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        };
+        assert!(!shells.is_empty(), "the stand-in helper never started its shell");
+
+        assert!(wait_or_kill(child, Duration::from_millis(500)).is_none());
+        std::thread::sleep(Duration::from_millis(200));
+        for shell in shells {
+            assert!(!process_alive(shell), "the probe's shell {shell} outlived it");
+        }
+    }
+
+    /// Whether `pid` is a running process, asked of the OS directly rather
+    /// than through `taskkill`, which is what hung.
+    #[cfg(windows)]
+    fn process_alive(pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        const STILL_ACTIVE: u32 = 259;
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle.is_null() {
+                return false;
+            }
+            let mut code: u32 = 0;
+            let ok = GetExitCodeProcess(handle, &mut code);
+            CloseHandle(handle);
+            ok != 0 && code == STILL_ACTIVE
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn process_alive(pid: u32) -> bool {
+        std::path::Path::new(&format!("/proc/{pid}")).exists()
+            || std::process::Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .status()
+                .is_ok_and(|s| s.success())
+    }
+
+    #[test]
+    fn a_probe_that_finishes_is_waited_for() {
+        use std::time::Duration;
+        #[cfg(windows)]
+        let child = std::process::Command::new("cmd")
+            .args(["/C", "echo ok"])
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        #[cfg(not(windows))]
+        let child = std::process::Command::new("sh")
+            .args(["-c", "echo ok"])
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let out = wait_or_kill(child, Duration::from_secs(10)).expect("finished").unwrap();
+        assert!(String::from_utf8_lossy(&out.stdout).contains("ok"));
+    }
+
+    /// AppContainer confines a run to a Jan-owned worktree and nothing else:
+    /// every root inside the owned folder, the owned folder itself refused, a
+    /// root outside it refused, and no owned folder at all refused.
+    #[test]
+    fn appcontainer_confines_only_jan_owned_roots() {
+        let base = std::env::temp_dir().join(format!("jan_owned_roots_{}", std::process::id()));
+        let owned = base.join("worktrees");
+        let inside = owned.join("repo").join("s1");
+        let outside = base.join("user-repo");
+        for d in [&inside, &outside] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let ac = Backend::AppContainer;
+        assert!(can_confine_write_roots(ac, &[inside.clone()], Some(&owned)));
+        assert!(!can_confine_write_roots(ac, &[outside.clone()], Some(&owned)));
+        assert!(!can_confine_write_roots(ac, &[inside.clone(), outside.clone()], Some(&owned)));
+        assert!(!can_confine_write_roots(ac, &[owned.clone()], Some(&owned)));
+        assert!(!can_confine_write_roots(ac, &[inside.clone()], None));
+        assert!(!can_confine_write_roots(ac, &[inside.join("..").join("..").join("..").join("user-repo")], Some(&owned)));
+        // The general backends hold any root; no backend holds nothing.
+        assert!(can_confine_write_roots(Backend::Seatbelt, &[outside.clone()], None));
+        assert!(!can_confine_write_roots(Backend::None, &[inside], Some(&owned)));
+        assert!(supports_owned_write_roots(ac));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn only_backends_that_can_confine_a_repository_support_direct_editing() {
         assert!(supports_write_roots(Backend::Seatbelt));

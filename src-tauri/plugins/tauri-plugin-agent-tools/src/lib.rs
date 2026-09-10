@@ -28,6 +28,7 @@ pub mod skills;
 pub mod snapshot;
 pub mod subject;
 pub mod tools;
+pub mod undo;
 pub mod usage;
 pub mod utility;
 pub mod workspace;
@@ -59,6 +60,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::session_workspace_delete,
             commands::session_workspace_sweep,
             commands::direct_edit_capability,
+            commands::managed_worktree_capability,
             commands::direct_edit_authorize,
             commands::direct_edit_revoke,
             commands::direct_edit_revoke_session,
@@ -95,6 +97,10 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::advertised_tool_schemas,
             commands::execute_tool,
             commands::execute_tool_streaming,
+            commands::undo_journal,
+            commands::undo_turn,
+            commands::redo_turn,
+            commands::preview_change,
             commands::project_list_dir,
             commands::project_read_file,
             commands::bash_jobs_list,

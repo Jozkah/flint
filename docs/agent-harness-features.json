@@ -3467,13 +3467,14 @@
         "tauri-plugin-agent-tools::proposal::tests::a_failed_write_rolls_back_the_files_already_written",
         "Jan::core::agent::proposals::tests::a_worktree_becomes_the_files_it_changed",
         "web-app::CoworkProposalReview.test.tsx",
-        "cowork-smoke::proposal-review-apply"
+        "cowork-smoke::proposal-review-apply",
+        "cowork-smoke::managed-worktree-review"
       ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
-      "blockedReason": "Team children's worktrees are not offered for review, and the review UI is unreachable on Windows.",
-      "auditNote": "Merging an agent's worktree back now goes through the proposal record: the session's managed worktree is proposed, reviewed per hunk and applied with conflicts refused and named, never overwritten (see AH-146). Pre-flight conflict detection between team tasks remains. MISSING: team children's worktrees are not yet offered for review (owner ids are not recoverable from hashed branch names; the team report names each child's worktree), and the review UI is unreachable on Windows (Managed worktree mode disabled by the AppContainer boundary)."
+      "blockedReason": "Team children's worktrees are not offered for review.",
+      "auditNote": "Merging the session's managed worktree goes through the proposal record: proposed, reviewed per hunk and applied with conflicts refused and named, never overwritten (see AH-146), and it is now reachable through the real UI on Windows (cowork-smoke managed-worktree-review). MISSING: team children's worktrees are not yet offered for review (owner ids are not recoverable from hashed branch names; the team report names each child's worktree), and there is no pre-flight conflict detection between team tasks."
     },
     {
       "id": "AH-110",
@@ -4521,17 +4522,24 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-048"
       ],
       "owner": "lane-08-git-pr-workflows",
       "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/patch.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/proposal.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/src/core/agent/events.rs",
         "src-tauri/src/core/agent/loop.rs",
-        "src-tauri/src/core/agent/events.rs"
+        "src-tauri/src/core/agent/proposals.rs",
+        "web-app/src/components/ChangeDiff.tsx",
+        "web-app/src/components/ai-elements/tool.tsx",
+        "web-app/src/containers/CoworkProposalReview.tsx",
+        "web-app/src/lib/coworkDispatch.ts"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -4552,11 +4560,15 @@
         "tauri-plugin-agent-tools::proposal::tests::a_failed_write_rolls_back_the_files_already_written",
         "Jan::core::agent::proposals::tests::a_worktree_becomes_the_files_it_changed",
         "web-app::CoworkProposalReview.test.tsx",
-        "cowork-smoke::proposal-review-apply"
+        "cowork-smoke::proposal-review-apply",
+        "tauri-plugin-agent-tools::commands::tests::a_change_is_previewed_before_it_is_allowed_and_only_where_it_could_land",
+        "web-app::coworkDispatch.test.ts",
+        "web-app::tool.test.tsx",
+        "cowork-smoke::managed-worktree-review"
       ],
       "platformRequirements": [],
-      "blockedReason": "MISSING for implemented: the review UI is unreachable on Windows because Managed worktree mode is disabled there (AppContainer cannot confine a run to a repository: jail::supports_write_roots(AppContainer) is false), so the UI is covered on Windows by unit tests only, and macOS/Linux were not run.",
-      "auditNote": "One proposal record now carries AH-146/147/148/109 (tauri_plugin_agent_tools::proposal, schema 1): exact base and proposed bytes stored content-addressed and write-once before approval; approval bound to patch hash, base-state hash, session/run/agent/project/worktree scope and the exact hunk ids, every field compared by the backend; selection, three-way merge against the destination, conflict refusal by file and hunk, and all-or-nothing writes with rollback all happen in Rust; credential-shaped files, paths outside the project, .jan and .git never applied; audit/proposals.jsonl holds ids and hashes only. agent_proposal_from_worktree/list/apply/reject are wired; the Changes panel of a Managed-worktree session shows CoworkProposalReview with per-file and per-hunk checkboxes, conflict marking and reject. Windows: cowork-smoke proposal-review-apply passes over real IPC with real git. MISSING for implemented: the review UI is unreachable on Windows because Managed worktree mode is disabled there (AppContainer cannot confine a run to a repository: jail::supports_write_roots(AppContainer) is false), so the UI is covered on Windows by unit tests only, and macOS/Linux were not run."
+      "blockedReason": null,
+      "auditNote": "Every write is previewed before it is approved: in Cowork's Ask before changes the approval prompt now shows the diff the write or edit would make (preview_change: the same preview_diff the executed call reports, computed only inside the roots the session may write, nothing written), and the CLI loop stages the change with patch.rs. One proposal record carries AH-146/147/148/109 (tauri_plugin_agent_tools::proposal, schema 1): exact base and proposed bytes stored content-addressed and write-once before approval; approval bound to patch hash, base-state hash, session/run/agent/project/worktree scope and the exact hunk ids, every field compared by the backend; selection, three-way merge against the destination, conflict refusal by file and hunk, and all-or-nothing writes with rollback all happen in Rust; credential-shaped files, paths outside the project, .jan and .git never applied; audit/proposals.jsonl holds ids and hashes only. The Changes panel of a Managed-worktree session shows CoworkProposalReview with per-file and per-hunk checkboxes, conflict marking and reject. Windows: Managed worktree is now offered (AppContainer grants a write ACE on a Jan-owned worktree only; the user's own folder is still refused), and cowork-smoke managed-worktree-review drives it through the real UI -- choose Managed worktree and Ask before changes, the model writes in the worktree, the folder is untouched, Review changes lists the file, one hunk of two is unticked and applied, and the folder holds exactly the ticked hunk. proposal-review-apply covers the refusals (changed hash, other agent, overlapping edit, rejected proposal) over real IPC. The proposal commands run off the main thread. macOS/Linux not run; the run's bash half is not exercised on this Windows host because no sandboxed shell starts there."
     },
     {
       "id": "AH-147",
@@ -4564,14 +4576,17 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-146"
       ],
       "owner": "lane-08-git-pr-workflows",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/patch.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/patch.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/proposal.rs",
+        "src-tauri/src/core/agent/proposals.rs",
+        "web-app/src/containers/CoworkProposalReview.tsx"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -4593,11 +4608,12 @@
         "tauri-plugin-agent-tools::proposal::tests::a_failed_write_rolls_back_the_files_already_written",
         "Jan::core::agent::proposals::tests::a_worktree_becomes_the_files_it_changed",
         "web-app::CoworkProposalReview.test.tsx",
-        "cowork-smoke::proposal-review-apply"
+        "cowork-smoke::proposal-review-apply",
+        "cowork-smoke::managed-worktree-review"
       ],
       "platformRequirements": [],
-      "blockedReason": "MISSING for implemented: the review UI is unreachable on Windows because Managed worktree mode is disabled there (AppContainer cannot confine a run to a repository: jail::supports_write_roots(AppContainer) is false), so the UI is covered on Windows by unit tests only, and macOS/Linux were not run.",
-      "auditNote": "One proposal record now carries AH-146/147/148/109 (tauri_plugin_agent_tools::proposal, schema 1): exact base and proposed bytes stored content-addressed and write-once before approval; approval bound to patch hash, base-state hash, session/run/agent/project/worktree scope and the exact hunk ids, every field compared by the backend; selection, three-way merge against the destination, conflict refusal by file and hunk, and all-or-nothing writes with rollback all happen in Rust; credential-shaped files, paths outside the project, .jan and .git never applied; audit/proposals.jsonl holds ids and hashes only. agent_proposal_from_worktree/list/apply/reject are wired; the Changes panel of a Managed-worktree session shows CoworkProposalReview with per-file and per-hunk checkboxes, conflict marking and reject. Windows: cowork-smoke proposal-review-apply passes over real IPC with real git. MISSING for implemented: the review UI is unreachable on Windows because Managed worktree mode is disabled there (AppContainer cannot confine a run to a repository: jail::supports_write_roots(AppContainer) is false), so the UI is covered on Windows by unit tests only, and macOS/Linux were not run."
+      "blockedReason": null,
+      "auditNote": "Hunks are accepted or rejected one by one in the worktree proposal review; the inline approval prompt still approves a call whole. One proposal record carries AH-146/147/148/109 (tauri_plugin_agent_tools::proposal, schema 1): exact base and proposed bytes stored content-addressed and write-once before approval; approval bound to patch hash, base-state hash, session/run/agent/project/worktree scope and the exact hunk ids, every field compared by the backend; selection, three-way merge against the destination, conflict refusal by file and hunk, and all-or-nothing writes with rollback all happen in Rust; credential-shaped files, paths outside the project, .jan and .git never applied; audit/proposals.jsonl holds ids and hashes only. The Changes panel of a Managed-worktree session shows CoworkProposalReview with per-file and per-hunk checkboxes, conflict marking and reject. Windows: Managed worktree is now offered (AppContainer grants a write ACE on a Jan-owned worktree only; the user's own folder is still refused), and cowork-smoke managed-worktree-review drives it through the real UI -- choose Managed worktree and Ask before changes, the model writes in the worktree, the folder is untouched, Review changes lists the file, one hunk of two is unticked and applied, and the folder holds exactly the ticked hunk. proposal-review-apply covers the refusals (changed hash, other agent, overlapping edit, rejected proposal) over real IPC. The proposal commands run off the main thread. macOS/Linux not run; the run's bash half is not exercised on this Windows host because no sandboxed shell starts there."
     },
     {
       "id": "AH-148",
@@ -4605,7 +4621,7 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-147"
@@ -4613,9 +4629,12 @@
       "owner": "lane-08-git-pr-workflows",
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/patch.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/proposal.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/src/core/agent/events.rs",
         "src-tauri/src/core/agent/loop.rs",
-        "src-tauri/src/core/agent/events.rs"
+        "src-tauri/src/core/agent/proposals.rs",
+        "web-app/src/containers/CoworkProposalReview.tsx"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -4637,11 +4656,12 @@
         "tauri-plugin-agent-tools::proposal::tests::a_failed_write_rolls_back_the_files_already_written",
         "Jan::core::agent::proposals::tests::a_worktree_becomes_the_files_it_changed",
         "web-app::CoworkProposalReview.test.tsx",
-        "cowork-smoke::proposal-review-apply"
+        "cowork-smoke::proposal-review-apply",
+        "cowork-smoke::managed-worktree-review"
       ],
       "platformRequirements": [],
-      "blockedReason": "MISSING for implemented: the review UI is unreachable on Windows because Managed worktree mode is disabled there (AppContainer cannot confine a run to a repository: jail::supports_write_roots(AppContainer) is false), so the UI is covered on Windows by unit tests only, and macOS/Linux were not run.",
-      "auditNote": "One proposal record now carries AH-146/147/148/109 (tauri_plugin_agent_tools::proposal, schema 1): exact base and proposed bytes stored content-addressed and write-once before approval; approval bound to patch hash, base-state hash, session/run/agent/project/worktree scope and the exact hunk ids, every field compared by the backend; selection, three-way merge against the destination, conflict refusal by file and hunk, and all-or-nothing writes with rollback all happen in Rust; credential-shaped files, paths outside the project, .jan and .git never applied; audit/proposals.jsonl holds ids and hashes only. agent_proposal_from_worktree/list/apply/reject are wired; the Changes panel of a Managed-worktree session shows CoworkProposalReview with per-file and per-hunk checkboxes, conflict marking and reject. Windows: cowork-smoke proposal-review-apply passes over real IPC with real git. MISSING for implemented: the review UI is unreachable on Windows because Managed worktree mode is disabled there (AppContainer cannot confine a run to a repository: jail::supports_write_roots(AppContainer) is false), so the UI is covered on Windows by unit tests only, and macOS/Linux were not run."
+      "blockedReason": null,
+      "auditNote": "Applying onto content that changed since refuses with the file and hunk named and writes nothing. One proposal record carries AH-146/147/148/109 (tauri_plugin_agent_tools::proposal, schema 1): exact base and proposed bytes stored content-addressed and write-once before approval; approval bound to patch hash, base-state hash, session/run/agent/project/worktree scope and the exact hunk ids, every field compared by the backend; selection, three-way merge against the destination, conflict refusal by file and hunk, and all-or-nothing writes with rollback all happen in Rust; credential-shaped files, paths outside the project, .jan and .git never applied; audit/proposals.jsonl holds ids and hashes only. The Changes panel of a Managed-worktree session shows CoworkProposalReview with per-file and per-hunk checkboxes, conflict marking and reject. Windows: Managed worktree is now offered (AppContainer grants a write ACE on a Jan-owned worktree only; the user's own folder is still refused), and cowork-smoke managed-worktree-review drives it through the real UI -- choose Managed worktree and Ask before changes, the model writes in the worktree, the folder is untouched, Review changes lists the file, one hunk of two is unticked and applied, and the folder holds exactly the ticked hunk. proposal-review-apply covers the refusals (changed hash, other agent, overlapping edit, rejected proposal) over real IPC. The proposal commands run off the main thread. macOS/Linux not run; the run's bash half is not exercised on this Windows host because no sandboxed shell starts there."
     },
     {
       "id": "AH-149",
@@ -6136,13 +6156,20 @@
       "category": "checkpoints",
       "phase": 9,
       "phaseName": "Approved additions",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-146"
       ],
       "owner": "lane-22-checkpoints",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/undo.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "web-app/src/containers/CoworkTurnUndo.tsx",
+        "web-app/src/lib/coworkDispatch.ts",
+        "web-app/src/lib/agentTools.ts",
+        "web-app/src/routes/cowork.tsx"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "A user can undo the file changes a turn produced, and redo them, from the turn that produced them.",
@@ -6157,12 +6184,16 @@
         "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
       ],
       "tests": [
-        "web-app/src/lib/__tests__/coworkCheckpoints.undo.test.ts"
+        "tauri-plugin-agent-tools::undo::tests",
+        "tauri-plugin-agent-tools::commands::tests::a_turns_write_can_be_undone_and_redone_through_the_commands",
+        "web-app::CoworkTurnUndo.test.tsx",
+        "cowork-smoke::restart-persist-1",
+        "cowork-smoke::restart-persist-2"
       ],
       "platformRequirements": [],
       "blockedReason": null,
       "evidence": "Not implemented. `useCoworkCheckpoints` records checkpoints but exposes no undo/redo, and nothing distinguishes Jan-authored paths at revert time.",
-      "auditNote": ""
+      "auditNote": "A backend journal (undo.rs) records the exact bytes before and after every file a write or edit changes, against the run that changed it; execute_tool takes undo_run and captures at the path the handler resolves. undo_turn/redo_turn are all-or-nothing with rollback; a file changed since, by the user or a later turn, refuses the whole operation naming it; scope is re-checked at undo time against the session's workspace, scratch and live grant. The position is per session, on disk. The Changes panel lists turns newest first with Undo/Redo named for their turn and announces results (role=alert on refusal). Windows: restart-persist-1 undoes a real Cowork turn's write from the panel and the process exits; restart-persist-2 starts a new process on the same data folder, finds the turn undone, redoes it, and the file is back. Files only: a turn's messages are not removed by undo. macOS/Linux not run."
     },
     {
       "id": "AH-203",
@@ -6212,11 +6243,16 @@
       "category": "composer",
       "phase": 9,
       "phaseName": "Approved additions",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P2",
       "dependencies": [],
       "owner": "lane-23-composer",
-      "files": [],
+      "files": [
+        "web-app/src/lib/safeReferences.ts",
+        "web-app/src/containers/ChatInput.tsx",
+        "web-app/src/lib/path-references.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/project_browse.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "One `@` menu offers files, folders, skills, agents and saved aliases from a single ranked list.",
@@ -6231,12 +6267,15 @@
         "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
       ],
       "tests": [
-        "web-app/src/containers/__tests__/ReferenceAutocomplete.test.tsx"
+        "web-app::safeReferences.test.ts",
+        "web-app::ChatInput.test.tsx",
+        "cowork-smoke::at-references-confined",
+        "web-app::coworkReadiness.test.ts"
       ],
       "platformRequirements": [],
-      "blockedReason": null,
+      "blockedReason": "MISSING for implemented: one ranked menu that also offers skills, agents and saved aliases; references that survive a rename of the display text.",
       "evidence": "Not implemented. The composer has no unified `@` menu; file mentions and skills are separate surfaces.",
-      "auditNote": ""
+      "auditNote": "Containment is done: a reference is a path relative to the attached folder, checked lexically (no absolute path, drive, UNC, ~, scheme or ..) and then by project_browse, which canonicalizes against the folder (symlink escapes refused) and refuses credential-shaped files. A refused reference is stated in the message. No folder, no picker and no resolution; the unconfined home-directory search and reader were removed. The picker was drawn only in chat agent mode, so Cowork never showed it -- fixed and mutation-checked. Windows: at-references-confined offers src/index.ts and no absolute path, and a message naming @src/index.ts, @../outside-secret.txt and an absolute path sends only the in-folder content and says twice that a reference was not included. A file reference was also read as a skill request (@src/index.ts asked for a skill named src, which resolved as missing and stopped every change); a mention that reads as a path is now a path unless a skill has exactly that name."
     },
     {
       "id": "AH-205",
@@ -6315,7 +6354,7 @@
       "category": "navigation",
       "phase": 9,
       "phaseName": "Approved additions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-206"
@@ -6342,12 +6381,14 @@
       ],
       "tests": [
         "web-app::useKeybindings.test.ts",
-        "cowork-smoke::command-palette-keybindings"
+        "cowork-smoke::command-palette-keybindings",
+        "cowork-smoke::restart-persist-1",
+        "cowork-smoke::restart-persist-2"
       ],
       "platformRequirements": [],
-      "blockedReason": "MISSING for implemented: restoration after a real application restart is proven by the rehydrate unit test and by the Windows scenario seeing the override written to settings.json, not by restarting the app on Windows; and the sidebar's New Chat hint still shows the default chord.",
+      "blockedReason": null,
       "evidence": "Not implemented. `lib/shortcuts` exposes a fixed platform table with no user overrides.",
-      "auditNote": "Settings > Shortcuts: Change records the next chord; a chord any other command uses (including zoom's alias keys) is refused naming that command; every app shortcut stands down while recording, so the taken chord is reported instead of run; Reset restores the default. Only overrides are persisted through the backend settings store and rehydrated with the other backend stores. Windows: cowork-smoke command-palette-keybindings proves the conflict message, acceptance, the write to settings.json, the new chord working and the old one not, and Reset. MISSING for implemented: restoration after a real application restart is proven by the rehydrate unit test and by the Windows scenario seeing the override written to settings.json, not by restarting the app on Windows; and the sidebar's New Chat hint still shows the default chord."
+      "auditNote": "Settings > Shortcuts: Change records the next chord; a chord any other command uses (including zoom's alias keys) is refused naming that command; every app shortcut stands down while recording; Reset restores the default. Only overrides are persisted through the backend settings store. Menu hints (ShortcutHint) read the binding in force. Windows: command-palette-keybindings proves the conflict message, acceptance, the write to settings.json, the new chord working and the old one not, and Reset; restart-persist-1 rebinds the palette and the process exits, and restart-persist-2 in a new process finds the old chord inert and the new one opening the palette. macOS modifier conventions are unit-tested only."
     },
     {
       "id": "AH-208",

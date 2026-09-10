@@ -33,6 +33,7 @@ const h = vi.hoisted(() => ({
   /** Tauri commands, by name. Tests install answers per case. */
   invoke: vi.fn(),
   directEditCapability: vi.fn(async () => true),
+  managedWorktreeCapability: vi.fn(async () => true),
   directEditAuthorize: vi.fn(async () => 'grant-1'),
   directEditRevoke: vi.fn(async () => true),
   directEditRevokeSession: vi.fn(async () => true),
@@ -88,6 +89,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: h.invoke }))
 vi.mock('@janhq/tauri-plugin-agent-tools-api', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   directEditCapability: h.directEditCapability,
+  managedWorktreeCapability: h.managedWorktreeCapability,
   directEditAuthorize: h.directEditAuthorize,
   directEditRevoke: h.directEditRevoke,
   directEditRevokeSession: h.directEditRevokeSession,
@@ -369,6 +371,7 @@ beforeEach(() => {
   installInvoke()
   h.deps = null
   h.directEditCapability.mockResolvedValue(true)
+  h.managedWorktreeCapability.mockResolvedValue(true)
   h.directEditAuthorize.mockResolvedValue('grant-1')
   h.pickFolder.mockResolvedValue('/repo')
   h.dataFolder.mockResolvedValue('/data')
@@ -534,6 +537,7 @@ describe('what a run carries, decided by the route', () => {
 
   it('keeps a session in review when the platform cannot confine writes', async () => {
     h.directEditCapability.mockResolvedValue(false)
+    h.managedWorktreeCapability.mockResolvedValue(false)
     seedSession({ turns: PRIOR_TURNS })
     await renderRoute()
 
@@ -971,13 +975,15 @@ describe('a repository that brings its own configuration', () => {
     await renderRoute()
     await openSessionDetails()
 
+    // The saved definition keeps the name; the imported one is reported as a
+    // duplicate rather than quietly losing. Waited for as one condition: the
+    // saved list and the repository scan arrive independently, and asserting
+    // the second as soon as the first had rendered raced them.
     await waitFor(() => {
       const section = screen.getByTestId('cowork-compat')
       expect(section).toHaveTextContent('reviewer')
+      expect(section).toHaveTextContent('duplicate')
     })
-    // The saved definition keeps the name; the imported one is reported as a
-    // duplicate rather than quietly losing.
-    expect(screen.getByTestId('cowork-compat')).toHaveTextContent('duplicate')
   })
 
   it('reports a local MCP server it cannot confine rather than running it', async () => {

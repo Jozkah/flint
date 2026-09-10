@@ -75,7 +75,13 @@ function blockedReason(
       ? 'common:coworkAccess.capabilityFailed'
       : 'common:coworkAccess.capabilityLoading'
   }
-  if (!props.capability.directEdit) {
+  // Each write mode asks its own question: on Windows a Jan-owned worktree can
+  // be confined while the user's own folder cannot.
+  const supported =
+    option === 'managed-worktree'
+      ? props.capability.managedWorktree
+      : props.capability.directEdit
+  if (!supported) {
     return 'common:coworkAccess.unsupportedPlatform'
   }
   return null
@@ -106,7 +112,9 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
             className={cn(
               'shrink-0 gap-1',
               // Editing the user's own checkout is the state worth noticing.
-              active === 'edit-folder' ? 'text-primary' : 'text-muted-foreground'
+              active === 'edit-folder'
+                ? 'text-primary'
+                : 'text-muted-foreground'
             )}
           >
             <Icon aria-hidden className="size-3.5 shrink-0" />

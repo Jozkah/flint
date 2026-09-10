@@ -1,6 +1,7 @@
 {
   "toolApproval": {
     "needsApproval": "This tool needs your approval before it runs.",
+    "proposedChange": "The change this would make",
     "deny": "Deny",
     "allowOnce": "Allow Once",
     "allowInThread": "Allow in thread",

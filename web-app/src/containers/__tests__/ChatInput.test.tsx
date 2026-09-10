@@ -313,6 +313,12 @@ vi.mock('@/lib/platform/utils', () => ({
   isPlatformTauri: () => false,
 }))
 
+const references = vi.hoisted(() => ({
+  searchReferences: vi.fn(),
+  resolveReference: vi.fn(),
+}))
+vi.mock('@/lib/safeReferences', () => references)
+
 // Import component AFTER all mocks
 import ChatInput from '../ChatInput'
 
@@ -687,6 +693,52 @@ describe('ChatInput', () => {
       const dimmed = document.querySelector('.pointer-events-none')
       expect(dimmed).toBeTruthy()
       expect(dimmed!.contains(screen.getByText('plan'))).toBe(false)
+    })
+  })
+
+  // AH-204: `@` names something inside the attached folder, and only there.
+  describe('@ references', () => {
+    beforeEach(() => {
+      references.searchReferences.mockReset()
+      references.resolveReference.mockReset()
+      references.searchReferences.mockResolvedValue([
+        { path: 'src/index.ts', name: 'index.ts', kind: 'file' },
+      ])
+    })
+
+    const typeAt = async (value: string) => {
+      const ta = getTextarea()
+      ta.setSelectionRange?.(value.length, value.length)
+      await act(async () => {
+        fireEvent.change(ta, { target: { value } })
+      })
+    }
+
+    // The regression: the picker was drawn only in chat "agent mode", which
+    // Cowork never is, so Cowork -- the one surface with a folder -- showed
+    // nothing when someone typed `@`.
+    it('offers folder-relative entries where a folder is attached, outside agent mode', async () => {
+      agentModeOn = false
+      renderInput({ referenceRoot: '/repo' })
+      await act(async () => {})
+      await typeAt('@ind')
+      await waitFor(() =>
+        expect(references.searchReferences).toHaveBeenCalledWith(
+          '/mock/jan/data',
+          '/repo',
+          'ind'
+        )
+      )
+      expect(await screen.findByText('src/index.ts')).toBeInTheDocument()
+    })
+
+    it('offers nothing and searches nothing without an attached folder', async () => {
+      agentModeOn = true
+      renderInput()
+      await act(async () => {})
+      await typeAt('@ind')
+      expect(references.searchReferences).not.toHaveBeenCalled()
+      expect(screen.queryByText('src/index.ts')).toBeNull()
     })
   })
 })

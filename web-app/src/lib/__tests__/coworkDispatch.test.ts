@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { executeAgentTool } = vi.hoisted(() => ({ executeAgentTool: vi.fn() }))
-vi.mock('@/lib/agentTools', () => ({ executeAgentTool }))
+const { previewAgentChange } = vi.hoisted(() => ({
+  previewAgentChange: vi.fn(async (): Promise<string | undefined> => undefined),
+}))
+vi.mock('@/lib/agentTools', () => ({ executeAgentTool, previewAgentChange }))
 
 const { executeWebTool } = vi.hoisted(() => ({ executeWebTool: vi.fn() }))
 vi.mock('@/lib/webSearchTool', () => ({
@@ -79,9 +82,43 @@ describe('dispatchCoworkTool', () => {
       call('write', { path: 'a' }),
       ctx({ mode: 'ask', onApprove })
     )
-    expect(onApprove).toHaveBeenCalledWith('c1', 'write', { path: 'a' })
+    expect(onApprove).toHaveBeenCalledWith('c1', 'write', { path: 'a' }, undefined)
     expect(out.isError).toBeUndefined()
     expect(executeAgentTool).toHaveBeenCalled()
+  })
+
+  // AH-146: the prompt carries the change, computed by the backend where the
+  // call would land -- the session's own workspace and grant.
+  it('puts the change a write would make in front of the person asked', async () => {
+    previewAgentChange.mockResolvedValueOnce('@@ created file @@\n+    1 | hi')
+    const onApprove = vi.fn(async () => true)
+    await dispatchCoworkTool(
+      call('write', { path: 'a', content: 'hi' }),
+      ctx({ mode: 'ask', onApprove, writeGrant: 'g1' })
+    )
+    expect(previewAgentChange).toHaveBeenCalledWith(
+      'write',
+      { path: 'a', content: 'hi' },
+      's1',
+      { scope: 'session', writeGrant: 'g1' }
+    )
+    expect(onApprove).toHaveBeenCalledWith(
+      'c1',
+      'write',
+      { path: 'a', content: 'hi' },
+      '@@ created file @@\n+    1 | hi'
+    )
+  })
+
+  it('still asks, without a diff, when no preview can be made', async () => {
+    previewAgentChange.mockRejectedValueOnce(new Error('backend gone'))
+    const onApprove = vi.fn(async () => false)
+    const out = await dispatchCoworkTool(
+      call('edit', { path: 'a' }),
+      ctx({ mode: 'ask', onApprove })
+    )
+    expect(out.isError).toBe(true)
+    expect(executeAgentTool).not.toHaveBeenCalled()
   })
 
   it('does not run a mutation the user refused', async () => {

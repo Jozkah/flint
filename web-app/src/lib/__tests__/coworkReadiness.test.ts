@@ -165,6 +165,27 @@ describe('finding a skill request in a message', () => {
     expect(parseSkillRequests(text, known)).toEqual([])
   })
 
+  // AH-204: `@` also names files. Referencing one used to request a skill of
+  // that name, which resolved to `missing` and stopped every change.
+  it.each([
+    'fix @src/index.ts please',
+    'compare @README.md with the spec',
+    'look at @docs\\guide.md',
+    'see @src/index.ts:24-48',
+  ])('does not read the file reference in %s as a skill request', (text) => {
+    expect(parseSkillRequests(text, known)).toEqual([])
+  })
+
+  it('still reads an @mention that names a known skill, even with a dot', () => {
+    expect(parseSkillRequests('@my.skill now', ['my.skill'])).toEqual([
+      'my.skill',
+    ])
+    // An unknown plain name is still an explicit request, resolved as missing.
+    expect(parseSkillRequests('@telekinesis now', known)).toEqual([
+      'telekinesis',
+    ])
+  })
+
   it('does not invent a skill from a bare word the registry never heard of', () => {
     expect(parseSkillRequests('use telekinesis', known)).toEqual([])
     // Named explicitly, it is a request — and will resolve to `missing`.

@@ -384,6 +384,12 @@ pub fn ensure(
     worktrees_root: &Path,
     session_id: &str,
 ) -> Result<WorktreeRecord, String> {
+    // A relative root would be resolved twice, differently: by `git -C repo`
+    // against the repository -- putting the worktree inside the checkout it
+    // exists to protect -- and by everything else against this process's
+    // working directory, where it then cannot be found. Jan's configured data
+    // folder defaults to the relative `./data`, so this is not hypothetical.
+    let worktrees_root = &absolute(worktrees_root)?;
     let identity = identity(repo)?;
     let path = worktree_path(worktrees_root, &identity, session_id);
     let branch = branch_name(session_id);
@@ -456,6 +462,29 @@ pub fn ensure(
         identity,
         uncommitted_at_creation: uncommitted(repo),
     })
+}
+
+/// `path` made absolute against this process's working directory, with `.`
+/// and `..` resolved lexically. Nothing is required to exist yet.
+pub fn absolute(path: &Path) -> Result<PathBuf, String> {
+    let joined = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|e| format!("could not resolve {}: {e}", path.display()))?
+            .join(path)
+    };
+    let mut out = PathBuf::new();
+    for c in joined.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    Ok(out)
 }
 
 /// Remove a worktree and its branch.
@@ -615,6 +644,37 @@ mod tests {
             repo,
             worktrees,
         }
+    }
+
+    /// The regression, found on Windows: the app's data folder was the
+    /// relative `./data`, git resolved the worktree against the repository and
+    /// everything else against the working directory, and authorizing the
+    /// worktree then failed with "cannot find the file". A relative root is
+    /// now made absolute once, so the record names the worktree where it is.
+    #[test]
+    fn a_relative_worktrees_root_is_resolved_once_and_never_inside_the_repo() {
+        let f = fixture();
+        let relative = PathBuf::from(format!("target/jan-wt-relative-{}", std::process::id()));
+        let record = ensure(&f.repo, &relative, "session-rel").expect("created");
+        let path = PathBuf::from(&record.path);
+        assert!(path.is_absolute(), "{}", record.path);
+        assert!(path.is_dir(), "the record names where the worktree is");
+        assert!(
+            !path.starts_with(f.repo.canonicalize().unwrap()) && !path.starts_with(&f.repo),
+            "the worktree landed inside the repository: {}",
+            record.path
+        );
+        assert_eq!(state(&record), WorktreeState::Ready);
+        let _ = discard(&record, true);
+        let _ = std::fs::remove_dir_all(&relative);
+    }
+
+    #[test]
+    fn absolute_resolves_dots_without_touching_the_disk() {
+        let cwd = std::env::current_dir().unwrap();
+        assert_eq!(absolute(Path::new("./a/./b/../c")).unwrap(), cwd.join("a").join("c"));
+        let abs = cwd.join("x");
+        assert_eq!(absolute(&abs).unwrap(), abs);
     }
 
     #[test]

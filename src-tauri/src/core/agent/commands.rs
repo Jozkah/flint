@@ -257,8 +257,15 @@ pub fn agent_worktree_ensure(
     session_id: String,
     project: String,
 ) -> Result<worktree::WorktreeRecord, String> {
-    let roots = workspace::worktrees_dir(std::path::Path::new(&data_folder));
+    let roots = owned_worktrees_root(&data_folder)?;
     worktree::ensure(std::path::Path::new(&project), &roots, &session_id)
+}
+
+/// Jan's worktree folder, absolute. See [`worktree::absolute`]: a relative
+/// data folder -- the configured default is `./data` -- would otherwise be
+/// resolved one way by git and another by everything else.
+fn owned_worktrees_root(data_folder: &str) -> Result<std::path::PathBuf, String> {
+    worktree::absolute(&workspace::worktrees_dir(std::path::Path::new(data_folder)))
 }
 
 /// What state a recorded worktree is actually in.
@@ -285,7 +292,7 @@ pub fn agent_worktree_discard(
     record: WorktreeRecordInput,
     force: bool,
 ) -> Result<(), String> {
-    let roots = workspace::worktrees_dir(std::path::Path::new(&data_folder));
+    let roots = owned_worktrees_root(&data_folder)?;
     let record: worktree::WorktreeRecord = record.into();
     if !std::path::Path::new(&record.path).starts_with(&roots) {
         return Err(format!(
@@ -314,7 +321,9 @@ pub fn agent_worktree_pending(record: WorktreeRecordInput) -> Vec<String> {
 /// authorize it again.
 #[tauri::command]
 pub fn agent_worktree_list(data_folder: String, project: String) -> Vec<worktree::WorktreeRecord> {
-    let roots = workspace::worktrees_dir(std::path::Path::new(&data_folder));
+    let Ok(roots) = owned_worktrees_root(&data_folder) else {
+        return Vec::new();
+    };
     let repo = std::path::Path::new(&project);
     // Bookkeeping for directories that are gone is dropped first, so a crash
     // that left Git's record behind does not show a worktree that is not there.
@@ -351,22 +360,53 @@ fn proposal_failure(message: impl Into<String>) -> ProposalFailure {
     }
 }
 
+/// Run a proposal operation on a blocking thread.
+///
+/// These commands spawn git once per changed file and read and write every
+/// file a proposal names. A synchronous Tauri command runs on the main thread,
+/// so while one of them worked the whole window stopped responding -- in the
+/// Windows smoke run, for longer than a minute.
+async fn off_the_main_thread<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, ProposalFailure> + Send + 'static,
+) -> Result<T, ProposalFailure> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| proposal_failure(format!("the proposal operation did not finish: {e}")))?
+}
+
 /// Store what a run changed in its worktree as a proposal. AH-146/AH-109.
 ///
 /// Nothing is applied. The record arrives over IPC, so it is checked the way
 /// discard checks it -- inside the folder Jan owns, and still the worktree it
 /// says it is -- before anything in it is read.
 #[tauri::command]
-pub fn agent_proposal_from_worktree(
+pub async fn agent_proposal_from_worktree(
     app: tauri::AppHandle,
     record: WorktreeRecordInput,
     session: String,
     run: Option<String>,
     agent: Option<String>,
 ) -> Result<tauri_plugin_agent_tools::proposal::ProposalRecord, ProposalFailure> {
-    use tauri_plugin_agent_tools::proposal;
     let data_folder = get_jan_data_folder_path(app);
-    let roots = workspace::worktrees_dir(&data_folder);
+    off_the_main_thread(move || {
+        let started = std::time::Instant::now();
+        let out = proposal_from_worktree(data_folder, record, session, run, agent);
+        log::debug!("proposal from worktree took {:?}", started.elapsed());
+        out
+    })
+    .await
+}
+
+fn proposal_from_worktree(
+    data_folder: std::path::PathBuf,
+    record: WorktreeRecordInput,
+    session: String,
+    run: Option<String>,
+    agent: Option<String>,
+) -> Result<tauri_plugin_agent_tools::proposal::ProposalRecord, ProposalFailure> {
+    use tauri_plugin_agent_tools::proposal;
+    let roots = worktree::absolute(&workspace::worktrees_dir(&data_folder))
+        .map_err(proposal_failure)?;
     let record: worktree::WorktreeRecord = record.into();
     // Compared canonically: the data folder Jan resolves and the one the
     // renderer was handed can differ in form (a verbatim `\\?\` prefix, case)
@@ -408,37 +448,50 @@ pub fn agent_proposal_from_worktree(
 
 /// The proposals for a project, newest first.
 #[tauri::command]
-pub fn agent_proposal_list(
+pub async fn agent_proposal_list(
     app: tauri::AppHandle,
     project: String,
 ) -> Vec<tauri_plugin_agent_tools::proposal::ProposalRecord> {
     let data_folder = get_jan_data_folder_path(app);
-    tauri_plugin_agent_tools::proposal::list(&data_folder, &project)
+    off_the_main_thread(move || {
+        Ok(tauri_plugin_agent_tools::proposal::list(
+            &data_folder,
+            &project,
+        ))
+    })
+    .await
+    .unwrap_or_default()
 }
 
 /// Apply an approval. The destination is the stored proposal's project, never
 /// a path sent with the approval.
 #[tauri::command]
-pub fn agent_proposal_apply(
+pub async fn agent_proposal_apply(
     app: tauri::AppHandle,
     approval: tauri_plugin_agent_tools::proposal::Approval,
 ) -> Result<tauri_plugin_agent_tools::proposal::ApplyReport, ProposalFailure> {
     use tauri_plugin_agent_tools::proposal;
     let data_folder = get_jan_data_folder_path(app);
-    let stored = proposal::load(&data_folder, &approval.proposal_id)?;
-    let destination = std::path::PathBuf::from(&stored.scope.project);
-    proposal::apply(&data_folder, &destination, &approval).map_err(Into::into)
+    off_the_main_thread(move || {
+        let stored = proposal::load(&data_folder, &approval.proposal_id)?;
+        let destination = std::path::PathBuf::from(&stored.scope.project);
+        proposal::apply(&data_folder, &destination, &approval).map_err(Into::into)
+    })
+    .await
 }
 
 /// Reject a proposal outright. Nothing at the destination changes.
 #[tauri::command]
-pub fn agent_proposal_reject(
+pub async fn agent_proposal_reject(
     app: tauri::AppHandle,
     id: String,
     scope: tauri_plugin_agent_tools::proposal::ProposalScope,
 ) -> Result<tauri_plugin_agent_tools::proposal::ProposalRecord, ProposalFailure> {
     let data_folder = get_jan_data_folder_path(app);
-    tauri_plugin_agent_tools::proposal::reject(&data_folder, &id, &scope).map_err(Into::into)
+    off_the_main_thread(move || {
+        tauri_plugin_agent_tools::proposal::reject(&data_folder, &id, &scope).map_err(Into::into)
+    })
+    .await
 }
 
 /// Take a checkpoint of the tree a run is about to change.

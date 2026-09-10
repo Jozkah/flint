@@ -142,6 +142,14 @@
     "unresolvedRefs_one": "1 file this page links to can't load in the preview. Open it to see it in a browser.",
     "unresolvedRefs_other": "{{count}} files this page links to can't load in the preview. Open it to see it in a browser."
   },
+  "turnUndo": {
+    "title": "Changes by turn",
+    "turn": "Turn {{n}}: {{files}}",
+    "undo": "Undo",
+    "redo": "Redo",
+    "undone": "Undone: {{count}} file(s) put back as they were before the turn.",
+    "redone": "Redone: {{count}} file(s) put back as the turn left them."
+  },
   "exportSession": "Export session…",
   "importSession": "Import session…",
   "sessionExported": "Session exported. {{count}} credential(s) were left out.",

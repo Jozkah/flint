@@ -118,12 +118,13 @@ import {
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import {
+  formatPathReferenceText,
   parsePromptForReferences,
-  resolvePathReference,
-  searchFiles,
   stripPromptReferences,
   type FilePickerEntry as FileEntry,
 } from '@/lib/path-references'
+import { resolveReference, searchReferences } from '@/lib/safeReferences'
+import { getServiceHub } from '@/hooks/useServiceHub'
 import { FilePickerPopover } from '@/components/FilePickerPopover'
 import { readFileAsText } from '@/lib/fileSafety'
 
@@ -154,6 +155,14 @@ type ChatInputProps = {
    * in Cowork would silently disable them in Chat.
    */
   ownsToolSet?: boolean
+  /**
+   * The folder `@` references may name (AH-204). A reference is a path inside
+   * it, read through the backend's confined reader; with none, the picker
+   * offers nothing and a typed reference resolves to nothing. Never the home
+   * directory: that used to make every file under it, keys included, one `@`
+   * away from the prompt.
+   */
+  referenceRoot?: string | null
   /**
    * Surface-specific controls docked in the composer's control row (Cowork's
    * plan toggle and folder chip). They sit outside the streaming dim, because
@@ -205,6 +214,7 @@ const ChatInput = memo(function ChatInput({
   chatStatus,
   scopeKey,
   ownsToolSet = true,
+  referenceRoot,
   surfaceControls,
   stopControl,
   tokenSource,
@@ -295,30 +305,37 @@ const ChatInput = memo(function ChatInput({
   // Textarea cursor position snapshot at the time @ was typed
   const filePickerCursorPos = useRef<number | null>(null)
 
-  // Pre-load working directory
+  // The folder references may name, and the data folder the confined reader
+  // needs. No folder means no references at all -- not the home directory.
+  const [referenceDataFolder, setReferenceDataFolder] = useState<
+    string | undefined
+  >(undefined)
+  // Whatever the mode: a surface that attached a folder (Cowork) names it
+  // here, and one that did not gets no references at all.
   useEffect(() => {
-    const loadWorkingDir = async () => {
-      try {
-        // Try to get project home directory
-        const { homeDir } = await import('@tauri-apps/api/path')
-        const home = await homeDir()
-        setWorkingDir(home)
-      } catch {
-        setWorkingDir(undefined)
-      }
+    setWorkingDir(referenceRoot ?? undefined)
+    if (!referenceRoot) return
+    let alive = true
+    void getServiceHub()
+      .app()
+      .getJanDataFolder()
+      .then((folder) => {
+        if (alive) setReferenceDataFolder(folder ?? undefined)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
     }
-    if (effectiveAgentMode) {
-      loadWorkingDir()
-    }
-  }, [effectiveAgentMode])
+  }, [referenceRoot])
 
   // Detect `@` in the prompt text and open the file picker
   const handlePromptChange = useCallback(
     (value: string) => {
       setPrompt(value)
 
-      // Only enable in agent mode
-      if (!effectiveAgentMode) {
+      // Only where a folder is attached: it is the only thing a reference can
+      // name (AH-204).
+      if (!workingDir) {
         setFilePickerOpen(false)
         return
       }
@@ -336,8 +353,8 @@ const ChatInput = memo(function ChatInput({
         setFilePickerQuery(query)
 
         // If we have a working directory, search files
-        if (workingDir) {
-          searchFiles(workingDir, query)
+        if (workingDir && referenceDataFolder) {
+          searchReferences(referenceDataFolder, workingDir, query)
             .then((entries) => setFilePickerEntries(entries.slice(0, 50)))
             .catch(() => setFilePickerEntries([]))
         } else {
@@ -359,7 +376,7 @@ const ChatInput = memo(function ChatInput({
         setFilePickerOpen(false)
       }
     },
-    [effectiveAgentMode, workingDir, setPrompt]
+    [workingDir, referenceDataFolder, setPrompt]
   )
 
   // Insert a selected file reference into the prompt
@@ -372,7 +389,9 @@ const ChatInput = memo(function ChatInput({
 
       // Replace the `@query` with `path/to/file` (the resolved reference)
       const textBefore = beforeCursor.replace(/(?<![A-Za-z0-9_])@[\w./-]*$/, '')
-      const refText = entry.path
+      // A reference relative to the folder: the text resolves the same file
+      // however it is displayed, and cannot name anything outside it.
+      const refText = formatPathReferenceText(entry.path) + ' '
       const newPrompt = textBefore + refText + afterCursor
 
       setPrompt(newPrompt)
@@ -397,25 +416,24 @@ const ChatInput = memo(function ChatInput({
       resolvedContents: string
     }> => {
       const refs = parsePromptForReferences(text)
-      if (refs.length === 0) return { text, resolvedContents: '' }
+      // No folder, no references: an `@name` in an ordinary chat is left as
+      // typed. It used to be read as a path -- relative to nothing, or
+      // absolute -- so `@C:\Users\me\.ssh\id_rsa` put that file in the prompt.
+      if (refs.length === 0 || !workingDir) return { text, resolvedContents: '' }
 
       const parts: string[] = []
       for (const ref of refs) {
-        const resolved = await resolvePathReference(ref, workingDir)
-        if (resolved) {
-          if (resolved.kind === 'file') {
-            parts.push(
-              `--- File: ${resolved.absolutePath} ---\n${resolved.content}`
-            )
-          } else if (resolved.kind === 'directory') {
-            parts.push(
-              `--- Directory: ${resolved.absolutePath} ---\n${resolved.content}`
-            )
-          }
+        const resolved = await resolveReference(
+          referenceDataFolder ?? '',
+          workingDir,
+          ref
+        )
+        if (resolved.ok) {
+          parts.push(resolved.content)
         } else {
-          parts.push(
-            `[File not found or too large: ${ref}]`
-          )
+          // Said in the message, not dropped: the model should know a
+          // reference was refused, and why, rather than miss it silently.
+          parts.push(`[Reference @${ref} was not included: ${resolved.message}]`)
         }
       }
 
@@ -427,7 +445,7 @@ const ChatInput = memo(function ChatInput({
 
       return { text: cleanText, resolvedContents }
     },
-    [workingDir]
+    [workingDir, referenceDataFolder]
   )
 
   const handleAgentToggle = useCallback(() => {
@@ -2279,7 +2297,9 @@ const ChatInput = memo(function ChatInput({
               )}
             />
             {/* @path file reference picker popover */}
-            {filePickerOpen && effectiveAgentMode && (
+            {/* Shown wherever a folder is attached -- Cowork included, which
+                is not "agent mode" -- because that folder is all it offers. */}
+            {filePickerOpen && workingDir && (
               <div className="relative">
                 <FilePickerPopover
                   entries={filePickerEntries}

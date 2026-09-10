@@ -112,8 +112,8 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 | Area | Linux | macOS | Windows | WebView |
 | --- | --- | --- | --- | --- |
 | Harness foundation crate (Phase 0) | passed | not run | not run | n/a |
-| Process jail (`bubblewrap` / Seatbelt / AppContainer) | not run | not run | not run | n/a |
-| Per-agent worktrees | not run | not run | not run | n/a |
+| Process jail (`bubblewrap` / Seatbelt / AppContainer) | not run | not run | unit tests passed; no sandboxed shell starts on this host | n/a |
+| Per-agent worktrees | not run | not run | passed (managed worktree through the UI, mock provider) | passed |
 | Desktop agent surfaces | not run | not run | not run | not run |
 | Tool activity record and timeline (AH-050/AH-172) | not run | passed | passed (mock provider) | passed |
 
@@ -191,7 +191,8 @@ decision can yet carry a hunk selection and the TUI has no per-hunk controls.
 | 22 unit tests | `plugins/tauri-plugin-agent-tools/src/proposal.rs` | stored before approval with the destination untouched; approve all; approve one of two hunks; insertions at top, middle and end; one insertion of two taken alone; an unrelated destination edit preserved; an overlapping edit is a conflict naming the hunk, nothing written, proposal kept with the conflict in its history; a hunk the destination already holds is not a conflict; changed patch hash or base-state hash refused; a record edited on disk after it was shown refused; cross-agent and cross-project approvals refused; unknown and duplicate hunk/file selections refused; an applied or rejected proposal cannot be applied; a credential-shaped file never applied; a binary file decided whole and landed byte for byte; a file created or deleted underneath refused; a failed write rolls back files already written; paths outside the project and `.jan` refused; two spellings of one path refused; the audit links creation and application and holds no content |
 | 2 integration tests | `src-tauri/src/core/agent/proposals.rs` | a real `git worktree` becomes exactly the files it changed (edit, delete, add, commit on its branch), Jan state excluded, the source checkout untouched; an untouched worktree proposes nothing |
 | 9 unit tests | `web-app/src/containers/__tests__/CoworkProposalReview.test.tsx` | the approval is ids and hashes only; a partly chosen file is sent by hunk id; a credential-shaped file cannot be selected; a conflict renders against its hunk and nothing is reported applied; creation refusal shown; reject sends the stored scope; another worktree's proposal is not shown |
-| Real WebView scenario | `cowork-smoke --only proposal-review-apply` | over real IPC into the real backend: a real worktree is made, its changes proposed and stored before approval with the folder untouched; a changed patch hash and a different agent are refused with nothing written; one hunk of two lands exactly and an unselected file stays out; a second proposal overlapping an edit made in the folder is refused with the hunk named and nothing written; a rejected proposal cannot then be applied; the audit holds created/applied/conflict/refused/rejected and no file content. **Passed on Windows 2026-09-10.** Driven through IPC, not the access menu: Windows cannot offer Managed worktree mode (AppContainer cannot confine a run to a repository), so the review UI is unreachable on Windows and is covered there only by the unit tests above |
+| Real WebView scenario | `cowork-smoke --only proposal-review-apply` | over real IPC into the real backend: a real worktree is made, its changes proposed and stored before approval with the folder untouched; a changed patch hash and a different agent are refused with nothing written; one hunk of two lands exactly and an unselected file stays out; a second proposal overlapping an edit made in the folder is refused with the hunk named and nothing written; a rejected proposal cannot then be applied; the audit holds created/applied/conflict/refused/rejected and no file content. **Passed on Windows 2026-09-10** |
+| Real WebView scenario, through the UI | `cowork-smoke --only managed-worktree-review` | attach a folder, choose **Managed worktree** and **Ask before changes** in the composer's menus (on Windows: the AppContainer grant on the Jan-owned worktree); the model writes a file in the worktree; **the approval prompt shows the diff of that write before Allow Once is clicked**; the attached folder is untouched; Changes → Review changes lists the file; one hunk of two is unticked and applied, and the folder holds exactly the ticked hunk. **Passed on Windows 2026-09-10.** The run's `bash` half is reported, not passed: no sandboxed shell starts on this host (every probe times out), so `bash` is withheld and the shell's write to the worktree is not exercised here |
 
 Run: `cargo test -p tauri-plugin-agent-tools --lib -- --test-threads=4 proposal::`,
 `cargo test --lib --no-default-features --features test-tauri core::agent::proposals`,
@@ -339,8 +340,11 @@ this check. Fixed in `providerFetch`; the scenario now passes on Windows.
 | 12 unit tests | `web-app/src/hooks/__tests__/useKeybindings.test.ts` | default until set; a free chord binds; a taken chord refused naming its command; zoom aliases count as taken; a rebound command frees its old chord; zoom not rebindable; only overrides persisted; rehydration restores them and never restores "recording"; reset; a bare key or lone modifier is not a binding |
 | Real WebView scenario | `cowork-smoke --only command-palette-keybindings` | Ctrl+Shift+P opens the palette on `/`; "system monitor" ranks first and Enter navigates; in Settings → Shortcuts, Ctrl+N is refused naming New Chat and does not open a chat; Ctrl+Alt+Y is accepted and written to `settings.json`; the new chord opens the palette and the old one no longer does; Reset restores the default. **Passed on Windows 2026-09-10** |
 
-AH-207 stays `in-progress`: restoration is proven by the rehydrate test and the
-write to `settings.json`, not by restarting the app on Windows.
+| **Real application restart** | `cowork-smoke --only restart-persist-1`, then `--only restart-persist-2` in a new process with `COWORK_SMOKE_KEEP=<dir>` | phase one rebinds the palette to Ctrl+Alt+Y through Settings → Shortcuts and the process exits; phase two starts the app again on the same data folder: Ctrl+Shift+P no longer opens the palette, Ctrl+Alt+Y does, and Reset restores the default. **Passed on Windows 2026-09-10** |
+
+The restart pair reuses one workspace, so it proves what is read back from
+disk by a fresh process, not what a live store remembers. macOS modifier
+conventions (`usePlatformMetaKey` as Cmd) are unit-tested, not run on a Mac.
 
 ## Hidden utility agents (AH-208)
 
@@ -358,3 +362,59 @@ write to `settings.json`, not by restarting the app on Windows.
 | 5 unit tests | `src-tauri/src/core/agent/session_bundle.rs` | folder, access, consent and messages are never exported; credentials in named fields **and in prose** are redacted before anything is written; an unknown schema version is refused naming it; non-exports, missing ids and missing turns are refused; a valid export round-trips |
 | 8 unit tests | `web-app/src/lib/__tests__/sessionBundle.test.ts` | versioned and self-describing; carries turns, questions and the change summary, and no authority; only this session's tool activity; import creates an unbound session with the same turns, order and tool states; a pending question comes back stale under the new id; file activity re-keyed; a second import of the same export refused naming the session it became; an unknown schema version creates nothing |
 | Real WebView scenario | `cowork-smoke --only session-export-import` | a Cowork run with a tool call and `Authorization: Bearer ...` typed into the prompt exports through the session menu with the save dialog scripted; the file is schema 1, carries the turns, and holds neither the credential, the provider key nor the attached folder; importing it shows the conversation in a new session; a second import is refused; a copy claiming schema version 9 is refused by name. **Passed on Windows 2026-09-10** |
+
+## Windows confinement for a Jan-owned worktree (AH-146 / AH-147 / AH-148 / AH-109 prerequisite)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 3 unit tests | `plugins/tauri-plugin-agent-tools/src/tools/jail.rs` | AppContainer confines a shell to write roots only when every root is strictly inside Jan's worktree folder (the user's own folder, the worktree folder itself and a sibling are refused); a probe that hangs is killed within its timeout and its process is gone (checked with `OpenProcess`/`GetExitCodeProcess`, not `taskkill`); a probe that finishes is waited for |
+| 2 unit tests | `plugins/tauri-plugin-agent-tools/src/tools/appcontainer.rs` | the helper's argv round-trips its `--write-root=` items; an unmarked argument before `--` is refused |
+| 1 unit test | `plugins/tauri-plugin-agent-tools/src/grants.rs` | on Windows only a Jan-owned worktree can be authorized; the user's folder is refused naming Managed worktree |
+| 2 unit tests | `src-tauri/src/core/agent/worktree.rs` | a relative worktrees root (the default `./data`) resolves once, against the working directory, never inside the repository; `absolute` resolves `..` without touching the disk |
+| 2 unit tests | `web-app/src/containers/__tests__/CoworkAccessSelector.test.tsx`, `useDirectEditGrants.test.ts` | each write mode asks its own capability: Windows offers Managed worktree while Edit this folder stays blocked |
+| Real WebView scenario | `cowork-smoke --only managed-worktree-review` | see the proposal section above. **Passed on Windows 2026-09-10** |
+
+Mutation-checked: removing the probe's kill makes the hang test fail.
+
+## Undo and redo by turn (AH-202)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 11 unit tests | `plugins/tauri-plugin-agent-tools/src/undo.rs` | undo restores what a turn changed and redo puts it back; several writes in one turn undo to the state before the turn; a file changed since refuses the whole undo, names it and changes nothing; a later turn on the same file blocks undoing the earlier one; a path outside the roots the session may write now is refused; a change recorded by a relative path can still be undone (mutation-checked); undoing twice and redoing without an undo are refused; the position survives a restart and is per session; a change that ends where it started is not recorded; a tampered stored copy refuses and writes nothing; a failed write rolls back the files already restored |
+| 1 integration test | `plugins/tauri-plugin-agent-tools/src/commands.rs` | through `execute_tool`/`undo_turn`/`redo_turn`: a write for a run is journaled, undone, redone, and refused once the user edits the file; a write with no run is not journaled |
+| 7 unit tests | `web-app/src/containers/__tests__/CoworkTurnUndo.test.tsx` | newest first with undo or redo by state; the session grant is sent; a refusal is announced with `role=alert` and changes nothing; every control names its turn; an odd backend answer renders nothing instead of crashing the page |
+| Real application restart | `cowork-smoke --only restart-persist-1`, then `--only restart-persist-2` in a new process | phase one runs a Cowork turn whose `write` creates a file and undoes it from the Changes panel; phase two, in a fresh process on the same data folder, lists that turn as undone, redoes it from the panel, and the file is back with the turn's content. **Passed on Windows 2026-09-10** |
+
+## Confined `@` references (AH-204, containment only)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 20 unit tests | `web-app/src/lib/__tests__/safeReferences.test.ts` | relative paths accepted and normalized; `..`, `/abs`, `C:\`, `c:/`, UNC, `~` and `file://` refused before the backend is asked; a file is read through the confined reader; the backend's refusal (a symlink out of the folder, a key file) is reported; a folder is listed; nothing is offered or resolved without an attached folder; the picker offers only folder-relative entries |
+| 2 unit tests | `web-app/src/containers/__tests__/ChatInput.test.tsx` | the picker opens where a folder is attached even outside chat agent mode (Cowork) and searches through the confined listing; with no folder nothing is searched or shown. Mutation-checked: restoring the agent-mode gate fails the first |
+| 6 unit tests | `web-app/src/lib/__tests__/coworkReadiness.test.ts` | a file reference (`@src/index.ts`, `@README.md`, `@docs\guide.md`, `@src/index.ts:24-48`) is not read as a skill request, which used to resolve as missing and stop every change; an `@mention` naming a known skill still counts, dots included; an unknown plain `@name` is still an explicit request |
+| Real WebView scenario | `cowork-smoke --only at-references-confined` | typing `@ind` in Cowork offers `src/index.ts` and no absolute path; a message naming `@src/index.ts`, `@../outside-secret.txt` and the absolute path of that file sends the in-folder file's content and neither the outside content nor its path, and says twice that a reference was not included. **Passed on Windows 2026-09-10** |
+
+The unified menu (skills, agents, aliases in one ranked list) and references
+that survive a rename are not built, so AH-204 stays `in-progress`.
+
+## The change in the approval prompt (AH-146)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 1 integration test | `plugins/tauri-plugin-agent-tools/src/commands.rs` | `preview_change` returns the diff a `write` or `edit` would make without writing; a path outside every root the session may write -- absolute or climbing -- has no preview and is not read; other tools have none |
+| 2 unit tests | `web-app/src/lib/__tests__/coworkDispatch.test.ts` | in Ask mode the backend preview for the session's workspace and grant is handed to the prompt; a failed preview still asks, without a diff |
+| 2 unit tests | `web-app/src/components/ai-elements/__tests__/tool.test.tsx` | the pending approval renders the diff as a named region; a call with no diff shows none |
+| Real WebView scenario | `cowork-smoke --only managed-worktree-review` | the approval prompt for the worktree write shows `LINE 1 (agent)` before Allow Once is clicked. **Passed on Windows 2026-09-10** |
+
+## Stopping a process tree on Windows (`kill_tree`)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 4 unit tests | `plugins/tauri-plugin-agent-tools/src/tools/proc.rs` (`windows_tests`) | a running command is stopped within 5 s and its process is gone; a pid that does not exist reports `Gone`; a grandchild (`cmd` running `ping`) is stopped with its parent; a process outside the tree is left running |
+| 1 unit test | `plugins/tauri-plugin-agent-tools/src/tools/jail.rs` | a timed-out probe's shell is stopped with the probe |
+| existing suite | `tools::handlers::bash_job_registry_tests` | stopping a background job reports `Killed` and hands over its output. These failed on this host through `taskkill` ("the timeout period expired") and pass now |
+
+Mutation-checked: skipping the descendants makes the tree tests fail. Run the
+plugin suite as `cargo test -p tauri-plugin-agent-tools -- --test-threads=4`,
+not with `--lib`: without the `jan-sandbox-helper` binary, the sandbox probe
+re-executes the test binary and every `bash` test reports that no shell starts.
