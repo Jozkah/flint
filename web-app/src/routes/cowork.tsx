@@ -217,6 +217,7 @@ import {
   recordFor,
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
+import { CoworkProposalReview } from '@/containers/CoworkProposalReview'
 import {
   useCoworkWorktrees,
   type WorktreeRecord,
@@ -3200,6 +3201,16 @@ function CoworkPage() {
             // Going back to how things were belongs where what changed is
             // shown: the two questions are asked in the same breath.
             header={
+              <>
+              {/* An isolated run's work reaches the folder only through a
+                  reviewed proposal, so the review sits with the changes. */}
+              {worktree && session?.id ? (
+                <CoworkProposalReview
+                  worktree={worktree}
+                  session={session.id}
+                  onApplied={() => git.refresh()}
+                />
+              ) : null}
               <CoworkRewind
                 points={
                   session?.id
@@ -3222,6 +3233,7 @@ function CoworkPage() {
                   return done
                 }}
               />
+              </>
             }
             sandboxFiles={fileDiffs}
             onOpenFile={openToolPath}

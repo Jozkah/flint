@@ -1539,3 +1539,76 @@ configuration and was not touched. Every claim above is against the mock.
 (four at once), which locked the next build with "Access is denied". Runs now
 stop this worktree's own stranded harnesses afterwards, identified by path —
 never any other Jan or WebView2 process.
+
+## 2026-09-10 — Batch 2: one proposal record for patches, hunks, conflicts and worktrees (AH-146 / AH-147 / AH-148 / AH-107 / AH-109)
+
+**The architecture.** A proposed change is one versioned record
+(`tauri_plugin_agent_tools::proposal`, schema 1) from the moment an agent
+produces it to the moment it lands, is rejected or is abandoned.
+
+- *Immutable before approval.* Creating a proposal writes the exact base and
+  proposed bytes of every file to a content-addressed, write-once blob store
+  under `<data>/proposals/blobs/`, and the record to
+  `<data>/proposals/<id>.json`. Nothing is regenerated later: what is applied
+  is read back from the blobs, and a blob that no longer hashes to its name,
+  or a record whose files no longer hash to its `patchHash`, is refused.
+- *Approval binds identities.* An approval names the proposal id, its
+  `patchHash`, its `baseStateHash`, its scope (session, run, agent, project,
+  worktree) and the exact hunks chosen. Every field is compared with the stored
+  record; any difference refuses. The renderer sends ids and hashes, never
+  content, so it has no field in which to add a line.
+- *The backend builds the result.* Selection, a three-way merge against the
+  destination as it is now, and the writes all happen in Rust. Edits made in
+  the destination since the proposal are preserved; a chosen hunk whose lines
+  were also changed there is a conflict, reported by file and hunk id, and
+  nothing is written. A hunk the destination already holds exactly is not a
+  conflict (the second proposal from a worktree after a partial apply).
+- *All or nothing.* Files are written through a temporary file and a rename;
+  a failure part way puts back every file already written.
+- *Never applied:* credential-shaped files (by name or content), paths outside
+  the project, `.jan` and `.git`, and two spellings of one path.
+- *Audit.* `audit/proposals.jsonl` records created / applied / conflict /
+  refused / rolled-back / rejected with ids and hashes only — never content.
+
+**Where proposals come from today.** A Cowork session in *Managed worktree*
+mode writes only its Jan-owned worktree. `agent_proposal_from_worktree`
+checks the record the renderer sends (inside Jan's worktree root, and still
+`Ready` — same repository identity, same branch), reads every file the
+worktree changed relative to its base commit (commits on its branch,
+uncommitted edits, untracked files; Jan state excluded) and stores a proposal
+whose destination is the worktree's recorded source. `agent_proposal_apply`
+takes the destination from the *stored* proposal, never from the approval.
+
+**The UI.** The Changes panel of a managed-worktree session shows a review
+(`CoworkProposalReview`): *Review changes* creates the proposal; every file and
+hunk is listed with a checkbox, credential-shaped files cannot be selected,
+binary and oversized files are whole-file; *Apply selected* sends the
+approval; a refusal shows its message and marks each conflicting hunk; *Reject*
+discards the proposal with nothing written.
+
+**Windows evidence.** `cowork-smoke --only proposal-review-apply` passes on
+Windows, over real IPC into the real backend with real git (see the
+verification document for exactly what it asserts). It found one real defect on
+the way: the worktree-ownership check compared paths lexically, and the data
+folder Jan resolves and the one the renderer is handed differ in form on
+Windows, so a worktree Jan had just made was refused as "not a worktree Jan
+manages". It now compares canonical paths.
+
+**The boundary, stated plainly.** On Windows the review UI cannot be reached:
+Managed worktree mode is disabled because AppContainer cannot yet confine a run
+to a repository (`jail::supports_write_roots(Backend::AppContainer)` is false,
+deliberately). So on Windows the backend is proven end to end and the UI only
+by unit tests; on macOS/Linux the mode is available but was not run here.
+Because the completion definition requires the UI to be reachable and
+Windows-tested, **AH-146, AH-147, AH-148 and AH-109 stay `in-progress`**, with
+their notes updated to what now exists. AH-107 is unchanged: the Rust
+`dispatch_subagent` fan-out (headless CLI / API server) still shares one tree,
+and team children's worktrees are not yet offered for review (their owner ids
+are not recoverable from branch names, which are hashed).
+
+**Next for this batch.** (1) Windows confinement for a Jan-owned worktree:
+AppContainer write ACE on the worktree directory, with git metadata writes
+handled (the worktree's `.git` file points into the source repository). That
+single change makes the mode — and this review — reachable on Windows.
+(2) Offer team children's worktrees for review from the team report, which
+already names each child's worktree.

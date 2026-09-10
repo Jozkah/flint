@@ -890,6 +890,14 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_tool_activity,
     },
     Scenario {
+        name: "proposal-review-apply",
+        run: scenario_proposal_review,
+    },
+    Scenario {
+        name: "command-palette-keybindings",
+        run: scenario_palette_keybindings,
+    },
+    Scenario {
         name: "memory-proposal-approval",
         run: scenario_memory_proposal,
     },
@@ -1679,6 +1687,364 @@ fn scenario_git_vs_sandbox(ctx: &Ctx) -> ScenarioResult {
         !text.contains("No changes yet"),
         "the Changes rail still claims there is nothing to show"
     );
+    Ok(())
+}
+
+/// Call a Tauri command over real IPC and hand back its JSON, or the refusal.
+///
+/// A refusal is data here, not a harness failure: several steps below exist to
+/// prove that something is refused.
+fn ipc(ctx: &Ctx, command: &str, args: &str) -> Result<(bool, Value), Failure> {
+    let out = ctx.eval_string(&format!(
+        r#"try {{
+             const v = await window.__TAURI_INTERNALS__.invoke({command:?}, {args});
+             return JSON.stringify({{ ok: true, v }});
+           }} catch (e) {{
+             return JSON.stringify({{ ok: false, v: e }});
+           }}"#
+    ))?;
+    let parsed: Value = serde_json::from_str(&out)
+        .map_err(|e| Failure(format!("{command} did not answer JSON ({e}): {out}")))?;
+    Ok((
+        parsed.get("ok").and_then(Value::as_bool).unwrap_or(false),
+        parsed.get("v").cloned().unwrap_or(Value::Null),
+    ))
+}
+
+/// A worktree's work reaches the folder only through a stored, bound proposal.
+/// AH-146/147/148/109, on Windows, over real IPC into the real backend.
+///
+/// Driven through IPC rather than the access menu because Windows cannot
+/// offer Managed worktree mode at all: AppContainer cannot yet confine a run
+/// to a repository (`jail::supports_write_roots`), so the option is disabled
+/// and the review that sits behind it is unreachable here. The backend, git
+/// and the filesystem behaviour this proves are the Windows ones.
+///
+/// Proves: the proposal is stored before anything is approved and the folder is
+/// untouched; approving one hunk of two lands only that hunk and an unselected
+/// file stays out; a second proposal whose hunk overlaps an edit made in the
+/// folder since is refused with that hunk named and nothing written; a changed
+/// patch hash and a different agent are both refused; a rejected proposal
+/// cannot then be applied; the audit trail holds no file content.
+fn scenario_proposal_review(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    let file = "proposal-target.txt";
+    let added = "agent-added.txt";
+    let base: String = (1..=12).map(|i| format!("line {i}\n")).collect();
+    let with = |lines: &[(usize, &str)]| -> String {
+        (1..=12)
+            .map(|i| match lines.iter().find(|(n, _)| *n == i) {
+                Some((_, text)) => format!("{text}\n"),
+                None => format!("line {i}\n"),
+            })
+            .collect()
+    };
+    let read = |p: &Path| std::fs::read_to_string(p).unwrap_or_default();
+
+    // Committed in the source before the worktree exists, so it is the base.
+    if git(&ctx.project, &["ls-files", "--error-unmatch", file]).is_err() {
+        std::fs::write(ctx.project.join(file), &base).map_err(|e| fail(e.to_string()))?;
+        git(&ctx.project, &["add", file]).map_err(fail)?;
+        git(&ctx.project, &["commit", "-qm", "proposal base"]).map_err(fail)?;
+    }
+    std::fs::write(ctx.project.join(file), &base).map_err(|e| fail(e.to_string()))?;
+    let _ = std::fs::remove_file(ctx.project.join(added));
+
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let project = ctx.project.to_string_lossy().to_string();
+    let session = "smoke-proposal";
+    let (ok, record) = ipc(
+        ctx,
+        "agent_worktree_ensure",
+        &format!("{{ dataFolder: {data:?}, sessionId: {session:?}, project: {project:?} }}"),
+    )?;
+    ensure!(ok, "could not make the worktree: {record}");
+    let worktree = PathBuf::from(record.get("path").and_then(Value::as_str).unwrap_or_default());
+    // A retry finds the worktree the last attempt left; start it from its base.
+    let _ = git(&worktree, &["checkout", "--", "."]);
+    let _ = std::fs::remove_file(worktree.join(added));
+
+    std::fs::write(
+        worktree.join(file),
+        with(&[(1, "LINE 1 (agent)"), (10, "LINE 10 (agent)")]),
+    )
+    .map_err(|e| fail(e.to_string()))?;
+    std::fs::write(worktree.join(added), "made by the agent\n").map_err(|e| fail(e.to_string()))?;
+
+    let propose = |ctx: &Ctx| -> Result<Value, Failure> {
+        let (ok, proposal) = ipc(
+            ctx,
+            "agent_proposal_from_worktree",
+            &format!("{{ record: {record}, session: {session:?}, run: null, agent: null }}"),
+        )?;
+        ensure!(ok, "the worktree's changes were not proposed: {proposal}");
+        Ok(proposal)
+    };
+    let proposal = propose(ctx)?;
+    let id = proposal["id"].as_str().unwrap_or_default().to_string();
+
+    // Stored before anything is approved; the folder untouched by proposing.
+    let stored = read(&Path::new(&data).join("proposals").join(format!("{id}.json")));
+    ensure!(
+        stored.contains("\"state\": \"pending\""),
+        "the proposal was not stored before approval"
+    );
+    ensure!(read(&ctx.project.join(file)) == base, "proposing changed the folder");
+
+    let hunks_of = |p: &Value, path: &str| -> Vec<String> {
+        p["files"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|f| f["path"] == path)
+            .flat_map(|f| f["hunks"].as_array().cloned().unwrap_or_default())
+            .filter_map(|h| h["id"].as_str().map(str::to_string))
+            .collect()
+    };
+    let approval = |p: &Value, files: Value| -> Value {
+        serde_json::json!({
+            "proposalId": p["id"],
+            "patchHash": p["patchHash"],
+            "baseStateHash": p["baseStateHash"],
+            "scope": p["scope"],
+            "files": files,
+        })
+    };
+    let hunks = hunks_of(&proposal, file);
+    ensure!(hunks.len() == 2, "expected two hunks, got {hunks:?}");
+
+    // Tampered and foreign approvals are refused before anything is written.
+    let mut tampered = approval(&proposal, serde_json::json!([{ "path": file, "hunks": { "kind": "all" } }]));
+    tampered["patchHash"] = Value::String("0".repeat(64));
+    let (ok, refusal) = ipc(ctx, "agent_proposal_apply", &format!("{{ approval: {tampered} }}"))?;
+    ensure!(!ok, "an approval for a different patch was applied");
+    ensure!(
+        refusal.to_string().contains("different version"),
+        "the refusal did not say why: {refusal}"
+    );
+    let mut foreign = approval(&proposal, serde_json::json!([{ "path": file, "hunks": { "kind": "all" } }]));
+    foreign["scope"]["agent"] = Value::String("reviewer".into());
+    let (ok, _) = ipc(ctx, "agent_proposal_apply", &format!("{{ approval: {foreign} }}"))?;
+    ensure!(!ok, "an approval naming another agent was applied");
+    ensure!(read(&ctx.project.join(file)) == base, "a refused approval wrote the folder");
+
+    // One hunk of two, and not the added file.
+    let first = approval(
+        &proposal,
+        serde_json::json!([{ "path": file, "hunks": { "kind": "only", "ids": [hunks[0]] } }]),
+    );
+    let (ok, report) = ipc(ctx, "agent_proposal_apply", &format!("{{ approval: {first} }}"))?;
+    ensure!(ok, "applying one hunk was refused: {report}");
+    ensure!(
+        report["state"] == "partially-applied",
+        "one hunk of two should be a partial apply: {report}"
+    );
+    ensure!(
+        read(&ctx.project.join(file)) == with(&[(1, "LINE 1 (agent)")]),
+        "the folder does not hold exactly the approved hunk: {:?}",
+        read(&ctx.project.join(file))
+    );
+    ensure!(!ctx.project.join(added).exists(), "an unselected file was applied");
+
+    // Second round: the agent changes line 6, and so does the person, in the
+    // folder, before approving. Refused, the hunk named, nothing written.
+    std::fs::write(
+        worktree.join(file),
+        with(&[(1, "LINE 1 (agent)"), (6, "LINE 6 (agent)"), (10, "LINE 10 (agent)")]),
+    )
+    .map_err(|e| fail(e.to_string()))?;
+    let second = propose(ctx)?;
+    let user_edit = with(&[(1, "LINE 1 (agent)"), (6, "line 6 (edited by the person)")]);
+    std::fs::write(ctx.project.join(file), &user_edit).map_err(|e| fail(e.to_string()))?;
+    let everything = approval(
+        &second,
+        serde_json::json!([
+            { "path": file, "hunks": { "kind": "all" } },
+            { "path": added, "hunks": { "kind": "all" } }
+        ]),
+    );
+    let (ok, refusal) = ipc(ctx, "agent_proposal_apply", &format!("{{ approval: {everything} }}"))?;
+    ensure!(!ok, "an apply over a conflicting edit went through");
+    let conflicts = refusal["conflicts"].as_array().cloned().unwrap_or_default();
+    ensure!(
+        conflicts.len() == 1 && conflicts[0]["path"] == file && conflicts[0]["hunk"] != "",
+        "the conflict was not reported against its hunk: {refusal}"
+    );
+    ensure!(read(&ctx.project.join(file)) == user_edit, "a refused apply wrote the folder");
+    ensure!(!ctx.project.join(added).exists(), "a refused apply created a file");
+
+    // Rejected, and then not appliable.
+    let (ok, rejected) = ipc(
+        ctx,
+        "agent_proposal_reject",
+        &format!("{{ id: {:?}, scope: {} }}", second["id"].as_str().unwrap_or_default(), second["scope"]),
+    )?;
+    ensure!(ok && rejected["state"] == "rejected", "rejecting failed: {rejected}");
+    let (ok, _) = ipc(ctx, "agent_proposal_apply", &format!("{{ approval: {everything} }}"))?;
+    ensure!(!ok, "a rejected proposal was applied");
+    ensure!(read(&ctx.project.join(file)) == user_edit, "rejecting changed the folder");
+
+    // The audit trail links every step and holds no content.
+    let audit = read(&Path::new(&data).join("audit").join("proposals.jsonl"));
+    for event in ["created", "applied", "conflict", "refused", "rejected"] {
+        ensure!(
+            audit.contains(&format!("\"event\":\"{event}\"")),
+            "the proposal audit has no {event} event"
+        );
+    }
+    ensure!(
+        !audit.contains("(agent)") && !audit.contains("made by the agent"),
+        "the proposal audit holds file content"
+    );
+
+    // Leave nothing behind: the worktree is this scenario's own.
+    let _ = ipc(
+        ctx,
+        "agent_worktree_discard",
+        &format!("{{ dataFolder: {data:?}, record: {record}, force: true }}"),
+    );
+    std::fs::write(ctx.project.join(file), &base).map_err(|e| fail(e.to_string()))?;
+    Ok(())
+}
+
+/// Press a chord the way the keyboard does: a `keydown` on the window.
+fn press(ctx: &Ctx, key: &str, ctrl: bool, shift: bool, alt: bool) -> ScenarioResult {
+    ctx.eval(&format!(
+        "window.dispatchEvent(new KeyboardEvent('keydown', {{ key: {key:?},
+           ctrlKey: {ctrl}, shiftKey: {shift}, altKey: {alt}, bubbles: true, cancelable: true }}));
+         return true;"
+    ))?;
+    Ok(())
+}
+
+/// The command palette and rebindable shortcuts. AH-206 / AH-207.
+///
+/// Proves, in the real WebView: Ctrl+Shift+P opens the palette from a page
+/// that is not the palette's own; typing ranks locally and Enter navigates;
+/// in Settings → Shortcuts a chord another command uses is refused with that
+/// command named; a free chord is accepted, written to the backend settings
+/// store (so a restart restores it) and then opens the palette while the old
+/// chord no longer does; Reset restores the default.
+fn scenario_palette_keybindings(ctx: &Ctx) -> ScenarioResult {
+    let palette_open =
+        "return !!document.querySelector('[data-testid=\"command-palette\"]');";
+    ctx.goto("/")?;
+    ctx.settle();
+    press(ctx, "P", true, true, false)?;
+    ctx.wait_until("the palette to open", palette_open, Duration::from_secs(15))?;
+
+    // Ranked locally; Enter runs the best match.
+    ctx.eval(
+        "const i = document.querySelector('[data-testid=\"command-palette-input\"]');
+         const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+         set.call(i, 'system monitor');
+         i.dispatchEvent(new Event('input', { bubbles: true }));
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the system monitor entry to rank first",
+        "const first = document.querySelector('[data-testid=\"command-palette-item\"]');
+         return !!first && first.getAttribute('data-command') === 'nav-system-monitor';",
+        Duration::from_secs(10),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-testid=\"command-palette-input\"]')
+           .dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+         return true;",
+    )?;
+    ctx.wait_until(
+        "Enter to navigate and close the palette",
+        "return window.location.pathname === '/system-monitor'
+           && !document.querySelector('[data-testid=\"command-palette\"]');",
+        Duration::from_secs(15),
+    )?;
+
+    // Rebinding: a taken chord is refused with its owner named.
+    ctx.goto("/settings/shortcuts")?;
+    ctx.wait_until(
+        "the palette's shortcut row",
+        "return !!document.querySelector('[data-testid=\"rebind-commandPalette\"]');",
+        Duration::from_secs(30),
+    )?;
+    let row = "document.querySelector('[data-testid=\"rebind-commandPalette\"]')";
+    ctx.eval(&format!(
+        "{row}.querySelector('[data-testid=\"rebind-change\"]').click(); return true;"
+    ))?;
+    ctx.wait_until(
+        "recording to start",
+        &format!("return !!{row}.querySelector('[data-testid=\"rebind-recording\"]');"),
+        Duration::from_secs(10),
+    )?;
+    // Ctrl+N is New Chat.
+    press(ctx, "n", true, false, false)?;
+    ctx.wait_until(
+        "the conflict to be named",
+        &format!(
+            "const e = {row}.querySelector('[data-testid=\"rebind-error\"]');
+             return !!e && /New Chat/.test(e.textContent || '');"
+        ),
+        Duration::from_secs(10),
+    )?;
+    ensure!(
+        ctx.eval_bool("return window.location.pathname === '/settings/shortcuts';")?,
+        "recording a taken chord ran its command instead"
+    );
+
+    // A free chord is accepted and persisted.
+    press(ctx, "y", true, false, true)?;
+    ctx.wait_until(
+        "the new binding to be accepted",
+        &format!("return !{row}.querySelector('[data-testid=\"rebind-recording\"]');"),
+        Duration::from_secs(10),
+    )?;
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let settings = Path::new(&data).join("settings.json");
+    let mut persisted = String::new();
+    for _ in 0..20 {
+        persisted = std::fs::read_to_string(&settings).unwrap_or_default();
+        if persisted.contains("commandPalette") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    ensure!(
+        persisted.contains("keybindings") && persisted.contains("commandPalette"),
+        "the new binding was not written to the settings store"
+    );
+
+    // The new chord opens the palette; the old one no longer does.
+    ctx.goto("/")?;
+    ctx.settle();
+    press(ctx, "P", true, true, false)?;
+    std::thread::sleep(Duration::from_millis(800));
+    ensure!(
+        !ctx.eval_bool(palette_open)?,
+        "the old chord still opens the palette after it was rebound"
+    );
+    press(ctx, "y", true, false, true)?;
+    ctx.wait_until("the new chord to open the palette", palette_open, Duration::from_secs(10))?;
+    ctx.eval(
+        "document.querySelector('[data-testid=\"command-palette-input\"]')
+           .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+         return true;",
+    )?;
+    ctx.settle();
+
+    // Reset restores the default, and the store forgets the override.
+    ctx.goto("/settings/shortcuts")?;
+    ctx.wait_until(
+        "the reset button",
+        &format!("return !!{row}.querySelector('[data-testid=\"rebind-reset\"]');"),
+        Duration::from_secs(30),
+    )?;
+    ctx.eval(&format!(
+        "{row}.querySelector('[data-testid=\"rebind-reset\"]').click(); return true;"
+    ))?;
+    ctx.wait_until(
+        "the reset to take effect",
+        &format!("return !{row}.querySelector('[data-testid=\"rebind-reset\"]');"),
+        Duration::from_secs(10),
+    )?;
     Ok(())
 }
 

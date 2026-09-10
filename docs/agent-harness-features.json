@@ -3400,7 +3400,7 @@
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": "Real git worktrees exist and Cowork team dispatch gives each isolated child its own worktree and write grant. The Rust dispatch_subagent path in loop.rs is not wired to them, so the fan-out of up to ten children there still shares one tree."
+      "auditNote": "Real git worktrees exist and Cowork team dispatch gives each isolated child its own worktree and write grant. The Rust dispatch_subagent path in loop.rs is not wired to them, so the fan-out of up to ten children there still shares one tree. Unchanged this batch: the Rust dispatch_subagent path still shares one tree; a Jan-owned worktree's ownership check now compares canonical paths (a lexical comparison refused a worktree Jan had just made on Windows)."
     },
     {
       "id": "AH-108",
@@ -3460,12 +3460,20 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::proposal::tests::approving_one_of_two_hunks_lands_only_that_one",
+        "tauri-plugin-agent-tools::proposal::tests::an_overlapping_edit_is_a_conflict_and_nothing_is_written",
+        "tauri-plugin-agent-tools::proposal::tests::a_record_edited_on_disk_after_it_was_shown_is_refused",
+        "tauri-plugin-agent-tools::proposal::tests::a_failed_write_rolls_back_the_files_already_written",
+        "Jan::core::agent::proposals::tests::a_worktree_becomes_the_files_it_changed",
+        "web-app::CoworkProposalReview.test.tsx",
+        "cowork-smoke::proposal-review-apply"
+      ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
-      "blockedReason": null,
-      "auditNote": "Pre-flight conflict detection exists: conflicts() reports a shared write target between two tasks with no ordering between them. Merging an agent's worktree back is absent -- output is a branch and a diff the user lands manually."
+      "blockedReason": "Team children's worktrees are not offered for review, and the review UI is unreachable on Windows.",
+      "auditNote": "Merging an agent's worktree back now goes through the proposal record: the session's managed worktree is proposed, reviewed per hunk and applied with conflicts refused and named, never overwritten (see AH-146). Pre-flight conflict detection between team tasks remains. MISSING: team children's worktrees are not yet offered for review (owner ids are not recoverable from hashed branch names; the team report names each child's worktree), and the review UI is unreachable on Windows (Managed worktree mode disabled by the AppContainer boundary)."
     },
     {
       "id": "AH-110",
@@ -4537,11 +4545,18 @@
         "tauri-plugin-agent-tools::patch::tests::separate_changes_are_separate_hunks",
         "tauri-plugin-agent-tools::patch::tests::the_view_carries_the_base_it_was_computed_against",
         "tauri-plugin-agent-tools::tools::handlers::tests::an_edit_is_staged_by_the_same_code_that_applies_it",
-        "tauri-plugin-agent-tools::tools::handlers::tests::nothing_is_staged_for_a_change_that_changes_nothing_or_an_invalid_edit"
+        "tauri-plugin-agent-tools::tools::handlers::tests::nothing_is_staged_for_a_change_that_changes_nothing_or_an_invalid_edit",
+        "tauri-plugin-agent-tools::proposal::tests::approving_one_of_two_hunks_lands_only_that_one",
+        "tauri-plugin-agent-tools::proposal::tests::an_overlapping_edit_is_a_conflict_and_nothing_is_written",
+        "tauri-plugin-agent-tools::proposal::tests::a_record_edited_on_disk_after_it_was_shown_is_refused",
+        "tauri-plugin-agent-tools::proposal::tests::a_failed_write_rolls_back_the_files_already_written",
+        "Jan::core::agent::proposals::tests::a_worktree_becomes_the_files_it_changed",
+        "web-app::CoworkProposalReview.test.tsx",
+        "cowork-smoke::proposal-review-apply"
       ],
       "platformRequirements": [],
-      "blockedReason": "Every prompted write/edit carries the change twice: the existing numbered text diff for reading, and now a PatchView -- the hunks with 1-based line ranges, removed and added lines, and the base stamp they were computed against -- on StreamEvent::PermissionRequest.patch. Hunks are maximal runs of changed lines with no context merged in, so two unrelated edits are two hunks. The staged change is produced by the same apply_edits function `edit` uses to write, so what is reviewed is what is written; a test asserts the written file equals the staged proposal. Not `verified`: the TUI still renders the text diff and does not yet present hunks individually (that is AH-147), and there is no cancellation test on this path. Held to in-progress under the completion standard (production-wired, persisted, restart-safe, UI-accessible, permission-enforced, Windows-tested, and covered for success/refusal/failure/cancellation/recovery). MISSING: the proposed patch is not stored as a versioned record before approval, approval does not bind to an immutable patch hash plus base-state hash plus selection plus agent/worktree/session scope, there is no desktop review UI, and there is no real-WebView Windows scenario.",
-      "auditNote": "Every prompted write/edit carries the change twice: the existing numbered text diff for reading, and now a PatchView -- the hunks with 1-based line ranges, removed and added lines, and the base stamp they were computed against -- on StreamEvent::PermissionRequest.patch. Hunks are maximal runs of changed lines with no context merged in, so two unrelated edits are two hunks. The staged change is produced by the same apply_edits function `edit` uses to write, so what is reviewed is what is written; a test asserts the written file equals the staged proposal. Not `verified`: the TUI still renders the text diff and does not yet present hunks individually (that is AH-147), and there is no cancellation test on this path. Held to in-progress under the completion standard (production-wired, persisted, restart-safe, UI-accessible, permission-enforced, Windows-tested, and covered for success/refusal/failure/cancellation/recovery). MISSING: the proposed patch is not stored as a versioned record before approval, approval does not bind to an immutable patch hash plus base-state hash plus selection plus agent/worktree/session scope, there is no desktop review UI, and there is no real-WebView Windows scenario."
+      "blockedReason": "MISSING for implemented: the review UI is unreachable on Windows because Managed worktree mode is disabled there (AppContainer cannot confine a run to a repository: jail::supports_write_roots(AppContainer) is false), so the UI is covered on Windows by unit tests only, and macOS/Linux were not run.",
+      "auditNote": "One proposal record now carries AH-146/147/148/109 (tauri_plugin_agent_tools::proposal, schema 1): exact base and proposed bytes stored content-addressed and write-once before approval; approval bound to patch hash, base-state hash, session/run/agent/project/worktree scope and the exact hunk ids, every field compared by the backend; selection, three-way merge against the destination, conflict refusal by file and hunk, and all-or-nothing writes with rollback all happen in Rust; credential-shaped files, paths outside the project, .jan and .git never applied; audit/proposals.jsonl holds ids and hashes only. agent_proposal_from_worktree/list/apply/reject are wired; the Changes panel of a Managed-worktree session shows CoworkProposalReview with per-file and per-hunk checkboxes, conflict marking and reject. Windows: cowork-smoke proposal-review-apply passes over real IPC with real git. MISSING for implemented: the review UI is unreachable on Windows because Managed worktree mode is disabled there (AppContainer cannot confine a run to a repository: jail::supports_write_roots(AppContainer) is false), so the UI is covered on Windows by unit tests only, and macOS/Linux were not run."
     },
     {
       "id": "AH-147",
@@ -4571,11 +4586,18 @@
         "tauri-plugin-agent-tools::patch::tests::selecting_everything_is_the_proposal_and_nothing_is_the_base",
         "tauri-plugin-agent-tools::patch::tests::a_rejected_hunk_leaves_the_base_lines_untouched",
         "tauri-plugin-agent-tools::patch::tests::a_selection_naming_a_hunk_that_does_not_exist_is_refused",
-        "tauri-plugin-agent-tools::patch::tests::insertions_and_deletions_are_hunks_too"
+        "tauri-plugin-agent-tools::patch::tests::insertions_and_deletions_are_hunks_too",
+        "tauri-plugin-agent-tools::proposal::tests::approving_one_of_two_hunks_lands_only_that_one",
+        "tauri-plugin-agent-tools::proposal::tests::an_overlapping_edit_is_a_conflict_and_nothing_is_written",
+        "tauri-plugin-agent-tools::proposal::tests::a_record_edited_on_disk_after_it_was_shown_is_refused",
+        "tauri-plugin-agent-tools::proposal::tests::a_failed_write_rolls_back_the_files_already_written",
+        "Jan::core::agent::proposals::tests::a_worktree_becomes_the_files_it_changed",
+        "web-app::CoworkProposalReview.test.tsx",
+        "cowork-smoke::proposal-review-apply"
       ],
       "platformRequirements": [],
-      "blockedReason": "The selection itself is built and tested: StagedPatch::select rebuilds the file from the base with only the accepted hunks applied, a rejected hunk leaves the base lines exactly as they were, and a selection naming a hunk that does not exist is refused rather than ignored. MISSING, and the reason this is not implemented: no user can yet accept or reject an individual hunk. PermissionDecision is AllowOnce / AllowAlways / Deny with no selection, and the TUI prompt has no per-hunk controls. The next step is a selection-carrying decision (AllowSome(Vec<usize>)), the TUI toggles, and the execution path writing StagedPatch::select(accepted) after the base check.",
-      "auditNote": "The selection itself is built and tested: StagedPatch::select rebuilds the file from the base with only the accepted hunks applied, a rejected hunk leaves the base lines exactly as they were, and a selection naming a hunk that does not exist is refused rather than ignored. MISSING, and the reason this is not implemented: no user can yet accept or reject an individual hunk. PermissionDecision is AllowOnce / AllowAlways / Deny with no selection, and the TUI prompt has no per-hunk controls. The next step is a selection-carrying decision (AllowSome(Vec<usize>)), the TUI toggles, and the execution path writing StagedPatch::select(accepted) after the base check."
+      "blockedReason": "MISSING for implemented: the review UI is unreachable on Windows because Managed worktree mode is disabled there (AppContainer cannot confine a run to a repository: jail::supports_write_roots(AppContainer) is false), so the UI is covered on Windows by unit tests only, and macOS/Linux were not run.",
+      "auditNote": "One proposal record now carries AH-146/147/148/109 (tauri_plugin_agent_tools::proposal, schema 1): exact base and proposed bytes stored content-addressed and write-once before approval; approval bound to patch hash, base-state hash, session/run/agent/project/worktree scope and the exact hunk ids, every field compared by the backend; selection, three-way merge against the destination, conflict refusal by file and hunk, and all-or-nothing writes with rollback all happen in Rust; credential-shaped files, paths outside the project, .jan and .git never applied; audit/proposals.jsonl holds ids and hashes only. agent_proposal_from_worktree/list/apply/reject are wired; the Changes panel of a Managed-worktree session shows CoworkProposalReview with per-file and per-hunk checkboxes, conflict marking and reject. Windows: cowork-smoke proposal-review-apply passes over real IPC with real git. MISSING for implemented: the review UI is unreachable on Windows because Managed worktree mode is disabled there (AppContainer cannot confine a run to a repository: jail::supports_write_roots(AppContainer) is false), so the UI is covered on Windows by unit tests only, and macOS/Linux were not run."
     },
     {
       "id": "AH-148",
@@ -4608,11 +4630,18 @@
         "tauri-plugin-agent-tools::patch::tests::a_changed_base_is_refused",
         "tauri-plugin-agent-tools::patch::tests::a_file_created_or_deleted_underneath_is_refused",
         "tauri-plugin-agent-tools::patch::tests::the_refusal_says_nothing_was_written",
-        "tauri-plugin-agent-tools::tools::handlers::tests::a_file_changed_after_staging_is_caught_before_it_is_written"
+        "tauri-plugin-agent-tools::tools::handlers::tests::a_file_changed_after_staging_is_caught_before_it_is_written",
+        "tauri-plugin-agent-tools::proposal::tests::approving_one_of_two_hunks_lands_only_that_one",
+        "tauri-plugin-agent-tools::proposal::tests::an_overlapping_edit_is_a_conflict_and_nothing_is_written",
+        "tauri-plugin-agent-tools::proposal::tests::a_record_edited_on_disk_after_it_was_shown_is_refused",
+        "tauri-plugin-agent-tools::proposal::tests::a_failed_write_rolls_back_the_files_already_written",
+        "Jan::core::agent::proposals::tests::a_worktree_becomes_the_files_it_changed",
+        "web-app::CoworkProposalReview.test.tsx",
+        "cowork-smoke::proposal-review-apply"
       ],
       "platformRequirements": [],
-      "blockedReason": "A write or edit is staged against the file as it is when the permission prompt is shown (StagedPatch, with a BaseStamp of that content), and the stage is kept until the answer comes back. Before an approval is acted on, the file is re-stamped; if it is no longer the content the prompt was about -- changed, created or deleted underneath -- the call is refused with a message saying nothing was written, and nothing is. Before this, a `write` approved against one version of a file silently overwrote whatever was there by the time the answer arrived. A refusal, not a merge: the model re-reads and proposes against what is actually there. Applies to the prompted path in the Rust agent loop (CLI/TUI and Cowork runs that prompt). Auto-approved calls have no approval window to guard. The loop wiring compiles on all three configurations; the Jan lib tests run under --features test-tauri. Held to in-progress under the completion standard (production-wired, persisted, restart-safe, UI-accessible, permission-enforced, Windows-tested, and covered for success/refusal/failure/cancellation/recovery). MISSING: the proposed patch is not stored as a versioned record before approval, approval does not bind to an immutable patch hash plus base-state hash plus selection plus agent/worktree/session scope, there is no desktop review UI, and there is no real-WebView Windows scenario.",
-      "auditNote": "A write or edit is staged against the file as it is when the permission prompt is shown (StagedPatch, with a BaseStamp of that content), and the stage is kept until the answer comes back. Before an approval is acted on, the file is re-stamped; if it is no longer the content the prompt was about -- changed, created or deleted underneath -- the call is refused with a message saying nothing was written, and nothing is. Before this, a `write` approved against one version of a file silently overwrote whatever was there by the time the answer arrived. A refusal, not a merge: the model re-reads and proposes against what is actually there. Applies to the prompted path in the Rust agent loop (CLI/TUI and Cowork runs that prompt). Auto-approved calls have no approval window to guard. The loop wiring compiles on all three configurations; the Jan lib tests run under --features test-tauri. Held to in-progress under the completion standard (production-wired, persisted, restart-safe, UI-accessible, permission-enforced, Windows-tested, and covered for success/refusal/failure/cancellation/recovery). MISSING: the proposed patch is not stored as a versioned record before approval, approval does not bind to an immutable patch hash plus base-state hash plus selection plus agent/worktree/session scope, there is no desktop review UI, and there is no real-WebView Windows scenario."
+      "blockedReason": "MISSING for implemented: the review UI is unreachable on Windows because Managed worktree mode is disabled there (AppContainer cannot confine a run to a repository: jail::supports_write_roots(AppContainer) is false), so the UI is covered on Windows by unit tests only, and macOS/Linux were not run.",
+      "auditNote": "One proposal record now carries AH-146/147/148/109 (tauri_plugin_agent_tools::proposal, schema 1): exact base and proposed bytes stored content-addressed and write-once before approval; approval bound to patch hash, base-state hash, session/run/agent/project/worktree scope and the exact hunk ids, every field compared by the backend; selection, three-way merge against the destination, conflict refusal by file and hunk, and all-or-nothing writes with rollback all happen in Rust; credential-shaped files, paths outside the project, .jan and .git never applied; audit/proposals.jsonl holds ids and hashes only. agent_proposal_from_worktree/list/apply/reject are wired; the Changes panel of a Managed-worktree session shows CoworkProposalReview with per-file and per-hunk checkboxes, conflict marking and reject. Windows: cowork-smoke proposal-review-apply passes over real IPC with real git. MISSING for implemented: the review UI is unreachable on Windows because Managed worktree mode is disabled there (AppContainer cannot confine a run to a repository: jail::supports_write_roots(AppContainer) is false), so the UI is covered on Windows by unit tests only, and macOS/Linux were not run."
     },
     {
       "id": "AH-149",

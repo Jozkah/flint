@@ -322,6 +322,125 @@ pub fn agent_worktree_list(data_folder: String, project: String) -> Vec<worktree
     worktree::list(repo, &roots)
 }
 
+/// Why a proposal command refused, with the conflicts when that is the reason,
+/// so the review can mark the exact hunks rather than show a sentence.
+#[derive(serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ProposalFailure {
+    pub message: String,
+    pub conflicts: Vec<tauri_plugin_agent_tools::proposal::Conflict>,
+}
+
+impl From<tauri_plugin_agent_tools::proposal::ProposalError> for ProposalFailure {
+    fn from(e: tauri_plugin_agent_tools::proposal::ProposalError) -> Self {
+        let conflicts = match &e {
+            tauri_plugin_agent_tools::proposal::ProposalError::Conflicts(c) => c.clone(),
+            _ => Vec::new(),
+        };
+        ProposalFailure {
+            message: e.message(),
+            conflicts,
+        }
+    }
+}
+
+fn proposal_failure(message: impl Into<String>) -> ProposalFailure {
+    ProposalFailure {
+        message: message.into(),
+        conflicts: Vec::new(),
+    }
+}
+
+/// Store what a run changed in its worktree as a proposal. AH-146/AH-109.
+///
+/// Nothing is applied. The record arrives over IPC, so it is checked the way
+/// discard checks it -- inside the folder Jan owns, and still the worktree it
+/// says it is -- before anything in it is read.
+#[tauri::command]
+pub fn agent_proposal_from_worktree(
+    app: tauri::AppHandle,
+    record: WorktreeRecordInput,
+    session: String,
+    run: Option<String>,
+    agent: Option<String>,
+) -> Result<tauri_plugin_agent_tools::proposal::ProposalRecord, ProposalFailure> {
+    use tauri_plugin_agent_tools::proposal;
+    let data_folder = get_jan_data_folder_path(app);
+    let roots = workspace::worktrees_dir(&data_folder);
+    let record: worktree::WorktreeRecord = record.into();
+    // Compared canonically: the data folder Jan resolves and the one the
+    // renderer was handed can differ in form (a verbatim `\\?\` prefix, case)
+    // while naming the same directory, and a lexical comparison refused a
+    // worktree Jan had just made.
+    let inside = match (
+        std::fs::canonicalize(&record.path),
+        std::fs::canonicalize(&roots),
+    ) {
+        (Ok(path), Ok(roots)) => path.starts_with(roots),
+        _ => false,
+    };
+    if !inside {
+        return Err(proposal_failure(format!(
+            "{} is not a worktree Jan manages",
+            record.path
+        )));
+    }
+    if worktree::state(&record) != worktree::WorktreeState::Ready {
+        return Err(proposal_failure(
+            "the worktree is not in the state it was recorded in, so its changes are not proposed",
+        ));
+    }
+    let inputs = crate::core::agent::proposals::changes_in_worktree(&record)
+        .map_err(proposal_failure)?;
+    if inputs.is_empty() {
+        return Err(proposal_failure("the worktree has no changes to propose"));
+    }
+    let scope = proposal::ProposalScope {
+        session,
+        run: run.unwrap_or_default(),
+        agent: agent.unwrap_or_else(|| "main".to_string()),
+        project: record.source_root.clone(),
+        worktree: record.path.clone(),
+        ..Default::default()
+    };
+    proposal::create(&data_folder, scope, &record.base_sha, inputs).map_err(Into::into)
+}
+
+/// The proposals for a project, newest first.
+#[tauri::command]
+pub fn agent_proposal_list(
+    app: tauri::AppHandle,
+    project: String,
+) -> Vec<tauri_plugin_agent_tools::proposal::ProposalRecord> {
+    let data_folder = get_jan_data_folder_path(app);
+    tauri_plugin_agent_tools::proposal::list(&data_folder, &project)
+}
+
+/// Apply an approval. The destination is the stored proposal's project, never
+/// a path sent with the approval.
+#[tauri::command]
+pub fn agent_proposal_apply(
+    app: tauri::AppHandle,
+    approval: tauri_plugin_agent_tools::proposal::Approval,
+) -> Result<tauri_plugin_agent_tools::proposal::ApplyReport, ProposalFailure> {
+    use tauri_plugin_agent_tools::proposal;
+    let data_folder = get_jan_data_folder_path(app);
+    let stored = proposal::load(&data_folder, &approval.proposal_id)?;
+    let destination = std::path::PathBuf::from(&stored.scope.project);
+    proposal::apply(&data_folder, &destination, &approval).map_err(Into::into)
+}
+
+/// Reject a proposal outright. Nothing at the destination changes.
+#[tauri::command]
+pub fn agent_proposal_reject(
+    app: tauri::AppHandle,
+    id: String,
+    scope: tauri_plugin_agent_tools::proposal::ProposalScope,
+) -> Result<tauri_plugin_agent_tools::proposal::ProposalRecord, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    tauri_plugin_agent_tools::proposal::reject(&data_folder, &id, &scope).map_err(Into::into)
+}
+
 /// Take a checkpoint of the tree a run is about to change.
 ///
 /// The snapshot is a commit object off to one side: the user's branch, HEAD,

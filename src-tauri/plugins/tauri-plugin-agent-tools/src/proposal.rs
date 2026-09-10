@@ -648,6 +648,16 @@ fn merge_text<'a>(
     selected: &[Edit<'a>],
     path: &str,
 ) -> Result<String, Vec<Conflict>> {
+    // A selected hunk the destination already holds, exactly, is not a
+    // conflict with itself: it is what a second proposal from the same
+    // worktree looks like after part of the first was applied.
+    let same = |s: &Edit, u: &Edit| s.start == u.start && s.end == u.end && s.lines == u.lines;
+    let selected: Vec<Edit<'a>> = selected
+        .iter()
+        .filter(|s| !user.iter().any(|u| same(s, u)))
+        .cloned()
+        .collect();
+    let selected = selected.as_slice();
     let conflicts: Vec<Conflict> = selected
         .iter()
         .filter(|s| user.iter().any(|u| collides(s, u)))
@@ -1450,6 +1460,18 @@ mod tests {
         std::fs::write(dest.join("old.txt"), "gone\n").unwrap();
         apply(&data, &dest, &approve(&record, &dest, vec![all("old.txt")])).unwrap();
         assert!(!dest.join("old.txt").exists());
+    }
+
+    /// After part of a proposal landed, a fresh proposal from the same worktree
+    /// carries that part again. The destination already holding it exactly is
+    /// not a conflict.
+    #[test]
+    fn a_hunk_the_destination_already_holds_is_not_a_conflict() {
+        let (data, dest) = dirs("already");
+        let record = two_hunks(&data, &dest);
+        std::fs::write(dest.join("a.txt"), BASE.replace("one\n", "ONE\n")).unwrap();
+        apply(&data, &dest, &approve(&record, &dest, vec![all("a.txt")])).unwrap();
+        assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), PROPOSED);
     }
 
     #[test]

@@ -184,6 +184,20 @@ compile-checked on default, `cowork-smoke` and `cli`; the lib tests run under
 AH-147 is `in-progress`: `StagedPatch::select` is built and tested, but no
 decision can yet carry a hunk selection and the TUI has no per-hunk controls.
 
+## Proposed changes from a worktree: stored, bound, applied by hunk (AH-146 / AH-147 / AH-148 / AH-109)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 22 unit tests | `plugins/tauri-plugin-agent-tools/src/proposal.rs` | stored before approval with the destination untouched; approve all; approve one of two hunks; insertions at top, middle and end; one insertion of two taken alone; an unrelated destination edit preserved; an overlapping edit is a conflict naming the hunk, nothing written, proposal kept with the conflict in its history; a hunk the destination already holds is not a conflict; changed patch hash or base-state hash refused; a record edited on disk after it was shown refused; cross-agent and cross-project approvals refused; unknown and duplicate hunk/file selections refused; an applied or rejected proposal cannot be applied; a credential-shaped file never applied; a binary file decided whole and landed byte for byte; a file created or deleted underneath refused; a failed write rolls back files already written; paths outside the project and `.jan` refused; two spellings of one path refused; the audit links creation and application and holds no content |
+| 2 integration tests | `src-tauri/src/core/agent/proposals.rs` | a real `git worktree` becomes exactly the files it changed (edit, delete, add, commit on its branch), Jan state excluded, the source checkout untouched; an untouched worktree proposes nothing |
+| 9 unit tests | `web-app/src/containers/__tests__/CoworkProposalReview.test.tsx` | the approval is ids and hashes only; a partly chosen file is sent by hunk id; a credential-shaped file cannot be selected; a conflict renders against its hunk and nothing is reported applied; creation refusal shown; reject sends the stored scope; another worktree's proposal is not shown |
+| Real WebView scenario | `cowork-smoke --only proposal-review-apply` | over real IPC into the real backend: a real worktree is made, its changes proposed and stored before approval with the folder untouched; a changed patch hash and a different agent are refused with nothing written; one hunk of two lands exactly and an unselected file stays out; a second proposal overlapping an edit made in the folder is refused with the hunk named and nothing written; a rejected proposal cannot then be applied; the audit holds created/applied/conflict/refused/rejected and no file content. **Passed on Windows 2026-09-10.** Driven through IPC, not the access menu: Windows cannot offer Managed worktree mode (AppContainer cannot confine a run to a repository), so the review UI is unreachable on Windows and is covered there only by the unit tests above |
+
+Run: `cargo test -p tauri-plugin-agent-tools --lib -- --test-threads=4 proposal::`,
+`cargo test --lib --no-default-features --features test-tauri core::agent::proposals`,
+`yarn test` and
+`cargo run --example cowork-smoke --features cowork-smoke -- --only proposal-review-apply`.
+
 ## Prompt snapshots bound to their turn (AH-078)
 
 | Evidence | Where | Covers |
