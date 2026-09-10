@@ -81,10 +81,35 @@ retryability off the type instead of re-deriving it per call site.
 
 ### AHD-005: permission rules match resources, not tool names
 
-Rules are `(subject, capability, resource)` predicates. The current model globs
-tool names only, so "allow `read` under `src/**`" and "deny `bash` running
-`git push --force`" are inexpressible -- which is why `AH-034`, `AH-036`,
-`AH-037`, `AH-043` and `AH-046` are all one design change rather than five.
+Rules are `(subject, capability, resource)` predicates, written as
+`[subject/]tool[(pattern)]` in a project's `agent.toml`. All three dimensions are
+live: "allow `read` under `src/**`", "deny `bash` running `git push --force`" and
+"deny `agent:reviewer/bash`" are each expressible, which is why `AH-034`,
+`AH-036`, `AH-037`, `AH-043` and `AH-046` were one design change rather than
+five.
+
+**The subject dimension.** `subject::Subject` names the actor a decision is made
+*for*: `user`, `agent` (the top-level agent), `agent:<name>` (a subagent by the
+name it was dispatched under), `role:`, `skill:`, `mcp:`, `session:`, `project:`.
+An unqualified rule covers every subject, so a rule set written before subjects
+existed keeps its meaning exactly. An unparseable or unrecognised subject is
+`Subject::Unknown`, which matches no rule and is permitted by none: a caller that
+cannot say who it is acting for does not get the benefit of the doubt.
+
+The subject reaches the gate from three places, and all three must agree or the
+model is offered a tool it is then refused:
+
+* `resolve_decision` takes the subject as a parameter -- the execution gate.
+* `ToolPermissions::is_denied` / `is_allowed` / `advertises_mcp` take it too --
+  the advertising gate. Asking "is this denied for anyone" is what made a rule
+  about one subagent hide the tool from every agent.
+* `intersect_allowed_tools` reads the parent's rules *for the child*, by the name
+  it is being dispatched under, when narrowing a subagent's toolset.
+
+A run's subject is decided once, in `orchestrate_inner`, from
+`OrchestrationArgs::agent_name`: `None` is the main agent, and `run_subagent`
+sets it on the child's cloned args. A subagent cannot dispatch its own children,
+so there is no chain to carry.
 
 ### AHD-006: the capability model covers every dispatchable tool
 

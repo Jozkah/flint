@@ -988,3 +988,168 @@ not a claim of completeness.
 only `jan.rs`, and `cargo build --release --no-default-features --features cli
 --bin jan` succeeds (2m21s, exit 0). No change was needed; recorded so the next
 session does not re-investigate.
+
+## 2026-09-10 — the memory proposal becomes visible
+
+**One gate, two callers.** `memory_record_propose_inferred` had its own copy of
+the pending-reason ladder and its own copy of `PendingReason`, duplicating what
+`memory::inferred::decide` already did for the model-facing `memory_propose`
+tool. Two copies of a gate are two gates. The command now calls `decide`, and
+`commands::PendingReason` is a re-export of the one in `inferred`. Nothing about
+the order changed — refusals, then conflicts, then project-to-global, then the
+setting — but there is now only one place it can change.
+
+**A proposal is stored, not merely returned.** Both paths persist the pending
+record with `Status::Proposed { reason }`. This is the change that makes the
+feature real: before it, the question existed only in the tool result for the
+turn that raised it, so a user who was not looking at that surface at that
+moment was never asked at all. `is_usable` admits `Status::Active` only, so a
+proposal reaches no prompt while it waits, and `service::list` now filters
+proposals out of the remembered-facts list — a defect the new test caught, since
+an unanswered guess was briefly appearing among the things Jan says it
+remembers.
+
+**The visible half.** `MemoryProposalCard` / `MemoryProposalList`
+(`web-app/src/containers/MemoryProposalCard.tsx`) render from
+`PendingReason::explain()`, never a generic "needs approval": the three reasons
+need three different answers and one prompt would push a user to give them all
+the same one. A conflicted proposal renders with no Approve button at all — only
+"Review both" and "Discard" — and the backend refuses approving one anyway, so
+the DOM and the gate agree.
+
+Mounted in two production surfaces, through `useMemoryProposals`
+(`web-app/src/hooks/useMemoryProposals.ts`), which reads from disk rather than
+from renderer state:
+- the thread route, filtered to that chat, reloaded when a turn ends;
+- Settings → Memory, unfiltered, under "Waiting for you" — where "Review both"
+  navigates, because settling a contradiction needs both sides on screen.
+
+**Evidence.** 680 plugin tests pass (`--test-threads=4`); 10 vitest cases on the
+card, including the two negatives that matter (a conflicted proposal offers no
+approval; a backend refusal is shown rather than swallowed). A real WebView
+scenario, `cowork-smoke --only memory-proposal-approval`, covers the round trip
+end to end: propose over IPC, assert `Status::Proposed` on disk *before*
+anything is clicked, assert the card and its reason in the DOM, click Approve,
+assert the record is `active` on disk, reload, assert the answered question is
+not asked again, then assert a contradiction renders without an Approve button.
+DOM and file, in one scenario, because this programme has repeatedly shipped
+cards that passed vitest and never rendered in the WebView. `PASS`, one scenario
+executed.
+
+Three things that scenario had to be taught, each of which had already produced
+a false failure:
+
+- `ctx.goto` does nothing when the route is already current, so navigating "to"
+  the chat you are already in never remounts anything and never re-reads the
+  store. Leaving to `/` and coming back does.
+- A full page reload cannot be used here: it tears down the eval channel the
+  harness talks over, and every wait after it times out.
+- `Status` serialises as `"status":{"state":"active"}`, not `"status":"active"`.
+  An assertion on the wrong shape fails against a file that is correct.
+
+**A limit of conflict detection, found by the scenario.** `detect_conflicts`
+ignores a pair where both records mention both sides of an incompatible choice,
+so "the user prefers tabs over spaces" and "the user prefers spaces over tabs"
+are *not* reported as conflicting, even though a person would call that a
+straight contradiction. The conservatism is deliberate and documented in
+`record.rs`: an unresolved conflict withholds both records, so a false positive
+silently costs the user two good memories. Left as it is, and the scenario now
+words each side to name one option only. Worth revisiting with a better
+comparison than word membership, not with a looser one.
+
+**Stale premise corrected.** `src-tauri/resources/bin` does not contain 0-byte
+stubs: 23 files, none zero-byte. Recorded so the next session does not
+re-investigate.
+
+## 2026-09-10 — AH-007: the subject reaches production
+
+The previous session left AH-007 with the subject matched inside the rule
+engine and `Subject::MainAgent` hard-coded at every call site. Threading it
+through turned up two things worse than "unreachable".
+
+**The desktop crate did not compile.** `resolve_decision` grew a tenth
+parameter and `src/core/agent/loop.rs` was never updated, so `cargo check` on
+the `Jan` crate failed with E0061 while the plugin's own tests all passed. The
+plugin suite is not evidence that the application builds.
+
+**A subject-qualified rule over-denied.** `ToolPermissions::is_denied` and
+`is_allowed` answered "does any rule name this tool", ignoring the subject.
+Since those two are what decide which tools are *advertised* — the built-in
+schema list, the MCP prune, and a subagent's narrowed toolset — writing
+`deny = ["agent:reviewer/bash"]` removed `bash` from the main agent as well.
+The execution gate would then have allowed the call the model was never offered.
+Both now take a subject, and the two halves are asserted together: the reviewer
+loses the tool, the main agent and `agent:implementer` keep it.
+
+**Where the subject comes from.** `OrchestrationArgs::agent_name` — `None` is
+the top-level agent; `run_subagent` sets it on the child's cloned args.
+`orchestrate_inner` turns it into one `run_subject` used by the advertising
+pass, the MCP prune and the dispatcher, so a run cannot be offered a tool under
+one identity and refused it under another. `resolve_dispatch` reads the parent's
+rules *for the child*, by the name it is being dispatched under, which is what
+makes a rule about one subagent narrow that subagent's list.
+
+Compiles on all three configurations: default, `--features cowork-smoke`, and
+`--no-default-features --features cli`, tests included.
+
+**Obstruction recorded: the `Jan` lib test binary does not start on Windows.**
+`cargo test -p Jan --lib` exits `0xc0000139` (`STATUS_ENTRYPOINT_NOT_FOUND`)
+before the harness prints anything, for tests untouched by this work
+(`subagent_cap_is_clamped_to_at_least_one` fails identically). It is a loader
+problem in this environment, not a test failure. Consequence:
+`a_rule_naming_a_subagent_binds_that_subagent_and_nobody_else` in `loop.rs` is
+compiled but unexecuted here. The eight `subject_rules` tests in the plugin do
+run (680 plugin tests pass), and they cover the matching and the advertising;
+what is unproven *on this host* is the dispatcher wiring, which is
+compile-checked. Recorded in `docs/AGENT_HARNESS_VERIFICATION.md` under Known
+blockers rather than worked around.
+
+## Obstruction: `tool-activity-timeline` on Windows (2026-09-10)
+
+Full smoke suite: **37 of 38 scenarios pass**, including
+`memory-proposal-approval`. The one failure is `tool-activity-timeline`, and it
+is recorded here rather than fixed, under the two-attempts rule.
+
+What is known:
+
+- It fails identically when run alone, so it is not contention with another
+  scenario.
+- Its own diagnostics say `events on disk: 0` and print a transcript containing
+  only the application chrome — no user message, no reply. **No run happened at
+  all**, so this is not "the tool was hidden from the model" and not "the
+  dispatcher refused it". The send never produced a turn.
+- It cannot be bisected against this branch. Reverting the subject-threading
+  restores the E0061 that stopped the `Jan` crate compiling, so the smoke binary
+  could not be built on this branch before this session — there is no passing
+  baseline here to regress from. `docs/AGENT_HARNESS_VERIFICATION.md` already
+  lists this scenario as *not run* on Windows; it is recorded as passing on
+  macOS and in the WebView column only.
+- It exercises `/cowork`, which the memory-proposal work does not touch: the
+  approval card is mounted in the thread route.
+
+Two investigations, no fix. Next session should start from "why does sending in
+the Cowork composer produce no turn on Windows" rather than from the timeline.
+
+## Two test-harness defects fixed on the way (2026-09-10)
+
+Neither is production code, but both were reporting green or red for the wrong
+reason, which is worse than either.
+
+**`$threadId.test.tsx` mocked `getSessionData` as `vi.fn(() => ({ tools: [] }))`
+— a new object per call.** The real store keeps one object per session, on the
+session or in a standalone map. The route reads `sessionData` once per render
+and pushes arriving tool calls onto `sessionData.tools`, so with the mock, any
+re-render between two tool calls silently discarded the first. Eight tests
+depended on the route re-rendering exactly zero times, and mounting anything new
+in the route broke them — which reads as "the new feature dropped a tool call"
+rather than "the mock does not behave like the store". The mock now memoises per
+session id, reset per test.
+
+**`preCommitHook.test.ts` computed the repository root as `cwd()/..`.** That is
+right when vitest runs from `web-app/` and one level too high under
+`yarn test:web`, which runs from the repository root; in a git worktree it lands
+in the directory that holds every *other* worktree, so all eleven tests failed
+on `ERR_MODULE_NOT_FOUND` for a path that was never going to exist. Anchored to
+the test file's own location instead.
+
+Full web suite after both: **5484 passed, 3 skipped, 0 failed** (400 files).

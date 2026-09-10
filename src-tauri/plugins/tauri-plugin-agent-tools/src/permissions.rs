@@ -75,19 +75,34 @@ impl ToolPermissions {
         }
     }
 
-    /// Whether any deny rule names this tool, ignoring what the call touches.
+    /// Whether a deny rule names this tool for this subject, ignoring what the
+    /// call touches.
     ///
-    /// The conservative view, kept for callers that have no resources to hand:
-    /// a resource-qualified deny still reports the tool as denied here, so a
+    /// The conservative view of the resource dimension, kept for callers that
+    /// have no resources to hand -- advertising a toolset, mostly: a
+    /// resource-qualified deny still reports the tool as denied here, so a
     /// caller without resources never under-reports a restriction.
-    pub fn is_denied(&self, name: &str) -> bool {
-        self.deny.iter().any(|r| r.matches_name(name))
+    ///
+    /// The subject dimension is the opposite, and is not optional (AH-007).
+    /// Answering "is this denied for anyone" is what made a rule about one
+    /// subagent hide the tool from every agent: `agent:reviewer/bash` stripped
+    /// `bash` from the main agent's toolset too, which is the opposite of what
+    /// writing it means.
+    pub fn is_denied(&self, name: &str, subject: &crate::subject::Subject) -> bool {
+        self.deny
+            .iter()
+            .any(|r| r.matches_name(name) && r.covers_subject(subject))
     }
 
     /// Explicit allow-list membership (allow OR allow_write); does NOT consider deny or default.
-    pub fn is_allowed(&self, name: &str) -> bool {
-        self.allow.iter().any(|r| r.matches_name(name))
-            || self.allow_write.iter().any(|r| r.matches_name(name))
+    pub fn is_allowed(&self, name: &str, subject: &crate::subject::Subject) -> bool {
+        self.allow
+            .iter()
+            .any(|r| r.matches_name(name) && r.covers_subject(subject))
+            || self
+                .allow_write
+                .iter()
+                .any(|r| r.matches_name(name) && r.covers_subject(subject))
     }
 
     /// Whether this specific call is denied.
@@ -140,11 +155,11 @@ impl ToolPermissions {
     /// built-in fs/exec tools, MCP tools are opaque and the user opted into them by
     /// configuring the server, so `read-only` does not suppress them (`deny` locks
     /// everything down). Execution of built-ins is gated separately at call time.
-    pub fn advertises_mcp(&self, tool_name: &str) -> bool {
-        if self.is_denied(tool_name) {
+    pub fn advertises_mcp(&self, tool_name: &str, subject: &crate::subject::Subject) -> bool {
+        if self.is_denied(tool_name, subject) {
             return false;
         }
-        self.is_allowed(tool_name) || !matches!(self.default, PermissionDefault::Deny)
+        self.is_allowed(tool_name, subject) || !matches!(self.default, PermissionDefault::Deny)
     }
 
     pub fn default_mode(&self) -> PermissionDefault {
@@ -170,16 +185,16 @@ mod tests {
     fn read_only_advertises_unlisted_mcp_tools() {
         // read-only (the CLI default) must not suppress opaque MCP tools.
         let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
-        assert!(perms.advertises_mcp("mcp.search"));
+        assert!(perms.advertises_mcp("mcp.search", &crate::subject::Subject::MainAgent));
     }
 
     #[test]
     fn deny_default_locks_down_mcp_unless_allowed() {
         let perms = ToolPermissions::new(PermissionDefault::Deny, &[], &[], &[]);
-        assert!(!perms.advertises_mcp("mcp.search"));
+        assert!(!perms.advertises_mcp("mcp.search", &crate::subject::Subject::MainAgent));
 
         let perms = ToolPermissions::new(PermissionDefault::Deny, &s(&["mcp.search"]), &[], &[]);
-        assert!(perms.advertises_mcp("mcp.search"));
+        assert!(perms.advertises_mcp("mcp.search", &crate::subject::Subject::MainAgent));
     }
 
     #[test]
@@ -190,20 +205,20 @@ mod tests {
             &s(&["fs.delete"]),
             &[],
         );
-        assert!(perms.advertises_mcp("fs.read"));
-        assert!(!perms.advertises_mcp("fs.delete"));
+        assert!(perms.advertises_mcp("fs.read", &crate::subject::Subject::MainAgent));
+        assert!(!perms.advertises_mcp("fs.delete", &crate::subject::Subject::MainAgent));
     }
 
     #[test]
     fn is_allowed_matches_globs_only() {
         let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &s(&["rag.*"]), &[], &[]);
-        assert!(perms.is_allowed("rag.query"));
-        assert!(!perms.is_allowed("mcp.search"));
+        assert!(perms.is_allowed("rag.query", &crate::subject::Subject::MainAgent));
+        assert!(!perms.is_allowed("mcp.search", &crate::subject::Subject::MainAgent));
     }
 
     #[test]
     fn allow_all_advertises_everything() {
-        assert!(ToolPermissions::allow_all().advertises_mcp("x"));
+        assert!(ToolPermissions::allow_all().advertises_mcp("x", &crate::subject::Subject::MainAgent));
     }
 
     #[test]
@@ -253,6 +268,48 @@ mod subject_rules {
 
     fn reviewer() -> Subject {
         Subject::NamedAgent("reviewer".to_string())
+    }
+
+    /// Advertising, not just execution.
+    ///
+    /// `is_denied` used to answer "is this tool denied for anyone", so a rule
+    /// naming one subagent removed the tool from every agent's advertised
+    /// toolset -- the main agent could not run `bash` because the reviewer was
+    /// not allowed to. Both halves are asserted: the reviewer loses it, and
+    /// nobody else does.
+    #[test]
+    fn a_rule_about_one_subagent_hides_the_tool_from_that_subagent_only() {
+        let perms = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &[],
+            &["agent:reviewer/bash".to_string()],
+            &[],
+        );
+        assert!(perms.is_denied("bash", &reviewer()));
+        assert!(!perms.is_denied("bash", &Subject::MainAgent));
+        assert!(!perms.is_denied(
+            "bash",
+            &Subject::NamedAgent("implementer".to_string())
+        ));
+
+        // And the same for the MCP advertising path, which reads `is_denied`.
+        let mcp = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &[],
+            &["agent:reviewer/mcp.search".to_string()],
+            &[],
+        );
+        assert!(!mcp.advertises_mcp("mcp.search", &reviewer()));
+        assert!(mcp.advertises_mcp("mcp.search", &Subject::MainAgent));
+    }
+
+    /// An unqualified rule keeps meaning what it always meant.
+    #[test]
+    fn an_unqualified_deny_still_binds_every_subject() {
+        let perms =
+            ToolPermissions::new(PermissionDefault::Allow, &[], &["bash".to_string()], &[]);
+        assert!(perms.is_denied("bash", &Subject::MainAgent));
+        assert!(perms.is_denied("bash", &reviewer()));
     }
 
     fn no_resources() -> Vec<Resource> {

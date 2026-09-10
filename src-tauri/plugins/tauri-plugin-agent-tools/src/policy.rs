@@ -134,7 +134,7 @@ mod tests {
     #[test]
     fn a_project_without_a_policy_keeps_working() {
         let policy = load(None, None);
-        assert!(!policy.permissions.is_denied("read"));
+        assert!(!policy.permissions.is_denied("read", &crate::subject::Subject::MainAgent));
         assert!(policy.network.allowed);
     }
 
@@ -142,8 +142,8 @@ mod tests {
     fn the_projects_deny_list_reaches_the_gate() {
         let root = project_with("[tools]\ndeny = [\"bash\"]\n");
         let policy = load(Some(&root), None);
-        assert!(policy.permissions.is_denied("bash"));
-        assert!(!policy.permissions.is_denied("read"));
+        assert!(policy.permissions.is_denied("bash", &crate::subject::Subject::MainAgent));
+        assert!(!policy.permissions.is_denied("read", &crate::subject::Subject::MainAgent));
     }
 
     #[test]
@@ -193,6 +193,6 @@ mod tests {
         let policy = load(Some(&root), None);
         // It could not be read, so nothing is claimed: the caller still has
         // the structural guards, and no rule from this file is invented.
-        assert!(!policy.permissions.is_allowed("bash"));
+        assert!(!policy.permissions.is_allowed("bash", &crate::subject::Subject::MainAgent));
     }
 }

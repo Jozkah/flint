@@ -433,10 +433,14 @@ fn load_dir(dir: &Path, scope: SubagentScope, out: &mut Vec<SubagentDefinition>)
 /// action of the top-level agent.
 const SUBAGENT_SKILL_TOOLS: &[&str] = &["skill_list", "skill_read"];
 
-fn with_skill_tools(tools: &[String], parent: &ToolPermissions) -> Vec<String> {
+fn with_skill_tools(
+    tools: &[String],
+    parent: &ToolPermissions,
+    child: &tauri_plugin_agent_tools::subject::Subject,
+) -> Vec<String> {
     let mut out = tools.to_vec();
     for skill in SUBAGENT_SKILL_TOOLS {
-        if !out.iter().any(|t| t == skill) && !parent.is_denied(skill) {
+        if !out.iter().any(|t| t == skill) && !parent.is_denied(skill, child) {
             out.push((*skill).to_string());
         }
     }
@@ -459,6 +463,10 @@ pub fn intersect_allowed_tools(
     definition: Option<&[String]>,
     request: Option<&[String]>,
     parent: &ToolPermissions,
+    // The subject the rules are read *for*: the child, by the name it is being
+    // dispatched under (AH-007). A rule saying `agent:reviewer/bash` narrows the
+    // reviewer's list and leaves every other subagent's alone.
+    child: &tauri_plugin_agent_tools::subject::Subject,
 ) -> Result<Option<Vec<String>>, SubagentError> {
     if let Some(requested) = request {
         let mut effective = Vec::with_capacity(requested.len());
@@ -470,23 +478,23 @@ pub fn intersect_allowed_tools(
                     )));
                 }
             }
-            if parent.is_denied(tool) {
+            if parent.is_denied(tool, child) {
                 return Err(SubagentError::PermissionDenied(format!(
                     "tool '{tool}' is denied by the parent's policy"
                 )));
             }
             effective.push(tool.clone());
         }
-        return Ok(Some(with_skill_tools(&effective, parent)));
+        return Ok(Some(with_skill_tools(&effective, parent, child)));
     }
     match definition {
         Some(def) => {
             let filtered: Vec<String> = def
                 .iter()
-                .filter(|t| !parent.is_denied(t))
+                .filter(|t| !parent.is_denied(t, child))
                 .cloned()
                 .collect();
-            Ok(Some(with_skill_tools(&filtered, parent)))
+            Ok(Some(with_skill_tools(&filtered, parent, child)))
         }
         None => Ok(None),
     }
@@ -520,6 +528,11 @@ fn resolve_dispatch(
     req: &SubagentRequest,
     parent: &ToolPermissions,
 ) -> Result<ResolvedDispatch, SubagentError> {
+    // The rules are read for the agent being dispatched, by the name it is
+    // dispatched under (AH-007), so `agent:reviewer/bash` narrows the
+    // reviewer's toolset and leaves every other subagent's alone.
+    let child =
+        tauri_plugin_agent_tools::subject::Subject::NamedAgent(req.subagent_name.clone());
     match registry.get(&req.subagent_name).cloned() {
         Some(definition) => {
             // Registered definition: the call-site allowlist further narrows it.
@@ -527,6 +540,7 @@ fn resolve_dispatch(
                 definition.allowed_tools.as_deref(),
                 req.allowed_tools.as_deref(),
                 parent,
+                &child,
             )?;
             Ok(ResolvedDispatch {
                 definition,
@@ -552,7 +566,7 @@ fn resolve_dispatch(
             // The inline allowed_tools IS the definition's toolset; only the
             // parent's deny-list narrows it further.
             let allowed_tools =
-                intersect_allowed_tools(definition.allowed_tools.as_deref(), None, parent)?;
+                intersect_allowed_tools(definition.allowed_tools.as_deref(), None, parent, &child)?;
             Ok(ResolvedDispatch {
                 definition,
                 allowed_tools,
@@ -759,6 +773,10 @@ async fn run_subagent(
     let mut child_args = parent_args;
     child_args.system_prompt_override = Some(resolved.definition.system_prompt.clone());
     child_args.subagents_enabled = false;
+    // AH-007: the child's permission decisions are made for `agent:<name>`, not
+    // for the main agent. Without this every subagent is judged as its parent,
+    // and a rule naming one is correct but unreachable.
+    child_args.agent_name = Some(name.clone());
     // A subagent's own interactive question (if any) belongs to its parent's
     // conversation, not a client waiting on this child's ask_requests -- and
     // no client is attached to a background/child run anyway.
@@ -1428,14 +1446,14 @@ mod tests {
     #[test]
     fn intersect_none_none_inherits() {
         let p = ToolPermissions::allow_all();
-        assert_eq!(intersect_allowed_tools(None, None, &p).unwrap(), None);
+        assert_eq!(intersect_allowed_tools(None, None, &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap(), None);
     }
 
     #[test]
     fn intersect_definition_only_drops_parent_denied() {
         let def = vec!["read".to_string(), "write".to_string()];
         let p = perms_denying(&["write"]);
-        let out = intersect_allowed_tools(Some(&def), None, &p).unwrap();
+        let out = intersect_allowed_tools(Some(&def), None, &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap();
         assert_eq!(
             out,
             Some(vec![
@@ -1452,7 +1470,7 @@ mod tests {
         let def = vec!["read".to_string(), "grep".to_string(), "write".to_string()];
         let req = vec!["read".to_string()];
         let p = ToolPermissions::allow_all();
-        let out = intersect_allowed_tools(Some(&def), Some(&req), &p).unwrap();
+        let out = intersect_allowed_tools(Some(&def), Some(&req), &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap();
         assert_eq!(
             out,
             Some(vec![
@@ -1467,7 +1485,7 @@ mod tests {
     fn intersect_skill_tools_dedupe_when_already_listed() {
         let def = vec!["read".to_string(), "skill_read".to_string()];
         let p = ToolPermissions::allow_all();
-        let out = intersect_allowed_tools(Some(&def), None, &p).unwrap();
+        let out = intersect_allowed_tools(Some(&def), None, &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap();
         assert_eq!(
             out,
             Some(vec![
@@ -1483,7 +1501,7 @@ mod tests {
     fn intersect_skill_tools_respect_parent_deny() {
         let def = vec!["read".to_string()];
         let p = perms_denying(&["skill_read"]);
-        let out = intersect_allowed_tools(Some(&def), None, &p).unwrap();
+        let out = intersect_allowed_tools(Some(&def), None, &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap();
         assert_eq!(
             out,
             Some(vec!["read".to_string(), "skill_list".to_string()])
@@ -1495,7 +1513,7 @@ mod tests {
         let def = vec!["read".to_string()];
         let req = vec!["bash".to_string()];
         let p = ToolPermissions::allow_all();
-        let err = intersect_allowed_tools(Some(&def), Some(&req), &p).unwrap_err();
+        let err = intersect_allowed_tools(Some(&def), Some(&req), &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap_err();
         assert!(matches!(err, SubagentError::PermissionDenied(_)));
     }
 
@@ -1503,7 +1521,7 @@ mod tests {
     fn intersect_request_denied_by_parent_is_rejected() {
         let req = vec!["bash".to_string()];
         let p = perms_denying(&["bash"]);
-        let err = intersect_allowed_tools(None, Some(&req), &p).unwrap_err();
+        let err = intersect_allowed_tools(None, Some(&req), &p, &tauri_plugin_agent_tools::subject::Subject::NamedAgent("child".to_string())).unwrap_err();
         assert!(matches!(err, SubagentError::PermissionDenied(_)));
     }
 
@@ -1941,6 +1959,8 @@ mod tests {
             run_mode: crate::core::agent::plan::RunMode::Normal,
             session_id: None,
             sandbox: None,
+            // A parent run: the child sets its own name when dispatched.
+            agent_name: None,
         }
     }
 

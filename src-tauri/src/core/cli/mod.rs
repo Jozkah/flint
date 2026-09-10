@@ -721,6 +721,9 @@ fn build_cli_orchestration_args(
         // `--sandbox` only when passed; unset falls through to the project's
         // `[tools].sandbox` and then the user's global `sandbox`.
         sandbox,
+        // The run the user started is the top-level agent. A subagent it
+        // dispatches gets its own name on the cloned child args.
+        agent_name: None,
     }
 }
 

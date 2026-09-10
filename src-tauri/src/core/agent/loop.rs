@@ -108,6 +108,17 @@ pub(crate) struct OrchestrationArgs {
     /// by dispatched subagents via the cloned parent args, so a child shell is
     /// confined exactly as its parent's was.
     pub sandbox: Option<bool>,
+    /// The name this run was dispatched under, when it is a subagent (AH-007).
+    ///
+    /// `None` is the top-level agent. Set by `run_subagent` on the child's
+    /// cloned args, and turned into the [`Subject`] every permission decision in
+    /// this run is made *for* -- which is what makes a rule like
+    /// `deny = ["agent:reviewer/bash"]` bind the reviewer and nobody else.
+    /// Deliberately not inherited further: a subagent cannot dispatch its own
+    /// children, so there is no chain to carry.
+    ///
+    /// [`Subject`]: tauri_plugin_agent_tools::subject::Subject
+    pub agent_name: Option<String>,
 }
 
 #[async_trait]
@@ -321,6 +332,10 @@ struct CompositeToolInvoker {
     todo_registry: Option<crate::core::agent::todo::TodoRegistry>,
     grants: std::sync::Mutex<tauri_plugin_agent_tools::tools::gate::SessionGrants>,
     subagents: Option<SubagentContext>,
+    /// Who this run's tool calls are made by (AH-007). Resolved once from
+    /// `OrchestrationArgs::agent_name`, because it cannot change mid-run: a
+    /// subagent is dispatched as one named agent and stays it.
+    subject: tauri_plugin_agent_tools::subject::Subject,
     auto_approve: bool,
     run_mode: crate::core::agent::plan::RunMode,
     /// The session/run this dispatch belongs to. Every tool call gets a token
@@ -1089,7 +1104,7 @@ impl ToolInvoker for CompositeToolInvoker {
                     continue;
                 }
                 // Deny-listed MCP tools are never advertised, but guard anyway.
-                if self.permissions.is_denied(name) {
+                if self.permissions.is_denied(name, &self.subject) {
                     out.push(ToolOutcome::plain(
                         id,
                         denied_by_policy_msg(name, &self.project_root),
@@ -1155,6 +1170,10 @@ impl ToolInvoker for CompositeToolInvoker {
                     allowed: self.allow_network,
                     ..NetworkPolicy::default()
                 },
+                // AH-007. Not `MainAgent` unconditionally: a subagent dispatched
+                // under a name is judged as that name, so a project can grant
+                // its parent something and withhold it from the child.
+                &self.subject,
             );
             // Auto-approval suppresses every prompt (sandbox escape, write, exec) but
             // still honors HardDeny, so the hidden `.jan` invariant (while the shell
@@ -1417,6 +1436,8 @@ pub(crate) async fn run_server_side_openai_orchestration(
         run_mode: crate::core::agent::plan::RunMode::Normal,
         session_id: None,
         sandbox: None,
+        // The proxy path is the top-level agent; it dispatches no subagents.
+        agent_name: None,
     };
     let body = match json_body.get("max_turns") {
         Some(_) => std::borrow::Cow::Borrowed(json_body),
@@ -1491,15 +1512,18 @@ fn retain_advertisable_mcp_tools(
     openai_tools: &mut Vec<serde_json::Value>,
     tool_to_server: &mut HashMap<String, String>,
     permissions: &tauri_plugin_agent_tools::permissions::ToolPermissions,
+    // Whose toolset this is (AH-007). A deny naming one subagent must not
+    // remove the tool from anybody else's advertised list.
+    subject: &tauri_plugin_agent_tools::subject::Subject,
 ) {
     openai_tools.retain(|t| {
         t.get("function")
             .and_then(|f| f.get("name"))
             .and_then(|n| n.as_str())
-            .map(|n| permissions.advertises_mcp(n))
+            .map(|n| permissions.advertises_mcp(n, subject))
             .unwrap_or(false)
     });
-    tool_to_server.retain(|name, _| permissions.advertises_mcp(name));
+    tool_to_server.retain(|name, _| permissions.advertises_mcp(name, subject));
 }
 
 /// Append the non-MCP tool schemas a run advertises -- built-ins, subagent
@@ -1515,6 +1539,9 @@ fn advertise_local_tools(
     openai_tools: &mut Vec<serde_json::Value>,
     allowed_names: Option<&std::collections::HashSet<String>>,
     permissions: &tauri_plugin_agent_tools::permissions::ToolPermissions,
+    // Who this run's tools are being advertised to (AH-007). A rule naming one
+    // subagent must not remove the tool from anybody else's list.
+    subject: &tauri_plugin_agent_tools::subject::Subject,
     project_root: Option<&std::path::Path>,
     run_mode: crate::core::agent::plan::RunMode,
     subagents_enabled: bool,
@@ -1530,7 +1557,7 @@ fn advertise_local_tools(
         // default that applies to opaque MCP tools.
         for schema in tauri_plugin_agent_tools::tools::schema::builtin_tool_schemas() {
             let name = schema["function"]["name"].as_str().unwrap_or_default();
-            if permissions.is_denied(name) {
+            if permissions.is_denied(name, subject) {
                 continue;
             }
             // Plan mode advertises only read/net builtins; write/exec are hidden
@@ -1564,7 +1591,7 @@ fn advertise_local_tools(
                     max_parallel_subagents,
                 ) {
                     let name = schema["function"]["name"].as_str().unwrap_or_default();
-                    if permissions.is_denied(name) {
+                    if permissions.is_denied(name, subject) {
                         continue;
                     }
                     if let Some(allow) = allowed_names {
@@ -1716,12 +1743,19 @@ pub(crate) async fn context_advertised_tools(
     if run_mode == crate::core::agent::plan::RunMode::Plan {
         tools.clear();
     } else {
-        retain_advertisable_mcp_tools(&mut tools, &mut tool_to_server, permissions);
+        // The interactive run is the top-level agent; `/context` describes it.
+        retain_advertisable_mcp_tools(
+            &mut tools,
+            &mut tool_to_server,
+            permissions,
+            &tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
     }
     advertise_local_tools(
         &mut tools,
         None,
         permissions,
+        &tauri_plugin_agent_tools::subject::Subject::MainAgent,
         project_root,
         run_mode,
         subagents_enabled,
@@ -1822,7 +1856,16 @@ async fn orchestrate_inner(
         run_mode,
         session_id,
         sandbox,
+        agent_name,
     } = args;
+
+    // Who this run acts as (AH-007). Decided once: a run is dispatched as one
+    // agent and stays it, and every advertisement and every decision below has
+    // to agree about who is asking.
+    let run_subject = match agent_name.as_deref() {
+        Some(name) => tauri_plugin_agent_tools::subject::Subject::NamedAgent(name.to_string()),
+        None => tauri_plugin_agent_tools::subject::Subject::MainAgent,
+    };
 
     // Per-turn override: the TUI toggles plan mode live via the request body
     // (like `model`/`max_tokens`), falling back to the session default. Any
@@ -1999,7 +2042,12 @@ async fn orchestrate_inner(
         openai_tools.clear();
         tool_to_server.clear();
     } else {
-        retain_advertisable_mcp_tools(&mut openai_tools, &mut tool_to_server, permissions);
+        retain_advertisable_mcp_tools(
+            &mut openai_tools,
+            &mut tool_to_server,
+            permissions,
+            &run_subject,
+        );
     }
 
     // Per-run allowlist shared by builtin/subagent/ask advertisement below.
@@ -2015,6 +2063,7 @@ async fn orchestrate_inner(
         &mut openai_tools,
         allowed_names.as_ref(),
         permissions,
+        &run_subject,
         project_root.as_deref(),
         run_mode,
         args.subagents_enabled,
@@ -2132,6 +2181,10 @@ async fn orchestrate_inner(
                 tauri_plugin_agent_tools::tools::gate::SessionGrants::default(),
             ),
             subagents,
+            // The same subject the tools were advertised under. A run that is
+            // offered a tool and then refused it at call time is a bug that
+            // only shows up as the model retrying.
+            subject: run_subject.clone(),
             auto_approve: *auto_approve,
             run_mode,
         };
@@ -4740,6 +4793,24 @@ mod tests {
         events: mpsc::UnboundedSender<StreamEvent>,
         registry: PermissionRegistry,
     ) -> CompositeToolInvoker {
+        build_invoker_for(
+            root,
+            events,
+            registry,
+            ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        )
+    }
+
+    /// The same invoker, for tests that need to choose the permissions or say
+    /// which agent the call is being made by.
+    fn build_invoker_for(
+        root: std::path::PathBuf,
+        events: mpsc::UnboundedSender<StreamEvent>,
+        registry: PermissionRegistry,
+        permissions: ToolPermissions,
+        subject: tauri_plugin_agent_tools::subject::Subject,
+    ) -> CompositeToolInvoker {
         CompositeToolInvoker {
             // Tests run one dispatch at a time; a fixed scope is enough to
             // exercise the token without colliding with another run.
@@ -4756,17 +4827,81 @@ mod tests {
             allow_home_read: DEFAULT_ALLOW_HOME_READ,
             scratch_root: tauri_plugin_agent_tools::workspace::scratch_dir("test-session"),
             project_root: root,
-            // Read-only default => write PROMPTS.
-            permissions: ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]),
+            permissions,
             events,
             permission_requests: registry,
             ask_requests: None,
             todo_registry: None,
             grants: std::sync::Mutex::new(SessionGrants::default()),
             subagents: None,
+            subject,
             auto_approve: false,
             run_mode: crate::core::agent::plan::RunMode::Normal,
         }
+    }
+
+    /// AH-007, in the dispatcher rather than in the rule parser.
+    ///
+    /// `agent:reviewer/bash` compiled and was accepted long before it did
+    /// anything: the gate never asked who was calling, so the rule bound the
+    /// main agent exactly as hard as it bound the reviewer. These two cases are
+    /// the same call, the same project policy, and different subjects, and they
+    /// fail together if the subject stops reaching `resolve_decision`.
+    #[tokio::test]
+    async fn a_rule_naming_a_subagent_binds_that_subagent_and_nobody_else() {
+        let root = std::env::temp_dir().join(format!(
+            "jan_loop_subject_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("create root");
+
+        // Everything allowed, except that the reviewer may not run a shell.
+        let permissions = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &[],
+            &["agent:reviewer/bash".to_string()],
+            &[],
+        );
+        let call = vec![serde_json::json!({
+            "id": "call_subject_1",
+            "type": "function",
+            "function": { "name": "bash", "arguments": "{\"command\":\"echo hi\"}" }
+        })];
+
+        let run = |subject: tauri_plugin_agent_tools::subject::Subject| {
+            let root = root.clone();
+            let permissions = permissions.clone();
+            let call = call.clone();
+            async move {
+                let (tx, _rx) = mpsc::unbounded_channel::<StreamEvent>();
+                let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+                let invoker = build_invoker_for(root, tx, registry, permissions, subject);
+                invoker.invoke(&call).await.expect("dispatch")[0]
+                    .content
+                    .clone()
+            }
+        };
+
+        let reviewer = run(tauri_plugin_agent_tools::subject::Subject::NamedAgent(
+            "reviewer".to_string(),
+        ))
+        .await;
+        assert!(
+            reviewer.contains("denied"),
+            "the rule names the reviewer, so the reviewer must be refused: {reviewer}"
+        );
+
+        // The negative half. Without it, a gate that denied everyone would pass.
+        let main = run(tauri_plugin_agent_tools::subject::Subject::MainAgent).await;
+        assert!(
+            !main.contains("denied by project policy"),
+            "a rule about the reviewer must not bind the main agent: {main}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// The whole point of the setting: what agent.toml says has to survive the
@@ -5868,7 +6003,12 @@ mod tests {
         // The scaffolded CLI project default: read-only, no allow-list.
         let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
 
-        retain_advertisable_mcp_tools(&mut tools, &mut map, &perms);
+        retain_advertisable_mcp_tools(
+            &mut tools,
+            &mut map,
+            &perms,
+            &tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
 
         assert_eq!(
             tools.len(),
@@ -5896,7 +6036,12 @@ mod tests {
             &[],
         );
 
-        retain_advertisable_mcp_tools(&mut tools, &mut map, &perms);
+        retain_advertisable_mcp_tools(
+            &mut tools,
+            &mut map,
+            &perms,
+            &tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
 
         assert_eq!(tools.len(), 1);
         assert!(map.contains_key("web_search_exa"));
@@ -5914,7 +6059,12 @@ mod tests {
         let mut map = HashMap::from([("web_search_exa".to_string(), "exa".to_string())]);
         let perms = ToolPermissions::new(PermissionDefault::Deny, &[], &[], &[]);
 
-        retain_advertisable_mcp_tools(&mut tools, &mut map, &perms);
+        retain_advertisable_mcp_tools(
+            &mut tools,
+            &mut map,
+            &perms,
+            &tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
 
         assert!(
             tools.is_empty(),

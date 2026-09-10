@@ -217,15 +217,20 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-006"
       ],
       "owner": "lane-01-architecture-registry",
       "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/subject.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/permissions.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/resource.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/subagent.rs"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -237,10 +242,20 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::permissions::subject_rules::a_subject_qualified_rule_does_not_bind_another_subject",
+        "tauri-plugin-agent-tools::permissions::subject_rules::a_deny_for_one_agent_does_not_deny_the_others",
+        "tauri-plugin-agent-tools::permissions::subject_rules::an_allow_for_one_agent_does_not_allow_the_others",
+        "tauri-plugin-agent-tools::permissions::subject_rules::a_subagent_allow_cannot_escape_a_blanket_deny",
+        "tauri-plugin-agent-tools::permissions::subject_rules::an_unqualified_rule_still_covers_everyone",
+        "tauri-plugin-agent-tools::permissions::subject_rules::the_other_subject_kinds_are_matched_too",
+        "tauri-plugin-agent-tools::permissions::subject_rules::a_rule_about_one_subagent_hides_the_tool_from_that_subagent_only",
+        "tauri-plugin-agent-tools::permissions::subject_rules::an_unqualified_deny_still_binds_every_subject",
+        "Jan::core::agent::loop::tests::a_rule_naming_a_subagent_binds_that_subagent_and_nobody_else"
+      ],
       "platformRequirements": [],
-      "blockedReason": "Capability and canonical resource are modelled and enforced through one gate on both surfaces, and the desktop now loads the project's real policy. Still missing the subject half: rules cannot name which agent or session they apply to, so a subagent is bound by the same rules as its parent and no narrower.",
-      "auditNote": "Capability and canonical resource are modelled and enforced through one gate on both surfaces, and the desktop now loads the project's real policy. Still missing the subject half: rules cannot name which agent or session they apply to, so a subagent is bound by the same rules as its parent and no narrower."
+      "blockedReason": "Subject, capability and canonical resource are all matched, and all three reach production. `resolve_decision` takes the subject; `is_denied`/`is_allowed`/`advertises_mcp` take it too, so a rule naming one subagent no longer removes the tool from every agent's advertised toolset; `intersect_allowed_tools` reads the parent's rules for the child by the name it is dispatched under. A run's subject is decided once in `orchestrate_inner` from `OrchestrationArgs::agent_name`, which `run_subagent` sets on the child's cloned args, so the advertising pass, the MCP prune and the dispatcher cannot disagree about who is asking. An unqualified rule still covers every subject; an unknown subject matches no rule and is permitted by none. Documented in AGENT_HARNESS_ARCHITECTURE.md (AHD-005) and AGENT_HARNESS_VERIFICATION.md. Not `verified`: the generic cancellation criterion has no test on this path, and the dispatcher-level test in loop.rs is compiled but unexecuted on this host because the `Jan` lib test binary exits 0xc0000139 (STATUS_ENTRYPOINT_NOT_FOUND) before the harness starts, for tests untouched by this work as well. Recorded under Known blockers.",
+      "auditNote": "Subject, capability and canonical resource are all matched, and all three reach production. `resolve_decision` takes the subject; `is_denied`/`is_allowed`/`advertises_mcp` take it too, so a rule naming one subagent no longer removes the tool from every agent's advertised toolset; `intersect_allowed_tools` reads the parent's rules for the child by the name it is dispatched under. A run's subject is decided once in `orchestrate_inner` from `OrchestrationArgs::agent_name`, which `run_subagent` sets on the child's cloned args, so the advertising pass, the MCP prune and the dispatcher cannot disagree about who is asking. An unqualified rule still covers every subject; an unknown subject matches no rule and is permitted by none. Documented in AGENT_HARNESS_ARCHITECTURE.md (AHD-005) and AGENT_HARNESS_VERIFICATION.md. Not `verified`: the generic cancellation criterion has no test on this path, and the dispatcher-level test in loop.rs is compiled but unexecuted on this host because the `Jan` lib test binary exits 0xc0000139 (STATUS_ENTRYPOINT_NOT_FOUND) before the harness starts, for tests untouched by this work as well. Recorded under Known blockers."
     },
     {
       "id": "AH-008",

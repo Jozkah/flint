@@ -119,7 +119,12 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 
 ## Known blockers
 
-None recorded for Phase 0.
+- **The `Jan` lib test binary does not start on this Windows host.** Every
+  `cargo test -p Jan --lib` run exits `0xc0000139`
+  (`STATUS_ENTRYPOINT_NOT_FOUND`) before the harness prints a line, including
+  tests untouched by any recent change. The main crate's unit tests therefore
+  compile here but are not executed; anything that must be *run* on Windows goes
+  through `cowork-smoke`, which drives the real application and does start.
 
 ## Tool activity record and timeline (AH-050 / AH-172)
 
@@ -133,6 +138,36 @@ None recorded for Phase 0.
 Run: `cargo test --lib activity::` and
 `cargo run --example cowork-smoke --features cowork-smoke -- --only tool-activity-timeline`.
 
+
+## Memory proposals: the approval card (AH-045-adjacent, memory path)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 8 unit tests | `plugins/tauri-plugin-agent-tools/src/memory/commands.rs` (`mod proposal_tests`) | a pending proposal is listed with the reason it is waiting; a conflicted one is never approvable and the backend refuses approving it; approving makes the memory usable; rejecting removes it rather than asking again; a credential is discarded *at approval time*, not stored; a proposal is not usable; resolving something that is not pending is refused; the tool persists the question it asked |
+| 10 unit tests | `web-app/src/containers/__tests__/MemoryProposalCard.test.tsx` | what would be remembered and where; the backend's reason rather than "needs approval"; approve and discard round-trip through the backend; a conflicted proposal offers no approval; a refusal is shown rather than swallowed; one answer per double click; an empty list renders no chrome |
+| Real WebView scenario | `cowork-smoke --only memory-proposal-approval` | propose over IPC; `Status::Proposed` on disk *before* anything is clicked; the card and its reason in the DOM; approve; the record is `active` on disk; re-entering the chat does not ask again; a contradiction renders with no Approve button |
+
+Run: `cargo test -p tauri-plugin-agent-tools --lib -- --test-threads=4 proposal_tests`,
+`yarn test:web` and
+`cargo run --example cowork-smoke --features cowork-smoke -- --only memory-proposal-approval`.
+
+The scenario asserts on the DOM **and** on the file deliberately: a card that
+renders from renderer state while nothing is written, and a record written while
+no card renders, are both failures a DOM-only or file-only check reports as a
+pass.
+
+## Subject-aware permission rules (AH-007)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 8 unit tests | `plugins/tauri-plugin-agent-tools/src/permissions.rs` (`mod subject_rules`) | a qualified rule does not bind another subject; a deny for one agent does not deny the others; an allow for one agent does not allow the others; a subagent allow cannot escape a blanket deny; an unqualified rule still covers everyone; every subject kind is matched; a rule about one subagent hides the tool from that subagent only, in execution *and* in advertising; an unqualified deny still binds every subject |
+| Rule-grammar tests | `plugins/tauri-plugin-agent-tools/src/resource.rs` | `[subject/]tool[(pattern)]` parsing, including `agent:reviewer/write` |
+| Dispatcher test | `src/core/agent/loop.rs` (`a_rule_naming_a_subagent_binds_that_subagent_and_nobody_else`) | the same call, the same policy, two subjects: the reviewer is refused and the main agent is not. **Compiled, not executed on this host** -- see Known blockers |
+
+Run: `cargo test -p tauri-plugin-agent-tools --lib -- --test-threads=4 subject_rules`.
+
+Negative tests were written before the matching, and fail if `covers_subject` is
+made to return `true` unconditionally -- which is what the bug was.
 
 ## Context accounting and model capabilities (AH-073 / AH-088 / AH-195)
 

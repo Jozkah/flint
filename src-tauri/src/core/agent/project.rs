@@ -763,7 +763,7 @@ mod tests {
         ensure_project(&root).expect("scaffold");
         let cfg = load_agent_config(&root).expect("load");
         let perms = permissions_from(&cfg);
-        assert!(perms.advertises_mcp("mcp.search"));
+        assert!(perms.advertises_mcp("mcp.search", &tauri_plugin_agent_tools::subject::Subject::MainAgent));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -772,11 +772,11 @@ mod tests {
         let mut cfg = AgentToml::default();
         cfg.tools.default = Some("deny".to_string());
         let perms = permissions_from(&cfg);
-        assert!(!perms.advertises_mcp("mcp.search"));
+        assert!(!perms.advertises_mcp("mcp.search", &tauri_plugin_agent_tools::subject::Subject::MainAgent));
 
         cfg.tools.allow = vec!["mcp.search".to_string()];
         let perms = permissions_from(&cfg);
-        assert!(perms.advertises_mcp("mcp.search"));
+        assert!(perms.advertises_mcp("mcp.search", &tauri_plugin_agent_tools::subject::Subject::MainAgent));
     }
 
     #[cfg(feature = "cli")]
