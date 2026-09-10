@@ -1,1 +1,6 @@
 Cargo.lock -diff
+
+# Shell scripts must keep LF endings: a CR in the shebang makes `sh` fail to
+# find the interpreter, and .husky/pre-commit is run by sh on every commit.
+*.sh text eol=lf
+.husky/* text eol=lf

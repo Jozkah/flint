@@ -21,9 +21,12 @@ import { describe, expect, it } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
-const root = resolve(process.cwd(), '..')
+// Anchored to this file, not to the working directory: the suite is run both
+// from web-app/ and from the repository root, and `cwd/..` is only the repo
+// root in the first case.
+const root = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '..')
 const scriptPath = resolve(root, 'scripts', 'pre-commit.mjs')
 const hook = () => readFileSync(resolve(root, '.husky', 'pre-commit'), 'utf8')
 
