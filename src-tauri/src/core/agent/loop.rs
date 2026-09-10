@@ -1306,9 +1306,12 @@ impl ToolInvoker for CompositeToolInvoker {
                         }
                         PermissionDecision::AllowAlways => {
                             // Thread-scoped only; never persisted to agent.toml.
-                            // Exec grants are scoped to the base command so that
-                            // "allow always" for `git status` covers `git ...`
-                            // but not arbitrary shell commands.
+                            // An exec grant covers the exact command the user was
+                            // shown and nothing else (AH-037). Granting the base
+                            // instead let "allow always" for `git status` cover
+                            // `git push`, and made every chaining trick free:
+                            // `&&`, `|`, `;` and `$(...)` compose commands out of
+                            // separately-approved bases.
                             if matches!(tool.capability, Capability::Exec) {
                                 let command =
                                     args.get("command").and_then(|v| v.as_str()).unwrap_or("");

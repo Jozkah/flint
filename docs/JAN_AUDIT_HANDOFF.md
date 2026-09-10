@@ -1250,3 +1250,34 @@ Registry: AH-041 `in-progress` to `implemented` (87/35/88). Not `verified`: no
 cancellation test on this path, and the Cowork/CLI path keeps its own separate
 MCP gate (`SessionGrants::covers_mcp`) rather than sharing this one — worth
 unifying, and deliberately not attempted in the same change as the gate itself.
+
+## 2026-09-10 — AH-037: an exec grant means the command that was shown
+
+`grant_command` recorded the *base commands* a shell string ran. So "allow
+always" on `git status` granted `git`, and `git push` ran unprompted for the
+rest of the session: the user was shown a question about reading and taken to
+have answered one about publishing. Approving a compound was worse — `git status
+&& rm foo` granted `rm`, so `rm bar` ran without a prompt, and the user had
+never seen `rm bar`.
+
+A grant is now the exact normalized command. Re-running the same command spelled
+with different spacing is the same command; a changed flag, path or order is a
+new decision. That closes the composition routes by construction rather than by
+enumerating them: `&&`, `|`, `;` and `$(...)` all build a string nobody
+approved.
+
+**Desktop was never affected, and that was checked rather than assumed.** `bash`
+is in `AGENT_TOOL_NAMES`, so the renderer auto-allows it and Rust gates it; the
+renderer's per-thread approval is keyed on tool name and would otherwise have
+been a worse instance of the same defect (approve one `bash` call, get every
+`bash` call in the thread). It does not apply here. The grant lives on the
+CLI/Cowork path, which is what changed.
+
+Two existing tests asserted the old behaviour — `exec_grant_is_scoped_to_base_command`
+asserted that `git push` *was* allowed after approving `git status`. They were
+rewritten to the narrowed intent, keeping a comment about what they used to
+claim, rather than quietly flipped or deleted.
+
+Registry: AH-037 `in-progress` to `implemented` (88/34/88). Not `verified`: no
+cancellation test on this path, and `cowork-smoke` does not drive the CLI prompt
+flow, so there is no WebView scenario for it.

@@ -1187,7 +1187,7 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-034"
@@ -1207,10 +1207,15 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::tools::gate::tests::exec_grant_is_scoped_to_the_exact_command",
+        "tauri-plugin-agent-tools::tools::gate::tests::approving_a_compound_covers_that_compound_and_not_its_parts",
+        "tauri-plugin-agent-tools::tools::gate::tests::granting_git_does_not_allow_rm_hidden_in_a_compound",
+        "tauri-plugin-agent-tools::tools::gate::tests::opaque_commands_match_only_their_exact_grant"
+      ],
       "platformRequirements": [],
-      "blockedReason": "Per-command rules work (bash(git:force-push), bash(rm)), but interactive grants are still per base command, so approving `git status` still covers `git push` for the session.",
-      "auditNote": "Per-command rules work (bash(git:force-push), bash(rm)), but interactive grants are still per base command, so approving `git status` still covers `git push` for the session."
+      "blockedReason": "Per-command rules (bash(git:force-push), bash(rm)) already worked; the interactive grant did not. grant_command recorded the base commands a string ran, so approving `git status` granted `git` and covered `git push` for the session, and approving a compound handed over every base inside it -- `git status && rm foo` granted `rm`, so `rm bar` ran unprompted. A grant is now the exact normalized command the user was shown: same command with different spacing is covered, a changed flag, path or order is a new decision. That also closes the composition routes by construction, since `&&`, `|`, `;` and `$(...)` all produce a string that was never approved. Desktop was checked and was never affected: `bash` is in AGENT_TOOL_NAMES, so it is auto-allowed in the renderer and gated in Rust, and the renderer per-thread approval (keyed on tool name) never covers it. The change is on the CLI/Cowork path, where the grant lives. Two pre-existing tests asserted the old behaviour and were rewritten to the new intent rather than deleted, with comments saying what they used to claim. Not `verified`: no cancellation test on this path, and no WebView scenario -- the CLI prompt flow is not driven by cowork-smoke.",
+      "auditNote": "Per-command rules (bash(git:force-push), bash(rm)) already worked; the interactive grant did not. grant_command recorded the base commands a string ran, so approving `git status` granted `git` and covered `git push` for the session, and approving a compound handed over every base inside it -- `git status && rm foo` granted `rm`, so `rm bar` ran unprompted. A grant is now the exact normalized command the user was shown: same command with different spacing is covered, a changed flag, path or order is a new decision. That also closes the composition routes by construction, since `&&`, `|`, `;` and `$(...)` all produce a string that was never approved. Desktop was checked and was never affected: `bash` is in AGENT_TOOL_NAMES, so it is auto-allowed in the renderer and gated in Rust, and the renderer per-thread approval (keyed on tool name) never covers it. The change is on the CLI/Cowork path, where the grant lives. Two pre-existing tests asserted the old behaviour and were rewritten to the new intent rather than deleted, with comments saying what they used to claim. Not `verified`: no cancellation test on this path, and no WebView scenario -- the CLI prompt flow is not driven by cowork-smoke."
     },
     {
       "id": "AH-038",

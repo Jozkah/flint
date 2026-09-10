@@ -156,6 +156,24 @@ renders from renderer state while nothing is written, and a record written while
 no card renders, are both failures a DOM-only or file-only check reports as a
 pass.
 
+## Per-command exec grants (AH-037)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 4 unit tests | `plugins/tauri-plugin-agent-tools/src/tools/gate.rs` | approving `git status` covers `git status` (any spacing) and **not** `git push`, `git push --force`, `git status --porcelain` or `rm -rf /`; approving a compound covers that compound and not its parts, in either direction; `&&`, `\|`, `;` and `$(...)` composed from approved parts still prompt; an opaque command matches only its exact grant |
+
+Run: `cargo test -p tauri-plugin-agent-tools --lib -- --test-threads=4 gate::`.
+
+Two of those tests previously asserted the opposite -- that a grant covered the
+base command, and that approving a compound granted every base inside it. They
+were rewritten to the narrowed behaviour with comments recording what they used
+to claim, rather than deleted.
+
+**Desktop was checked, not assumed.** `bash` is in `AGENT_TOOL_NAMES`, so it is
+auto-allowed in the renderer and gated in Rust; the renderer's per-thread
+approval is keyed on tool name and never covers it. The grant this item is about
+lives on the CLI/Cowork path.
+
 ## Per-MCP-server permissions (AH-041)
 
 | Evidence | Where | Covers |
