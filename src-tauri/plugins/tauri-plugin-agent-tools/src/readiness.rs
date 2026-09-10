@@ -537,14 +537,23 @@ pub fn probe_workspace(project_root: Option<&Path>, now_ms: i64) -> ComponentRep
 /// it says on a directory, and an ACL that denies writes is not visible in
 /// metadata the way a Unix mode bit is.
 pub fn probe_filesystem(project_root: Option<&Path>, now_ms: i64) -> ComponentReport {
+    // No folder attached is not "no filesystem". The desktop runs the file
+    // tools in the conversation's own private workspace, created on demand by
+    // `execute_tool`, and the memory and skill tools use the permanent store;
+    // neither needs a folder. Reporting this as unavailable withheld every one
+    // of those tools from a Cowork session with no folder: the model asked for
+    // `ls`, the SDK refused an unadvertised tool, and the run ended with
+    // nothing done and nothing said. The Workspace component still reports the
+    // folder as unattached, which is the true part.
     let Some(root) = project_root else {
         return ComponentReport::new(
             Component::Filesystem,
-            State::Unavailable,
-            Reason::WorkspaceUnattached,
-            "No folder is attached, so there is nothing for the file tools to read.",
+            State::Ready,
+            Reason::Ok,
+            "No folder is attached, so the file tools work in this conversation's              own private workspace. Attach a folder to work on your own files.",
             now_ms,
-        );
+        )
+        .granting(&[capability::FS_READ, capability::FS_WRITE]);
     };
     if std::fs::read_dir(root).is_err() {
         return ComponentReport::new(
@@ -626,14 +635,13 @@ pub fn probe_shell(project_root: Option<&Path>, now_ms: i64) -> ComponentReport 
     use crate::tools::jail;
     use crate::tools::proc::{ProbeOutcome, ShellFlavor};
 
+    // Same premise as the filesystem: with no folder attached, `bash` runs in
+    // the conversation's private workspace, so there is somewhere to start a
+    // shell. Probed from the temporary directory, which always exists, rather
+    // than refused -- refusing withheld `bash` from every session without a
+    // folder.
     let Some(root) = project_root else {
-        return ComponentReport::new(
-            Component::Shell,
-            State::Unavailable,
-            Reason::WorkspaceUnattached,
-            "No folder is attached, so there is nowhere to start a shell.",
-            now_ms,
-        );
+        return probe_shell(Some(&std::env::temp_dir()), now_ms);
     };
     if !root.is_dir() {
         return ComponentReport::new(
@@ -1169,9 +1177,39 @@ mod tests {
         let workspace = probe_workspace(None, 5);
         assert_eq!(workspace.reason, Reason::WorkspaceUnattached);
         assert!(workspace.capabilities.is_empty());
+    }
+
+    /// The regression. This test used to assert the opposite -- that with no
+    /// folder attached the filesystem was unusable -- and that is what stripped
+    /// every file, memory and skill tool from a Cowork session with no folder.
+    /// The files the tools reach then are the conversation's private
+    /// workspace, which exists whether or not a folder is attached.
+    #[test]
+    fn an_unattached_session_still_has_its_private_workspace() {
         let fs = probe_filesystem(None, 5);
-        assert_eq!(fs.reason, Reason::WorkspaceUnattached);
-        assert!(!fs.state.usable());
+        assert!(fs.state.usable());
+        assert!(fs.capabilities.contains(&capability::FS_READ.to_string()));
+        assert!(fs.capabilities.contains(&capability::FS_WRITE.to_string()));
+    }
+
+    /// And at the level that decides what the model is offered.
+    #[test]
+    fn an_unattached_session_is_offered_its_file_and_memory_tools() {
+        let mut r = EnvironmentReadiness::checking(1);
+        r.set(probe_filesystem(None, 5));
+        for tool in ["read", "ls", "find", "grep", "write", "edit", "memory_read", "memory_write"] {
+            assert!(
+                matches!(tool_availability(&r, tool), ToolAvailability::Available),
+                "{tool} must be advertised with no folder attached"
+            );
+        }
+    }
+
+    /// The shell is probed rather than refused when no folder is attached.
+    #[test]
+    fn an_unattached_session_probes_a_shell_instead_of_refusing_one() {
+        let shell = probe_shell(None, 5);
+        assert_ne!(shell.reason, Reason::WorkspaceUnattached);
     }
 
     #[test]

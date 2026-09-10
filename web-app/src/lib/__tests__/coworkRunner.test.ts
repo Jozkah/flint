@@ -108,6 +108,58 @@ describe('consumeStep', () => {
   })
 })
 
+describe('an invalid tool call', () => {
+  /// The regression. A call to a tool the model was not offered came back as
+  /// `tool-input-error` and was ignored, so the step had no tool calls and the
+  /// loop treated it as a finished answer. Nothing ran, nothing was recorded,
+  /// and the model was never told.
+  it('is kept as a failed call, not dropped', async () => {
+    const r = await consumeStep(
+      streamOf([
+        { type: 'tool-input-start', toolCallId: 'c9', toolName: 'ls' } as UIMessageChunk,
+        {
+          type: 'tool-input-error',
+          toolCallId: 'c9',
+          toolName: 'ls',
+          input: { path: '.' },
+          errorText: "Model tried to call unavailable tool 'ls'.",
+        } as unknown as UIMessageChunk,
+      ]),
+      noopSink()
+    )
+    expect(r.toolCalls).toHaveLength(1)
+    expect(r.toolCalls[0].invalid).toContain('unavailable tool')
+  })
+
+  it('is never dispatched, and the model is told why', async () => {
+    const d = deps([
+      [
+        {
+          type: 'tool-input-error',
+          toolCallId: 'c9',
+          toolName: 'ls',
+          input: { path: '.' },
+          errorText: "Model tried to call unavailable tool 'ls'.",
+        } as unknown as UIMessageChunk,
+      ],
+      textStep('done'),
+    ])
+    const out = await runTurn({
+      messages: [user('go')],
+      signal: new AbortController().signal,
+      deadline: { at: Date.now() + 60_000, budgetMs: 60_000 },
+      now: Date.now,
+      sessionTokens: 0,
+      deps: d,
+    } as never)
+    expect(d.dispatch).not.toHaveBeenCalled()
+    // The run went on to another step instead of ending on the bad call.
+    expect(d.sendStep).toHaveBeenCalledTimes(2)
+    const told = JSON.stringify(out.messages)
+    expect(told).toContain('was not run')
+  })
+})
+
 describe('runTurn', () => {
   it('stops when the model answers without asking for tools', async () => {
     const d = deps([textStep('done')])

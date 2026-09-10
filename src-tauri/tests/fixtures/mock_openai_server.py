@@ -202,6 +202,29 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.flush()
                 return
 
+            # Honour `stream_options.include_usage` the way an OpenAI-compatible
+            # server does: one final chunk with empty choices and the counts.
+            # Jan asks for it and real servers answer; without this the mock was
+            # the only provider that never reported usage, so the accounting a
+            # real run produces could not be exercised at all.
+            wants_usage = bool((body.get("stream_options") or {}).get("include_usage"))
+
+            def send_usage():
+                if not wants_usage:
+                    return
+                self.wfile.write(
+                    sse(
+                        {
+                            "id": "chatcmpl-smoke",
+                            "object": "chat.completion.chunk",
+                            "created": 0,
+                            "model": ARGS.model,
+                            "choices": [],
+                            "usage": {"prompt_tokens": 12, "completion_tokens": 3, "total_tokens": 15},
+                        }
+                    )
+                )
+
             if ARGS.script == "tools" and not carries_results:
                 self.wfile.write(sse(chunk({"role": "assistant", "content": ""})))
                 for index, spec in enumerate(ARGS.tools):
@@ -226,6 +249,7 @@ class Handler(BaseHTTPRequestHandler):
                         )
                     )
                 self.wfile.write(sse(chunk({}, finish="tool_calls")))
+                send_usage()
                 self.wfile.write(b"data: [DONE]\n\n")
                 self.wfile.flush()
                 return
@@ -236,6 +260,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(sse(chunk({"content": word + " "})))
                 self.wfile.flush()
             self.wfile.write(sse(chunk({}, finish="stop")))
+            send_usage()
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
             # End the response, so the body is complete by HTTP framing.

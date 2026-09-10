@@ -1438,3 +1438,104 @@ with Deny, bounds both halves with a timeout, and asserts *which* refusal came
 back — policy for the reviewer, the user's Deny for the main agent. Another
 session's `cargo test ... --test-threads=1` (PID 21452, not mine) was running
 against this tree at the time and would have hit it; it was left alone.
+
+## 2026-09-10 — `tool-activity-timeline` on Windows: five defects, found by tracing the send path
+
+The previous obstruction entry said "no run happened at all" and stopped there.
+This time the Cowork send path was instrumented at every transition, with only
+step names, ids, counts and tool names recorded — never prompts, keys, memory
+values or tool output — and each run's trace named the first transition that
+did not happen. Four real defects were behind the one failing scenario, each
+hiding the next.
+
+**1. The model picker cleared the user's selection.** First trace:
+`composer-send-clicked` → `composer-guard: no-selected-model`. The click reached
+the composer; the composer's `selectedModel` was empty, so it set "Please select
+a model" and returned. Cowork mounts `<DropdownModelProvider useLastUsedModel />`,
+whose initializer effect depends on `providers` and therefore re-runs on every
+provider change — a model-list refresh, a capability probe writing back through
+`updateProvider`. Each re-run re-decided the selection, and whenever the model
+was momentarily missing from an active provider's list it fell through to
+`selectModelProvider('', '')`. The picker kept showing the model (that is local
+display state), which is also why the smoke harness's own "is a model selected"
+check passed. Fix: the initializer initialises and never overwrites an existing
+selection. Regression test uses the real store; mutation-checked.
+
+**2. Readiness withheld every file, memory and skill tool without a folder.**
+Next trace: the run advertised `web_search, web_fetch, todo, ask, task, team` —
+no built-ins — and the SDK refused `ls` as an unavailable tool. The traced
+omission list named all fifteen, each `filesystem:workspace-unattached` or
+`shell:workspace-unattached`. `probe_filesystem(None)` reported Unavailable, and
+Filesystem is the only component granting `FS_READ`/`FS_WRITE`. The premise was
+false: with no folder attached the desktop runs those tools in the
+conversation's private workspace, and memory/skill tools use the permanent
+store. **This regression is from the readiness gating added earlier in this
+programme.** `probe_filesystem(None)` now reports that workspace as usable;
+`probe_shell(None)` probes from the temp directory instead of refusing; the
+Workspace component still says, truthfully, that no folder is attached. The test
+that pinned the old behaviour was rewritten, and three regressions added at the
+probe and `tool_availability` levels.
+
+**3. The tool-schema cache was not keyed.** The same trace showed later calls
+served `count: 0` from cache. `schemaCache` was one module-level list shared by
+chat and Cowork, so whichever surface asked first decided the tool set for every
+later caller. Now keyed by project root and reported component states.
+Mutation-checked.
+
+**4. The runner silently dropped an invalid tool call.** The AI SDK reports a
+call to an unadvertised tool, or input that fails its schema, as
+`tool-input-error`. `coworkRunner`'s stream `switch` ignored that part type, so
+the step had no tool calls and the loop ended the run as `'done'` — nothing ran,
+nothing was recorded, the model was never told, and a "running" row was left on
+screen. An invalid call is now kept as a failed call: never dispatched, answered
+to the model with the reason, recorded on the timeline as requested → refused.
+Two regressions; mutation-checked.
+
+**And one fixture gap, not a product defect.** With the above fixed, the
+scenario reached its accounting assertion and failed there: the smoke mock never
+honoured `stream_options.include_usage`, so it was the only provider that never
+reported usage. Jan does request it (`includeUsage: true`) and real servers
+answer. The mock now sends the usual final usage chunk when asked.
+
+**Where the scenario now stands (mock provider, real Windows WebView).** The
+scenario was extended to script two calls — `ls` that succeeds and `read` of a
+missing file that fails — and to assert, after the run: both calls on the
+durable record with the right phases; at least two items rendered; the items
+survive a full reload; with "Hide completed tool activity" switched on in
+Settings, the hidden-activity notice appears, the failed call stays visible and
+fewer items are shown; the switch is put back; and the provider key appears in
+none of `audit/tool-activity.jsonl`, `prompts.jsonl`, `payload-usage.jsonl` or
+`permissions.jsonl`. The accounting assertion was moved to the end so it could
+not mask the others.
+
+On the first run every one of those assertions passed, and the run then failed
+at the deferred check, **"the dispatched payload was never accounted for"**.
+
+**5. No dispatch was ever given an invocation id, so AH-073 never recorded
+anything.** `recordPayloadUsage` deliberately refuses to write a count that is
+not bound to an invocation. The Rust transport takes the invocation from the
+request's `invocationId` field — and nothing in the web app ever set it: the
+dispatch identity headers carry session, run, thread, agent and provider, not an
+invocation. Every snapshot therefore came back with `invocation: ""`, and every
+usage record was dropped before it was written, on every surface, not only in
+Cowork. `providerFetch` now names each model dispatch (`inv-…`, one per fetch,
+so an SDK retry is correctly its own invocation) whenever it carries a session;
+discovery and health requests are still not named. Three regressions in
+`providerFetch.test.ts`; mutation-checked (removing the field fails two).
+
+With that fixed, `cowork-smoke --only tool-activity-timeline` **passes on
+Windows**: run created, both calls on the durable record with the right
+phases, both rendered, surviving reload, Hide completed hiding the success and
+keeping the failure, no key in any audit file, and the dispatched payload
+accounted for with the provider's count.
+
+**Real-model proof is blocked, externally.** Your brief requires the success
+path against `http://v100:8555/v1` (`pxa-27b`). From this machine `v100` does
+not resolve at all ("No such host is known"); Tailscale reports
+"Tailscale is starting — unexpected state: NoState". That is machine network
+configuration and was not touched. Every claim above is against the mock.
+
+**Harness hygiene.** Failed runs were leaving `cowork-smoke.exe` processes alive
+(four at once), which locked the next build with "Access is denied". Runs now
+stop this worktree's own stranded harnesses afterwards, identified by path —
+never any other Jan or WebView2 process.
