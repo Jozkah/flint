@@ -30,6 +30,10 @@ export function isSessionEmpty(session: CoworkSession | undefined): boolean {
   if (session.todos?.phases?.length) return false
   // Tabs the user opened are work in the session, even with no turn run.
   if (session.codePanel?.tabs?.length) return false
+  // So is an attached project. Reusing that session as the "new" one kept the
+  // previous project attached to it, which is exactly what a new session is
+  // supposed to leave behind.
+  if (session.folder) return false
   return true
 }
 
