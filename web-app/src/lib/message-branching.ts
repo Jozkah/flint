@@ -203,6 +203,98 @@ export const repairDetachedAssistants = (
   return [...writes.values()]
 }
 
+/**
+ * Take messages out of the tree without cutting off what hangs below them.
+ *
+ * Deleting a message used to drop just that row. Its children kept a `parentId`
+ * naming a message that no longer existed, so `computeActivePath` could never
+ * reach them and the whole tail of the conversation vanished from the UI while
+ * `messages.jsonl` still held it (janhq/jan#8495). The same happened to the
+ * load-time cleanup of empty assistant rows: the user turn sent after an
+ * errored generation hangs off that empty row, so dropping the row dropped
+ * everything after it.
+ *
+ * Each child of a removed message is re-parented to the removed message's own
+ * parent (walking past chains of removed messages), and a parent whose
+ * `activeChildId` pointed at the removed message now points at the child that
+ * took its place. Returns the surviving messages that need a write.
+ */
+export const removeFromTree = (
+  messages: ThreadMessage[],
+  removeIds: Iterable<string>
+): ThreadMessage[] => {
+  const removed = new Set(removeIds)
+  if (removed.size === 0 || !hasBranching(messages)) return []
+  const byId = new Map(messages.map((m) => [m.id, m]))
+  const writes = new Map<string, ThreadMessage>()
+  const current = (m: ThreadMessage) => writes.get(m.id) ?? m
+
+  // The nearest ancestor of a removed message that survives.
+  const survivingAncestor = (id: string): string | null => {
+    const seen = new Set<string>()
+    let cursor: string | null = id
+    while (cursor && removed.has(cursor) && !seen.has(cursor)) {
+      seen.add(cursor)
+      const node = byId.get(cursor)
+      cursor = node ? getParentId(node) : null
+    }
+    return cursor && !removed.has(cursor) ? cursor : null
+  }
+
+  for (const child of [...messages].sort(byCreatedAt)) {
+    if (removed.has(child.id)) continue
+    const pid = rawParent(current(child))
+    if (typeof pid !== 'string' || !removed.has(pid)) continue
+    const newParent = survivingAncestor(pid)
+    writes.set(child.id, withParentId(current(child), newParent))
+
+    if (newParent) {
+      const parent = byId.get(newParent)
+      if (!parent) continue
+      const active = getActiveChildId(current(parent))
+      if (active === undefined || removed.has(active)) {
+        writes.set(newParent, withActiveChild(current(parent), child.id))
+      }
+    }
+  }
+
+  return [...writes.values()]
+}
+
+/**
+ * Re-attach messages whose `parentId` names a message that is gone -- threads
+ * already damaged by the delete path `removeFromTree` now handles. Each is
+ * hung off the nearest earlier surviving message by `created_at`, which is the
+ * turn it followed when it was written, and becomes that message's active
+ * child when the parent's own selection is missing or dangling.
+ *
+ * Returns only the messages that need a write. No-op on legacy threads and on
+ * healthy ones.
+ */
+export const repairDanglingParents = (
+  messages: ThreadMessage[]
+): ThreadMessage[] => {
+  if (!hasBranching(messages)) return []
+  const present = new Set(messages.map((m) => m.id))
+  const ordered = [...messages].sort(byCreatedAt)
+  const writes = new Map<string, ThreadMessage>()
+  const current = (m: ThreadMessage) => writes.get(m.id) ?? m
+
+  ordered.forEach((m, i) => {
+    const pid = rawParent(m)
+    if (typeof pid !== 'string' || present.has(pid)) return
+    const previous = i > 0 ? ordered[i - 1] : undefined
+    writes.set(m.id, withParentId(current(m), previous ? previous.id : null))
+    if (!previous) return
+    const active = getActiveChildId(current(previous))
+    if (active === undefined || !present.has(active)) {
+      writes.set(previous.id, withActiveChild(current(previous), m.id))
+    }
+  })
+
+  return [...writes.values()]
+}
+
 export type ContinuationPlan = {
   parentId: string | null
   deletePartialId: string | null

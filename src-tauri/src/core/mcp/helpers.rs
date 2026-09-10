@@ -1333,12 +1333,12 @@ pub fn add_server_config_with_path<R: Runtime>(
         .ok_or("mcpServers is not an object")?
         .insert(server_key, server_value);
 
-    std::fs::write(
-        &config_path,
-        serde_json::to_string_pretty(&config)
-            .map_err(|e| format!("Failed to serialize config: {e}"))?,
-    )
-    .map_err(|e| format!("Failed to write config file: {e}"))?;
+    let serialized = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {e}"))?;
+    // Atomic: a torn mcp_config.json is what the loader used to answer by
+    // discarding the user's servers (janhq/jan#8519).
+    crate::core::threads::helpers::write_file_atomically(&config_path, serialized.as_bytes())
+        .map_err(|e| format!("Failed to write config file: {e}"))?;
 
     Ok(())
 }

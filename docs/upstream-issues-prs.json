@@ -30,9 +30,15 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1273,
-      "fixed": 4,
-      "already-fixed": 1
+      "untriaged": 1244,
+      "fixed": 16,
+      "already-fixed": 3,
+      "needs-user-hardware": 2,
+      "not-applicable": 1,
+      "adapted": 6,
+      "cannot-reproduce": 1,
+      "implementation-ready": 3,
+      "rejected": 2
     }
   },
   "items": [
@@ -27874,14 +27880,18 @@
       "privacyImpact": "none",
       "dataLossRisk": "high",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "src-tauri/src/core/threads: messages.jsonl rewritten via File::create (truncate-first) and thread.json via fs::write; reader failed the whole thread on a torn final line. 4 new durability tests failed against the old code.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "decision": "fix",
+      "decisionReason": "P0 data loss: an interrupted edit/delete/append made a thread unreadable, and a torn thread.json removed the thread from the sidebar.",
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "57ea06b"
+      ],
+      "tests": [
+        "src-tauri/src/core/threads/durability_tests.rs"
+      ],
+      "verification": "cargo test --lib (test-tauri) threads:: 41 passed; full lib 807 passed.",
       "blockers": [],
       "notes": null
     },
@@ -39473,15 +39483,17 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Not reproducible here: failure is llama.cpp rejecting the gemma4uv projector type in the bundled backend build; needs the specific GGUF + mmproj.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Depends on the pinned llama.cpp build supporting the projector; not a Jan-side code path.",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "requires the Gemma 4 12B GGUF and mmproj to reproduce against the fork backend pin"
+      ],
       "notes": null
     },
     {
@@ -42930,13 +42942,15 @@
       "privacyImpact": "none",
       "dataLossRisk": "high",
       "localOnlyCompatibility": "needs-redesign",
-      "forkReproduction": null,
+      "forkReproduction": "Not applicable: the fork ships no updater plugin or module and no startup model auto-download; pinned by web-app/src/__tests__/localOnly.test.ts (ships no updater plugin / has no updater module left).",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "not-applicable",
+      "decisionReason": "The reported trigger (update popup) and the automatic Jan-v3.5 download do not exist in this fork.",
+      "implementationStatus": "not-applicable",
       "forkCommits": [],
-      "tests": [],
+      "tests": [
+        "web-app/src/__tests__/localOnly.test.ts"
+      ],
       "verification": null,
       "blockers": [],
       "notes": null
@@ -43048,14 +43062,16 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "strip_anthropic_billing_header indexed text[..27]; the reported Cyrillic prompt puts byte 27 mid-character (verified), which panics the handler.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "P1: local API server request dies with no response for ordinary multi-byte prompts.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/src/core/server/tests.rs"
+      ],
+      "verification": "strip_billing_header tests 6 passed; restoring the byte slice panics the new test.",
       "blockers": [],
       "notes": null
     },
@@ -50169,16 +50185,19 @@
       "privacyImpact": "none",
       "dataLossRisk": "high",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Messages whose parentId names a deleted message are unreachable from computeActivePath. Two fork paths produce that: handleDeleteMessage removed only the row, and the load-time empty-assistant cleanup deleted rows the next user turn hung off. Reproduced as failing pure and route tests.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Content on disk but invisible in the UI; same user-visible symptom as the report. Reporter file unavailable, so the fix targets the mechanism found in this fork.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "web-app/src/lib/__tests__/message-branching.test.ts",
+        "web-app/src/routes/threads/__tests__/$threadId.test.tsx"
+      ],
+      "verification": "branching 26 passed; route 34 passed; full JS 5991 passed; typecheck clean; mutation of the delete wiring fails the route test.",
       "blockers": [],
-      "notes": null
+      "notes": "If the reporter thread has a shape neither path produces, a redacted messages.jsonl is needed."
     },
     {
       "source": "janhq/jan",
@@ -51527,16 +51546,18 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "get_mcp_configs answered an unparseable mcp_config.json by starting from {}, re-adding Jan Browser MCP and writing it back over the original -- the reporter exact resulting file. Every mcp_config writer used truncate-then-write fs::write, so a torn file was reachable. New durability test failed against the old code.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "P1 data loss: every configured MCP server silently destroyed.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/src/core/mcp/config_durability_tests.rs"
+      ],
+      "verification": "config_durability 2 passed; full Rust lib 816 passed.",
       "blockers": [],
-      "notes": null
+      "notes": "Both halves fixed. Lost servers: config durability (4f62c64). key arguments not found: tool calls stored without arguments are now stored and restored with an empty input object (web-app/src/lib/messages.ts); removing the load-side default fails the new messages test."
     },
     {
       "source": "janhq/jan",
@@ -51825,14 +51846,16 @@
       "privacyImpact": "none",
       "dataLossRisk": "high",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "The chat route builds the system prompt from the thread copy of its assistant (thread.assistants[0]); useAssistant.updateAssistant never refreshed those copies. New test failed against the old store.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Conversation ignores edited instructions. Root cause is the stale thread copy, not the KV cache the report suspects.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "web-app/src/hooks/__tests__/useAssistant.test.ts"
+      ],
+      "verification": "useAssistant 10+14 passed, useThreads 15 passed, typecheck clean.",
       "blockers": [],
       "notes": null
     },
@@ -54160,12 +54183,15 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Closed by the adaptation of janhq/jan#8633.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/utils/tests/no_proxy_env.rs",
+        "src-tauri/src/core/downloads/tests.rs"
+      ],
+      "verification": "See janhq/jan#8633 record.",
       "blockers": [],
       "notes": null
     },
@@ -54275,15 +54301,17 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Not reproducible here: llama-server exits with 0xC0000005 on the reporter Vulkan setup (i9-10940X); hardware/driver specific.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Native crash inside the Vulkan backend on specific hardware.",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "requires the reporter GPU/driver combination"
+      ],
       "notes": null
     },
     {
@@ -57853,12 +57881,15 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Env NO_PROXY ignored; applies cleanly. Fork has a duplicate bypass helper that is the only production caller, so it now delegates to the patched one.",
+      "implementationStatus": "adapted",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/utils/tests/no_proxy_env.rs",
+        "src-tauri/src/core/downloads/tests.rs"
+      ],
+      "verification": "utils 40+4 passed; downloads bypass 7 passed.",
       "blockers": [],
       "notes": null
     },
@@ -59765,15 +59796,17 @@
       "privacyImpact": "high",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "needs-redesign",
-      "forkReproduction": null,
+      "forkReproduction": "Not reproducible here: the reported failure is upstream llama-server router OOM watchdog force-killing the embedding model mid-load. This fork runs llama.cpp through its own in-process engine (tauri-plugin-llamacpp/src/engine), whose load poll already ignores failures left over from an earlier attempt or an eviction (evaluate_load_poll, stale_failure_before_loading_is_ignored).",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Different engine architecture; the embedding-context probe still fails loudly if the embedding engine is unhealthy, which is the right behaviour. Runtime confirmation needs a macOS Apple Silicon run with attachments.",
+      "implementationStatus": "cannot-reproduce",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a macOS Apple Silicon runtime run attaching a document"
+      ],
       "notes": null
     },
     {
@@ -59860,7 +59893,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8760
+      ],
       "affectedAreas": [
         "llamacpp",
         "provider",
@@ -59892,14 +59927,14 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Tracked through janhq/jan#8760; fork-native redesign pending.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
       "tests": [],
       "verification": null,
       "blockers": [],
-      "notes": null
+      "notes": "Fixed via the janhq/jan#8760 reimplementation."
     },
     {
       "source": "janhq/jan",
@@ -65091,16 +65126,16 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Present in fork: the finish-length handler in web-app/src/routes/threads/$threadId.tsx treats a missing ctx_len as 32768, and handleContextSizeIncrease on non-llamacpp providers raises a ctx_len nothing sends and calls stopModel, which is a no-op for remote endpoints.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Real defect for custom OpenAI-compatible endpoints, but the PR adds a parallel model-context-size module while the fork already learns windows from refusals (contextLimitRecovery, AH-195). Needs a redesign on the fork architecture rather than a port.",
+      "implementationStatus": "adapted",
       "forkCommits": [],
       "tests": [],
-      "verification": null,
+      "verification": "knownContextWindow 11 passed; route 37 passed incl. offers Increase Context Size only where Jan sets the window; typecheck clean; forcing the gate true fails the route test.",
       "blockers": [],
-      "notes": null
+      "notes": "Reimplemented on the fork architecture instead of porting: length stops use knownContextWindow (never a 32768 guess), and Increase Context Size is offered only for llamacpp/mlx; other providers get an explanation and Regenerate."
     },
     {
       "source": "janhq/jan",
@@ -66277,7 +66312,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8806
+      ],
       "affectedAreas": [
         "chat",
         "cowork",
@@ -66308,9 +66345,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Resize blackout is the same missing-repaint class addressed by janhq/jan#8806 (synchronized full repaint clears); reimplementation pending.",
+      "implementationStatus": "implementation-ready",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -66486,12 +66523,12 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "already-fixed",
+      "decisionReason": "Merged upstream 2026-09-03 before the merge base; its merge commit is an ancestor of the fork (arguments_are_executable in src-tauri/src/core/agent/loop.rs).",
+      "implementationStatus": "already-fixed",
       "forkCommits": [],
       "tests": [],
-      "verification": null,
+      "verification": "git merge-base --is-ancestor <8783 merge commit> HEAD succeeds.",
       "blockers": [],
       "notes": null
     },
@@ -66913,11 +66950,11 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Fork loop.rs treats the session token budget as a hard ceiling (AH-017): the crossing turn is kept, its pending tool calls are not run, a system note (not an assistant-voice marker) records why, and the completion keeps the model finish_reason rather than a synthesized stop.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "reject",
+      "decisionReason": "Design divergence. Upstream wants automatic compact-and-continue past the budget; in this fork the budget is the user bound on spend (AH-017), and continuing past it automatically would defeat that. The misleading-stop half of the report does not occur here.",
+      "implementationStatus": "rejected",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -67023,12 +67060,14 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Closed by the adaptation of janhq/jan#8849 (proxy path); the webview path does not exist in this fork.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/src/core/server/tests.rs"
+      ],
+      "verification": "See janhq/jan#8849 record.",
       "blockers": [],
       "notes": null
     },
@@ -67547,12 +67586,16 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "decision": "adapt",
+      "decisionReason": "Catalogue-only capability fix for a user-configured remote provider; applies cleanly, no new traffic.",
+      "implementationStatus": "adapted",
+      "forkCommits": [
+        "0d1dbf0"
+      ],
+      "tests": [
+        "web-app/src/lib/__tests__/models.test.ts"
+      ],
+      "verification": "models.test.ts 55 passed.",
       "blockers": [],
       "notes": null
     },
@@ -67688,7 +67731,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8806
+      ],
       "affectedAreas": [
         "chat",
         "cowork",
@@ -67718,9 +67763,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Fix lives in janhq/jan#8806; reimplementation pending on the fork TUI.",
+      "implementationStatus": "implementation-ready",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -67808,7 +67853,8 @@
       "baseRef": "main",
       "headRepo": "janhq/jan",
       "linked": [
-        8804
+        8804,
+        8780
       ],
       "affectedAreas": [
         "cowork",
@@ -67836,9 +67882,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Merged upstream after our merge base. Its TUI repaint path (f891b16, da436ca) does not apply to the fork tui.rs, and the PR also bundles a gate refactor (GateContext) that conflicts with the fork subject-aware gate. Needs reimplementation of the repaint path only.",
+      "implementationStatus": "implementation-ready",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -68171,15 +68217,21 @@
       "privacyImpact": "none",
       "dataLossRisk": "high",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "setup_jan_cli skipped the which-jan guard on version change and install_jan_cli_sync copied over the unix target unconditionally; Windows add_to_path_windows pruned %LOCALAPPDATA%/Programs/Jan (the standalone installer default) as stale and prepended its own dir.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
-      "blockers": [],
+      "decision": "fix",
+      "decisionReason": "Destructive, silent downgrade of a separately managed tool by the desktop app.",
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "6e67724"
+      ],
+      "tests": [
+        "src-tauri/src/core/system/cli_provenance.rs"
+      ],
+      "verification": "12 cli_provenance unit tests; full lib 807 passed. Unix copy path not executed on this Windows host — runtime verification pending on Linux/macOS.",
+      "blockers": [
+        "unix runtime verification needs a Linux/macOS host"
+      ],
       "notes": null
     },
     {
@@ -68205,8 +68257,7 @@
       "baseRef": null,
       "headRepo": null,
       "linked": [
-        8804,
-        8780
+        8869
       ],
       "affectedAreas": [
         "chat",
@@ -68223,8 +68274,8 @@
         "macos"
       ],
       "upstreamCommits": [],
-      "severity": "critical",
-      "priority": "P0",
+      "severity": "medium",
+      "priority": "P2",
       "signals": {
         "p0": [
           "data-loss",
@@ -68240,9 +68291,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Closed by the janhq/jan#8869 adaptation. Auto-classified P0 from the word leak; it is input corruption, not data loss.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -70189,12 +70240,14 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Webview half not applicable (fork uses its own Rust transport, no tauri Origin). Proxy half present verbatim: inbound Origin/Referer forwarded upstream. Reimplemented as forwards_to_upstream.",
+      "implementationStatus": "adapted",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/src/core/server/tests.rs"
+      ],
+      "verification": "forwarded_upstream test passes; re-allowing Origin fails it.",
       "blockers": [],
       "notes": null
     },
@@ -70481,9 +70534,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "reject",
+      "decisionReason": "Adds a hosted third-party search service (You.com) to the default MCP server list. Defaults must not point at remote services in a local-only fork; users can add it themselves.",
+      "implementationStatus": "rejected",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -71309,12 +71362,14 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Fork ships the same agent TUI with SGR mouse tracking and no desync filtering; one-file input filter, dependency already present.",
+      "implementationStatus": "adapted",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/src/core/cli/tui.rs (sgr tests)"
+      ],
+      "verification": "--features cli sgr: 5 passed; removing the drain fails 3.",
       "blockers": [],
       "notes": null
     },
@@ -72335,7 +72390,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8893
+      ],
       "affectedAreas": [
         "chat",
         "tool-calling",
@@ -72362,9 +72419,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Closed by cherry-picking janhq/jan#8893.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -72706,11 +72763,16 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
+      "decision": "adapt",
+      "decisionReason": "Merged upstream after our merge base; fork ships the same agent TUI. Test-only network code (local socket). Applies as a series.",
+      "implementationStatus": "adapted",
+      "forkCommits": [
+        "d588f43",
+        "0fd57bf"
+      ],
+      "tests": [
+        "src-tauri/src/core/cli/tui.rs"
+      ],
       "verification": null,
       "blockers": [],
       "notes": null
@@ -73186,14 +73248,14 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "already-fixed",
+      "decisionReason": "Duplicate of janhq/jan#8894: the fork already emits per-model n-gpu-layers regardless of fit (5e34837 on the completion branch), with its own tests.",
+      "implementationStatus": "already-fixed",
       "forkCommits": [],
       "tests": [],
       "verification": null,
       "blockers": [],
-      "notes": null
+      "notes": "Upstream PR not cherry-picked; the fork fix predates review of this PR and covers the same behaviour."
     },
     {
       "source": "janhq/jan",
@@ -73793,20 +73855,26 @@
       "privacyImpact": "high",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "needs-redesign",
-      "forkReproduction": null,
+      "forkReproduction": "setup.rs schema-v3 migration set the default Exa MCP entry to the hosted endpoint with active:true, and the v4 cleanup only removed it while inactive, leaving an active remote MCP server that connects on every start. No startup api.github.com call exists in this fork (skill hub is user-triggered).",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "P0 unwanted network traffic created by Jan own migration.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
-      "blockers": [],
+      "tests": [
+        "src-tauri/src/core/setup.rs (exa_migration_tests)"
+      ],
+      "verification": "exa_migration_tests 6 passed; full Rust lib 816 passed; local-only guard clean.",
+      "blockers": [
+        "offline launch-and-load run not yet exercised on this machine"
+      ],
       "notes": null
     }
   ],
   "mergeBaseDate": "2026-09-03",
   "upstreamHeadAtIntake": "e3b129792fd00e83d4098b86364d97cfd183197b",
   "forkMainAtIntake": "d9ef24bc37548e64e345065136067fa36bd182e4",
-  "forkBranch": "feat/windows-agent-completion"
+  "forkBranch": "feat/windows-agent-completion",
+  "forkMainAfterBatch2": "9a4cfe2",
+  "lastBatch": "batch-2 (2026-09-10): 8067, 8007, 7939, 8894, 8096"
 }

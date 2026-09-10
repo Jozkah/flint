@@ -143,9 +143,35 @@ pub(crate) fn transform_anthropic_to_openai(body: &serde_json::Value) -> Option<
 /// caching and leaks CLI metadata to the model. Handles both observed shapes:
 ///   inline:  "x-anthropic-billing-header: cc_version=…;\n<prompt>"
 ///   wrapped: "x-anthropic-billing-header:\n   cc_version=…;\n<prompt>"
+/// Whether an inbound header is copied onto the request sent upstream.
+///
+/// - `Host` and `Authorization` are set for the upstream, not inherited.
+/// - `Content-Length` and `Transfer-Encoding` go stale when the body is
+///   re-buffered or rewritten; reqwest derives them again.
+/// - `Origin` and `Referer` describe the page that called Jan's local API, not
+///   Jan. Forwarding them made a CORS-strict backend -- Ollama behind nginx, or
+///   with `OLLAMA_ORIGINS` set -- answer 403 to a request it would otherwise
+///   serve (janhq/jan#8792, adapted from janhq/jan#8849).
+pub(crate) fn forwards_to_upstream(name: &hyper::header::HeaderName) -> bool {
+    name != hyper::header::HOST
+        && name != hyper::header::AUTHORIZATION
+        && name != hyper::header::CONTENT_LENGTH
+        && name != hyper::header::TRANSFER_ENCODING
+        && name != hyper::header::ORIGIN
+        && name != hyper::header::REFERER
+}
+
 pub(crate) fn strip_anthropic_billing_header(text: &str) -> &str {
     const KEY: &str = "x-anthropic-billing-header:";
-    if text.len() < KEY.len() || !text[..KEY.len()].eq_ignore_ascii_case(KEY) {
+    // `get`, not `[..]`: the length is in bytes, and a prompt that starts with
+    // multi-byte text puts that byte in the middle of a character. Indexing
+    // there panicked the request handler, and the local API server closed the
+    // connection without a response for any system prompt whose alignment
+    // happened to land that way (janhq/jan#8358).
+    if !text
+        .get(..KEY.len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(KEY))
+    {
         return text;
     }
     let first_nl = match text.find('\n') {
@@ -2019,11 +2045,7 @@ async fn proxy_request(
         // Body is re-buffered/rewritten, so a stale inbound Content-Length would
         // mismatch the bytes we send and stall the upstream; reqwest re-derives it.
         for (name, value) in headers.iter() {
-            if name != hyper::header::HOST
-                && name != hyper::header::AUTHORIZATION
-                && name != hyper::header::CONTENT_LENGTH
-                && name != hyper::header::TRANSFER_ENCODING
-            {
+            if forwards_to_upstream(name) {
                 outbound_req = outbound_req.header(name, value);
             }
         }

@@ -27,6 +27,11 @@ import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { deriveToolOutputCap } from '@/lib/context-manager'
 import { renderInstructions } from '@/lib/instructionTemplate'
 import {
+  contextIsResizable,
+  knownContextWindow,
+  stoppedAtContextLimit,
+} from '@/lib/knownContextWindow'
+import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
@@ -51,6 +56,8 @@ import {
   getVersionInfo,
   hasBranching,
   repairDetachedAssistants,
+  removeFromTree,
+  repairDanglingParents,
   planContinuation,
 } from '@/lib/message-branching'
 import {
@@ -350,10 +357,22 @@ function ThreadDetail() {
           | undefined
         const totalTokens =
           (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
-        const ctxLen =
-          (selectedModelState?.settings?.ctx_len?.controller_props
-            ?.value as number) ?? 32768
-        const isContextLimit = totalTokens >= ctxLen * 0.9
+        // The window Jan actually knows, never a guess: a missing ctx_len used
+        // to read as 32,768, which mislabelled output-cap stops on large
+        // remote models and missed real overflows on small ones
+        // (janhq/jan#8760). Unknown is not a context-limit verdict.
+        const modelProviderState = useModelProvider.getState()
+        const isContextLimit = stoppedAtContextLimit(
+          totalTokens,
+          knownContextWindow(
+            selectedModelState as unknown as Parameters<
+              typeof knownContextWindow
+            >[0],
+            modelProviderState.getProviderByName(
+              modelProviderState.selectedProvider
+            ) as unknown as Parameters<typeof knownContextWindow>[1]
+          )
+        )
 
         if (isContextLimit) {
           // Stash the partial so the manual "Increase Context Size" button can
@@ -934,6 +953,15 @@ function ThreadDetail() {
             .filter(threadMessageIsEmpty)
             .map((m) => m.id)
           if (emptyAssistantIds.length > 0) {
+            // A user turn sent after an errored generation hangs off the empty
+            // row; re-link it before the row goes, or the rest of the
+            // conversation goes with it (janhq/jan#8495).
+            const relinked = removeFromTree(messagesToSet, emptyAssistantIds)
+            if (relinked.length > 0) {
+              const byId = new Map(relinked.map((m) => [m.id, m]))
+              messagesToSet = messagesToSet.map((m) => byId.get(m.id) ?? m)
+              for (const m of relinked) updateMessage(m)
+            }
             messagesToSet = messagesToSet.filter(
               (m) => !emptyAssistantIds.includes(m.id)
             )
@@ -950,6 +978,15 @@ function ThreadDetail() {
             const byId = new Map(repaired.map((m) => [m.id, m]))
             messagesToSet = messagesToSet.map((m) => byId.get(m.id) ?? m)
             for (const m of repaired) updateMessage(m)
+          }
+
+          // Threads already damaged by the old delete path: messages whose
+          // parent is gone are unreachable and render as missing replies.
+          const reattached = repairDanglingParents(messagesToSet)
+          if (reattached.length > 0) {
+            const byId = new Map(reattached.map((m) => [m.id, m]))
+            messagesToSet = messagesToSet.map((m) => byId.get(m.id) ?? m)
+            for (const m of reattached) updateMessage(m)
           }
 
           setMessages(threadId, messagesToSet)
@@ -1532,16 +1569,33 @@ function ThreadDetail() {
   // Handle delete message
   const handleDeleteMessage = useCallback(
     (messageId: string) => {
+      // Re-link what hangs below the message before it goes. Deleting only the
+      // row stranded its children behind a parent that no longer existed, and
+      // the rest of the conversation disappeared from view (janhq/jan#8495).
+      const stored = useMessages.getState().getMessages(threadId)
+      const branched = hasBranching(stored)
+      for (const m of removeFromTree(stored, [messageId])) updateMessage(m)
       deleteMessage(threadId, messageId)
       useMessageErrors.getState().clearError(messageId)
 
+      if (branched) {
+        syncActivePath()
+        return
+      }
       // Update chat messages for UI
       const updatedChatMessages = chatMessages.filter(
         (msg) => msg.id !== messageId
       )
       setChatMessages(updatedChatMessages)
     },
-    [threadId, deleteMessage, chatMessages, setChatMessages]
+    [
+      threadId,
+      deleteMessage,
+      updateMessage,
+      syncActivePath,
+      chatMessages,
+      setChatMessages,
+    ]
   )
 
   // Handler for increasing context size
@@ -1954,15 +2008,36 @@ function ThreadDetail() {
                             .includes('limit'))) ||
                       (error ?? contextLimitError)?.message ===
                         OUT_OF_CONTEXT_SIZE ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="mt-3"
-                          onClick={handleContextSizeIncrease}
-                        >
-                          <IconAlertCircle className="size-4 mr-2" />
-                          Increase Context Size
-                        </Button>
+                        // Only where Jan sets the window at load. For any
+                        // other provider the server owns it, and raising a
+                        // setting nothing sends cannot help (janhq/jan#8760).
+                        contextIsResizable(selectedProvider) ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3"
+                            onClick={handleContextSizeIncrease}
+                          >
+                            <IconAlertCircle className="size-4 mr-2" />
+                            Increase Context Size
+                          </Button>
+                        ) : (
+                          <div className="mt-3 space-y-2">
+                            <p className="text-sm text-muted-foreground">
+                              This model's context window is set by its server,
+                              so Jan cannot enlarge it. Start a new chat, shorten
+                              the conversation, or raise the limit on the server.
+                            </p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRegenerate()}
+                            >
+                              <IconRefresh className="size-4 mr-2" />
+                              Regenerate
+                            </Button>
+                          </div>
+                        )
                       ) : (
                         <Button
                           variant="outline"

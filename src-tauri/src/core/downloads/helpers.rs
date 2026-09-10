@@ -195,39 +195,15 @@ pub fn create_proxy_from_config(config: &ProxyConfig) -> Result<reqwest::Proxy, 
     Ok(proxy)
 }
 
+/// Whether `url` should skip the configured proxy.
+///
+/// Delegates to the shared helper in `jan_utils`, which also honours the
+/// `NO_PROXY` / `no_proxy` environment variables. This copy used to match only
+/// the in-app list, so a host exempted in the environment -- an inner-network
+/// endpoint, or localhost -- was still sent through the corporate proxy and
+/// failed (janhq/jan#8565, adapted from janhq/jan#8633).
 pub fn should_bypass_proxy(url: &str, no_proxy: &[String]) -> bool {
-    if no_proxy.is_empty() {
-        return false;
-    }
-
-    // Parse the URL to get the host
-    let parsed_url = match Url::parse(url) {
-        Ok(u) => u,
-        Err(_) => return false,
-    };
-
-    let host = match parsed_url.host_str() {
-        Some(h) => h,
-        None => return false,
-    };
-
-    // Check if host matches any no_proxy entry
-    for entry in no_proxy {
-        if entry == "*" {
-            return true;
-        }
-
-        // Simple wildcard matching
-        if let Some(domain) = entry.strip_prefix("*.") {
-            if host.ends_with(domain) {
-                return true;
-            }
-        } else if host == entry {
-            return true;
-        }
-    }
-
-    false
+    jan_utils::network::should_bypass_proxy(url, no_proxy)
 }
 
 pub fn _get_client_for_item(

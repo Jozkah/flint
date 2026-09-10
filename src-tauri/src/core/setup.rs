@@ -25,21 +25,14 @@ pub fn migrate_mcp_servers(
         .get("mcp_version")
         .and_then(|v| v.as_i64())
         .unwrap_or(0);
+    // v1 added a stdio Exa entry and v3 rewrote it as the *hosted* endpoint with
+    // `active: true`. v4 then removed Exa only while inactive, so an install
+    // that ran v3 -- or ran v1 through v4 in one launch -- was left with an
+    // active remote MCP server that dialled mcp.exa.ai on every start, offline
+    // included (janhq/jan#8911). Both steps are superseded: neither adds
+    // anything now, and v5 removes whatever Jan itself put there.
     if mcp_version < 1 {
-        log::info!("Migrating MCP schema version 1");
-        let result = add_server_config(
-            app_handle.clone(),
-            "exa".to_string(),
-            serde_json::json!({
-                  "command": "npx",
-                  "args": ["-y", "exa-mcp-server"],
-                  "env": { "EXA_API_KEY": "YOUR_EXA_API_KEY_HERE" },
-                  "active": false
-            }),
-        );
-        if let Err(e) = result {
-            log::error!("Failed to add server config: {e}");
-        }
+        log::info!("MCP schema version 1 (default Exa server) is superseded; nothing to add");
     }
     if mcp_version < 2 {
         log::info!("Migrating MCP schema version 2: Adding Jan Browser MCP");
@@ -62,61 +55,68 @@ pub fn migrate_mcp_servers(
         }
     }
     if mcp_version < 3 {
-        log::info!("Migrating MCP schema version 3: Updating Exa to streamable HTTP");
-        if let Err(e) = migrate_exa_to_http(app_handle.clone()) {
-            log::error!("Failed to migrate Exa to HTTP: {e}");
-        }
+        log::info!("MCP schema version 3 (hosted Exa) is superseded; nothing to change");
     }
-    if mcp_version < 4 {
-        log::info!(
-            "Migrating MCP schema version 4: Removing default Exa MCP (native web search cutover)"
-        );
+    if mcp_version < 5 {
+        log::info!("Migrating MCP schema version 5: removing the default Exa server");
         if let Err(e) = remove_exa_server(app_handle) {
             log::error!("Failed to remove Exa MCP server: {e}");
         }
     }
-    store.set("mcp_version", 4);
+    store.set("mcp_version", 5);
     store.save().expect("Failed to save store");
     Ok(())
 }
 
-fn migrate_exa_to_http(app_handle: tauri::AppHandle) -> Result<(), String> {
-    let config_path = get_jan_data_folder_path(app_handle).join("mcp_config.json");
+/// The endpoint the old schema-v3 migration pointed the default Exa entry at.
+const HOSTED_EXA_URL: &str = "https://mcp.exa.ai/mcp";
 
-    let config_str =
-        fs::read_to_string(&config_path).map_err(|e| format!("Failed to read MCP config: {e}"))?;
+/// The key placeholder the old schema-v1 migration wrote.
+const EXA_KEY_PLACEHOLDER: &str = "YOUR_EXA_API_KEY_HERE";
 
-    let mut config: serde_json::Value = serde_json::from_str(&config_str)
-        .map_err(|e| format!("Failed to parse MCP config: {e}"))?;
-
-    if let Some(servers) = config.get_mut("mcpServers").and_then(|s| s.as_object_mut()) {
-        servers.insert(
-            "exa".to_string(),
-            serde_json::json!({
-                "type": "http",
-                "url": "https://mcp.exa.ai/mcp".to_string(),
-                "command": "",
-                "args": [],
-                "env": {},
-                "active": true
-            }),
-        );
+/// Whether an `env` object carries no real credential: absent, empty, or only
+/// the placeholder the old migration wrote.
+fn env_has_no_real_key(env: Option<&serde_json::Value>) -> bool {
+    match env.and_then(|e| e.as_object()) {
+        None => true,
+        Some(map) => map.values().all(|v| {
+            v.as_str()
+                .is_none_or(|s| s.is_empty() || s == EXA_KEY_PLACEHOLDER)
+        }),
     }
-
-    fs::write(
-        &config_path,
-        serde_json::to_string_pretty(&config)
-            .map_err(|e| format!("Failed to serialize MCP config: {e}"))?,
-    )
-    .map_err(|e| format!("Failed to write MCP config: {e}"))?;
-
-    Ok(())
 }
 
-/// One-time cutover to native web search: drop the default Exa MCP server so the
-/// built-in web_search/web_fetch tools own web search. Only removes the entry if
-/// it is still the inactive default (hosted HTTP endpoint, no API key); a user who
-/// activated it or supplied their own key keeps their configuration.
+/// Drop the Exa entry Jan's own migrations created, if it is still theirs.
+///
+/// Theirs means one of the two shapes those migrations wrote, with no real key
+/// anywhere: the hosted HTTP entry (whatever its `active` flag -- the v3
+/// migration switched it on itself, so "active" is not evidence the user chose
+/// it), or the stdio entry left inactive. A user who supplied a key, pointed it
+/// elsewhere, or switched the stdio entry on keeps their configuration.
+///
+/// Returns whether the entry was removed.
+pub(crate) fn remove_default_exa(config: &mut serde_json::Value) -> bool {
+    let Some(servers) = config.get_mut("mcpServers").and_then(|s| s.as_object_mut()) else {
+        return false;
+    };
+    let Some(exa) = servers.get("exa").and_then(|e| e.as_object()) else {
+        return false;
+    };
+    let no_key = env_has_no_real_key(exa.get("env"));
+    let url = exa.get("url").and_then(|u| u.as_str());
+    let hosted_default = url == Some(HOSTED_EXA_URL) && no_key;
+    let stdio_default =
+        url.is_none() && exa.get("active").and_then(|v| v.as_bool()) != Some(true) && no_key;
+    if hosted_default || stdio_default {
+        servers.remove("exa");
+        true
+    } else {
+        false
+    }
+}
+
+/// Native web search owns web search now: remove the default Exa MCP server
+/// Jan's earlier migrations added, leaving any entry the user made their own.
 fn remove_exa_server(app_handle: tauri::AppHandle) -> Result<(), String> {
     let config_path = get_jan_data_folder_path(app_handle).join("mcp_config.json");
     if !config_path.exists() {
@@ -127,67 +127,82 @@ fn remove_exa_server(app_handle: tauri::AppHandle) -> Result<(), String> {
     let mut config: serde_json::Value = serde_json::from_str(&config_str)
         .map_err(|e| format!("Failed to parse MCP config: {e}"))?;
 
-    let Some(servers) = config.get_mut("mcpServers").and_then(|s| s.as_object_mut()) else {
-        return Ok(());
-    };
-
-    let is_default_exa = servers
-        .get("exa")
-        .and_then(|exa| exa.as_object())
-        .map(|exa| {
-            let inactive = exa.get("active").and_then(|v| v.as_bool()) != Some(true);
-            let no_key = exa
-                .get("env")
-                .and_then(|env| env.as_object())
-                .map(|env| env.is_empty())
-                .unwrap_or(true);
-            inactive && no_key
-        })
-        .unwrap_or(false);
-
-    if is_default_exa {
-        servers.remove("exa");
-        fs::write(
-            &config_path,
-            serde_json::to_string_pretty(&config)
-                .map_err(|e| format!("Failed to serialize MCP config: {e}"))?,
-        )
-        .map_err(|e| format!("Failed to write MCP config: {e}"))?;
+    if remove_default_exa(&mut config) {
+        let serialized = serde_json::to_string_pretty(&config)
+            .map_err(|e| format!("Failed to serialize MCP config: {e}"))?;
+        crate::core::threads::helpers::write_file_atomically(&config_path, serialized.as_bytes())
+            .map_err(|e| format!("Failed to write MCP config: {e}"))?;
     }
     Ok(())
 }
 
-/// Install/update the bundled `jan` CLI binary.
+/// Install/update the bundled `jan` CLI binary on launch.
 ///
-/// - `version_changed`: pass `true` whenever the app version has changed (i.e. after an update).
-///   When `true` the binary is always overwritten so the CLI stays in sync with the new app.
-///   When `false` only installs if the binary is not yet present on PATH.
+/// Only ever touches a `jan` this app installed. A standalone agent CLI at the
+/// same path, or earlier on PATH, is left exactly as it is; the settings
+/// button is the way to replace it on purpose (janhq/jan#8812).
+///
+/// - `version_changed`: `true` after an app update, when an installed copy of
+///   ours is refreshed to match the new app.
 ///
 /// Runs in a background task — never blocks startup.
 /// Errors are logged as warnings and never prevent the app from starting.
 pub fn setup_jan_cli<R: Runtime>(app_handle: tauri::AppHandle<R>, version_changed: bool) {
     tauri::async_runtime::spawn(async move {
-        // On a normal launch where the version hasn't changed, skip reinstall if already on PATH.
-        if !version_changed {
-            let which_cmd = if cfg!(windows) { "where" } else { "which" };
-            let mut cmd = std::process::Command::new(which_cmd);
-            cmd.arg("jan");
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-            }
-            if cmd.output().map(|o| o.status.success()).unwrap_or(false) {
-                log::debug!("jan CLI already on PATH — skipping reinstall");
+        use crate::core::system::cli_provenance::{
+            decide_auto, first_resolved, ownership, AutoAction,
+        };
+
+        let (bundled, target) = match crate::core::system::commands::cli_install_target(&app_handle)
+        {
+            Ok(paths) => paths,
+            Err(e) => {
+                log::warn!("jan CLI auto-install skipped: {e}");
                 return;
             }
+        };
+
+        let which_cmd = if cfg!(windows) { "where" } else { "which" };
+        let mut cmd = std::process::Command::new(which_cmd);
+        cmd.arg("jan");
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        let on_path = cmd
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| first_resolved(&String::from_utf8_lossy(&o.stdout)));
+
+        let action = decide_auto(
+            on_path.as_deref(),
+            &target,
+            &ownership(&target, &bundled),
+            version_changed,
+        );
+        match &action {
+            AutoAction::UpToDate => {
+                log::debug!("jan CLI already installed and current — skipping reinstall");
+                return;
+            }
+            AutoAction::LeaveForeign(path) => {
+                log::info!(
+                    "jan CLI at {} was not installed by Jan Desktop; leaving it alone \
+                     (Settings > General can replace it on request)",
+                    path.display()
+                );
+                return;
+            }
+            AutoAction::Install | AutoAction::Update => {}
         }
 
         match crate::core::system::commands::install_jan_cli_sync(&app_handle) {
             Ok(status) => {
                 log::info!(
                     "jan CLI {} to {}",
-                    if version_changed {
+                    if action == AutoAction::Update {
                         "updated"
                     } else {
                         "installed"
@@ -621,4 +636,76 @@ fn setup_window_theme_listener<R: Runtime>(
             let _ = app_handle_clone.emit("theme-changed", theme_str);
         }
     });
+}
+
+#[cfg(test)]
+mod exa_migration_tests {
+    use super::remove_default_exa;
+    use serde_json::json;
+
+    fn config(exa: serde_json::Value) -> serde_json::Value {
+        json!({ "mcpServers": { "exa": exa, "filesystem": { "command": "npx" } } })
+    }
+
+    // janhq/jan#8911: this is the entry the old v3 migration wrote, and the old
+    // removal kept it because it was active.
+    #[test]
+    fn the_hosted_entry_jan_activated_itself_is_removed() {
+        let mut c = config(json!({
+            "type": "http", "url": "https://mcp.exa.ai/mcp",
+            "command": "", "args": [], "env": {}, "active": true
+        }));
+        assert!(remove_default_exa(&mut c));
+        assert!(c["mcpServers"].get("exa").is_none());
+        assert!(c["mcpServers"].get("filesystem").is_some());
+    }
+
+    #[test]
+    fn the_inactive_stdio_default_with_its_placeholder_key_is_removed() {
+        let mut c = config(json!({
+            "command": "npx", "args": ["-y", "exa-mcp-server"],
+            "env": { "EXA_API_KEY": "YOUR_EXA_API_KEY_HERE" }, "active": false
+        }));
+        assert!(remove_default_exa(&mut c));
+    }
+
+    #[test]
+    fn an_entry_with_a_real_key_is_kept() {
+        let mut hosted = config(json!({
+            "type": "http", "url": "https://mcp.exa.ai/mcp",
+            "env": { "EXA_API_KEY": "sk-user-supplied" }, "active": true
+        }));
+        assert!(!remove_default_exa(&mut hosted));
+        let mut stdio = config(json!({
+            "command": "npx", "args": ["-y", "exa-mcp-server"],
+            "env": { "EXA_API_KEY": "sk-user-supplied" }, "active": false
+        }));
+        assert!(!remove_default_exa(&mut stdio));
+    }
+
+    #[test]
+    fn a_hosted_entry_pointed_elsewhere_is_kept() {
+        let mut c = config(json!({
+            "type": "http", "url": "https://mcp.exa.ai/mcp?exaApiKey=sk-user",
+            "env": {}, "active": true
+        }));
+        assert!(!remove_default_exa(&mut c));
+    }
+
+    #[test]
+    fn a_stdio_entry_the_user_switched_on_is_kept() {
+        let mut c = config(json!({
+            "command": "npx", "args": ["-y", "exa-mcp-server"],
+            "env": {}, "active": true
+        }));
+        assert!(!remove_default_exa(&mut c));
+    }
+
+    #[test]
+    fn no_exa_entry_is_a_no_op() {
+        let mut c = json!({ "mcpServers": { "filesystem": {} } });
+        assert!(!remove_default_exa(&mut c));
+        let mut empty = json!({});
+        assert!(!remove_default_exa(&mut empty));
+    }
 }

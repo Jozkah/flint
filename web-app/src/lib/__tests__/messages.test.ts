@@ -268,6 +268,22 @@ describe('convertThreadMessageToUIMessage', () => {
     expect(result.parts.find((p: any) => p.type === 'tool-pending')).toMatchObject({ state: 'input-available' })
   })
 
+  // janhq/jan#8519: a tool call stopped before its input streamed was stored
+  // with no `arguments`, and replaying that history failed the chat template
+  // with `key 'arguments' not found`.
+  it('gives a stored tool call without input an empty input object', () => {
+    const current = convertThreadMessageToUIMessage(makeTm({
+      content: [{ type: 'tool_call', tool_call_id: 'tc-n', tool_name: 'read' }],
+    }) as any)
+    expect((current.parts[0] as any).input).toEqual({})
+
+    const legacy = convertThreadMessageToUIMessage(makeTm({
+      content: [],
+      metadata: { tool_calls: [{ tool: { id: 'tc-l', function: { name: 'read' } }, state: 'pending' }] },
+    }) as any)
+    expect((legacy.parts.find((p: any) => p.type === 'tool-read') as any).input).toEqual({})
+  })
+
   it('adds empty text part when no content', () => {
     const result = convertThreadMessageToUIMessage(makeTm({ content: [] }) as any)
     expect(result.parts).toEqual([{ type: 'text', text: '' }])

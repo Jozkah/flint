@@ -76,6 +76,25 @@ fn test_validate_proxy_config() {
     assert!(validate_proxy_config(&config).is_err());
 }
 
+// janhq/jan#8565: the download client's bypass check read only the in-app list,
+// so a host exempted through NO_PROXY still went through the proxy. The one
+// production caller is this helper, so the environment has to reach it.
+#[test]
+fn download_proxy_bypass_honours_the_no_proxy_environment() {
+    let previous = std::env::var("NO_PROXY").ok();
+    std::env::set_var("NO_PROXY", "models.internal.example");
+
+    let bypassed = should_bypass_proxy("https://models.internal.example/x.gguf", &[]);
+    let proxied = should_bypass_proxy("https://huggingface.co/x.gguf", &[]);
+
+    match previous {
+        Some(v) => std::env::set_var("NO_PROXY", v),
+        None => std::env::remove_var("NO_PROXY"),
+    }
+    assert!(bypassed, "a host listed in NO_PROXY must skip the proxy");
+    assert!(!proxied, "a host not listed must still use the proxy");
+}
+
 #[test]
 fn test_should_bypass_proxy() {
     let no_proxy = vec![

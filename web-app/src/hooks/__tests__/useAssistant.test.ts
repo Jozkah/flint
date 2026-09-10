@@ -48,6 +48,46 @@ describe('useAssistant', () => {
     expect(result.current.assistants).toContain(newAssistant)
   })
 
+  // janhq/jan#8524: a thread keeps a snapshot of its assistant, and the chat
+  // route builds the system prompt from that snapshot. Editing the assistant
+  // updated the assistant list and nothing else, so an open conversation kept
+  // answering to the old instructions.
+  it('carries an edited assistant into the threads that use it', async () => {
+    const { useThreads } = await import('../useThreads')
+    const bound = {
+      id: 'thread-bound',
+      title: 'Bound',
+      model: { id: 'qwen3-8b', provider: 'llamacpp' },
+      assistants: [{ ...defaultAssistant, instructions: 'Answer in Spanish.' }],
+      updated: 1,
+    }
+    const other = {
+      id: 'thread-other',
+      title: 'Other',
+      model: { id: 'gemma-3', provider: 'llamacpp' },
+      assistants: [{ ...defaultAssistant, id: 'someone-else', instructions: 'Be terse.' }],
+      updated: 1,
+    }
+    act(() => {
+      useThreads.setState({
+        threads: { [bound.id]: bound, [other.id]: other } as any,
+      })
+    })
+
+    act(() => {
+      useAssistant
+        .getState()
+        .updateAssistant({ ...defaultAssistant, instructions: 'You are a pirate.' })
+    })
+
+    const threads = useThreads.getState().threads as any
+    expect(threads['thread-bound'].assistants[0].instructions).toBe('You are a pirate.')
+    // The thread's own model binding survives the refresh.
+    expect(threads['thread-bound'].assistants[0].model).toEqual(bound.model)
+    // A thread on another assistant is not touched.
+    expect(threads['thread-other'].assistants[0].instructions).toBe('Be terse.')
+  })
+
   it('should update assistant', () => {
     const { result } = renderHook(() => useAssistant())
 
