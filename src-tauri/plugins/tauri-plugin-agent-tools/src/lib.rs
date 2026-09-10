@@ -20,6 +20,7 @@ pub mod memory;
 pub mod permissions;
 pub mod policy;
 pub mod project_browse;
+pub mod proposal;
 pub mod readiness;
 pub mod resource;
 pub mod secrets;

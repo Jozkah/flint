@@ -26,6 +26,9 @@ similar = "2.6"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9.34"
+# Content addressing for proposed changes: blob ids, patch and base-state
+# hashes. A proposal is approved by hash, so the hash has to be a real one.
+sha2 = "0.10"
 # The project policy in `.jan/agent/agent.toml` is read here so the backend
 # enforces it; the app crate reading it for the CLI is a different consumer.
 toml = "0.8"
