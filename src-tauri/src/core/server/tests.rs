@@ -70,6 +70,7 @@ mod server_tests {
             host: "localhost".to_string(),
             port: 1337,
             enable_server_tool_execution: false,
+            cors_enabled: true,
         };
         assert_eq!(config.prefix, "/v1");
         assert_eq!(config.proxy_api_key, "test-key");
@@ -87,6 +88,7 @@ mod server_tests {
             host: "127.0.0.1".to_string(),
             port: 8080,
             enable_server_tool_execution: false,
+            cors_enabled: true,
         };
         assert_eq!(config.prefix, "");
         assert_eq!(config.proxy_api_key, "");
@@ -1117,11 +1119,41 @@ mod server_tests {
             host: "h".to_string(),
             port: 1,
             enable_server_tool_execution: true,
+            cors_enabled: false,
         };
         let cloned = cfg.clone();
         assert_eq!(cloned.prefix, "/p");
         assert_eq!(cloned.proxy_api_key, "k");
         assert!(cloned.enable_server_tool_execution);
+        assert!(!cloned.cors_enabled);
+    }
+
+    /// janhq/jan#8836: with CORS off, a response -- a preflight, one the
+    /// proxy built, or one a backend sent -- carries no Access-Control header,
+    /// so a page on another origin is refused. Everything else is kept.
+    #[test]
+    fn cors_off_strips_every_access_control_header() {
+        let trusted = vec![vec!["localhost".to_string()]];
+        let builder = proxy::add_cors_headers_with_host_and_origin(
+            hyper::Response::builder()
+                .header("content-type", "application/json")
+                .header("Access-Control-Expose-Headers", "x-from-backend"),
+            "localhost",
+            "http://localhost:3000",
+            &trusted,
+        );
+        let mut resp = builder
+            .body(http_body_util::Empty::<hyper::body::Bytes>::new())
+            .unwrap();
+        assert!(resp.headers().contains_key("access-control-allow-origin"));
+
+        proxy::strip_cors_headers(&mut resp);
+        let h = resp.headers();
+        assert!(
+            !h.keys().any(|k| k.as_str().starts_with("access-control-")),
+            "{h:?}"
+        );
+        assert_eq!(h.get("content-type").unwrap(), "application/json");
     }
 
     #[test]
