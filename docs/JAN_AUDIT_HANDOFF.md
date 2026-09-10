@@ -1063,14 +1063,24 @@ re-investigate.
 
 ## 2026-09-10 — AH-007: the subject reaches production
 
-The previous session left AH-007 with the subject matched inside the rule
-engine and `Subject::MainAgent` hard-coded at every call site. Threading it
-through turned up two things worse than "unreachable".
+Two sessions reached this independently, which is worth recording because the
+duplication cost real time. `fork/main` already carried
+`9a4cfe2 fix(permissions): tell the gate which agent is actually asking`, which
+fixed the same compile failure and threaded the same identity, storing it as
+`OrchestrationArgs::subject` where this branch had added
+`OrchestrationArgs::agent_name`. **Upstream's design won on merge** -- it was
+already published and already used by `run_subagent` -- and this branch's
+parallel field was removed. Check `fork/main` before starting a registry item,
+not after finishing one.
+
+What was *not* upstream, and is the substance of this branch's contribution, is
+the advertising half below.
 
 **The desktop crate did not compile.** `resolve_decision` grew a tenth
 parameter and `src/core/agent/loop.rs` was never updated, so `cargo check` on
 the `Jan` crate failed with E0061 while the plugin's own tests all passed. The
-plugin suite is not evidence that the application builds.
+plugin suite is not evidence that the application builds. (Fixed on both
+branches; upstream's fix is the one that survives.)
 
 **A subject-qualified rule over-denied.** `ToolPermissions::is_denied` and
 `is_allowed` answered "does any rule name this tool", ignoring the subject.
@@ -1090,7 +1100,8 @@ rules *for the child*, by the name it is being dispatched under, which is what
 makes a rule about one subagent narrow that subagent's list.
 
 Compiles on all three configurations: default, `--features cowork-smoke`, and
-`--no-default-features --features cli`, tests included.
+`--no-default-features --features cli`, tests included. 682 plugin tests pass
+after the merge.
 
 **Obstruction recorded: the `Jan` lib test binary does not start on Windows.**
 `cargo test -p Jan --lib` exits `0xc0000139` (`STATUS_ENTRYPOINT_NOT_FOUND`)

@@ -773,10 +773,12 @@ async fn run_subagent(
     let mut child_args = parent_args;
     child_args.system_prompt_override = Some(resolved.definition.system_prompt.clone());
     child_args.subagents_enabled = false;
-    // AH-007: the child's permission decisions are made for `agent:<name>`, not
-    // for the main agent. Without this every subagent is judged as its parent,
-    // and a rule naming one is correct but unreachable.
-    child_args.agent_name = Some(name.clone());
+    // AH-007: the child asks the permission gate as itself, so a rule
+    // qualified `agent:<name>` binds this subagent and not its parent. An
+    // unqualified rule still covers every subject, so a project that never
+    // names one is unaffected.
+    child_args.subject =
+        tauri_plugin_agent_tools::subject::Subject::NamedAgent(name.clone());
     // A subagent's own interactive question (if any) belongs to its parent's
     // conversation, not a client waiting on this child's ask_requests -- and
     // no client is attached to a background/child run anyway.
@@ -1958,6 +1960,7 @@ mod tests {
             auto_approve: false,
             run_mode: crate::core::agent::plan::RunMode::Normal,
             session_id: None,
+            subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
             sandbox: None,
             // A parent run: the child sets its own name when dispatched.
             agent_name: None,

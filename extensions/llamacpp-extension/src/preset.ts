@@ -552,14 +552,16 @@ export async function generatePreset(
       lines.push(`ctx-size = ${mc.ctx_size}`)
       ctxEmitted = true
     }
-    // Skipped when auto-fit is on: an explicit n-gpu-layers makes fit abort its
-    // layer-offload computation. -1 is auto and -2 or below means all layers,
-    // so the floor is -2 rather than 0.
-    if (
-      !fitEnabled &&
-      typeof mc.n_gpu_layers === 'number' &&
-      mc.n_gpu_layers >= -2
-    ) {
+    // `n_gpu_layers` only reaches model.yml when the user set GPU Layers for
+    // this model, so it is always an explicit override and always wins — even
+    // with auto-fit on, where it makes fit skip its own layer-offload
+    // computation for this model. That is the point of overriding it. This used
+    // to be gated on `!fitEnabled`, and since fit defaults to on the setting
+    // silently did nothing: set to 100, still running on CPU, no `-ngl` in the
+    // launch args (janhq/jan#8894).
+    //
+    // -1 is auto and -2 or below means all layers, so the floor is -2, not 0.
+    if (typeof mc.n_gpu_layers === 'number' && mc.n_gpu_layers >= -2) {
       lines.push(`n-gpu-layers = ${mc.n_gpu_layers}`)
     }
     if (

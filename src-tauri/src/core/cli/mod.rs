@@ -720,6 +720,7 @@ fn build_cli_orchestration_args(
         session_id: Some(uuid::Uuid::new_v4().to_string()),
         // `--sandbox` only when passed; unset falls through to the project's
         // `[tools].sandbox` and then the user's global `sandbox`.
+        subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
         sandbox,
         // The run the user started is the top-level agent. A subagent it
         // dispatches gets its own name on the cloned child args.

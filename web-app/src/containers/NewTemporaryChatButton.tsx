@@ -2,7 +2,7 @@ import { IconClock } from '@tabler/icons-react'
 import { useNavigate } from '@tanstack/react-router'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { route } from '@/constants/routes'
-import { defaultModel } from '@/lib/models'
+import { resolveThreadModelId } from '@/lib/models'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useThreads } from '@/hooks/useThreads'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -26,10 +26,19 @@ export function NewTemporaryChatButton() {
   const navigate = useNavigate()
 
   const start = () => {
-    const { selectedModel, selectedProvider } = useModelProvider.getState()
+    const { selectedModel, selectedProvider, getProviderByName } =
+      useModelProvider.getState()
+    // A local engine has no cloud catalogue to borrow a model id from, so with
+    // nothing selected there is no thread worth opening (janhq/jan#8007).
+    const modelId = resolveThreadModelId(
+      selectedProvider,
+      selectedModel?.id,
+      (getProviderByName(selectedProvider)?.models ?? []).map((m) => m.id)
+    )
+    if (!modelId) return
     useThreads.getState().createThread(
       {
-        id: selectedModel?.id ?? defaultModel(selectedProvider),
+        id: modelId,
         provider: selectedProvider,
       },
       undefined,
