@@ -42,8 +42,8 @@ Mutation: reverting `isNativeWebTool` to the name-only check fails
 `leaves the names to an MCP server while built-in web search is off` and
 `treats an MCP server web_search as that server tool while built-in search is off`.
 
-## Follow-up
+## Cowork
 
-Cowork (`web-app/src/lib/coworkDispatch.ts`) already refuses the native tools
-when web access is off, so it cannot be bypassed the same way; whether it then
-lets a same-named MCP tool run is recorded separately.
+`web-app/src/lib/coworkDispatch.ts` already refuses the native web tools when
+web access is off, and Cowork has no MCP dispatch path, so there is no
+same-named server tool it could misroute. Nothing to change there.

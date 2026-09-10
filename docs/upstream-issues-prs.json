@@ -66229,7 +66229,7 @@
       ],
       "verification": "3 + 38 passed; reverting the gate fails both new tests.",
       "blockers": [],
-      "notes": null
+      "notes": "Cowork refuses native web tools when web access is off and has no MCP dispatch path, so no misrouting there."
     },
     {
       "source": "janhq/jan",
