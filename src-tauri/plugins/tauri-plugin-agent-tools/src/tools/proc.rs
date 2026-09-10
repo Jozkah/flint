@@ -502,11 +502,19 @@ const TEMP_ENV_KEYS: &[&str] = &["TMPDIR", "TMP", "TEMP"];
 /// Bound the resource exhaustion a sandboxed command could otherwise trigger on
 /// the host. `bwrap` 0.6.1 (and older) has no `--rlimit`, so instead we clamp the
 /// child's soft limits here, before exec, from the one choke point every backend
-/// funnels through. A fork-bomb is capped by `NPROC`, descriptor exhaustion by
-/// `NOFILE`, and disk fill through the unbounded workspace bind by `FSIZE`. The
-/// bwrap wrapper execs `bwrap` itself, which sets up the namespace and then
-/// execs the real shell, so the limits carry over to every descendant. Linux
-/// only; the Windows AppContainer child is limited by its token.
+/// funnels through. Descriptor exhaustion is capped by `NOFILE` and disk fill
+/// through the unbounded workspace bind by `FSIZE`.
+///
+/// `NPROC` is charged to the whole Unix user, not to this shell tree, so on a
+/// busy workstation unrelated processes can use up the allowance and make an
+/// ordinary tool command fail at `fork()`. Linux keeps a finite fork-bomb
+/// ceiling at 8192; macOS already enforces its own per-user ceiling
+/// (`kern.maxprocperuid`) that an unprivileged child cannot raise, so no cap is
+/// set there (adapted from janhq/jan#8785).
+///
+/// The bwrap wrapper execs `bwrap` itself, which sets up the namespace and then
+/// execs the real shell, so the limits carry over to every descendant. The
+/// Windows AppContainer child is limited by its token instead.
 #[cfg(unix)]
 fn confine_limits(cmd: &mut Command) {
     // `tokio::process::Command::pre_exec` (unix) is the std `pre_exec`; the call
@@ -518,8 +526,9 @@ fn confine_limits(cmd: &mut Command) {
     unsafe {
         cmd.pre_exec(|| {
             for (resource, limit) in [
-                (nix::libc::RLIMIT_NPROC, 4096_u64),
-                (nix::libc::RLIMIT_NOFILE, 1024_u64),
+                #[cfg(target_os = "linux")]
+                (nix::libc::RLIMIT_NPROC, 8192_u64),
+                (nix::libc::RLIMIT_NOFILE, 2048_u64),
                 (nix::libc::RLIMIT_FSIZE, 1024_u64 * 1024_u64 * 1024_u64),
             ] {
                 let r = nix::libc::rlimit {
@@ -1033,14 +1042,14 @@ mod tests {
         unregister(pid);
 
         // Spawn a shell that reports its own soft NOFILE limit; confine_limits
-        // sets it to 1024, which should be visible inside the sandbox.
+        // sets it to 2048, which should be visible inside the sandbox.
         let child = spawn(shell(), "ulimit -n", &tmp(), None).await.unwrap();
         let pid = child.id().unwrap();
         let out = child.wait_with_output().await.unwrap();
         unregister(pid);
         let val = String::from_utf8_lossy(&out.stdout).trim().to_string();
         assert_eq!(
-            val, "1024",
+            val, "2048",
             "NOFILE soft limit should be capped, got: {val}"
         );
     }
