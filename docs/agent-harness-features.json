@@ -6347,13 +6347,18 @@
       "category": "agents",
       "phase": 9,
       "phaseName": "Approved additions",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-107"
       ],
       "owner": "lane-25-agents",
-      "files": [],
+      "files": [
+        "web-app/src/lib/utilityAgents.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/utility.rs",
+        "web-app/src/lib/thread-title-summarizer.ts",
+        "web-app/src/lib/context-manager.ts"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "Internal agents used for summarising, titling and classification run without appearing as user-facing agents.",
@@ -6368,12 +6373,14 @@
         "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
       ],
       "tests": [
-        "src-tauri/src/core/agent/subagent.rs::tests"
+        "web-app::utilityAgents.test.ts",
+        "tauri-plugin-agent-tools::utility::tests::free_text_is_stripped_and_tools_are_never_recorded_as_offered",
+        "cowork-smoke::utility-agent-title"
       ],
       "platformRequirements": [],
       "blockedReason": null,
       "evidence": "Not implemented. Subagents exist but there is no hidden class with a reduced tool set and no authority inheritance boundary for one.",
-      "auditNote": ""
+      "auditNote": "Titling and compaction summaries run through runUtilityAgent: generateText with no tools and toolChoice 'none', and no parameter through which a tool, grant or write root could be passed, so they cannot read files or run commands and inherit nothing from the run. They are not shown as agents or on any timeline. Every invocation (succeeded, failed, cancelled) is recorded in audit/utility-agents.jsonl with kind, session, model, duration and token counts; the backend refuses any field that is not an identifier rather than filtering it, so no content reaches the file. The title path no longer logs the transcript or the title. Windows: cowork-smoke utility-agent-title passes on a real round trip."
     },
     {
       "id": "AH-209",

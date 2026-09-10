@@ -34,8 +34,8 @@ and the latter two require a recorded `blockedReason`.
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 20 | 0 | 4 | 2 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 17 | 0 | 6 | 6 | 0 | 0 | 0 | 29 |
-| 9 | Approved additions | 7 | 0 | 1 | 2 | 0 | 0 | 0 | 10 |
-| **all** | | **84** | **0** | **36** | **90** | **0** | **0** | **0** | **210** |
+| 9 | Approved additions | 6 | 0 | 1 | 3 | 0 | 0 | 0 | 10 |
+| **all** | | **83** | **0** | **36** | **91** | **0** | **0** | **0** | **210** |
 
 ## Ownership lanes
 
@@ -277,7 +277,7 @@ per-OS evidence log rather than backlog items.
 | `AH-205` | Persistent reference aliases | 9 | composer | P2 | `missing` | medium | `AH-204` |
 | `AH-206` | Local command palette | 9 | navigation | P2 | `implemented` | low | - |
 | `AH-207` | Customizable keybindings | 9 | navigation | P2 | `in-progress` | low | `AH-206` |
-| `AH-208` | Hidden internal utility agents | 9 | agents | P2 | `missing` | high | `AH-107` |
+| `AH-208` | Hidden internal utility agents | 9 | agents | P2 | `implemented` | high | `AH-107` |
 | `AH-209` | Project initialization assistant | 9 | projects | P2 | `missing` | medium | `AH-204` |
 | `AH-210` | Portable PC-to-PC handoff bundle | 9 | sessions | P2 | `missing` | high | `AH-203`, `AH-146` |
 
@@ -382,3 +382,4 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-201` Conversation and session forking** - forkSession copies the conversation up to a named turn and records parent and divergence. It carries no authority: no folder, access mode, edit consent, write grant or run budget, so forking cannot multiply what was granted once, and two sessions are never pointed at one checkout unknowingly. An unknown session or an out-of-range divergence point is refused rather than clamped. Reachable from the session row menu by keyboard (context menu key or Shift+F10) and announced by a toast.
 - **`AH-206` Local command palette** - Ctrl/Cmd+Shift+P (rebindable) opens one palette above every route: actions (new chat, new project, search conversations, toggle sidebar), navigation (Cowork, artifacts, system monitor, logs), every settings page and every conversation. Ranked in memory with Fuse; no request of any kind. Escape closes it. Windows: cowork-smoke command-palette-keybindings opens it from the home route by the chord, ranks 'system monitor' first and navigates on Enter.
 - **`AH-207` Customizable keybindings** - Settings > Shortcuts: Change records the next chord; a chord any other command uses (including zoom's alias keys) is refused naming that command; every app shortcut stands down while recording, so the taken chord is reported instead of run; Reset restores the default. Only overrides are persisted through the backend settings store and rehydrated with the other backend stores. Windows: cowork-smoke command-palette-keybindings proves the conflict message, acceptance, the write to settings.json, the new chord working and the old one not, and Reset. MISSING for implemented: restoration after a real application restart is proven by the rehydrate unit test and by the Windows scenario seeing the override written to settings.json, not by restarting the app on Windows; and the sidebar's New Chat hint still shows the default chord.
+- **`AH-208` Hidden internal utility agents** - Titling and compaction summaries run through runUtilityAgent: generateText with no tools and toolChoice 'none', and no parameter through which a tool, grant or write root could be passed, so they cannot read files or run commands and inherit nothing from the run. They are not shown as agents or on any timeline. Every invocation (succeeded, failed, cancelled) is recorded in audit/utility-agents.jsonl with kind, session, model, duration and token counts; the backend refuses any field that is not an identifier rather than filtering it, so no content reaches the file. The title path no longer logs the transcript or the title. Windows: cowork-smoke utility-agent-title passes on a real round trip.

@@ -1632,3 +1632,27 @@ already names each child's worktree.
   down when that action has an override.
 - **Left.** The sidebar's New Chat hint shows the default chord, not the
   user's; a restart on Windows was not exercised (see the verification note).
+
+## 2026-09-10 — Batch 5: hidden utility agents (AH-208 implemented); AH-209 not started
+
+- **What changed.** `runUtilityAgent` is the one way Jan makes a model call for
+  itself. Titling (`generateThreadTitle`) and compaction summaries
+  (`compactMessages`) use it. It passes no tools and `toolChoice: 'none'`, and
+  its request type has no field for a tool, grant or write root. Every call is
+  recorded in `audit/utility-agents.jsonl` (kind, session, model, outcome,
+  duration, token counts) through `utility_agent_record`.
+- **Two leaks found and closed.** The title path logged the conversation
+  excerpt's title and the raw model output to the webview console, which is
+  written to the app log; it no longer logs either. And the first version of
+  the backend sanitizer filtered disallowed characters out of a field, which
+  turned `model\nsummary: the plan` into `modelsummarytheplan` — still the
+  content. A field that is not an identifier is now refused whole.
+- **AH-209 (project initialization assistant) is not started**: it depends on
+  AH-204 (unified @ references), which is `missing`. While reading the current
+  `@` path code for AH-204 I noted that a manually typed `@../x` or `@/abs`
+  reference in chat resolves outside the working directory (the picker itself
+  inserts a plain absolute path, not an `@` reference). The user typed it, so
+  it is not an escalation, but AH-204's "nothing outside the folder is
+  resolvable" criterion is not met today.
+- **Sidebar hints follow rebinding.** The Search, New Chat and New Project
+  hints in both sidebars now render the binding in force (`ShortcutHint`).

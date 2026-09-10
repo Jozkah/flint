@@ -1,5 +1,6 @@
 import type { UIMessage } from '@ai-sdk/react'
-import { generateText, type LanguageModel } from 'ai'
+import { type LanguageModel } from 'ai'
+import { runUtilityAgent } from './utilityAgents'
 
 /**
  * Approximate token count using a character-based heuristic.
@@ -151,7 +152,9 @@ export async function compactMessages(
   messages: UIMessage[],
   config: ContextManagerConfig,
   model: LanguageModel,
-  systemPromptTokens: number = 0
+  systemPromptTokens: number = 0,
+  /** Who the summary is for, for the utility-agent record (AH-208). */
+  utility: { session: string; modelId: string } = { session: '', modelId: '' }
 ): Promise<TrimResult> {
   const { maxContextTokens, maxOutputTokens } = config
 
@@ -194,7 +197,9 @@ export async function compactMessages(
   const summaryOutputTokens = 512
   const summaryBudgetTokens = Math.max(
     1024,
-    maxContextTokens - summaryOutputTokens - estimateTokens(COMPACT_SYSTEM_PROMPT)
+    maxContextTokens -
+      summaryOutputTokens -
+      estimateTokens(COMPACT_SYSTEM_PROMPT)
   )
   const maxExcerptChars = Math.floor(summaryBudgetTokens * CHARS_PER_TOKEN)
 
@@ -204,10 +209,19 @@ export async function compactMessages(
       : conversationText
 
   try {
-    const { text: summary } = await generateText({
+    // A hidden utility agent (AH-208): no tools, not shown, always recorded.
+    const summary = await runUtilityAgent({
+      kind: 'summary',
+      session: utility.session,
       model,
+      modelId: utility.modelId,
       system: COMPACT_SYSTEM_PROMPT,
-      prompt: `Summarize this conversation excerpt:\n\n${truncated}`,
+      messages: [
+        {
+          role: 'user',
+          content: `Summarize this conversation excerpt:\n\n${truncated}`,
+        },
+      ],
       maxOutputTokens: summaryOutputTokens,
     })
 
@@ -237,7 +251,10 @@ export async function compactMessages(
       compactedSummary: summary,
     }
   } catch (error) {
-    console.warn('Auto-compact summarization failed, falling back to trim:', error)
+    console.warn(
+      'Auto-compact summarization failed, falling back to trim:',
+      error
+    )
     return trimResult
   }
 }

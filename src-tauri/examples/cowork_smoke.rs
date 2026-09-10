@@ -898,6 +898,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_palette_keybindings,
     },
     Scenario {
+        name: "utility-agent-title",
+        run: scenario_utility_agent_title,
+    },
+    Scenario {
         name: "memory-proposal-approval",
         run: scenario_memory_proposal,
     },
@@ -2299,6 +2303,52 @@ fn scenario_composer_footer(ctx: &Ctx) -> ScenarioResult {
         overlap <= 1,
         "the control row covers the bottom {overlap}px of the textarea: {report}"
     );
+    Ok(())
+}
+
+/// Titling a conversation is a hidden utility agent. AH-208.
+///
+/// After a real round trip on the chat route, the automatic title call runs
+/// through `runUtilityAgent`, and this proves it is accountable without being
+/// a leak: a `title` record lands in `audit/utility-agents.jsonl` for this
+/// conversation, it says no tools were offered, and it holds neither the
+/// user's message, nor the model's reply, nor the provider key.
+fn scenario_utility_agent_title(ctx: &Ctx) -> ScenarioResult {
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let log = Path::new(&data).join("audit").join("utility-agents.jsonl");
+    let before = std::fs::read_to_string(&log).unwrap_or_default().lines().count();
+
+    scenario_model_round_trip(ctx)?;
+
+    let mut fresh: Vec<String> = Vec::new();
+    for _ in 0..60 {
+        fresh = std::fs::read_to_string(&log)
+            .unwrap_or_default()
+            .lines()
+            .skip(before)
+            .map(str::to_string)
+            .collect();
+        if fresh.iter().any(|l| l.contains("\"kind\":\"title\"")) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    let title = fresh
+        .iter()
+        .find(|l| l.contains("\"kind\":\"title\""))
+        .ok_or_else(|| Failure("the automatic title call was never recorded".into()))?;
+    ensure!(
+        title.contains("\"outcome\":\"succeeded\""),
+        "the title call did not succeed: {title}"
+    );
+    ensure!(
+        title.contains("\"toolsOffered\":false"),
+        "the title call is not recorded as tool-free: {title}"
+    );
+    let all = fresh.join("\n");
+    for leaked in ["hello smoke", "Hello from the smoke model", "smoke-not-a-real-key"] {
+        ensure!(!all.contains(leaked), "the utility-agent record holds {leaked:?}");
+    }
     Ok(())
 }
 

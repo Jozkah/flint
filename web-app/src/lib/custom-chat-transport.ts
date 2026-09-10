@@ -1509,7 +1509,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           messagesToConvert,
           contextConfig,
           this.model,
-          systemPromptTokens
+          systemPromptTokens,
+          { session: options.chatId ?? '', modelId: selectedModel?.id ?? '' }
         )
         effectiveMessages = compactResult.messages
         if (compactResult.trimmedCount > 0) {

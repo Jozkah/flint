@@ -28,10 +28,7 @@ import {
 } from '@/components/animated-icon/message-circle'
 import { type SettingsIconHandle } from '@/components/animated-icon/settings'
 import { type BlocksIconHandle } from '../animated-icon/blocks'
-import {
-  BotIcon,
-  type BotIconHandle,
-} from '@/components/animated-icon/bot'
+import { BotIcon, type BotIconHandle } from '@/components/animated-icon/bot'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
 import { useThreadManagement } from '@/hooks/useThreadManagement'
 import { useSearchDialog } from '@/hooks/useSearchDialog'
@@ -39,6 +36,7 @@ import { useProjectDialog } from '@/hooks/useProjectDialog'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { PlatformShortcuts, ShortcutAction } from '@/lib/shortcuts'
+import { ShortcutHint } from '@/containers/ShortcutHint'
 
 type AnimatedIconHandle =
   | SearchIconHandle
@@ -76,29 +74,13 @@ const getNavMainItems = (
     title: 'common:search',
     animatedIcon: SearchIcon,
     onClick: onSearch,
-    shortcut: (
-      <KbdGroup className="ml-auto scale-90 gap-0">
-        <Kbd className="bg-transparent size-3">
-          <PlatformMetaKey />
-        </Kbd>
-        <Kbd className="bg-transparent size-3 uppercase">
-          {PlatformShortcuts[ShortcutAction.SEARCH].key}
-        </Kbd>
-      </KbdGroup>
-    ),
+    shortcut: <ShortcutHint action={ShortcutAction.SEARCH} />,
   },
   {
     title: 'common:newChat',
     animatedIcon: MessageCircleIcon,
     onClick: onNewChat,
-    shortcut: (
-      <KbdGroup className="ml-auto scale-90 gap-0">
-        <Kbd className="bg-transparent size-3">
-          <PlatformMetaKey />
-        </Kbd>
-        <Kbd className="bg-transparent size-3 uppercase">{PlatformShortcuts[ShortcutAction.NEW_CHAT].key}</Kbd>
-      </KbdGroup>
-    ),
+    shortcut: <ShortcutHint action={ShortcutAction.NEW_CHAT} />,
   },
   {
     title: 'common:newAgentChat',
@@ -109,7 +91,9 @@ const getNavMainItems = (
         <Kbd className="bg-transparent size-3">
           <PlatformMetaKey />
         </Kbd>
-        <Kbd className="bg-transparent size-3 uppercase">{PlatformShortcuts[ShortcutAction.NEW_AGENT_CHAT].key}</Kbd>
+        <Kbd className="bg-transparent size-3 uppercase">
+          {PlatformShortcuts[ShortcutAction.NEW_AGENT_CHAT].key}
+        </Kbd>
       </KbdGroup>
     ),
   },
@@ -117,14 +101,7 @@ const getNavMainItems = (
     title: 'common:projects.new',
     animatedIcon: FolderPlusIcon,
     onClick: onNewProject,
-    shortcut: (
-      <KbdGroup className="ml-auto scale-90 gap-0">
-        <Kbd className="bg-transparent size-3">
-          <PlatformMetaKey />
-        </Kbd>
-        <Kbd className="bg-transparent size-3 uppercase">{PlatformShortcuts[ShortcutAction.NEW_PROJECT].key}</Kbd>
-      </KbdGroup>
-    ),
+    shortcut: <ShortcutHint action={ShortcutAction.NEW_PROJECT} />,
   },
   // Distinct from a collection on purpose: this is the entry point that
   // actually opens a folder, and until it existed the only thing that looked

@@ -341,3 +341,12 @@ this check. Fixed in `providerFetch`; the scenario now passes on Windows.
 
 AH-207 stays `in-progress`: restoration is proven by the rehydrate test and the
 write to `settings.json`, not by restarting the app on Windows.
+
+## Hidden utility agents (AH-208)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 5 unit tests | `web-app/src/lib/__tests__/utilityAgents.test.ts` | the model is called with no tools and `toolChoice: 'none'`; a success is recorded with counts and without the prompt or the output; a failure is recorded and re-thrown without its message; a cancellation is recorded as cancelled; a failed record never fails the call |
+| 3 unit tests | `plugins/tauri-plugin-agent-tools/src/utility.rs` | every invocation recorded and found by session; a lookup must name a session; a field carrying content is refused whole (not filtered down to its letters) and "tools offered" can never be recorded true |
+| existing suites | `thread-title-summarizer.test.ts`, `context-manager.test.ts` | titling and compaction still behave as before through the wrapper |
+| Real WebView scenario | `cowork-smoke --only utility-agent-title` | a real chat round trip on `/` triggers the automatic title; a `title` record for that conversation lands in `audit/utility-agents.jsonl` with `succeeded` and `toolsOffered:false`, and neither the user's message, the model's reply nor the provider key appears in it. **Passed on Windows 2026-09-10** |

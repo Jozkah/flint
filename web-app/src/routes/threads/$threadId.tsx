@@ -761,7 +761,8 @@ function ThreadDetail() {
               titleAbortRef.current = controller
               const title = await generateThreadTitle(
                 inputText,
-                controller.signal
+                controller.signal,
+                threadId
               )
               if (!title || controller.signal.aborted) return
               useThreads.getState().updateThread(threadId, { title })

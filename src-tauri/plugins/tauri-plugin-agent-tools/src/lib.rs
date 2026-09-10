@@ -29,6 +29,7 @@ pub mod snapshot;
 pub mod subject;
 pub mod tools;
 pub mod usage;
+pub mod utility;
 pub mod workspace;
 
 #[cfg(feature = "tauri")]

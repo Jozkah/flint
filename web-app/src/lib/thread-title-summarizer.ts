@@ -1,4 +1,4 @@
-import { generateText } from 'ai'
+import { runUtilityAgent } from './utilityAgents'
 import { ModelFactory } from './model-factory'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { BACKGROUND_SLOT_ID } from '@/constants/models'
@@ -22,13 +22,17 @@ export function cleanTitle(raw: string): string | null {
   let text = raw.trim()
 
   // Strip complete reasoning blocks like <think>...</think> (any tag name)
-  text = text.replace(/<(think|thinking|reasoning|analysis)[^>]*>[\s\S]*?<\/\1>/gi, '').trim()
+  text = text
+    .replace(/<(think|thinking|reasoning|analysis)[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .trim()
 
   // If a reasoning opener remains without a close, the output is all reasoning — unusable
   if (/<(think|thinking|reasoning|analysis)[^>]*>/i.test(text)) return null
 
   // If only a closing tag is present, take what's after the last one
-  const lastClose = text.match(/<\/(?:think|thinking|reasoning|analysis)>\s*([\s\S]*)$/i)
+  const lastClose = text.match(
+    /<\/(?:think|thinking|reasoning|analysis)>\s*([\s\S]*)$/i
+  )
   if (lastClose) {
     text = lastClose[1].trim()
   }
@@ -61,7 +65,9 @@ export function cleanTitle(raw: string): string | null {
  */
 export async function generateThreadTitle(
   transcript: string,
-  abortSignal: AbortSignal
+  abortSignal: AbortSignal,
+  /** The conversation being titled, for the utility-agent record. */
+  session = ''
 ): Promise<string | null> {
   try {
     const { selectedModel, selectedProvider, getProviderByName } =
@@ -80,7 +86,6 @@ export async function generateThreadTitle(
       return null
     }
 
-    console.log('[ThreadTitle] Creating model:', selectedModel.id, 'provider:', selectedProvider)
     // Pin to the reserved background slot so this call can never evict a chat
     // request's KV cache. It is a fixed index, not one derived from the
     // "Parallel Sequences" setting: upstream wraps an out-of-range id_slot
@@ -98,22 +103,26 @@ export async function generateThreadTitle(
       params
     )
 
-    console.log('[ThreadTitle] Calling generateText...')
-    const { text } = await generateText({
+    // A hidden utility agent (AH-208): no tools, not shown, always recorded.
+    // Neither the transcript nor the title is logged -- both are the user's
+    // conversation, and the webview console is written to the app log.
+    const text = await runUtilityAgent({
+      kind: 'title',
+      session,
       model,
+      modelId: selectedModel.id,
       messages: [{ role: 'user', content: buildSummarizePrompt(transcript) }],
       maxOutputTokens: 128,
       abortSignal,
     })
-
-    console.log('[ThreadTitle] Raw response:', JSON.stringify(text))
-    const cleaned = cleanTitle(text)
-    console.log('[ThreadTitle] Cleaned title:', cleaned)
-    return cleaned
+    return cleanTitle(text)
   } catch (error) {
     // Silently swallow abort errors — this is expected when the user sends a new message
     if ((error as Error).name === 'AbortError') return null
-    console.error('[ThreadTitle] Failed to generate title:', error)
+    console.error(
+      '[ThreadTitle] Failed to generate title:',
+      (error as Error).name
+    )
     return null
   }
 }

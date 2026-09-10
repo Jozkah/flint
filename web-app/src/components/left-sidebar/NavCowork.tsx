@@ -44,11 +44,13 @@ import {
   SearchIcon,
   type SearchIconHandle,
 } from '@/components/animated-icon/search'
-import { Kbd, KbdGroup } from '@/components/ui/kbd'
-import { PlatformMetaKey } from '@/containers/PlatformMetaKey'
-import { PlatformShortcuts, ShortcutAction } from '@/lib/shortcuts'
+import { ShortcutAction } from '@/lib/shortcuts'
+import { ShortcutHint } from '@/containers/ShortcutHint'
 import { useSearchDialog } from '@/hooks/useSearchDialog'
-import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
+import {
+  useCoworkSessions,
+  type CoworkSession,
+} from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { usePrompt } from '@/hooks/usePrompt'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
@@ -141,7 +143,9 @@ const SessionItem = memo(function SessionItem({
           <DropdownMenuItem
             data-testid="fork-session"
             onSelect={() => {
-              const forked = useCoworkSessions.getState().forkSession(session.id)
+              const forked = useCoworkSessions
+                .getState()
+                .forkSession(session.id)
               if (!forked) {
                 toast.error(t('common:forkRefused'))
                 return
@@ -222,7 +226,8 @@ export function NavCowork() {
     const store = useCoworkSessions.getState()
     const id = store.startSession({
       running: Boolean(
-        store.currentId && useCoworkRun.getState().liveTurns[store.currentId]?.length
+        store.currentId &&
+          useCoworkRun.getState().liveTurns[store.currentId]?.length
       ),
       hasDraft: usePrompt.getState().prompt.trim().length > 0,
     })
@@ -290,14 +295,7 @@ export function NavCowork() {
               size={16}
             />
             <span>{t('common:search')}</span>
-            <KbdGroup className="ml-auto scale-90 gap-0">
-              <Kbd className="bg-transparent size-3">
-                <PlatformMetaKey />
-              </Kbd>
-              <Kbd className="bg-transparent size-3 uppercase">
-                {PlatformShortcuts[ShortcutAction.SEARCH].key}
-              </Kbd>
-            </KbdGroup>
+            <ShortcutHint action={ShortcutAction.SEARCH} />
           </SidebarMenuButton>
         </SidebarMenuItem>
         <SidebarMenuItem>

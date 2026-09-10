@@ -705,6 +705,32 @@ pub async fn payload_usage_record(
     Ok(())
 }
 
+/// Record one hidden utility-agent invocation. AH-208.
+///
+/// Titling and summarising are model calls Jan makes for itself; they are not
+/// shown as agents, so this record is how they stay accountable. The plugin
+/// sanitizes every field, because the record arrives over IPC and a free-text
+/// field is where conversation content would otherwise leak in.
+#[tauri::command]
+pub async fn utility_agent_record(
+    app: tauri::AppHandle,
+    record: tauri_plugin_agent_tools::utility::UtilityInvocation,
+) -> Result<(), String> {
+    let data_folder = get_jan_data_folder_path(app);
+    tauri_plugin_agent_tools::utility::append(&data_folder, &record);
+    Ok(())
+}
+
+/// One session's utility-agent invocations. A session must be named.
+#[tauri::command]
+pub async fn utility_agent_lookup(
+    app: tauri::AppHandle,
+    session: String,
+) -> Result<Vec<tauri_plugin_agent_tools::utility::UtilityInvocation>, String> {
+    let data_folder = get_jan_data_folder_path(app);
+    tauri_plugin_agent_tools::utility::for_session(&data_folder, &session)
+}
+
 /// Retrieve payload accounting, scoped the way snapshots are.
 #[tauri::command]
 pub async fn payload_usage_lookup(
