@@ -27,6 +27,10 @@ import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { deriveToolOutputCap } from '@/lib/context-manager'
 import { renderInstructions } from '@/lib/instructionTemplate'
 import {
+  knownContextWindow,
+  stoppedAtContextLimit,
+} from '@/lib/knownContextWindow'
+import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
@@ -352,10 +356,22 @@ function ThreadDetail() {
           | undefined
         const totalTokens =
           (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
-        const ctxLen =
-          (selectedModelState?.settings?.ctx_len?.controller_props
-            ?.value as number) ?? 32768
-        const isContextLimit = totalTokens >= ctxLen * 0.9
+        // The window Jan actually knows, never a guess: a missing ctx_len used
+        // to read as 32,768, which mislabelled output-cap stops on large
+        // remote models and missed real overflows on small ones
+        // (janhq/jan#8760). Unknown is not a context-limit verdict.
+        const modelProviderState = useModelProvider.getState()
+        const isContextLimit = stoppedAtContextLimit(
+          totalTokens,
+          knownContextWindow(
+            selectedModelState as unknown as Parameters<
+              typeof knownContextWindow
+            >[0],
+            modelProviderState.getProviderByName(
+              modelProviderState.selectedProvider
+            ) as unknown as Parameters<typeof knownContextWindow>[1]
+          )
+        )
 
         if (isContextLimit) {
           // Stash the partial so the manual "Increase Context Size" button can
