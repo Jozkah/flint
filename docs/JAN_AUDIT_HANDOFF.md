@@ -1656,3 +1656,29 @@ already names each child's worktree.
   resolvable" criterion is not met today.
 - **Sidebar hints follow rebinding.** The Search, New Chat and New Project
   hints in both sidebars now render the binding in force (`ShortcutHint`).
+
+## 2026-09-10 — Batch 6: portable session export and import (AH-203)
+
+- **Export.** A session's own menu has *Export session…*. The renderer builds a
+  `jan.cowork-session` bundle (schema 1: turns with their tool states and
+  questions, subagent runs, this session's durable tool activity, file
+  activity, and the change summary). `session_export_save` drops folder,
+  access, consent, continuity, code panel, run budget and messages, redacts
+  credentials — named fields through the snapshot redactor **and prose through
+  the text redactor** — and only then opens a save dialog *it* owns; the
+  renderer never supplies a path, so the command is not a write-anywhere
+  primitive. The toast reports how many credentials were left out.
+- **Found on the way.** The snapshot redactor alone left
+  `Authorization: Bearer …` typed into a turn untouched; it only knows
+  credential-named fields. The export now runs every string through the text
+  pass as well, and the unit test asserts both.
+- **Import.** *Import session…* in the Cowork sidebar. `session_import_open`
+  opens its own picker, caps the size, and refuses a document that is not an
+  export or whose schema version it does not understand, by name. The store
+  creates a new session under a fresh id, unbound like a fork, with pending
+  questions marked stale and file activity re-keyed; `importedFrom` makes a
+  second import of the same export a refusal that selects the session it
+  became. Durable tool activity is carried in the file but not replayed into
+  this machine's audit log, which records only what happened here; the tool
+  turns carry their states.
+- **AH-210 (PC-to-PC handoff)** builds on this and is not started.

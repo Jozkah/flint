@@ -30,8 +30,10 @@ import {
   Box,
   SlidersHorizontal,
   Copy,
+  Download,
   FileClock,
   GitFork,
+  Upload,
   MoreHorizontal,
   Trash2,
   type LucideIcon,
@@ -61,6 +63,8 @@ import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { FileActivityDialog } from '@/containers/dialogs/FileActivityDialog'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
+import { loadToolActivity } from '@/lib/toolActivity'
+import { buildBundle, exportBundle, openBundle } from '@/lib/sessionBundle'
 
 type CoworkNavItem = {
   title: string
@@ -165,6 +169,36 @@ const SessionItem = memo(function SessionItem({
             <Copy />
             <span>{t('common:copyConversationId')}</span>
           </DropdownMenuItem>
+          {/* AH-203. The backend drops folder, access and consent and redacts
+              credentials before writing; the path comes from a dialog the
+              backend opens, never from here. */}
+          <DropdownMenuItem
+            data-testid="export-session"
+            onSelect={async () => {
+              const toolActivity = await loadToolActivity(session.id)
+              const out = await exportBundle(
+                buildBundle({
+                  session,
+                  toolActivity,
+                  fileActivity: useFileActivity
+                    .getState()
+                    .eventsFor(session.id),
+                })
+              )
+              if (out.ok) {
+                toast.success(
+                  t('common:sessionExported', { count: out.redactions })
+                )
+              } else if (!out.cancelled) {
+                toast.error(
+                  t('common:sessionExportFailed', { reason: out.message })
+                )
+              }
+            }}
+          >
+            <Download />
+            <span>{t('common:exportSession')}</span>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
@@ -253,7 +287,37 @@ export function NavCowork() {
       icon: SlidersHorizontal,
       onClick: () => setSkillsOpen(true),
     },
+    {
+      title: t('common:importSession'),
+      icon: Upload,
+      onClick: () => void importFromFile(),
+    },
   ]
+
+  // AH-203. Read and validated by the backend; created here under a new id.
+  const importFromFile = async () => {
+    const opened = await openBundle()
+    if (!opened.ok) {
+      if (!opened.cancelled) {
+        toast.error(t('common:sessionImportFailed', { reason: opened.message }))
+      }
+      return
+    }
+    const result = useCoworkSessions.getState().importSession(opened.bundle)
+    if (!result.ok) {
+      toast.error(
+        result.refusal.reason === 'already-imported'
+          ? t('common:sessionAlreadyImported')
+          : t('common:sessionImportFailed', { reason: result.refusal.message })
+      )
+      if (result.refusal.reason === 'already-imported') {
+        selectSession(result.refusal.sessionId)
+      }
+      return
+    }
+    toast.success(t('common:sessionImported'))
+    goCowork()
+  }
 
   const confirmDelete = () => {
     if (pendingDelete) {

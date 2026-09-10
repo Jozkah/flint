@@ -121,6 +121,13 @@ export type CoworkSession = {
    * that was started rather than forked.
    */
   forkedFrom?: ForkOrigin
+  /**
+   * The export this session was imported from. AH-203.
+   *
+   * Provenance, and what makes a second import of the same file a refusal
+   * rather than a duplicate. Grants nothing.
+   */
+  importedFrom?: ImportedFrom
   updated: number
 }
 
@@ -170,6 +177,15 @@ type CoworkSessionsState = {
    * conversation.
    */
   forkSession: (id: string, throughTurn?: number) => string | null
+  /**
+   * Create a session from an export. AH-203.
+   *
+   * A new id, no folder, no access; questions left pending come back stale.
+   * An export already imported is refused, naming the session it became.
+   */
+  importSession: (
+    bundle: SessionBundle
+  ) => { ok: true; id: string } | { ok: false; refusal: ImportRefusal }
   setFolder: (id: string, folder: string | null) => void
   setMode: (id: string, mode: CoworkMode) => void
   /** Record, or clear, where the session is in its opening exchange. */
@@ -212,6 +228,14 @@ import { decideSessionStart } from '@/lib/coworkSessionStart'
 import { defaultModeFor, type CoworkMode } from '@/lib/coworkMode'
 import type { AccessMode, EditConsent } from '@/lib/coworkAccess'
 import { useFileActivity } from '@/hooks/useFileActivity'
+import {
+  checkBundle,
+  importedFileActivity,
+  importedTurns,
+  type ImportedFrom,
+  type ImportRefusal,
+  type SessionBundle,
+} from '@/lib/sessionBundle'
 
 const now = () => Date.now()
 
@@ -298,6 +322,48 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
 
         set((s) => ({ sessions: [fork, ...s.sessions], currentId: forkId }))
         return forkId
+      },
+
+      importSession: (bundle) => {
+        const problem = checkBundle(bundle)
+        if (problem) {
+          return { ok: false, refusal: { reason: 'invalid', message: problem } }
+        }
+        const existing = get().sessions.find(
+          (x) => x.importedFrom?.exportId === bundle.exportId
+        )
+        if (existing) {
+          return {
+            ok: false,
+            refusal: { reason: 'already-imported', sessionId: existing.id },
+          }
+        }
+        const id = crypto.randomUUID()
+        const turns = importedTurns(bundle.session.turns, id)
+        const session: CoworkSession = {
+          id,
+          title: bundle.session.title || 'Imported session',
+          turns,
+          messages: coworkTurnsToUIMessages(turns, id),
+          subagents: bundle.session.subagents,
+          // Unbound, like a fork: the export carried no authority and this
+          // machine has granted none.
+          folder: null,
+          mode: bundle.session.mode,
+          goal: bundle.session.goal,
+          todos: bundle.session.todos,
+          forkedFrom: bundle.session.forkedFrom,
+          importedFrom: {
+            exportId: bundle.exportId,
+            sessionId: bundle.session.id,
+            at: now(),
+          },
+          updated: now(),
+        }
+        set((s) => ({ sessions: [session, ...s.sessions], currentId: id }))
+        const events = importedFileActivity(bundle.fileActivity ?? [], id)
+        if (events.length) useFileActivity.getState().record(id, events)
+        return { ok: true, id }
       },
 
       deleteSession: (id) =>
@@ -558,7 +624,10 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               if (raw.startsWith(LEGACY_SANDBOX_PREFIX)) {
                 // The tab is stored on its own session, so that session owns it.
                 tabs.push(
-                  sandboxTab(raw.slice(LEGACY_SANDBOX_PREFIX.length), session.id)
+                  sandboxTab(
+                    raw.slice(LEGACY_SANDBOX_PREFIX.length),
+                    session.id
+                  )
                 )
               } else if (projectKey) {
                 tabs.push(projectTab(raw, projectKey))
@@ -579,13 +648,17 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               ...session,
               codePanel: {
                 tabs,
-                activeTabId: active ? tabId(active) : (tabs[0] ? tabId(tabs[0]) : null),
+                activeTabId: active
+                  ? tabId(active)
+                  : tabs[0]
+                    ? tabId(tabs[0])
+                    : null,
                 expandedDirs: Array.isArray(
                   (session.codePanel as unknown as { expandedDirs?: unknown })
                     ?.expandedDirs
                 )
-                  ? ((session.codePanel as unknown as { expandedDirs: string[] })
-                      .expandedDirs)
+                  ? (session.codePanel as unknown as { expandedDirs: string[] })
+                      .expandedDirs
                   : [],
                 wordWrap: Boolean(
                   (session.codePanel as unknown as { wordWrap?: unknown })

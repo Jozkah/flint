@@ -902,6 +902,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_utility_agent_title,
     },
     Scenario {
+        name: "session-export-import",
+        run: scenario_session_export_import,
+    },
+    Scenario {
         name: "memory-proposal-approval",
         run: scenario_memory_proposal,
     },
@@ -2303,6 +2307,169 @@ fn scenario_composer_footer(ctx: &Ctx) -> ScenarioResult {
         overlap <= 1,
         "the control row covers the bottom {overlap}px of the textarea: {report}"
     );
+    Ok(())
+}
+
+/// Every toast on screen, joined, for asserting what a handler reported.
+fn toasts(ctx: &Ctx) -> String {
+    ctx.eval_string(
+        "return [...document.querySelectorAll('[data-sonner-toast]')]
+           .map(t => t.textContent).join(' | ');",
+    )
+    .unwrap_or_default()
+}
+
+/// A session exports to one file and comes back as a new session. AH-203.
+///
+/// Proves, in the real WebView with the real dialogs scripted: a run with a
+/// tool call and a credential typed into the prompt exports through the
+/// session menu; the file is versioned, carries the turns, and holds neither
+/// the credential nor the provider key nor the attached folder; importing it
+/// creates a session showing the conversation; importing it again is refused;
+/// a file with a schema version this build does not know is refused by name.
+fn scenario_session_export_import(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    let secret = "abcdefghijklmnopqrstuvwxyz0123456789";
+    ctx.script_model("tools", &["ls:{\"path\":\".\"}"])?;
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.wait_until(
+        "the previous run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    ctx.type_into(
+        "[data-testid=\"chat-input\"]",
+        &format!("list the folder, and use Authorization: Bearer {secret}"),
+    )?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the tool call in the transcript",
+        "return !!document.querySelector('[data-testid=\"tool-activity-item\"]');",
+        Duration::from_secs(90),
+    )?;
+    ctx.wait_until(
+        "the run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
+    ctx.settle();
+
+    // Export through the current session's own menu. The scripted picker has
+    // to name a file that exists, so the target is created empty first.
+    let dir = std::env::temp_dir().join(format!("jan-smoke-export-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| fail(e.to_string()))?;
+    let target = dir.join("exported.jan-session.json");
+    std::fs::write(&target, "").map_err(|e| fail(e.to_string()))?;
+    ctx.script_dialog(Some(&target));
+    let opened = ctx.eval_bool(
+        r#"const row = document.querySelector('[data-sidebar="menu-button"][data-active="true"]')
+             ?.closest('li');
+           const more = row && row.querySelector('[data-sidebar="menu-action"]');
+           if (!more) return false;
+           more.dispatchEvent(new PointerEvent('pointerdown',
+             { bubbles: true, cancelable: true, button: 0, pointerType: 'mouse' }));
+           return true;"#,
+    );
+    let exported = opened.and_then(|ok| {
+        ensure!(ok, "the current session's menu is not on the page");
+        ctx.wait_until(
+            "the export item",
+            "return !!document.querySelector('[data-testid=\"export-session\"]');",
+            Duration::from_secs(10),
+        )?;
+        ctx.eval("document.querySelector('[data-testid=\"export-session\"]').click(); return true;")?;
+        let mut body = String::new();
+        for _ in 0..40 {
+            body = std::fs::read_to_string(&target).unwrap_or_default();
+            if body.contains("jan.cowork-session") {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        Ok(body)
+    });
+    ctx.clear_dialog_script();
+    let body = exported?;
+    ensure!(
+        body.contains("\"schemaVersion\": 1"),
+        "the export was not written or is not versioned; toasts: {}",
+        toasts(ctx)
+    );
+    ensure!(body.contains("list the folder"), "the export does not carry the turns");
+    ensure!(!body.contains(secret), "the export holds the credential typed into the prompt");
+    ensure!(!body.contains("smoke-not-a-real-key"), "the export holds the provider key");
+    let folder = ctx.project.to_string_lossy().replace('\\', "\\\\");
+    ensure!(!body.contains(&folder), "the export holds the attached folder's path");
+
+    // Import it: a new session showing the conversation.
+    let import = |ctx: &Ctx, file: &Path| -> ScenarioResult {
+        ctx.script_dialog(Some(file));
+        let clicked = ctx.eval_bool(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /import session/i.test((x.textContent || '').trim()));
+             if (!b) return false; b.click(); return true;",
+        );
+        std::thread::sleep(Duration::from_millis(1500));
+        ctx.clear_dialog_script();
+        ensure!(clicked?, "the Import session action is not on the page");
+        Ok(())
+    };
+    import(ctx, &target)?;
+    ctx.wait_until(
+        "the import to be reported",
+        "return [...document.querySelectorAll('[data-sonner-toast]')]
+           .some(t => /Session imported/.test(t.textContent || ''));",
+        Duration::from_secs(20),
+    )?;
+    ctx.wait_until(
+        "the imported conversation to show",
+        "return (document.body.innerText || '').includes('list the folder');",
+        Duration::from_secs(20),
+    )?;
+
+    // Again: refused, not duplicated.
+    import(ctx, &target)?;
+    ctx.wait_until(
+        "a second import to be refused",
+        "return [...document.querySelectorAll('[data-sonner-toast]')]
+           .some(t => /already imported/.test(t.textContent || ''));",
+        Duration::from_secs(20),
+    )?;
+
+    // A schema version this build does not know: refused by name.
+    let future = dir.join("future.jan-session.json");
+    let newer = body.replacen("\"schemaVersion\": 1", "\"schemaVersion\": 9", 1);
+    std::fs::write(&future, newer).map_err(|e| fail(e.to_string()))?;
+    import(ctx, &future)?;
+    ctx.wait_until(
+        "an unknown schema version to be refused",
+        "return [...document.querySelectorAll('[data-sonner-toast]')]
+           .some(t => /schema version 9/.test(t.textContent || ''));",
+        Duration::from_secs(20),
+    )?;
+    let _ = std::fs::remove_dir_all(&dir);
     Ok(())
 }
 

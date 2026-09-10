@@ -6170,13 +6170,19 @@
       "category": "sessions",
       "phase": 9,
       "phaseName": "Approved additions",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-201"
       ],
       "owner": "lane-21-sessions",
-      "files": [],
+      "files": [
+        "web-app/src/lib/sessionBundle.ts",
+        "src-tauri/src/core/agent/session_bundle.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/hooks/useCoworkSessions.ts",
+        "web-app/src/components/left-sidebar/NavCowork.tsx"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "A session exports to a single self-describing file carrying its turns, tool activity, questions and change summaries, with a schema version.",
@@ -6191,12 +6197,14 @@
         "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
       ],
       "tests": [
-        "web-app/src/lib/__tests__/coworkPortableSession.test.ts"
+        "Jan::core::agent::session_bundle::tests::credentials_are_redacted_before_anything_is_written",
+        "web-app::sessionBundle.test.ts",
+        "cowork-smoke::session-export-import"
       ],
       "platformRequirements": [],
       "blockedReason": null,
       "evidence": "Not implemented. No export or import path exists for a Cowork session.",
-      "auditNote": ""
+      "auditNote": "Export session (session menu) writes a jan.cowork-session schema-1 bundle: turns with tool states and questions, subagent runs, this session's durable tool activity, file activity and change summary. The backend drops folder/access/consent/continuity/code panel/run budget/messages, redacts credential-named fields and credentials in prose, then opens its own save dialog (the renderer never supplies a path). Import session opens the backend's own picker, caps size, refuses unknown schema versions by name; the store creates a new unbound session (fresh id, pending questions stale, file activity re-keyed) and refuses a second import of the same export. Tool activity is carried but not replayed into this machine's audit log. Windows: cowork-smoke session-export-import passes."
     },
     {
       "id": "AH-204",

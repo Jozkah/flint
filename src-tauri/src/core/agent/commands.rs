@@ -705,6 +705,82 @@ pub async fn payload_usage_record(
     Ok(())
 }
 
+/// What an export wrote, and how many credentials it left out.
+#[derive(serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionExportReport {
+    pub path: String,
+    pub redactions: usize,
+}
+
+/// The file an export goes to, chosen in a dialog this command opens itself.
+///
+/// The renderer never supplies the path: a command that wrote wherever the
+/// renderer said would be a write-anywhere primitive. The only way a path gets
+/// here is a person choosing it.
+async fn pick_bundle_path(save: bool) -> Option<std::path::PathBuf> {
+    // Test-only: the smoke harness scripts the picker, as it does for folders.
+    #[cfg(feature = "cowork-smoke")]
+    if let Some(scripted) = crate::core::filesystem::smoke_dialog::scripted_response() {
+        return scripted.and_then(|v| v.as_str().map(std::path::PathBuf::from));
+    }
+    let dialog = rfd::AsyncFileDialog::new().add_filter("Jan session", &["json"]);
+    if save {
+        dialog
+            .set_file_name("session.jan-session.json")
+            .save_file()
+            .await
+            .map(|f| f.path().to_path_buf())
+    } else {
+        dialog.pick_file().await.map(|f| f.path().to_path_buf())
+    }
+}
+
+/// Export a session to a file the user picks. AH-203.
+///
+/// Authority and machine paths are dropped and credentials redacted before
+/// the dialog even opens, so a cancelled export has written nothing and a
+/// completed one never held a secret. `None` means the user cancelled.
+#[tauri::command]
+pub async fn session_export_save(
+    bundle: serde_json::Value,
+) -> Result<Option<SessionExportReport>, String> {
+    let (bundle, redactions) = crate::core::agent::session_bundle::prepare_export(bundle)?;
+    let Some(path) = pick_bundle_path(true).await else {
+        return Ok(None);
+    };
+    let body = serde_json::to_vec_pretty(&bundle).map_err(|e| e.to_string())?;
+    let temp = path.with_extension("json.tmp");
+    std::fs::write(&temp, &body).map_err(|e| format!("could not write the export: {e}"))?;
+    std::fs::rename(&temp, &path).map_err(|e| {
+        let _ = std::fs::remove_file(&temp);
+        format!("could not write the export: {e}")
+    })?;
+    Ok(Some(SessionExportReport {
+        path: path.to_string_lossy().to_string(),
+        redactions,
+    }))
+}
+
+/// Read a session export the user picks. AH-203. `None` means cancelled.
+///
+/// Only reads and validates: the renderer creates the session, under a new id,
+/// and refuses an export it has already imported.
+#[tauri::command]
+pub async fn session_import_open() -> Result<Option<serde_json::Value>, String> {
+    let Some(path) = pick_bundle_path(false).await else {
+        return Ok(None);
+    };
+    let size = std::fs::metadata(&path)
+        .map_err(|e| format!("could not read the file: {e}"))?
+        .len();
+    if size > crate::core::agent::session_bundle::MAX_BYTES {
+        return Err("this file is too large to be a Jan session export".into());
+    }
+    let bytes = std::fs::read(&path).map_err(|e| format!("could not read the file: {e}"))?;
+    crate::core::agent::session_bundle::parse_import(&bytes).map(Some)
+}
+
 /// Record one hidden utility-agent invocation. AH-208.
 ///
 /// Titling and summarising are model calls Jan makes for itself; they are not

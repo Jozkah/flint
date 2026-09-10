@@ -350,3 +350,11 @@ write to `settings.json`, not by restarting the app on Windows.
 | 3 unit tests | `plugins/tauri-plugin-agent-tools/src/utility.rs` | every invocation recorded and found by session; a lookup must name a session; a field carrying content is refused whole (not filtered down to its letters) and "tools offered" can never be recorded true |
 | existing suites | `thread-title-summarizer.test.ts`, `context-manager.test.ts` | titling and compaction still behave as before through the wrapper |
 | Real WebView scenario | `cowork-smoke --only utility-agent-title` | a real chat round trip on `/` triggers the automatic title; a `title` record for that conversation lands in `audit/utility-agents.jsonl` with `succeeded` and `toolsOffered:false`, and neither the user's message, the model's reply nor the provider key appears in it. **Passed on Windows 2026-09-10** |
+
+## Portable session export and import (AH-203)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 5 unit tests | `src-tauri/src/core/agent/session_bundle.rs` | folder, access, consent and messages are never exported; credentials in named fields **and in prose** are redacted before anything is written; an unknown schema version is refused naming it; non-exports, missing ids and missing turns are refused; a valid export round-trips |
+| 8 unit tests | `web-app/src/lib/__tests__/sessionBundle.test.ts` | versioned and self-describing; carries turns, questions and the change summary, and no authority; only this session's tool activity; import creates an unbound session with the same turns, order and tool states; a pending question comes back stale under the new id; file activity re-keyed; a second import of the same export refused naming the session it became; an unknown schema version creates nothing |
+| Real WebView scenario | `cowork-smoke --only session-export-import` | a Cowork run with a tool call and `Authorization: Bearer ...` typed into the prompt exports through the session menu with the save dialog scripted; the file is schema 1, carries the turns, and holds neither the credential, the provider key nor the attached folder; importing it shows the conversation in a new session; a second import is refused; a copy claiming schema version 9 is refused by name. **Passed on Windows 2026-09-10** |

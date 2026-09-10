@@ -99,6 +99,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::payload_usage_record,
         core::agent::commands::payload_usage_lookup,
         core::agent::commands::utility_agent_record,
+        core::agent::commands::session_export_save,
+        core::agent::commands::session_import_open,
         core::agent::commands::utility_agent_lookup,
         core::agent::commands::agent_skill_list,
         core::agent::commands::agent_skill_read,
