@@ -30,12 +30,12 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1244,
-      "fixed": 16,
+      "untriaged": 1242,
+      "fixed": 17,
       "already-fixed": 3,
       "needs-user-hardware": 2,
       "not-applicable": 1,
-      "adapted": 6,
+      "adapted": 7,
       "cannot-reproduce": 1,
       "implementation-ready": 3,
       "rejected": 2
@@ -68136,7 +68136,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8831
+      ],
       "affectedAreas": [
         "cowork"
       ],
@@ -68158,9 +68160,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Closed by adapting janhq/jan#8831.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -69232,12 +69234,16 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "decision": "adapt",
+      "decisionReason": "Fork selection_text identical to upstream; style-keyed chrome stripping, one file, no side effects.",
+      "implementationStatus": "adapted",
+      "forkCommits": [
+        "dc2afa6"
+      ],
+      "tests": [
+        "src-tauri/src/core/cli/tui.rs (selection_text tests)"
+      ],
+      "verification": "--features cli selection_text: 2 passed.",
       "blockers": [],
       "notes": null
     },
