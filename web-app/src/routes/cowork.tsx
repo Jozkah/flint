@@ -126,6 +126,7 @@ import { CoworkEnvironmentReadiness } from '@/containers/CoworkEnvironmentReadin
 import { usePrompt } from '@/hooks/usePrompt'
 import { setSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
 import { recordPayloadUsage } from '@/lib/payloadUsage'
+import { fromCoworkUsage } from '@/lib/tokenUsage'
 import { attachAskToTurns, settleAskInTurns } from '@/hooks/useCoworkRun'
 import {
   NO_SESSION,
@@ -1117,13 +1118,9 @@ function CoworkPage() {
   const tokenSource = useMemo(
     () => ({
       threadId: session?.id,
-      usage: usage
-        ? {
-            inputTokens: usage.prompt_tokens,
-            outputTokens: usage.completion_tokens,
-            totalTokens: usage.total_tokens,
-          }
-        : undefined,
+      // Cache counts included: the counter's popover shows them for Cowork
+      // exactly as it does for Chat.
+      usage: fromCoworkUsage(usage),
     }),
     [session?.id, usage]
   )

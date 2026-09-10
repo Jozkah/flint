@@ -8,20 +8,18 @@ import {
   type UseChatOptions,
   useChat as useChatSDK,
 } from '@ai-sdk/react'
-import {
-  type ChatInit,
-  type LanguageModelUsage,
-} from 'ai'
+import { type ChatInit } from 'ai'
 import { useEffect, useMemo, useRef, useCallback } from 'react'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useAppState } from '@/hooks/useAppState'
+import type { TokenUsage } from '@/lib/tokenUsage'
 
 type CustomChatOptions = Omit<ChatInit<UIMessage>, 'transport'> &
   Pick<UseChatOptions<UIMessage>, 'experimental_throttle' | 'resume'> & {
     sessionId?: string
     sessionTitle?: string
     systemMessage?: string
-    onTokenUsage?: (usage: LanguageModelUsage, messageId: string) => void;
+    onTokenUsage?: (usage: TokenUsage, messageId: string) => void;
   }
 
 // This is a wrapper around the AI SDK's useChat hook

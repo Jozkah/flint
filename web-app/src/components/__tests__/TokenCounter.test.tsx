@@ -147,12 +147,152 @@ describe('TokenCounter', () => {
     })
   })
 
-  it('shows token breakdown with Used and Remaining labels', () => {
+  it('shows token breakdown with Total and Remaining labels', () => {
     mockTokens({ tokenCount: 500, maxTokens: 1000 })
     render(<TokenCounter />)
-    const tooltipContent = screen.getByTestId('tooltip-content')
-    expect(tooltipContent.textContent).toContain('Used')
+    const tooltipContent = screen.getAllByTestId('tooltip-content')[0]
+    expect(tooltipContent.textContent).toContain('Total')
     expect(tooltipContent.textContent).toContain('Remaining')
+  })
+
+  describe('cache breakdown', () => {
+    const value = (testId: string) =>
+      screen.getByTestId(testId).getAttribute('data-value')
+
+    it('itemises cached and uncached input when the provider reported a cache', () => {
+      mockTokens({
+        tokenCount: 5982,
+        maxTokens: 32768,
+        usage: {
+          inputTokens: 5974,
+          cachedInputTokens: 5957,
+          uncachedInputTokens: 17,
+          outputTokens: 8,
+          totalTokens: 5982,
+          cacheSource: 'openai-chat',
+        },
+      })
+      render(<TokenCounter />)
+      expect(value('token-usage-input')).toBe('5974')
+      expect(value('token-usage-cached')).toBe('5957')
+      expect(value('token-usage-uncached')).toBe('17')
+      expect(value('token-usage-output')).toBe('8')
+      expect(value('token-usage-total')).toBe('5982')
+      expect(screen.getByTestId('token-usage-cache-bar')).toBeTruthy()
+      expect(screen.queryByTestId('token-usage-cache-unreported')).toBeNull()
+      // Reported by Anthropic only, so no write row here.
+      expect(screen.queryByTestId('token-usage-cache-write')).toBeNull()
+    })
+
+    it('explains that uncached input is derived and is not a count of cache misses', () => {
+      mockTokens({
+        tokenCount: 110,
+        maxTokens: 1000,
+        usage: {
+          inputTokens: 100,
+          cachedInputTokens: 60,
+          uncachedInputTokens: 40,
+          outputTokens: 10,
+          totalTokens: 110,
+        },
+      })
+      render(<TokenCounter />)
+      const note = screen.getByTestId('token-usage-uncached-note')
+      expect(note.getAttribute('aria-label')).toMatch(/input tokens minus cached input tokens/i)
+      expect(note.getAttribute('aria-label')).toMatch(/not a number of cache-miss events/i)
+      // The label itself never calls the figure "misses".
+      expect(screen.getByTestId('token-usage-uncached').textContent).toMatch(
+        /^Uncached input/
+      )
+      expect(screen.queryByText(/cache misses?$/i)).toBeNull()
+    })
+
+    it('shows a cache write row, reported by Anthropic, as part of the uncached input', () => {
+      mockTokens({
+        tokenCount: 2318,
+        maxTokens: undefined,
+        usage: {
+          inputTokens: 2312,
+          cachedInputTokens: 2000,
+          uncachedInputTokens: 312,
+          cacheWriteTokens: 300,
+          outputTokens: 6,
+          totalTokens: 2318,
+          cacheSource: 'anthropic',
+        },
+      })
+      render(<TokenCounter />)
+      expect(value('token-usage-cache-write')).toBe('300')
+      // Not added twice: total is input + output.
+      expect(value('token-usage-total')).toBe('2318')
+    })
+
+    it('says "Not reported" instead of showing 0 cached when the provider sent no cache data', () => {
+      mockTokens({
+        tokenCount: 6103,
+        maxTokens: undefined,
+        usage: { inputTokens: 6100, outputTokens: 3, totalTokens: 6103 },
+      })
+      render(<TokenCounter />)
+      const row = screen.getByTestId('token-usage-cache-unreported')
+      expect(row.textContent).toContain('Not reported')
+      expect(row.getAttribute('data-value')).toBeNull()
+      expect(screen.queryByTestId('token-usage-cached')).toBeNull()
+      expect(screen.queryByTestId('token-usage-uncached')).toBeNull()
+      expect(screen.queryByTestId('token-usage-cache-bar')).toBeNull()
+      expect(screen.getByTestId('tooltip-content').textContent).not.toMatch(/Cached input\s*0/)
+    })
+
+    it('shows a measured zero as zero', () => {
+      mockTokens({
+        tokenCount: 5982,
+        maxTokens: 32768,
+        usage: {
+          inputTokens: 5974,
+          cachedInputTokens: 0,
+          uncachedInputTokens: 5974,
+          outputTokens: 8,
+          totalTokens: 5982,
+        },
+      })
+      render(<TokenCounter />)
+      expect(value('token-usage-cached')).toBe('0')
+      expect(value('token-usage-uncached')).toBe('5974')
+    })
+
+    it('flags clamped provider values with what was actually reported', () => {
+      mockTokens({
+        tokenCount: 101,
+        maxTokens: 1000,
+        usage: {
+          inputTokens: 100,
+          cachedInputTokens: 100,
+          uncachedInputTokens: 0,
+          outputTokens: 1,
+          totalTokens: 101,
+          reported: { cachedInputTokens: 250 },
+        },
+      })
+      render(<TokenCounter />)
+      expect(screen.getByTestId('token-usage-clamped').textContent).toContain('250')
+    })
+
+    it('keeps the compact counter free of the breakdown', () => {
+      mockTokens({
+        tokenCount: 5982,
+        maxTokens: undefined,
+        usage: {
+          inputTokens: 5974,
+          cachedInputTokens: 5957,
+          uncachedInputTokens: 17,
+          outputTokens: 8,
+          totalTokens: 5982,
+        },
+      })
+      render(<TokenCounter />)
+      const trigger = screen.getByTestId('token-counter')
+      expect(trigger.textContent).toBe('6.0K')
+    })
   })
 
   it('shows Context window header', () => {

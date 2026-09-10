@@ -39,6 +39,16 @@ The reply is chosen by ``--script``:
 Every chat request body is kept (the last 20) and served back on
 ``GET /__requests``, so a scenario can assert what the app actually sent --
 the system prompt, the tool results -- rather than what the UI shows.
+
+Upstream pass-through
+---------------------
+Setting ``upstream`` (and ``upstream_model``) over ``/__control`` turns the
+chat endpoint into a transparent relay to a real OpenAI-compatible server: the
+request goes out with only its ``model`` renamed, and the reply comes back
+byte for byte. Nothing in the reply is synthesised. Each relayed exchange's
+final ``usage`` and ``timings`` are recorded, keyed by the last user message,
+and ``GET /__usage`` returns them -- so a scenario can compare what the app
+shows against what the provider actually reported for that exact request.
 """
 
 from __future__ import annotations
@@ -48,11 +58,32 @@ import json
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ARGS = argparse.Namespace()
 REQUESTS: list = []
 REQUESTS_LOCK = threading.Lock()
+# What each relayed exchange's provider reported. See "Upstream pass-through".
+RECORDS: list[dict] = []
+RECORDS_LOCK = threading.Lock()
+
+
+def last_user_text(body: dict) -> str:
+    for message in reversed(body.get("messages", [])):
+        if message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "".join(
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict) and part.get("type") == "text"
+            )
+    return ""
 
 
 def sse(payload: dict) -> bytes:
@@ -125,10 +156,84 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _relay(self, body: dict):
+        """Pass one chat request through to the real upstream, unchanged."""
+        if ARGS.upstream_model:
+            body = {**body, "model": ARGS.upstream_model}
+        record = {
+            "marker": last_user_text(body),
+            "stream": bool(body.get("stream")),
+            "usage": None,
+            "timings": None,
+        }
+        request = urllib.request.Request(
+            ARGS.upstream.rstrip("/") + "/chat/completions",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            upstream = urllib.request.urlopen(request, timeout=900)
+        except urllib.error.HTTPError as e:
+            raw = e.read()
+            self.send_response(e.code)
+            self.send_header("Content-Type", e.headers.get("Content-Type", "application/json"))
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(raw)
+            return
+
+        def note(payload: dict):
+            if payload.get("usage"):
+                record["usage"] = payload["usage"]
+            if payload.get("timings"):
+                record["timings"] = payload["timings"]
+
+        if not body.get("stream"):
+            raw = upstream.read()
+            try:
+                note(json.loads(raw))
+            except json.JSONDecodeError:
+                pass
+            with RECORDS_LOCK:
+                RECORDS.append(record)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(raw)
+            return
+
+        self._begin_stream()
+        try:
+            for line in upstream:
+                self.wfile.write(line)
+                self.wfile.flush()
+                text = line.decode("utf-8", "replace").strip()
+                if not text.startswith("data:"):
+                    continue
+                payload = text[5:].strip()
+                if not payload or payload == "[DONE]":
+                    continue
+                try:
+                    note(json.loads(payload))
+                except json.JSONDecodeError:
+                    continue
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            with RECORDS_LOCK:
+                RECORDS.append(record)
+            self.close_connection = True
+
     def do_GET(self):  # noqa: N802
         if self.path.rstrip("/").endswith("/__requests"):
             with REQUESTS_LOCK:
                 return self._json(200, {"requests": list(REQUESTS)})
+        if self.path.rstrip("/").endswith("/__usage"):
+            with RECORDS_LOCK:
+                return self._json(200, {"records": list(RECORDS)})
         if ARGS.script == "proxy-403":
             return self._forbidden()
         if not self.path.rstrip("/").endswith("/models"):
@@ -155,10 +260,21 @@ class Handler(BaseHTTPRequestHandler):
                 control = json.loads(self.rfile.read(length) or b"{}")
             except json.JSONDecodeError:
                 return self._json(400, {"error": "invalid JSON"})
-            for field in ("script", "tools", "reply", "summary", "delay"):
+            for field in (
+                "script",
+                "tools",
+                "reply",
+                "summary",
+                "delay",
+                "upstream",
+                "upstream_model",
+            ):
                 if field in control:
                     setattr(ARGS, field, control[field])
-            return self._json(200, {"script": ARGS.script, "tools": ARGS.tools})
+            return self._json(
+                200,
+                {"script": ARGS.script, "tools": ARGS.tools, "upstream": ARGS.upstream},
+            )
 
         if ARGS.script == "proxy-403":
             return self._forbidden()
@@ -173,6 +289,8 @@ class Handler(BaseHTTPRequestHandler):
         with REQUESTS_LOCK:
             REQUESTS.append(body)
             del REQUESTS[:-20]
+        if ARGS.upstream:
+            return self._relay(body)
 
         # A request whose messages already carry tool results is the follow-up
         # turn: answer in words rather than asking for the tools again.
@@ -306,6 +424,12 @@ def main() -> int:
     parser.add_argument("--reply", default="Hello from the smoke model.")
     parser.add_argument("--summary", default="Done. I used the tools you allowed.")
     parser.add_argument("--delay", type=float, default=0.4)
+    parser.add_argument(
+        "--upstream",
+        default=None,
+        help="Relay chat requests to this real OpenAI-compatible base URL",
+    )
+    parser.add_argument("--upstream-model", dest="upstream_model", default=None)
     parser.parse_args(namespace=ARGS)
 
     server = ThreadingHTTPServer((ARGS.host, ARGS.port), Handler)

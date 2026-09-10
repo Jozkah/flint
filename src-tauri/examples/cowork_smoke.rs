@@ -5384,6 +5384,419 @@ fn fixtures_dir(args: &[String]) -> PathBuf {
     explicit.unwrap_or_else(|| Path::new(MANIFEST_DIR).join("tests/fixtures/cowork-smoke"))
 }
 
+// ---------------------------------------------------------------------------
+// Token usage against a real provider (AH-211)
+// ---------------------------------------------------------------------------
+//
+// Opt-in: these need a real OpenAI-compatible server that reports prompt-cache
+// counts, named by `COWORK_SMOKE_CACHE_UPSTREAM` (a base URL ending in `/v1`)
+// and `COWORK_SMOKE_CACHE_MODEL`. The fixture server relays to it verbatim and
+// records what the provider reported, so the numbers the popover shows are
+// checked against the provider's own, request by request. A mock reply here
+// would prove only that the popover renders what it is given.
+//
+// `token-usage-cache` writes what it verified to `token-usage-expected.json`
+// in the data folder; `token-usage-cache-after-restart`, run as a second
+// process against the same `COWORK_SMOKE_KEEP` profile, checks the popover shows
+// the same breakdown after the application restarted.
+
+const TOKEN_USAGE_EXPECTED: &str = "token-usage-expected.json";
+
+/// One exchange as the provider reported it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ProviderCounts {
+    input: u64,
+    cached: u64,
+    output: u64,
+}
+
+impl ProviderCounts {
+    fn from_record(record: &Value) -> Option<Self> {
+        let usage = record.get("usage")?;
+        Some(Self {
+            input: usage.get("prompt_tokens")?.as_u64()?,
+            cached: usage
+                .get("prompt_tokens_details")?
+                .get("cached_tokens")?
+                .as_u64()?,
+            output: usage.get("completion_tokens")?.as_u64()?,
+        })
+    }
+
+    fn to_json(self) -> Value {
+        serde_json::json!({ "input": self.input, "cached": self.cached, "output": self.output })
+    }
+
+    fn from_json(v: &Value) -> Option<Self> {
+        Some(Self {
+            input: v.get("input")?.as_u64()?,
+            cached: v.get("cached")?.as_u64()?,
+            output: v.get("output")?.as_u64()?,
+        })
+    }
+}
+
+fn cache_upstream() -> Result<(String, String), Failure> {
+    let upstream = std::env::var("COWORK_SMOKE_CACHE_UPSTREAM").unwrap_or_default();
+    let model = std::env::var("COWORK_SMOKE_CACHE_MODEL").unwrap_or_default();
+    if upstream.trim().is_empty() || model.trim().is_empty() {
+        bail!(
+            "set COWORK_SMOKE_CACHE_UPSTREAM (a real OpenAI-compatible base URL) and \
+             COWORK_SMOKE_CACHE_MODEL; this scenario verifies real provider cache counts \
+             and has nothing to verify against a scripted reply"
+        );
+    }
+    Ok((upstream, model))
+}
+
+fn data_folder() -> Result<PathBuf, Failure> {
+    std::env::var("JAN_DATA_FOLDER")
+        .map(PathBuf::from)
+        .map_err(|_| Failure("JAN_DATA_FOLDER is not set".into()))
+}
+
+impl Ctx {
+    fn relay_to(&self, upstream: Option<(&str, &str)>) -> ScenarioResult {
+        let port = self.mock_port;
+        let (url, model) = match upstream {
+            Some((u, m)) => (serde_json::json!(u), serde_json::json!(m)),
+            None => (Value::Null, Value::Null),
+        };
+        let ok = self.eval_bool(&format!(
+            r#"const res = await fetch('http://127.0.0.1:{port}/__control', {{
+                 method: 'POST',
+                 headers: {{ 'Content-Type': 'application/json' }},
+                 body: JSON.stringify({{ script: 'plain', upstream: {url}, upstream_model: {model} }}),
+               }});
+               return res.ok;"#
+        ))?;
+        ensure!(ok, "could not point the fixture at the upstream");
+        Ok(())
+    }
+
+    fn relayed_records(&self) -> Result<Vec<Value>, Failure> {
+        let port = self.mock_port;
+        let v = self.eval(&format!(
+            "const r = await fetch('http://127.0.0.1:{port}/__usage'); return await r.json();"
+        ))?;
+        Ok(v.get("records")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    /// Send one message and wait until the provider has answered it and the
+    /// surface is idle again.
+    fn send_and_settle(&self, text: &str) -> Result<ProviderCounts, Failure> {
+        let before = self.relayed_records()?.len();
+        self.type_into("[data-testid=\"chat-input\"]", text)?;
+        self.wait_until(
+            "the send control to arm",
+            "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+             return !!b && b.disabled !== true;",
+            Duration::from_secs(90),
+        )?;
+        self.eval(
+            "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+             return true;",
+        )?;
+        // The exchange this message produced, by its own text, and the last
+        // one if a tool call made the turn take several.
+        let deadline = Instant::now() + Duration::from_secs(600);
+        loop {
+            let records = self.relayed_records()?;
+            let idle = self.eval_bool(
+                "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+            )?;
+            let ours = records
+                .iter()
+                .skip(before)
+                .filter(|r| r.get("marker").and_then(Value::as_str) == Some(text))
+                .last();
+            if idle {
+                if let Some(record) = ours {
+                    std::thread::sleep(Duration::from_millis(1500));
+                    return ProviderCounts::from_record(record).ok_or_else(|| {
+                        Failure(format!(
+                            "the provider reported no prompt-cache count for this request, \
+                             so there is nothing to verify: {record}"
+                        ))
+                    });
+                }
+            }
+            if Instant::now() >= deadline {
+                bail!("no reply to {text:?} within 10 minutes ({} records)", records.len());
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
+
+    /// Open the counter's popover and read its rows.
+    fn read_token_popover(&self) -> Result<Value, Failure> {
+        self.wait_until(
+            "the token counter",
+            "return !!document.querySelector('[data-testid=\"token-counter\"]');",
+            Duration::from_secs(45),
+        )?;
+        self.eval(
+            "const t = document.querySelector('[data-testid=\"token-counter\"]');
+             t.scrollIntoView();
+             const r = t.getBoundingClientRect();
+             const at = { bubbles: true, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, pointerType: 'mouse' };
+             t.dispatchEvent(new PointerEvent('pointerover', at));
+             t.dispatchEvent(new PointerEvent('pointerenter', at));
+             t.dispatchEvent(new PointerEvent('pointermove', at));
+             t.focus();
+             return true;",
+        )?;
+        self.wait_until(
+            "the token usage popover",
+            "return !!document.querySelector('[data-testid=\"token-usage-breakdown\"]');",
+            Duration::from_secs(15),
+        )?;
+        self.eval(
+            "const pick = (id) => {
+               const el = document.querySelector(`[data-testid=\"${id}\"]`);
+               return el ? (el.getAttribute('data-value') ?? el.textContent) : null;
+             };
+             const box = document.querySelector('[data-testid=\"token-usage-breakdown\"]');
+             const note = document.querySelector('[data-testid=\"token-usage-uncached-note\"]');
+             return {
+               input: pick('token-usage-input'),
+               cached: pick('token-usage-cached'),
+               uncached: pick('token-usage-uncached'),
+               cacheWrite: pick('token-usage-cache-write'),
+               unreported: pick('token-usage-cache-unreported'),
+               output: pick('token-usage-output'),
+               total: pick('token-usage-total'),
+               note: note ? note.getAttribute('aria-label') : null,
+               text: box.innerText,
+               compact: document.querySelector('[data-testid=\"token-counter\"]').innerText,
+             };",
+        )
+    }
+
+    /// Give a person time to look at (or capture) the open popover.
+    fn hold_for_capture(&self, label: &str) {
+        let secs = std::env::var("COWORK_SMOKE_HOLD_SECS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+        if secs > 0 {
+            println!("      holding {secs}s with the {label} popover open");
+            std::thread::sleep(Duration::from_secs(secs));
+        }
+    }
+}
+
+/// The popover's rows against the provider's own counts for the same request.
+fn check_popover(label: &str, shown: &Value, expected: ProviderCounts) -> ScenarioResult {
+    println!(
+        "      {label} provider reported: input {} cached {} output {}",
+        expected.input, expected.cached, expected.output
+    );
+    println!(
+        "      {label} popover: {}",
+        shown
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .replace('\n', " | ")
+    );
+    let num = |key: &str| -> Option<u64> {
+        shown.get(key).and_then(Value::as_str).and_then(|s| s.parse().ok())
+    };
+    let want = [
+        ("input", expected.input),
+        ("cached", expected.cached),
+        ("uncached", expected.input.saturating_sub(expected.cached)),
+        ("output", expected.output),
+        ("total", expected.input + expected.output),
+    ];
+    for (key, value) in want {
+        ensure!(
+            num(key) == Some(value),
+            "{label}: the popover's {key} is {:?}, the provider reported {value}",
+            shown.get(key)
+        );
+    }
+    ensure!(
+        shown.get("unreported").map_or(true, Value::is_null),
+        "{label}: the popover says the cache was not reported, but the provider reported it"
+    );
+    let note = shown.get("note").and_then(Value::as_str).unwrap_or_default();
+    ensure!(
+        note.contains("minus cached input") && note.contains("not a number of cache-miss"),
+        "{label}: the uncached-input explanation is missing or wrong: {note:?}"
+    );
+    Ok(())
+}
+
+fn scenario_token_usage_cache(ctx: &Ctx) -> ScenarioResult {
+    let (upstream, model) = cache_upstream()?;
+    ctx.relay_to(Some((&upstream, &model)))?;
+    let outcome = (|| -> ScenarioResult {
+        // A prefix long enough that reuse is unmistakable, identical across
+        // the two turns so the second one can be served from the cache.
+        let facts: String = (1..=120)
+            .map(|i| format!("Fact {i}: item {i} weighs {} grams.", i * 7))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let first = format!("Keep these facts in mind. {facts} Reply with only the word OK.");
+        let follow_up = "Using the same facts, reply with only the word DONE.";
+
+        // Chat.
+        ctx.goto("/")?;
+        ctx.wait_until(
+            "the chat composer",
+            "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+            Duration::from_secs(30),
+        )?;
+        ctx.ensure_model_selected()?;
+        ctx.send_and_settle(&first)?;
+        let chat = ctx.send_and_settle(follow_up)?;
+        ensure!(
+            chat.cached > 0,
+            "the provider served none of the follow-up from its cache ({chat:?}); \
+             prefix reuse did not happen, so there is no cache breakdown to verify"
+        );
+        let chat_path = ctx.eval_string("return window.location.pathname;")?;
+        ensure!(
+            chat_path.starts_with("/threads/"),
+            "the chat never became a thread: {chat_path}"
+        );
+        let shown = ctx.read_token_popover()?;
+        check_popover("chat", &shown, chat)?;
+        ctx.hold_for_capture("chat");
+        record_verified("chat", serde_json::json!({ "path": chat_path, "counts": chat.to_json() }))
+    })();
+    // Back to the scripted fixture whatever happened, so a later scenario never
+    // talks to the real provider by accident.
+    let _ = ctx.relay_to(None);
+    outcome
+}
+
+/// Merge one surface's verified counts into the file the restart check reads.
+fn record_verified(surface: &str, entry: Value) -> ScenarioResult {
+    let path = data_folder()?.join(TOKEN_USAGE_EXPECTED);
+    let mut all: Value = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    all[surface] = entry;
+    std::fs::write(&path, serde_json::to_string_pretty(&all).unwrap_or_default())
+        .map_err(|e| Failure(format!("could not record the verified counts: {e}")))
+}
+
+/// Cowork's half, as its own scenario: run in its own process it cannot
+/// inherit a WebView that the Chat half left busy.
+fn scenario_token_usage_cache_cowork(ctx: &Ctx) -> ScenarioResult {
+    let (upstream, model) = cache_upstream()?;
+    ctx.relay_to(Some((&upstream, &model)))?;
+    let outcome = (|| -> ScenarioResult {
+        let facts: String = (1..=120)
+            .map(|i| format!("Fact {i}: item {i} weighs {} grams.", i * 7))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let first = format!("Keep these facts in mind. {facts} Reply with only the word OK.");
+        ctx.goto("/cowork")?;
+        ctx.wait_until(
+            "the cowork composer",
+            "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+            Duration::from_secs(30),
+        )?;
+        ctx.wait_until(
+            "the previous run to finish",
+            "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+            Duration::from_secs(90),
+        )?;
+        ctx.ensure_model_selected()?;
+        ctx.eval(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /new session/i.test((x.textContent || '').trim()));
+             if (b) b.click();
+             return true;",
+        )?;
+        ctx.settle();
+        let cowork_first = format!("Do not use any tools. {first}");
+        let cowork_follow_up = "Do not use any tools. Using the same facts, reply with only the word DONE.";
+        ctx.send_and_settle(&cowork_first)?;
+        let cowork = ctx.send_and_settle(cowork_follow_up)?;
+        ensure!(
+            cowork.cached > 0,
+            "the provider served none of the Cowork follow-up from its cache ({cowork:?})"
+        );
+        let shown = ctx.read_token_popover()?;
+        check_popover("cowork", &shown, cowork)?;
+        ctx.hold_for_capture("cowork");
+        record_verified("cowork", serde_json::json!({ "counts": cowork.to_json() }))
+    })();
+    let _ = ctx.relay_to(None);
+    outcome
+}
+
+fn scenario_token_usage_cache_after_restart(ctx: &Ctx) -> ScenarioResult {
+    let path = data_folder()?.join(TOKEN_USAGE_EXPECTED);
+    let raw = std::fs::read_to_string(&path).map_err(|e| {
+        Failure(format!(
+            "{} is missing ({e}); run token-usage-cache first with the same COWORK_SMOKE_KEEP",
+            path.display()
+        ))
+    })?;
+    let expected: Value = serde_json::from_str(&raw)
+        .map_err(|e| Failure(format!("unreadable {}: {e}", path.display())))?;
+    let chat_path = expected["chat"]["path"].as_str().unwrap_or_default().to_string();
+    let chat = ProviderCounts::from_json(&expected["chat"]["counts"])
+        .ok_or_else(|| Failure("no chat counts recorded".into()))?;
+    let cowork = ProviderCounts::from_json(&expected["cowork"]["counts"])
+        .ok_or_else(|| Failure("no cowork counts recorded".into()))?;
+
+    // Nothing is sent in this process: the breakdown has to come off disk.
+    ctx.goto(&chat_path)?;
+    ctx.wait_until(
+        "the restored chat",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(45),
+    )?;
+    let shown = ctx.read_token_popover()?;
+    check_popover("chat after restart", &shown, chat)?;
+    ctx.hold_for_capture("chat after restart");
+
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the restored cowork session",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(45),
+    )?;
+    let shown = ctx.read_token_popover()?;
+    check_popover("cowork after restart", &shown, cowork)?;
+    ctx.hold_for_capture("cowork after restart");
+    let records = ctx.relayed_records()?;
+    ensure!(
+        records.is_empty(),
+        "this process sent {} request(s) to the provider; the breakdown must come from disk",
+        records.len()
+    );
+    Ok(())
+}
+
+/// Scenarios that run only when named with `--only`: they need something the
+/// default run does not have, such as a real provider.
+const OPT_IN_SCENARIOS: &[Scenario] = &[
+    Scenario {
+        name: "token-usage-cache",
+        run: scenario_token_usage_cache,
+    },
+    Scenario {
+        name: "token-usage-cache-cowork",
+        run: scenario_token_usage_cache_cowork,
+    },
+    Scenario {
+        name: "token-usage-cache-after-restart",
+        run: scenario_token_usage_cache_after_restart,
+    },
+];
+
 fn main() {
     // The agent-tools plugin re-executes the current binary as its Windows
     // sandbox helper for every confined shell. Without this hand-off, as in
@@ -5627,6 +6040,7 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
     };
     let scenarios: Vec<&Scenario> = set
         .iter()
+        .chain(OPT_IN_SCENARIOS.iter())
         .chain(if self_test {
             std::slice::from_ref(&SELF_TEST_FAIL)
         } else {
@@ -5634,7 +6048,7 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
         })
         .filter(|s| match &only {
             Some(names) => names.iter().any(|n| n == s.name),
-            None => true,
+            None => !OPT_IN_SCENARIOS.iter().any(|o| o.name == s.name),
         })
         .collect();
     if let Some(names) = &only {

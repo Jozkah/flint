@@ -65,9 +65,14 @@ import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
 import { paramsSettings } from '@/lib/predefinedParams'
 import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
+import {
+  createUsageCollector,
+  readTokenUsage,
+  type TokenUsage,
+} from '@/lib/tokenUsage'
 
 export type TokenUsageCallback = (
-  usage: LanguageModelUsage,
+  usage: TokenUsage,
   messageId: string
 ) => void
 export type StreamingTokenSpeedCallback = (
@@ -1646,6 +1651,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     let tokensPerSecond = 0
     let promptPerSecond = 0
+    // Per step, with the provider's raw usage: the `finish` part's total has
+    // already been summed by the SDK and no longer says whether a cache count
+    // was reported or defaulted to zero.
+    const usageCollector = createUsageCollector()
 
     const uiStream = result.toUIMessageStream({
       messageMetadata: ({ part }) => {
@@ -1674,6 +1683,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           streamStartTime = Date.now()
         }
 
+        usageCollector.observe(part)
+
         if (part.type === 'finish-step') {
           tokensPerSecond =
             (part.providerMetadata?.providerMetadata
@@ -1690,13 +1701,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             totalUsage: LanguageModelUsage
             finishReason: string
           }
-          const usage = finishPart.totalUsage
+          const usage = usageCollector.total(finishPart.totalUsage)
           const durationMs = streamStartTime ? Date.now() - streamStartTime : 0
           const durationSec = durationMs / 1000
 
-          // Use provider's outputTokens, or llama.cpp completionTokens, or fall back to text delta count
-          const outputTokens = usage?.outputTokens ?? 0
-          const inputTokens = usage?.inputTokens
+          // Only for the speed figure; the stored usage keeps an unreported
+          // count unreported rather than zero.
+          const outputTokens = usage.outputTokens ?? 0
 
           // Use llama.cpp's tokens per second if available, otherwise calculate from duration
           let tokenSpeed: number
@@ -1709,12 +1720,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
           return {
             finishReason: finishPart.finishReason,
-            usage: {
-              inputTokens: inputTokens,
-              outputTokens: outputTokens,
-              totalTokens:
-                usage?.totalTokens ?? (inputTokens ?? 0) + outputTokens,
-            },
+            usage,
             tokenSpeed: {
               tokenSpeed: Math.round(tokenSpeed * 100) / 100,
               promptSpeed: promptPerSecond
@@ -1774,7 +1780,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           const metadata = responseMessage.metadata as
             | Record<string, unknown>
             | undefined
-          const usage = metadata?.usage as LanguageModelUsage | undefined
+          const usage = readTokenUsage(metadata?.usage)
           if (usage) {
             this.onTokenUsage?.(usage, responseMessage.id)
           }

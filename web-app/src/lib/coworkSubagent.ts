@@ -16,6 +16,7 @@ import {
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
+import { createUsageCollector } from '@/lib/tokenUsage'
 import {
   runTurn,
   type PendingToolCall,
@@ -344,17 +345,12 @@ function childStep(opts: {
       tools: Object.keys(opts.tools).length > 0 ? opts.tools : undefined,
       toolChoice: Object.keys(opts.tools).length > 0 ? 'auto' : undefined,
     })
+    const usage = createUsageCollector()
     return result.toUIMessageStream({
       messageMetadata: ({ part }) => {
+        usage.observe(part)
         if (part.type !== 'finish') return undefined
-        const usage = (part as any).totalUsage
-        return {
-          usage: {
-            inputTokens: usage?.inputTokens,
-            outputTokens: usage?.outputTokens,
-            totalTokens: usage?.totalTokens,
-          },
-        }
+        return { usage: usage.total((part as any).totalUsage) }
       },
       onError: (error) =>
         error instanceof Error ? error.message : String(error),

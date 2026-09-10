@@ -557,6 +557,20 @@ fn completion_json(
         if let Some(v) = u.total_tokens {
             usage_obj.insert("total_tokens".into(), serde_json::json!(v));
         }
+        // genai's normalized cache counts, in the chat/completions shape the
+        // agent loop reads. genai folds a reported zero into `None`, so an
+        // absent count here is "not reported", never a fabricated zero.
+        if let Some(details) = u.prompt_tokens_details.as_ref() {
+            if let Some(v) = details.cached_tokens {
+                usage_obj.insert(
+                    "prompt_tokens_details".into(),
+                    serde_json::json!({ "cached_tokens": v }),
+                );
+            }
+            if let Some(v) = details.cache_creation_tokens {
+                usage_obj.insert("cache_creation_input_tokens".into(), serde_json::json!(v));
+            }
+        }
         if !usage_obj.is_empty() {
             completion.insert("usage".into(), serde_json::Value::Object(usage_obj));
         }

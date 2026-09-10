@@ -350,6 +350,53 @@ replaces an estimate for the same invocation; an estimate never replaces a
 count. Lookups are scoped like snapshot lookups: name an invocation, a run or a
 session, or be refused.
 
+**What the provider cached (AH-211).** Provider-reported usage, including the
+prompt cache, has one shape everywhere: `web-app/src/lib/tokenUsage.ts`. It is
+kept apart from AH-073's dispatched-payload estimate, which is Jan's own byte
+count and stays labelled as an estimate; nothing in this shape is ever
+estimated. The fields, and what each provider's wire format means by them:
+
+| Field | Meaning | OpenAI Chat / OpenAI-compatible / llama-server | OpenAI Responses | Anthropic | Gemini |
+| --- | --- | --- | --- | --- | --- |
+| `inputTokens` | every prompt token the request carried | `prompt_tokens` (already includes cached) | `input_tokens` | `input_tokens + cache_read + cache_creation` | `promptTokenCount` |
+| `cachedInputTokens` | read from the cache | `prompt_tokens_details.cached_tokens` | `input_tokens_details.cached_tokens` | `cache_read_input_tokens` | `cachedContentTokenCount` |
+| `uncachedInputTokens` | derived, `max(input - cached, 0)` | derived | derived | derived (= `input_tokens + cache_creation`) | derived |
+| `cacheWriteTokens` | written to the cache; a subset of the uncached input | not reported (`cache_creation_input_tokens` if a proxy passes Anthropic's through) | not reported | `cache_creation_input_tokens` | not reported |
+| `outputTokens` / `totalTokens` | output; input plus output | `completion_tokens`; sum | `output_tokens`; sum | `output_tokens`; sum | `candidatesTokenCount (+thoughts)`; sum |
+
+Anthropic's `input_tokens` is the only one that excludes cached tokens, which is
+why its total is assembled from three fields; the creation count is inside that
+total and inside the uncached share, and is never added again. llama.cpp and
+MLX also report `timings.cache_n`; it is used only when `usage` carried no
+cache count, and it is the engine's own measurement, not an inference. Nothing
+is inferred from a request "probably" reusing its conversation.
+
+A count the provider did not send is `undefined` and stays so through every
+layer: the AI SDK's converters default an absent `cached_tokens` to zero, so
+presence is decided from the provider's raw usage object (`finish-step`'s
+`usage.raw`) before any number is believed. A measured zero is a zero; an
+unreported count is shown as "Not reported". A cached count larger than the
+input, or a cache write larger than the uncached input, is clamped and the
+provider's value kept in `reported` for diagnostics. Streaming snapshots are
+cumulative and the last one wins -- the SDK keeps the final `usage` chunk,
+Anthropic's `message_delta` replaces `message_start`, and the llama.cpp
+extractor keeps the last `timings` -- while distinct steps of one turn are
+separate requests and are added, with a cache count kept only if every step
+reported one.
+
+The breakdown travels in Chat message metadata (`metadata.usage`, persisted
+verbatim in `messages.jsonl`), through `coworkRunner`'s step fold into the
+Cowork session's `lastUsage` and each subagent's `usage` (snake_case, mirroring
+the Rust `Usage`), into AH-073's payload record as optional
+`cached_prompt_tokens`/`cache_write_tokens`, and through the local server's
+converters (`core/server/converters.rs`) and the Rust agent's `Usage`. Records
+saved before any of this existed load unchanged and read as "not reported";
+nothing migrates a missing field to zero. The counter's compact badge is
+unchanged; its popover (`TokenUsageBreakdown`) itemises input, cached and
+uncached input, cache write, output and total, draws only rows backed by a
+reported count, and explains that uncached input is derived and is a token
+count, not a number of cache misses.
+
 
 ## Run guards: budgets, deadlines, retries and loops
 

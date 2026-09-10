@@ -47,7 +47,7 @@ export const SECURITY_IMPACTS = ['none', 'low', 'medium', 'high', 'critical']
  * Adding items is allowed and removing them is not: the count is a floor that
  * this constant records, so a deletion still fails validation.
  */
-export const EXPECTED_FEATURE_COUNT = 210
+export const EXPECTED_FEATURE_COUNT = 211
 
 /** Inclusive id ranges per delivery phase, in dependency order. */
 export const PHASES = [
@@ -60,10 +60,10 @@ export const PHASES = [
   { phase: 6, name: 'Compatibility and integrations', from: 114, to: 145 },
   { phase: 7, name: 'Coding and Git workflows', from: 146, to: 171 },
   { phase: 8, name: 'UX, automation and operations', from: 172, to: 200 },
-  // AH-201..AH-210 are their own phase rather than an extension of phase 8:
+  // AH-201..AH-211 are their own phase rather than an extension of phase 8:
   // they were approved after the original 200 were planned, and folding them
   // into phase 8 would misreport when they were decided.
-  { phase: 9, name: 'Approved additions', from: 201, to: 210 },
+  { phase: 9, name: 'Approved additions', from: 201, to: 211 },
 ]
 
 export const LANES = [

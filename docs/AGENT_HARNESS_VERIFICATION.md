@@ -116,6 +116,7 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 | Per-agent worktrees | not run | not run | passed (managed worktree through the UI, mock provider) | passed |
 | Desktop agent surfaces | not run | not run | not run | not run |
 | Tool activity record and timeline (AH-050/AH-172) | not run | passed | passed (mock provider) | passed |
+| Provider cache-aware token usage (AH-211) | not run | not run | passed | passed (Windows) |
 
 ## Known blockers
 
@@ -313,6 +314,40 @@ made to return `true` unconditionally -- which is what the bug was.
 ever passed with accounting: no dispatch was given an invocation id, so
 `recordPayloadUsage` dropped every record and the scenario failed at exactly
 this check. Fixed in `providerFetch`; the scenario now passes on Windows.
+
+
+## Provider cache-aware token usage (AH-211)
+
+Provider-reported usage only; AH-073's estimate is a separate record and is not
+exercised here.
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 19 unit tests | `web-app/src/lib/__tests__/tokenUsage.test.ts` | OpenAI `cached_tokens`; Anthropic read and creation without double counting; llama.cpp usage including a measured zero; `cache_n` fallback; no cache data stays absent despite the SDK's zero default; Responses and Gemini; clamping with the reported value kept; step combination; legacy records; Cowork mapping |
+| 8 provider tests | `web-app/src/lib/__tests__/tokenUsage.providers.test.ts` | the real `@ai-sdk/openai-compatible`, llama.cpp and `@ai-sdk/anthropic` models over replayed wire bodies (llama-server and vLLM bodies captured from real servers), folded the way the transport stores them; cumulative streaming kept final, not summed; malformed counts clamped |
+| 5 unit tests | `web-app/src/lib/__tests__/tokenUsage.cowork.test.ts` | the runner's step fold; run outcome is the last step, not a sum; Cowork session breakdown and subagent usage survive a rehydrate from storage; a pre-existing session loads without invented fields |
+| 2 subagent tests | `web-app/src/lib/__tests__/coworkSubagent.test.ts` | a child's breakdown reaches its task record; a child with no cache data carries no cache fields |
+| 4 hook tests | `web-app/src/hooks/__tests__/useTokensCount.test.ts` | Chat reload from a persisted message; a legacy message; live `cache_n`; Cowork source usage |
+| 7 render tests | `web-app/src/components/__tests__/TokenCounter.test.tsx` (`cache breakdown`) | rows with and without cache data, "Not reported" rather than 0, a measured zero, cache write, the derived-count explanation, clamping notice, compact badge unchanged |
+| Rust unit tests | `core/server/converters.rs`, `core/agent/events.rs`, `core/threads/tests.rs`, `plugins/tauri-plugin-agent-tools/src/usage.rs` | Anthropic, Responses and Gemini cache counts in chat/completions shape; cumulative `message_delta` replaces rather than adds; absent counts omitted; `messages.jsonl` round trip; payload records old and new |
+| Real WebView scenarios | `cowork-smoke --only token-usage-cache`, then `token-usage-cache-cowork`, then `token-usage-cache-after-restart`, each its own process on the same `COWORK_SMOKE_DATA_DIR` | against a real llama-server reached through the fixture's transparent relay: two turns in Chat and in Cowork, the follow-up served from the provider's cache, the popover's Input/Cached/Uncached/Output/Total equal to what the provider reported for that request; then a second process shows the same breakdown from disk without contacting the provider |
+
+Run the scenario with a real OpenAI-compatible server that reports
+`prompt_tokens_details.cached_tokens`:
+
+```
+set COWORK_SMOKE_CACHE_UPSTREAM=http://<host>:<port>/v1
+set COWORK_SMOKE_CACHE_MODEL=<model id>
+set COWORK_SMOKE_KEEP=<empty folder, kept across the runs>
+set COWORK_SMOKE_PORT=18711
+cargo run --example cowork-smoke --features cowork-smoke -- --only token-usage-cache
+cargo run --example cowork-smoke --features cowork-smoke -- --only token-usage-cache-cowork
+cargo run --example cowork-smoke --features cowork-smoke -- --only token-usage-cache-after-restart
+```
+
+Each surface runs in its own process, and the restart check is a later one on
+the same `COWORK_SMOKE_KEEP` profile (data folder, working directory and
+WebView profile all kept). `COWORK_SMOKE_PORT` moves the fixture off 8080.
 
 
 ## Run reliability (AH-018 / AH-019 / AH-021 / AH-024 / AH-025 / AH-029 / AH-030)

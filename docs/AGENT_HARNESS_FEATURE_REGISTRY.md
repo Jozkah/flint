@@ -34,8 +34,8 @@ and the latter two require a recorded `blockedReason`.
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 20 | 0 | 1 | 5 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 17 | 0 | 6 | 6 | 0 | 0 | 0 | 29 |
-| 9 | Approved additions | 0 | 0 | 0 | 10 | 0 | 0 | 0 | 10 |
-| **all** | | **77** | **0** | **32** | **101** | **0** | **0** | **0** | **210** |
+| 9 | Approved additions | 0 | 0 | 0 | 11 | 0 | 0 | 0 | 11 |
+| **all** | | **77** | **0** | **32** | **102** | **0** | **0** | **0** | **211** |
 
 ## Ownership lanes
 
@@ -53,7 +53,7 @@ consumes the result.
 | `lane-06-agents-worktrees` | 25 (AH-089-AH-113) |
 | `lane-07-mcp-skills-plugins` | 32 (AH-114-AH-145) |
 | `lane-08-git-pr-workflows` | 26 (AH-146-AH-171) |
-| `lane-09-ux-observability` | 16 (AH-172-AH-200) |
+| `lane-09-ux-observability` | 17 (AH-172-AH-211) |
 | `lane-10-provider-enterprise` | 10 (AH-186-AH-195) |
 | `lane-12-security-regression-review` | 3 (AH-196-AH-198) |
 | `lane-21-sessions` | 3 (AH-201-AH-210) |
@@ -280,6 +280,7 @@ per-OS evidence log rather than backlog items.
 | `AH-208` | Hidden internal utility agents | 9 | agents | P2 | `implemented` | high | `AH-107` |
 | `AH-209` | Project initialization assistant | 9 | projects | P2 | `implemented` | medium | `AH-204` |
 | `AH-210` | Portable PC-to-PC handoff bundle | 9 | sessions | P2 | `implemented` | high | `AH-203`, `AH-146` |
+| `AH-211` | Provider cache-aware token accounting | 9 | ux-operations | P1 | `implemented` | low | - |
 
 ## Audit notes
 

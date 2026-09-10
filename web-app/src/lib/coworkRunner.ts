@@ -16,6 +16,7 @@ import {
 } from '@/lib/runLoopGuard'
 import { isExpired, operationSignal, type Deadline } from '@/lib/runDeadline'
 import { decideRetry, waitFor } from '@/lib/runRetry'
+import { readTokenUsage, toCoworkUsage } from '@/lib/tokenUsage'
 
 /**
  * The HTTP status a failure carried, when it carried one.
@@ -272,17 +273,13 @@ export function answerAsk(
   return true
 }
 
+// The cache counts ride along: dropping them here was where a provider's
+// cache report used to stop on its way to the Cowork counter.
 const usageOf = (meta: unknown): Usage | null => {
-  const u = (meta as { usage?: Record<string, unknown> } | undefined)?.usage
-  if (!u || typeof u !== 'object') return null
-  const num = (v: unknown) => (typeof v === 'number' ? v : undefined)
-  return {
-    prompt_tokens: num(u.inputTokens ?? u.promptTokens ?? u.prompt_tokens),
-    completion_tokens: num(
-      u.outputTokens ?? u.completionTokens ?? u.completion_tokens
-    ),
-    total_tokens: num(u.totalTokens ?? u.total_tokens),
-  }
+  const usage = readTokenUsage(
+    (meta as { usage?: unknown } | undefined)?.usage
+  )
+  return usage ? toCoworkUsage(usage) : null
 }
 
 export type StreamSink = {

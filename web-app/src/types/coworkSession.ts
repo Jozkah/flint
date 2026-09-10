@@ -94,11 +94,29 @@ export type AskRecord = {
   answers?: AskAnswer[]
 }
 
-/** Mirrors the Rust `Usage` struct (events.rs). */
+/**
+ * Mirrors the Rust `Usage` struct (events.rs).
+ *
+ * The cache fields are present only when the provider reported them; a
+ * session saved before they existed simply lacks them, and reads as "not
+ * reported" rather than "nothing cached". `uncached_prompt_tokens` is derived
+ * (`prompt - cached`) and is re-derived on read. See `lib/tokenUsage.ts`.
+ */
 export type Usage = {
   prompt_tokens?: number
   completion_tokens?: number
   total_tokens?: number
+  cached_prompt_tokens?: number
+  uncached_prompt_tokens?: number
+  cache_write_tokens?: number
+  cache_source?:
+    | 'openai-chat'
+    | 'openai-responses'
+    | 'anthropic'
+    | 'google'
+    | 'engine-timings'
+  /** Provider values that were clamped, kept for diagnostics. */
+  reported?: { cachedInputTokens?: number; cacheWriteTokens?: number }
 }
 
 /**

@@ -25,6 +25,13 @@ export type PayloadUsage = {
   prompt_tokens: number | null
   completion_tokens: number | null
   total_tokens: number | null
+  /**
+   * The provider's own cache counts for this dispatch. Omitted, not zeroed,
+   * when the provider did not report them; records written before these
+   * existed lack them entirely. AH-211.
+   */
+  cached_prompt_tokens?: number | null
+  cache_write_tokens?: number | null
   source: UsageSource
 }
 
@@ -32,6 +39,8 @@ export type ProviderUsage = {
   prompt_tokens?: number
   completion_tokens?: number
   total_tokens?: number
+  cached_prompt_tokens?: number
+  cache_write_tokens?: number
 } | null
 
 const positive = (value: unknown): number | null =>
@@ -58,9 +67,13 @@ export async function recordPayloadUsage(input: {
   // unbound count is exactly what this record exists to stop.
   if (!invocation) return
 
+  const cached = positive(input.usage?.cached_prompt_tokens)
+  const cacheWrite = positive(input.usage?.cache_write_tokens)
   try {
     await invoke('payload_usage_record', {
       usage: {
+        ...(cached !== null ? { cached_prompt_tokens: cached } : {}),
+        ...(cacheWrite !== null ? { cache_write_tokens: cacheWrite } : {}),
         v: 1,
         at: new Date().toISOString(),
         session: input.session,

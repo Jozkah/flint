@@ -6542,6 +6542,57 @@
       "blockedReason": null,
       "evidence": "Not implemented. Depends on AH-203, which does not exist yet.",
       "auditNote": "'Hand off to another computer' in a session's menu writes the AH-203 export (same schema, same credential redaction, authority dropped) plus a handoff block: the folder by name, branch and commit (never its path) and the model by provider and id (anything else sent under handoff is dropped, keys included). Every absolute path that only means something on this machine is replaced by what it means: the session's folder becomes <folder>, Jan's data folder <jan-data>, the home folder ~. It is produced and consumed locally through dialogs the backend owns; nothing is uploaded. Importing it creates the session unbound and says, item by item, what could not be restored: the folder to attach (checked against the recorded name, branch and commit once one is attached), a provider not set up here, a model its provider does not offer here. The notice is kept on the session until dismissed. Windows: session-handoff passes in the real WebView, and handoff-persist-1/2 prove the notice survives a real restart. macOS and Linux were not run."
+    },
+    {
+      "id": "AH-211",
+      "title": "Provider cache-aware token accounting",
+      "category": "ux-operations",
+      "phase": 9,
+      "phaseName": "Approved additions",
+      "status": "implemented",
+      "priority": "P1",
+      "dependencies": [],
+      "owner": "lane-09-ux-observability",
+      "files": [
+        "web-app/src/lib/tokenUsage.ts",
+        "web-app/src/components/TokenUsageBreakdown.tsx",
+        "web-app/src/components/TokenCounter.tsx",
+        "web-app/src/hooks/useTokensCount.ts",
+        "web-app/src/lib/custom-chat-transport.ts",
+        "web-app/src/lib/coworkRunner.ts",
+        "web-app/src/lib/coworkSubagent.ts",
+        "web-app/src/lib/model-factory.ts",
+        "src-tauri/src/core/server/converters.rs",
+        "src-tauri/src/core/agent/events.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/usage.rs",
+        "src-tauri/examples/cowork_smoke.rs"
+      ],
+      "securityImpact": "low",
+      "acceptanceCriteria": [
+        "Provider-reported input, cached input, cache write, output and total tokens are normalized from the wire formats Jan uses (OpenAI-compatible prompt_tokens_details.cached_tokens, Anthropic cache_read/cache_creation_input_tokens, llama.cpp usage and timings.cache_n, and other providers only where their converter reports cache counts), with uncached input derived as max(input - cached, 0).",
+        "A count the provider did not report stays unknown end to end and is never displayed or stored as zero; a measured zero is displayed as zero.",
+        "Cache-creation tokens are part of the input total and of its uncached share and are never counted twice; inconsistent provider values are clamped and the reported values retained; cumulative streaming usage keeps the final values rather than summing snapshots.",
+        "The breakdown survives the Chat and Cowork paths -- converters, streaming metadata, the transport callback, Chat message persistence, Cowork runner events, session persistence and subagent usage -- and an application restart; records saved before it existed load unchanged and read as not reported.",
+        "The Chat and Cowork token counter keeps its compact badge and shows Input, Cached input, Uncached input, Cache write (when reported), Output and Total in its popover, with an explanation that uncached input is derived and is a token count, not a count of cache misses.",
+        "Provider-reported usage stays separate from AH-073's dispatched-payload estimate, which is never presented as provider usage.",
+        "Tests: unit, provider-parsing and real WebView coverage, including a real provider that reports cache counts and a restart."
+      ],
+      "tests": [
+        "web-app/src/lib/__tests__/tokenUsage.test.ts",
+        "web-app/src/lib/__tests__/tokenUsage.providers.test.ts",
+        "web-app/src/lib/__tests__/tokenUsage.cowork.test.ts",
+        "web-app/src/components/__tests__/TokenCounter.test.tsx",
+        "web-app/src/hooks/__tests__/useTokensCount.test.ts",
+        "src-tauri/src/core/server/converters.rs",
+        "src-tauri/src/core/agent/events.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/usage.rs",
+        "src-tauri/examples/cowork_smoke.rs::token-usage-cache",
+        "src-tauri/examples/cowork_smoke.rs::token-usage-cache-cowork",
+        "src-tauri/examples/cowork_smoke.rs::token-usage-cache-after-restart"
+      ],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "evidence": "Integration onto fork/main 9ab30620e pending live re-verification. Earlier live run (on the pre-integration base) is superseded until repeated on the merged tree."
     }
   ]
 }
