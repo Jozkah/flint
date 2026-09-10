@@ -30,9 +30,9 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1264,
+      "untriaged": 1262,
       "fixed": 10,
-      "already-fixed": 1,
+      "already-fixed": 3,
       "needs-user-hardware": 2,
       "not-applicable": 1
     }
@@ -66505,12 +66505,12 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "already-fixed",
+      "decisionReason": "Merged upstream 2026-09-03 before the merge base; its merge commit is an ancestor of the fork (arguments_are_executable in src-tauri/src/core/agent/loop.rs).",
+      "implementationStatus": "already-fixed",
       "forkCommits": [],
       "tests": [],
-      "verification": null,
+      "verification": "git merge-base --is-ancestor <8783 merge commit> HEAD succeeds.",
       "blockers": [],
       "notes": null
     },
@@ -73211,14 +73211,14 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "already-fixed",
+      "decisionReason": "Duplicate of janhq/jan#8894: the fork already emits per-model n-gpu-layers regardless of fit (5e34837 on the completion branch), with its own tests.",
+      "implementationStatus": "already-fixed",
       "forkCommits": [],
       "tests": [],
       "verification": null,
       "blockers": [],
-      "notes": null
+      "notes": "Upstream PR not cherry-picked; the fork fix predates review of this PR and covers the same behaviour."
     },
     {
       "source": "janhq/jan",
