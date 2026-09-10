@@ -928,6 +928,19 @@ const SCENARIOS: &[Scenario] = &[
     // A pair, like restart-persist: an alias saved in one process is offered
     // and resolved by the next.
     Scenario {
+        name: "project-init",
+        run: scenario_project_init,
+    },
+    // A pair: a draft edited in one process is still there in the next.
+    Scenario {
+        name: "project-init-draft-1",
+        run: scenario_project_init_draft_first,
+    },
+    Scenario {
+        name: "project-init-draft-2",
+        run: scenario_project_init_draft_second,
+    },
+    Scenario {
         name: "alias-persist-1",
         run: scenario_alias_persist_first,
     },
@@ -2967,6 +2980,193 @@ fn scenario_unified_at_menu(ctx: &Ctx) -> ScenarioResult {
             || sent.contains("call the task tool with agent \"review-bot\""),
         "the agent reference did not say how to reach it"
     );
+    Ok(())
+}
+
+/// Set a text field's value the way typing does, so React sees the change.
+fn set_field(ctx: &Ctx, selector: &str, value: &str) -> ScenarioResult {
+    let ok = ctx.eval_bool(&format!(
+        "const el = document.querySelector({selector:?});
+         if (!el) return false;
+         const proto = el instanceof HTMLTextAreaElement
+           ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+         Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, {value:?});
+         el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+         return true;"
+    ))?;
+    ensure!(ok, "{selector} is not on the page");
+    Ok(())
+}
+
+/// Open the project description dialog and wait for its draft.
+fn open_project_init(ctx: &Ctx) -> Result<String, Failure> {
+    ctx.wait_until(
+        "the offer to describe the project",
+        "return !!document.querySelector('[data-testid=\"project-init-open\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.eval("document.querySelector('[data-testid=\"project-init-open\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the proposed JAN.md",
+        "const t = document.querySelector('[data-testid=\"project-init-text\"]');
+         return !!t && t.value.length > 0;",
+        Duration::from_secs(30),
+    )?;
+    ctx.eval_string("return document.querySelector('[data-testid=\"project-init-text\"]').value;")
+}
+
+/// AH-209 through the real UI: survey, edit, accept; nothing written before.
+fn scenario_project_init(ctx: &Ctx) -> ScenarioResult {
+    let jan_md = ctx.project.join("JAN.md");
+    let _ = std::fs::remove_file(&jan_md);
+    ctx.script_model("plain", &[])?;
+    attach_project(ctx)?;
+
+    let draft = open_project_init(ctx)?;
+    ensure!(
+        draft.starts_with("# cowork-smoke-fixture"),
+        "the draft is not named from package.json: {draft:?}"
+    );
+    // The README as it is on disk -- the fixture edits it in the working tree
+    // after committing, and the survey reads the working tree.
+    let readme = std::fs::read_to_string(ctx.project.join("README.md")).unwrap_or_default();
+    let first_paragraph = readme
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with('#'))
+        .unwrap_or_default()
+        .to_string();
+    ensure!(
+        !first_paragraph.is_empty() && draft.contains(&first_paragraph),
+        "the draft does not carry the README's description ({first_paragraph:?}): {draft:?}"
+    );
+    ensure!(
+        !draft.contains("SMOKE_TOKEN"),
+        "the draft carries the content of .env"
+    );
+    ensure!(
+        draft.contains("TypeScript"),
+        "the draft does not say what the project is written in: {draft:?}"
+    );
+    let not_read = ctx.eval_string(
+        "const l = document.querySelector('[data-testid=\"project-init-not-read\"]');
+         return l ? l.textContent : '';",
+    )?;
+    ensure!(
+        not_read.contains("skipped by design"),
+        "the dialog does not say what the survey did not read: {not_read:?}"
+    );
+    ensure!(!jan_md.exists(), "surveying wrote JAN.md");
+
+    let edited = format!("{draft}- Checked by the smoke run.\n");
+    set_field(ctx, "[data-testid=\"project-init-text\"]", &edited)?;
+    ctx.eval("document.querySelector('[data-testid=\"project-init-accept\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the write to be announced",
+        "const s = document.querySelector('[data-testid=\"project-init-status\"]');
+         return !!s && s.textContent.includes('Wrote JAN.md');",
+        Duration::from_secs(20),
+    )?;
+    let written = std::fs::read_to_string(&jan_md).map_err(|e| Failure(format!("JAN.md: {e}")))?;
+    ensure!(written == edited, "JAN.md is not exactly the accepted text: {written:?}");
+    ctx.wait_until(
+        "the offer to go once JAN.md exists",
+        "return !document.querySelector('[data-testid=\"project-init-open\"]');",
+        Duration::from_secs(20),
+    )?;
+
+    // Refusal: a second acceptance over the file is refused and changes nothing.
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let project = ctx.project.to_string_lossy().to_string();
+    let (ok, refusal) = ipc(
+        ctx,
+        "plugin:agent-tools|project_init_accept",
+        &format!("{{ dataFolder: {data:?}, root: {project:?}, content: 'OVERWRITTEN', overwrite: false }}"),
+    )?;
+    ensure!(!ok, "a second JAN.md was written over the first");
+    ensure!(
+        refusal.to_string().contains("already has a JAN.md"),
+        "the refusal did not say why: {refusal}"
+    );
+    ensure!(
+        std::fs::read_to_string(&jan_md).unwrap_or_default() == edited,
+        "the refused write changed JAN.md"
+    );
+    let _ = std::fs::remove_file(&jan_md);
+    Ok(())
+}
+
+const DRAFT_MARKER: &str = "project-init-phase-1.txt";
+const DRAFT_TEXT: &str = "DRAFT-KEPT-ACROSS-RESTART";
+
+/// Phase one: edit a draft, close the dialog without accepting, and exit.
+fn scenario_project_init_draft_first(ctx: &Ctx) -> ScenarioResult {
+    let _ = std::fs::remove_file(ctx.project.join("JAN.md"));
+    ctx.script_model("plain", &[])?;
+    attach_project(ctx)?;
+    let draft = open_project_init(ctx)?;
+    set_field(
+        ctx,
+        "[data-testid=\"project-init-text\"]",
+        &format!("{draft}{DRAFT_TEXT}\n"),
+    )?;
+    ctx.eval(
+        "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+         const a = document.activeElement;
+         if (a) a.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the dialog to close",
+        "return !document.querySelector('[data-testid=\"project-init-dialog\"]');",
+        Duration::from_secs(10),
+    )?;
+    ensure!(!ctx.project.join("JAN.md").exists(), "closing the dialog wrote JAN.md");
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let settings = Path::new(&data).join("settings.json");
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let raw = std::fs::read_to_string(&settings).unwrap_or_default();
+        if raw.contains("project-init-drafts") && raw.contains(DRAFT_TEXT) {
+            break;
+        }
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "the edited draft never reached settings.json"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    std::fs::write(ctx.workspace.join(DRAFT_MARKER), "edited").map_err(|e| Failure(e.to_string()))
+}
+
+/// Phase two, a new process: the edit is still there, and discarding it
+/// writes nothing.
+fn scenario_project_init_draft_second(ctx: &Ctx) -> ScenarioResult {
+    ensure!(
+        ctx.workspace.join(DRAFT_MARKER).exists(),
+        "phase one did not run against this workspace"
+    );
+    ctx.script_model("plain", &[])?;
+    attach_project(ctx)?;
+    ctx.wait_until(
+        "the offer to continue the draft",
+        "const b = document.querySelector('[data-testid=\"project-init-open\"]');
+         return !!b && b.textContent.includes('Continue');",
+        Duration::from_secs(30),
+    )?;
+    let draft = open_project_init(ctx)?;
+    ensure!(
+        draft.contains(DRAFT_TEXT),
+        "the draft edited before the restart did not come back: {draft:?}"
+    );
+    ctx.eval("document.querySelector('[data-testid=\"project-init-discard\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the discard to be announced",
+        "const s = document.querySelector('[data-testid=\"project-init-status\"]');
+         return !!s && s.textContent.includes('Nothing was written');",
+        Duration::from_secs(10),
+    )?;
+    ensure!(!ctx.project.join("JAN.md").exists(), "discarding wrote JAN.md");
     Ok(())
 }
 

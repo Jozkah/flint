@@ -36,6 +36,7 @@ export const localStorageKey = {
   coworkCheckpoints: 'cowork-checkpoints',
   keybindings: 'keybindings',
   referenceAliases: 'reference-aliases',
+  projectInitDrafts: 'project-init-drafts',
 }
 
 export const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24

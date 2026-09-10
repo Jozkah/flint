@@ -34,8 +34,8 @@ and the latter two require a recorded `blockedReason`.
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 20 | 0 | 1 | 5 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 17 | 0 | 6 | 6 | 0 | 0 | 0 | 29 |
-| 9 | Approved additions | 2 | 0 | 1 | 7 | 0 | 0 | 0 | 10 |
-| **all** | | **79** | **0** | **33** | **98** | **0** | **0** | **0** | **210** |
+| 9 | Approved additions | 1 | 0 | 1 | 8 | 0 | 0 | 0 | 10 |
+| **all** | | **78** | **0** | **33** | **99** | **0** | **0** | **0** | **210** |
 
 ## Ownership lanes
 
@@ -278,7 +278,7 @@ per-OS evidence log rather than backlog items.
 | `AH-206` | Local command palette | 9 | navigation | P2 | `implemented` | low | - |
 | `AH-207` | Customizable keybindings | 9 | navigation | P2 | `implemented` | low | `AH-206` |
 | `AH-208` | Hidden internal utility agents | 9 | agents | P2 | `implemented` | high | `AH-107` |
-| `AH-209` | Project initialization assistant | 9 | projects | P2 | `missing` | medium | `AH-204` |
+| `AH-209` | Project initialization assistant | 9 | projects | P2 | `implemented` | medium | `AH-204` |
 | `AH-210` | Portable PC-to-PC handoff bundle | 9 | sessions | P2 | `missing` | high | `AH-203`, `AH-146` |
 
 ## Audit notes
@@ -387,3 +387,4 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-206` Local command palette** - Ctrl/Cmd+Shift+P (rebindable) opens one palette above every route: actions (new chat, new project, search conversations, toggle sidebar), navigation (Cowork, artifacts, system monitor, logs), every settings page and every conversation. Ranked in memory with Fuse; no request of any kind. Escape closes it. Windows: cowork-smoke command-palette-keybindings opens it from the home route by the chord, ranks 'system monitor' first and navigates on Enter.
 - **`AH-207` Customizable keybindings** - Settings > Shortcuts: Change records the next chord; a chord any other command uses (including zoom's alias keys) is refused naming that command; every app shortcut stands down while recording; Reset restores the default. Only overrides are persisted through the backend settings store. Menu hints (ShortcutHint) read the binding in force. Windows: command-palette-keybindings proves the conflict message, acceptance, the write to settings.json, the new chord working and the old one not, and Reset; restart-persist-1 rebinds the palette and the process exits, and restart-persist-2 in a new process finds the old chord inert and the new one opening the palette. macOS modifier conventions are unit-tested only.
 - **`AH-208` Hidden internal utility agents** - Titling and compaction summaries run through runUtilityAgent: generateText with no tools and toolChoice 'none', and no parameter through which a tool, grant or write root could be passed, so they cannot read files or run commands and inherit nothing from the run. They are not shown as agents or on any timeline. Every invocation (succeeded, failed, cancelled) is recorded in audit/utility-agents.jsonl with kind, session, model, duration and token counts; the backend refuses any field that is not an identifier rather than filtering it, so no content reaches the file. The title path no longer logs the transcript or the title. Windows: cowork-smoke utility-agent-title passes on a real round trip.
+- **`AH-209` Project initialization assistant** - A folder with no JAN.md is offered 'Describe this project'. project_survey walks it through project_browse (inside the folder, .gitignore honoured, dependency and build output skipped, links out of the folder dropped, credential-shaped files refused), reads only manifests and the README, runs nothing, stops after 200 folders, 4,000 entries or 4 levels, and lists what it did not read. The draft is edited in a dialog and kept per folder in the backend settings store until it is accepted or discarded, so it survives a restart. project_init_accept is the only write: <folder>/JAN.md, exactly the accepted text, written by renaming a temporary file into place, refusing an existing file unless asked to overwrite, a link or folder in its place, and empty or oversized text. An abandoned survey's result is dropped. Found on Windows: a missing JAN.md was classified as unreadable ('cannot find the file'); fixed with isMissingFileError. Windows: project-init and project-init-draft-1/2 pass in the real WebView, the second pair across a real restart. macOS and Linux were not run.

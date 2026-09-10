@@ -24,6 +24,7 @@ import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import { useKeybindings } from '@/hooks/useKeybindings'
 import { useReferenceAliases } from '@/lib/referenceAliases'
+import { useProjectInitDrafts } from '@/lib/projectInit'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -61,6 +62,7 @@ const secondaryStores = [
   useCoworkDisplay,
   useKeybindings,
   useReferenceAliases,
+  useProjectInitDrafts,
 ] as const
 
 export async function hydrateBackendStores(): Promise<void> {

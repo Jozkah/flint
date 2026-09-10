@@ -20,6 +20,7 @@ pub mod memory;
 pub mod permissions;
 pub mod policy;
 pub mod project_browse;
+pub mod project_init;
 pub mod proposal;
 pub mod readiness;
 pub mod resource;
@@ -103,6 +104,8 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::preview_change,
             commands::project_list_dir,
             commands::project_read_file,
+            commands::project_survey,
+            commands::project_init_accept,
             commands::bash_jobs_list,
             commands::bash_job_kill
         ])

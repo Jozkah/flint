@@ -1847,6 +1847,37 @@ exiting, as a person would.
 Not done: a selection (`@path:start-end`) cannot be named, so AH-205 stays
 `in-progress`.
 
+**AH-209: describing a newly attached project.** A folder with no `JAN.md`
+gets a *Describe this project* button beside the composer. The backend
+`project_survey` walks the folder through the same confined listing and reader
+the Code panel uses, so it honours `.gitignore`, skips dependency and build
+output, drops symlinks that lead out of the folder, and refuses
+credential-shaped files. It reads only the manifests and the README: it names
+the project from `package.json`, `Cargo.toml`, `pyproject.toml` or `go.mod`,
+takes the description from the manifest or the README's first paragraph, tallies
+languages by extension, and describes the build from what the manifests declare.
+It runs nothing. It stops after 200 folders, 4,000 entries or 4 levels, and
+lists what it did not read. The draft opens in a dialog for editing and is kept
+per folder in the backend settings store, so it survives closing the dialog and
+restarting the app. `project_init_accept` is the only write. It writes
+`<folder>/JAN.md`, only with the accepted text, by renaming a temporary file into
+place, and refuses an existing file (unless asked to overwrite), a `JAN.md` that
+is a link or a folder, and empty or oversized text. After the write, Cowork
+reads the instructions again. A survey still running when the dialog closes is
+dropped.
+
+Found while running it on Windows, both fixed with regression tests:
+
+- *A missing `JAN.md` was reported as unreadable.* The instruction probe
+  treated a read failure as "absent" only when the message said "not found",
+  "no such file" or "ENOENT". Windows reports "The system cannot find the file
+  specified (os error 2)", so every folder without a `JAN.md` was shown as
+  having one that could not be read, and the offer never appeared.
+  `isMissingFileError` now recognises both forms.
+- *The announcement of the write vanished with the offer.* Writing `JAN.md`
+  removes the offer, and the live region was inside the removed element. The
+  live region now stays mounted. Mutation-checked.
+
 **Stopping a process tree on Windows no longer goes through `taskkill`.**
 `kill_tree` takes one process snapshot, then calls `TerminateProcess` on the
 root and on every descendant. A process counts as a child only if it was created

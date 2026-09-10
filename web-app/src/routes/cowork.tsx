@@ -178,6 +178,7 @@ import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
+import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
 import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
 import { orphans as orphanWorktrees } from '@/lib/coworkWorktrees'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
@@ -202,6 +203,7 @@ import {
   NATIVE_INSTRUCTION_FILE,
   bindingKey,
   classifyInstruction,
+  isMissingFileError,
   parseSkillRequests,
   resolveSkills,
   unresolvedSkills,
@@ -364,6 +366,8 @@ function CoworkPage() {
   const [projectInstructions, setProjectInstructions] = useState<string | null>(
     null
   )
+  // Bumped when Jan itself writes the folder's JAN.md, so it is read again.
+  const [instructionsVersion, setInstructionsVersion] = useState(0)
   const [instructionFiles, setInstructionFiles] = useState<InstructionFile[]>(
     []
   )
@@ -940,7 +944,7 @@ function CoworkPage() {
         } catch (e) {
           const message = messageOf(e)
           // Absent is the ordinary case and is not a failure.
-          return /not found|no such file|ENOENT/i.test(message)
+          return isMissingFileError(message)
             ? { name, role }
             : { name, role, error: message }
         }
@@ -971,7 +975,7 @@ function CoworkPage() {
     return () => {
       alive = false
     }
-  }, [folder, serviceHub])
+  }, [folder, serviceHub, instructionsVersion])
 
   // Selected-code references staged by “Add to chat”: the visible prompt gets
   // the concise `@path:start-end` token, and the refs wait here until submit,
@@ -3140,6 +3144,20 @@ function CoworkPage() {
                   />
                 </div>
               )}
+              {/* AH-209: a folder with no JAN.md is offered a starting one,
+                  proposed from a survey and written only when accepted. */}
+              <CoworkProjectInit
+                folder={treeRoot ?? null}
+                // Offered only when JAN.md is known to be absent; one that
+                // could not be read is still there, and is not overwritten.
+                hasInstructions={
+                  !instructionFiles.some(
+                    (file) =>
+                      file.role === 'native' && file.state.kind === 'missing'
+                  )
+                }
+                onAccepted={() => setInstructionsVersion((v) => v + 1)}
+              />
               <ChatInput
                 showSpeedToken={false}
                 initialMessage={true}

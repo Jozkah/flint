@@ -433,3 +433,12 @@ re-executes the test binary and every `bash` test reports that no shell starts.
 
 A selection (`@path:start-end`) cannot be named yet, so AH-205 stays
 `in-progress`.
+
+## Project initialization assistant (AH-209)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 8 unit tests | `plugins/tauri-plugin-agent-tools/src/project_init.rs` | a Node project is described from `package.json` and the README (name, description, scripts, languages); a Rust workspace is described from `Cargo.toml` and its `build.rs` is never run; `.gitignore`d and credential-shaped files are neither listed nor read; a symlink out of the folder is not followed; a tree past the bounds is surveyed partly and says what it did not list; accepting writes exactly the text, refuses to overwrite unless asked and leaves no temporary file (mutation-checked); empty or oversized text writes nothing; a `JAN.md` that is a link is never written through. The link tests ran for real on this Windows host, where creating a symlink is permitted |
+| 7 unit tests | `web-app/src/containers/__tests__/CoworkProjectInit.test.tsx` | not offered without a folder or with a `JAN.md`; a draft is proposed with what was not read, labelled, and nothing is written; accept writes exactly the edited text and clears the draft; a refusal is announced with `role=alert` and keeps the draft; an edited draft survives closing and is continued rather than re-surveyed; an abandoned survey's result is dropped; only drafts are persisted |
+| Real WebView scenario | `cowork-smoke --only project-init` | on the fixture, the dialog proposes a `JAN.md` named from `package.json`, carrying the README's description and the language, and lists what was not read; nothing is on disk until Accept; the edited text is written byte for byte; the offer goes away once `JAN.md` exists; a second write over it is refused by name and changes nothing |
+| Real application restart | `cowork-smoke --only project-init-draft-1`, then `--only project-init-draft-2` | a draft edited and closed without accepting reaches `settings.json`; after a restart the offer reads "Continue the JAN.md draft", the edit is there, and discarding it writes nothing |

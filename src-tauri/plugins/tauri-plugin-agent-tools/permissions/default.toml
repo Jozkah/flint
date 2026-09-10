@@ -55,6 +55,8 @@ permissions = [
     "allow-preview-change",
     "allow-project-list-dir",
     "allow-project-read-file",
+    "allow-project-survey",
+    "allow-project-init-accept",
     "allow-bash-jobs-list",
     "allow-bash-job-kill",
 ]

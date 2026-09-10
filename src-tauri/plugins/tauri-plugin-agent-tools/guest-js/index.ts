@@ -973,6 +973,44 @@ export async function previewChange(
   })
 }
 
+/** What a survey of the attached folder found, and did not read. AH-209. */
+export type ProjectSurvey = {
+  draft: string
+  read: string[]
+  notRead: string[]
+  filesSeen: number
+  hasInstructions: boolean
+}
+
+/**
+ * Survey the attached folder for a starting `JAN.md`. Reads only inside it,
+ * runs nothing, and writes nothing.
+ */
+export async function projectSurvey(
+  dataFolder: string,
+  root: string
+): Promise<ProjectSurvey> {
+  return await invoke('plugin:agent-tools|project_survey', { dataFolder, root })
+}
+
+/**
+ * Write the accepted text as the folder's `JAN.md`. Refused, writing nothing,
+ * when one exists and `overwrite` is not set, or when `JAN.md` is a link.
+ */
+export async function projectInitAccept(
+  dataFolder: string,
+  root: string,
+  content: string,
+  overwrite = false
+): Promise<string> {
+  return await invoke('plugin:agent-tools|project_init_accept', {
+    dataFolder,
+    root,
+    content,
+    overwrite,
+  })
+}
+
 /** Redo the file changes of a turn that was undone: all of them or none. */
 export async function redoTurn(
   dataFolder: string,

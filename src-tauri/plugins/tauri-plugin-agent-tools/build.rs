@@ -58,6 +58,8 @@ const COMMANDS: &[&str] = &[
     "preview_change",
     "project_list_dir",
     "project_read_file",
+    "project_survey",
+    "project_init_accept",
     "bash_jobs_list",
     "bash_job_kill",
 ];

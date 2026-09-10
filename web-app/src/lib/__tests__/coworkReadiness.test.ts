@@ -6,6 +6,7 @@ import {
   estimated,
   activeInstructions,
   classifyInstruction,
+  isMissingFileError,
   manifestMatches,
   measured,
   mutationBlockers,
@@ -134,6 +135,27 @@ describe('another harness’s instruction file', () => {
     ]
 
     expect(activeInstructions(files).map((one) => one.name)).toEqual(['JAN.md'])
+  })
+})
+
+// Found on Windows: a folder with no JAN.md was reported as having one that
+// could not be read, because the error said "cannot find the file".
+describe('isMissingFileError', () => {
+  it.each([
+    'JAN.md is unreadable: The system cannot find the file specified. (os error 2)',
+    'The system cannot find the path specified. (os error 3)',
+    'No such file or directory (os error 2)',
+    'ENOENT: no such file',
+    'file not found',
+  ])('reads %s as absent', (message) => {
+    expect(isMissingFileError(message)).toBe(true)
+  })
+
+  it.each([
+    'Access is denied. (os error 5)',
+    'SENSITIVE: looks like a credentials file',
+  ])('reads %s as a real failure', (message) => {
+    expect(isMissingFileError(message)).toBe(false)
   })
 })
 

@@ -1175,6 +1175,57 @@ pub async fn project_read_file(
     .map_err(AgentToolsError::from)
 }
 
+/// Survey the attached folder for a starting `JAN.md`. AH-209.
+///
+/// Reads only inside the folder, through the same confined listing and reader
+/// as the Code panel; runs nothing; bounded, and says what it did not read.
+#[tauri::command]
+pub async fn project_survey(
+    data_folder: String,
+    root: String,
+) -> Result<crate::project_init::Survey, AgentToolsError> {
+    let workspace_root = workspace::permanent_store(Path::new(&data_folder));
+    let canonical = workspace::validate_read_root(
+        Path::new(&root),
+        &workspace_root,
+        Some(Path::new(&data_folder)),
+    )?;
+    tokio::task::spawn_blocking(move || {
+        crate::project_init::survey(&canonical.to_string_lossy())
+    })
+    .await
+    .map_err(|e| AgentToolsError::from(e.to_string()))?
+    .map_err(AgentToolsError::from)
+}
+
+/// Write the description the user accepted as the folder's `JAN.md`. AH-209.
+///
+/// The only write the initialization assistant makes, made because the user
+/// accepted this text. The folder is validated the way a read of it is, so the
+/// Jan data folder and anything overlapping the workspace are refused; an
+/// existing `JAN.md` is replaced only when `overwrite` says so.
+#[tauri::command]
+pub async fn project_init_accept(
+    data_folder: String,
+    root: String,
+    content: String,
+    overwrite: Option<bool>,
+) -> Result<String, AgentToolsError> {
+    let workspace_root = workspace::permanent_store(Path::new(&data_folder));
+    let canonical = workspace::validate_read_root(
+        Path::new(&root),
+        &workspace_root,
+        Some(Path::new(&data_folder)),
+    )?;
+    tokio::task::spawn_blocking(move || {
+        crate::project_init::accept(&canonical, &content, overwrite.unwrap_or(false))
+            .map(|p| p.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|e| AgentToolsError::from(e.to_string()))?
+    .map_err(AgentToolsError::from)
+}
+
 /// Every shell command still running in the background, newest first.
 ///
 /// Read-only and non-consuming: a caller polling this can never take the
