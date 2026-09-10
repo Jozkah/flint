@@ -1,4 +1,5 @@
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { useThreads } from '@/hooks/useThreads'
 import { Assistant as CoreAssistant } from '@janhq/core'
 import { create } from 'zustand'
 import { localStorageKey } from '@/constants/localStorage'
@@ -140,6 +141,19 @@ export const useAssistant = create<AssistantState>((set, get) => ({
       .catch((error) => {
         console.error('Failed to update assistant:', error)
       })
+    // A thread keeps its own copy of the assistant it runs as, and the chat
+    // route builds the system prompt from that copy. Refresh the copy in every
+    // thread bound to this assistant, keeping each thread's own model binding,
+    // or an open conversation keeps answering to the instructions it started
+    // with (janhq/jan#8524).
+    const threadStore = useThreads.getState()
+    for (const thread of Object.values(threadStore.threads)) {
+      const bound = thread.assistants?.[0]
+      if (!bound || bound.id !== assistant.id) continue
+      threadStore.updateThread(thread.id, {
+        assistants: [{ ...assistant, model: bound.model ?? thread.model }],
+      })
+    }
   },
   deleteAssistant: (id) => {
     const state = get()
