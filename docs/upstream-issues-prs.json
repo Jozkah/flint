@@ -30,12 +30,12 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1240,
-      "fixed": 18,
+      "untriaged": 1237,
+      "fixed": 20,
       "already-fixed": 3,
       "needs-user-hardware": 2,
       "not-applicable": 1,
-      "adapted": 8,
+      "adapted": 9,
       "cannot-reproduce": 1,
       "implementation-ready": 3,
       "rejected": 2
@@ -41051,15 +41051,21 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "can_override_npx checked AVX2 only on Intel macOS; the bundled regular x64 bun needs AVX2, so Windows/Linux CPUs without it crash every npx-based MCP server (reporter log: Features: no_avx2, Illegal instruction).",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
-      "blockers": [],
+      "decision": "fix",
+      "decisionReason": "P1 Windows: all npx MCP servers fail on non-AVX2 CPUs.",
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "bb13343"
+      ],
+      "tests": [
+        "src-tauri/utils/src/system.rs (bun_cpu_tests)"
+      ],
+      "verification": "3 unit tests pass; fallback not exercised end to end (host has AVX2).",
+      "blockers": [
+        "needs a CPU without AVX2 for end-to-end confirmation"
+      ],
       "notes": null
     },
     {
@@ -45534,14 +45540,18 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "jan cli models list filtered on is_cli_reachable, dropping every model on the desktop local llama.cpp engine (no base_url), so a local-only user saw [] with no explanation.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "decision": "fix",
+      "decisionReason": "CLI hides the user models silently; the fork has no jan launch auto-download path, only the listing half applies.",
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "0e17d54"
+      ],
+      "tests": [
+        "src-tauri/src/core/cli/providers.rs (model_listing test)"
+      ],
+      "verification": "model_listing test passes under --features cli; jan binary builds.",
       "blockers": [],
       "notes": null
     },
@@ -66643,13 +66653,19 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
+      "decision": "adapt",
+      "decisionReason": "Same NPROC/NOFILE values as upstream base; per-user NPROC starves tool shells on busy Linux hosts. Diff did not apply; intent reapplied by hand.",
+      "implementationStatus": "adapted",
+      "forkCommits": [
+        "e1b1567"
+      ],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/proc.rs (confine_limits test)"
+      ],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "cfg(unix) code: needs a Linux/macOS run"
+      ],
       "notes": null
     },
     {
