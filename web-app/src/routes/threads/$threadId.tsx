@@ -46,6 +46,8 @@ import {
   getVersionInfo,
   hasBranching,
   repairDetachedAssistants,
+  removeFromTree,
+  repairDanglingParents,
   planContinuation,
 } from '@/lib/message-branching'
 import {
@@ -867,6 +869,15 @@ function ThreadDetail() {
             .filter(threadMessageIsEmpty)
             .map((m) => m.id)
           if (emptyAssistantIds.length > 0) {
+            // A user turn sent after an errored generation hangs off the empty
+            // row; re-link it before the row goes, or the rest of the
+            // conversation goes with it (janhq/jan#8495).
+            const relinked = removeFromTree(messagesToSet, emptyAssistantIds)
+            if (relinked.length > 0) {
+              const byId = new Map(relinked.map((m) => [m.id, m]))
+              messagesToSet = messagesToSet.map((m) => byId.get(m.id) ?? m)
+              for (const m of relinked) updateMessage(m)
+            }
             messagesToSet = messagesToSet.filter(
               (m) => !emptyAssistantIds.includes(m.id)
             )
@@ -883,6 +894,15 @@ function ThreadDetail() {
             const byId = new Map(repaired.map((m) => [m.id, m]))
             messagesToSet = messagesToSet.map((m) => byId.get(m.id) ?? m)
             for (const m of repaired) updateMessage(m)
+          }
+
+          // Threads already damaged by the old delete path: messages whose
+          // parent is gone are unreachable and render as missing replies.
+          const reattached = repairDanglingParents(messagesToSet)
+          if (reattached.length > 0) {
+            const byId = new Map(reattached.map((m) => [m.id, m]))
+            messagesToSet = messagesToSet.map((m) => byId.get(m.id) ?? m)
+            for (const m of reattached) updateMessage(m)
           }
 
           setMessages(threadId, messagesToSet)
@@ -1465,16 +1485,33 @@ function ThreadDetail() {
   // Handle delete message
   const handleDeleteMessage = useCallback(
     (messageId: string) => {
+      // Re-link what hangs below the message before it goes. Deleting only the
+      // row stranded its children behind a parent that no longer existed, and
+      // the rest of the conversation disappeared from view (janhq/jan#8495).
+      const stored = useMessages.getState().getMessages(threadId)
+      const branched = hasBranching(stored)
+      for (const m of removeFromTree(stored, [messageId])) updateMessage(m)
       deleteMessage(threadId, messageId)
       useMessageErrors.getState().clearError(messageId)
 
+      if (branched) {
+        syncActivePath()
+        return
+      }
       // Update chat messages for UI
       const updatedChatMessages = chatMessages.filter(
         (msg) => msg.id !== messageId
       )
       setChatMessages(updatedChatMessages)
     },
-    [threadId, deleteMessage, chatMessages, setChatMessages]
+    [
+      threadId,
+      deleteMessage,
+      updateMessage,
+      syncActivePath,
+      chatMessages,
+      setChatMessages,
+    ]
   )
 
   // Handler for increasing context size

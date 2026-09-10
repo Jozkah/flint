@@ -12,6 +12,8 @@ import {
   withActiveChild,
   repairDetachedAssistants,
   planContinuation,
+  removeFromTree,
+  repairDanglingParents,
 } from '../message-branching'
 
 let clock = 1000
@@ -190,6 +192,104 @@ describe('message-branching', () => {
       expect(repaired.map((r) => r.id).sort()).toEqual(['a1', 'a2'])
       expect(parentOf('a1')).toBe('u1')
       expect(parentOf('a2')).toBe('u2')
+    })
+  })
+
+  // janhq/jan#8495: replies present in messages.jsonl but missing from the UI.
+  describe('removeFromTree', () => {
+    it('reproduces the loss: dropping a row strands everything below it', () => {
+      const u1 = msg('u1', 'user', 'q1', { parentId: null })
+      const a1 = msg('a1', 'assistant', 'r1', { parentId: 'u1' })
+      const u2 = msg('u2', 'user', 'q2', { parentId: 'a1' })
+      const a2 = msg('a2', 'assistant', 'r2', { parentId: 'u2' })
+      const naive = [u1, u2, a2] // a1 deleted the old way
+      expect(ids(computeActivePath(naive))).toEqual(['u1'])
+    })
+
+    it('re-parents the children of a deleted message onto its parent', () => {
+      const u1 = msg('u1', 'user', 'q1', { parentId: null, activeChildId: 'a1' })
+      const a1 = msg('a1', 'assistant', 'r1', { parentId: 'u1' })
+      const u2 = msg('u2', 'user', 'q2', { parentId: 'a1' })
+      const a2 = msg('a2', 'assistant', 'r2', { parentId: 'u2' })
+      const all = [u1, a1, u2, a2]
+
+      const writes = removeFromTree(all, ['a1'])
+      const after = all
+        .filter((m) => m.id !== 'a1')
+        .map((m) => writes.find((w) => w.id === m.id) ?? m)
+
+      expect(ids(computeActivePath(after))).toEqual(['u1', 'u2', 'a2'])
+      // The parent's selection followed the child that took the removed
+      // message's place, instead of dangling.
+      expect(after.find((m) => m.id === 'u1')?.metadata?.activeChildId).toBe('u2')
+    })
+
+    it('keeps the tail of a turn whose errored empty reply is cleaned up', () => {
+      // An errored generation left an empty assistant row, and the next user
+      // turn was linked to it because it was last on the active path.
+      const u1 = msg('u1', 'user', 'q1', { parentId: null })
+      const empty = msg('e1', 'assistant', '', { parentId: 'u1' })
+      const u2 = msg('u2', 'user', 'retry', { parentId: 'e1' })
+      const a2 = msg('a2', 'assistant', 'r2', { parentId: 'u2' })
+      const all = [u1, empty, u2, a2]
+
+      const writes = removeFromTree(all, ['e1'])
+      const after = all
+        .filter((m) => m.id !== 'e1')
+        .map((m) => writes.find((w) => w.id === m.id) ?? m)
+
+      expect(ids(computeActivePath(after))).toEqual(['u1', 'u2', 'a2'])
+    })
+
+    it('walks past a chain of removed messages', () => {
+      const u1 = msg('u1', 'user', 'q1', { parentId: null })
+      const e1 = msg('e1', 'assistant', '', { parentId: 'u1' })
+      const e2 = msg('e2', 'assistant', '', { parentId: 'e1' })
+      const u2 = msg('u2', 'user', 'q2', { parentId: 'e2' })
+      const all = [u1, e1, e2, u2]
+
+      const writes = removeFromTree(all, ['e1', 'e2'])
+      expect(writes.find((w) => w.id === 'u2')?.metadata?.parentId).toBe('u1')
+    })
+
+    it('leaves a sibling selection that did not point at the removed message', () => {
+      const u1 = msg('u1', 'user', 'q1', { parentId: null, activeChildId: 'a1b' })
+      const a1a = msg('a1a', 'assistant', 'old', { parentId: 'u1' })
+      const a1b = msg('a1b', 'assistant', 'new', { parentId: 'u1' })
+      const u2 = msg('u2', 'user', 'q2', { parentId: 'a1a' })
+
+      const writes = removeFromTree([u1, a1a, a1b, u2], ['a1a'])
+      expect(writes.find((w) => w.id === 'u1')).toBeUndefined()
+    })
+
+    it('is a no-op on legacy threads and when nothing is removed', () => {
+      const u1 = msg('u1', 'user', 'q1')
+      const a1 = msg('a1', 'assistant', 'r1')
+      expect(removeFromTree([u1, a1], ['a1'])).toEqual([])
+      const b1 = msg('b1', 'user', 'q1', { parentId: null })
+      expect(removeFromTree([b1], [])).toEqual([])
+    })
+  })
+
+  describe('repairDanglingParents', () => {
+    it('re-attaches a thread already damaged by the old delete path', () => {
+      const u1 = msg('u1', 'user', 'q1', { parentId: null, activeChildId: 'gone' })
+      const u2 = msg('u2', 'user', 'q2', { parentId: 'gone' })
+      const a2 = msg('a2', 'assistant', 'r2', { parentId: 'u2' })
+      const before = [u1, u2, a2]
+      expect(ids(computeActivePath(before))).toEqual(['u1'])
+
+      const writes = repairDanglingParents(before)
+      const fixed = before.map((m) => writes.find((w) => w.id === m.id) ?? m)
+
+      expect(ids(computeActivePath(fixed))).toEqual(['u1', 'u2', 'a2'])
+      expect(repairDanglingParents(fixed)).toEqual([])
+    })
+
+    it('is a no-op on a healthy branched thread', () => {
+      const u1 = msg('u1', 'user', 'q1', { parentId: null })
+      const a1 = msg('a1', 'assistant', 'r1', { parentId: 'u1' })
+      expect(repairDanglingParents([u1, a1])).toEqual([])
     })
   })
 

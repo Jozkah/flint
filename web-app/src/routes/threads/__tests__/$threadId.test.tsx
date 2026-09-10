@@ -1022,6 +1022,33 @@ describe('ThreadDetail route', () => {
     expect(h.mockSetChatMessages).toHaveBeenCalled()
   })
 
+  // janhq/jan#8495: deleting a message in a branched thread used to strand its
+  // children behind a parent that no longer existed, so the rest of the
+  // conversation vanished from the UI.
+  it('delete re-links what hung below the message before removing it', () => {
+    const text = (value: string) => [
+      { type: 'text', text: { value, annotations: [] } },
+    ]
+    h.messagesState.getMessages = vi.fn(() => [
+      { id: 'u1', role: 'user', created_at: 1, content: text('q1'), metadata: { parentId: null, activeChildId: 'a1' } },
+      { id: 'a1', role: 'assistant', created_at: 2, content: text('r1'), metadata: { parentId: 'u1' } },
+      { id: 'u2', role: 'user', created_at: 3, content: text('q2'), metadata: { parentId: 'a1' } },
+      { id: 'a2', role: 'assistant', created_at: 4, content: text('r2'), metadata: { parentId: 'u2' } },
+    ])
+    h.chatState.messages = [
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'r1' }] },
+    ]
+    renderComponent()
+    screen.getByTestId('del-a1').click()
+
+    const updates = (h.messagesState.updateMessage as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0]
+    )
+    expect(updates.find((m) => m.id === 'u2')?.metadata?.parentId).toBe('u1')
+    expect(updates.find((m) => m.id === 'u1')?.metadata?.activeChildId).toBe('u2')
+    expect(h.messagesState.deleteMessage).toHaveBeenCalledWith('thread-1', 'a1')
+  })
+
   it('shows PromptProgress while status is submitted', () => {
     h.chatState.status = 'submitted'
     renderComponent()
