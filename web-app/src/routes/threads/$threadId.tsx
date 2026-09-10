@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { createFileRoute, useParams, useSearch } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  useNavigate,
+  useParams,
+  useSearch,
+} from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 
 import HeaderPage from '@/containers/HeaderPage'
@@ -14,7 +19,7 @@ import { useMessageErrors } from '@/stores/message-errors'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTools } from '@/hooks/useTools'
 import { useAppState } from '@/hooks/useAppState'
-import { SESSION_STORAGE_PREFIX } from '@/constants/chat'
+import { SESSION_STORAGE_PREFIX, TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useChat } from '@/hooks/use-chat'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { engineSlotsIdle } from '@janhq/tauri-plugin-llamacpp-api'
@@ -85,6 +90,9 @@ import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { TemporaryChatBanner } from '@/containers/TemporaryChatBanner'
+import { MemoryProposalList } from '@/containers/MemoryProposalCard'
+import { useMemoryProposals } from '@/hooks/useMemoryProposals'
+import { route } from '@/constants/routes'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
 import { Shimmer } from '@/components/ai-elements/shimmer'
@@ -742,6 +750,29 @@ function ThreadDetail() {
   // banner is up — regenerate/reload restarts the turn anyway.
   const hasBannerError = !!(oomError || backendError || contextLimitError)
   const effectiveStatus = hasBannerError ? 'ready' : status
+
+  /**
+   * Memories this chat proposed and nobody has answered yet.
+   *
+   * A temporary chat records nothing, so it never has anything to ask about.
+   */
+  const {
+    proposals: memoryProposals,
+    location: memoryLocation,
+    reload: reloadMemoryProposals,
+    onResolved: onMemoryProposalResolved,
+  } = useMemoryProposals({
+    sessionId: threadId,
+    enabled: threadId !== TEMPORARY_CHAT_ID,
+  })
+  const navigate = useNavigate()
+
+  // Re-read once the turn is over. A proposal is written by a tool call during
+  // the turn, so polling mid-stream would only find the previous turn's.
+  useEffect(() => {
+    if (status !== 'ready') return
+    void reloadMemoryProposals()
+  }, [status, reloadMemoryProposals])
 
   // Global disabled-tools set; re-run the effect below when it changes.
   const disabledTools = useToolAvailable((state) => state.disabledTools)
@@ -1801,6 +1832,17 @@ function ThreadDetail() {
                   onDelete={handleDeleteMessage}
                   hideActions
                   isAnimating={false}
+                />
+              )}
+              {memoryLocation && (
+                <MemoryProposalList
+                  className="mx-4 my-2"
+                  proposals={memoryProposals}
+                  location={memoryLocation}
+                  onResolved={onMemoryProposalResolved}
+                  onOpenSettings={() =>
+                    navigate({ to: route.settings.memory })
+                  }
                 />
               )}
               {processingEmbeddings && (

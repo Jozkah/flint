@@ -102,6 +102,19 @@ pub enum Origin {
 #[serde(rename_all = "snake_case", tag = "state", content = "detail")]
 pub enum Status {
     Active,
+    /// An agent proposed it and a person has not answered yet.
+    ///
+    /// Stored rather than held in memory so the question survives a restart:
+    /// a proposal that disappears when the app closes is one the user never
+    /// really got to answer. Never injected -- `is_usable` admits `Active`
+    /// only -- so an unanswered guess cannot reach a model by sitting in the
+    /// store.
+    ///
+    /// `reason` is the kebab-case `PendingReason` the gate produced, kept as a
+    /// string so `record` does not depend on the module that decides.
+    Proposed {
+        reason: String,
+    },
     /// Replaced by another record, kept for provenance rather than deleted.
     Superseded {
         by: MemoryId,

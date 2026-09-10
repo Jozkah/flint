@@ -28,6 +28,8 @@ permissions = [
     "allow-memory-record-edit",
     "allow-memory-record-propose",
     "allow-memory-record-propose-inferred",
+    "allow-memory-proposals-list",
+    "allow-memory-proposal-resolve",
     "allow-memory-record-commit",
     "allow-memory-record-forget",
     "allow-memory-record-restore",

@@ -889,6 +889,10 @@ const SCENARIOS: &[Scenario] = &[
         name: "tool-activity-timeline",
         run: scenario_tool_activity,
     },
+    Scenario {
+        name: "memory-proposal-approval",
+        run: scenario_memory_proposal,
+    },
 ];
 
 /// The frontend bundle is loaded, React has mounted, and IPC round-trips.
@@ -3319,4 +3323,231 @@ fn wait_for_window(handle: &AppHandle, timeout: Duration) -> Option<WebviewWindo
         }
         std::thread::sleep(Duration::from_millis(100));
     }
+}
+
+/// Where a scope's memories live on disk, for the assertions that have to look
+/// past the DOM.
+fn memory_records_path(scope_file: &str) -> Option<PathBuf> {
+    std::env::var("JAN_DATA_FOLDER").ok().map(|d| {
+        Path::new(&d)
+            .join("agent-workspace")
+            .join("memory")
+            .join("records")
+            .join(scope_file)
+    })
+}
+
+/// A proposed memory is asked about, answered, and the answer sticks.
+///
+/// This asserts on the DOM *and* on the file. A card that renders from renderer
+/// state while nothing is written, and a record that is written while no card
+/// renders, are both failures that a DOM-only or a file-only check reports as a
+/// pass.
+///
+/// No message is sent: a turn would put a provider round trip between this
+/// scenario and the thing it tests, and a proposal is keyed to the chat rather
+/// than to anything in the transcript. The route, the components and the
+/// commands are the production ones.
+fn scenario_memory_proposal(ctx: &Ctx) -> ScenarioResult {
+    let records = match memory_records_path("session.jsonl") {
+        Some(p) => p,
+        None => bail!("JAN_DATA_FOLDER is not set, so the store cannot be inspected"),
+    };
+    // Start from a store with no proposals in it, so "the card is gone" below
+    // means this scenario's proposal was answered rather than that an earlier
+    // scenario's never appeared.
+    let _ = std::fs::remove_file(&records);
+
+    let thread_id = "smoke-memory-proposal";
+    let open_chat = |ctx: &Ctx| -> ScenarioResult {
+        // Leaving the route and coming back is what remounts the surface, and
+        // remounting is what re-reads the store. `goto` on the route that is
+        // already current does nothing at all, which is the trap here. A full
+        // page reload is not an option: it tears down the channel this harness
+        // evaluates over.
+        ctx.goto("/")?;
+        ctx.settle();
+        ctx.goto(&format!("/threads/{thread_id}"))?;
+        ctx.wait_until(
+            "the conversation to render",
+            "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+            Duration::from_secs(45),
+        )
+    };
+    open_chat(ctx)?;
+
+    // Propose over real IPC, the way the model-facing path does. Automatic
+    // saving is off by default, so this has to come back as a question.
+    let outcome = ctx.eval_string(&format!(
+        r#"const c = await window.__TAURI_INTERNALS__.invoke('get_app_configurations');
+           const out = await window.__TAURI_INTERNALS__.invoke(
+             'plugin:agent-tools|memory_record_propose_inferred',
+             {{
+               location: {{ dataFolder: c.data_folder, sessionId: {thread_id:?} }},
+               scope: 'chat',
+               content: 'The user prefers tabs for indentation.',
+               sourceSessionId: {thread_id:?},
+               sourceMessageId: 'smoke-1',
+             }},
+           );
+           return JSON.stringify(out);"#
+    ))?;
+    ensure!(
+        outcome.contains("needsApproval"),
+        "an inferred memory saved itself with automatic saving off: {outcome}"
+    );
+    ensure!(
+        outcome.contains("automatic-saving-disabled"),
+        "the reason was not the one the card explains: {outcome}"
+    );
+
+    // On disk before anything is clicked: the question survives the turn.
+    let on_disk = std::fs::read_to_string(&records).unwrap_or_default();
+    ensure!(
+        on_disk.contains(r#""state":"proposed""#),
+        "the proposal was not recorded, so it could not survive a restart"
+    );
+    ensure!(
+        !on_disk.contains(r#""state":"active""#),
+        "an unanswered proposal was stored as an active memory"
+    );
+
+    // Does the backend offer it? Asked separately so "the list is empty" and
+    // "the list has it and nothing rendered" cannot be reported as one failure.
+    let listed = ctx.eval_string(&format!(
+        r#"const c = await window.__TAURI_INTERNALS__.invoke('get_app_configurations');
+           const out = await window.__TAURI_INTERNALS__.invoke(
+             'plugin:agent-tools|memory_proposals_list',
+             {{ location: {{ dataFolder: c.data_folder, sessionId: {thread_id:?} }} }},
+           );
+           return JSON.stringify(out);"#
+    ))?;
+    ensure!(
+        listed.contains("prefers tabs"),
+        "the backend did not offer the proposal to the renderer: {listed}"
+    );
+
+    // And in the DOM, in the conversation it came from. A question the user has
+    // not answered has to still be there when they come back to the chat.
+    open_chat(ctx)?;
+    ctx.wait_until(
+        "the approval card",
+        "return !!document.querySelector('[data-testid=\"memory-proposal-card\"]');",
+        Duration::from_secs(30),
+    )?;
+    let shown = ctx.eval_string(
+        r#"const card = document.querySelector('[data-testid="memory-proposal-card"]');
+           const text = (sel) => {
+             const el = card.querySelector(sel);
+             return el ? el.textContent : '';
+           };
+           return JSON.stringify({
+             reason: card.getAttribute('data-reason'),
+             content: text('[data-testid="memory-proposal-content"]'),
+             explanation: text('[data-testid="memory-proposal-explanation"]'),
+             approvable: !!card.querySelector('[data-testid="memory-proposal-approve"]'),
+           });"#,
+    )?;
+    ensure!(
+        shown.contains("automatic-saving-disabled"),
+        "the card did not carry the backend's reason: {shown}"
+    );
+    ensure!(
+        shown.contains("waiting for you"),
+        "the card explained nothing specific: {shown}"
+    );
+    ensure!(
+        shown.contains("prefers tabs"),
+        "the card did not show what would be remembered: {shown}"
+    );
+    ensure!(
+        shown.contains("\"approvable\":true"),
+        "an approvable proposal offered no way to approve it: {shown}"
+    );
+
+    // Approve it. The card is not the decision -- the click round-trips, and
+    // the file is what says whether it took.
+    ctx.eval(
+        "document.querySelector('[data-testid=\"memory-proposal-approve\"]').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the card to clear",
+        "return !document.querySelector('[data-testid=\"memory-proposal-card\"]');",
+        Duration::from_secs(30),
+    )?;
+    let after = std::fs::read_to_string(&records).unwrap_or_default();
+    ensure!(
+        after.contains(r#""state":"active""#),
+        "approving did not make the memory real: {after}"
+    );
+    ensure!(
+        !after.contains(r#""state":"proposed""#),
+        "the answered question was left in the store as a proposal"
+    );
+
+    // Come back again. The decision is a fact on disk, not renderer state, and
+    // re-entering the conversation re-reads the store: the answered question is
+    // not there to ask.
+    open_chat(ctx)?;
+    ctx.settle();
+    let reappeared = ctx
+        .eval_bool("return !!document.querySelector('[data-testid=\"memory-proposal-card\"]');")?;
+    ensure!(
+        !reappeared,
+        "a question that was already answered was asked again on re-entry"
+    );
+
+    // A contradiction is a different question, and it must never render as
+    // something to wave through.
+    //
+    // Each side names one option and not the other, on purpose: `detect_conflicts`
+    // ignores a pair where both records mention both sides, so "prefers tabs over
+    // spaces" and "prefers spaces over tabs" are *not* reported as a conflict. That
+    // is deliberate conservatism -- an unresolved conflict withholds both records,
+    // so a false one silently costs the user two good memories.
+    let conflict = ctx.eval_string(&format!(
+        r#"const c = await window.__TAURI_INTERNALS__.invoke('get_app_configurations');
+           const out = await window.__TAURI_INTERNALS__.invoke(
+             'plugin:agent-tools|memory_record_propose_inferred',
+             {{
+               location: {{ dataFolder: c.data_folder, sessionId: {thread_id:?} }},
+               scope: 'chat',
+               content: 'The user prefers spaces for indentation.',
+               sourceSessionId: {thread_id:?},
+               sourceMessageId: 'smoke-2',
+             }},
+           );
+           return JSON.stringify(out);"#
+    ))?;
+    ensure!(
+        conflict.contains("conflicts-with-existing"),
+        "a contradiction was not detected: {conflict}"
+    );
+    open_chat(ctx)?;
+    ctx.wait_until(
+        "the conflict card",
+        "return !!document.querySelector('[data-testid=\"memory-proposal-card\"]');",
+        Duration::from_secs(30),
+    )?;
+    let conflict_card = ctx.eval_string(
+        r#"const card = document.querySelector('[data-testid="memory-proposal-card"]');
+           return JSON.stringify({
+             reason: card.getAttribute('data-reason'),
+             approve: !!card.querySelector('[data-testid="memory-proposal-approve"]'),
+             review: !!card.querySelector('[data-testid="memory-proposal-resolve-conflict"]'),
+           });"#,
+    )?;
+    ensure!(
+        conflict_card.contains("\"approve\":false"),
+        "a conflicted proposal offered an Approve button: {conflict_card}"
+    );
+    ensure!(
+        conflict_card.contains("\"review\":true"),
+        "a conflicted proposal offered no way to settle it: {conflict_card}"
+    );
+
+    // Leave the store as this scenario found it.
+    let _ = std::fs::remove_file(&records);
+    Ok(())
 }

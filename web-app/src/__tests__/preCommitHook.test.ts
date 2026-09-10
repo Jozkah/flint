@@ -20,10 +20,16 @@
 import { describe, expect, it } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { pathToFileURL } from 'node:url'
 
-const root = resolve(process.cwd(), '..')
+// Anchored to this file rather than to the working directory. `yarn test:web`
+// runs vitest from the repository root while running the file directly runs it
+// from `web-app/`, so `cwd()/..` is the repository root in one case and its
+// parent in the other -- and in a git worktree the parent holds every other
+// worktree, where the paths below simply do not exist.
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
 const scriptPath = resolve(root, 'scripts', 'pre-commit.mjs')
 const hook = () => readFileSync(resolve(root, '.husky', 'pre-commit'), 'utf8')
 

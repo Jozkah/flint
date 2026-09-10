@@ -90,7 +90,17 @@ const h = vi.hoisted(() => {
 
   const chatSessionsState: any = {
     sessions: {},
-    getSessionData: vi.fn(() => ({ tools: [] })),
+    // One object per session, as the real store does: it keeps the data on the
+    // session, or in a standalone map keyed by id. A fresh object per call
+    // would make the route's `sessionData.tools` list vanish on every
+    // re-render, which is a property of this mock and not of the store.
+    sessionDataById: {} as Record<string, { tools: unknown[] }>,
+    getSessionData: vi.fn((sessionId: string) => {
+      if (!chatSessionsState.sessionDataById[sessionId]) {
+        chatSessionsState.sessionDataById[sessionId] = { tools: [] }
+      }
+      return chatSessionsState.sessionDataById[sessionId]
+    }),
   }
   const useChatSessionsMock: any = (selector: any) => selector(chatSessionsState)
   useChatSessionsMock.getState = () => chatSessionsState
@@ -459,7 +469,8 @@ describe('ThreadDetail route', () => {
     h.messagesState.updateMessage = vi.fn()
     h.messagesState.deleteMessage = vi.fn()
     h.messagesState.setMessages = vi.fn()
-    h.chatSessionsState.getSessionData = vi.fn(() => ({ tools: [] }))
+    // Fresh session data per test, still one object per session within a test.
+    h.chatSessionsState.sessionDataById = {}
     h.messageQueueState.dequeue = vi.fn(() => null)
     h.messageQueueState.clearQueue = vi.fn()
     h.agentModeState.agentThreads = {}

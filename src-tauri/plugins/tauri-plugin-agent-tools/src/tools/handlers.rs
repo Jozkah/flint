@@ -369,7 +369,7 @@ pub async fn execute_builtin(
 
 /// The text result for every tool except `read`. Split out so `read` can also
 /// return image parts without duplicating the remaining tool dispatch.
-async fn execute_text(
+pub(crate) async fn execute_text(
     tool: &BuiltinTool,
     args: &serde_json::Value,
     ctx: &ToolContext<'_>,
@@ -2321,10 +2321,20 @@ async fn memory_propose(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Stri
             ),
             Err(e) => format!("ERROR: could not save that memory: {e}"),
         },
-        Decision::Pending { reason, .. } => format!(
-            "Not saved yet -- the user has been asked. {} Do not propose it again in this conversation.",
-            reason.explain()
-        ),
+        Decision::Pending { proposal, reason } => {
+            // Stored, not dropped. The question has to survive the turn that
+            // asked it -- and a restart -- or the user is asked once, in a
+            // place they may not be looking, and never again.
+            // `Status::Proposed` keeps it out of every prompt meanwhile.
+            let pending = inferred::as_pending(&proposal, reason);
+            match crate::memory::store::upsert(&store_root, &pending) {
+                Ok(()) => format!(
+                    "Not saved yet -- the user has been asked. {} Do not propose it again in this conversation.",
+                    reason.explain()
+                ),
+                Err(e) => format!("ERROR: could not record that proposal: {e}"),
+            }
+        }
         Decision::Refused { reason } => {
             format!("ERROR: refused: {reason} Do not propose this again.")
         }
@@ -4640,7 +4650,20 @@ mod tests {
             out.contains("waiting for you"),
             "the reason must be specific: {out}"
         );
-        assert!(stored(&store).is_empty(), "nothing may be written yet");
+        // The question is stored so it survives the turn and a restart, but as
+        // a proposal: `is_usable` admits `Active` only, so it reaches no prompt
+        // while it waits for an answer.
+        let records =
+            crate::memory::store::load(&store, crate::memory::record::Scope::Session).records;
+        assert_eq!(records.len(), 1);
+        assert!(matches!(
+            records[0].status,
+            crate::memory::record::Status::Proposed { .. }
+        ));
+        assert!(
+            !records[0].is_usable(records[0].created_at + 1),
+            "an unanswered guess must never be injected"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
