@@ -30,12 +30,12 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1254,
-      "fixed": 12,
+      "untriaged": 1252,
+      "fixed": 13,
       "already-fixed": 3,
       "needs-user-hardware": 2,
       "not-applicable": 1,
-      "adapted": 3,
+      "adapted": 4,
       "implementation-ready": 2,
       "rejected": 1
     }
@@ -68247,8 +68247,7 @@
       "baseRef": null,
       "headRepo": null,
       "linked": [
-        8804,
-        8780
+        8869
       ],
       "affectedAreas": [
         "chat",
@@ -68265,8 +68264,8 @@
         "macos"
       ],
       "upstreamCommits": [],
-      "severity": "critical",
-      "priority": "P0",
+      "severity": "medium",
+      "priority": "P2",
       "signals": {
         "p0": [
           "data-loss",
@@ -68282,9 +68281,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Closed by the janhq/jan#8869 adaptation. Auto-classified P0 from the word leak; it is input corruption, not data loss.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -71353,12 +71352,14 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Fork ships the same agent TUI with SGR mouse tracking and no desync filtering; one-file input filter, dependency already present.",
+      "implementationStatus": "adapted",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/src/core/cli/tui.rs (sgr tests)"
+      ],
+      "verification": "--features cli sgr: 5 passed; removing the drain fails 3.",
       "blockers": [],
       "notes": null
     },
