@@ -30,13 +30,13 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1237,
+      "untriaged": 1231,
+      "needs-user-hardware": 7,
       "fixed": 20,
       "already-fixed": 3,
-      "needs-user-hardware": 2,
+      "cannot-reproduce": 2,
       "not-applicable": 1,
       "adapted": 9,
-      "cannot-reproduce": 1,
       "implementation-ready": 3,
       "rejected": 2
     }
@@ -7473,13 +7473,15 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Flatpak launch crash on Linux/Wayland. The logs point at WebKitGTK/Wayland (Gdk Error 71 Protocol error) rather than Jan code; the fork ships the same Flatpak manifest, so it may apply, but it cannot be run on this Windows host. The missing mcp_config.json message in #7091 is already handled here: setup_mcp writes the default config before servers start.",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a Linux Wayland host running the Flatpak"
+      ],
       "notes": null
     },
     {
@@ -10012,13 +10014,15 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Flatpak launch crash on Linux/Wayland. The logs point at WebKitGTK/Wayland (Gdk Error 71 Protocol error) rather than Jan code; the fork ships the same Flatpak manifest, so it may apply, but it cannot be run on this Windows host. The missing mcp_config.json message in #7091 is already handled here: setup_mcp writes the default config before servers start.",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a Linux Wayland host running the Flatpak"
+      ],
       "notes": null
     },
     {
@@ -35517,7 +35521,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8911
+      ],
       "affectedAreas": [
         "chat",
         "mcp",
@@ -35546,13 +35552,15 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Flatpak launch crash on Linux; not runnable here. Its log also shows the hosted Exa MCP server dialled at startup, which this fork no longer does: the v5 MCP migration removes the default Exa entry Jan activated itself (see janhq/jan#8911).",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a Linux host running the Flatpak"
+      ],
       "notes": null
     },
     {
@@ -38901,15 +38909,17 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Not reproducible without a Together.ai account. The fork maps max_output_tokens to max_tokens and drops a zero cap for remote providers; the reported 400 may be Together rejecting a value above the model limit.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Needs the remote service to observe the rejection body.",
+      "implementationStatus": "cannot-reproduce",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a Together.ai key to capture the error body"
+      ],
       "notes": null
     },
     {
@@ -39193,15 +39203,17 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Not reproducible here: the reported hang is a loopback connect from the local API proxy to llama-server stalling on Fedora Silverblue. This fork builds the proxy client with a total timeout (proxy_timeout, default 600 s), so a stalled request fails after that rather than hanging forever.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Linux/Silverblue-specific loopback behaviour; cannot be exercised on this Windows host.",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a Fedora Silverblue host running the AppImage"
+      ],
       "notes": null
     },
     {
@@ -71623,13 +71635,15 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Flatpak launch crash on Linux/Wayland. The logs point at WebKitGTK/Wayland (Gdk Error 71 Protocol error) rather than Jan code; the fork ships the same Flatpak manifest, so it may apply, but it cannot be run on this Windows host. The missing mcp_config.json message in #7091 is already handled here: setup_mcp writes the default config before servers start.",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a Linux Wayland host running the Flatpak"
+      ],
       "notes": null
     },
     {
