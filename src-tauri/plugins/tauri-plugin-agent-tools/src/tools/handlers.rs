@@ -3463,6 +3463,7 @@ mod tests {
             &crate::permissions::ToolPermissions::default(),
             &crate::tools::gate::SessionGrants::default(),
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(
             d,
@@ -3492,6 +3493,7 @@ mod tests {
             &crate::permissions::ToolPermissions::default(),
             &crate::tools::gate::SessionGrants::default(),
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(
             d,

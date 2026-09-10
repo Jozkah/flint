@@ -154,11 +154,19 @@ mod tests {
         let source = crate::resource::Resource::path("/home/me/app/main.rs", None);
         assert!(policy
             .permissions
-            .denies_call("read", std::slice::from_ref(&secret))
+            .denies_call(
+                "read",
+                std::slice::from_ref(&secret),
+                &crate::subject::Subject::MainAgent
+            )
             .is_some());
         assert!(policy
             .permissions
-            .denies_call("read", std::slice::from_ref(&source))
+            .denies_call(
+                "read",
+                std::slice::from_ref(&source),
+                &crate::subject::Subject::MainAgent
+            )
             .is_none());
     }
 

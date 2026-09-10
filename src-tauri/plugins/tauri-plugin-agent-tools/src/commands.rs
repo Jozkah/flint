@@ -652,6 +652,7 @@ async fn execute_tool_inner(
         &grants,
         true,
         &policy.network,
+        &crate::subject::Subject::MainAgent,
     );
 
     // AH-049: every decision is recorded before it is acted on, so a refusal
