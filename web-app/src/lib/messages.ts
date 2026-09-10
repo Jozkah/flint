@@ -104,10 +104,15 @@ export function convertUIMessageToThreadMessage(
           type: 'function' as const,
           function: {
             name: toolName,
+            // Always a JSON object string. A call stopped before its input
+            // streamed has none, and `JSON.stringify(undefined)` is undefined:
+            // the persisted call then had no `arguments` at all, and resending
+            // it broke llama.cpp's chat template with
+            // `key 'arguments' not found` (janhq/jan#8519).
             arguments:
               typeof part.input === 'string'
                 ? part.input
-                : JSON.stringify(part.input ?? part.args),
+                : JSON.stringify(part.input ?? part.args ?? {}),
           },
         },
         state: part.state === 'output-available' ? 'completed' : 'pending',
@@ -297,7 +302,7 @@ export function convertThreadMessageToUIMessage(
         parts.push({
           type: `tool-${content.tool_name}`,
           toolCallId: content.tool_call_id,
-          input: content.input,
+          input: content.input ?? {},
           state: 'output-available',
           output: content.output,
         })
@@ -305,7 +310,7 @@ export function convertThreadMessageToUIMessage(
         parts.push({
           type: `tool-${content.tool_name}`,
           toolCallId: content.tool_call_id,
-          input: content.input,
+          input: content.input ?? {},
           state: 'input-available',
         })
       }
@@ -342,6 +347,10 @@ export function convertThreadMessageToUIMessage(
       } else {
         toolInput = tc.tool?.function?.arguments || tc.args
       }
+      // A call persisted without arguments still needs an input object, or
+      // the history it is replayed into carries a tool call the model's chat
+      // template cannot render (janhq/jan#8519).
+      if (toolInput == null) toolInput = {}
       const toolCallId = tc.tool?.id || tc.id
 
       // Use AI SDK v5 UIToolInvocation format
