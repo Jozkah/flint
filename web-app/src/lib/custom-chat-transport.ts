@@ -81,12 +81,6 @@ export type OnFinishCallback = (params: {
 /** Partial assistant output replayed as a prefill to resume a stopped turn. */
 export type ContinuationContent = { text?: string; reasoning?: string }
 export type ServiceHub = {
-  /**
-   * A partially-stubbed host can hand back no app service at all, which is
-   * why the return type admits `undefined` rather than the caller
-   * optional-calling the method itself.
-   */
-  app(): { getJanDataFolder(): Promise<string | undefined> } | undefined
   rag(): {
     getTools(): Promise<
       Array<{ name: string; description: string; inputSchema: unknown }>
