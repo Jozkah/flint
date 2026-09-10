@@ -51553,7 +51553,7 @@
       ],
       "verification": "config_durability 2 passed; full Rust lib 816 passed.",
       "blockers": [],
-      "notes": "The key arguments not found generation error in the same report is a separate symptom (a tool call without arguments reaching the chat template); not addressed here."
+      "notes": "Both halves fixed. Lost servers: config durability (4f62c64). key arguments not found: tool calls stored without arguments are now stored and restored with an empty input object (web-app/src/lib/messages.ts); removing the load-side default fails the new messages test."
     },
     {
       "source": "janhq/jan",

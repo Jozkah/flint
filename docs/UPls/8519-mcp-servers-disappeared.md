@@ -34,11 +34,23 @@ old code.
 - Every `mcp_config.json` writer uses `write_file_atomically` (staging file,
   flush, rename), so a crash can no longer produce a torn file.
 
-## Not addressed here
+## The second symptom: `key 'arguments' not found`
 
-The same report shows a generation error, `key 'arguments' not found`, which is
-a tool call without `arguments` reaching the llama.cpp chat template. That is a
-separate defect and remains open in the ledger.
+The same report shows every generation failing with
+`json.exception.out_of_range.403 key 'arguments' not found` — llama.cpp's chat
+template reading a tool call with no `arguments`.
+
+`convertUIMessageToThreadMessage` (`web-app/src/lib/messages.ts`) stored a
+call's arguments as `JSON.stringify(part.input ?? part.args)`. For a call
+stopped before its input streamed, both are undefined and
+`JSON.stringify(undefined)` is `undefined`, so the stored call had no
+`arguments` key. Reloading produced a tool part with no input, and every later
+turn replayed it into the template.
+
+Now a missing input is `{}` when stored, and `{}` when restored — for both the
+current and the legacy stored shapes, so threads saved before the fix heal on
+load. Removing the load-side default fails
+`gives a stored tool call without input an empty input object`.
 
 ## Verification
 
