@@ -2092,12 +2092,11 @@ mod bash_job_registry_tests {
     /// Unix only, and not for want of trying. The test needs a pid that exists,
     /// cannot be signalled, and is safe to *attempt* -- on Unix that is pid 1.
     /// Windows has no equivalent: the processes that refuse termination are
-    /// System (pid 4) and Idle (pid 0), and a test that fired `taskkill /F` at
-    /// System on a developer's machine would be betting their uptime on the
-    /// refusal working. The refusal path itself is covered on Windows by
-    /// `proc::windows_tests::a_refusal_is_reported_with_the_reason_taskkill_gave`,
-    /// which reads the outcome out of a real `taskkill` failure without
-    /// aiming one at anything.
+    /// System (pid 4) and Idle (pid 0), and a test that aimed a kill at System
+    /// on a developer's machine would be betting their uptime on the refusal
+    /// working. The refusal path itself is covered on Windows by
+    /// `proc::windows_tests::a_refusal_is_reported_as_a_failure_with_a_reason`,
+    /// which classifies the OS error without aiming a kill at anything.
     #[cfg(unix)]
     #[tokio::test]
     async fn a_refused_kill_is_reported_and_the_job_stays_killable() {

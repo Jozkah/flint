@@ -674,55 +674,186 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
 
 /// Kill the process `pid` and every descendant it spawned.
 ///
-/// Windows has no process groups a signal can reach across, so this shells out
-/// to `taskkill /T`, which walks the tree itself. Two things can go wrong and
-/// both are reported: `taskkill` may fail to launch at all (absent from PATH in
-/// a stripped image), and it may run and refuse — exit code 128 is "no such
-/// process", which means the command had already finished.
+/// Windows has no process groups a signal can reach across, so the tree is
+/// walked here, from a kernel process snapshot, and each member terminated by
+/// handle. This used to shell out to `taskkill /T`, which asks WMI for the
+/// tree: on a machine where the WMI service had stopped answering, every kill
+/// -- including of a pid that did not exist -- came back "the timeout period
+/// expired", so the Stop button could not stop anything. The snapshot needs no
+/// service at all.
+///
+/// The outcome is the root's: [`Gone`](KillOutcome::Gone) when it had already
+/// exited, a failure when the OS refused it. Descendants are best effort --
+/// one that exits or refuses on its own does not undo the kill that mattered.
 #[cfg(windows)]
 pub fn kill_tree(pid: u32) -> KillOutcome {
-    let output = match std::process::Command::new("taskkill")
-        .args(["/F", "/T", "/PID", &pid.to_string()])
-        .output()
-    {
-        Ok(output) => output,
-        Err(e) => return KillOutcome::Failed(format!("could not run taskkill: {e}")),
+    use windows_sys::Win32::Foundation::{GetLastError, WAIT_OBJECT_0};
+    use windows_sys::Win32::System::Threading::{TerminateProcess, WaitForSingleObject};
+
+    let root = match win_tree::Owned::open(pid) {
+        Ok(root) => root,
+        Err(error) => return classify_open_error(error),
     };
-    classify_taskkill(output.status.code(), &output.stderr)
+    // Every descendant is opened before anything is terminated: a handle pins
+    // the process it names, so a pid recycled mid-kill can never be hit.
+    let tree = win_tree::descendants(&root);
+
+    let outcome = if unsafe { TerminateProcess(root.handle, 1) } != 0 {
+        KillOutcome::Signalled
+    } else {
+        let error = unsafe { GetLastError() };
+        // Terminating a process that has already exited fails too, with
+        // "access denied"; tell that apart from a real refusal.
+        if unsafe { WaitForSingleObject(root.handle, 0) } == WAIT_OBJECT_0 {
+            KillOutcome::Gone
+        } else {
+            classify_open_error(error)
+        }
+    };
+    for member in &tree {
+        unsafe { TerminateProcess(member.handle, 1) };
+    }
+    // Anything a member started while the first pass ran.
+    for member in &tree {
+        for late in win_tree::descendants(member) {
+            unsafe { TerminateProcess(late.handle, 1) };
+        }
+    }
+    outcome
 }
 
-/// What `taskkill`'s exit status and stderr mean.
+/// What a Win32 error from opening or terminating the root means.
 ///
-/// Split out from [`kill_tree`] so all three outcomes can be tested without
-/// firing a real `taskkill` at a real process. The refusal branch used to be
-/// covered by terminating the System Idle Process, which stopped refusing on
-/// current Windows builds and reported "not running" instead -- and the only
-/// processes that *do* still refuse are System and Idle, which no test should
-/// be aiming `/F` at on a developer's machine.
+/// Split out from [`kill_tree`] so every outcome can be tested without aiming
+/// a kill at a process that refuses one: the only such processes are System
+/// and Idle, which no test should be targeting on a developer's machine.
 #[cfg(windows)]
-fn classify_taskkill(code: Option<i32>, stderr: &[u8]) -> KillOutcome {
-    /// `taskkill` exit code for "the process is not running".
-    const ERROR_NOT_FOUND: i32 = 128;
+fn classify_open_error(error: u32) -> KillOutcome {
+    use windows_sys::Win32::Foundation::{ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER};
 
-    match code {
-        Some(0) => return KillOutcome::Signalled,
-        // Nothing left to kill is not a failure: the command had already
-        // finished, which is the outcome the caller wanted.
-        Some(ERROR_NOT_FOUND) => return KillOutcome::Gone,
-        _ => {}
+    match error {
+        // No process has that id: the command had already finished, which is
+        // the outcome the caller wanted.
+        ERROR_INVALID_PARAMETER => KillOutcome::Gone,
+        ERROR_ACCESS_DENIED => KillOutcome::Failed("access is denied".to_string()),
+        other => KillOutcome::Failed(format!("the process could not be stopped (error {other})")),
     }
-    // taskkill explains itself on stderr; its first line is the useful part
-    // and names no path of ours.
-    let reason = String::from_utf8_lossy(stderr);
-    let first = reason.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
-    KillOutcome::Failed(if first.is_empty() {
-        match code {
-            Some(code) => format!("taskkill exited with {code}"),
-            None => "taskkill was terminated before it answered".to_string(),
+}
+
+/// The process tree under a root, read from a Toolhelp snapshot.
+#[cfg(windows)]
+mod win_tree {
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, GetLastError, FILETIME, HANDLE, INVALID_HANDLE_VALUE,
+    };
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+        PROCESS_TERMINATE,
+    };
+
+    /// An open process handle, closed on drop.
+    pub struct Owned {
+        pub pid: u32,
+        pub handle: HANDLE,
+        /// Creation time, as 100ns ticks.
+        pub created: u64,
+    }
+
+    impl Owned {
+        /// Open `pid` for termination, or return the Win32 error.
+        pub fn open(pid: u32) -> Result<Owned, u32> {
+            let handle = unsafe {
+                OpenProcess(
+                    PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE,
+                    0,
+                    pid,
+                )
+            };
+            if handle.is_null() {
+                return Err(unsafe { GetLastError() });
+            }
+            let zero = FILETIME {
+                dwLowDateTime: 0,
+                dwHighDateTime: 0,
+            };
+            let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+            let created = if unsafe {
+                GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user)
+            } != 0
+            {
+                (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime)
+            } else {
+                0
+            };
+            Ok(Owned {
+                pid,
+                handle,
+                created,
+            })
         }
-    } else {
-        first.trim().to_string()
-    })
+    }
+
+    impl Drop for Owned {
+        fn drop(&mut self) {
+            unsafe { CloseHandle(self.handle) };
+        }
+    }
+
+    /// Every running `(pid, parent pid)` pair. Empty when no snapshot could be
+    /// taken, which leaves the root to be killed on its own.
+    fn snapshot() -> Vec<(u32, u32)> {
+        let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+        if snap == INVALID_HANDLE_VALUE {
+            return Vec::new();
+        }
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        let mut pairs = Vec::new();
+        let mut more = unsafe { Process32FirstW(snap, &mut entry) } != 0;
+        while more {
+            pairs.push((entry.th32ProcessID, entry.th32ParentProcessID));
+            more = unsafe { Process32NextW(snap, &mut entry) } != 0;
+        }
+        unsafe { CloseHandle(snap) };
+        pairs
+    }
+
+    /// Every descendant of `root`, opened.
+    ///
+    /// A parent pid is only a number, and Windows recycles them: a process
+    /// whose parent died long ago can name a pid that now belongs to `root`.
+    /// A real child is created after its parent, so one created earlier is
+    /// someone else's orphan and is left alone.
+    pub fn descendants(root: &Owned) -> Vec<Owned> {
+        let pairs = snapshot();
+        let mut found: Vec<Owned> = Vec::new();
+        let mut frontier: Vec<(u32, u64)> = vec![(root.pid, root.created)];
+        while let Some((parent, parent_created)) = frontier.pop() {
+            for &(pid, ppid) in &pairs {
+                if ppid != parent || pid == parent || pid == root.pid {
+                    continue;
+                }
+                if found.iter().any(|f| f.pid == pid) {
+                    continue;
+                }
+                let Ok(child) = Owned::open(pid) else {
+                    continue;
+                };
+                if child.created < parent_created {
+                    continue;
+                }
+                frontier.push((child.pid, child.created));
+                found.push(child);
+            }
+        }
+        found
+    }
 }
 
 fn running() -> &'static Mutex<HashSet<u32>> {
@@ -774,7 +905,7 @@ mod env_allowlist_tests {
     }
 }
 
-/// Windows-only behaviour of `kill_tree`, which shells out to `taskkill`
+/// Windows-only behaviour of `kill_tree`, which walks the process tree itself
 /// rather than signalling a process group. Compiled and run only on Windows —
 /// a unix test asserting these would prove nothing about them.
 #[cfg(all(test, windows))]
@@ -800,7 +931,7 @@ mod windows_tests {
         }
     }
 
-    /// `taskkill /T` walks the tree and reports success.
+    /// A running command is killed and reported as such.
     ///
     /// Spawned directly rather than through [`spawn`], which registers the pid
     /// in the process-wide table `kill_all` reaps from. Sharing that table with
@@ -833,58 +964,114 @@ mod windows_tests {
         let _ = tokio::time::timeout(std::time::Duration::from_secs(10), child.wait()).await;
     }
 
-    /// taskkill exits 128 for "the process is not running", which is not a
-    /// failure — there was nothing left to kill.
+    /// Whether `pid` still names a running process.
+    fn running(pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::WAIT_TIMEOUT;
+        use windows_sys::Win32::System::Threading::WaitForSingleObject;
+        match win_tree::Owned::open(pid) {
+            Ok(p) => (unsafe { WaitForSingleObject(p.handle, 0) }) == WAIT_TIMEOUT,
+            Err(_) => false,
+        }
+    }
+
+    /// The grandchild is what `taskkill /T` existed for and what a plain
+    /// terminate would leave running: `cmd` starts `ping`, and killing `cmd`
+    /// has to take `ping` with it.
+    #[test]
+    fn kills_the_whole_tree_not_just_the_root() {
+        let mut child = std::process::Command::new("cmd.exe")
+            .args(["/d", "/c", "ping -n 300 127.0.0.1 >NUL"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let root = win_tree::Owned::open(child.id()).unwrap();
+        let mut grandchild = None;
+        for _ in 0..100 {
+            if let Some(found) = win_tree::descendants(&root).into_iter().next() {
+                grandchild = Some(found.pid);
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let grandchild = grandchild.expect("cmd never started ping");
+        // Held open so the pid cannot be recycled while it is being checked.
+        let pinned = win_tree::Owned::open(grandchild).unwrap();
+
+        assert_eq!(kill_tree(child.id()), KillOutcome::Signalled);
+        let _ = child.wait();
+        let mut gone = false;
+        for _ in 0..100 {
+            use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+            use windows_sys::Win32::System::Threading::WaitForSingleObject;
+            if unsafe { WaitForSingleObject(pinned.handle, 0) } == WAIT_OBJECT_0 {
+                gone = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(gone, "the grandchild outlived the tree kill");
+        drop(root);
+    }
+
+    /// A pid no process has is not a failure: there was nothing left to kill.
     #[test]
     fn a_pid_that_does_not_exist_reports_gone() {
         assert_eq!(kill_tree(u32::MAX - 7), KillOutcome::Gone);
     }
 
-    /// A nonzero exit that is *not* 128 is a refusal, and must be reported as a
-    /// failure carrying taskkill's own explanation.
-    ///
-    /// Tested through the classifier rather than by refusing a real kill. The
-    /// only processes on Windows that still refuse `/F` are System and Idle,
-    /// and a test that aimed one at either would be betting the developer's
-    /// uptime on the refusal working. Idle used to serve here and no longer
-    /// does: current builds report it as "not running".
+    /// A process that exited while its parent still holds it -- the state a
+    /// finished command is in until it is collected -- is gone, not refused,
+    /// even though terminating it fails with "access denied".
     #[test]
-    fn a_refusal_is_reported_with_the_reason_taskkill_gave() {
-        match classify_taskkill(Some(1), b"ERROR: The process cannot be terminated.\r\n") {
-            KillOutcome::Failed(reason) => {
-                assert_eq!(reason, "ERROR: The process cannot be terminated.");
-                assert!(
-                    !reason.contains('\\'),
-                    "the reason is shown to the user and must name no path: {reason}"
-                );
+    fn a_process_that_already_exited_reports_gone() {
+        let mut child = std::process::Command::new("cmd.exe")
+            .args(["/d", "/c", "exit 0"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        // Exited, but `child` keeps its handle, so the pid is still this one.
+        let _ = child.try_wait();
+        for _ in 0..100 {
+            if !running(pid) {
+                break;
             }
-            other => panic!("a nonzero exit that is not 128 is a refusal, got {other:?}"),
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert_eq!(kill_tree(pid), KillOutcome::Gone);
+        let _ = child.wait();
+    }
+
+    /// A refusal is a failure that says why, and names no path. Tested through
+    /// the classifier rather than by refusing a real kill: the only processes
+    /// that refuse are System and Idle, and no test should aim a kill at them.
+    #[test]
+    fn a_refusal_is_reported_as_a_failure_with_a_reason() {
+        use windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED;
+        match classify_open_error(ERROR_ACCESS_DENIED) {
+            KillOutcome::Failed(reason) => {
+                assert_eq!(reason, "access is denied");
+                assert!(!reason.contains('\\'), "{reason}");
+            }
+            other => panic!("access denied is a refusal, got {other:?}"),
+        }
+        match classify_open_error(1234) {
+            KillOutcome::Failed(reason) => assert!(reason.contains("1234"), "{reason}"),
+            other => panic!("an unknown error is a failure, got {other:?}"),
         }
     }
 
-    /// A refusal with nothing on stderr still has to say something.
     #[test]
-    fn a_silent_refusal_still_reports_the_status() {
-        match classify_taskkill(Some(5), b"") {
-            KillOutcome::Failed(reason) => assert!(reason.contains('5'), "{reason}"),
-            other => panic!("expected a failure, got {other:?}"),
-        }
-        // taskkill killed by a signal before it answered: no code at all.
-        match classify_taskkill(None, b"") {
-            KillOutcome::Failed(reason) => assert!(!reason.is_empty()),
-            other => panic!("expected a failure, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn the_classifier_agrees_with_the_outcomes_kill_tree_reports() {
-        assert_eq!(classify_taskkill(Some(0), b""), KillOutcome::Signalled);
-        assert_eq!(classify_taskkill(Some(128), b""), KillOutcome::Gone);
-        // Blank stderr lines must not become the explanation.
-        match classify_taskkill(Some(1), b"\r\n\r\nERROR: Access is denied.\r\n") {
-            KillOutcome::Failed(reason) => assert_eq!(reason, "ERROR: Access is denied."),
-            other => panic!("expected a failure, got {other:?}"),
-        }
+    fn no_such_process_is_classified_as_gone() {
+        use windows_sys::Win32::Foundation::ERROR_INVALID_PARAMETER;
+        assert_eq!(
+            classify_open_error(ERROR_INVALID_PARAMETER),
+            KillOutcome::Gone
+        );
     }
 }
 

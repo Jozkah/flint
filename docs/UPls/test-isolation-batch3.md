@@ -74,3 +74,48 @@ separate task.
   Cowork tool call launched a second full harness (WebView, fixture server,
   scenario run). Four were found running at once; they are what wedged the
   WebView in later scenarios. Fixed.
+
+## Stopping a command depended on WMI (agent-tools plugin)
+
+At the checkpoint gate the plugin suite failed again: the five kill tests and
+`a_pid_that_does_not_exist_reports_gone`, each with
+`Failed("ERROR: This operation returned because the timeout period expired.")`.
+The machine's WMI service had stopped answering (`tasklist` and
+`Get-CimInstance Win32_Process` both hung; `Get-Process` and `netstat` were
+fine). `kill_tree` shelled out to `taskkill /T`, which asks WMI for the process
+tree, so no kill could succeed -- not even of a pid that did not exist. For a
+user in that state, the Stop button and cancellation could stop nothing.
+
+`kill_tree` now walks the tree from a Toolhelp process snapshot and terminates
+each member by handle, with no service involved. Every descendant is opened
+before anything is terminated, so a pid recycled mid-kill is never hit, and a
+process whose recorded parent pid merely coincides with the root (an orphan of
+an earlier owner of that pid) is skipped because it was created before the
+root. A second pass catches children started while the first ran. New tests:
+the whole tree (`cmd` running `ping`) dies with its root, an exited but
+uncollected process reports `Gone`, and the OS error classification (refusal,
+no such process, other) is covered without aiming a kill at a protected
+process.
+
+Proof, with WMI still hung: the kill tests 33/33 in 0.17 s (previously 5 of
+them failed after 246 s of timeouts); the full plugin suite 740 passed at 16
+threads.
+
+## Reload-free restart scenarios
+
+The thread-durability and message-deletion scenarios reloaded the page in
+place to prove state is read back from disk. In this harness that reload left
+the WebView2 page permanently unanswered (with `location.reload()` and with
+`location.replace('/')` alike) before the app wrote or read anything, so both
+failed without exercising the product. Each is now split at the point where
+it reloaded: the first half runs in a fresh profile kept with
+`COWORK_SMOKE_KEEP` and leaves a handoff file, and a second process on that
+profile does the checks. The torn-tail half first confirms the fragment is
+still on disk, so it cannot pass against a file the first process had already
+healed. That is also closer to what #8019 is about: a crash, then a new start.
+
+The malformed-tool-call scenario waited for the fixture's plain reply after the
+follow-up, but the fixture answers any request whose history carries a tool
+result with its summary. The session had in fact answered (one new request,
+correct history with `arguments: "{}"`); the scenario now waits for a reply
+drawn after the follow-up.
