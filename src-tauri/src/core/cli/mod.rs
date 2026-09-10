@@ -1619,8 +1619,25 @@ mod tests {
         let (messages, skipped) = cli_read_messages_lenient(base, "aaaa1111").unwrap();
         assert_eq!(messages.len(), 1);
         assert_eq!(skipped, 1);
-        // The strict reader used elsewhere still rejects the same file.
-        assert!(cli_list_messages_in(base, "aaaa1111").is_err());
+        // The shared reader accepts this shape too now: an unterminated final
+        // line is what an interrupted append leaves, and refusing the whole
+        // thread over it made a conversation unreadable (janhq/jan#8019).
+        assert_eq!(cli_list_messages_in(base, "aaaa1111").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn the_shared_reader_still_rejects_corruption_before_the_tail() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        seed_thread(base, "bbbb2222", 100.0);
+        let raw = std::fs::read_to_string(get_messages_path(base, "bbbb2222")).unwrap();
+        std::fs::write(
+            get_messages_path(base, "bbbb2222"),
+            format!("not json\n{raw}"),
+        )
+        .unwrap();
+
+        assert!(cli_list_messages_in(base, "bbbb2222").is_err());
     }
 
     #[test]
