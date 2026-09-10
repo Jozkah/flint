@@ -41,3 +41,36 @@ separate task.
   other's fixture.
 - `COWORK_SMOKE_KEEP=<dir>` keeps the profile so a second process is a real
   restart.
+
+## Harness isolation holes (found while running the real-WebView gates)
+
+- **System credential store.** Provider keys go to the OS keyring under
+  `jan-providers` / `<provider>`, which is not scoped to a data folder. Every
+  earlier harness run read the developer's real entries (anthropic, gemini,
+  exa, ...) and wrote a `cowork-smoke-mock` entry with a fake value into the
+  real Windows Credential Manager. The harness now calls
+  `provider_secrets::use_file_secrets_only()` (compiled only with the
+  `cowork-smoke` feature), so keys stay in the isolated data folder's
+  encrypted file; a lane run showed zero keyring accesses. The stale
+  `cowork-smoke-mock.jan-providers` entry is still in the credential store:
+  left for the user to remove.
+- **Real app-data `store.json`.** See the data-folder anchoring above:
+  `%APPDATA%\jan.ai.app\data\store.json` (`version`, `mcp_version`) was
+  written by harness runs, not by the user's Jan.
+- **Shared cargo target directory.** Another Claude session on this machine
+  (worktree `token-usage-accounting-viz`) builds with `CARGO_TARGET_DIR`
+  pointed at this checkout's `src-tauri/target`. Its older agent-tools plugin
+  exported a 28-command permission list that ended up in this app's ACL
+  (`memory_retrieve`, `memory_record_propose_inferred`,
+  `advertised_tool_schemas` denied). Gate builds for this batch use a
+  private target directory; unit-test binaries are unaffected (their ACL is
+  not exercised). (A `cowork_smoke.exe` seen running from this target and
+  first put down to that session was most likely the harness's own
+  sandbox-helper clone; see below.)
+- **The harness started a copy of itself for every sandboxed shell.** The
+  agent-tools plugin runs the current executable as its Windows sandbox
+  helper, and the harness `main` did not hand off to
+  `run_sandbox_helper_if_requested()` as the app's own `main` does, so each
+  Cowork tool call launched a second full harness (WebView, fixture server,
+  scenario run). Four were found running at once; they are what wedged the
+  WebView in later scenarios. Fixed.
