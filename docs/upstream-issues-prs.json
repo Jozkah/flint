@@ -36,7 +36,7 @@
       "needs-user-hardware": 2,
       "not-applicable": 1,
       "adapted": 4,
-      "implementation-ready": 2,
+      "in-progress": 2,
       "rejected": 1
     }
   },
@@ -59924,12 +59924,12 @@
       "registryIds": [],
       "decision": "fix",
       "decisionReason": "Tracked through janhq/jan#8760; fork-native redesign pending.",
-      "implementationStatus": "implementation-ready",
+      "implementationStatus": "in-progress",
       "forkCommits": [],
       "tests": [],
       "verification": null,
       "blockers": [],
-      "notes": null
+      "notes": "Misclassification fixed via knownContextWindow; increase-action semantics for remote endpoints still open (see janhq/jan#8760)."
     },
     {
       "source": "janhq/jan",
@@ -65125,12 +65125,12 @@
       "registryIds": [],
       "decision": "adapt",
       "decisionReason": "Real defect for custom OpenAI-compatible endpoints, but the PR adds a parallel model-context-size module while the fork already learns windows from refusals (contextLimitRecovery, AH-195). Needs a redesign on the fork architecture rather than a port.",
-      "implementationStatus": "implementation-ready",
+      "implementationStatus": "in-progress",
       "forkCommits": [],
       "tests": [],
       "verification": null,
       "blockers": [],
-      "notes": "Next: replace the ?? 32768 fallback with the learned/discovered window (unknown means not a context-limit verdict), and make the increase action honest for providers whose window Jan cannot change."
+      "notes": "Half done: the finish-length check no longer assumes 32768 for an unknown window; it uses knownContextWindow (setting, learned refusal limit, provider metadata, bundled table) and treats unknown as not a context verdict (web-app/src/lib/knownContextWindow.ts, 9 tests). Still open: an Increase Context Size action that is honest for providers whose window Jan cannot change."
     },
     {
       "source": "janhq/jan",
