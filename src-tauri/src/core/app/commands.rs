@@ -376,7 +376,26 @@ pub fn get_jan_data_folder_path<R: Runtime>(app_handle: tauri::AppHandle<R>) -> 
     }
 
     let app_configurations = get_app_configurations(app_handle);
-    PathBuf::from(app_configurations.data_folder)
+    absolute_data_folder(
+        PathBuf::from(app_configurations.data_folder),
+        std::env::current_dir().ok(),
+    )
+}
+
+/// The data folder as an absolute path.
+///
+/// A relative one -- the `./data` default `CI=e2e` serves -- was resolved by
+/// each consumer against its own base. Most used the working directory, but
+/// the settings store resolves a relative path against the OS app-data
+/// directory, so an isolated harness run read and wrote `store.json` under the
+/// installed app's own `%APPDATA%\jan.ai.app\data`, inherited its
+/// `mcp_version`, and skipped the startup migrations it was meant to test.
+#[cfg(not(feature = "cli"))]
+fn absolute_data_folder(folder: PathBuf, cwd: Option<PathBuf>) -> PathBuf {
+    match cwd {
+        Some(cwd) if folder.is_relative() => cwd.join(folder),
+        _ => folder,
+    }
 }
 
 #[cfg(not(feature = "cli"))]
@@ -478,6 +497,30 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use tempfile::tempdir;
+
+    /// A relative data folder is anchored at the working directory once, so
+    /// no consumer can resolve it against a base of its own (the settings
+    /// store used the OS app-data directory).
+    #[cfg(not(feature = "cli"))]
+    #[test]
+    fn a_relative_data_folder_is_anchored_at_the_working_directory() {
+        let cwd = PathBuf::from(if cfg!(windows) { r"C:\run" } else { "/run" });
+        assert_eq!(
+            absolute_data_folder(PathBuf::from("./data"), Some(cwd.clone())),
+            cwd.join("./data")
+        );
+        assert!(absolute_data_folder(PathBuf::from("./data"), Some(cwd.clone())).is_absolute());
+        let absolute = cwd.join("elsewhere");
+        assert_eq!(
+            absolute_data_folder(absolute.clone(), Some(PathBuf::from("/ignored"))),
+            absolute
+        );
+        // No working directory to anchor at: left as given rather than guessed.
+        assert_eq!(
+            absolute_data_folder(PathBuf::from("data"), None),
+            PathBuf::from("data")
+        );
+    }
 
     #[test]
     fn migration_recovers_legacy_then_removes_stale_copy() {
