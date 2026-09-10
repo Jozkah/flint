@@ -177,6 +177,15 @@ export const providerFetch: typeof globalThis.fetch = async (
   // whoever is waiting on that body waits forever.
   const streamId = `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 
+  // A model dispatch names itself. The snapshot, the provider's usage count and
+  // the turn that renders it are all bound to this id, and nothing else ever
+  // assigned one: every snapshot came back with an empty invocation, so the
+  // usage record -- which refuses to write an unbound count -- was never
+  // written at all. One fetch is one dispatch, so an SDK retry is a new fetch
+  // and correctly a new invocation. Only dispatches that carry a session get
+  // one; model discovery and health checks are not snapshotted.
+  const invocationId = identity.session ? `inv-${streamId.slice(2)}` : undefined
+
   const payload = {
     url,
     method,
@@ -185,6 +194,7 @@ export const providerFetch: typeof globalThis.fetch = async (
     timeoutSecs: null as number | null,
     streamId,
     ...identity,
+    ...(invocationId ? { invocationId } : {}),
   }
 
   const signal = init?.signal ?? request?.signal

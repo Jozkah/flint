@@ -44,7 +44,12 @@ export const AGENT_TOOL_NAMES = new Set([
   'screenshot',
 ])
 
+// Keyed by what the answer depends on. One module-level list shared by chat
+// and Cowork meant whichever surface asked first decided the tool set for every
+// later caller -- a chat with no folder, say, fixing the list a Cowork session
+// with a folder then received.
 let schemaCache: ToolSchema[] | null = null
+let schemaCacheKey = ''
 let omittedCache: OmittedTool[] = []
 let statusCache: Promise<SandboxStatus> | null = null
 
@@ -127,7 +132,11 @@ export async function getAgentToolSchemas(
   projectRoot?: string,
   reported?: ComponentReport[]
 ): Promise<ToolSchema[]> {
-  if (schemaCache) return schemaCache
+  const key = JSON.stringify([
+    projectRoot ?? '',
+    (reported ?? []).map((r) => `${r.component}:${r.state}`),
+  ])
+  if (schemaCache && schemaCacheKey === key) return schemaCache
   const [advertised] = await Promise.all([
     advertisedToolSchemas(projectRoot, reported).catch((e) => {
       console.warn('[agentTools] Failed to read readiness:', messageOf(e))
@@ -139,6 +148,7 @@ export async function getAgentToolSchemas(
   schemaCache = advertised.schemas.filter((s) =>
     AGENT_TOOL_NAMES.has(s.function.name)
   )
+  schemaCacheKey = key
   omittedCache = advertised.omitted.filter((o) => AGENT_TOOL_NAMES.has(o.name))
   return schemaCache
 }

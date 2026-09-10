@@ -295,6 +295,17 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
           await checkAndUpdateModelVisionCapability(model.id as string)
         }
       } else if (useLastUsedModel) {
+        // Initialise, never re-decide. This effect re-runs on every change to
+        // `providers` -- a model list refreshing, a capability probe writing
+        // back through `updateProvider` -- and re-deciding each time cleared a
+        // model the user had just picked whenever it was momentarily missing
+        // from an active provider's list. The picker kept showing it (that is
+        // local display state), while the composer's selection was empty and
+        // it refused to send: no run, no turn, nothing in the transcript.
+        // An existing selection stays. If the model really is gone, sending
+        // fails with an error the user can act on, which is better than a
+        // composer that silently does nothing.
+        if (useModelProvider.getState().selectedModel) return
         // Try to use last used model only when explicitly requested (for new chat)
         const lastUsed = getLastUsedModel()
         if (lastUsed && checkModelExists(lastUsed.provider, lastUsed.model)) {

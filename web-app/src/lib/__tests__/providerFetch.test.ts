@@ -286,4 +286,51 @@ describe('providerFetch', () => {
     expect(one).toBeTruthy()
     expect(typeof one).toBe('string')
   })
+
+  /// The regression. Nothing assigned an invocation id, so every snapshot came
+  /// back unbound and the usage record (AH-073), which refuses an unbound
+  /// count, was never written for any dispatch.
+  it('names each model dispatch so its snapshot and usage can be bound to it', async () => {
+    const d = drive()
+    const pending = providerFetch('http://v100:8080/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'x-jan-session': 'sess-1', 'x-jan-run': 'run-1' },
+      body: '{}',
+    })
+    await d.send(OK)
+    await d.send({ kind: 'end' })
+    await pending
+    const req = d.request()
+    expect(req.session).toBe('sess-1')
+    expect(req.invocationId).toMatch(/^inv-/)
+    // Identity is for the transport; it never reaches the provider.
+    expect(req.headers['x-jan-session']).toBeUndefined()
+  })
+
+  it('gives two dispatches two invocations', async () => {
+    const ids: string[] = []
+    for (let i = 0; i < 2; i++) {
+      invoke.mockReset()
+      const d = drive()
+      const pending = providerFetch('http://v100:8080/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'x-jan-session': 'sess-1' },
+        body: '{}',
+      })
+      await d.send(OK)
+      await d.send({ kind: 'end' })
+      await pending
+      ids.push(d.request().invocationId)
+    }
+    expect(ids[0]).not.toBe(ids[1])
+  })
+
+  it('does not name a request that is not a model dispatch', async () => {
+    const d = drive()
+    const pending = providerFetch('http://v100:8080/v1/models')
+    await d.send(OK)
+    await d.send({ kind: 'end' })
+    await pending
+    expect(d.request().invocationId).toBeUndefined()
+  })
 })

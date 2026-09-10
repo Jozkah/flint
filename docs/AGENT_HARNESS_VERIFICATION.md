@@ -115,7 +115,7 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 | Process jail (`bubblewrap` / Seatbelt / AppContainer) | not run | not run | not run | n/a |
 | Per-agent worktrees | not run | not run | not run | n/a |
 | Desktop agent surfaces | not run | not run | not run | not run |
-| Tool activity record and timeline (AH-050/AH-172) | not run | passed | not run | passed |
+| Tool activity record and timeline (AH-050/AH-172) | not run | passed | passed (mock provider) | passed |
 
 ## Known blockers
 
@@ -141,7 +141,9 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 | 9 unit tests | `plugins/tauri-plugin-agent-tools/src/activity.rs` | one call stays one item; concurrent calls keep request order; refusal/cancellation/failure stay distinguishable; only a success is hideable; restart restores the timeline; a killed run's call becomes stale; cross-session reads refused; a truncated tail costs one event; no credential reaches the file |
 | 11 unit tests | `web-app/src/lib/__tests__/toolActivity.test.ts` | classification and resource extraction; success, failure, cancellation and throw paths; a tool never waits on its audit line; a failed write never fails the tool |
 | 7 unit tests | `web-app/src/lib/__tests__/coworkActivityTimeline.test.ts` | reconciliation: settles a stuck call, keeps unknown calls, restores lost ones in request order, marks refusals as errors |
-| Real WebView scenario | `cowork-smoke --only tool-activity-timeline` | a scripted `ls` call is dispatched, recorded through `requested`/`running`/terminal, rendered as its own item, carries no credential, and survives a reload |
+| Real WebView scenario | `cowork-smoke --only tool-activity-timeline` | a scripted `ls` (succeeds) and `read` of a missing file (fails) are dispatched, recorded with the right terminal phases, rendered as their own items and survive a reload; with "Hide completed tool activity" on, the notice appears, the failure stays visible and the success is hidden; no provider key in `tool-activity`, `prompts`, `payload-usage` or `permissions` audit files. **Passed on Windows 2026-09-10** against the smoke mock provider; the real-model lane (`v100:8555`) was unreachable from this host |
+| 2 unit tests | `web-app/src/lib/__tests__/coworkRunner.test.ts` (`an invalid tool call`) | a `tool-input-error` is kept as a failed call, never dispatched, answered to the model, and recorded requested → refused |
+| 1 unit test | `web-app/src/lib/__tests__/agentTools.test.ts` | the tool-schema cache never serves one folder's (or one readiness state's) tool list to another |
 
 Run: `cargo test --lib activity::` and
 `cargo run --example cowork-smoke --features cowork-smoke -- --only tool-activity-timeline`.
@@ -289,7 +291,13 @@ made to return `true` unconditionally -- which is what the bug was.
 | 6 unit tests | `web-app/src/lib/__tests__/coworkBudgetPlanner.test.ts` | reply reserve bounds; fits/tight/over; an undiscoverable window is not a refusal; the typed overflow error names both numbers |
 | 7 unit tests | `plugins/tauri-plugin-agent-tools/src/usage.rs` | a count stays with its own dispatch; a provider count replaces an estimate and never the reverse; survives a restart; cross-session reads refused; an unscoped lookup refused; a truncated tail costs one record |
 | 5 unit tests | `web-app/src/lib/__tests__/payloadUsage.test.ts` | binding to invocation and snapshot; nothing recorded when there is no invocation; nonsense figures dropped; a failed write never fails the run |
+| 3 unit tests | `web-app/src/lib/__tests__/providerFetch.test.ts` | every model dispatch carries its own `invocationId`; two dispatches never share one; discovery requests are not named |
 | Real WebView scenario | `cowork-smoke --only tool-activity-timeline` | every accounting record written by a real run names a dispatch, names its snapshot, and reports the provider as its source |
+
+**Correction (2026-09-10).** The scenario row above was listed before it had
+ever passed with accounting: no dispatch was given an invocation id, so
+`recordPayloadUsage` dropped every record and the scenario failed at exactly
+this check. Fixed in `providerFetch`; the scenario now passes on Windows.
 
 
 ## Run reliability (AH-018 / AH-019 / AH-021 / AH-024 / AH-025 / AH-029 / AH-030)

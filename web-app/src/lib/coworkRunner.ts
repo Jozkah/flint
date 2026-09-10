@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { recordToolActivity } from '@/lib/toolActivity'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
 import {
@@ -80,6 +81,12 @@ export type PendingToolCall = {
   toolCallId: string
   toolName: string
   input: unknown
+  /**
+   * Set when the SDK rejected the call before it could run -- an unknown tool,
+   * or input that failed the tool's schema. Such a call is never dispatched;
+   * the reason goes back to the model as the call's error result.
+   */
+  invalid?: string
 }
 
 export type ToolOutcome = {
@@ -322,6 +329,22 @@ export async function consumeStep(
             toolCallId: chunk.toolCallId,
             toolName: chunk.toolName,
             input: chunk.input,
+          }
+          result.toolCalls.push(call)
+          sink.onToolCall(call)
+          break
+        }
+        // The model asked for a tool it was not offered, or with input its
+        // schema rejects. Kept as a call that failed, not dropped: dropping it
+        // left the step with no tool calls, so the loop read it as a finished
+        // answer -- the run ended with nothing done, nothing recorded and
+        // nothing said, and the model never learned its call was refused.
+        case 'tool-input-error': {
+          const call: PendingToolCall = {
+            toolCallId: chunk.toolCallId,
+            toolName: chunk.toolName,
+            input: chunk.input,
+            invalid: String(chunk.errorText ?? 'the call was not valid'),
           }
           result.toolCalls.push(call)
           sink.onToolCall(call)
@@ -612,6 +635,38 @@ export async function runTurn(opts: {
         outcomes.set(call.toolCallId, {
           output: '(interrupted)',
           isError: true,
+        })
+        continue
+      }
+      if (call.invalid !== undefined) {
+        const outcome: ToolOutcome = {
+          output:
+            `The call to \`${call.toolName}\` was not run: ${call.invalid} ` +
+            'Use one of the tools you were given, with the arguments its ' +
+            'schema describes.',
+          isError: true,
+        }
+        outcomes.set(call.toolCallId, outcome)
+        // On the durable timeline as a refusal, the same as any other call the
+        // run did not carry out, so the record says it was asked for.
+        void recordToolActivity({
+          call: call.toolCallId,
+          tool: call.toolName,
+          phase: 'requested',
+        })
+        void recordToolActivity({
+          call: call.toolCallId,
+          tool: call.toolName,
+          phase: 'refused',
+          detail: 'not a valid call',
+        })
+        observed.push({
+          tool: call.toolName,
+          input: call.input,
+          failed: true,
+          error: outcome.output,
+          path: pathOf(call.input),
+          after: undefined,
         })
         continue
       }

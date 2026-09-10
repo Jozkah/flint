@@ -2213,7 +2213,10 @@ fn scenario_prompt_snapshot(ctx: &Ctx) -> ScenarioResult {
 fn scenario_tool_activity(ctx: &Ctx) -> ScenarioResult {
     // A real tool call, not a plain reply: the model asks for `list`, the
     // dispatcher runs it, and the record has to show the whole life of it.
-    ctx.script_model("tools", &["ls:{\"path\":\".\"}"])?;
+    ctx.script_model(
+        "tools",
+        &["ls:{\"path\":\".\"}", "read:{\"path\":\"no-such-file.txt\"}"],
+    )?;
     ctx.goto("/cowork")?;
     ctx.wait_until(
         "the cowork composer",
@@ -2311,24 +2314,29 @@ fn scenario_tool_activity(ctx: &Ctx) -> ScenarioResult {
         .and_then(|p| std::fs::read_to_string(p).ok())
         .unwrap_or_default();
     let counted: Vec<&str> = usage.lines().filter(|l| !l.trim().is_empty()).collect();
-    ensure!(
-        !counted.is_empty(),
-        "the dispatched payload was never accounted for"
-    );
+    // Collected rather than returned on the spot: accounting is its own
+    // feature (AH-073), and failing here used to hide whether the timeline
+    // survives a reload, whether hiding completed activity hides the right
+    // things, and whether any record carries the key. The scenario still fails
+    // if accounting does -- at the end, after those have been checked.
+    let mut accounting_failure: Option<String> = None;
+    if counted.is_empty() {
+        accounting_failure = Some("the dispatched payload was never accounted for".to_string());
+    }
     for record in &counted {
-        ensure!(
-            record.contains("\"source\":\"provider\""),
-            "a count was recorded that the provider did not report: {record}"
-        );
-        // An unbound count is the defect this record exists to prevent.
-        ensure!(
-            !record.contains("\"invocation\":\"\""),
-            "a count was recorded against no dispatch: {record}"
-        );
-        ensure!(
-            !record.contains("\"snapshot\":\"\""),
-            "a count was recorded against no payload snapshot: {record}"
-        );
+        if accounting_failure.is_some() {
+            break;
+        }
+        if !record.contains("\"source\":\"provider\"") {
+            accounting_failure =
+                Some(format!("a count was recorded that the provider did not report: {record}"));
+        } else if record.contains("\"invocation\":\"\"") {
+            // An unbound count is the defect this record exists to prevent.
+            accounting_failure = Some(format!("a count was recorded against no dispatch: {record}"));
+        } else if record.contains("\"snapshot\":\"\"") {
+            accounting_failure =
+                Some(format!("a count was recorded against no payload snapshot: {record}"));
+        }
     }
 
     // Reload. The conversation is rebuilt from what was stored, so a tool call
@@ -2341,6 +2349,84 @@ fn scenario_tool_activity(ctx: &Ctx) -> ScenarioResult {
         "return !!document.querySelector('[data-testid=\"tool-activity-item\"]');",
         Duration::from_secs(45),
     )?;
+
+    // Both calls are on the record, one succeeded and one failed.
+    let all = activity_events(ctx);
+    let fresh_all = &all[before.len()..];
+    ensure!(
+        fresh_all.iter().any(|e| e.contains("\"tool\":\"ls\"") && e.contains("\"phase\":\"succeeded\"")),
+        "the succeeding call was not recorded as succeeded"
+    );
+    ensure!(
+        fresh_all.iter().any(|e| e.contains("\"tool\":\"read\"") && e.contains("\"phase\":\"failed\"")),
+        "the failing call was not recorded as failed"
+    );
+    let shown_before = ctx.eval_string(
+        "return String(document.querySelectorAll('[data-testid=\"tool-activity-item\"]').length);",
+    )?;
+    ensure!(
+        shown_before.parse::<usize>().unwrap_or(0) >= 2,
+        "both calls should be visible before hiding anything (saw {shown_before})"
+    );
+
+    // "Hide completed tool activity" hides only what finished cleanly.
+    let toggle_hide = |ctx: &Ctx, on: bool| -> ScenarioResult {
+        ctx.goto("/settings/agent-tools")?;
+        ctx.wait_until(
+            "the hide-completed switch",
+            "return !!document.querySelector('[data-testid=\"hide-completed-tools\"]');",
+            Duration::from_secs(30),
+        )?;
+        ctx.eval(&format!(
+            "const sw = document.querySelector('[data-testid=\"hide-completed-tools\"]');
+             const on = sw.getAttribute('aria-checked') === 'true';
+             if (on !== {on}) sw.click();
+             return true;"
+        ))?;
+        ctx.settle();
+        ctx.goto("/")?;
+        ctx.settle();
+        ctx.goto("/cowork")
+    };
+    toggle_hide(ctx, true)?;
+    ctx.wait_until(
+        "the hidden-activity notice",
+        "return !!document.querySelector('[data-testid=\"hidden-tools\"]');",
+        Duration::from_secs(30),
+    )?;
+    let shown_hidden = ctx.eval_string(
+        "return String(document.querySelectorAll('[data-testid=\"tool-activity-item\"]').length);",
+    )?;
+    let hidden_ok = shown_hidden.parse::<usize>().unwrap_or(0);
+    // Put the preference back before asserting, so a failure here does not
+    // leave every later scenario looking at hidden activity.
+    toggle_hide(ctx, false)?;
+    ensure!(
+        hidden_ok >= 1,
+        "the failed call must stay visible with completed activity hidden (saw {shown_hidden})"
+    );
+    ensure!(
+        hidden_ok < shown_before.parse::<usize>().unwrap_or(0),
+        "hiding completed activity hid nothing (saw {shown_hidden} of {shown_before})"
+    );
+
+    // No credential in any record a run writes.
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    for file in [
+        "audit/tool-activity.jsonl",
+        "audit/prompts.jsonl",
+        "audit/payload-usage.jsonl",
+        "audit/permissions.jsonl",
+    ] {
+        let text = std::fs::read_to_string(Path::new(&data).join(file)).unwrap_or_default();
+        ensure!(
+            !text.contains("smoke-not-a-real-key"),
+            "{file} contains the provider key"
+        );
+    }
+    if let Some(failure) = accounting_failure {
+        bail!("{failure}");
+    }
     Ok(())
 }
 

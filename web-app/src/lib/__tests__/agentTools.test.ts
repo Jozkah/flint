@@ -56,6 +56,30 @@ describe('agentTools', () => {
     getJanDataFolder.mockReset().mockResolvedValue('/data')
   })
 
+  /// The list depends on the folder it was computed for. One module-level
+  /// cache shared by chat and Cowork let whichever surface asked first decide
+  /// the tool set for every later caller -- a folderless chat's answer served
+  /// to a Cowork session with a folder, for the life of the page.
+  it('does not serve the tool list of one folder to another', async () => {
+    advertisedToolSchemas.mockImplementation(async (projectRoot?: string) =>
+      projectRoot
+        ? advertising(['read', 'ls', 'write'])
+        : advertising([], [{ name: 'ls', component: 'filesystem', reason: 'workspace-unattached' }])
+    )
+    const { getAgentToolSchemas } = await import('../agentTools')
+
+    const without = await getAgentToolSchemas()
+    expect(without.map((s) => s.function.name)).not.toContain('ls')
+
+    const withFolder = await getAgentToolSchemas('/proj')
+    expect(withFolder.map((s) => s.function.name)).toContain('ls')
+    expect(advertisedToolSchemas).toHaveBeenCalledTimes(2)
+
+    // And the same question twice is still answered from the cache.
+    await getAgentToolSchemas('/proj')
+    expect(advertisedToolSchemas).toHaveBeenCalledTimes(2)
+  })
+
   it('advertises the workspace tools including writes and bash', async () => {
     const { AGENT_TOOL_NAMES } = await import('../agentTools')
     for (const name of ['read', 'ls', 'find', 'grep', 'bash']) {
