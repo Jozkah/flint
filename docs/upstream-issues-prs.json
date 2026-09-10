@@ -30,11 +30,12 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1262,
-      "fixed": 10,
+      "untriaged": 1258,
+      "fixed": 12,
       "already-fixed": 3,
       "needs-user-hardware": 2,
-      "not-applicable": 1
+      "not-applicable": 1,
+      "adapted": 2
     }
   },
   "items": [
@@ -54177,12 +54178,15 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Closed by the adaptation of janhq/jan#8633.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/utils/tests/no_proxy_env.rs",
+        "src-tauri/src/core/downloads/tests.rs"
+      ],
+      "verification": "See janhq/jan#8633 record.",
       "blockers": [],
       "notes": null
     },
@@ -57872,12 +57876,15 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Env NO_PROXY ignored; applies cleanly. Fork has a duplicate bypass helper that is the only production caller, so it now delegates to the patched one.",
+      "implementationStatus": "adapted",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/utils/tests/no_proxy_env.rs",
+        "src-tauri/src/core/downloads/tests.rs"
+      ],
+      "verification": "utils 40+4 passed; downloads bypass 7 passed.",
       "blockers": [],
       "notes": null
     },
@@ -67042,12 +67049,14 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Closed by the adaptation of janhq/jan#8849 (proxy path); the webview path does not exist in this fork.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/src/core/server/tests.rs"
+      ],
+      "verification": "See janhq/jan#8849 record.",
       "blockers": [],
       "notes": null
     },
@@ -70214,12 +70223,14 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Webview half not applicable (fork uses its own Rust transport, no tauri Origin). Proxy half present verbatim: inbound Origin/Referer forwarded upstream. Reimplemented as forwards_to_upstream.",
+      "implementationStatus": "adapted",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/src/core/server/tests.rs"
+      ],
+      "verification": "forwarded_upstream test passes; re-allowing Origin fails it.",
       "blockers": [],
       "notes": null
     },
