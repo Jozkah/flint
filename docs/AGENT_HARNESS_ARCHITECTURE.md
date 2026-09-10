@@ -132,9 +132,18 @@ Two rules hold everywhere:
 ### AHD-006: the capability model covers every dispatchable tool
 
 `Capability::{Read, Write, Exec, Net}` classifies the 16 built-ins and drives
-gating, plan-mode enforcement and concurrency. MCP tools carry no capability and
-are gated by name alone. Extending the model to MCP is a precondition for
-per-server policy (`AH-041`) and for plan mode being trustworthy (`AH-013`).
+gating, plan-mode enforcement and concurrency. MCP tools still carry no
+capability, which is what keeps `AH-013` (plan mode being trustworthy for MCP)
+open.
+
+Per-server policy (`AH-041`) no longer waits on that, because it does not need a
+capability: it keys on the **server**, in `mcp_trust`. A tool name is chosen by
+whoever publishes it, so it is not an identity -- two servers can both publish
+`fetch`, and a call that names no server is answered by whichever one the search
+reaches first. Trust is therefore recorded per server, persisted, and checked in
+`call_tool` against the server the tool was actually resolved on. An "allow once"
+answer is a single-use, short-lived ticket that is never written to disk, so it
+cannot quietly become a standing permission.
 
 ### AHD-007: fail closed
 

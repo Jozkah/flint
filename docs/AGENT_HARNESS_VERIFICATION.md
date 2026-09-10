@@ -156,6 +156,31 @@ renders from renderer state while nothing is written, and a record written while
 no card renders, are both failures a DOM-only or file-only check reports as a
 pass.
 
+## Per-MCP-server permissions (AH-041)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 11 unit tests | `plugins/tauri-plugin-agent-tools/src/mcp_trust.rs` | nothing trusted until granted; a trusted server may call its tools; **trusting one server does not trust another publishing the same tool name**; a ticket authorizes exactly one call, and not a second; a ticket does not travel to another server or another tool; an invented ticket authorizes nothing; a ticket is never written to disk; trust survives a restart; revoking takes effect; granting twice records one entry; an unreadable trust file trusts nothing |
+| 1 route test | `web-app/src/routes/threads/__tests__/$threadId.test.tsx` | an MCP call carries a ticket the backend issued, for the resolved server |
+| 1 hook test | `web-app/src/hooks/__tests__/useToolApprovalRequests.test.ts` | "always allow this server" is recorded with the backend, not only in renderer state |
+
+Run: `cargo test -p tauri-plugin-agent-tools --lib -- --test-threads=4 mcp_trust`
+and `yarn test:web`.
+
+The gate is in `call_tool`, checked **against the server the tool was resolved
+on** rather than the `server_name` the request carried -- a request that names no
+server is answered by whichever connected server publishes a matching tool name,
+and a tool name is chosen by the server publishing it, so it identifies nobody.
+The check runs before the arguments are sent: a refusal that has already sent
+them has refused nothing.
+
+**Scope, stated plainly.** This moves the persisted trust decision into the
+backend and makes every call carry an explicit, backend-issued authorization. It
+is not a defence against the renderer itself -- the renderer is the thing that
+asks the user, and it can mint a ticket whenever it likes. What it stops is a
+server becoming trusted without a recorded decision, a tool name standing in for
+a server identity, and an "allow once" answer quietly becoming permanent.
+
 ## Secret redaction in transcripts (AH-045)
 
 | Evidence | Where | Covers |

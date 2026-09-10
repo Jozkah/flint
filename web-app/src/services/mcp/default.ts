@@ -43,6 +43,27 @@ export class DefaultMCPService implements MCPService {
     return []
   }
 
+  /**
+   * Trust lives in the backend, so a build with no backend has none to report.
+   * Refusing here rather than pretending: a web build that answered "trusted"
+   * would be claiming an enforcement that does not exist.
+   */
+  async trustedServers(): Promise<string[]> {
+    return []
+  }
+
+  async trustServer(): Promise<void> {
+    throw new Error('MCP server trust needs the desktop backend')
+  }
+
+  async revokeServer(): Promise<void> {
+    throw new Error('MCP server trust needs the desktop backend')
+  }
+
+  async allowOnceForServer(): Promise<string> {
+    throw new Error('MCP server trust needs the desktop backend')
+  }
+
   async callTool(args: {
     toolName: string
     arguments: object

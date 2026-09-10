@@ -825,6 +825,38 @@ describe('ThreadDetail route', () => {
       )
     })
 
+    // AH-041. The backend keeps the record of which MCP servers the user
+    // trusts and refuses a call to any other, so an approval that happened in
+    // the renderer has to be handed over as something the backend issued. The
+    // assertion is that the call carries one -- not that the renderer decided.
+    it('authorizes an MCP call with a ticket the backend issued', async () => {
+      h.appStateState.mcpToolNames = new Set(['fetch'])
+      h.appStateState.tools = [{ name: 'fetch', server: 'files' }]
+      const allowOnceForServer = vi.fn().mockResolvedValue('ticket-42')
+      const callTool = vi.fn().mockResolvedValue({ error: '', content: [] })
+      hub.mcp = () => ({ callTool, allowOnceForServer }) as never
+      try {
+        renderComponent()
+        await act(async () => {
+          await (h as any).capturedOnToolCall(toolCall('tcTicket'))
+        })
+        await act(async () => {
+          await finishWithToolCalls()
+        })
+
+        expect(allowOnceForServer).toHaveBeenCalledWith('files', 'fetch')
+        expect(callTool).toHaveBeenCalledWith(
+          expect.objectContaining({
+            toolName: 'fetch',
+            serverName: 'files',
+            approvalTicket: 'ticket-42',
+          })
+        )
+      } finally {
+        hub.mcp = realMcp
+      }
+    })
+
     // AH-045. A transcript is a file that outlives the run and gets exported,
     // and a tool prints whatever it prints -- a `curl -v` trace, a config file
     // it read back. The credential must not reach the message store, and the

@@ -1320,15 +1320,18 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-007"
       ],
       "owner": "lane-03-permission-security",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/permissions.rs",
-        "src-tauri/src/core/agent/loop.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/mcp_trust.rs",
+        "src-tauri/src/core/mcp/commands.rs",
+        "web-app/src/services/mcp/tauri.ts",
+        "web-app/src/hooks/useToolApprovalRequests.ts",
+        "web-app/src/routes/threads/$threadId.tsx"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -1340,10 +1343,20 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::mcp_trust::tests::trusting_one_server_does_not_trust_another_offering_the_same_tool_name",
+        "tauri-plugin-agent-tools::mcp_trust::tests::a_ticket_authorizes_exactly_one_call",
+        "tauri-plugin-agent-tools::mcp_trust::tests::a_ticket_does_not_travel_to_another_server_or_another_tool",
+        "tauri-plugin-agent-tools::mcp_trust::tests::an_invented_ticket_authorizes_nothing",
+        "tauri-plugin-agent-tools::mcp_trust::tests::a_ticket_is_never_written_to_disk",
+        "tauri-plugin-agent-tools::mcp_trust::tests::trust_survives_a_restart",
+        "tauri-plugin-agent-tools::mcp_trust::tests::an_unreadable_trust_file_trusts_nothing",
+        "web-app/src/routes/threads/__tests__/$threadId.test.tsx::authorizes an MCP call with a ticket the backend issued",
+        "web-app/src/hooks/__tests__/useToolApprovalRequests.test.ts::records an allow-always server with the backend"
+      ],
       "platformRequirements": [],
-      "blockedReason": "MCP tools are gated by name through the same rules, but server-level trust still lives in renderer localStorage rather than in the Rust gate.",
-      "auditNote": "MCP tools are gated by name through the same rules, but server-level trust still lives in renderer localStorage rather than in the Rust gate."
+      "blockedReason": "Trust keys on the MCP server, never on a tool name: a tool name is chosen by whoever publishes it, so two servers can both publish `fetch` and a call naming no server is answered by whichever the search reaches first. `mcp_trust` holds the per-server record, persisted to <jan_data>/mcp-trust.json with an atomic rename, and `call_tool` checks it against the server the tool was resolved on, before the arguments are sent. An \"allow once\" answer is a single-use, short-lived ticket that is never written to disk, so it cannot become a standing permission; a ticket is spent even when it does not match, so it cannot be retried against another server. An unreadable trust file trusts nothing. Scope: this moves the persisted decision into the backend and makes every call carry a backend-issued authorization. It is not a defence against the renderer, which is the thing that asks the user and can mint a ticket. Not `verified`: no test covers the generic cancellation criterion, and the Cowork/CLI path keeps its own separate MCP gate (SessionGrants::covers_mcp) rather than sharing this one.",
+      "auditNote": "Trust keys on the MCP server, never on a tool name: a tool name is chosen by whoever publishes it, so two servers can both publish `fetch` and a call naming no server is answered by whichever the search reaches first. `mcp_trust` holds the per-server record, persisted to <jan_data>/mcp-trust.json with an atomic rename, and `call_tool` checks it against the server the tool was resolved on, before the arguments are sent. An \"allow once\" answer is a single-use, short-lived ticket that is never written to disk, so it cannot become a standing permission; a ticket is spent even when it does not match, so it cannot be retried against another server. An unreadable trust file trusts nothing. Scope: this moves the persisted decision into the backend and makes every call carry a backend-issued authorization. It is not a defence against the renderer, which is the thing that asks the user and can mint a ticket. Not `verified`: no test covers the generic cancellation criterion, and the Cowork/CLI path keeps its own separate MCP gate (SessionGrants::covers_mcp) rather than sharing this one."
     },
     {
       "id": "AH-042",

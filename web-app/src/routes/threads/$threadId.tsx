@@ -612,9 +612,24 @@ function ThreadDetail() {
               // it narrows that against the user's configured ceiling.
               const ctxLen = useModelProvider.getState().selectedModel?.settings
                 ?.ctx_len?.controller_props?.value
+              // AH-041. The backend keeps the record of which servers the user
+              // trusts and refuses a call to any other, so an approval that
+              // happened here has to be handed over as something it issued.
+              // Minted for every call rather than only untrusted ones: trust
+              // can be withdrawn between the approval and the call, and an
+              // unused ticket simply expires.
+              const server = serverForTool(toolName)
+              const approvalTicket = server
+                ? await serviceHub
+                    .mcp()
+                    .allowOnceForServer(server, toolName)
+                    .catch(() => undefined)
+                : undefined
               result = await serviceHub.mcp().callTool({
                 toolName,
+                serverName: server,
                 arguments: toolCall.input,
+                approvalTicket,
                 maxOutputChars: deriveToolOutputCap(
                   typeof ctxLen === 'number' ? ctxLen : undefined
                 ),

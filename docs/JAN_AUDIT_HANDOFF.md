@@ -1202,3 +1202,51 @@ off), 10 wiring tests, 1 route test. 687 plugin tests pass.
 Registry: AH-045 `in-progress` to `implemented` (86/36/88). Not `verified`: no
 test covers the generic cancellation criterion here, and MCP output is redacted
 at the renderer boundary rather than inside the MCP client.
+
+## 2026-09-10 — AH-041: trust an MCP server, not a tool name
+
+The registry said server trust lived in "renderer localStorage". Half stale:
+`useToolApproval` persists through `backendStorage`, which writes Jan's
+`settings.json`. The part that mattered was still true — the *decision* was made
+in the renderer and `call_tool` checked nothing at all.
+
+The acceptance criterion names the real problem: **policy keys on the MCP server
+identity, not on a tool name a server can choose.** A tool name is published by
+whoever wants to publish it, and `call_tool` with no `server_name` answers from
+whichever connected server the search reaches first. So "trust `fetch`" is
+"trust whoever got there first", and a second server can publish `fetch` and
+inherit an answer the user gave about a different one.
+
+`mcp_trust` (in the plugin crate, so its tests actually run on this host)
+records trust per server, persisted with an atomic rename — a truncated trust
+file reads as "nothing is trusted", which would re-prompt for every server the
+user had already answered for. `call_tool` checks it **against the server the
+tool was resolved on**, not the name the request carried, and checks it *before*
+the arguments go out: a refusal that has already sent them has refused nothing.
+
+"Allow once" is a single-use, short-lived ticket, never written to disk. An
+answer of "just this once" that survived a restart would be a standing
+permission nobody granted. A ticket is spent even when it does not match, so it
+cannot be retried against server after server until one accepts it.
+
+**Where it was put matters.** The first version of this module went in the main
+crate, next to the MCP client. Its tests compiled and could not run — the `Jan`
+lib test binary exits 0xc0000139 on this host. Moved to the plugin crate, whose
+suite does run, and all 11 execute here. Policy belongs next to the rest of the
+gate anyway.
+
+**Scope, stated rather than implied.** This moves the persisted decision into
+the backend and makes every call carry a backend-issued authorization. It is not
+a defence against the renderer: the renderer is what asks the user, and it can
+mint a ticket whenever it likes. What it stops is a server becoming trusted
+without a recorded decision, a tool name standing in for a server identity, and
+an "allow once" quietly becoming permanent.
+
+Evidence: 11 unit tests, 1 route test (the call carries a backend-issued ticket
+for the resolved server), 1 hook test (an "always" answer reaches the backend,
+not just renderer state). 698 plugin tests pass.
+
+Registry: AH-041 `in-progress` to `implemented` (87/35/88). Not `verified`: no
+cancellation test on this path, and the Cowork/CLI path keeps its own separate
+MCP gate (`SessionGrants::covers_mcp`) rather than sharing this one — worth
+unifying, and deliberately not attempted in the same change as the gate itself.

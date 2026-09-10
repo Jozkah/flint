@@ -413,6 +413,52 @@ pub async fn get_server_summaries(
 /// 4. When found, calls the tool on that server with the provided arguments
 /// 5. Supports cancellation via cancellation_token
 /// 6. Returns error if no server has the requested tool or if specified server not found
+/// Every MCP server the user has trusted. AH-041.
+#[tauri::command]
+pub async fn mcp_trusted_servers() -> Result<Vec<String>, String> {
+    Ok(tauri_plugin_agent_tools::mcp_trust::trusted(
+        &crate::core::app::commands::resolve_jan_data_folder(),
+    ))
+}
+
+/// Record that the user trusts a server, for every conversation, until they
+/// withdraw it. AH-041.
+///
+/// Kept by the backend rather than in renderer state so that what is enforced
+/// and what the user was shown cannot drift apart across a restart.
+#[tauri::command]
+pub async fn mcp_trust_server(server_name: String) -> Result<(), String> {
+    tauri_plugin_agent_tools::mcp_trust::trust(
+        &crate::core::app::commands::resolve_jan_data_folder(),
+        &server_name,
+    )
+}
+
+/// Withdraw trust from a server. Takes effect on the next call. AH-041.
+#[tauri::command]
+pub async fn mcp_revoke_server(server_name: String) -> Result<(), String> {
+    tauri_plugin_agent_tools::mcp_trust::revoke(
+        &crate::core::app::commands::resolve_jan_data_folder(),
+        &server_name,
+    )
+}
+
+/// Authorize one call to one tool on one server, and return the ticket that
+/// `call_tool` will consume. AH-041.
+///
+/// Single use and short lived: an "allow once" answer that outlived the call
+/// would be a standing permission nobody granted.
+#[tauri::command]
+pub async fn mcp_allow_once(server_name: String, tool_name: String) -> Result<String, String> {
+    if server_name.trim().is_empty() {
+        return Err("a server name is required to authorize a call".to_string());
+    }
+    Ok(tauri_plugin_agent_tools::mcp_trust::allow_once(
+        &server_name,
+        &tool_name,
+    ))
+}
+
 #[tauri::command]
 pub async fn call_tool(
     state: State<'_, AppState>,
@@ -421,6 +467,10 @@ pub async fn call_tool(
     arguments: Option<Map<String, Value>>,
     cancellation_token: Option<String>,
     max_output_chars: Option<u64>,
+    // AH-041. A single-use authorization for this one call, from
+    // `mcp_allow_once`, for a server the user has not trusted outright. `None`
+    // is every call to a server they have.
+    approval_ticket: Option<String>,
 ) -> Result<CallToolResult, String> {
     let (timeout_duration, tool_output_cap) = {
         let settings = state.mcp_settings.lock().await;
@@ -482,6 +532,26 @@ pub async fn call_tool(
         }
 
         log::info!("Found tool {tool_name} in server {srv_name}");
+
+        // AH-041. Checked here, against the server the tool was actually found
+        // on -- not against `server_name`, which the request may not have set
+        // at all. A request that names no server is answered by whichever
+        // connected server publishes a matching tool name, and a tool name is
+        // chosen by the server publishing it, so it identifies nobody. The
+        // decision has to be about the server that is going to receive the
+        // arguments.
+        //
+        // Before the check, not after: a refusal that has already sent the
+        // arguments to the server has not refused anything.
+        if let Err(refusal) = tauri_plugin_agent_tools::mcp_trust::permits(
+            &crate::core::app::commands::resolve_jan_data_folder(),
+            srv_name,
+            &tool_name,
+            approval_ticket.as_deref(),
+        ) {
+            cleanup_cancellation_token(&state, &cancellation_token).await;
+            return Err(refusal.message());
+        }
 
         // Call the tool with timeout and cancellation support
         let tool_call = service.call_tool(CallToolRequestParam {

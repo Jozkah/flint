@@ -84,8 +84,28 @@ export class TauriMCPService extends DefaultMCPService {
     serverName?: string
     arguments: object
     maxOutputChars?: number
+    approvalTicket?: string
   }): Promise<{ error: string; content: { text: string }[] }> {
     return window.core?.api?.callTool(args)
+  }
+
+  async trustedServers(): Promise<string[]> {
+    return invoke('mcp_trusted_servers')
+  }
+
+  async trustServer(serverName: string): Promise<void> {
+    await invoke('mcp_trust_server', { serverName })
+  }
+
+  async revokeServer(serverName: string): Promise<void> {
+    await invoke('mcp_revoke_server', { serverName })
+  }
+
+  async allowOnceForServer(
+    serverName: string,
+    toolName: string
+  ): Promise<string> {
+    return invoke('mcp_allow_once', { serverName, toolName })
   }
 
   callToolWithCancellation(args: {
