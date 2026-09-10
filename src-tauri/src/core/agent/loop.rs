@@ -102,6 +102,12 @@ pub(crate) struct OrchestrationArgs {
     /// code paths with no session (server proxy runs) keeps the default
     /// throwaway per-command tmpfs.
     pub session_id: Option<String>,
+    /// Who this run acts as, for permission decisions. AH-007: a rule may be
+    /// qualified with a subject (`agent(reviewer)/write`), so the gate has to
+    /// be told which one is asking. The top-level run is the main agent; a
+    /// dispatched subagent renames itself in `run_subagent`, which is what
+    /// lets a child be narrower than its parent.
+    pub subject: tauri_plugin_agent_tools::subject::Subject,
     /// Per-invocation override for `bash` confinement (the CLI's `--sandbox`).
     /// `None` falls through to `[tools].sandbox`, then the user's global
     /// `sandbox`, then the surface default -- see [`resolve_sandbox`]. Inherited
@@ -326,6 +332,8 @@ struct CompositeToolInvoker {
     /// The session/run this dispatch belongs to. Every tool call gets a token
     /// under it, so stopping the run stops the calls and stopping one run never
     /// reaches another. AH-023.
+    /// Who this dispatch acts as, for the permission gate. AH-007.
+    subject: tauri_plugin_agent_tools::subject::Subject,
     cancel_scope: tauri_plugin_agent_tools::lifecycle::Scope,
 }
 
@@ -1155,6 +1163,7 @@ impl ToolInvoker for CompositeToolInvoker {
                     allowed: self.allow_network,
                     ..NetworkPolicy::default()
                 },
+                &self.subject,
             );
             // Auto-approval suppresses every prompt (sandbox escape, write, exec) but
             // still honors HardDeny, so the hidden `.jan` invariant (while the shell
@@ -1416,6 +1425,7 @@ pub(crate) async fn run_server_side_openai_orchestration(
         auto_approve: false,
         run_mode: crate::core::agent::plan::RunMode::Normal,
         session_id: None,
+        subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
         sandbox: None,
     };
     let body = match json_body.get("max_turns") {
@@ -1821,6 +1831,7 @@ async fn orchestrate_inner(
         auto_approve,
         run_mode,
         session_id,
+        subject,
         sandbox,
     } = args;
 
@@ -2107,6 +2118,7 @@ async fn orchestrate_inner(
             tauri_plugin_agent_tools::workspace::ensure_scratch_dir_path(&scratch_root).await?;
         }
         let tools = CompositeToolInvoker {
+            subject: subject.clone(),
             // One scope per run. A session-less run still gets a distinct run
             // id, so an application-wide stop reaches it while a stop aimed at
             // another run does not.
@@ -4741,6 +4753,7 @@ mod tests {
         registry: PermissionRegistry,
     ) -> CompositeToolInvoker {
         CompositeToolInvoker {
+            subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
             // Tests run one dispatch at a time; a fixed scope is enough to
             // exercise the token without colliding with another run.
             cancel_scope: tauri_plugin_agent_tools::lifecycle::Scope::default(),
@@ -5038,6 +5051,65 @@ mod tests {
             "type": "function",
             "function": { "name": name, "arguments": "{}" }
         })
+    }
+
+    /// AH-007. The gate learned to compare subjects; this pins that the run
+    /// loop tells it the truth about which one is asking. Passing a constant
+    /// here would compile, pass every gate test, and quietly give a subagent
+    /// its parent's authority.
+    #[tokio::test]
+    async fn a_rule_naming_a_subagent_does_not_bind_the_main_agent() {
+        let root = unique_project_root();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let permissions: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root.clone(), tx, permissions);
+        invoker.permissions = ToolPermissions::new(
+            PermissionDefault::ReadOnly,
+            &[],
+            &["agent:reviewer/write".to_string()],
+            &[],
+        );
+        invoker.auto_approve = true;
+
+        let out = invoker.invoke(&[write_call()]).await.unwrap();
+
+        assert_eq!(out.len(), 1);
+        assert!(
+            !out[0].content.contains("denied"),
+            "a rule naming a subagent must not bind the main agent: {}",
+            out[0].content
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_rule_naming_a_subagent_binds_that_subagent() {
+        let root = unique_project_root();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let permissions: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_prompting_invoker(root.clone(), tx, permissions);
+        invoker.permissions = ToolPermissions::new(
+            PermissionDefault::ReadOnly,
+            &[],
+            &["agent:reviewer/write".to_string()],
+            &[],
+        );
+        invoker.subject =
+            tauri_plugin_agent_tools::subject::Subject::NamedAgent("reviewer".to_string());
+        // Auto-approval suppresses prompts; a hard deny still stands, which is
+        // what makes this a policy result rather than an unanswered prompt.
+        invoker.auto_approve = true;
+
+        let out = invoker.invoke(&[write_call()]).await.unwrap();
+
+        assert_eq!(out.len(), 1);
+        assert!(
+            out[0].content.contains("denied"),
+            "the named subagent must be bound by its own rule: {}",
+            out[0].content
+        );
+        assert!(!root.join("out.txt").exists(), "file must not be written");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[tokio::test]

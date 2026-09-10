@@ -20783,6 +20783,7 @@ mod tests {
                 auto_approve: false,
                 run_mode: crate::core::agent::plan::RunMode::Normal,
                 session_id: None,
+                subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
                 sandbox: None,
             });
             app.args = Some(args.clone());
