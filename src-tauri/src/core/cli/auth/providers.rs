@@ -346,14 +346,14 @@ mod tests {
     use super::*;
     use crate::core::agent::global_config::{load_global_config, with_temp_home};
     use crate::core::cli::auth::provider_by_id;
-    use crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK;
+    use crate::core::server::provider_secrets::TEST_ENV_LOCK;
     use serde_json::json;
     use std::io::{Read, Write};
     use std::net::TcpListener;
-    use std::sync::MutexGuard;
+    use crate::core::server::provider_secrets::TestEnvGuard;
 
     struct TempSecrets {
-        _guard: MutexGuard<'static, ()>,
+        _guard: TestEnvGuard,
         prev_data_folder: Option<String>,
         prev_home: Option<std::ffi::OsString>,
         _dir: tempfile::TempDir,
@@ -361,9 +361,7 @@ mod tests {
 
     impl TempSecrets {
         fn new() -> Self {
-            let guard = SECRET_STORE_TEST_LOCK
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let guard = TEST_ENV_LOCK.lock();
             let dir = tempfile::tempdir().unwrap();
             let prev_data_folder = std::env::var("JAN_DATA_FOLDER").ok();
             std::env::set_var("JAN_DATA_FOLDER", dir.path());

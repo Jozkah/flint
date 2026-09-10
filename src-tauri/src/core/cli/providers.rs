@@ -1406,9 +1406,7 @@ mod tests {
     /// duration of `f`. `JAN_DATA_FOLDER` is process-wide, so tests touching it
     /// must not run concurrently.
     fn with_temp_secrets<T>(f: impl FnOnce() -> T) -> T {
-        let _guard = crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
         let dir = tempfile::tempdir().unwrap();
         let prev = std::env::var("JAN_DATA_FOLDER").ok();
         std::env::set_var("JAN_DATA_FOLDER", dir.path());

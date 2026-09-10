@@ -19526,9 +19526,7 @@ mod tests {
     }
 
     fn with_isolated_login_state<T>(f: impl FnOnce() -> T) -> T {
-        let _guard = crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
         let dir = tempfile::tempdir().unwrap();
         let prev_data_folder = std::env::var_os("JAN_DATA_FOLDER");
         std::env::set_var("JAN_DATA_FOLDER", dir.path());

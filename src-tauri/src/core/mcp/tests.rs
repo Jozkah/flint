@@ -861,10 +861,46 @@ fn test_is_process_alive_for_almost_certainly_dead_pid() {
     assert!(!is_process_alive(i32::MAX as u32));
 }
 
+/// A mock app whose app-data directory -- where MCP lock files live -- is its
+/// own. The lock-file tests used to share the stock mock identifier's folder,
+/// and `cleanup_own_locks` removes every lock this process owns there: run
+/// alongside it, `keeps_live_lock` lost the lock it had just created. The
+/// directory is removed when the guard drops.
+fn lock_test_app() -> (tauri::App<tauri::test::MockRuntime>, LockDirGuard) {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+    context.config_mut().identifier = format!(
+        "jan.test.mcp-lock.{}.{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::SeqCst)
+    );
+    let app = tauri::test::mock_builder()
+        .build(context)
+        .expect("mock app");
+    let dir = app.handle().path().app_data_dir().expect("app data dir");
+    (app, LockDirGuard(dir))
+}
+
+struct LockDirGuard(PathBuf);
+
+impl Drop for LockDirGuard {
+    fn drop(&mut self) {
+        // Only ever the per-test identifier's folder created above.
+        if self
+            .0
+            .file_name()
+            .is_some_and(|n| n.to_string_lossy().starts_with("jan.test.mcp-lock."))
+        {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
 #[test]
 fn test_create_read_delete_lock_file_round_trip() {
     use super::lockfile::{create_lock_file, delete_lock_file, read_lock_file};
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     // Use an unusual port to avoid colliding with other tests
     let port: u16 = 53_111;
     // Ensure clean slate
@@ -887,7 +923,7 @@ fn test_create_read_delete_lock_file_round_trip() {
 #[test]
 fn test_read_lock_file_returns_none_for_missing_port() {
     use super::lockfile::{delete_lock_file, read_lock_file};
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     let port: u16 = 53_112;
     // Make sure it does not exist
     let _ = delete_lock_file(app.handle(), port);
@@ -897,7 +933,7 @@ fn test_read_lock_file_returns_none_for_missing_port() {
 #[test]
 fn test_delete_lock_file_is_idempotent_when_missing() {
     use super::lockfile::delete_lock_file;
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     let port: u16 = 53_113;
     // Calling delete on a non-existent file should still return Ok(())
     assert!(delete_lock_file(app.handle(), port).is_ok());
@@ -907,7 +943,7 @@ fn test_delete_lock_file_is_idempotent_when_missing() {
 #[tokio::test]
 async fn test_check_and_cleanup_stale_lock_no_lock_returns_false() {
     use super::lockfile::{check_and_cleanup_stale_lock, delete_lock_file};
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     let port: u16 = 53_114;
     let _ = delete_lock_file(app.handle(), port);
     let cleaned = check_and_cleanup_stale_lock(app.handle(), port)
@@ -921,7 +957,7 @@ async fn test_check_and_cleanup_stale_lock_keeps_live_lock() {
     use super::lockfile::{
         check_and_cleanup_stale_lock, create_lock_file, delete_lock_file, read_lock_file,
     };
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     let port: u16 = 53_115;
     let _ = delete_lock_file(app.handle(), port);
     create_lock_file(app.handle(), port, "live", std::process::id()).unwrap();
@@ -939,7 +975,7 @@ async fn test_check_and_cleanup_stale_lock_keeps_live_lock() {
 async fn test_check_and_cleanup_stale_lock_removes_dead_pid_lock() {
     use super::lockfile::{check_and_cleanup_stale_lock, read_lock_file, McpLockFile};
     use tauri::Manager;
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     let port: u16 = 53_116;
     // Use the SAME directory the lockfile module uses
     let app_data_dir = app.handle().path().app_data_dir().expect("app data dir");
@@ -975,7 +1011,7 @@ fn test_cleanup_own_locks_removes_only_current_pid_locks() {
         cleanup_own_locks, create_lock_file, delete_lock_file, read_lock_file, McpLockFile,
     };
     use tauri::Manager;
-    let app = mock_app();
+    let (app, _lock_dir) = lock_test_app();
     let own_port: u16 = 53_117;
     let other_port: u16 = 53_118;
     let _ = delete_lock_file(app.handle(), own_port);

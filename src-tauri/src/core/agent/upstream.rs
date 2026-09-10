@@ -965,8 +965,17 @@ fn should_try_next_api_key(status: reqwest::StatusCode) -> bool {
 /// routinely carry credentials). A proxy set in the environment is a common
 /// reason a request fails for Jan and for nothing else, and it is invisible in
 /// the error itself.
-#[cfg(any(not(feature = "cli"), test))]
+#[cfg(not(feature = "cli"))]
 fn proxy_env_hint() -> Option<String> {
+    proxy_env_hint_in(|name| std::env::var_os(name))
+}
+
+/// [`proxy_env_hint`] over an explicit environment, so it can be tested
+/// without setting a proxy for every other test in the process: reqwest reads
+/// `HTTPS_PROXY` whenever a client is built, and a concurrent test's client
+/// would have routed through it.
+#[cfg(any(not(feature = "cli"), test))]
+fn proxy_env_hint_in(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<String> {
     const VARS: &[&str] = &[
         "HTTPS_PROXY",
         "https_proxy",
@@ -980,9 +989,7 @@ fn proxy_env_hint() -> Option<String> {
     let set: Vec<&str> = VARS
         .iter()
         .copied()
-        .filter(|name| {
-            std::env::var_os(name).is_some_and(|v| !v.to_string_lossy().trim().is_empty())
-        })
+        .filter(|name| var(name).is_some_and(|v| !v.to_string_lossy().trim().is_empty()))
         .collect();
     (!set.is_empty()).then(|| format!("proxy env set: {}", set.join(", ")))
 }
@@ -1790,24 +1797,21 @@ mod tests {
     /// in the error. Names only: the values carry credentials.
     #[test]
     fn proxy_env_hint_names_set_variables_without_their_values() {
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let prev = std::env::var_os("HTTPS_PROXY");
-        std::env::remove_var("HTTPS_PROXY");
-        let before = proxy_env_hint();
+        let env = |value: &'static str| {
+            move |name: &str| (name == "HTTPS_PROXY").then(|| value.into())
+        };
+        assert_eq!(proxy_env_hint_in(|_| None), None);
 
-        std::env::set_var("HTTPS_PROXY", "http://user:secret@proxy.internal:8080");
-        let hint = proxy_env_hint().expect("a set proxy is reported");
+        let hint = proxy_env_hint_in(env("http://user:secret@proxy.internal:8080"))
+            .expect("a set proxy is reported");
         assert!(hint.contains("HTTPS_PROXY"), "names the variable: {hint}");
         assert!(!hint.contains("secret"), "never prints the value: {hint}");
 
-        std::env::set_var("HTTPS_PROXY", "   ");
-        assert_eq!(proxy_env_hint(), before, "a blank value is not a proxy");
-
-        match prev {
-            Some(v) => std::env::set_var("HTTPS_PROXY", v),
-            None => std::env::remove_var("HTTPS_PROXY"),
-        }
+        assert_eq!(
+            proxy_env_hint_in(env("   ")),
+            None,
+            "a blank value is not a proxy"
+        );
     }
 
     /// A model served both by a Jan desktop API server (reachable over HTTP) and
@@ -1889,7 +1893,7 @@ mod tests {
     /// alive across `.await` without holding a bare lock guard over it.
     #[cfg(feature = "cli")]
     struct TempSecretStore {
-        _guard: std::sync::MutexGuard<'static, ()>,
+        _guard: crate::core::server::provider_secrets::TestEnvGuard,
         previous: Option<String>,
         _dir: tempfile::TempDir,
     }
@@ -1897,9 +1901,7 @@ mod tests {
     #[cfg(feature = "cli")]
     impl TempSecretStore {
         fn new() -> Self {
-            let guard = crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
             let dir = tempfile::tempdir().unwrap();
             let previous = std::env::var("JAN_DATA_FOLDER").ok();
             std::env::set_var("JAN_DATA_FOLDER", dir.path());

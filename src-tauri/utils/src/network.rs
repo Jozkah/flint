@@ -105,12 +105,16 @@ pub fn validate_proxy_config(config: &ProxyConfig) -> Result<(), String> {
 /// list of comma-separated host patterns (the same format the in-app `no_proxy`
 /// setting uses). Returns an empty list when the variable is unset.
 fn no_proxy_from_env() -> Vec<String> {
+    no_proxy_from(|name| std::env::var(name).ok())
+}
+
+/// [`no_proxy_from_env`] over an explicit environment, so tests need not set
+/// `NO_PROXY` for the whole process.
+pub fn no_proxy_from(var: impl Fn(&str) -> Option<String>) -> Vec<String> {
     let mut entries: Vec<String> = Vec::new();
     // Prefer the uppercase variant, falling back to lowercase. This mirrors how
     // reqwest and most tooling read the environment on case-sensitive systems.
-    let raw = std::env::var("NO_PROXY")
-        .or_else(|_| std::env::var("no_proxy"))
-        .unwrap_or_default();
+    let raw = var("NO_PROXY").or_else(|| var("no_proxy")).unwrap_or_default();
 
     for entry in raw.split(',') {
         let entry = entry.trim().to_string();
@@ -127,8 +131,13 @@ pub fn should_bypass_proxy(url: &str, no_proxy: &[String]) -> bool {
     // environment variables. Without this, Jan ignores a user-configured
     // `no_proxy` env var and keeps routing matching hosts through the proxy
     // (Fixes #8565).
+    should_bypass_proxy_with_env(url, no_proxy, &no_proxy_from_env())
+}
+
+/// [`should_bypass_proxy`] with the environment's entries passed in.
+pub fn should_bypass_proxy_with_env(url: &str, no_proxy: &[String], env: &[String]) -> bool {
     let mut entries = no_proxy.to_vec();
-    entries.extend(no_proxy_from_env());
+    entries.extend(env.iter().cloned());
     let no_proxy = entries.as_slice();
 
     if no_proxy.is_empty() {

@@ -1092,10 +1092,11 @@ mod tests {
 
     use super::*;
     use crate::core::agent::global_config::{load_global_config, with_temp_home};
-    use crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK;
+    use crate::core::server::provider_secrets::TEST_ENV_LOCK;
     use std::io::{Read, Write};
     use std::net::TcpListener;
-    use std::sync::{mpsc, MutexGuard};
+    use crate::core::server::provider_secrets::TestEnvGuard;
+    use std::sync::mpsc;
 
     /// Serializes the tests that mutate the process-global Claude alias latch,
     /// which cargo runs in parallel threads. A tokio mutex, not a std one:
@@ -1107,16 +1108,14 @@ mod tests {
     }
 
     struct TempSecrets {
-        _guard: MutexGuard<'static, ()>,
+        _guard: TestEnvGuard,
         prev_data_folder: Option<String>,
         _dir: tempfile::TempDir,
     }
 
     impl TempSecrets {
         fn new() -> Self {
-            let guard = SECRET_STORE_TEST_LOCK
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let guard = TEST_ENV_LOCK.lock();
             let dir = tempfile::tempdir().unwrap();
             let prev_data_folder = std::env::var("JAN_DATA_FOLDER").ok();
             std::env::set_var("JAN_DATA_FOLDER", dir.path());
@@ -1881,11 +1880,9 @@ mod tests {
 
     #[test]
     fn exchanged_token_is_scoped_to_its_account_provider() {
-        use crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK;
+        use crate::core::server::provider_secrets::TEST_ENV_LOCK;
 
-        let _guard = SECRET_STORE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _guard = TEST_ENV_LOCK.lock();
         let directory = tempfile::tempdir().unwrap();
         let previous = std::env::var("JAN_DATA_FOLDER").ok();
         std::env::set_var("JAN_DATA_FOLDER", directory.path());

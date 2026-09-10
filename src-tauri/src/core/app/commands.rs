@@ -187,16 +187,14 @@ pub fn resolve_config_file_path() -> PathBuf {
 }
 
 /// Run `f` with `JAN_DATA_FOLDER` pointed at a fresh temp directory, restoring
-/// the previous value afterwards. Serialized on `SECRET_STORE_TEST_LOCK`, the
+/// the previous value afterwards. Serialized on `TEST_ENV_LOCK`, the
 /// one lock every `JAN_DATA_FOLDER` mutator takes: the env is process-wide and
 /// Rust runs tests on threads, so a private lock here would exclude only the
 /// other callers of this helper while the secret-store tests redirected the
 /// folder (and dropped its temp dir) underneath a run already in progress.
 #[cfg(all(test, feature = "cli"))]
 pub(crate) fn with_temp_data_folder<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
-    let _guard = crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
 
     let dir = tempfile::tempdir().expect("tempdir");
     let prev = std::env::var_os("JAN_DATA_FOLDER");
