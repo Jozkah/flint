@@ -30,14 +30,13 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1227,
+      "untriaged": 1225,
       "needs-user-hardware": 7,
-      "fixed": 20,
+      "fixed": 24,
       "already-fixed": 3,
       "cannot-reproduce": 2,
       "not-applicable": 3,
-      "adapted": 10,
-      "implementation-ready": 4,
+      "adapted": 12,
       "rejected": 2
     }
   },
@@ -62239,9 +62238,11 @@
       "forkReproduction": null,
       "registryIds": [],
       "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
+      "decisionReason": "Fixed by the adapted janhq/jan#8713 port (persistent local CLI log + previewed local bundle).",
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "49979d8"
+      ],
       "tests": [],
       "verification": null,
       "blockers": [],
@@ -62487,12 +62488,21 @@
       "registryIds": [],
       "decision": "adapt",
       "decisionReason": "Local-only value: persistent rotating CLI log plus a redacted local bug-report archive; credentials scrubbed at the sink. Large (+1430) and CLI-surface-wide, so it needs a port onto the fork CLI rather than a cherry-pick, and a check that the archive is only written locally, never uploaded.",
-      "implementationStatus": "implementation-ready",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "implementationStatus": "adapted",
+      "forkCommits": [
+        "49979d8"
+      ],
+      "tests": [
+        "core::cli::doctor::tests::preparing_writes_nothing",
+        "core::cli::doctor::tests::saving_writes_exactly_the_previewed_redacted_members",
+        "core::cli::file_log::tests::file_log_scrubs_a_credential_out_of_a_record",
+        "core::cli::secrets::tests::scrub_strips_a_password_assignment_even_inside_json",
+        "core::cli::tui::tests::bug_previews_first_and_saves_only_on_request",
+        "tests::bug_report_parses_its_flags_and_nothing_else"
+      ],
+      "verification": "CLI lib 1498 passed x3; jan bin 14 passed; real jan.exe against an isolated data folder: preview writes nothing, --show prints redacted valid JSON, --yes writes one archive with no seeded key or password, --upload rejected.",
       "blockers": [],
-      "notes": null
+      "notes": "Kept local-only: bundle is previewed and written only on confirmation (--yes non-interactively); no upload/issue/browser path exists (PR had none either). Added a password rule, label-preserving redaction, and a second pass through the agent-tools secret scanner. docs/UPls/8713-cli-log-and-bug-bundle.md."
     },
     {
       "source": "janhq/jan",
@@ -66372,14 +66382,20 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Deterministic TestBackend reproduction: a foreign write through the backend survives a plain redraw (bug) and is removed by the repaint (fix); a same-size resize leaves damage that only the resize event repairs. A live wall(1) and a kitty drag resize are not available on this Windows host.",
       "registryIds": [],
       "decision": "fix",
       "decisionReason": "Resize blackout is the same missing-repaint class addressed by janhq/jan#8806 (synchronized full repaint clears); reimplementation pending.",
-      "implementationStatus": "implementation-ready",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "5b734a2"
+      ],
+      "tests": [
+        "core::cli::tui::tests::repaint_restores_cells_a_foreign_write_corrupted",
+        "core::cli::tui::tests::a_resize_that_ends_at_the_same_size_still_repaints",
+        "core::cli::tui::tests::a_resize_to_a_new_size_draws_the_whole_new_frame"
+      ],
+      "verification": "cli-feature lib suite 1476 passed x5",
       "blockers": [],
       "notes": null
     },
@@ -67796,14 +67812,20 @@
       "privacyImpact": "none",
       "dataLossRisk": "high",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Deterministic TestBackend reproduction: a foreign write through the backend survives a plain redraw (bug) and is removed by the repaint (fix); a same-size resize leaves damage that only the resize event repairs. A live wall(1) and a kitty drag resize are not available on this Windows host.",
       "registryIds": [],
       "decision": "fix",
       "decisionReason": "Fix lives in janhq/jan#8806; reimplementation pending on the fork TUI.",
-      "implementationStatus": "implementation-ready",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "5b734a2"
+      ],
+      "tests": [
+        "core::cli::tui::tests::repaint_restores_cells_a_foreign_write_corrupted",
+        "core::cli::tui::tests::a_resize_that_ends_at_the_same_size_still_repaints",
+        "core::cli::tui::tests::a_resize_to_a_new_size_draws_the_whole_new_frame"
+      ],
+      "verification": "cli-feature lib suite 1476 passed x5",
       "blockers": [],
       "notes": null
     },
@@ -67919,12 +67941,23 @@
       "registryIds": [],
       "decision": "adapt",
       "decisionReason": "Merged upstream after our merge base. Its TUI repaint path (f891b16, da436ca) does not apply to the fork tui.rs, and the PR also bundles a gate refactor (GateContext) that conflicts with the fork subject-aware gate. Needs reimplementation of the repaint path only.",
-      "implementationStatus": "implementation-ready",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "implementationStatus": "adapted",
+      "forkCommits": [
+        "5b734a2"
+      ],
+      "tests": [
+        "core::cli::tui::tests::repaint_restores_cells_a_foreign_write_corrupted",
+        "core::cli::tui::tests::a_resize_that_ends_at_the_same_size_still_repaints",
+        "core::cli::tui::tests::a_resize_to_a_new_size_draws_the_whole_new_frame",
+        "core::cli::tui::tests::only_a_resize_event_requests_a_repaint",
+        "core::cli::tui::tests::ctrl_l_requests_a_repaint_and_types_nothing",
+        "core::cli::tui::tests::composer_draft_and_scroll_survive_a_repaint",
+        "core::cli::tui::tests::ctrl_l_repaints_while_an_ask_owns_the_keyboard",
+        "core::cli::tui::tests::repaint_never_blocks_on_a_cursor_query"
+      ],
+      "verification": "cargo test --lib --no-default-features --features cli: 1476 passed x5; the 12 repaint/resize/Ctrl-L tests pass, and the broadcast and same-size-resize tests assert the damage survives a plain redraw before asserting the repaint removes it.",
       "blockers": [],
-      "notes": null
+      "notes": "Reimplemented the repaint path only (Ctrl-L, Event::Resize arm, Terminal::resize-based baseline reset inside the synchronized frame). The PR GateContext refactor is rejected: it conflicts with the fork subject-aware gate. Kitty sync-output skip already present (#8782). No panic hook added; tracked separately if a panic-left-in-raw-mode blackout is ever reproduced."
     },
     {
       "source": "janhq/jan",
@@ -73594,16 +73627,21 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Dispatcher unit tests: repeated review-mode reads of a missing path each executed and returned the bare error, and nothing asked the user (fails before 9e2b7af).",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "decision": "fix",
+      "decisionReason": "Reproduced from the upstream report in the fork dispatcher: review mode re-ran reads of a missing output file indefinitely and plan_review answers had no effect.",
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "9e2b7af"
+      ],
+      "tests": [
+        "web-app/src/lib/__tests__/coworkDispatch.test.ts: missing reads in review mode",
+        "web-app/src/lib/__tests__/coworkPlanReview.test.ts"
+      ],
+      "verification": "vitest coworkDispatch + coworkPlanReview 59 passed; cowork route 22 passed; web-app typecheck exit 0",
       "blockers": [],
-      "notes": null
+      "notes": "Execute plan / Exit plan mode move the session to Ask (never Auto) from the next message because a run tool set is frozen; the current run is told to end the turn. Real filesystem errors stay visible."
     },
     {
       "source": "janhq/jan",
