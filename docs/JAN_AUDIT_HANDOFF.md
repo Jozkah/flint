@@ -1281,3 +1281,66 @@ claim, rather than quietly flipped or deleted.
 Registry: AH-037 `in-progress` to `implemented` (88/34/88). Not `verified`: no
 cancellation test on this path, and `cowork-smoke` does not drive the CLI prompt
 flow, so there is no WebView scenario for it.
+
+## 2026-09-10 — AH-078: why six designs failed, measured rather than guessed
+
+The instruction was to stop designing and instrument `mutateLive` and
+`commitTurns` in the running app. Doing that answered it in one run.
+
+A probe recording every write to the live turn lane — where, length before and
+after, and how many rows carried a snapshot — printed this for a real dispatch:
+
+```text
+mutateLive    len 1→1   carrying 0→0     <- the sink fires here
+pushLive      len 1→2   carrying 0→0     <- the assistant row is created here
+settleFilter  len 2→1   carrying 0→0
+pushLive      len 1→2   carrying 0→0
+```
+
+**The write never attached at all.** `lengthBefore: 1` at the sink is the whole
+finding: when a snapshot is taken the lane holds the *user* turn and nothing
+else. The assistant row does not exist yet. Every design so far wrote the
+reference from the sink onto "the last assistant turn", so every one of them
+searched an array with no assistant turn in it, found nothing, and returned the
+array unchanged. Nothing was lost between the ends, because nothing was ever
+written.
+
+They all passed vitest because a unit test hands the mutation an array that
+already contains an assistant row. The app never does.
+
+**One correction on the way.** The first probe watched `t.snapshot`; the field
+is `promptSnapshot`, so its `carrying` counts were meaningless and only the
+sequence was real. Re-run against the right field, with the attach moved to
+where the row is born:
+
+```text
+pushLive      len 1→2   carrying 0→1     <- optimistic row stamped
+settleFilter  len 2→1   carrying 1→0     <- that row is dropped
+pushLive      len 1→2   carrying 0→1     <- settled row stamped, and survives
+```
+
+**The fix is one map in `pushLive`**: stamp `promptSnapshot` onto an assistant
+row as it is added, from `lastSnapshotRef.current` — the dispatch that just went
+out. Everything downstream was already built and waiting: `coworkTurns.ts`
+emits a `data-prompt-snapshot` part for any turn carrying one. Only the attach
+was in the wrong place.
+
+The render prefers the message's own part and keeps the positional map as a
+fallback for turns already on disk, written before rows carried one.
+
+**Verified in the app, twice.** `cowork-smoke --only prompt-snapshot-panel`
+passes — but it passed with ordinal matching too, so that alone proves nothing.
+The mutation check is the evidence: with the positional fallback disabled
+entirely, the panel still renders. The per-turn reference is doing the work.
+
+That closes the open criterion — a continuation, a retry and a compaction each
+carry their own snapshot, which position cannot express.
+
+## Use `yarn typecheck`, not `tsc --noEmit -p tsconfig.json`
+
+`f318081` was pushed with a broken production build. `tsc --noEmit -p
+tsconfig.json` passed; `yarn build:web` did not, because a base-class stub in
+`services/mcp/default.ts` took no parameters while the desktop override took
+two. The repo typechecks with `tsc -b` (project references), which is what
+`yarn typecheck` runs and what catches that. Fixed in the next commit. Use
+`yarn typecheck` and `yarn build:web` before claiming either.

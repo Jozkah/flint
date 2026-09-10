@@ -156,6 +156,25 @@ renders from renderer state while nothing is written, and a record written while
 no card renders, are both failures a DOM-only or file-only check reports as a
 pass.
 
+## Prompt snapshots bound to their turn (AH-078)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView scenario | `cowork-smoke --only prompt-snapshot-panel` | a dispatch is recorded and its payload viewer renders under the message it produced |
+| **Mutation check in the WebView** | same scenario, positional fallback disabled | the panel still renders, so the per-turn reference is what carries it -- not the old positional match |
+
+Run: `cargo run --example cowork-smoke --features cowork-smoke -- --only prompt-snapshot-panel`.
+
+The mutation check is the evidence that matters here. `prompt-snapshot-panel`
+passed under positional matching too, so a green scenario proves only that
+*something* rendered. Disabling the fallback is what distinguishes the two.
+
+Six earlier designs passed vitest and failed in the app. The reason, found by
+instrumenting the live turn lane rather than by trying a seventh: at dispatch
+the lane holds the user turn and nothing else, so a write from the snapshot sink
+onto "the last assistant turn" had no row to find. Unit tests hand the mutation
+an array that already contains one; the app never does.
+
 ## Per-command exec grants (AH-037)
 
 | Evidence | Where | Covers |
