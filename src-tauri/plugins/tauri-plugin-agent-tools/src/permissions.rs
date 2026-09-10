@@ -96,26 +96,43 @@ impl ToolPermissions {
     /// touches, so `bash(git:force-push)` denies a force push and leaves
     /// `git status` alone. A resource the gate could not determine is denied by
     /// any rule that names the tool.
-    pub fn denies_call(&self, name: &str, resources: &[Resource]) -> Option<&ResourceRule> {
-        self.deny.iter().find(|r| r.matches_deny(name, resources))
+    pub fn denies_call(
+        &self,
+        name: &str,
+        resources: &[Resource],
+        subject: &crate::subject::Subject,
+    ) -> Option<&ResourceRule> {
+        self.deny
+            .iter()
+            .find(|r| r.matches_deny(name, resources, subject))
     }
 
     /// Whether this specific call is explicitly allowed.
     ///
     /// A call carrying a resource the gate could not determine is never allowed
     /// here: `matches_allow` refuses to vouch for what it could not read.
-    pub fn allows_call(&self, name: &str, resources: &[Resource]) -> Option<&ResourceRule> {
+    pub fn allows_call(
+        &self,
+        name: &str,
+        resources: &[Resource],
+        subject: &crate::subject::Subject,
+    ) -> Option<&ResourceRule> {
         self.allow
             .iter()
             .chain(self.allow_write.iter())
-            .find(|r| r.matches_allow(name, resources))
+            .find(|r| r.matches_allow(name, resources, subject))
     }
 
     /// Whether a *write* was explicitly pre-approved for this call.
-    pub fn allows_write_call(&self, name: &str, resources: &[Resource]) -> Option<&ResourceRule> {
+    pub fn allows_write_call(
+        &self,
+        name: &str,
+        resources: &[Resource],
+        subject: &crate::subject::Subject,
+    ) -> Option<&ResourceRule> {
         self.allow_write
             .iter()
-            .find(|r| r.matches_allow(name, resources))
+            .find(|r| r.matches_allow(name, resources, subject))
     }
 
     /// Whether an MCP tool is advertised to the model. Deny always wins. Otherwise
@@ -211,5 +228,111 @@ mod tests {
             PermissionDefault::from_str_lenient("bogus"),
             PermissionDefault::ReadOnly
         );
+    }
+}
+
+/// AH-007: a rule that names a subject binds that subject and no other.
+///
+/// Rules have parsed `[subject/]tool[(pattern)]` since they were written, and
+/// nothing compared the subject -- so `agent:reviewer/write` compiled, was
+/// accepted, and then bound the main agent and every subagent identically. A
+/// child could never be narrower than its parent, which is the one thing a
+/// subject qualifier exists to express.
+///
+/// The negative cases come first here on purpose. A guard is only worth
+/// anything if it refuses; these fail if `covers_subject` is made to return
+/// `true` unconditionally, which is what the bug was.
+#[cfg(test)]
+mod subject_rules {
+    use super::*;
+    use crate::subject::Subject;
+
+    fn rule(text: &str) -> ResourceRule {
+        ResourceRule::parse(text).unwrap_or_else(|| panic!("{text} should parse"))
+    }
+
+    fn reviewer() -> Subject {
+        Subject::NamedAgent("reviewer".to_string())
+    }
+
+    fn no_resources() -> Vec<Resource> {
+        Vec::new()
+    }
+
+    #[test]
+    fn a_subject_qualified_rule_does_not_bind_another_subject() {
+        let r = rule("agent:reviewer/write");
+        assert!(r.covers_subject(&reviewer()));
+        // The bug: these were all true.
+        assert!(!r.covers_subject(&Subject::MainAgent));
+        assert!(!r.covers_subject(&Subject::NamedAgent("implementer".to_string())));
+        assert!(!r.covers_subject(&Subject::User));
+    }
+
+    #[test]
+    fn an_unqualified_rule_still_covers_everyone() {
+        // Existing rule sets must keep their meaning exactly.
+        let r = rule("write");
+        for subject in [
+            Subject::MainAgent,
+            Subject::User,
+            reviewer(),
+            Subject::Skill("formatter".to_string()),
+            Subject::McpServer("github".to_string()),
+        ] {
+            assert!(r.covers_subject(&subject), "{subject:?}");
+        }
+    }
+
+    #[test]
+    fn a_deny_for_one_agent_does_not_deny_the_others() {
+        let r = rule("agent:reviewer/write");
+        assert!(r.matches_deny("write", &no_resources(), &reviewer()));
+        assert!(!r.matches_deny("write", &no_resources(), &Subject::MainAgent));
+    }
+
+    #[test]
+    fn an_allow_for_one_agent_does_not_allow_the_others() {
+        let r = rule("agent:reviewer/read");
+        let inside = vec![Resource::Path(std::path::PathBuf::from(
+            "/proj/src/main.rs",
+        ))];
+        assert!(r.matches_allow("read", &inside, &reviewer()));
+        assert!(!r.matches_allow(
+            "read",
+            &inside,
+            &Subject::NamedAgent("implementer".to_string())
+        ));
+    }
+
+    /// A child narrows; it never widens. A parent's deny still binds a
+    /// subagent that has an allow of its own.
+    #[test]
+    fn a_subagent_allow_cannot_escape_a_blanket_deny() {
+        let perms = ToolPermissions::new(
+            PermissionDefault::ReadOnly,
+            &["agent:reviewer/write".to_string()],
+            &["write".to_string()],
+            &[],
+        );
+        let resources = vec![Resource::Path(std::path::PathBuf::from(
+            "/proj/src/main.rs",
+        ))];
+        // Deny is unqualified, so it covers the reviewer too -- and deny wins.
+        assert!(perms
+            .denies_call("write", &resources, &reviewer())
+            .is_some());
+    }
+
+    #[test]
+    fn the_other_subject_kinds_are_matched_too() {
+        assert!(
+            rule("skill:formatter/write").covers_subject(&Subject::Skill("formatter".to_string()))
+        );
+        assert!(
+            !rule("skill:formatter/write").covers_subject(&Subject::Skill("linter".to_string()))
+        );
+        assert!(rule("mcp:github/read").covers_subject(&Subject::McpServer("github".to_string())));
+        assert!(!rule("mcp:github/read").covers_subject(&Subject::McpServer("gitlab".to_string())));
     }
 }

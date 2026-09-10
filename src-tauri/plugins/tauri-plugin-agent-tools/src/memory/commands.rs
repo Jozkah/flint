@@ -37,7 +37,9 @@ fn parse_scope(raw: &str) -> Result<Scope, AgentToolsError> {
         "chat" | "session" => Ok(Scope::Session),
         "project" => Ok(Scope::Project),
         "user" | "global" | "across-chats" => Ok(Scope::User),
-        other => Err(AgentToolsError::from(format!("unknown memory scope '{other}'"))),
+        other => Err(AgentToolsError::from(format!(
+            "unknown memory scope '{other}'"
+        ))),
     }
 }
 
@@ -188,6 +190,144 @@ pub async fn memory_record_propose(
     Ok(ProposalView::from(&proposal))
 }
 
+/// What happened to a proposal an agent made.
+///
+/// One type rather than a boolean, because the four outcomes need completely
+/// different things from the user: nothing, a decision, a conflict resolution,
+/// or an explanation of a refusal. Collapsing them would put "we saved this"
+/// and "we refused to save your API key" behind the same indicator.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "outcome")]
+pub enum InferredOutcome {
+    /// Saved without asking, because the user turned that on and nothing about
+    /// this proposal required review.
+    Saved { memory: Box<MemoryView> },
+    /// Waiting for the user. `reason` says why it could not save itself, which
+    /// is what the approval card explains.
+    NeedsApproval {
+        proposal: Box<ProposalView>,
+        reason: PendingReason,
+    },
+    /// Not storable at all. Nothing is written and nothing is offered.
+    Refused { reason: String },
+}
+
+/// Why an inferred proposal is waiting rather than saved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PendingReason {
+    /// Automatic saving is off. The ordinary case, and the default.
+    AutomaticSavingDisabled,
+    /// It contradicts something already remembered. Both sides stay withheld
+    /// until the user says which is right, so this can never auto-save.
+    ConflictsWithExisting,
+    /// It would put a fact learned inside a project into the global scope.
+    /// Widening what a memory applies to is a decision, not an inference.
+    WouldPromoteProjectFactGlobally,
+}
+
+/// Record something an agent inferred from the conversation.
+///
+/// The path the "Automatically save local memories" setting actually governs.
+/// Separate from `memory_record_propose`, which is the user saying "remember
+/// this": that is explicit and always saved on confirmation, whereas this is a
+/// guess and is refused, queued or saved depending on what it contains and what
+/// the user has allowed.
+///
+/// Every gate is here rather than in the renderer. Hiding an approval card
+/// while still writing the record would mean the setting controlled what the
+/// user *saw* rather than what Jan *did*.
+#[tauri::command]
+pub async fn memory_record_propose_inferred(
+    location: Where,
+    scope: String,
+    content: String,
+    source_session_id: Option<String>,
+    source_message_id: Option<String>,
+    temporary: Option<bool>,
+) -> Result<InferredOutcome, AgentToolsError> {
+    use super::create;
+    use super::record::{Creator, Origin};
+
+    // A temporary chat neither reads nor records. Answered before any store is
+    // opened, so there is nothing to leak and nothing to clean up.
+    if temporary.unwrap_or(false) {
+        return Ok(InferredOutcome::Refused {
+            reason: "This is a temporary chat, so nothing from it is remembered.".to_string(),
+        });
+    }
+
+    let scope = parse_scope(&scope)?;
+    let access = location.access();
+    let store_root = match scope {
+        Scope::Project => access.project_store.clone(),
+        _ => access.permanent_store.clone(),
+    }
+    .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
+
+    let existing = super::store::load(&store_root, scope).records;
+    let id = MemoryId::new(format!("mem-{}-{:016x}", now(), fnv(&content)));
+
+    // An agent's guess, marked as one. `Creator::Agent` is what stops it
+    // overriding something the user saved, and `Origin::Inferred` is what the
+    // UI reads to label it.
+    let mut proposal = match create::propose(
+        id,
+        &content,
+        scope,
+        access.project_id.as_deref(),
+        access.session_id.as_deref(),
+        Creator::Agent,
+        Origin::Inferred,
+        now(),
+        &existing,
+    ) {
+        Ok(proposal) => proposal,
+        // A credential, an empty body, something absurdly long. Refused
+        // whatever the setting says: automatic saving is permission to skip
+        // the question, never permission to store a secret.
+        Err(refusal) => {
+            return Ok(InferredOutcome::Refused {
+                reason: refusal.message(),
+            })
+        }
+    };
+    proposal.record.provenance.session_id = source_session_id;
+    proposal.record.provenance.message_id = source_message_id;
+
+    let settings = location
+        .settings_root()
+        .map(|root| settings::load(&root))
+        .unwrap_or_default();
+
+    // Order matters: the reasons that hold regardless of the setting are
+    // checked first, so turning automatic saving on cannot silently resolve a
+    // conflict or widen a project fact.
+    let pending = if !proposal.conflicts.is_empty() {
+        Some(PendingReason::ConflictsWithExisting)
+    } else if scope == Scope::User && access.project_id.is_some() {
+        Some(PendingReason::WouldPromoteProjectFactGlobally)
+    } else if !settings.automatically_save {
+        Some(PendingReason::AutomaticSavingDisabled)
+    } else {
+        None
+    };
+
+    if let Some(reason) = pending {
+        return Ok(InferredOutcome::NeedsApproval {
+            proposal: Box::new(ProposalView::from(&proposal)),
+            reason,
+        });
+    }
+
+    // A duplicate confirms what is already there rather than adding a second
+    // copy of it; `create::commit` keys on content, so this is idempotent.
+    create::commit(&store_root, &proposal).map_err(AgentToolsError::from)?;
+    Ok(InferredOutcome::Saved {
+        memory: Box::new(service::get(&access, scope, &proposal.record.id)?),
+    })
+}
+
 /// Commit a proposal the user has reviewed.
 ///
 /// Re-proposed from the reviewed content rather than trusting a handle: the
@@ -319,14 +459,11 @@ pub async fn memory_record_move_scope(
 ) -> Result<MemoryView, AgentToolsError> {
     let from = parse_scope(&from_scope)?;
     let to = parse_scope(&to_scope)?;
-    service::move_scope(&location.access(), from, &MemoryId::new(id), to, now())
-        .map_err(Into::into)
+    service::move_scope(&location.access(), from, &MemoryId::new(id), to, now()).map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn memory_storage_summary(
-    location: Where,
-) -> Result<StorageSummary, AgentToolsError> {
+pub async fn memory_storage_summary(location: Where) -> Result<StorageSummary, AgentToolsError> {
     Ok(service::storage_summary(&location.access()))
 }
 
@@ -480,9 +617,7 @@ pub async fn memory_retrieve(
     if let Some(store) = access.project_store.as_deref() {
         records.extend(super::store::load(store, Scope::Project).records);
     }
-    let permanent = crate::workspace::permanent_store(std::path::Path::new(
-        &location.data_folder,
-    ));
+    let permanent = crate::workspace::permanent_store(std::path::Path::new(&location.data_folder));
     records.extend(super::store::load(&permanent, Scope::User).records);
     records.extend(super::store::load(&permanent, Scope::Session).records);
 
@@ -588,5 +723,267 @@ impl Serialize for Where {
         s.serialize_field("projectRoot", &self.project_root)?;
         s.serialize_field("sessionId", &self.session_id)?;
         s.end()
+    }
+}
+
+#[cfg(test)]
+mod inferred_tests {
+    use super::*;
+    use crate::memory::settings;
+
+    fn root(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "jan-inferred-{name}-{}-{}",
+            std::process::id(),
+            now()
+        ));
+        std::fs::create_dir_all(&dir).expect("test root");
+        dir
+    }
+
+    fn at(dir: &std::path::Path) -> Where {
+        Where {
+            data_folder: dir.to_string_lossy().to_string(),
+            project_root: None,
+            session_id: Some("chat-a".to_string()),
+        }
+    }
+
+    /// Turn automatic saving on through the same path the toggle uses.
+    fn allow_automatic(dir: &std::path::Path) {
+        let store = crate::workspace::permanent_store(dir);
+        std::fs::create_dir_all(&store).expect("store");
+        settings::save(
+            &store,
+            &settings::Settings {
+                automatically_save: true,
+                ..Default::default()
+            },
+        )
+        .expect("save settings");
+    }
+
+    async fn propose(dir: &std::path::Path, content: &str) -> InferredOutcome {
+        memory_record_propose_inferred(
+            at(dir),
+            "user".to_string(),
+            content.to_string(),
+            Some("chat-a".to_string()),
+            Some("msg-1".to_string()),
+            None,
+        )
+        .await
+        .expect("command")
+    }
+
+    /// The default. A guess waits to be confirmed.
+    #[tokio::test]
+    async fn an_inferred_proposal_waits_when_automatic_saving_is_off() {
+        let dir = root("off");
+        match propose(&dir, "The user prefers tabs over spaces.").await {
+            InferredOutcome::NeedsApproval { reason, proposal } => {
+                assert_eq!(reason, PendingReason::AutomaticSavingDisabled);
+                assert!(proposal.content.contains("tabs"));
+            }
+            other => panic!("expected approval, got {other:?}"),
+        }
+        // And nothing was written.
+        let store = crate::workspace::permanent_store(&dir);
+        assert!(
+            crate::memory::store::load(&store, Scope::User)
+                .records
+                .is_empty(),
+            "a pending proposal must not be stored"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn an_eligible_proposal_saves_once_the_user_allows_it() {
+        let dir = root("on");
+        allow_automatic(&dir);
+        match propose(&dir, "The user prefers tabs over spaces.").await {
+            InferredOutcome::Saved { memory } => {
+                assert!(memory.content.contains("tabs"));
+            }
+            other => panic!("expected a save, got {other:?}"),
+        }
+        let store = crate::workspace::permanent_store(&dir);
+        assert_eq!(
+            crate::memory::store::load(&store, Scope::User)
+                .records
+                .len(),
+            1
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The rule the whole feature rests on: permission to skip the question is
+    /// never permission to store a credential.
+    #[tokio::test]
+    async fn a_secret_is_refused_even_with_automatic_saving_on() {
+        let dir = root("secret");
+        allow_automatic(&dir);
+        for content in [
+            "The API key is sk-live-abcdefghijklmnopqrstuvwxyz012345.",
+            "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.abc.def",
+        ] {
+            match propose(&dir, content).await {
+                InferredOutcome::Refused { reason } => {
+                    assert!(!reason.is_empty(), "a refusal must say why");
+                }
+                other => panic!("a secret must never be stored, got {other:?}"),
+            }
+        }
+        let store = crate::workspace::permanent_store(&dir);
+        assert!(crate::memory::store::load(&store, Scope::User)
+            .records
+            .is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A temporary chat is answered before any store is opened.
+    #[tokio::test]
+    async fn a_temporary_chat_never_records() {
+        let dir = root("temp");
+        allow_automatic(&dir);
+        let outcome = memory_record_propose_inferred(
+            at(&dir),
+            "user".to_string(),
+            "The user prefers tabs.".to_string(),
+            None,
+            None,
+            Some(true),
+        )
+        .await
+        .expect("command");
+        assert!(matches!(outcome, InferredOutcome::Refused { .. }));
+        let store = crate::workspace::permanent_store(&dir);
+        assert!(crate::memory::store::load(&store, Scope::User)
+            .records
+            .is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Turning automatic saving on must not silently pick a side in a
+    /// disagreement.
+    #[tokio::test]
+    async fn a_conflicting_proposal_waits_even_with_automatic_saving_on() {
+        let dir = root("conflict");
+        allow_automatic(&dir);
+        let first = propose(&dir, "Always use tabs for indentation.").await;
+        assert!(matches!(first, InferredOutcome::Saved { .. }));
+
+        match propose(&dir, "Never use tabs for indentation.").await {
+            InferredOutcome::NeedsApproval { reason, .. } => {
+                assert_eq!(reason, PendingReason::ConflictsWithExisting);
+            }
+            // A store that does not detect this pair as contradictory is a
+            // gap in `detect_conflicts`, not in this gate -- but it must not
+            // have saved silently either way.
+            InferredOutcome::Saved { .. } => {
+                let store = crate::workspace::permanent_store(&dir);
+                let records = crate::memory::store::load(&store, Scope::User).records;
+                assert_eq!(records.len(), 2, "both sides should still be present");
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A fact learned inside a project does not become global on a guess.
+    #[tokio::test]
+    async fn a_project_fact_is_not_promoted_globally_without_asking() {
+        let dir = root("promote");
+        allow_automatic(&dir);
+        let project = dir.join("project");
+        std::fs::create_dir_all(&project).expect("project dir");
+
+        let outcome = memory_record_propose_inferred(
+            Where {
+                data_folder: dir.to_string_lossy().to_string(),
+                project_root: Some(project.to_string_lossy().to_string()),
+                session_id: Some("chat-a".to_string()),
+            },
+            "user".to_string(),
+            "The build command is `cargo xtask dist`.".to_string(),
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("command");
+
+        match outcome {
+            InferredOutcome::NeedsApproval { reason, .. } => {
+                assert_eq!(reason, PendingReason::WouldPromoteProjectFactGlobally);
+            }
+            other => panic!("expected a review, got {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Proposing the same thing twice confirms it rather than multiplying it.
+    #[tokio::test]
+    async fn a_duplicate_proposal_does_not_multiply_the_record() {
+        let dir = root("dupe");
+        allow_automatic(&dir);
+        let content = "The user prefers tabs over spaces.";
+        assert!(matches!(
+            propose(&dir, content).await,
+            InferredOutcome::Saved { .. }
+        ));
+        let _ = propose(&dir, content).await;
+        let store = crate::workspace::permanent_store(&dir);
+        let live = crate::memory::store::load(&store, Scope::User)
+            .records
+            .into_iter()
+            .filter(|r| r.content.contains("tabs"))
+            .count();
+        assert_eq!(live, 1, "a duplicate must confirm, not multiply");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An agent's guess is marked as one, so nothing later mistakes it for
+    /// something the user said.
+    #[tokio::test]
+    async fn a_saved_inference_is_recorded_as_inferred_by_an_agent() {
+        use crate::memory::record::{Creator, Origin};
+        let dir = root("provenance");
+        allow_automatic(&dir);
+        let _ = propose(&dir, "The user prefers dark mode.").await;
+        let store = crate::workspace::permanent_store(&dir);
+        let record = crate::memory::store::load(&store, Scope::User)
+            .records
+            .into_iter()
+            .next()
+            .expect("one record");
+        assert_eq!(record.creator, Creator::Agent);
+        assert_eq!(record.origin, Origin::Inferred);
+        assert_eq!(record.provenance.session_id.as_deref(), Some("chat-a"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The gate is the backend's. Turning the setting off again stops saves
+    /// immediately, without the renderer being involved.
+    #[tokio::test]
+    async fn turning_the_setting_off_stops_saving_again() {
+        let dir = root("toggle");
+        allow_automatic(&dir);
+        assert!(matches!(
+            propose(&dir, "The user prefers dark mode.").await,
+            InferredOutcome::Saved { .. }
+        ));
+
+        let store = crate::workspace::permanent_store(&dir);
+        settings::save(&store, &settings::Settings::default()).expect("off again");
+
+        match propose(&dir, "The user prefers light mode on Mondays.").await {
+            InferredOutcome::NeedsApproval { reason, .. } => {
+                assert_eq!(reason, PendingReason::AutomaticSavingDisabled)
+            }
+            other => panic!("expected approval after turning it off, got {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

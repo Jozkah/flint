@@ -1,5 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { errorText } from '@/lib/errorText'
+import { getServiceHub } from '@/hooks/useServiceHub'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { route } from '@/constants/routes'
 import HeaderPage from '@/containers/HeaderPage'
 import SettingsMenu from '@/containers/SettingsMenu'
@@ -108,17 +110,52 @@ function MemorySettings() {
    * chooses: the backend derives what may be seen from this, and the page
    * cannot widen it by asking differently.
    */
-  const location: MemoryLocation = useMemo(
-    () => ({
-      dataFolder: window.core?.api?.dataFolder ?? '',
-      projectRoot: window.core?.api?.projectRoot ?? undefined,
-      sessionId: window.core?.api?.activeSessionId ?? undefined,
-    }),
-    []
+  /**
+   * Resolved from the service hub, which is the only thing that knows it.
+   *
+   * This read `window.core?.api?.dataFolder`, which nothing in the application
+   * defines -- it was the sole reference to that path anywhere. It resolved to
+   * `''`, the backend's `settings_root()` returned `None`, and every command on
+   * this page rejected with "no data folder to store settings in". The toggle
+   * was simply the first one anybody pressed.
+   *
+   * `null` while it is being fetched, so the page can tell "not loaded yet"
+   * apart from "loaded and empty" instead of sending a request that cannot
+   * succeed.
+   */
+  const [dataFolder, setDataFolder] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getServiceHub()
+      .app()
+      .getJanDataFolder()
+      .then((folder) => {
+        if (!cancelled) setDataFolder(folder ?? '')
+      })
+      .catch(() => {
+        if (!cancelled) setDataFolder('')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const location: MemoryLocation | null = useMemo(
+    () =>
+      dataFolder == null
+        ? null
+        : {
+            dataFolder,
+            projectRoot: window.core?.api?.projectRoot ?? undefined,
+            sessionId: window.core?.api?.activeSessionId ?? undefined,
+          },
+    [dataFolder]
   )
 
   const refresh = useCallback(
     async (nextScope: MemoryScope, nextQuery: string, nextOffset: number) => {
+      if (!location) return
       try {
         const result = await memoryRecordsList(location, nextScope, {
           query: nextQuery || undefined,
@@ -133,7 +170,7 @@ function MemorySettings() {
         // failure worth a toast: show it where the list would be.
         setPage([])
         setTotal(0)
-        setUnavailable(String(error))
+        setUnavailable(errorText(error))
       }
     },
     [location]
@@ -144,6 +181,7 @@ function MemorySettings() {
   }, [refresh, scope, query, offset])
 
   useEffect(() => {
+    if (!location) return
     void (async () => {
       try {
         setSummary(await memoryStorageSummary(location))
@@ -155,6 +193,7 @@ function MemorySettings() {
   }, [location])
 
   const reload = useCallback(async () => {
+    if (!location) return
     await refresh(scope, query, offset)
     try {
       setSummary(await memoryStorageSummary(location))
@@ -165,6 +204,7 @@ function MemorySettings() {
 
   const onForget = useCallback(
     async (memory: MemoryView) => {
+      if (!location) return
       setBusy(true)
       try {
         await memoryRecordForget(location, scope, memory.id)
@@ -176,6 +216,7 @@ function MemorySettings() {
           action: {
             label: 'Undo',
             onClick: () => {
+              if (!location) return
               void (async () => {
                 await memoryRecordRestore(location, scope, memory.id)
                 await reload()
@@ -185,7 +226,7 @@ function MemorySettings() {
         })
       } catch (error) {
         toast.error('Could not forget that memory', {
-          description: String(error),
+          description: errorText(error),
         })
       } finally {
         setBusy(false)
@@ -196,13 +237,14 @@ function MemorySettings() {
 
   const onTogglePin = useCallback(
     async (memory: MemoryView) => {
+      if (!location) return
       setBusy(true)
       try {
         await memoryRecordPin(location, scope, memory.id, !memory.pinned)
         await reload()
       } catch (error) {
         toast.error('Could not change that memory', {
-          description: String(error),
+          description: errorText(error),
         })
       } finally {
         setBusy(false)
@@ -212,6 +254,7 @@ function MemorySettings() {
   )
 
   const onSaveEdit = useCallback(async () => {
+    if (!location) return
     if (!editing) return
     setBusy(true)
     try {
@@ -222,25 +265,51 @@ function MemorySettings() {
     } catch (error) {
       // The backend refuses a stale edit and a credential; both arrive here.
       toast.error('Could not update that memory', {
-        description: String(error),
+        description: errorText(error),
       })
     } finally {
       setBusy(false)
     }
   }, [editing, draft, location, scope, reload])
 
+  /**
+   * Toggle automatic saving.
+   *
+   * Optimistic, and rolled back on failure: the switch moves at once because
+   * that is what a switch is for, but the *persisted* value is whatever the
+   * backend returns, and a rejection puts the switch back where it was. The UI
+   * never claims a setting was saved before the write completed.
+   *
+   * One update at a time. A double-click used to send two overlapping writes
+   * whose responses could arrive in either order, so the switch could settle
+   * on the opposite of the last thing clicked.
+   */
+  const savingAutoSave = useRef(false)
+  const [autoSavePending, setAutoSavePending] = useState(false)
+
   const onToggleAutoSave = useCallback(
     async (next: boolean) => {
+      if (!location || savingAutoSave.current) return
+      const previous = autoSave
+      savingAutoSave.current = true
+      setAutoSavePending(true)
+      setAutoSave(next)
       try {
         const saved = await memorySettingsUpdate(location, next)
+        // The backend is authoritative: adopt what it stored, not what was
+        // asked for.
         setAutoSave(saved.automaticallySave)
       } catch (error) {
-        toast.error('Could not change that setting', {
-          description: String(error),
+        setAutoSave(previous)
+        toast.error('Memory settings could not be saved', {
+          description: errorText(error),
         })
+      } finally {
+        savingAutoSave.current = false
+        setAutoSavePending(false)
       }
     },
-    [location]
+    [location, autoSave]
   )
 
   const activeTab = TABS.find((tab) => tab.scope === scope) ?? TABS[2]
@@ -262,6 +331,12 @@ function MemorySettings() {
                 actions={
                   <Switch
                     checked={autoSave}
+                    // Disabled while a write is in flight and until the data
+                    // folder is known, so a click cannot start a request that
+                    // has nowhere to go. `aria-busy` says which of the two it
+                    // is without moving anything on screen.
+                    disabled={autoSavePending || location == null}
+                    aria-busy={autoSavePending}
                     onCheckedChange={(checked) => void onToggleAutoSave(checked)}
                   />
                 }

@@ -12,7 +12,7 @@ import {
   InvalidToolInputError,
 } from 'ai'
 import { repairToolArgs } from './toolCallRepair'
-import { useServiceStore } from '@/hooks/useServiceHub'
+import { getServiceHub, useServiceStore } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import { DISPATCH_PARAM_KEY, ModelFactory } from './model-factory'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -973,7 +973,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       // Guarded rather than optional-chained one level: a hub without an app
       // service is a degraded environment, not a reason to fail the turn, and
       // it is what a partially-stubbed host looks like.
-      dataFolder = (await this.serviceHub?.app()?.getJanDataFolder()) ?? null
+      dataFolder = (await getServiceHub().app().getJanDataFolder()) ?? null
     } catch {
       return
     }

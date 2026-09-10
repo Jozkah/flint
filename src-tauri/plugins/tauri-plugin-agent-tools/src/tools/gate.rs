@@ -249,6 +249,13 @@ pub fn resolve_decision(
     grants: &SessionGrants,
     hide_jan: bool,
     network: &NetworkPolicy,
+    // Who is asking. AH-007: rules have always parsed
+    // `[subject/]tool[(pattern)]`, but nothing compared the subject, so
+    // `agent(reviewer)/write` bound the main agent and every other subagent
+    // identically -- a child could never be narrower than its parent, which is
+    // the one thing a subject qualifier exists to express. An unqualified rule
+    // still covers every subject, so existing rule sets are unchanged.
+    subject: &crate::subject::Subject,
 ) -> Decision {
     // What this call actually touches, normalized once and reused for the deny
     // check, the allow check and the destructive-git guard below.
@@ -260,7 +267,7 @@ pub fn resolve_decision(
         Some(project_root),
     );
 
-    if perms.denies_call(tool.name, &resources).is_some() {
+    if perms.denies_call(tool.name, &resources, subject).is_some() {
         return Decision::HardDeny(DenyReason::Policy);
     }
 
@@ -292,7 +299,7 @@ pub fn resolve_decision(
     // what they mean -- but a blanket `allow = ["read"]` has not.
     if let Some(secret) = resources.iter().find_map(secret_file_name) {
         let named = perms
-            .allows_call(tool.name, &resources)
+            .allows_call(tool.name, &resources, subject)
             .is_some_and(|rule| rule.source().contains('('));
         if !named {
             return Decision::HardDeny(DenyReason::SecretFile(secret));
@@ -314,7 +321,7 @@ pub fn resolve_decision(
     // work" -- so this is checked before the generic allow below.
     if let Some(op) = resources.iter().find_map(|r| r.destructive_git()) {
         let named = perms
-            .allows_call(tool.name, &resources)
+            .allows_call(tool.name, &resources, subject)
             .is_some_and(|rule| rule.source().contains('('));
         if !named {
             return Decision::HardDeny(DenyReason::DestructiveGit(op));
@@ -342,7 +349,7 @@ pub fn resolve_decision(
     if hits_hidden || exec_hits_hidden {
         return Decision::HardDeny(DenyReason::Hidden);
     }
-    if perms.allows_call(tool.name, &resources).is_some() {
+    if perms.allows_call(tool.name, &resources, subject).is_some() {
         return Decision::Allow;
     }
     // Dedicated skill/memory tools act only on the agent's own workspace by a
@@ -456,6 +463,7 @@ mod tests {
         perms: &ToolPermissions,
         grants: &SessionGrants,
         hide_jan: bool,
+        subject: &crate::subject::Subject,
     ) -> Decision {
         super::resolve_decision(
             tool,
@@ -467,6 +475,7 @@ mod tests {
             grants,
             hide_jan,
             &NetworkPolicy::open(),
+            subject,
         )
     }
 
@@ -498,6 +507,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Allow);
         let _ = std::fs::remove_dir_all(&root);
@@ -517,6 +527,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Prompt(PromptKind::ReadEscape));
         let _ = std::fs::remove_dir_all(&root);
@@ -537,6 +548,7 @@ mod tests {
                 &perms,
                 &grants,
                 true,
+                &crate::subject::Subject::MainAgent,
             );
             assert_eq!(d, Decision::Allow, "{tool} should be auto-allowed");
         }
@@ -558,6 +570,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(
             d,
@@ -585,6 +598,7 @@ mod tests {
                 &perms,
                 &grants,
                 true,
+                &crate::subject::Subject::MainAgent,
             );
             assert_eq!(
                 d,
@@ -602,6 +616,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::HardDeny(DenyReason::Hidden));
         // The instructions file is an ordinary project file at the root.
@@ -615,6 +630,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Allow);
         let _ = std::fs::remove_dir_all(&root);
@@ -640,6 +656,7 @@ mod tests {
                 &perms,
                 &grants,
                 false,
+                &crate::subject::Subject::MainAgent,
             );
             assert_ne!(
                 d,
@@ -657,6 +674,7 @@ mod tests {
             &perms,
             &grants,
             false,
+            &crate::subject::Subject::MainAgent,
         );
         assert_ne!(d, Decision::HardDeny(DenyReason::Hidden));
         let _ = std::fs::remove_dir_all(&root);
@@ -676,6 +694,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Prompt(PromptKind::Write));
         let _ = std::fs::remove_dir_all(&root);
@@ -695,6 +714,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Prompt(PromptKind::Exec));
         let _ = std::fs::remove_dir_all(&root);
@@ -715,6 +735,7 @@ mod tests {
                 &perms,
                 &grants,
                 true,
+                &crate::subject::Subject::MainAgent,
             );
             assert_eq!(d, Decision::Prompt(PromptKind::Exec), "job_id {job_id:?}");
         }
@@ -735,6 +756,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Allow);
         let _ = std::fs::remove_dir_all(&root);
@@ -766,6 +788,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Allow);
 
@@ -779,6 +802,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Prompt(PromptKind::Exec));
         let _ = std::fs::remove_dir_all(&root);
@@ -806,6 +830,7 @@ mod tests {
                 &perms,
                 &grants,
                 true,
+                &crate::subject::Subject::MainAgent,
             );
             assert_eq!(
                 d,
@@ -833,6 +858,7 @@ mod tests {
                 &perms,
                 &grants,
                 true,
+                &crate::subject::Subject::MainAgent,
             );
             assert_eq!(d, Decision::Allow, "should be covered: {cmd}");
         }
@@ -856,6 +882,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Allow);
 
@@ -869,6 +896,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Prompt(PromptKind::Exec));
         let _ = std::fs::remove_dir_all(&root);
@@ -897,6 +925,7 @@ mod tests {
                     &perms,
                     &grants,
                     true,
+                    &crate::subject::Subject::MainAgent,
                 );
                 assert_eq!(
                     d,
@@ -923,6 +952,7 @@ mod tests {
                 &perms,
                 &grants,
                 true,
+                &crate::subject::Subject::MainAgent,
             );
             assert_eq!(d, Decision::Allow, "{name} should auto-allow");
         }
@@ -938,6 +968,7 @@ mod tests {
             &denied,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::HardDeny(DenyReason::Policy));
         let _ = std::fs::remove_dir_all(&root);
@@ -957,6 +988,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::HardDeny(DenyReason::Policy));
         let _ = std::fs::remove_dir_all(&root);
@@ -976,6 +1008,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Allow);
         let _ = std::fs::remove_dir_all(&root);
@@ -996,6 +1029,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Allow);
         let _ = std::fs::remove_dir_all(&root);
@@ -1016,6 +1050,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Allow);
         let _ = std::fs::remove_dir_all(&root);
@@ -1035,6 +1070,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Prompt(PromptKind::Write));
         let _ = std::fs::remove_dir_all(&root);
@@ -1056,6 +1092,7 @@ mod tests {
                 &perms,
                 &grants,
                 true,
+                &crate::subject::Subject::MainAgent,
             );
             assert_eq!(d, Decision::Prompt(PromptKind::WriteEscape), "{}", path);
         }
@@ -1077,6 +1114,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Allow);
         let _ = std::fs::remove_dir_all(&root);
@@ -1096,6 +1134,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Prompt(PromptKind::ReadEscape));
         let _ = std::fs::remove_dir_all(&root);
@@ -1121,6 +1160,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(read, Decision::Allow);
 
@@ -1133,6 +1173,7 @@ mod tests {
             &ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]),
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(write, Decision::Prompt(PromptKind::WriteEscape));
 
@@ -1155,6 +1196,7 @@ mod tests {
             &ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]),
             &SessionGrants::default(),
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::Prompt(PromptKind::ReadEscape));
         for d in [&root, &repo, &elsewhere] {
@@ -1184,6 +1226,7 @@ mod tests {
                 &perms,
                 &grants,
                 true,
+                &crate::subject::Subject::MainAgent,
             )
         };
 
@@ -1224,6 +1267,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
 
         assert_eq!(write, Decision::Prompt(PromptKind::WriteEscape));
@@ -1256,6 +1300,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(denied, Decision::HardDeny(DenyReason::Policy));
 
@@ -1268,6 +1313,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(ok, Decision::Allow);
         let _ = std::fs::remove_dir_all(&root);
@@ -1296,6 +1342,7 @@ mod tests {
                 &perms,
                 &grants,
                 true,
+                &crate::subject::Subject::MainAgent,
             );
             assert!(
                 matches!(d, Decision::HardDeny(DenyReason::DestructiveGit(_))),
@@ -1324,6 +1371,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(allowed, Decision::Allow);
 
@@ -1337,6 +1385,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert!(matches!(
             still_refused,
@@ -1364,6 +1413,7 @@ mod tests {
                 &perms,
                 &grants,
                 true,
+                &crate::subject::Subject::MainAgent,
             );
             assert_eq!(d, Decision::Allow, "{line}");
         }
@@ -1384,6 +1434,7 @@ mod tests {
             &perms,
             &grants,
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(d, Decision::HardDeny(DenyReason::Resource));
         let _ = std::fs::remove_dir_all(&root);
@@ -1410,6 +1461,7 @@ mod tests {
                 &perms,
                 &grants,
                 true,
+                &crate::subject::Subject::MainAgent,
             );
             assert_eq!(
                 d,
@@ -1468,6 +1520,7 @@ mod security_corpus {
             &SessionGrants::default(),
             true,
             network,
+            &crate::subject::Subject::MainAgent,
         )
     }
 
@@ -1730,6 +1783,7 @@ mod security_corpus {
             &SessionGrants::default(),
             true,
             &NetworkPolicy::open(),
+            &crate::subject::Subject::MainAgent,
         );
         assert_ne!(d, Decision::Allow);
     }

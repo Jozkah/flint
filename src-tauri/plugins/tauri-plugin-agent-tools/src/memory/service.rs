@@ -229,7 +229,9 @@ pub fn list(
         _ => {}
     }
 
-    let needle = query.map(|q| q.trim().to_lowercase()).filter(|q| !q.is_empty());
+    let needle = query
+        .map(|q| q.trim().to_lowercase())
+        .filter(|q| !q.is_empty());
     let mut matching: Vec<MemoryRecord> = store::load(store_root, scope)
         .records
         .into_iter()
@@ -425,8 +427,11 @@ pub fn storage_summary(access: &Access) -> StorageSummary {
             continue;
         };
         let loaded = store::load(root, scope);
-        let visible: Vec<&MemoryRecord> =
-            loaded.records.iter().filter(|r| access.may_see(r)).collect();
+        let visible: Vec<&MemoryRecord> = loaded
+            .records
+            .iter()
+            .filter(|r| access.may_see(r))
+            .collect();
         let count = visible
             .iter()
             .filter(|r| matches!(r.status, Status::Active))
@@ -479,7 +484,14 @@ mod tests {
         )
     }
 
-    fn save(root: &Path, id: &str, content: &str, scope: Scope, project: Option<&str>, session: Option<&str>) {
+    fn save(
+        root: &Path,
+        id: &str,
+        content: &str,
+        scope: Scope,
+        project: Option<&str>,
+        session: Option<&str>,
+    ) {
         let mut r = MemoryRecord::new(
             MemoryId::new(id),
             content,
@@ -518,7 +530,14 @@ mod tests {
     fn listing_never_returns_another_sessions_memory() {
         let (access, _, permanent) = access();
         save(&permanent, "mine", "mine", Scope::Session, None, Some("s1"));
-        save(&permanent, "theirs", "theirs", Scope::Session, None, Some("s2"));
+        save(
+            &permanent,
+            "theirs",
+            "theirs",
+            Scope::Session,
+            None,
+            Some("s2"),
+        );
 
         let page = list(&access, Scope::Session, None, 0, 50).unwrap();
         assert_eq!(page.total, 1);
@@ -530,7 +549,14 @@ mod tests {
     fn listing_never_returns_another_projects_memory() {
         let (access, project, _) = access();
         save(&project, "mine", "mine", Scope::Project, Some("p1"), None);
-        save(&project, "theirs", "theirs", Scope::Project, Some("p2"), None);
+        save(
+            &project,
+            "theirs",
+            "theirs",
+            Scope::Project,
+            Some("p2"),
+            None,
+        );
 
         let page = list(&access, Scope::Project, None, 0, 50).unwrap();
         assert_eq!(page.total, 1);
@@ -553,9 +579,23 @@ mod tests {
     fn search_and_paging_bound_what_is_returned() {
         let (access, _, permanent) = access();
         for i in 0..10 {
-            save(&permanent, &format!("m{i}"), &format!("fact number {i}"), Scope::User, None, None);
+            save(
+                &permanent,
+                &format!("m{i}"),
+                &format!("fact number {i}"),
+                Scope::User,
+                None,
+                None,
+            );
         }
-        save(&permanent, "other", "something else", Scope::User, None, None);
+        save(
+            &permanent,
+            "other",
+            "something else",
+            Scope::User,
+            None,
+            None,
+        );
 
         let all = list(&access, Scope::User, None, 0, 50).unwrap();
         assert_eq!(all.total, 11);
@@ -580,11 +620,26 @@ mod tests {
         let view = get(&access, Scope::User, &MemoryId::new("m")).unwrap();
 
         // Someone else edits first.
-        edit(&access, Scope::User, &MemoryId::new("m"), "newer", None, 2_000).unwrap();
+        edit(
+            &access,
+            Scope::User,
+            &MemoryId::new("m"),
+            "newer",
+            None,
+            2_000,
+        )
+        .unwrap();
 
         let stale = super::super::record::content_hash(&view.content);
         assert_eq!(
-            edit(&access, Scope::User, &MemoryId::new("m"), "mine", Some(&stale), 3_000),
+            edit(
+                &access,
+                Scope::User,
+                &MemoryId::new("m"),
+                "mine",
+                Some(&stale),
+                3_000
+            ),
             Err(Denied::Stale)
         );
         let _ = std::fs::remove_dir_all(permanent.parent().unwrap());
@@ -612,16 +667,32 @@ mod tests {
     #[test]
     fn promoting_to_user_scope_drops_the_project_identity() {
         let (access, project, permanent) = access();
-        save(&project, "m", "a project fact", Scope::Project, Some("p1"), None);
+        save(
+            &project,
+            "m",
+            "a project fact",
+            Scope::Project,
+            Some("p1"),
+            None,
+        );
 
-        let moved = move_scope(&access, Scope::Project, &MemoryId::new("m"), Scope::User, 2_000)
-            .unwrap();
+        let moved = move_scope(
+            &access,
+            Scope::Project,
+            &MemoryId::new("m"),
+            Scope::User,
+            2_000,
+        )
+        .unwrap();
         assert_eq!(moved.scope, "user");
         assert_eq!(moved.project_id, None);
         assert_eq!(moved.session_id, None);
 
         // Gone from the project store, present in the permanent one.
-        assert!(list(&access, Scope::Project, None, 0, 50).unwrap().items.is_empty());
+        assert!(list(&access, Scope::Project, None, 0, 50)
+            .unwrap()
+            .items
+            .is_empty());
         assert_eq!(list(&access, Scope::User, None, 0, 50).unwrap().total, 1);
         let _ = std::fs::remove_dir_all(permanent.parent().unwrap());
     }
@@ -630,8 +701,14 @@ mod tests {
     fn narrowing_to_a_chat_attaches_that_chat() {
         let (access, _, permanent) = access();
         save(&permanent, "m", "a fact", Scope::User, None, None);
-        let moved =
-            move_scope(&access, Scope::User, &MemoryId::new("m"), Scope::Session, 2_000).unwrap();
+        let moved = move_scope(
+            &access,
+            Scope::User,
+            &MemoryId::new("m"),
+            Scope::Session,
+            2_000,
+        )
+        .unwrap();
         assert_eq!(moved.scope, "chat");
         assert_eq!(moved.session_id.as_deref(), Some("s1"));
         let _ = std::fs::remove_dir_all(permanent.parent().unwrap());
@@ -642,8 +719,14 @@ mod tests {
         let (access, project, permanent) = access();
         save(&project, "m", "a fact", Scope::Project, Some("p1"), None);
         let before = get(&access, Scope::Project, &MemoryId::new("m")).unwrap();
-        let after =
-            move_scope(&access, Scope::Project, &MemoryId::new("m"), Scope::User, 2_000).unwrap();
+        let after = move_scope(
+            &access,
+            Scope::Project,
+            &MemoryId::new("m"),
+            Scope::User,
+            2_000,
+        )
+        .unwrap();
         assert_eq!(after.id, before.id);
         assert_eq!(after.created_at, before.created_at);
         let _ = std::fs::remove_dir_all(permanent.parent().unwrap());
@@ -655,8 +738,16 @@ mod tests {
         save(&permanent, "m", "a fact", Scope::User, None, None);
         let id = MemoryId::new("m");
 
-        assert!(set_pinned(&access, Scope::User, &id, true, 2_000).unwrap().pinned);
-        assert!(!set_pinned(&access, Scope::User, &id, false, 2_000).unwrap().pinned);
+        assert!(
+            set_pinned(&access, Scope::User, &id, true, 2_000)
+                .unwrap()
+                .pinned
+        );
+        assert!(
+            !set_pinned(&access, Scope::User, &id, false, 2_000)
+                .unwrap()
+                .pinned
+        );
         assert_eq!(
             set_expiration(&access, Scope::User, &id, Some(9_999), 2_000)
                 .unwrap()
@@ -684,13 +775,30 @@ mod tests {
     fn storage_summary_counts_only_what_the_caller_may_see() {
         let (access, project, permanent) = access();
         save(&permanent, "u", "user", Scope::User, None, None);
-        save(&permanent, "mine", "session", Scope::Session, None, Some("s1"));
-        save(&permanent, "theirs", "session", Scope::Session, None, Some("s2"));
+        save(
+            &permanent,
+            "mine",
+            "session",
+            Scope::Session,
+            None,
+            Some("s1"),
+        );
+        save(
+            &permanent,
+            "theirs",
+            "session",
+            Scope::Session,
+            None,
+            Some("s2"),
+        );
         save(&project, "p", "project", Scope::Project, Some("p1"), None);
 
         let summary = storage_summary(&access);
         assert_eq!(summary.user_count, 1);
-        assert_eq!(summary.session_count, 1, "another chat's memory was counted");
+        assert_eq!(
+            summary.session_count, 1,
+            "another chat's memory was counted"
+        );
         assert_eq!(summary.project_count, 1);
         assert!(summary.bytes > 0);
         let _ = std::fs::remove_dir_all(permanent.parent().unwrap());

@@ -64,6 +64,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             memory::commands::memory_record_get,
             memory::commands::memory_record_edit,
             memory::commands::memory_record_propose,
+            memory::commands::memory_record_propose_inferred,
             memory::commands::memory_record_commit,
             memory::commands::memory_record_forget,
             memory::commands::memory_record_restore,

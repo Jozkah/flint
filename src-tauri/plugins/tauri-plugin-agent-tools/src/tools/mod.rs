@@ -87,6 +87,18 @@ pub struct ToolContext<'a> {
     /// default throwaway per-command tmpfs. Cleaned up with the session (run end
     /// on the CLI, thread teardown on the desktop).
     pub scratch_root: Option<&'a Path>,
+    /// Which conversation this call belongs to.
+    ///
+    /// Needed by anything that records something against the chat it came
+    /// from -- `memory_propose` scopes and attributes by it. `None` on a
+    /// surface with no conversation, such as a one-shot CLI run.
+    pub session_id: Option<&'a str>,
+    /// A temporary chat neither reads nor records memory.
+    ///
+    /// Carried rather than inferred from a missing session id: an unsaved chat
+    /// and a deliberately temporary one are different things, and only the
+    /// second should be denied its own memory.
+    pub temporary: bool,
     /// Whether `bash` runs under OS confinement. On by default, and the desktop
     /// keeps it that way: there, `bash` is either sandboxed or withheld.
     ///
@@ -168,6 +180,8 @@ impl<'a> ToolContext<'a> {
             mask_root: None,
             home_readonly: false,
             scratch_root: None,
+            session_id: None,
+            temporary: false,
             sandbox: true,
             on_output: None,
             read_roots: &[],
@@ -184,6 +198,16 @@ impl<'a> ToolContext<'a> {
 
     /// Attach folders the tools may read but never write. Callers pass the
     /// canonical form from [`crate::workspace::validate_read_root`].
+    /// Bind this context to a conversation, and say whether it is temporary.
+    ///
+    /// Both together, because both decide what may be remembered and a caller
+    /// that set one and forgot the other would change that silently.
+    pub fn in_session(mut self, session_id: Option<&'a str>, temporary: bool) -> Self {
+        self.session_id = session_id;
+        self.temporary = temporary;
+        self
+    }
+
     pub fn with_write_roots(mut self, write_roots: &'a [PathBuf]) -> Self {
         self.write_roots = write_roots;
         self
@@ -336,6 +360,15 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         path_args: &[],
     },
     BuiltinTool {
+        // A typed proposal, not prose the app parses out of a reply. The model
+        // says "this is worth remembering" by calling something; whether it is
+        // stored is decided by `memory::inferred`, which the model cannot
+        // reach or influence.
+        name: "memory_propose",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    BuiltinTool {
         name: "skill_list",
         capability: Capability::Read,
         path_args: &[],
@@ -414,8 +447,11 @@ mod tests {
 
     #[test]
     fn builtin_count_matches_expected() {
-        // 8 coding tools + 6 dedicated skill/memory tools + 2 native web tools.
-        assert_eq!(BUILTIN_TOOLS.len(), 16);
+        // 8 coding tools + 7 dedicated skill/memory tools + 2 native web tools.
+        // The seventh memory tool is `memory_propose`: the typed path by which
+        // a model says a fact is worth remembering, so that Jan decides rather
+        // than the app parsing an intention out of prose.
+        assert_eq!(BUILTIN_TOOLS.len(), 17);
     }
 
     #[test]

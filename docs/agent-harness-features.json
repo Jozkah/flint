@@ -2481,7 +2481,7 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "implemented",
+      "status": "in-progress",
       "priority": "P1",
       "dependencies": [
         "AH-010"
@@ -2516,7 +2516,7 @@
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Session scope is a first-class scope on the canonical record, stored per scope and selected by session id in retrieve::select. Both production dispatch paths reach one selection: the CLI agent calls it in process, the desktop through the memory_retrieve command. Proved end to end against a real OpenAI-compatible server -- a session memory does not appear in another chat's serialized request, and a temporary chat selects nothing because it is answered before any store is opened."
+      "auditNote": "Session scope is a first-class scope on the canonical record, stored per scope and selected by session id in retrieve::select. Both production dispatch paths reach one selection: the CLI agent calls it in process, the desktop through the memory_retrieve command. Proved end to end against a real OpenAI-compatible server -- a session memory does not appear in another chat's serialized request, and a temporary chat selects nothing because it is answered before any store is opened. Not promoted: the evidence is Rust unit tests plus an end-to-end that drives a probe binary and real HTTP. There is no memory UI, no restart evidence and no scenario driven through the real Tauri application, which is what this registry requires before implemented."
     },
     {
       "id": "AH-082",
@@ -2524,7 +2524,7 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "implemented",
+      "status": "in-progress",
       "priority": "P1",
       "dependencies": [
         "AH-081"
@@ -2558,7 +2558,7 @@
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "User scope resolves to the permanent store and reaches the model. The gap this closes was not storage but dispatch: retrieval was wired into the Rust agent loop only, so the desktop -- which drives its own tool loop -- never carried a remembered fact. Proved against a real server: a marker saved in one chat is present by memory id and by content in a different chat's serialized request body, and absent from a third chat's after forget."
+      "auditNote": "User scope resolves to the permanent store and reaches the model. The gap this closes was not storage but dispatch: retrieval was wired into the Rust agent loop only, so the desktop -- which drives its own tool loop -- never carried a remembered fact. Proved against a real server: a marker saved in one chat is present by memory id and by content in a different chat's serialized request body, and absent from a third chat's after forget. Not promoted: the evidence is Rust unit tests plus an end-to-end that drives a probe binary and real HTTP. There is no memory UI, no restart evidence and no scenario driven through the real Tauri application, which is what this registry requires before implemented."
     },
     {
       "id": "AH-083",
@@ -2608,7 +2608,7 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "implemented",
+      "status": "in-progress",
       "priority": "P1",
       "dependencies": [
         "AH-083"
@@ -2642,7 +2642,7 @@
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "record::prefer applies a deterministic order -- scope specificity, then creator trust, then recency -- and records why, so a displaced record can say what displaced it. Applied inside retrieve::select, which is the only path either surface reaches, and covered by the focused memory tests."
+      "auditNote": "record::prefer applies a deterministic order -- scope specificity, then creator trust, then recency -- and records why, so a displaced record can say what displaced it. Applied inside retrieve::select, which is the only path either surface reaches, and covered by the focused memory tests. Not promoted: the evidence is Rust unit tests plus an end-to-end that drives a probe binary and real HTTP. There is no memory UI, no restart evidence and no scenario driven through the real Tauri application, which is what this registry requires before implemented."
     },
     {
       "id": "AH-085",

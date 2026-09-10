@@ -410,6 +410,7 @@ async fn execute_text(
         "memory_list" => memory_list(ctx.store_root).await,
         "memory_read" => memory_read(args, ctx.store_root).await,
         "memory_write" => memory_write(args, ctx.store_root).await,
+        "memory_propose" => memory_propose(args, ctx).await,
         // Skills go through the skills module so the tool honors the folder form
         // (`<name>/SKILL.md`) and frontmatter, matching what the UI writes.
         "skill_list" => skill_list(ctx),
@@ -2252,6 +2253,104 @@ mod bash_job_registry_tests {
     }
 }
 
+/// Record a fact the model inferred, subject to Jan's own gates.
+///
+/// The model proposes; it does not decide. `memory::inferred::decide` reads the
+/// "Automatically save local memories" setting and the existing records, and
+/// answers with one of three outcomes. The reply tells the model what happened
+/// in a sentence, because a tool that silently succeeds teaches it to propose
+/// more, and one that silently fails teaches it to propose the same thing
+/// again.
+///
+/// A proposal is never authority. Nothing here can widen what the model may do:
+/// the worst case is a record the user is asked about.
+async fn memory_propose(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
+    use crate::memory::inferred::{self, Decision};
+    use crate::memory::record::{MemoryId, Scope};
+
+    let Some(content) = arg_str(args, "content") else {
+        return "ERROR: memory_propose needs `content`.".to_string();
+    };
+    let content = content.trim();
+    if content.is_empty() {
+        return "ERROR: memory_propose needs a non-empty `content`.".to_string();
+    }
+
+    // Narrowest scope that is true, and `session` when the model does not say:
+    // a guess that applies too widely is the expensive mistake.
+    let scope = match args
+        .get("scope")
+        .and_then(|v| v.as_str())
+        .unwrap_or("session")
+    {
+        "user" => Scope::User,
+        "project" => Scope::Project,
+        _ => Scope::Session,
+    };
+
+    let store_root = match scope {
+        Scope::Project => ctx.project_root.join(crate::tools::sandbox::JAN_DIR),
+        _ => ctx.store_root.to_path_buf(),
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    let existing = inferred::existing_records(&store_root, scope);
+    let decision = inferred::decide(
+        MemoryId::new(format!("mem-{now}-{:016x}", fnv1a(content))),
+        content,
+        &existing,
+        &inferred::Context {
+            scope,
+            project_id: crate::memory::identity::project_id(ctx.project_root).as_deref(),
+            session_id: ctx.session_id,
+            temporary: ctx.temporary,
+            now,
+            automatically_save: inferred::automatic_saving_enabled(ctx.store_root),
+        },
+    );
+
+    match decision {
+        Decision::Save(proposal) => match crate::memory::create::commit(&store_root, &proposal) {
+            Ok(id) => format!(
+                "Remembered ({}). id: {}",
+                scope_name(scope),
+                id.as_str()
+            ),
+            Err(e) => format!("ERROR: could not save that memory: {e}"),
+        },
+        Decision::Pending { reason, .. } => format!(
+            "Not saved yet -- the user has been asked. {} Do not propose it again in this conversation.",
+            reason.explain()
+        ),
+        Decision::Refused { reason } => {
+            format!("ERROR: refused: {reason} Do not propose this again.")
+        }
+    }
+}
+
+fn scope_name(scope: crate::memory::record::Scope) -> &'static str {
+    use crate::memory::record::Scope;
+    match scope {
+        Scope::Session => "this conversation",
+        Scope::Project => "this project",
+        Scope::User => "everywhere",
+    }
+}
+
+/// FNV-1a over the content, so the same fact proposed twice lands on the same
+/// id and confirms rather than multiplying.
+fn fnv1a(bytes: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in bytes.as_bytes() {
+        hash ^= *b as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3364,6 +3463,7 @@ mod tests {
             &crate::permissions::ToolPermissions::default(),
             &crate::tools::gate::SessionGrants::default(),
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(
             d,
@@ -3393,6 +3493,7 @@ mod tests {
             &crate::permissions::ToolPermissions::default(),
             &crate::tools::gate::SessionGrants::default(),
             true,
+            &crate::subject::Subject::MainAgent,
         );
         assert_eq!(
             d,
@@ -4485,5 +4586,187 @@ mod tests {
         // The base64 stays out of the model-facing text.
         assert!(!out.contains("base64"), "{out}");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // -- memory_propose --------------------------------------------------
+    //
+    // The typed proposal path. The model says a fact is worth remembering by
+    // calling something; whether it is stored is decided by `memory::inferred`,
+    // which the model cannot reach. These assert what actually lands on disk,
+    // not what the reply says -- a tool that claims to have saved something is
+    // the failure mode worth guarding.
+
+    fn propose_ctx(root: &Path, store: &Path, temporary: bool) -> ToolContext<'static> {
+        // Leaked deliberately: `ToolContext` borrows, and these live for the
+        // test.
+        let root: &'static Path = Box::leak(root.to_path_buf().into_boxed_path());
+        let store: &'static Path = Box::leak(store.to_path_buf().into_boxed_path());
+        ToolContext::new(root, store, &[]).in_session(Some("chat-a"), temporary)
+    }
+
+    fn allow_automatic(store: &Path) {
+        std::fs::create_dir_all(store).expect("store");
+        crate::memory::settings::save(
+            store,
+            &crate::memory::settings::Settings {
+                automatically_save: true,
+                ..Default::default()
+            },
+        )
+        .expect("settings");
+    }
+
+    fn stored(store: &Path) -> Vec<String> {
+        crate::memory::store::load(store, crate::memory::record::Scope::Session)
+            .records
+            .into_iter()
+            .map(|r| r.content)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn memory_propose_asks_before_saving_by_default() {
+        let root = unique_root();
+        let store = root.join("store");
+        let ctx = propose_ctx(&root, &store, false);
+        let out = execute_text(
+            lookup("memory_propose").unwrap(),
+            &json!({"content": "The user prefers tabs over spaces."}),
+            &ctx,
+        )
+        .await;
+        assert!(out.contains("Not saved yet"), "{out}");
+        assert!(
+            out.contains("waiting for you"),
+            "the reason must be specific: {out}"
+        );
+        assert!(stored(&store).is_empty(), "nothing may be written yet");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn memory_propose_saves_once_the_user_allows_it() {
+        let root = unique_root();
+        let store = root.join("store");
+        allow_automatic(&store);
+        let ctx = propose_ctx(&root, &store, false);
+        let out = execute_text(
+            lookup("memory_propose").unwrap(),
+            &json!({"content": "The user prefers tabs over spaces."}),
+            &ctx,
+        )
+        .await;
+        assert!(out.starts_with("Remembered"), "{out}");
+        assert_eq!(stored(&store).len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The guard that matters most, and the one that was broken last time.
+    #[tokio::test]
+    async fn memory_propose_refuses_a_credential_even_when_allowed() {
+        let root = unique_root();
+        let store = root.join("store");
+        allow_automatic(&store);
+        let ctx = propose_ctx(&root, &store, false);
+        for content in [
+            "The API key is sk-live-abcdefghijklmnopqrstuvwxyz012345.",
+            "Their token is ghp_9d7f6a5b4c3e2d1f0a9b8c7d6e5f4a3b2c1d0e.",
+        ] {
+            let out = execute_text(
+                lookup("memory_propose").unwrap(),
+                &json!({ "content": content }),
+                &ctx,
+            )
+            .await;
+            assert!(out.starts_with("ERROR: refused"), "{out}");
+        }
+        assert!(
+            stored(&store).is_empty(),
+            "a credential must never be stored"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn memory_propose_records_nothing_in_a_temporary_chat() {
+        let root = unique_root();
+        let store = root.join("store");
+        allow_automatic(&store);
+        let ctx = propose_ctx(&root, &store, true);
+        let out = execute_text(
+            lookup("memory_propose").unwrap(),
+            &json!({"content": "The user prefers tabs over spaces."}),
+            &ctx,
+        )
+        .await;
+        assert!(out.contains("temporary"), "{out}");
+        assert!(stored(&store).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The narrowest scope that is true, when the model does not say.
+    #[tokio::test]
+    async fn memory_propose_defaults_to_this_conversation_only() {
+        let root = unique_root();
+        let store = root.join("store");
+        allow_automatic(&store);
+        let ctx = propose_ctx(&root, &store, false);
+        let out = execute_text(
+            lookup("memory_propose").unwrap(),
+            &json!({"content": "The user is debugging a flaky test."}),
+            &ctx,
+        )
+        .await;
+        assert!(out.contains("this conversation"), "{out}");
+        // Nothing reached the wider scopes.
+        assert!(
+            crate::memory::store::load(&store, crate::memory::record::Scope::User)
+                .records
+                .is_empty()
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn memory_propose_needs_content() {
+        let root = unique_root();
+        let store = root.join("store");
+        let ctx = propose_ctx(&root, &store, false);
+        for args in [json!({}), json!({"content": "   "})] {
+            let out = execute_text(lookup("memory_propose").unwrap(), &args, &ctx).await;
+            assert!(out.starts_with("ERROR"), "{out}");
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The same fact twice confirms rather than multiplying: the id is derived
+    /// from the content.
+    #[tokio::test]
+    async fn memory_propose_does_not_multiply_a_repeated_fact() {
+        let root = unique_root();
+        let store = root.join("store");
+        allow_automatic(&store);
+        let ctx = propose_ctx(&root, &store, false);
+        let args = json!({"content": "The user prefers tabs over spaces."});
+        let _ = execute_text(lookup("memory_propose").unwrap(), &args, &ctx).await;
+        let _ = execute_text(lookup("memory_propose").unwrap(), &args, &ctx).await;
+        assert_eq!(stored(&store).len(), 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn memory_propose_is_advertised_with_a_usable_schema() {
+        let schema = crate::tools::schema::builtin_tool_schemas()
+            .into_iter()
+            .find(|s| s["function"]["name"] == "memory_propose")
+            .expect("memory_propose is advertised");
+        let params = &schema["function"]["parameters"];
+        assert_eq!(params["type"], "object");
+        assert!(params["properties"]["content"].is_object());
+        assert_eq!(params["required"][0], "content");
+        // The model is told not to propose credentials, because the refusal
+        // costs it a turn.
+        let description = schema["function"]["description"].as_str().unwrap();
+        assert!(description.contains("credentials"), "{description}");
     }
 }

@@ -118,6 +118,48 @@ const setLastUsedModel = (provider: string, model: string) => {
   }
 }
 
+/**
+ * Is this one of the built-in provider templates?
+ *
+ * Exact match. This was `predefinedProviders.some((e) => e.provider.includes(p))`,
+ * which is a substring test *and* backwards: it asked whether a template's id
+ * contains the user's provider name, so a provider called `ai` matched `openai`
+ * and one called `x` matched `xai`. A user whose provider name happened to be a
+ * substring of a template's had it silently reclassified as a built-in.
+ */
+function isPredefinedProvider(providerName: string): boolean {
+  return predefinedProviders.some((e) => e.provider === providerName)
+}
+
+/**
+ * Should this provider's models be offered in the picker?
+ *
+ * The rule that matters: a provider the user configured, which has models, is
+ * always offered. Only an *unconfigured built-in template* is hidden, and that
+ * is what the API-key check is for -- it is a proxy for "the user has not set
+ * this one up", never a gate on providers they plainly did set up.
+ *
+ * Keying that gate on `api_key` alone is what made models vanish from the bar
+ * after a restart. `partialize` strips `api_key` and `api_key_fallbacks` before
+ * persisting -- keys live in the OS keyring -- so on every launch every
+ * provider looks keyless until `applyKeyringKeys()` re-seeds them. Combined
+ * with the substring bug above, a custom provider with a short name was
+ * reclassified as built-in, found keyless, and had all of its models dropped.
+ */
+function offersModels(provider: {
+  provider: string
+  models: unknown[]
+  api_key?: string
+  api_key_fallbacks?: string[]
+}): boolean {
+  // The bundled local runtime is always offered.
+  if (provider.provider === 'llamacpp') return true
+  // Anything the user added, with models discovered under it.
+  if (!isPredefinedProvider(provider.provider)) return provider.models.length > 0
+  // A built-in template: offered once it has a key, or models the user added.
+  return providerHasRemoteApiKeys(provider) || provider.models.length > 0
+}
+
 const DropdownModelProvider = memo(function DropdownModelProvider({
   model,
   useLastUsedModel = false,
@@ -357,18 +399,8 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
         // Skip embedding models - they can't be used for chat
         if (modelItem.embedding) return
 
-        // Skip models that require API key but don't have one (except llamacpp)
-        // For custom providers, allow if they have at least one model loaded
-        const isPredefined = predefinedProviders.some((e) =>
-          e.provider.includes(provider.provider)
-        )
-        if (
-          provider &&
-          provider.provider !== 'llamacpp' &&
-          !providerHasRemoteApiKeys(provider) &&
-          (isPredefined || provider.models.length === 0)
-        )
-          return
+        // Only an unconfigured built-in template is hidden. See `offersModels`.
+        if (!offersModels(provider)) return
 
         const capabilities = modelItem.capabilities || []
         const capabilitiesString = capabilities.join(' ')
@@ -460,19 +492,11 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
           if (aIsLocal && !bIsLocal) return -1
           if (!aIsLocal && bIsLocal) return 1
 
-          // Custom providers without API key but with models should be treated like "have API key"
-          const aIsPredefined = predefinedProviders.some((e) =>
-            e.provider.includes(a.provider)
-          )
-          const bIsPredefined = predefinedProviders.some((e) =>
-            e.provider.includes(b.provider)
-          )
-          const aHasApiKeyOrCustomModel =
-            providerHasRemoteApiKeys(a) ||
-            (!aIsPredefined && a.models.length > 0)
-          const bHasApiKeyOrCustomModel =
-            providerHasRemoteApiKeys(b) ||
-            (!bIsPredefined && b.models.length > 0)
+          // Configured providers sort above unconfigured templates. Same
+          // predicate as the visibility gate, so the two cannot disagree about
+          // what "configured" means.
+          const aHasApiKeyOrCustomModel = offersModels(a)
+          const bHasApiKeyOrCustomModel = offersModels(b)
           // Providers with API keys or custom with models filled second
           if (aHasApiKeyOrCustomModel && !bHasApiKeyOrCustomModel) return -1
           if (!aHasApiKeyOrCustomModel && bHasApiKeyOrCustomModel) return 1

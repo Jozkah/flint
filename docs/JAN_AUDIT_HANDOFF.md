@@ -963,3 +963,28 @@ choose not to send.
 
 Both were found by writing the corpus, not by reading the code, which is the
 argument for the corpus.
+
+## 2026-09-10 — subject-aware permissions, typed memory proposals
+
+**AH-007 (in-progress → implemented, backend).** `ResourceRule::parse` had
+understood `[subject/]tool[(pattern)]` from the start, so `agent:reviewer/write`
+compiled and was accepted — and then bound the main agent and every other
+subagent identically, because `matches_allow`/`matches_deny` never compared the
+subject. A child could not be narrower than its parent, which is the one thing a
+subject qualifier exists to express. `covers_subject` now gates both, and
+`resolve_decision` carries the subject as a parameter. An unqualified rule still
+covers every subject, so existing rule sets are unchanged. Six tests, negative
+cases first: they fail if `covers_subject` is made to return `true`
+unconditionally, which is what the bug was.
+
+Remaining for AH-007: the desktop and CLI surfaces both pass
+`Subject::MainAgent` at every call site. The plumbing is enforced, but nothing
+yet dispatches a subagent under its own `Subject::NamedAgent`, so a rule naming
+one is correct and currently unreachable in production. That is the next step,
+not a claim of completeness.
+
+**Build defects named in the brief were already fixed on this branch.**
+`cowork-smoke` is an `[[example]]` with `required-features`, `src/bin/` holds
+only `jan.rs`, and `cargo build --release --no-default-features --features cli
+--bin jan` succeeds (2m21s, exit 0). No change was needed; recorded so the next
+session does not re-investigate.

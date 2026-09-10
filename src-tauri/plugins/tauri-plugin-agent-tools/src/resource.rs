@@ -540,13 +540,33 @@ impl ResourceRule {
         self.tool.matches(tool_name)
     }
 
+    /// Whether this rule is about this subject.
+    ///
+    /// The half of AH-007 that was missing. `parse` has understood
+    /// `[subject/]tool[(pattern)]` from the start, so `agent(reviewer)/write`
+    /// compiled and was accepted -- and then matched every caller, because
+    /// nothing ever compared the subject. A rule naming one subagent bound the
+    /// main agent and every other subagent identically, which is the opposite
+    /// of what someone writing it intends.
+    ///
+    /// An unqualified rule covers every subject, so existing rule sets keep
+    /// their meaning exactly.
+    pub fn covers_subject(&self, subject: &crate::subject::Subject) -> bool {
+        self.subject.matches(subject)
+    }
+
     /// Whether this rule covers this call.
     ///
     /// A resource-qualified rule must match *some* resource of the call to
     /// allow it, and an unknown resource matches no pattern — so a call the
     /// gate could not understand is never allowed by a specific rule.
-    pub fn matches_allow(&self, tool_name: &str, resources: &[Resource]) -> bool {
-        if !self.tool.matches(tool_name) {
+    pub fn matches_allow(
+        &self,
+        tool_name: &str,
+        resources: &[Resource],
+        subject: &crate::subject::Subject,
+    ) -> bool {
+        if !self.covers_subject(subject) || !self.tool.matches(tool_name) {
             return false;
         }
         let Some(pattern) = &self.resource else {
@@ -565,8 +585,13 @@ impl ResourceRule {
     /// the tool outright, and a resource-qualified rule denies as soon as *any*
     /// resource matches — including an unknown one, which every deny rule
     /// catches.
-    pub fn matches_deny(&self, tool_name: &str, resources: &[Resource]) -> bool {
-        if !self.tool.matches(tool_name) {
+    pub fn matches_deny(
+        &self,
+        tool_name: &str,
+        resources: &[Resource],
+        subject: &crate::subject::Subject,
+    ) -> bool {
+        if !self.covers_subject(subject) || !self.tool.matches(tool_name) {
             return false;
         }
         let Some(pattern) = &self.resource else {
@@ -677,22 +702,46 @@ mod tests {
         // match nothing at all.
         let rule = ResourceRule::parse("read(secrets/**)").unwrap();
         let inside = Resource::path("/proj/secrets/keys.txt", None);
-        assert!(rule.matches_deny("read", std::slice::from_ref(&inside)));
+        assert!(rule.matches_deny(
+            "read",
+            std::slice::from_ref(&inside),
+            &crate::subject::Subject::MainAgent
+        ));
 
         // The directory boundary is what keeps it honest.
         let lookalike = Resource::path("/proj/notsecrets/keys.txt", None);
-        assert!(!rule.matches_deny("read", std::slice::from_ref(&lookalike)));
+        assert!(!rule.matches_deny(
+            "read",
+            std::slice::from_ref(&lookalike),
+            &crate::subject::Subject::MainAgent
+        ));
 
         // A bare file name matches that file anywhere, which is how people
         // mean it when they write `read(.env)`.
         let dotenv = ResourceRule::parse("read(.env)").unwrap();
-        assert!(dotenv.matches_deny("read", &[Resource::path("/proj/app/.env", None)]));
-        assert!(!dotenv.matches_deny("read", &[Resource::path("/proj/app/env.ts", None)]));
+        assert!(dotenv.matches_deny(
+            "read",
+            &[Resource::path("/proj/app/.env", None)],
+            &crate::subject::Subject::MainAgent
+        ));
+        assert!(!dotenv.matches_deny(
+            "read",
+            &[Resource::path("/proj/app/env.ts", None)],
+            &crate::subject::Subject::MainAgent
+        ));
 
         // An absolute rule still means exactly what it says.
         let absolute = ResourceRule::parse("read(/etc/**)").unwrap();
-        assert!(absolute.matches_deny("read", &[Resource::path("/etc/passwd", None)]));
-        assert!(!absolute.matches_deny("read", &[Resource::path("/proj/etc/passwd", None)]));
+        assert!(absolute.matches_deny(
+            "read",
+            &[Resource::path("/etc/passwd", None)],
+            &crate::subject::Subject::MainAgent
+        ));
+        assert!(!absolute.matches_deny(
+            "read",
+            &[Resource::path("/proj/etc/passwd", None)],
+            &crate::subject::Subject::MainAgent
+        ));
     }
 
     #[test]
@@ -814,23 +863,33 @@ mod tests {
         assert!(matches!(unbalanced, Resource::Unknown { .. }));
 
         let rule = ResourceRule::parse("bash").unwrap();
-        assert!(!rule.matches_allow("bash", std::slice::from_ref(&unbalanced)));
+        assert!(!rule.matches_allow(
+            "bash",
+            std::slice::from_ref(&unbalanced),
+            &crate::subject::Subject::MainAgent
+        ));
         // ...and every deny rule catches it.
-        assert!(ResourceRule::parse("bash")
-            .unwrap()
-            .matches_deny("bash", std::slice::from_ref(&unbalanced)));
-        assert!(ResourceRule::parse("bash(git:*)")
-            .unwrap()
-            .matches_deny("bash", &[unbalanced]));
+        assert!(ResourceRule::parse("bash").unwrap().matches_deny(
+            "bash",
+            std::slice::from_ref(&unbalanced),
+            &crate::subject::Subject::MainAgent
+        ));
+        assert!(ResourceRule::parse("bash(git:*)").unwrap().matches_deny(
+            "bash",
+            &[unbalanced],
+            &crate::subject::Subject::MainAgent
+        ));
     }
 
     #[test]
     fn a_non_string_path_argument_is_unknown() {
         let resources = Resource::for_builtin("read", &["path"], false, &json!({"path": 42}), None);
         assert!(matches!(resources[0], Resource::Unknown { .. }));
-        assert!(!ResourceRule::parse("read")
-            .unwrap()
-            .matches_allow("read", &resources));
+        assert!(!ResourceRule::parse("read").unwrap().matches_allow(
+            "read",
+            &resources,
+            &crate::subject::Subject::MainAgent
+        ));
     }
 
     #[test]
@@ -862,17 +921,29 @@ mod tests {
         let rule = ResourceRule::parse("bash(git push*)").unwrap();
         let push = vec![Resource::command("git push --force")];
         let status = vec![Resource::command("git status")];
-        assert!(rule.matches_deny("bash", &push));
-        assert!(!rule.matches_deny("bash", &status));
+        assert!(rule.matches_deny("bash", &push, &crate::subject::Subject::MainAgent));
+        assert!(!rule.matches_deny("bash", &status, &crate::subject::Subject::MainAgent));
     }
 
     #[test]
     fn a_rule_can_name_a_git_operation_class() {
         let rule = ResourceRule::parse("bash(git:force-push)").unwrap();
-        assert!(rule.matches_deny("bash", &[Resource::command("git push --force")]));
-        assert!(!rule.matches_deny("bash", &[Resource::command("git push")]));
+        assert!(rule.matches_deny(
+            "bash",
+            &[Resource::command("git push --force")],
+            &crate::subject::Subject::MainAgent
+        ));
+        assert!(!rule.matches_deny(
+            "bash",
+            &[Resource::command("git push")],
+            &crate::subject::Subject::MainAgent
+        ));
         // The class survives spellings a literal pattern would miss.
-        assert!(rule.matches_deny("bash", &[Resource::command("git -C /x push -f")]));
+        assert!(rule.matches_deny(
+            "bash",
+            &[Resource::command("git -C /x push -f")],
+            &crate::subject::Subject::MainAgent
+        ));
     }
 
     #[test]
@@ -880,24 +951,40 @@ mod tests {
         let rule = ResourceRule::parse("read(**/.ssh/**)").unwrap();
         let key = vec![Resource::path("/home/u/.ssh/id_rsa", None)];
         let src = vec![Resource::path("/home/u/proj/src/a.rs", None)];
-        assert!(rule.matches_deny("read", &key));
-        assert!(!rule.matches_deny("read", &src));
+        assert!(rule.matches_deny("read", &key, &crate::subject::Subject::MainAgent));
+        assert!(!rule.matches_deny("read", &src, &crate::subject::Subject::MainAgent));
     }
 
     #[test]
     fn a_kind_prefix_stops_a_pattern_matching_the_wrong_kind() {
         let rule = ResourceRule::parse("*(net:example.com)").unwrap();
-        assert!(rule.matches_deny("web_fetch", &[Resource::net("https://example.com/x")]));
+        assert!(rule.matches_deny(
+            "web_fetch",
+            &[Resource::net("https://example.com/x")],
+            &crate::subject::Subject::MainAgent
+        ));
         // A file literally named example.com is not a network destination.
-        assert!(!rule.matches_deny("read", &[Resource::path("/tmp/example.com", None)]));
+        assert!(!rule.matches_deny(
+            "read",
+            &[Resource::path("/tmp/example.com", None)],
+            &crate::subject::Subject::MainAgent
+        ));
     }
 
     #[test]
     fn a_bare_tool_rule_still_works_unchanged() {
         let rule = ResourceRule::parse("bash").unwrap();
         assert!(rule.matches_name("bash"));
-        assert!(rule.matches_deny("bash", &[Resource::command("git status")]));
-        assert!(!rule.matches_deny("read", &[Resource::command("git status")]));
+        assert!(rule.matches_deny(
+            "bash",
+            &[Resource::command("git status")],
+            &crate::subject::Subject::MainAgent
+        ));
+        assert!(!rule.matches_deny(
+            "read",
+            &[Resource::command("git status")],
+            &crate::subject::Subject::MainAgent
+        ));
     }
 
     #[test]
@@ -918,8 +1005,10 @@ mod tests {
             None,
         );
         assert_eq!(resources.len(), 2);
-        assert!(ResourceRule::parse("edit(/etc/**)")
-            .unwrap()
-            .matches_deny("edit", &resources));
+        assert!(ResourceRule::parse("edit(/etc/**)").unwrap().matches_deny(
+            "edit",
+            &resources,
+            &crate::subject::Subject::MainAgent
+        ));
     }
 }

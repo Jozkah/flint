@@ -652,6 +652,7 @@ async fn execute_tool_inner(
         &grants,
         true,
         &policy.network,
+        &crate::subject::Subject::MainAgent,
     );
 
     // AH-049: every decision is recorded before it is acted on, so a refusal
@@ -1347,7 +1348,13 @@ mod tests {
             T1.into(),
             None,
             "bash".into(),
-            json!({"command": "exec 3<>/dev/tcp/1.1.1.1/53 && echo connected"}),
+            // A connection attempt written for whichever shell will actually
+            // run it. `/dev/tcp` is a bash builtin, and on a host whose
+            // sandboxed shell is PowerShell -- which on Windows is every host,
+            // because the MSYS2 runtime Git Bash needs cannot start inside an
+            // AppContainer -- it is a parse error, so the test failed on
+            // syntax rather than on whether the network was reachable.
+            json!({ "command": network_probe() }),
             None,
             None,
             None,
@@ -1365,6 +1372,33 @@ mod tests {
             out.content
         );
         let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// Try to open a TCP connection, in the language the sandboxed shell speaks.
+    ///
+    /// Success prints `connected`; the assertion is that it never does.
+    fn network_probe() -> String {
+        use crate::tools::{jail, proc::ShellFlavor};
+        let flavor = std::env::temp_dir();
+        let policy = jail::Policy::new(&flavor, false);
+        match jail::select_shell(&policy)
+            .ok()
+            .map(|s| s.report.cfg.flavor)
+        {
+            Some(ShellFlavor::PowerShell) => {
+                // No `catch`: the refusal has to reach stderr for Jan to
+                // recognise it and explain itself. Swallowing it leaves a bare
+                // `[exit 1]`, which is exactly the unexplained failure the
+                // hint exists to prevent.
+                "$c = New-Object Net.Sockets.TcpClient('1.1.1.1', 53); if ($c.Connected) { 'connected' }"
+                    .to_string()
+            }
+            Some(ShellFlavor::Cmd) => {
+                // `cmd` has no socket primitive; the closest stock probe.
+                "ping -n 1 -w 1000 1.1.1.1 && echo connected".to_string()
+            }
+            _ => "exec 3<>/dev/tcp/1.1.1.1/53 && echo connected".to_string(),
+        }
     }
 
     /// The sandbox is created by `execute_tool` itself. Without that, the very

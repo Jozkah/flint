@@ -30,6 +30,7 @@ const COMMANDS: &[&str] = &[
     "memory_record_get",
     "memory_record_edit",
     "memory_record_propose",
+    "memory_record_propose_inferred",
     "memory_record_commit",
     "memory_record_forget",
     "memory_record_restore",
