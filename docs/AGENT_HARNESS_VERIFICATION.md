@@ -431,8 +431,14 @@ re-executes the test binary and every `bash` test reports that no shell starts.
 | Real WebView scenario | `cowork-smoke --only unified-at-menu` | with a skill in the folder and a saved agent in Jan's store, `@rev` offers the skill, the agent and the file in one list and no absolute path; ArrowDown moves the active row and Enter inserts its token instead of sending; Alt+A names `src/index.ts` as `entry` from the keyboard, the save is announced and focus returns; `@alias:` offers it back; sending `@alias:entry` and `@agent:review-bot` gives the model the file's content and how to reach the agent. **Passed on Windows 2026-09-10** |
 | Real application restart | `cowork-smoke --only alias-persist-1`, then `--only alias-persist-2` in a new process | an alias saved from the keyboard reaches `settings.json`; after a restart it is offered again and resolves to the same file |
 
-A selection (`@path:start-end`) cannot be named yet, so AH-205 stays
-`in-progress`.
+A selection is named with the same keystroke: the alias field has an optional
+line range (`12-20`). Covered by 4 more unit tests in `referenceAliases.test.ts`
+(a selection resolves to its lines only; `0`, `5-2`, `a-b` and `1-` are refused;
+a file that no longer has the lines says so, naming them) and 1 in
+`ChatInput.test.tsx` (the lines field is labelled and the range is stored), and
+by `unified-at-menu`, which names line 1 of `src/index.ts` from the keyboard and
+sends it: the model receives that line and not the file's last line. **Passed on
+Windows 2026-09-10.**
 
 ## Project initialization assistant (AH-209)
 

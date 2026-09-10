@@ -122,6 +122,54 @@ describe('resolving an alias at use time', () => {
     expect(!out.ok && out.message).toContain('docs/gone.md')
   })
 
+  // A named selection: the lines it names, read as the file is now.
+  it('names a selection and resolves it to those lines only', async () => {
+    const out = store().add('/repo', 'core', 'src/a.ts', '2-3')
+    expect(out).toMatchObject({ ok: true, alias: { target: 'src/a.ts:2-3' } })
+    api.projectReadFile.mockResolvedValue({
+      relPath: 'src/a.ts',
+      size: 20,
+      content: 'one\ntwo\nthree\nfour\n',
+      oversized: false,
+      binary: false,
+    })
+    const resolved = await resolveAlias('/data', '/repo', 'core')
+    expect(api.projectReadFile).toHaveBeenCalledWith(
+      '/data',
+      '/repo',
+      'src/a.ts',
+      false
+    )
+    expect(resolved.ok && resolved.content).toContain('two\nthree')
+    expect(resolved.ok && resolved.content).not.toContain('one')
+    expect(resolved.ok && resolved.content).not.toContain('four')
+  })
+
+  it.each(['0', '5-2', 'a-b', '1-'])(
+    'refuses %s as the lines of a selection',
+    (lines) => {
+      expect(store().add('/repo', 'x', 'src/a.ts', lines)).toMatchObject({
+        ok: false,
+        reason: 'target',
+      })
+    }
+  )
+
+  it('says so when the file no longer has the lines a selection named', async () => {
+    store().add('/repo', 'core', 'src/a.ts', '10-12')
+    api.projectReadFile.mockResolvedValue({
+      relPath: 'src/a.ts',
+      size: 4,
+      content: 'one\n',
+      oversized: false,
+      binary: false,
+    })
+    const resolved = await resolveAlias('/data', '/repo', 'core')
+    expect(resolved.ok).toBe(false)
+    expect(!resolved.ok && resolved.message).toContain('src/a.ts:10-12')
+    expect(!resolved.ok && resolved.message).toContain('1 line(s) now')
+  })
+
   it('does not resolve an alias from another folder', async () => {
     store().add('/repo', 'spec', 'a.md')
     const out = await resolveAlias('/data', '/other', 'spec')

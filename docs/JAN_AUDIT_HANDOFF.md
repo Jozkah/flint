@@ -1844,8 +1844,9 @@ The app flushes on exit what it has received; it cannot flush what it was never
 sent. The scenario now waits for the alias to reach `settings.json` before
 exiting, as a person would.
 
-Not done: a selection (`@path:start-end`) cannot be named, so AH-205 stays
-`in-progress`.
+A selection is named by giving the alias field a line range as well
+(`src/a.ts:12-20`). It is read as those lines of the file as it is now, and a file
+that has since shrunk below the range says which lines are missing.
 
 **AH-209: describing a newly attached project.** A folder with no `JAN.md`
 gets a *Describe this project* button beside the composer. The backend

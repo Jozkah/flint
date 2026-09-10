@@ -16,13 +16,32 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
-import { normalizeReference, resolveReference } from '@/lib/safeReferences'
+import {
+  normalizeReference,
+  resolveExcerpt,
+  resolveReference,
+} from '@/lib/safeReferences'
+import { lineRangeOf } from '@/lib/path-references'
 
 export type ReferenceAlias = {
   name: string
-  /** Relative to the folder the alias belongs to. Never absolute. */
+  /**
+   * Relative to the folder the alias belongs to. Never absolute. A selection
+   * carries its lines: `src/a.ts:12-20`.
+   */
   target: string
   createdAt: number
+}
+
+/** `12` or `12-20`: which lines of a file a selection names. */
+export function parseLines(
+  lines: string
+): { start: number; end: number } | null {
+  const match = /^\s*(\d+)\s*(?:-\s*(\d+))?\s*$/.exec(lines)
+  if (!match) return null
+  const start = Number(match[1])
+  const end = match[2] === undefined ? start : Number(match[2])
+  return start >= 1 && end >= start ? { start, end } : null
 }
 
 /** What an alias may be called: one token that `@alias:` can carry. */
@@ -50,7 +69,9 @@ type AliasState = {
   add: (
     root: string | null | undefined,
     name: string,
-    target: string
+    target: string,
+    /** Name a selection rather than the whole file: `12` or `12-20`. */
+    lines?: string
   ) => AliasResult
   remove: (root: string | null | undefined, name: string) => AliasResult
 }
@@ -64,7 +85,7 @@ export const useReferenceAliases = create<AliasState>()(
         const found = get().byFolder[folderKey(root)] ?? {}
         return Object.values(found).sort((a, b) => a.name.localeCompare(b.name))
       },
-      add: (root, rawName, rawTarget) => {
+      add: (root, rawName, rawTarget, rawLines) => {
         if (!root) {
           return {
             ok: false,
@@ -89,9 +110,22 @@ export const useReferenceAliases = create<AliasState>()(
             message: 'an alias can only name a path inside the attached folder',
           }
         }
+        let stored = target.rel
+        if (rawLines && rawLines.trim()) {
+          const range = parseLines(rawLines)
+          if (!range) {
+            return {
+              ok: false,
+              reason: 'target',
+              message:
+                'lines are a number or a range such as 12-20, starting at 1',
+            }
+          }
+          stored = `${target.rel}:${range.start}-${range.end}`
+        }
         const key = folderKey(root)
         const existing = get().byFolder[key]?.[name]
-        if (existing && existing.target !== target.rel) {
+        if (existing && existing.target !== stored) {
           return {
             ok: false,
             reason: 'taken',
@@ -100,7 +134,7 @@ export const useReferenceAliases = create<AliasState>()(
         }
         const alias: ReferenceAlias = {
           name,
-          target: target.rel,
+          target: stored,
           createdAt: existing?.createdAt ?? Date.now(),
         }
         set((s) => ({
@@ -160,7 +194,18 @@ export async function resolveAlias(
       message: `there is no alias named ${name} in this folder`,
     }
   }
-  const resolved = await resolveReference(dataFolder, root, alias.target)
+  // A selection is read as the lines it names, checked against the file as
+  // it is now.
+  const range = lineRangeOf(alias.target)
+  const resolved = range
+    ? await resolveExcerpt(
+        dataFolder,
+        root,
+        range.path,
+        range.startLine,
+        range.endLine
+      )
+    : await resolveReference(dataFolder, root, alias.target)
   if (!resolved.ok) {
     return {
       ok: false,

@@ -6290,7 +6290,7 @@
       "category": "composer",
       "phase": 9,
       "phaseName": "Approved additions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-204"
@@ -6300,7 +6300,8 @@
         "web-app/src/lib/referenceAliases.ts",
         "web-app/src/components/FilePickerPopover.tsx",
         "web-app/src/containers/ChatInput.tsx",
-        "web-app/src/lib/hydrateStores.ts"
+        "web-app/src/lib/hydrateStores.ts",
+        "web-app/src/lib/safeReferences.ts"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -6322,9 +6323,9 @@
         "cowork-smoke::alias-persist-2"
       ],
       "platformRequirements": [],
-      "blockedReason": "MISSING for implemented: a selection (`@path:start-end`) cannot be named; only files and folders can.",
+      "blockedReason": null,
       "evidence": "Not implemented. No alias store exists.",
-      "auditNote": "Alt+A in the `@` menu names the active file or folder; the name belongs to that folder and persists through the backend settings store. Only the relative path is stored. It is resolved again through the confined reader at each use, so a target that now escapes the folder is refused, and a broken alias names the path it cannot find. A taken name is not silently repointed. The name field is labelled with the path, a refusal is announced with role=alert, and focus returns to the composer. Windows: unified-at-menu saves and uses an alias from the keyboard; alias-persist-1/2 prove it survives an application restart."
+      "auditNote": "Alt+A in the `@` menu names the active file or folder, and for a file an optional line range names a selection (`src/a.ts:12-20`). The name belongs to that folder and persists through the backend settings store. Only the relative path (and range) is stored; it is resolved again through the confined reader at each use, so a target that now escapes the folder is refused, a broken alias names the path it cannot find, and a selection whose file no longer has those lines says so. A taken name is not silently repointed; a range that is not 1-based and ordered is refused. The fields are labelled, a refusal is announced with role=alert, and focus returns to the composer. Windows: unified-at-menu saves and uses a file alias and a one-line selection alias from the keyboard (only that line reaches the model); alias-persist-1/2 prove an alias survives a real restart. macOS and Linux were not run."
     },
     {
       "id": "AH-206",

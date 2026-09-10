@@ -2829,7 +2829,13 @@ fn menu_tokens(ctx: &Ctx) -> Result<Vec<String>, Failure> {
 
 /// Name the file `@query` finds first as `name`, from the keyboard: Alt+A,
 /// type the name, submit.
-fn save_alias_from_keyboard(ctx: &Ctx, query: &str, target: &str, name: &str) -> ScenarioResult {
+fn save_alias_from_keyboard(
+    ctx: &Ctx,
+    query: &str,
+    target: &str,
+    name: &str,
+    lines: Option<&str>,
+) -> ScenarioResult {
     ctx.type_into("[data-testid=\"chat-input\"]", &format!("@{query}"))?;
     ctx.wait_until(
         "the file to be offered",
@@ -2856,12 +2862,26 @@ fn save_alias_from_keyboard(ctx: &Ctx, query: &str, target: &str, name: &str) ->
          el.dispatchEvent(new Event('input', {{ bubbles: true }}));
          return true;"
     ))?;
+    if let Some(lines) = lines {
+        ctx.eval(&format!(
+            "const el = document.querySelector('[data-testid=\"alias-lines\"]');
+             const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+             set.call(el, {lines:?});
+             el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+             return true;"
+        ))?;
+    }
     ctx.eval("document.querySelector('[data-testid=\"alias-form\"]').requestSubmit(); return true;")?;
+    let saved_as = match lines {
+        Some(lines) if lines.contains('-') => format!("{target}:{lines}"),
+        Some(lines) => format!("{target}:{lines}-{lines}"),
+        None => target.to_string(),
+    };
     ctx.wait_until(
         "the alias to be saved and announced",
         &format!(
             "const s = document.querySelector('[data-testid=\"reference-status\"]');
-             return !!s && s.textContent.includes('Saved @alias:{name} for {target}');"
+             return !!s && s.textContent.includes('Saved @alias:{name} for {saved_as}');"
         ),
         Duration::from_secs(10),
     )?;
@@ -2969,12 +2989,29 @@ fn scenario_unified_at_menu(ctx: &Ctx) -> ScenarioResult {
     )?;
 
     // Name a file from the keyboard, and find it offered back.
-    save_alias_from_keyboard(ctx, "ind", "src/index.ts", "entry")?;
+    save_alias_from_keyboard(ctx, "ind", "src/index.ts", "entry", None)?;
     ctx.type_into("[data-testid=\"chat-input\"]", "@alias:")?;
     ctx.wait_until(
         "the alias to be offered",
         "return !!document.querySelector('[data-testid=\"reference-menu\"] [data-token=\"alias:entry\"]');",
         Duration::from_secs(10),
+    )?;
+
+    // A named selection: line 1 of the file, and nothing else of it.
+    save_alias_from_keyboard(ctx, "ind", "src/index.ts", "firstline", Some("1"))?;
+    let sent = send_and_capture(ctx, "quote @alias:firstline please", "quote")?;
+    ensure!(
+        sent.contains("src/index.ts (lines 1-1)"),
+        "the selection alias was not resolved to its lines"
+    );
+    ensure!(
+        !sent.contains("export default greet"),
+        "the selection alias carried lines outside the selection"
+    );
+    ctx.wait_until(
+        "the reply to the selection message",
+        "return document.body.textContent.includes('Hello from the smoke model');",
+        Duration::from_secs(90),
     )?;
 
     // Used: the alias is resolved to the file's content, and the agent is
@@ -3190,7 +3227,7 @@ fn scenario_alias_persist_first(ctx: &Ctx) -> ScenarioResult {
     ctx.script_model("plain", &[])?;
     attach_project(ctx)?;
     ctx.ensure_model_selected()?;
-    save_alias_from_keyboard(ctx, "ind", "src/index.ts", "persisted")?;
+    save_alias_from_keyboard(ctx, "ind", "src/index.ts", "persisted", None)?;
     // Saved means on disk: the settings write is debounced, and the first run
     // of this pair exited inside that window, before the write had left the
     // WebView. A person does not quit within half a second of saving; this

@@ -82,7 +82,6 @@ function EntryIcon({ entry }: { entry: ReferenceEntry }) {
   return <File aria-hidden className="size-4 shrink-0 text-muted-foreground" />
 }
 
-
 type FilePickerPopoverProps = {
   entries: ReferenceEntry[]
   /** The text after `@`. */
@@ -99,7 +98,8 @@ type FilePickerPopoverProps = {
   /** The file or folder being named as an alias, while the name is typed. */
   aliasDraft: ReferenceEntry | null
   aliasError?: string | null
-  onAliasSave: (name: string) => void
+  /** `lines` is empty for the whole file, or `12` / `12-20` for a selection. */
+  onAliasSave: (name: string, lines: string) => void
   onAliasCancel: () => void
 }
 
@@ -121,9 +121,11 @@ export function FilePickerPopover({
 }: FilePickerPopoverProps) {
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const [aliasName, setAliasName] = useState('')
+  const [aliasLines, setAliasLines] = useState('')
 
   useEffect(() => {
     setAliasName('')
+    setAliasLines('')
   }, [aliasDraft])
 
   const popoverStyle = useMemo(() => {
@@ -166,7 +168,7 @@ export function FilePickerPopover({
           className="mb-1 flex flex-col gap-1 rounded-lg bg-accent/40 px-2 py-1.5"
           onSubmit={(e) => {
             e.preventDefault()
-            onAliasSave(aliasName)
+            onAliasSave(aliasName, aliasLines)
           }}
           data-testid="alias-form"
         >
@@ -191,6 +193,35 @@ export function FilePickerPopover({
             className="rounded border border-border bg-background px-2 py-1 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
             data-testid="alias-name"
           />
+          {aliasDraft.kind === 'file' && (
+            <>
+              <label
+                htmlFor={`${listId}-alias-lines`}
+                className="text-xs text-muted-foreground"
+              >
+                Lines (optional, e.g. 12-20)
+              </label>
+              <input
+                id={`${listId}-alias-lines`}
+                value={aliasLines}
+                inputMode="numeric"
+                onChange={(e) => setAliasLines(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onAliasCancel()
+                  }
+                }}
+                className="rounded border border-border bg-background px-2 py-1 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                data-testid="alias-lines"
+              />
+              {/* Enter in either field saves. */}
+              <button type="submit" className="sr-only">
+                Save alias
+              </button>
+            </>
+          )}
           {aliasError && (
             <p role="alert" className="text-xs text-destructive">
               {aliasError}

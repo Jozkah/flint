@@ -470,11 +470,11 @@ const ChatInput = memo(function ChatInput({
   // Name the file or folder being drafted as an alias (AH-205). Focus goes
   // back to the composer either way, where it was when the draft began.
   const handleAliasSave = useCallback(
-    (name: string) => {
+    (name: string, lines = '') => {
       if (!aliasDraft) return
       const out = useReferenceAliases
         .getState()
-        .add(workingDir, name, aliasDraft.token)
+        .add(workingDir, name, aliasDraft.token, lines)
       if (!out.ok) {
         setAliasError(out.message)
         setReferenceStatus(`Alias not saved: ${out.message}`)

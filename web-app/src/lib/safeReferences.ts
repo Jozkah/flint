@@ -140,6 +140,73 @@ const REFUSAL_TEXT: Record<ReferenceRefusal, string> = {
   'refused': 'it could not be read inside the attached folder',
 }
 
+/**
+ * Read lines `start`..`end` (1-based, inclusive) of a file inside the folder,
+ * through the same confined reader as a whole-file reference. AH-205: a
+ * named selection. Refused, saying why, when the file has fewer lines than
+ * the selection starts at -- the file changed since it was named.
+ */
+export async function resolveExcerpt(
+  dataFolder: string,
+  root: string | null | undefined,
+  raw: string,
+  start: number,
+  end: number
+): Promise<ResolvedReference> {
+  if (!root) {
+    return {
+      ok: false,
+      raw,
+      reason: 'no-folder',
+      message: REFUSAL_TEXT['no-folder'],
+    }
+  }
+  const normalized = normalizeReference(raw)
+  if (!normalized.ok) {
+    return {
+      ok: false,
+      raw,
+      reason: normalized.reason,
+      message: REFUSAL_TEXT[normalized.reason],
+    }
+  }
+  const { rel } = normalized
+  try {
+    const file = await projectReadFile(dataFolder, root, rel, false)
+    if (file.binary || file.oversized) {
+      return {
+        ok: false,
+        raw,
+        reason: 'refused',
+        message: file.binary
+          ? 'it is a binary file'
+          : 'it is too large to include',
+      }
+    }
+    const lines = file.content.split('\n')
+    if (file.content.endsWith('\n')) lines.pop()
+    if (start > lines.length) {
+      return {
+        ok: false,
+        raw,
+        reason: 'refused',
+        message: `${rel} has ${lines.length} line(s) now, so lines ${start}-${end} are not there`,
+      }
+    }
+    const last = Math.min(end, lines.length)
+    return {
+      ok: true,
+      rel,
+      kind: 'file',
+      content: `--- File: ${rel} (lines ${start}-${last}) ---\n${lines
+        .slice(start - 1, last)
+        .join('\n')}\n--- End: ${rel} ---`,
+    }
+  } catch (e) {
+    return { ok: false, raw, reason: 'refused', message: errorText(e) }
+  }
+}
+
 /** Read one reference through the backend's confined reader. */
 export async function resolveReference(
   dataFolder: string,

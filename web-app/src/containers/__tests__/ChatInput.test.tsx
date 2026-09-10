@@ -820,6 +820,26 @@ describe('ChatInput', () => {
       await waitFor(() => expect(getTextarea()).toHaveFocus())
     })
 
+    it('names a selection of the active file, with its lines', async () => {
+      const { useReferenceAliases } = await import('@/lib/referenceAliases')
+      useReferenceAliases.setState({ byFolder: {} })
+      renderInput({ referenceRoot: '/repo' })
+      await act(async () => {})
+      await typeAt('@ind')
+      await screen.findAllByRole('option')
+      fireEvent.keyDown(getTextarea(), { key: 'a', altKey: true })
+      fireEvent.change(await screen.findByTestId('alias-name'), {
+        target: { value: 'head' },
+      })
+      const lines = screen.getByTestId('alias-lines')
+      expect(lines).toHaveAccessibleName(/Lines/)
+      fireEvent.change(lines, { target: { value: '1-2' } })
+      fireEvent.submit(screen.getByTestId('alias-form'))
+      expect(useReferenceAliases.getState().list('/repo')).toMatchObject([
+        { name: 'head', target: 'src/index.ts:1-2' },
+      ])
+    })
+
     it('says why an alias name was refused, and saves nothing', async () => {
       const { useReferenceAliases } = await import('@/lib/referenceAliases')
       useReferenceAliases.setState({ byFolder: {} })
