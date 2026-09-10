@@ -70,7 +70,23 @@ export interface MCPService {
     serverName?: string
     arguments: object
     maxOutputChars?: number
+    /**
+     * A single-use authorization from `allowOnceForServer`, required by the
+     * backend for a server the user has not trusted outright. AH-041.
+     */
+    approvalTicket?: string
   }): Promise<MCPToolCallResult>
+  /** Servers the user has trusted, as the backend records them. AH-041. */
+  trustedServers(): Promise<string[]>
+  /** Record that the user trusts a server in every conversation. AH-041. */
+  trustServer(serverName: string): Promise<void>
+  /** Withdraw trust from a server. AH-041. */
+  revokeServer(serverName: string): Promise<void>
+  /**
+   * Authorize one call to one tool on one server, returning the ticket the
+   * backend will consume. AH-041.
+   */
+  allowOnceForServer(serverName: string, toolName: string): Promise<string>
   callToolWithCancellation(args: {
     toolName: string
     serverName?: string

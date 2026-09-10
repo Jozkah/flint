@@ -382,6 +382,63 @@ export async function memoryRetrieve(
   })
 }
 
+/**
+ * A memory an agent proposed that nobody has answered yet.
+ *
+ * `explanation` is the sentence to show. There is deliberately no generic
+ * "needs approval": the gate knows why it is asking, and the card is the only
+ * place that knowledge is worth anything.
+ */
+export type PendingProposal = {
+  id: string
+  content: string
+  scope: MemoryScope
+  /** Stable code, for keying behaviour. */
+  reason:
+    | 'automatic-saving-disabled'
+    | 'conflicts-with-existing'
+    | 'would-promote-project-fact-globally'
+  explanation: string
+  /**
+   * Whether approving is offered at all. A conflict is a question about which
+   * of two memories is right, not something to wave through, so the backend
+   * refuses to approve one even if asked.
+   */
+  approvable: boolean
+  sourceSessionId: string | null
+  sourceMessageId: string | null
+  createdAt: number
+}
+
+/** Proposals awaiting an answer, newest first. */
+export async function memoryProposalsList(
+  location: MemoryLocation
+): Promise<PendingProposal[]> {
+  return await invoke('plugin:agent-tools|memory_proposals_list', { location })
+}
+
+/**
+ * Answer a proposal.
+ *
+ * The card is not the decision. Approving re-runs the refusals against the
+ * content as stored, so a card that sat on screen while something changed
+ * cannot wave it through; rejecting removes it rather than leaving a question
+ * that gets asked again. Returns the saved memory, or `null` when rejected.
+ */
+export async function memoryProposalResolve(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  id: string,
+  approve: boolean
+): Promise<MemoryView | null> {
+  return await invoke('plugin:agent-tools|memory_proposal_resolve', {
+    location,
+    scope,
+    id,
+    approve,
+  })
+}
+
 /** One page of memories in a scope. Rejects a scope the caller has no standing
  * in, rather than returning an empty list. */
 export async function memoryRecordsList(
@@ -881,4 +938,17 @@ export async function executeToolStreaming(
     scope: options?.scope,
     callId: options?.callId,
   })
+}
+
+/**
+ * Strip credentials out of text before it is persisted.
+ *
+ * One implementation, in Rust, shared with the audit log, the activity record
+ * and the prompt snapshot. A second copy of the matching rules in TypeScript
+ * would drift the first time either side was extended, and a redactor that is
+ * subtly weaker than the one it is named after is worse than none: it reads as
+ * a guarantee.
+ */
+export async function secretsRedact(text: string): Promise<string> {
+  return await invoke('plugin:agent-tools|secrets_redact', { text })
 }

@@ -988,3 +988,425 @@ not a claim of completeness.
 only `jan.rs`, and `cargo build --release --no-default-features --features cli
 --bin jan` succeeds (2m21s, exit 0). No change was needed; recorded so the next
 session does not re-investigate.
+
+## 2026-09-10 — the memory proposal becomes visible
+
+**One gate, two callers.** `memory_record_propose_inferred` had its own copy of
+the pending-reason ladder and its own copy of `PendingReason`, duplicating what
+`memory::inferred::decide` already did for the model-facing `memory_propose`
+tool. Two copies of a gate are two gates. The command now calls `decide`, and
+`commands::PendingReason` is a re-export of the one in `inferred`. Nothing about
+the order changed — refusals, then conflicts, then project-to-global, then the
+setting — but there is now only one place it can change.
+
+**A proposal is stored, not merely returned.** Both paths persist the pending
+record with `Status::Proposed { reason }`. This is the change that makes the
+feature real: before it, the question existed only in the tool result for the
+turn that raised it, so a user who was not looking at that surface at that
+moment was never asked at all. `is_usable` admits `Status::Active` only, so a
+proposal reaches no prompt while it waits, and `service::list` now filters
+proposals out of the remembered-facts list — a defect the new test caught, since
+an unanswered guess was briefly appearing among the things Jan says it
+remembers.
+
+**The visible half.** `MemoryProposalCard` / `MemoryProposalList`
+(`web-app/src/containers/MemoryProposalCard.tsx`) render from
+`PendingReason::explain()`, never a generic "needs approval": the three reasons
+need three different answers and one prompt would push a user to give them all
+the same one. A conflicted proposal renders with no Approve button at all — only
+"Review both" and "Discard" — and the backend refuses approving one anyway, so
+the DOM and the gate agree.
+
+Mounted in two production surfaces, through `useMemoryProposals`
+(`web-app/src/hooks/useMemoryProposals.ts`), which reads from disk rather than
+from renderer state:
+- the thread route, filtered to that chat, reloaded when a turn ends;
+- Settings → Memory, unfiltered, under "Waiting for you" — where "Review both"
+  navigates, because settling a contradiction needs both sides on screen.
+
+**Evidence.** 680 plugin tests pass (`--test-threads=4`); 10 vitest cases on the
+card, including the two negatives that matter (a conflicted proposal offers no
+approval; a backend refusal is shown rather than swallowed). A real WebView
+scenario, `cowork-smoke --only memory-proposal-approval`, covers the round trip
+end to end: propose over IPC, assert `Status::Proposed` on disk *before*
+anything is clicked, assert the card and its reason in the DOM, click Approve,
+assert the record is `active` on disk, reload, assert the answered question is
+not asked again, then assert a contradiction renders without an Approve button.
+DOM and file, in one scenario, because this programme has repeatedly shipped
+cards that passed vitest and never rendered in the WebView. `PASS`, one scenario
+executed.
+
+Three things that scenario had to be taught, each of which had already produced
+a false failure:
+
+- `ctx.goto` does nothing when the route is already current, so navigating "to"
+  the chat you are already in never remounts anything and never re-reads the
+  store. Leaving to `/` and coming back does.
+- A full page reload cannot be used here: it tears down the eval channel the
+  harness talks over, and every wait after it times out.
+- `Status` serialises as `"status":{"state":"active"}`, not `"status":"active"`.
+  An assertion on the wrong shape fails against a file that is correct.
+
+**A limit of conflict detection, found by the scenario.** `detect_conflicts`
+ignores a pair where both records mention both sides of an incompatible choice,
+so "the user prefers tabs over spaces" and "the user prefers spaces over tabs"
+are *not* reported as conflicting, even though a person would call that a
+straight contradiction. The conservatism is deliberate and documented in
+`record.rs`: an unresolved conflict withholds both records, so a false positive
+silently costs the user two good memories. Left as it is, and the scenario now
+words each side to name one option only. Worth revisiting with a better
+comparison than word membership, not with a looser one.
+
+**Stale premise corrected.** `src-tauri/resources/bin` does not contain 0-byte
+stubs: 23 files, none zero-byte. Recorded so the next session does not
+re-investigate.
+
+## 2026-09-10 — AH-007: the subject reaches production
+
+Two sessions reached this independently, which is worth recording because the
+duplication cost real time. `fork/main` already carried
+`9a4cfe2 fix(permissions): tell the gate which agent is actually asking`, which
+fixed the same compile failure and threaded the same identity, storing it as
+`OrchestrationArgs::subject` where this branch had added
+`OrchestrationArgs::agent_name`. **Upstream's design won on merge** -- it was
+already published and already used by `run_subagent` -- and this branch's
+parallel field was removed. Check `fork/main` before starting a registry item,
+not after finishing one.
+
+What was *not* upstream, and is the substance of this branch's contribution, is
+the advertising half below.
+
+**The desktop crate did not compile.** `resolve_decision` grew a tenth
+parameter and `src/core/agent/loop.rs` was never updated, so `cargo check` on
+the `Jan` crate failed with E0061 while the plugin's own tests all passed. The
+plugin suite is not evidence that the application builds. (Fixed on both
+branches; upstream's fix is the one that survives.)
+
+**A subject-qualified rule over-denied.** `ToolPermissions::is_denied` and
+`is_allowed` answered "does any rule name this tool", ignoring the subject.
+Since those two are what decide which tools are *advertised* — the built-in
+schema list, the MCP prune, and a subagent's narrowed toolset — writing
+`deny = ["agent:reviewer/bash"]` removed `bash` from the main agent as well.
+The execution gate would then have allowed the call the model was never offered.
+Both now take a subject, and the two halves are asserted together: the reviewer
+loses the tool, the main agent and `agent:implementer` keep it.
+
+**Where the subject comes from.** `OrchestrationArgs::agent_name` — `None` is
+the top-level agent; `run_subagent` sets it on the child's cloned args.
+`orchestrate_inner` turns it into one `run_subject` used by the advertising
+pass, the MCP prune and the dispatcher, so a run cannot be offered a tool under
+one identity and refused it under another. `resolve_dispatch` reads the parent's
+rules *for the child*, by the name it is being dispatched under, which is what
+makes a rule about one subagent narrow that subagent's list.
+
+Compiles on all three configurations: default, `--features cowork-smoke`, and
+`--no-default-features --features cli`, tests included. 682 plugin tests pass
+after the merge.
+
+**Obstruction recorded: the `Jan` lib test binary does not start on Windows.**
+`cargo test -p Jan --lib` exits `0xc0000139` (`STATUS_ENTRYPOINT_NOT_FOUND`)
+before the harness prints anything, for tests untouched by this work
+(`subagent_cap_is_clamped_to_at_least_one` fails identically). It is a loader
+problem in this environment, not a test failure. Consequence:
+`a_rule_naming_a_subagent_binds_that_subagent_and_nobody_else` in `loop.rs` is
+compiled but unexecuted here. The eight `subject_rules` tests in the plugin do
+run (680 plugin tests pass), and they cover the matching and the advertising;
+what is unproven *on this host* is the dispatcher wiring, which is
+compile-checked. Recorded in `docs/AGENT_HARNESS_VERIFICATION.md` under Known
+blockers rather than worked around.
+
+## Obstruction: `tool-activity-timeline` on Windows (2026-09-10)
+
+Full smoke suite: **37 of 38 scenarios pass**, including
+`memory-proposal-approval`. The one failure is `tool-activity-timeline`, and it
+is recorded here rather than fixed, under the two-attempts rule.
+
+What is known:
+
+- It fails identically when run alone, so it is not contention with another
+  scenario.
+- Its own diagnostics say `events on disk: 0` and print a transcript containing
+  only the application chrome — no user message, no reply. **No run happened at
+  all**, so this is not "the tool was hidden from the model" and not "the
+  dispatcher refused it". The send never produced a turn.
+- It cannot be bisected against this branch. Reverting the subject-threading
+  restores the E0061 that stopped the `Jan` crate compiling, so the smoke binary
+  could not be built on this branch before this session — there is no passing
+  baseline here to regress from. `docs/AGENT_HARNESS_VERIFICATION.md` already
+  lists this scenario as *not run* on Windows; it is recorded as passing on
+  macOS and in the WebView column only.
+- It exercises `/cowork`, which the memory-proposal work does not touch: the
+  approval card is mounted in the thread route.
+
+Two investigations, no fix. Next session should start from "why does sending in
+the Cowork composer produce no turn on Windows" rather than from the timeline.
+
+## Two test-harness defects fixed on the way (2026-09-10)
+
+Neither is production code, but both were reporting green or red for the wrong
+reason, which is worse than either.
+
+**`$threadId.test.tsx` mocked `getSessionData` as `vi.fn(() => ({ tools: [] }))`
+— a new object per call.** The real store keeps one object per session, on the
+session or in a standalone map. The route reads `sessionData` once per render
+and pushes arriving tool calls onto `sessionData.tools`, so with the mock, any
+re-render between two tool calls silently discarded the first. Eight tests
+depended on the route re-rendering exactly zero times, and mounting anything new
+in the route broke them — which reads as "the new feature dropped a tool call"
+rather than "the mock does not behave like the store". The mock now memoises per
+session id, reset per test.
+
+**`preCommitHook.test.ts` computed the repository root as `cwd()/..`.** That is
+right when vitest runs from `web-app/` and one level too high under
+`yarn test:web`, which runs from the repository root; in a git worktree it lands
+in the directory that holds every *other* worktree, so all eleven tests failed
+on `ERR_MODULE_NOT_FOUND` for a path that was never going to exist. Anchored to
+the test file's own location instead.
+
+Full web suite after both: **5484 passed, 3 skipped, 0 failed** (400 files).
+
+## 2026-09-10 — AH-045: the transcript stops carrying credentials
+
+`redact_secrets` was named as though it covered everything and covered one
+shape. It matched assignments (`API_KEY = "..."`), which is what configuration
+looks like and almost never what *tool output* looks like: a `curl -v` trace, an
+error quoting an `Authorization` header, a sentence naming a key. Those went
+into the session transcript verbatim.
+
+Worse, where `classify_line` *did* recognise a credential in prose, the answer
+was `redact_line`, which replaces the whole line -- so the redaction destroyed
+the sentence that said where the credential came from. The word-level pass now
+runs first and replaces the credential in place; the line-level pass is the
+fallback for the assignment shape, where the value need not look like anything
+recognisable (`PASSWORD = hunter2` is a secret no shape rule can spot).
+
+The renderer reaches it through a new `secrets_redact` command rather than a
+TypeScript reimplementation. Two copies of a matching rule drift the first time
+either is extended, and the copy that drifts is the one wearing the name.
+
+**No fallback to the original.** When redaction cannot be confirmed -- the call
+threw, or returned something that is not a string -- the text is withheld, not
+stored. A fallback that persists the input on error persists exactly what this
+exists to remove, on the branch least likely to be exercised.
+
+One gate in the thread route: every `addToolOutput` call site goes through
+`persistToolOutput`, and none bypasses it. The route test is mutation-checked --
+replacing `redactDeep(part.output)` with `part.output` fails it, and it mocks
+only the IPC hop, not the redaction module, so it fails if the route ever stops
+routing output through it.
+
+Evidence: 16 secrets tests (including one asserting ordinary build output comes
+back byte-identical -- a redactor that eats normal text is one people switch
+off), 10 wiring tests, 1 route test. 687 plugin tests pass.
+
+Registry: AH-045 `in-progress` to `implemented` (86/36/88). Not `verified`: no
+test covers the generic cancellation criterion here, and MCP output is redacted
+at the renderer boundary rather than inside the MCP client.
+
+## 2026-09-10 — AH-041: trust an MCP server, not a tool name
+
+The registry said server trust lived in "renderer localStorage". Half stale:
+`useToolApproval` persists through `backendStorage`, which writes Jan's
+`settings.json`. The part that mattered was still true — the *decision* was made
+in the renderer and `call_tool` checked nothing at all.
+
+The acceptance criterion names the real problem: **policy keys on the MCP server
+identity, not on a tool name a server can choose.** A tool name is published by
+whoever wants to publish it, and `call_tool` with no `server_name` answers from
+whichever connected server the search reaches first. So "trust `fetch`" is
+"trust whoever got there first", and a second server can publish `fetch` and
+inherit an answer the user gave about a different one.
+
+`mcp_trust` (in the plugin crate, so its tests actually run on this host)
+records trust per server, persisted with an atomic rename — a truncated trust
+file reads as "nothing is trusted", which would re-prompt for every server the
+user had already answered for. `call_tool` checks it **against the server the
+tool was resolved on**, not the name the request carried, and checks it *before*
+the arguments go out: a refusal that has already sent them has refused nothing.
+
+"Allow once" is a single-use, short-lived ticket, never written to disk. An
+answer of "just this once" that survived a restart would be a standing
+permission nobody granted. A ticket is spent even when it does not match, so it
+cannot be retried against server after server until one accepts it.
+
+**Where it was put matters.** The first version of this module went in the main
+crate, next to the MCP client. Its tests compiled and could not run — the `Jan`
+lib test binary exits 0xc0000139 on this host. Moved to the plugin crate, whose
+suite does run, and all 11 execute here. Policy belongs next to the rest of the
+gate anyway.
+
+**Scope, stated rather than implied.** This moves the persisted decision into
+the backend and makes every call carry a backend-issued authorization. It is not
+a defence against the renderer: the renderer is what asks the user, and it can
+mint a ticket whenever it likes. What it stops is a server becoming trusted
+without a recorded decision, a tool name standing in for a server identity, and
+an "allow once" quietly becoming permanent.
+
+Evidence: 11 unit tests, 1 route test (the call carries a backend-issued ticket
+for the resolved server), 1 hook test (an "always" answer reaches the backend,
+not just renderer state). 698 plugin tests pass.
+
+Registry: AH-041 `in-progress` to `implemented` (87/35/88). Not `verified`: no
+cancellation test on this path, and the Cowork/CLI path keeps its own separate
+MCP gate (`SessionGrants::covers_mcp`) rather than sharing this one — worth
+unifying, and deliberately not attempted in the same change as the gate itself.
+
+## 2026-09-10 — AH-037: an exec grant means the command that was shown
+
+`grant_command` recorded the *base commands* a shell string ran. So "allow
+always" on `git status` granted `git`, and `git push` ran unprompted for the
+rest of the session: the user was shown a question about reading and taken to
+have answered one about publishing. Approving a compound was worse — `git status
+&& rm foo` granted `rm`, so `rm bar` ran without a prompt, and the user had
+never seen `rm bar`.
+
+A grant is now the exact normalized command. Re-running the same command spelled
+with different spacing is the same command; a changed flag, path or order is a
+new decision. That closes the composition routes by construction rather than by
+enumerating them: `&&`, `|`, `;` and `$(...)` all build a string nobody
+approved.
+
+**Desktop was never affected, and that was checked rather than assumed.** `bash`
+is in `AGENT_TOOL_NAMES`, so the renderer auto-allows it and Rust gates it; the
+renderer's per-thread approval is keyed on tool name and would otherwise have
+been a worse instance of the same defect (approve one `bash` call, get every
+`bash` call in the thread). It does not apply here. The grant lives on the
+CLI/Cowork path, which is what changed.
+
+Two existing tests asserted the old behaviour — `exec_grant_is_scoped_to_base_command`
+asserted that `git push` *was* allowed after approving `git status`. They were
+rewritten to the narrowed intent, keeping a comment about what they used to
+claim, rather than quietly flipped or deleted.
+
+Registry: AH-037 `in-progress` to `implemented` (88/34/88). Not `verified`: no
+cancellation test on this path, and `cowork-smoke` does not drive the CLI prompt
+flow, so there is no WebView scenario for it.
+
+## 2026-09-10 — AH-078: why six designs failed, measured rather than guessed
+
+The instruction was to stop designing and instrument `mutateLive` and
+`commitTurns` in the running app. Doing that answered it in one run.
+
+A probe recording every write to the live turn lane — where, length before and
+after, and how many rows carried a snapshot — printed this for a real dispatch:
+
+```text
+mutateLive    len 1→1   carrying 0→0     <- the sink fires here
+pushLive      len 1→2   carrying 0→0     <- the assistant row is created here
+settleFilter  len 2→1   carrying 0→0
+pushLive      len 1→2   carrying 0→0
+```
+
+**The write never attached at all.** `lengthBefore: 1` at the sink is the whole
+finding: when a snapshot is taken the lane holds the *user* turn and nothing
+else. The assistant row does not exist yet. Every design so far wrote the
+reference from the sink onto "the last assistant turn", so every one of them
+searched an array with no assistant turn in it, found nothing, and returned the
+array unchanged. Nothing was lost between the ends, because nothing was ever
+written.
+
+They all passed vitest because a unit test hands the mutation an array that
+already contains an assistant row. The app never does.
+
+**One correction on the way.** The first probe watched `t.snapshot`; the field
+is `promptSnapshot`, so its `carrying` counts were meaningless and only the
+sequence was real. Re-run against the right field, with the attach moved to
+where the row is born:
+
+```text
+pushLive      len 1→2   carrying 0→1     <- optimistic row stamped
+settleFilter  len 2→1   carrying 1→0     <- that row is dropped
+pushLive      len 1→2   carrying 0→1     <- settled row stamped, and survives
+```
+
+**The fix is one map in `pushLive`**: stamp `promptSnapshot` onto an assistant
+row as it is added, from `lastSnapshotRef.current` — the dispatch that just went
+out. Everything downstream was already built and waiting: `coworkTurns.ts`
+emits a `data-prompt-snapshot` part for any turn carrying one. Only the attach
+was in the wrong place.
+
+The render prefers the message's own part and keeps the positional map as a
+fallback for turns already on disk, written before rows carried one.
+
+**Verified in the app, twice.** `cowork-smoke --only prompt-snapshot-panel`
+passes — but it passed with ordinal matching too, so that alone proves nothing.
+The mutation check is the evidence: with the positional fallback disabled
+entirely, the panel still renders. The per-turn reference is doing the work.
+
+That closes the open criterion — a continuation, a retry and a compaction each
+carry their own snapshot, which position cannot express.
+
+## Use `yarn typecheck`, not `tsc --noEmit -p tsconfig.json`
+
+`f318081` was pushed with a broken production build. `tsc --noEmit -p
+tsconfig.json` passed; `yarn build:web` did not, because a base-class stub in
+`services/mcp/default.ts` took no parameters while the desktop override took
+two. The repo typechecks with `tsc -b` (project references), which is what
+`yarn typecheck` runs and what catches that. Fixed in the next commit. Use
+`yarn typecheck` and `yarn build:web` before claiming either.
+
+## 2026-09-10 — Batch A: staged patches (AH-146, AH-148 implemented; AH-147 in progress)
+
+**The defect AH-148 names was live.** The Rust agent loop computes the diff
+preview when it shows a permission prompt, then waits — for as long as the
+person takes — and then calls `execute_builtin_with_diff` against whatever is on
+disk *by then*. For `write` that meant an approval given against one version of
+a file silently overwrote whatever an editor, a formatter or another agent had
+written in the meantime. The person approved a change; they were not shown the
+change that happened.
+
+`patch::StagedPatch` holds the change as hunks plus a `BaseStamp` (FNV-1a hash
+and length) of the content it was computed from. The loop stages when it asks,
+keeps the stage until the answer arrives, and re-stamps the file before acting.
+If it moved — changed, created or deleted underneath — the call is refused with
+a message saying nothing was written, and nothing is. Refuse, not merge: a merge
+would produce a file nobody reviewed.
+
+**AH-146.** The prompt event gains `patch: Option<PatchView>` beside the text
+diff: hunks with 1-based ranges, removed and added lines, and the base stamp.
+Hunks are maximal runs of changed lines with no context merged in, so two
+unrelated edits are two decisions. The replacement loop moved out of `edit`
+into `apply_edits`, which both `edit` and staging call — one answer to "what
+will this edit do", with a test asserting the written file equals the staged
+proposal.
+
+**AH-147 is not done, and the registry says so.** `StagedPatch::select` is
+built and tested — rejected hunks leave the base untouched, an unknown hunk is
+refused — but no person can yet choose hunks: `PermissionDecision` carries no
+selection and the TUI prompt has no per-hunk controls. Moved from `missing` to
+`in-progress` with that named as the gap. Next: `AllowSome(Vec<usize>)`, TUI
+toggles, and the execution path writing `select(accepted)` after the base check.
+
+**Where this applies.** The prompted path of the Rust agent loop — the CLI/TUI,
+and Cowork runs that prompt. The desktop's renderer-driven built-in tools never
+prompt (they are gated in Rust and refused rather than asked), so there is no
+approval window there to guard.
+
+Also corrected: the `SessionGrants` doc comment still described exec grants as
+per base command, contradicting the AH-037 change. Rewritten.
+
+Evidence: 12 patch tests, 3 handler integration tests; 713 plugin tests pass.
+The loop wiring compiles on default, `cowork-smoke` and `cli`, and is not
+executed here (the `Jan` lib test binary blocker). Registry: AH-146 and AH-148
+`implemented`, AH-147 `in-progress`.
+
+## The `cli` build was broken from `3c501f8` to this commit
+
+The merge that reconciled AH-007 with `fork/main` left three
+`agent_name: None` literals — this branch's pre-merge field, removed from
+`OrchestrationArgs` in favour of upstream's `subject` — in code compiled only
+under `--features cli`: `core/cli/mod.rs`, `core/cli/tui.rs`, and a
+`#[cfg(feature = "cli")]` test helper in `core/agent/subagent.rs`. The
+post-merge dedupe checked `loop.rs` and the default build, never the `cli`
+build, so it went out green-looking and was not.
+
+It surfaced here because Batch A's new `patch` field also had to reach four
+cli-only test constructors in `tui.rs`, which meant running
+`cargo check --tests --no-default-features --features cli` for the first time
+since the merge. Both are fixed in this commit.
+
+The rule this adds to the one about `yarn typecheck`: a change to a shared
+struct is checked on **all three** configurations — default,
+`--features cowork-smoke`, and `--no-default-features --features cli`, each with
+`--tests` — before it is called compiled. Checking one and inferring the others
+is how both this and `f318081` shipped broken.

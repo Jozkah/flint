@@ -217,15 +217,20 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-006"
       ],
       "owner": "lane-01-architecture-registry",
       "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/subject.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/permissions.rs",
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/resource.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/gate.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/subagent.rs"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -237,10 +242,20 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::permissions::subject_rules::a_subject_qualified_rule_does_not_bind_another_subject",
+        "tauri-plugin-agent-tools::permissions::subject_rules::a_deny_for_one_agent_does_not_deny_the_others",
+        "tauri-plugin-agent-tools::permissions::subject_rules::an_allow_for_one_agent_does_not_allow_the_others",
+        "tauri-plugin-agent-tools::permissions::subject_rules::a_subagent_allow_cannot_escape_a_blanket_deny",
+        "tauri-plugin-agent-tools::permissions::subject_rules::an_unqualified_rule_still_covers_everyone",
+        "tauri-plugin-agent-tools::permissions::subject_rules::the_other_subject_kinds_are_matched_too",
+        "tauri-plugin-agent-tools::permissions::subject_rules::a_rule_about_one_subagent_hides_the_tool_from_that_subagent_only",
+        "tauri-plugin-agent-tools::permissions::subject_rules::an_unqualified_deny_still_binds_every_subject",
+        "Jan::core::agent::loop::tests::a_rule_naming_a_subagent_binds_that_subagent_and_nobody_else"
+      ],
       "platformRequirements": [],
-      "blockedReason": "Capability and canonical resource are modelled and enforced through one gate on both surfaces, and the desktop now loads the project's real policy. Still missing the subject half: rules cannot name which agent or session they apply to, so a subagent is bound by the same rules as its parent and no narrower.",
-      "auditNote": "Capability and canonical resource are modelled and enforced through one gate on both surfaces, and the desktop now loads the project's real policy. Still missing the subject half: rules cannot name which agent or session they apply to, so a subagent is bound by the same rules as its parent and no narrower."
+      "blockedReason": "Subject, capability and canonical resource are all matched, and all three reach production. `resolve_decision` takes the subject; `is_denied`/`is_allowed`/`advertises_mcp` take it too, so a rule naming one subagent no longer removes the tool from every agent's advertised toolset; `intersect_allowed_tools` reads the parent's rules for the child by the name it is dispatched under. A run's subject is decided once in `orchestrate_inner` from `OrchestrationArgs::agent_name`, which `run_subagent` sets on the child's cloned args, so the advertising pass, the MCP prune and the dispatcher cannot disagree about who is asking. An unqualified rule still covers every subject; an unknown subject matches no rule and is permitted by none. Documented in AGENT_HARNESS_ARCHITECTURE.md (AHD-005) and AGENT_HARNESS_VERIFICATION.md. Not `verified`: the generic cancellation criterion has no test on this path, and the dispatcher-level test in loop.rs is compiled but unexecuted on this host because the `Jan` lib test binary exits 0xc0000139 (STATUS_ENTRYPOINT_NOT_FOUND) before the harness starts, for tests untouched by this work as well. Recorded under Known blockers.",
+      "auditNote": "Subject, capability and canonical resource are all matched, and all three reach production. `resolve_decision` takes the subject; `is_denied`/`is_allowed`/`advertises_mcp` take it too, so a rule naming one subagent no longer removes the tool from every agent's advertised toolset; `intersect_allowed_tools` reads the parent's rules for the child by the name it is dispatched under. A run's subject is decided once in `orchestrate_inner` from `OrchestrationArgs::agent_name`, which `run_subagent` sets on the child's cloned args, so the advertising pass, the MCP prune and the dispatcher cannot disagree about who is asking. An unqualified rule still covers every subject; an unknown subject matches no rule and is permitted by none. Documented in AGENT_HARNESS_ARCHITECTURE.md (AHD-005) and AGENT_HARNESS_VERIFICATION.md. Not `verified`: the generic cancellation criterion has no test on this path, and the dispatcher-level test in loop.rs is compiled but unexecuted on this host because the `Jan` lib test binary exits 0xc0000139 (STATUS_ENTRYPOINT_NOT_FOUND) before the harness starts, for tests untouched by this work as well. Recorded under Known blockers."
     },
     {
       "id": "AH-008",
@@ -1172,7 +1187,7 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-034"
@@ -1192,10 +1207,15 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::tools::gate::tests::exec_grant_is_scoped_to_the_exact_command",
+        "tauri-plugin-agent-tools::tools::gate::tests::approving_a_compound_covers_that_compound_and_not_its_parts",
+        "tauri-plugin-agent-tools::tools::gate::tests::granting_git_does_not_allow_rm_hidden_in_a_compound",
+        "tauri-plugin-agent-tools::tools::gate::tests::opaque_commands_match_only_their_exact_grant"
+      ],
       "platformRequirements": [],
-      "blockedReason": "Per-command rules work (bash(git:force-push), bash(rm)), but interactive grants are still per base command, so approving `git status` still covers `git push` for the session.",
-      "auditNote": "Per-command rules work (bash(git:force-push), bash(rm)), but interactive grants are still per base command, so approving `git status` still covers `git push` for the session."
+      "blockedReason": "Per-command rules (bash(git:force-push), bash(rm)) already worked; the interactive grant did not. grant_command recorded the base commands a string ran, so approving `git status` granted `git` and covered `git push` for the session, and approving a compound handed over every base inside it -- `git status && rm foo` granted `rm`, so `rm bar` ran unprompted. A grant is now the exact normalized command the user was shown: same command with different spacing is covered, a changed flag, path or order is a new decision. That also closes the composition routes by construction, since `&&`, `|`, `;` and `$(...)` all produce a string that was never approved. Desktop was checked and was never affected: `bash` is in AGENT_TOOL_NAMES, so it is auto-allowed in the renderer and gated in Rust, and the renderer per-thread approval (keyed on tool name) never covers it. The change is on the CLI/Cowork path, where the grant lives. Two pre-existing tests asserted the old behaviour and were rewritten to the new intent rather than deleted, with comments saying what they used to claim. Not `verified`: no cancellation test on this path, and no WebView scenario -- the CLI prompt flow is not driven by cowork-smoke.",
+      "auditNote": "Per-command rules (bash(git:force-push), bash(rm)) already worked; the interactive grant did not. grant_command recorded the base commands a string ran, so approving `git status` granted `git` and covered `git push` for the session, and approving a compound handed over every base inside it -- `git status && rm foo` granted `rm`, so `rm bar` ran unprompted. A grant is now the exact normalized command the user was shown: same command with different spacing is covered, a changed flag, path or order is a new decision. That also closes the composition routes by construction, since `&&`, `|`, `;` and `$(...)` all produce a string that was never approved. Desktop was checked and was never affected: `bash` is in AGENT_TOOL_NAMES, so it is auto-allowed in the renderer and gated in Rust, and the renderer per-thread approval (keyed on tool name) never covers it. The change is on the CLI/Cowork path, where the grant lives. Two pre-existing tests asserted the old behaviour and were rewritten to the new intent rather than deleted, with comments saying what they used to claim. Not `verified`: no cancellation test on this path, and no WebView scenario -- the CLI prompt flow is not driven by cowork-smoke."
     },
     {
       "id": "AH-038",
@@ -1305,15 +1325,18 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-007"
       ],
       "owner": "lane-03-permission-security",
       "files": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/permissions.rs",
-        "src-tauri/src/core/agent/loop.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/mcp_trust.rs",
+        "src-tauri/src/core/mcp/commands.rs",
+        "web-app/src/services/mcp/tauri.ts",
+        "web-app/src/hooks/useToolApprovalRequests.ts",
+        "web-app/src/routes/threads/$threadId.tsx"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -1325,10 +1348,20 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::mcp_trust::tests::trusting_one_server_does_not_trust_another_offering_the_same_tool_name",
+        "tauri-plugin-agent-tools::mcp_trust::tests::a_ticket_authorizes_exactly_one_call",
+        "tauri-plugin-agent-tools::mcp_trust::tests::a_ticket_does_not_travel_to_another_server_or_another_tool",
+        "tauri-plugin-agent-tools::mcp_trust::tests::an_invented_ticket_authorizes_nothing",
+        "tauri-plugin-agent-tools::mcp_trust::tests::a_ticket_is_never_written_to_disk",
+        "tauri-plugin-agent-tools::mcp_trust::tests::trust_survives_a_restart",
+        "tauri-plugin-agent-tools::mcp_trust::tests::an_unreadable_trust_file_trusts_nothing",
+        "web-app/src/routes/threads/__tests__/$threadId.test.tsx::authorizes an MCP call with a ticket the backend issued",
+        "web-app/src/hooks/__tests__/useToolApprovalRequests.test.ts::records an allow-always server with the backend"
+      ],
       "platformRequirements": [],
-      "blockedReason": "MCP tools are gated by name through the same rules, but server-level trust still lives in renderer localStorage rather than in the Rust gate.",
-      "auditNote": "MCP tools are gated by name through the same rules, but server-level trust still lives in renderer localStorage rather than in the Rust gate."
+      "blockedReason": "Trust keys on the MCP server, never on a tool name: a tool name is chosen by whoever publishes it, so two servers can both publish `fetch` and a call naming no server is answered by whichever the search reaches first. `mcp_trust` holds the per-server record, persisted to <jan_data>/mcp-trust.json with an atomic rename, and `call_tool` checks it against the server the tool was resolved on, before the arguments are sent. An \"allow once\" answer is a single-use, short-lived ticket that is never written to disk, so it cannot become a standing permission; a ticket is spent even when it does not match, so it cannot be retried against another server. An unreadable trust file trusts nothing. Scope: this moves the persisted decision into the backend and makes every call carry a backend-issued authorization. It is not a defence against the renderer, which is the thing that asks the user and can mint a ticket. Not `verified`: no test covers the generic cancellation criterion, and the Cowork/CLI path keeps its own separate MCP gate (SessionGrants::covers_mcp) rather than sharing this one.",
+      "auditNote": "Trust keys on the MCP server, never on a tool name: a tool name is chosen by whoever publishes it, so two servers can both publish `fetch` and a call naming no server is answered by whichever the search reaches first. `mcp_trust` holds the per-server record, persisted to <jan_data>/mcp-trust.json with an atomic rename, and `call_tool` checks it against the server the tool was resolved on, before the arguments are sent. An \"allow once\" answer is a single-use, short-lived ticket that is never written to disk, so it cannot become a standing permission; a ticket is spent even when it does not match, so it cannot be retried against another server. An unreadable trust file trusts nothing. Scope: this moves the persisted decision into the backend and makes every call carry a backend-issued authorization. It is not a defence against the renderer, which is the thing that asks the user and can mint a ticket. Not `verified`: no test covers the generic cancellation criterion, and the Cowork/CLI path keeps its own separate MCP gate (SessionGrants::covers_mcp) rather than sharing this one."
     },
     {
       "id": "AH-042",
@@ -1437,13 +1470,18 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-044"
       ],
       "owner": "lane-03-permission-security",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/secrets.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "web-app/src/lib/redactToolOutput.ts",
+        "web-app/src/routes/threads/$threadId.tsx"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "Secrets that do enter tool output are redacted before they reach logs, journals or the model.",
@@ -1454,10 +1492,18 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::secrets::tests::a_credential_in_prose_is_redacted",
+        "tauri-plugin-agent-tools::secrets::tests::an_authorization_header_in_output_is_redacted",
+        "tauri-plugin-agent-tools::secrets::tests::a_jwt_in_output_is_redacted",
+        "tauri-plugin-agent-tools::secrets::tests::every_credential_on_a_line_is_replaced_not_just_the_first",
+        "tauri-plugin-agent-tools::secrets::tests::ordinary_output_is_left_exactly_as_it_was",
+        "web-app/src/lib/__tests__/redactToolOutput.test.ts",
+        "web-app/src/routes/threads/__tests__/$threadId.test.tsx::never persists a credential a tool printed"
+      ],
       "platformRequirements": [],
-      "blockedReason": "audit, activity and snapshot records redact before writing, and secrets::redact_secrets exists for the shape-based cases. Tool output persisted into the session transcript by the renderer does not yet pass through it.",
-      "auditNote": "audit, activity and snapshot records redact before writing, and secrets::redact_secrets exists for the shape-based cases. Tool output persisted into the session transcript by the renderer does not yet pass through it."
+      "blockedReason": "Tool output the renderer persists into a thread now passes through `secrets::redact_secrets` via the `secrets_redact` command, at a single gate in the thread route -- every `addToolOutput` call site goes through it and none bypasses it. `redact_secrets` gained the word-level pass it was missing: it previously only recognised the assignment shape, so a credential in prose (a `curl -v` trace, an error quoting an `Authorization` header) was written verbatim, and when `classify_line` did recognise one the whole line was replaced, losing the sentence saying where it came from. Word-level replacement now runs first and the line-level pass is the fallback for values with no recognisable shape. Failure withholds the text rather than storing it raw, including when the call returns a non-string. The route test is mutation-checked: removing the redaction call fails it. Not `verified`: no test covers the generic cancellation criterion on this path, and redaction of MCP output happens at the renderer boundary rather than inside the MCP client, so a future second consumer of that client would need its own gate.",
+      "auditNote": "Tool output the renderer persists into a thread now passes through `secrets::redact_secrets` via the `secrets_redact` command, at a single gate in the thread route -- every `addToolOutput` call site goes through it and none bypasses it. `redact_secrets` gained the word-level pass it was missing: it previously only recognised the assignment shape, so a credential in prose (a `curl -v` trace, an error quoting an `Authorization` header) was written verbatim, and when `classify_line` did recognise one the whole line was replaced, losing the sentence saying where it came from. Word-level replacement now runs first and the line-level pass is the fallback for values with no recognisable shape. Failure withholds the text rather than storing it raw, including when the call returns a non-string. The route test is mutation-checked: removing the redaction call fails it. Not `verified`: no test covers the generic cancellation criterion on this path, and redaction of MCP output happens at the renderer boundary rather than inside the MCP client, so a future second consumer of that client would need its own gate."
     },
     {
       "id": "AH-046",
@@ -2378,7 +2424,7 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-010"
@@ -2402,8 +2448,8 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/snapshot.rs::tests"
       ],
       "platformRequirements": [],
-      "blockedReason": "The UI associates a snapshot with an assistant message by ordinal position, not by the invocation id the record now carries, so a turn holding a continuation, retry or compaction shows at most one panel and can show the wrong one. Capture, storage, scoped retrieval and the panel itself are verified by smoke; only the association is outstanding.",
-      "auditNote": "The snapshot is taken in HttpModelInvoker::invoke from `normalized` -- the exact serialized request, after context construction and after the model id is rewritten, at the last point before dispatch. Not reconstructed from earlier state. It carries schema version, stable id, RFC3339 UTC timestamp, session, run, thread, agent, provider, model, reasoning configuration, the redacted payload, its hash, and the redaction list; message count, tool names and system prompt are derived from the payload rather than stored twice. Redaction runs while the record is built, walks the whole document (a credential in a nested tool argument leaks as surely as one in a header), matches credential fields by name because an auth header's value is opaque, and still applies the value-shaped pass to free text for an env line pasted into a prompt. Each removal records its path and reason, so an empty field is distinguishable from a redacted one. The hash is FNV-1a over a canonical key-sorted serialization of the *redacted* payload: identical payloads hash identically however built, any change to a retry produces a different hash, and a reader can verify the record against its own hash. Storage is append-only JSONL at <jan_data>/audit/prompts.jsonl, flushed per record, with a reader that drops an unparseable line so a truncated tail costs one record. Lookup by id, run and session. A snapshot that cannot be taken is recorded as explicitly unavailable with its reason and identity intact. StreamEvent::PromptSnapshot carries id, hash and redaction count to the activity timeline, never the payload. Guards mutation-checked: removing redaction, and making the hash ignore its input, each turn the relevant tests red. NOT YET IMPLEMENTED, which is why this is in-progress rather than implemented: the UI action to inspect a snapshot is not built; the event and the lookup functions exist for it.",
+      "blockedReason": "The snapshot is taken in HttpModelInvoker::invoke from `normalized` -- the exact serialized request, after context construction and after the model id is rewritten, at the last point before dispatch. Not reconstructed from earlier state. It carries schema version, stable id, RFC3339 UTC timestamp, session, run, thread, agent, provider, model, reasoning configuration, the redacted payload, its hash, and the redaction list; message count, tool names and system prompt are derived from the payload rather than stored twice. Redaction runs while the record is built, walks the whole document (a credential in a nested tool argument leaks as surely as one in a header), matches credential fields by name because an auth header's value is opaque, and still applies the value-shaped pass to free text for an env line pasted into a prompt. Each removal records its path and reason, so an empty field is distinguishable from a redacted one. The hash is FNV-1a over a canonical key-sorted serialization of the *redacted* payload: identical payloads hash identically however built, any change to a retry produces a different hash, and a reader can verify the record against its own hash. Storage is append-only JSONL at <jan_data>/audit/prompts.jsonl, flushed per record, with a reader that drops an unparseable line so a truncated tail costs one record. Lookup by id, run and session. A snapshot that cannot be taken is recorded as explicitly unavailable with its reason and identity intact. StreamEvent::PromptSnapshot carries id, hash and redaction count to the activity timeline, never the payload. Guards mutation-checked: removing redaction, and making the hash ignore its input, each turn the relevant tests red. The viewer is built (PromptSnapshotView, verified by cowork-smoke --only prompt-snapshot-panel), and a snapshot is now bound to the assistant turn that produced it rather than matched by position. Six earlier designs wrote the reference from the snapshot sink onto 'the last assistant turn'; instrumenting the live turn lane in the running app showed the lane holds only the user turn at dispatch time, so there was no assistant row to write onto and every one of those writes silently did nothing -- while passing in vitest, which hands the mutation an array that already contains one. The attach happens in pushLive, where the row is created, from the dispatch that just went out; coworkTurns.ts already emitted a data-prompt-snapshot part for any turn carrying one, so nothing downstream needed changing. The render prefers the message's own part and keeps positional matching as a fallback for turns written to disk before rows carried one. Proven by mutation in the real WebView: with the positional fallback disabled entirely the panel still renders, so the per-turn reference is what carries it. A continuation, a retry and a compaction each carry their own snapshot, which is what position could not express.",
+      "auditNote": "The snapshot is taken in HttpModelInvoker::invoke from `normalized` -- the exact serialized request, after context construction and after the model id is rewritten, at the last point before dispatch. Not reconstructed from earlier state. It carries schema version, stable id, RFC3339 UTC timestamp, session, run, thread, agent, provider, model, reasoning configuration, the redacted payload, its hash, and the redaction list; message count, tool names and system prompt are derived from the payload rather than stored twice. Redaction runs while the record is built, walks the whole document (a credential in a nested tool argument leaks as surely as one in a header), matches credential fields by name because an auth header's value is opaque, and still applies the value-shaped pass to free text for an env line pasted into a prompt. Each removal records its path and reason, so an empty field is distinguishable from a redacted one. The hash is FNV-1a over a canonical key-sorted serialization of the *redacted* payload: identical payloads hash identically however built, any change to a retry produces a different hash, and a reader can verify the record against its own hash. Storage is append-only JSONL at <jan_data>/audit/prompts.jsonl, flushed per record, with a reader that drops an unparseable line so a truncated tail costs one record. Lookup by id, run and session. A snapshot that cannot be taken is recorded as explicitly unavailable with its reason and identity intact. StreamEvent::PromptSnapshot carries id, hash and redaction count to the activity timeline, never the payload. Guards mutation-checked: removing redaction, and making the hash ignore its input, each turn the relevant tests red. The viewer is built (PromptSnapshotView, verified by cowork-smoke --only prompt-snapshot-panel), and a snapshot is now bound to the assistant turn that produced it rather than matched by position. Six earlier designs wrote the reference from the snapshot sink onto 'the last assistant turn'; instrumenting the live turn lane in the running app showed the lane holds only the user turn at dispatch time, so there was no assistant row to write onto and every one of those writes silently did nothing -- while passing in vitest, which hands the mutation an array that already contains one. The attach happens in pushLive, where the row is created, from the dispatch that just went out; coworkTurns.ts already emitted a data-prompt-snapshot part for any turn carrying one, so nothing downstream needed changing. The render prefers the message's own part and keeps positional matching as a fallback for turns written to disk before rows carried one. Proven by mutation in the real WebView: with the positional fallback disabled entirely the panel still renders, so the per-turn reference is what carries it. A continuation, a retry and a compaction each carry their own snapshot, which is what position could not express.",
       "evidence": "Captured in core/net/transport.rs::capture_snapshot, at the last point before a provider request leaves the process -- the one path every OpenAI-compatible request takes -- from the exact serialized body that is dispatched. Redacted before it is written; FNV-1a hash over the canonical key-sorted redacted payload; append-only JSONL at <jan_data>/audit/prompts.jsonl. Retrieval is scoped: an id alone is refused, and an unscoped list is refused (agent_prompt_snapshots -> snapshot::scoped_lookup). The reference reaches the timeline through the transport's head chunk and a session-keyed store, and the Nth dispatch renders under the Nth assistant message, so a snapshot sits with its own invocation. Smoke: prompt-snapshot-panel (performs a real model request over http://v100:8080/v1, asserts the dispatch was recorded on disk, opens the panel, checks provider/model/session/hash/redactions, switches tree and JSON views, and asserts no credential appears) and prompt-snapshot-cross-session-refused (a snapshot id with another session's scope returns nothing; an unscoped list errors)."
     },
     {
@@ -4396,13 +4442,16 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-048"
       ],
       "owner": "lane-08-git-pr-workflows",
       "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/patch.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/src/core/agent/loop.rs",
         "src-tauri/src/core/agent/events.rs"
       ],
       "securityImpact": "medium",
@@ -4413,10 +4462,15 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::patch::tests::separate_changes_are_separate_hunks",
+        "tauri-plugin-agent-tools::patch::tests::the_view_carries_the_base_it_was_computed_against",
+        "tauri-plugin-agent-tools::tools::handlers::tests::an_edit_is_staged_by_the_same_code_that_applies_it",
+        "tauri-plugin-agent-tools::tools::handlers::tests::nothing_is_staged_for_a_change_that_changes_nothing_or_an_invalid_edit"
+      ],
       "platformRequirements": [],
-      "blockedReason": null,
-      "auditNote": "The approval event carries a whole-change diff; there is no reviewable staged patch."
+      "blockedReason": "Every prompted write/edit carries the change twice: the existing numbered text diff for reading, and now a PatchView -- the hunks with 1-based line ranges, removed and added lines, and the base stamp they were computed against -- on StreamEvent::PermissionRequest.patch. Hunks are maximal runs of changed lines with no context merged in, so two unrelated edits are two hunks. The staged change is produced by the same apply_edits function `edit` uses to write, so what is reviewed is what is written; a test asserts the written file equals the staged proposal. Not `verified`: the TUI still renders the text diff and does not yet present hunks individually (that is AH-147), and there is no cancellation test on this path.",
+      "auditNote": "Every prompted write/edit carries the change twice: the existing numbered text diff for reading, and now a PatchView -- the hunks with 1-based line ranges, removed and added lines, and the base stamp they were computed against -- on StreamEvent::PermissionRequest.patch. Hunks are maximal runs of changed lines with no context merged in, so two unrelated edits are two hunks. The staged change is produced by the same apply_edits function `edit` uses to write, so what is reviewed is what is written; a test asserts the written file equals the staged proposal. Not `verified`: the TUI still renders the text diff and does not yet present hunks individually (that is AH-147), and there is no cancellation test on this path."
     },
     {
       "id": "AH-147",
@@ -4424,13 +4478,15 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P1",
       "dependencies": [
         "AH-146"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/patch.rs"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "A user can accept or reject individual hunks of a proposed change.",
@@ -4440,9 +4496,15 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::patch::tests::selecting_everything_is_the_proposal_and_nothing_is_the_base",
+        "tauri-plugin-agent-tools::patch::tests::a_rejected_hunk_leaves_the_base_lines_untouched",
+        "tauri-plugin-agent-tools::patch::tests::a_selection_naming_a_hunk_that_does_not_exist_is_refused",
+        "tauri-plugin-agent-tools::patch::tests::insertions_and_deletions_are_hunks_too"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": "The selection itself is built and tested: StagedPatch::select rebuilds the file from the base with only the accepted hunks applied, a rejected hunk leaves the base lines exactly as they were, and a selection naming a hunk that does not exist is refused rather than ignored. MISSING, and the reason this is not implemented: no user can yet accept or reject an individual hunk. PermissionDecision is AllowOnce / AllowAlways / Deny with no selection, and the TUI prompt has no per-hunk controls. The next step is a selection-carrying decision (AllowSome(Vec<usize>)), the TUI toggles, and the execution path writing StagedPatch::select(accepted) after the base check.",
+      "auditNote": "The selection itself is built and tested: StagedPatch::select rebuilds the file from the base with only the accepted hunks applied, a rejected hunk leaves the base lines exactly as they were, and a selection naming a hunk that does not exist is refused rather than ignored. MISSING, and the reason this is not implemented: no user can yet accept or reject an individual hunk. PermissionDecision is AllowOnce / AllowAlways / Deny with no selection, and the TUI prompt has no per-hunk controls. The next step is a selection-carrying decision (AllowSome(Vec<usize>)), the TUI toggles, and the execution path writing StagedPatch::select(accepted) after the base check."
     },
     {
       "id": "AH-148",
@@ -4450,13 +4512,18 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-147"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/patch.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/events.rs"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "Applying a patch onto changed content fails loudly instead of clobbering.",
@@ -4466,9 +4533,15 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::patch::tests::a_changed_base_is_refused",
+        "tauri-plugin-agent-tools::patch::tests::a_file_created_or_deleted_underneath_is_refused",
+        "tauri-plugin-agent-tools::patch::tests::the_refusal_says_nothing_was_written",
+        "tauri-plugin-agent-tools::tools::handlers::tests::a_file_changed_after_staging_is_caught_before_it_is_written"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": "A write or edit is staged against the file as it is when the permission prompt is shown (StagedPatch, with a BaseStamp of that content), and the stage is kept until the answer comes back. Before an approval is acted on, the file is re-stamped; if it is no longer the content the prompt was about -- changed, created or deleted underneath -- the call is refused with a message saying nothing was written, and nothing is. Before this, a `write` approved against one version of a file silently overwrote whatever was there by the time the answer arrived. A refusal, not a merge: the model re-reads and proposes against what is actually there. Applies to the prompted path in the Rust agent loop (CLI/TUI and Cowork runs that prompt). Auto-approved calls have no approval window to guard. Not `verified`: the dispatcher wiring in loop.rs is compile-checked only, because the `Jan` lib test binary does not start on this host (0xc0000139); the staging and base check themselves are tested in the plugin, which does run.",
+      "auditNote": "A write or edit is staged against the file as it is when the permission prompt is shown (StagedPatch, with a BaseStamp of that content), and the stage is kept until the answer comes back. Before an approval is acted on, the file is re-stamped; if it is no longer the content the prompt was about -- changed, created or deleted underneath -- the call is refused with a message saying nothing was written, and nothing is. Before this, a `write` approved against one version of a file silently overwrote whatever was there by the time the answer arrived. A refusal, not a merge: the model re-reads and proposes against what is actually there. Applies to the prompted path in the Rust agent loop (CLI/TUI and Cowork runs that prompt). Auto-approved calls have no approval window to guard. Not `verified`: the dispatcher wiring in loop.rs is compile-checked only, because the `Jan` lib test binary does not start on this host (0xc0000139); the staging and base check themselves are tested in the plugin, which does run."
     },
     {
       "id": "AH-149",

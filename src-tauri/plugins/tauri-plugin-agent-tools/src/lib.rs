@@ -11,6 +11,10 @@
 
 pub mod activity;
 pub mod audit;
+/// Which MCP servers the user has agreed to run tools from (AH-041).
+pub mod mcp_trust;
+/// A proposed change held as reviewable hunks (AH-146/147/148).
+pub mod patch;
 pub mod lifecycle;
 pub mod memory;
 pub mod permissions;
@@ -56,6 +60,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::direct_edit_authorize,
             commands::direct_edit_revoke,
             commands::direct_edit_revoke_session,
+            commands::secrets_redact,
             commands::skill_list,
             commands::skill_read,
             commands::skill_write,
@@ -65,6 +70,8 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             memory::commands::memory_record_edit,
             memory::commands::memory_record_propose,
             memory::commands::memory_record_propose_inferred,
+            memory::commands::memory_proposals_list,
+            memory::commands::memory_proposal_resolve,
             memory::commands::memory_record_commit,
             memory::commands::memory_record_forget,
             memory::commands::memory_record_restore,

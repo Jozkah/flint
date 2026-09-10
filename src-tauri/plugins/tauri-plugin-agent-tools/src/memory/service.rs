@@ -101,7 +101,7 @@ impl Denied {
     }
 }
 
-fn scope_word(scope: Scope) -> &'static str {
+pub(super) fn scope_word(scope: Scope) -> &'static str {
     match scope {
         Scope::Session => "chat",
         Scope::Project => "project",
@@ -164,6 +164,9 @@ impl MemoryView {
                 Status::Conflicted { .. } => "conflicted".to_string(),
                 Status::Expired => "expired".to_string(),
                 Status::Deleted => "deleted".to_string(),
+                // The card keys off this, and off `pendingReason` below, to
+                // show the proposal as a question rather than a memory.
+                Status::Proposed { .. } => "proposed".to_string(),
             },
             pinned: record.pinned,
             redacted: record.redacted,
@@ -236,6 +239,10 @@ pub fn list(
         .records
         .into_iter()
         .filter(|r| access.may_see(r))
+        // A proposal is a question, not a memory. It has its own list and its
+        // own card; showing it here would put something nobody has agreed to
+        // among the things Jan says it remembers.
+        .filter(|r| !matches!(r.status, super::record::Status::Proposed { .. }))
         .filter(|r| match &needle {
             Some(q) => r.content.to_lowercase().contains(q),
             None => true,

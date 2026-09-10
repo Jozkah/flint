@@ -1445,7 +1445,25 @@ function CoworkPage() {
   )
 
   const pushLive = useCallback((turns: CoworkTurn[]) => {
-    liveTurnsRef.current = [...liveTurnsRef.current, ...turns]
+    // AH-078. Bind each assistant row to the dispatch that produced it, here,
+    // because here is where the row first exists.
+    //
+    // Every previous attempt wrote the reference at snapshot time, from the
+    // sink. Instrumenting the live lane in the running app showed why none of
+    // them worked: at dispatch the lane holds the user turn and nothing else,
+    // so there is no assistant row to write onto and the write silently does
+    // nothing. Unit tests missed it because they hand the mutation an array
+    // that already contains one.
+    //
+    // `lastSnapshotRef` is the dispatch that just went out, so a continuation,
+    // a retry and a compaction each carry their own -- which position-based
+    // matching cannot express, and which is the open part of this item.
+    const stamped = turns.map((turn) =>
+      turn.role === 'assistant' && !turn.promptSnapshot && lastSnapshotRef.current
+        ? { ...turn, promptSnapshot: lastSnapshotRef.current }
+        : turn
+    )
+    liveTurnsRef.current = [...liveTurnsRef.current, ...stamped]
     setLiveTurns(liveTurnsRef.current)
   }, [])
 
@@ -2953,7 +2971,19 @@ function CoworkPage() {
                         produced. Collapsed, and it fetches nothing until
                         someone opens it. */}
                         {(() => {
-                          const ref = snapshotByMessageId.get(message.id)
+                          // AH-078. The message's own part first: it was
+                          // stamped onto the assistant row when that row was
+                          // created, so it names the dispatch that produced
+                          // this reply -- including a continuation, a retry or
+                          // a compaction, which position cannot distinguish.
+                          //
+                          // The positional map stays as the fallback for turns
+                          // already on disk, written before rows carried one.
+                          const own = (
+                            message.parts as { type: string; data?: unknown }[]
+                          ).find((part) => part.type === 'data-prompt-snapshot')
+                            ?.data as { id: string } | undefined
+                          const ref = own ?? snapshotByMessageId.get(message.id)
                           return ref ? (
                             <PromptSnapshotView
                               snapshotId={ref.id}

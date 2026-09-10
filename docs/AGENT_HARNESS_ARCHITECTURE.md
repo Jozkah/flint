@@ -81,17 +81,86 @@ retryability off the type instead of re-deriving it per call site.
 
 ### AHD-005: permission rules match resources, not tool names
 
-Rules are `(subject, capability, resource)` predicates. The current model globs
-tool names only, so "allow `read` under `src/**`" and "deny `bash` running
-`git push --force`" are inexpressible -- which is why `AH-034`, `AH-036`,
-`AH-037`, `AH-043` and `AH-046` are all one design change rather than five.
+Rules are `(subject, capability, resource)` predicates, written as
+`[subject/]tool[(pattern)]` in a project's `agent.toml`. All three dimensions are
+live: "allow `read` under `src/**`", "deny `bash` running `git push --force`" and
+"deny `agent:reviewer/bash`" are each expressible, which is why `AH-034`,
+`AH-036`, `AH-037`, `AH-043` and `AH-046` were one design change rather than
+five.
+
+**The subject dimension.** `subject::Subject` names the actor a decision is made
+*for*: `user`, `agent` (the top-level agent), `agent:<name>` (a subagent by the
+name it was dispatched under), `role:`, `skill:`, `mcp:`, `session:`, `project:`.
+An unqualified rule covers every subject, so a rule set written before subjects
+existed keeps its meaning exactly. An unparseable or unrecognised subject is
+`Subject::Unknown`, which matches no rule and is permitted by none: a caller that
+cannot say who it is acting for does not get the benefit of the doubt.
+
+The subject reaches the gate from three places, and all three must agree or the
+model is offered a tool it is then refused:
+
+* `resolve_decision` takes the subject as a parameter -- the execution gate.
+* `ToolPermissions::is_denied` / `is_allowed` / `advertises_mcp` take it too --
+  the advertising gate. Asking "is this denied for anyone" is what made a rule
+  about one subagent hide the tool from every agent.
+* `intersect_allowed_tools` reads the parent's rules *for the child*, by the name
+  it is being dispatched under, when narrowing a subagent's toolset.
+
+A run's subject is decided once, in `orchestrate_inner`, from
+`OrchestrationArgs::agent_name`: `None` is the main agent, and `run_subagent`
+sets it on the child's cloned args. A subagent cannot dispatch its own children,
+so there is no chain to carry.
+
+### AHD-005b: one redactor, and it never falls back to the original
+
+Credentials are removed by `secrets::redact_secrets` in Rust, and every writer
+goes through it: the audit log, the activity record, the prompt snapshot, memory,
+and -- via the `secrets_redact` command -- tool output the renderer persists into
+a thread. A transcript is a file that outlives the run and gets exported, so
+anything a tool printed is in it verbatim otherwise.
+
+Two rules hold everywhere:
+
+* **The word-level pass runs first, the line-level pass is the fallback.** A
+  credential in prose gets replaced in place, leaving the sentence that says
+  where it came from; a value in an assignment shape need not look like anything
+  in particular (`PASSWORD = hunter2`), so there the whole value goes.
+* **Failure withholds, it does not pass through.** A caller that cannot confirm
+  redaction ran stores a placeholder. A fallback to the unredacted text is a
+  fallback that leaks on precisely the path least likely to be tested.
+
+### AHD-005c: an approval is about a specific version of a file
+
+A `write` or `edit` that needs approval is staged as a `StagedPatch`: hunks
+computed against the file as it is when the question is asked, plus a stamp of
+that content. The stage lives until the answer arrives, and the answer is
+applied only if the file is still that content. Otherwise the call is refused
+with nothing written.
+
+Three consequences, all deliberate:
+
+* **Hunks carry no merged context.** A unified diff joins nearby changes; here
+  two unrelated edits stay two hunks, because they are two decisions.
+* **One implementation of "what will this edit do".** The staged proposal and
+  the write both come from `apply_edits`, so what is reviewed is what lands.
+* **Refuse, do not merge.** When the base moved, the model re-reads and
+  proposes again. A three-way merge would produce a file nobody reviewed.
 
 ### AHD-006: the capability model covers every dispatchable tool
 
 `Capability::{Read, Write, Exec, Net}` classifies the 16 built-ins and drives
-gating, plan-mode enforcement and concurrency. MCP tools carry no capability and
-are gated by name alone. Extending the model to MCP is a precondition for
-per-server policy (`AH-041`) and for plan mode being trustworthy (`AH-013`).
+gating, plan-mode enforcement and concurrency. MCP tools still carry no
+capability, which is what keeps `AH-013` (plan mode being trustworthy for MCP)
+open.
+
+Per-server policy (`AH-041`) no longer waits on that, because it does not need a
+capability: it keys on the **server**, in `mcp_trust`. A tool name is chosen by
+whoever publishes it, so it is not an identity -- two servers can both publish
+`fetch`, and a call that names no server is answered by whichever one the search
+reaches first. Trust is therefore recorded per server, persisted, and checked in
+`call_tool` against the server the tool was actually resolved on. An "allow once"
+answer is a single-use, short-lived ticket that is never written to disk, so it
+cannot quietly become a standing permission.
 
 ### AHD-007: fail closed
 

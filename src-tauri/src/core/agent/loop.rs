@@ -329,11 +329,14 @@ struct CompositeToolInvoker {
     subagents: Option<SubagentContext>,
     auto_approve: bool,
     run_mode: crate::core::agent::plan::RunMode,
+    /// Who this dispatch acts as, for the permission gate. AH-007. The same
+    /// subject the run's tools were advertised under: a run offered a tool and
+    /// then refused it at call time is a bug that surfaces only as the model
+    /// retrying.
+    subject: tauri_plugin_agent_tools::subject::Subject,
     /// The session/run this dispatch belongs to. Every tool call gets a token
     /// under it, so stopping the run stops the calls and stopping one run never
     /// reaches another. AH-023.
-    /// Who this dispatch acts as, for the permission gate. AH-007.
-    subject: tauri_plugin_agent_tools::subject::Subject,
     cancel_scope: tauri_plugin_agent_tools::lifecycle::Scope,
 }
 
@@ -639,6 +642,7 @@ impl CompositeToolInvoker {
             path: None,
             command: None,
             diff: None,
+            patch: None,
             prompt_kind: "mcp".to_string(),
             offers_always: true,
         });
@@ -663,6 +667,7 @@ impl CompositeToolInvoker {
             path: Some(name.to_string()),
             command: None,
             diff: None,
+            patch: None,
             prompt_kind: "subagent_create".to_string(),
             offers_always: false,
         });
@@ -1010,7 +1015,7 @@ impl ToolInvoker for CompositeToolInvoker {
     async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, String> {
         use tauri_plugin_agent_tools::tools::{
             gate::{resolve_decision, Decision, PromptKind},
-            handlers::{execute_builtin_with_diff, preview_diff},
+            handlers::{execute_builtin_with_diff, preview_diff, stage_change},
             is_builtin, lookup, Capability, ToolContext,
         };
         let mut out: Vec<ToolOutcome> = Vec::with_capacity(tool_calls.len());
@@ -1097,7 +1102,7 @@ impl ToolInvoker for CompositeToolInvoker {
                     continue;
                 }
                 // Deny-listed MCP tools are never advertised, but guard anyway.
-                if self.permissions.is_denied(name) {
+                if self.permissions.is_denied(name, &self.subject) {
                     out.push(ToolOutcome::plain(
                         id,
                         denied_by_policy_msg(name, &self.project_root),
@@ -1163,6 +1168,9 @@ impl ToolInvoker for CompositeToolInvoker {
                     allowed: self.allow_network,
                     ..NetworkPolicy::default()
                 },
+                // AH-007. Not `MainAgent` unconditionally: a subagent dispatched
+                // under a name is judged as that name, so a project can grant
+                // its parent something and withhold it from the child.
                 &self.subject,
             );
             // Auto-approval suppresses every prompt (sandbox escape, write, exec) but
@@ -1254,6 +1262,11 @@ impl ToolInvoker for CompositeToolInvoker {
                         .flatten()
                         .map(String::from);
                     let diff = preview_diff(tool, &args, &self.tool_context()).await;
+                    // AH-146/AH-148. Staged against the file as it is at the
+                    // moment the question is asked. Kept until the answer comes
+                    // back, because the answer is only an answer about *that*
+                    // file.
+                    let staged = stage_change(tool, &args, &self.tool_context()).await;
                     let _ = self.events.send(StreamEvent::PermissionRequest {
                         request_id: request_id.clone(),
                         tool_name: name.to_string(),
@@ -1261,6 +1274,7 @@ impl ToolInvoker for CompositeToolInvoker {
                         path,
                         command,
                         diff,
+                        patch: staged.as_ref().map(|(_, patch)| patch.view()),
                         prompt_kind: prompt_kind.to_string(),
                         offers_always: true,
                     });
@@ -1291,6 +1305,27 @@ impl ToolInvoker for CompositeToolInvoker {
                         continue;
                     }
 
+                    // AH-148. A prompt can stay open for minutes, and in that
+                    // time an editor, a formatter or another agent can write
+                    // the same file. Applying the approved change then would
+                    // overwrite work nobody reviewed -- for `write`, silently.
+                    // So an approval is checked against the file it was given
+                    // about, and refused with nothing written if that file has
+                    // moved on. A refusal, not a merge: the model re-reads and
+                    // proposes again against what is actually there.
+                    let stale = match (&staged, decision) {
+                        (Some((target, patch)), PermissionDecision::AllowOnce)
+                        | (Some((target, patch)), PermissionDecision::AllowAlways) => patch
+                            .check_base(
+                                tauri_plugin_agent_tools::patch::BaseStamp::read(target).await,
+                            )
+                            .err()
+                            .map(|refusal| refusal.message(&target.display().to_string())),
+                        _ => None,
+                    };
+                    if let Some(message) = stale {
+                        (message, None, None)
+                    } else {
                     match decision {
                         PermissionDecision::AllowOnce => {
                             let ctx = self
@@ -1300,9 +1335,12 @@ impl ToolInvoker for CompositeToolInvoker {
                         }
                         PermissionDecision::AllowAlways => {
                             // Thread-scoped only; never persisted to agent.toml.
-                            // Exec grants are scoped to the base command so that
-                            // "allow always" for `git status` covers `git ...`
-                            // but not arbitrary shell commands.
+                            // An exec grant covers the exact command the user was
+                            // shown and nothing else (AH-037). Granting the base
+                            // instead let "allow always" for `git status` cover
+                            // `git push`, and made every chaining trick free:
+                            // `&&`, `|`, `;` and `$(...)` compose commands out of
+                            // separately-approved bases.
                             if matches!(tool.capability, Capability::Exec) {
                                 let command =
                                     args.get("command").and_then(|v| v.as_str()).unwrap_or("");
@@ -1318,6 +1356,7 @@ impl ToolInvoker for CompositeToolInvoker {
                         PermissionDecision::Deny => {
                             (format!("ERROR: tool '{name}' denied by user"), None, None)
                         }
+                    }
                     }
                 }
             };
@@ -1501,15 +1540,18 @@ fn retain_advertisable_mcp_tools(
     openai_tools: &mut Vec<serde_json::Value>,
     tool_to_server: &mut HashMap<String, String>,
     permissions: &tauri_plugin_agent_tools::permissions::ToolPermissions,
+    // Whose toolset this is (AH-007). A deny naming one subagent must not
+    // remove the tool from anybody else's advertised list.
+    subject: &tauri_plugin_agent_tools::subject::Subject,
 ) {
     openai_tools.retain(|t| {
         t.get("function")
             .and_then(|f| f.get("name"))
             .and_then(|n| n.as_str())
-            .map(|n| permissions.advertises_mcp(n))
+            .map(|n| permissions.advertises_mcp(n, subject))
             .unwrap_or(false)
     });
-    tool_to_server.retain(|name, _| permissions.advertises_mcp(name));
+    tool_to_server.retain(|name, _| permissions.advertises_mcp(name, subject));
 }
 
 /// Append the non-MCP tool schemas a run advertises -- built-ins, subagent
@@ -1525,6 +1567,9 @@ fn advertise_local_tools(
     openai_tools: &mut Vec<serde_json::Value>,
     allowed_names: Option<&std::collections::HashSet<String>>,
     permissions: &tauri_plugin_agent_tools::permissions::ToolPermissions,
+    // Who this run's tools are being advertised to (AH-007). A rule naming one
+    // subagent must not remove the tool from anybody else's list.
+    subject: &tauri_plugin_agent_tools::subject::Subject,
     project_root: Option<&std::path::Path>,
     run_mode: crate::core::agent::plan::RunMode,
     subagents_enabled: bool,
@@ -1540,7 +1585,7 @@ fn advertise_local_tools(
         // default that applies to opaque MCP tools.
         for schema in tauri_plugin_agent_tools::tools::schema::builtin_tool_schemas() {
             let name = schema["function"]["name"].as_str().unwrap_or_default();
-            if permissions.is_denied(name) {
+            if permissions.is_denied(name, subject) {
                 continue;
             }
             // Plan mode advertises only read/net builtins; write/exec are hidden
@@ -1574,7 +1619,7 @@ fn advertise_local_tools(
                     max_parallel_subagents,
                 ) {
                     let name = schema["function"]["name"].as_str().unwrap_or_default();
-                    if permissions.is_denied(name) {
+                    if permissions.is_denied(name, subject) {
                         continue;
                     }
                     if let Some(allow) = allowed_names {
@@ -1726,12 +1771,19 @@ pub(crate) async fn context_advertised_tools(
     if run_mode == crate::core::agent::plan::RunMode::Plan {
         tools.clear();
     } else {
-        retain_advertisable_mcp_tools(&mut tools, &mut tool_to_server, permissions);
+        // The interactive run is the top-level agent; `/context` describes it.
+        retain_advertisable_mcp_tools(
+            &mut tools,
+            &mut tool_to_server,
+            permissions,
+            &tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
     }
     advertise_local_tools(
         &mut tools,
         None,
         permissions,
+        &tauri_plugin_agent_tools::subject::Subject::MainAgent,
         project_root,
         run_mode,
         subagents_enabled,
@@ -2010,7 +2062,12 @@ async fn orchestrate_inner(
         openai_tools.clear();
         tool_to_server.clear();
     } else {
-        retain_advertisable_mcp_tools(&mut openai_tools, &mut tool_to_server, permissions);
+        retain_advertisable_mcp_tools(
+            &mut openai_tools,
+            &mut tool_to_server,
+            permissions,
+            subject,
+        );
     }
 
     // Per-run allowlist shared by builtin/subagent/ask advertisement below.
@@ -2026,6 +2083,7 @@ async fn orchestrate_inner(
         &mut openai_tools,
         allowed_names.as_ref(),
         permissions,
+        subject,
         project_root.as_deref(),
         run_mode,
         args.subagents_enabled,
@@ -4752,8 +4810,25 @@ mod tests {
         events: mpsc::UnboundedSender<StreamEvent>,
         registry: PermissionRegistry,
     ) -> CompositeToolInvoker {
+        build_invoker_for(
+            root,
+            events,
+            registry,
+            ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        )
+    }
+
+    /// The same invoker, for tests that need to choose the permissions or say
+    /// which agent the call is being made by.
+    fn build_invoker_for(
+        root: std::path::PathBuf,
+        events: mpsc::UnboundedSender<StreamEvent>,
+        registry: PermissionRegistry,
+        permissions: ToolPermissions,
+        subject: tauri_plugin_agent_tools::subject::Subject,
+    ) -> CompositeToolInvoker {
         CompositeToolInvoker {
-            subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
             // Tests run one dispatch at a time; a fixed scope is enough to
             // exercise the token without colliding with another run.
             cancel_scope: tauri_plugin_agent_tools::lifecycle::Scope::default(),
@@ -4769,17 +4844,81 @@ mod tests {
             allow_home_read: DEFAULT_ALLOW_HOME_READ,
             scratch_root: tauri_plugin_agent_tools::workspace::scratch_dir("test-session"),
             project_root: root,
-            // Read-only default => write PROMPTS.
-            permissions: ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]),
+            permissions,
             events,
             permission_requests: registry,
             ask_requests: None,
             todo_registry: None,
             grants: std::sync::Mutex::new(SessionGrants::default()),
             subagents: None,
+            subject,
             auto_approve: false,
             run_mode: crate::core::agent::plan::RunMode::Normal,
         }
+    }
+
+    /// AH-007, in the dispatcher rather than in the rule parser.
+    ///
+    /// `agent:reviewer/bash` compiled and was accepted long before it did
+    /// anything: the gate never asked who was calling, so the rule bound the
+    /// main agent exactly as hard as it bound the reviewer. These two cases are
+    /// the same call, the same project policy, and different subjects, and they
+    /// fail together if the subject stops reaching `resolve_decision`.
+    #[tokio::test]
+    async fn a_rule_naming_a_subagent_binds_that_subagent_and_nobody_else() {
+        let root = std::env::temp_dir().join(format!(
+            "jan_loop_subject_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).expect("create root");
+
+        // Everything allowed, except that the reviewer may not run a shell.
+        let permissions = ToolPermissions::new(
+            PermissionDefault::Allow,
+            &[],
+            &["agent:reviewer/bash".to_string()],
+            &[],
+        );
+        let call = vec![serde_json::json!({
+            "id": "call_subject_1",
+            "type": "function",
+            "function": { "name": "bash", "arguments": "{\"command\":\"echo hi\"}" }
+        })];
+
+        let run = |subject: tauri_plugin_agent_tools::subject::Subject| {
+            let root = root.clone();
+            let permissions = permissions.clone();
+            let call = call.clone();
+            async move {
+                let (tx, _rx) = mpsc::unbounded_channel::<StreamEvent>();
+                let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+                let invoker = build_invoker_for(root, tx, registry, permissions, subject);
+                invoker.invoke(&call).await.expect("dispatch")[0]
+                    .content
+                    .clone()
+            }
+        };
+
+        let reviewer = run(tauri_plugin_agent_tools::subject::Subject::NamedAgent(
+            "reviewer".to_string(),
+        ))
+        .await;
+        assert!(
+            reviewer.contains("denied"),
+            "the rule names the reviewer, so the reviewer must be refused: {reviewer}"
+        );
+
+        // The negative half. Without it, a gate that denied everyone would pass.
+        let main = run(tauri_plugin_agent_tools::subject::Subject::MainAgent).await;
+        assert!(
+            !main.contains("denied by project policy"),
+            "a rule about the reviewer must not bind the main agent: {main}"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// The whole point of the setting: what agent.toml says has to survive the
@@ -5940,7 +6079,12 @@ mod tests {
         // The scaffolded CLI project default: read-only, no allow-list.
         let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
 
-        retain_advertisable_mcp_tools(&mut tools, &mut map, &perms);
+        retain_advertisable_mcp_tools(
+            &mut tools,
+            &mut map,
+            &perms,
+            &tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
 
         assert_eq!(
             tools.len(),
@@ -5968,7 +6112,12 @@ mod tests {
             &[],
         );
 
-        retain_advertisable_mcp_tools(&mut tools, &mut map, &perms);
+        retain_advertisable_mcp_tools(
+            &mut tools,
+            &mut map,
+            &perms,
+            &tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
 
         assert_eq!(tools.len(), 1);
         assert!(map.contains_key("web_search_exa"));
@@ -5986,7 +6135,12 @@ mod tests {
         let mut map = HashMap::from([("web_search_exa".to_string(), "exa".to_string())]);
         let perms = ToolPermissions::new(PermissionDefault::Deny, &[], &[], &[]);
 
-        retain_advertisable_mcp_tools(&mut tools, &mut map, &perms);
+        retain_advertisable_mcp_tools(
+            &mut tools,
+            &mut map,
+            &perms,
+            &tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
 
         assert!(
             tools.is_empty(),

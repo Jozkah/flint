@@ -172,6 +172,11 @@ pub enum StreamEvent {
         /// change before approving; `None` for other tools.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         diff: Option<String>,
+        /// The same change as reviewable hunks, with the base it was computed
+        /// against. AH-146. The text diff above is for reading; this is for a
+        /// client that wants to present, or decide on, one hunk at a time.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        patch: Option<tauri_plugin_agent_tools::patch::PatchView>,
         prompt_kind: String,
         offers_always: bool,
     },
@@ -411,6 +416,7 @@ mod tests {
             path: Some("out.txt".into()),
             command: None,
             diff: Some("@@ created file @@\n+ hi".into()),
+            patch: None,
             prompt_kind: "write".into(),
             offers_always: true,
         })

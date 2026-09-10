@@ -1,5 +1,8 @@
 import { create } from 'zustand'
 import { useToolApproval } from './useToolApproval'
+import { getServiceHub } from '@/hooks/useServiceHub'
+import { toast } from 'sonner'
+import { errorText } from '@/lib/errorText'
 
 export type PendingApproval = {
   toolCallId: string
@@ -75,6 +78,19 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       } else if (decision === 'allow-always') {
         if (entry.serverName) {
           approval.approveServer(entry.serverName)
+          // AH-041. The backend holds the record the gate reads, so an answer
+          // that only updated renderer state would be forgotten by the thing
+          // that enforces it. Failure is not swallowed silently: the user is
+          // told, because otherwise the next call prompts again with no
+          // explanation.
+          void getServiceHub()
+            .mcp()
+            .trustServer(entry.serverName)
+            .catch((error) => {
+              toast.error('Could not remember that server', {
+                description: errorText(error),
+              })
+            })
         } else {
           approval.approveToolEverywhere(entry.toolName)
         }

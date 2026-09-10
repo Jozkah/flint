@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useToolApprovalRequests } from '../useToolApprovalRequests'
 import { useToolApproval } from '../useToolApproval'
+import { getServiceHub } from '@/hooks/useServiceHub'
 
 // useToolApproval persists via backendStorage; stub the persist layer so the
 // import is inert and no disk I/O happens in tests.
@@ -122,6 +123,31 @@ describe('useToolApprovalRequests', () => {
       true
     )
     expect(approval.isToolApproved('thread-2', 'tool-a', 'gitlab')).toBe(false)
+  })
+
+  // AH-041. Renderer state is what the prompt reads; the backend is what the
+  // gate reads. An answer that updated only the first would be forgotten by the
+  // thing that actually enforces it, and the user would be asked again with no
+  // explanation.
+  it('records an allow-always server with the backend, not only in the store', async () => {
+    const trustServer = vi.fn().mockResolvedValue(undefined)
+    const hub = getServiceHub() as unknown as Record<string, unknown>
+    const realMcp = hub.mcp
+    hub.mcp = () => ({ trustServer }) as never
+    try {
+      const { result } = renderHook(() => useToolApprovalRequests())
+      let p: Promise<boolean>
+      act(() => {
+        p = result.current.requestApproval('tc9', 'tool-a', 'thread-1', 'github')
+      })
+      act(() => {
+        result.current.resolveApproval('tc9', 'allow-always')
+      })
+      await expect(p!).resolves.toBe(true)
+      expect(trustServer).toHaveBeenCalledWith('github')
+    } finally {
+      hub.mcp = realMcp
+    }
   })
 
   it('resolveApproval allow-always falls back to the tool when it has no server', async () => {

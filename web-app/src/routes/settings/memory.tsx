@@ -26,6 +26,8 @@ import {
   MEMORY_LIST_ANCHOR,
   MEMORY_STORAGE_ANCHOR,
 } from '@/lib/settingsSearch'
+import { MemoryProposalList } from '@/containers/MemoryProposalCard'
+import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 import {
   memoryRecordEdit,
   memoryRecordForget,
@@ -152,6 +154,18 @@ function MemorySettings() {
           },
     [dataFolder]
   )
+
+  /**
+   * Everything awaiting an answer, from every chat -- not only this one.
+   * This page is where a conflict is settled, so it has to be able to show a
+   * proposal raised somewhere the user is no longer looking.
+   */
+  const {
+    proposals: proposalsPending,
+    location: proposalLocation,
+    reload: reloadProposals,
+    onResolved: onProposalResolved,
+  } = useMemoryProposals()
 
   const refresh = useCallback(
     async (nextScope: MemoryScope, nextQuery: string, nextOffset: number) => {
@@ -349,6 +363,28 @@ function MemorySettings() {
                 />
               )}
             </Card>
+
+            {proposalLocation && proposalsPending.length > 0 && (
+              <Card title="Waiting for you">
+                <CardItem
+                  title="Memories Jan has offered"
+                  description="Nothing here is being used yet. An unanswered proposal is never added to a prompt."
+                />
+                <div className="p-2">
+                  <MemoryProposalList
+                    proposals={proposalsPending}
+                    location={proposalLocation}
+                    onResolved={(id) => {
+                      onProposalResolved(id)
+                      // An approval becomes a real memory, so the list below
+                      // is now out of date as well.
+                      void reload()
+                      void reloadProposals()
+                    }}
+                  />
+                </div>
+              </Card>
+            )}
 
             <Card title="Remembered">
               <CardItem

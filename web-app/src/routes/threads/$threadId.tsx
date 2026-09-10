@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { createFileRoute, useParams, useSearch } from '@tanstack/react-router'
+import {
+  createFileRoute,
+  useNavigate,
+  useParams,
+  useSearch,
+} from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 
 import HeaderPage from '@/containers/HeaderPage'
@@ -14,7 +19,7 @@ import { useMessageErrors } from '@/stores/message-errors'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTools } from '@/hooks/useTools'
 import { useAppState } from '@/hooks/useAppState'
-import { SESSION_STORAGE_PREFIX } from '@/constants/chat'
+import { SESSION_STORAGE_PREFIX, TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useChat } from '@/hooks/use-chat'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { engineSlotsIdle } from '@janhq/tauri-plugin-llamacpp-api'
@@ -87,6 +92,10 @@ import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { TemporaryChatBanner } from '@/containers/TemporaryChatBanner'
+import { MemoryProposalList } from '@/containers/MemoryProposalCard'
+import { redactDeep, redactText } from '@/lib/redactToolOutput'
+import { useMemoryProposals } from '@/hooks/useMemoryProposals'
+import { route } from '@/constants/routes'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
 import { Shimmer } from '@/components/ai-elements/shimmer'
@@ -494,6 +503,26 @@ function ThreadDetail() {
         }
       }
 
+      // Everything a tool produced is written through here, never through
+      // `addToolOutput` directly. The transcript is a file that outlives the
+      // run and gets exported, so a credential a tool happened to print -- a
+      // `curl -v` trace, an error quoting a header -- must not reach it. One
+      // entry point, because a call site that forgets is a call site that
+      // silently persists the credential. AH-045.
+      const persistToolOutput = async (
+        part: Parameters<typeof addToolOutput>[0]
+      ) => {
+        if ('errorText' in part && typeof part.errorText === 'string') {
+          addToolOutput({ ...part, errorText: await redactText(part.errorText) })
+          return
+        }
+        if ('output' in part) {
+          addToolOutput({ ...part, output: await redactDeep(part.output) })
+          return
+        }
+        addToolOutput(part)
+      }
+
       // Execute tool calls here, after the assistant message has completed, so
       // each addToolOutput lands on a finished message and the SDK's
       // auto-resubmit (sendAutomaticallyWhen) fires. Approval is requested
@@ -537,7 +566,7 @@ function ThreadDetail() {
             toolApprovalPromises.current.delete(toolCall.toolCallId)
 
             if (!approved) {
-              addToolOutput({
+              await persistToolOutput({
                 state: 'output-error',
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
@@ -585,9 +614,24 @@ function ThreadDetail() {
               // it narrows that against the user's configured ceiling.
               const ctxLen = useModelProvider.getState().selectedModel?.settings
                 ?.ctx_len?.controller_props?.value
+              // AH-041. The backend keeps the record of which servers the user
+              // trusts and refuses a call to any other, so an approval that
+              // happened here has to be handed over as something it issued.
+              // Minted for every call rather than only untrusted ones: trust
+              // can be withdrawn between the approval and the call, and an
+              // unused ticket simply expires.
+              const server = serverForTool(toolName)
+              const approvalTicket = server
+                ? await serviceHub
+                    .mcp()
+                    .allowOnceForServer(server, toolName)
+                    .catch(() => undefined)
+                : undefined
               result = await serviceHub.mcp().callTool({
                 toolName,
+                serverName: server,
                 arguments: toolCall.input,
+                approvalTicket,
                 maxOutputChars: deriveToolOutputCap(
                   typeof ctxLen === 'number' ? ctxLen : undefined
                 ),
@@ -599,14 +643,14 @@ function ThreadDetail() {
             }
 
             if (result.error) {
-              addToolOutput({
+              await persistToolOutput({
                 state: 'output-error',
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
                 errorText: `Error: ${result.error}`,
               })
             } else {
-              addToolOutput({
+              await persistToolOutput({
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
                 output: result.content,
@@ -615,7 +659,7 @@ function ThreadDetail() {
           } catch (error) {
             if ((error as Error).name !== 'AbortError') {
               console.error('Tool call error:', error)
-              addToolOutput({
+              await persistToolOutput({
                 state: 'output-error',
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
@@ -744,6 +788,29 @@ function ThreadDetail() {
   // banner is up — regenerate/reload restarts the turn anyway.
   const hasBannerError = !!(oomError || backendError || contextLimitError)
   const effectiveStatus = hasBannerError ? 'ready' : status
+
+  /**
+   * Memories this chat proposed and nobody has answered yet.
+   *
+   * A temporary chat records nothing, so it never has anything to ask about.
+   */
+  const {
+    proposals: memoryProposals,
+    location: memoryLocation,
+    reload: reloadMemoryProposals,
+    onResolved: onMemoryProposalResolved,
+  } = useMemoryProposals({
+    sessionId: threadId,
+    enabled: threadId !== TEMPORARY_CHAT_ID,
+  })
+  const navigate = useNavigate()
+
+  // Re-read once the turn is over. A proposal is written by a tool call during
+  // the turn, so polling mid-stream would only find the previous turn's.
+  useEffect(() => {
+    if (status !== 'ready') return
+    void reloadMemoryProposals()
+  }, [status, reloadMemoryProposals])
 
   // Global disabled-tools set; re-run the effect below when it changes.
   const disabledTools = useToolAvailable((state) => state.disabledTools)
@@ -1838,6 +1905,17 @@ function ThreadDetail() {
                   onDelete={handleDeleteMessage}
                   hideActions
                   isAnimating={false}
+                />
+              )}
+              {memoryLocation && (
+                <MemoryProposalList
+                  className="mx-4 my-2"
+                  proposals={memoryProposals}
+                  location={memoryLocation}
+                  onResolved={onMemoryProposalResolved}
+                  onOpenSettings={() =>
+                    navigate({ to: route.settings.memory })
+                  }
                 />
               )}
               {processingEmbeddings && (

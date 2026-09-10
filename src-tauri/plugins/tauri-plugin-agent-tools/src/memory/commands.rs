@@ -212,19 +212,10 @@ pub enum InferredOutcome {
     Refused { reason: String },
 }
 
-/// Why an inferred proposal is waiting rather than saved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum PendingReason {
-    /// Automatic saving is off. The ordinary case, and the default.
-    AutomaticSavingDisabled,
-    /// It contradicts something already remembered. Both sides stay withheld
-    /// until the user says which is right, so this can never auto-save.
-    ConflictsWithExisting,
-    /// It would put a fact learned inside a project into the global scope.
-    /// Widening what a memory applies to is a decision, not an inference.
-    WouldPromoteProjectFactGlobally,
-}
+// One definition, shared with the model-facing tool. Two copies of this enum
+// would let the desktop path and the tool path disagree about why something is
+// waiting -- and the reason is the whole content of the approval card.
+pub use super::inferred::PendingReason;
 
 /// Record something an agent inferred from the conversation.
 ///
@@ -247,15 +238,7 @@ pub async fn memory_record_propose_inferred(
     temporary: Option<bool>,
 ) -> Result<InferredOutcome, AgentToolsError> {
     use super::create;
-    use super::record::{Creator, Origin};
-
-    // A temporary chat neither reads nor records. Answered before any store is
-    // opened, so there is nothing to leak and nothing to clean up.
-    if temporary.unwrap_or(false) {
-        return Ok(InferredOutcome::Refused {
-            reason: "This is a temporary chat, so nothing from it is remembered.".to_string(),
-        });
-    }
+    use super::inferred;
 
     let scope = parse_scope(&scope)?;
     let access = location.access();
@@ -266,59 +249,59 @@ pub async fn memory_record_propose_inferred(
     .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
 
     let existing = super::store::load(&store_root, scope).records;
-    let id = MemoryId::new(format!("mem-{}-{:016x}", now(), fnv(&content)));
-
-    // An agent's guess, marked as one. `Creator::Agent` is what stops it
-    // overriding something the user saved, and `Origin::Inferred` is what the
-    // UI reads to label it.
-    let mut proposal = match create::propose(
-        id,
-        &content,
-        scope,
-        access.project_id.as_deref(),
-        access.session_id.as_deref(),
-        Creator::Agent,
-        Origin::Inferred,
-        now(),
-        &existing,
-    ) {
-        Ok(proposal) => proposal,
-        // A credential, an empty body, something absurdly long. Refused
-        // whatever the setting says: automatic saving is permission to skip
-        // the question, never permission to store a secret.
-        Err(refusal) => {
-            return Ok(InferredOutcome::Refused {
-                reason: refusal.message(),
-            })
-        }
-    };
-    proposal.record.provenance.session_id = source_session_id;
-    proposal.record.provenance.message_id = source_message_id;
-
     let settings = location
         .settings_root()
         .map(|root| settings::load(&root))
         .unwrap_or_default();
 
-    // Order matters: the reasons that hold regardless of the setting are
-    // checked first, so turning automatic saving on cannot silently resolve a
-    // conflict or widen a project fact.
-    let pending = if !proposal.conflicts.is_empty() {
-        Some(PendingReason::ConflictsWithExisting)
-    } else if scope == Scope::User && access.project_id.is_some() {
-        Some(PendingReason::WouldPromoteProjectFactGlobally)
-    } else if !settings.automatically_save {
-        Some(PendingReason::AutomaticSavingDisabled)
-    } else {
-        None
-    };
+    // The gate itself lives in `inferred`. The desktop path and the
+    // model-facing `memory_propose` tool both reach it through this one
+    // function, so the same content cannot be queued down one path and saved
+    // down the other -- including the order the reasons are checked in, which
+    // is what stops "automatically save" silently resolving a conflict.
+    let decision = inferred::decide(
+        MemoryId::new(format!("mem-{}-{:016x}", now(), fnv(&content))),
+        &content,
+        &existing,
+        &inferred::Context {
+            scope,
+            project_id: access.project_id.as_deref(),
+            session_id: access.session_id.as_deref(),
+            // A temporary chat neither reads nor records. Answered before
+            // anything is written, so there is nothing to clean up.
+            temporary: temporary.unwrap_or(false),
+            now: now(),
+            automatically_save: settings.automatically_save,
+        },
+    );
 
-    if let Some(reason) = pending {
-        return Ok(InferredOutcome::NeedsApproval {
-            proposal: Box::new(ProposalView::from(&proposal)),
-            reason,
-        });
-    }
+    let mut proposal = match decision {
+        // A credential, an empty body, something absurdly long, or a temporary
+        // chat. Refused whatever the setting says: automatic saving is
+        // permission to skip the question, never permission to store a secret.
+        inferred::Decision::Refused { reason } => {
+            return Ok(InferredOutcome::Refused { reason })
+        }
+        inferred::Decision::Pending { proposal, reason } => {
+            let mut proposal = *proposal;
+            proposal.record.provenance.session_id = source_session_id;
+            proposal.record.provenance.message_id = source_message_id;
+            // Stored, not merely returned. A question that lives only in this
+            // response is asked once, in whichever surface happened to be open,
+            // and is gone by the next turn. `Status::Proposed` keeps it out of
+            // every prompt while it waits, and `memory_proposals_list` is what
+            // the approval card reads.
+            let pending = inferred::as_pending(&proposal, reason);
+            super::store::upsert(&store_root, &pending).map_err(AgentToolsError::from)?;
+            return Ok(InferredOutcome::NeedsApproval {
+                proposal: Box::new(ProposalView::from(&proposal)),
+                reason,
+            });
+        }
+        inferred::Decision::Save(proposal) => *proposal,
+    };
+    proposal.record.provenance.session_id = source_session_id;
+    proposal.record.provenance.message_id = source_message_id;
 
     // A duplicate confirms what is already there rather than adding a second
     // copy of it; `create::commit` keys on content, so this is idempotent.
@@ -326,6 +309,139 @@ pub async fn memory_record_propose_inferred(
     Ok(InferredOutcome::Saved {
         memory: Box::new(service::get(&access, scope, &proposal.record.id)?),
     })
+}
+
+/// A proposal a person has not answered yet.
+///
+/// Carries the reason in the words the user reads, so the card never renders a
+/// generic "needs approval" -- the gate knows *why* it is asking and the card
+/// is the only place that matters.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingProposalView {
+    pub id: String,
+    pub content: String,
+    pub scope: String,
+    /// Stable code, for tests and for keying UI behaviour.
+    pub reason: String,
+    /// One sentence, for the card.
+    pub explanation: String,
+    /// Whether approving is even offered. A conflicted proposal is a question
+    /// about which of two memories is right, not something to wave through.
+    pub approvable: bool,
+    pub source_session_id: Option<String>,
+    pub source_message_id: Option<String>,
+    pub created_at: i64,
+}
+
+/// Proposals awaiting an answer, across every scope this caller may see.
+#[tauri::command]
+pub async fn memory_proposals_list(
+    location: Where,
+) -> Result<Vec<PendingProposalView>, AgentToolsError> {
+    use super::inferred::{self, PendingReason};
+
+    let access = location.access();
+    let mut out = Vec::new();
+    for (scope, root) in [
+        (Scope::Session, access.permanent_store.clone()),
+        (Scope::User, access.permanent_store.clone()),
+        (Scope::Project, access.project_store.clone()),
+    ] {
+        let Some(root) = root else { continue };
+        for record in super::store::load(&root, scope).records {
+            let Some(reason) = inferred::pending_reason(&record) else {
+                continue;
+            };
+            // Containment is enforced against the record's own scope, exactly
+            // as it is for reading a memory: naming another chat does not
+            // surface its questions.
+            if !record.applies_to(access.session_id.as_deref(), access.project_id.as_deref()) {
+                continue;
+            }
+            out.push(PendingProposalView {
+                id: record.id.to_string(),
+                content: record.content.clone(),
+                scope: super::service::scope_word(scope).to_string(),
+                reason: reason.as_str().to_string(),
+                explanation: reason.explain().to_string(),
+                // A conflict is answered by resolving the conflict, not by
+                // approving one side blind.
+                approvable: reason != PendingReason::ConflictsWithExisting,
+                source_session_id: record.provenance.session_id.clone(),
+                source_message_id: record.provenance.message_id.clone(),
+                created_at: record.created_at,
+            });
+        }
+    }
+    out.sort_by_key(|p| std::cmp::Reverse(p.created_at));
+    Ok(out)
+}
+
+/// Answer a proposal.
+///
+/// The card is not the decision. Approving re-runs the refusals against the
+/// content as stored, so a proposal that sat on screen while the rules changed
+/// cannot be waved through; rejecting removes it rather than leaving a question
+/// that will be asked again.
+#[tauri::command]
+pub async fn memory_proposal_resolve(
+    location: Where,
+    scope: String,
+    id: String,
+    approve: bool,
+) -> Result<Option<MemoryView>, AgentToolsError> {
+    use super::inferred::{self, PendingReason};
+    use super::record::Status;
+
+    let scope = parse_scope(&scope)?;
+    let access = location.access();
+    let store_root = match scope {
+        Scope::Project => access.project_store.clone(),
+        _ => access.permanent_store.clone(),
+    }
+    .ok_or_else(|| AgentToolsError::from(format!("no store for {scope:?} memories here")))?;
+
+    let id = MemoryId::new(id);
+    let mut records = super::store::load(&store_root, scope).records;
+    let Some(index) = records.iter().position(|r| r.id == id) else {
+        return Err(AgentToolsError::from(
+            "that proposal is no longer there".to_string(),
+        ));
+    };
+    let Some(reason) = inferred::pending_reason(&records[index]) else {
+        return Err(AgentToolsError::from(
+            "that memory is not awaiting an answer".to_string(),
+        ));
+    };
+
+    if !approve {
+        records.remove(index);
+        super::store::save(&store_root, scope, &records).map_err(AgentToolsError::from)?;
+        return Ok(None);
+    }
+
+    if reason == PendingReason::ConflictsWithExisting {
+        return Err(AgentToolsError::from(
+            "this contradicts something already remembered; resolve the conflict rather than approving one side".to_string(),
+        ));
+    }
+
+    // Re-checked at the moment of the decision, not at the moment of the
+    // proposal: the refusals are what stop a credential being stored, and a
+    // proposal can sit on screen for a long time.
+    if !crate::secrets::scan_text(&records[index].content).is_empty() {
+        records.remove(index);
+        super::store::save(&store_root, scope, &records).map_err(AgentToolsError::from)?;
+        return Err(AgentToolsError::from(
+            "that looks like a credential, so it was discarded rather than saved".to_string(),
+        ));
+    }
+
+    records[index].status = Status::Active;
+    records[index].updated_at = now();
+    super::store::save(&store_root, scope, &records).map_err(AgentToolsError::from)?;
+    Ok(Some(service::get(&access, scope, &id)?))
 }
 
 /// Commit a proposal the user has reviewed.
@@ -787,13 +903,27 @@ mod inferred_tests {
             }
             other => panic!("expected approval, got {other:?}"),
         }
-        // And nothing was written.
+        // The question is kept, so it can still be answered after a restart --
+        // but as a proposal, which `is_usable` refuses, so it reaches no
+        // prompt while it waits.
         let store = crate::workspace::permanent_store(&dir);
+        let records = crate::memory::store::load(&store, Scope::User).records;
+        assert_eq!(records.len(), 1);
+        assert!(matches!(
+            records[0].status,
+            crate::memory::record::Status::Proposed { .. }
+        ));
         assert!(
-            crate::memory::store::load(&store, Scope::User)
-                .records
-                .is_empty(),
-            "a pending proposal must not be stored"
+            !records[0].is_usable(now()),
+            "an unanswered guess must never be injected"
+        );
+        // And it is not a memory: the list a person reads does not show it.
+        assert!(
+            memory_records_list(at(&dir), "user".to_string(), None, None, None)
+                .await
+                .map(|page| page.items.is_empty())
+                .unwrap_or(true),
+            "a proposal must not appear among remembered facts"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -984,6 +1114,225 @@ mod inferred_tests {
             }
             other => panic!("expected approval after turning it off, got {other:?}"),
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod proposal_tests {
+    use super::*;
+    use crate::memory::record::Status;
+    use crate::memory::settings;
+
+    fn root(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "jan-proposal-{name}-{}-{}",
+            std::process::id(),
+            now()
+        ));
+        std::fs::create_dir_all(&dir).expect("root");
+        dir
+    }
+
+    fn at(dir: &std::path::Path) -> Where {
+        Where {
+            data_folder: dir.to_string_lossy().to_string(),
+            project_root: None,
+            session_id: Some("chat-a".to_string()),
+        }
+    }
+
+    fn allow_automatic(dir: &std::path::Path, on: bool) {
+        let store = crate::workspace::permanent_store(dir);
+        std::fs::create_dir_all(&store).expect("store");
+        settings::save(
+            &store,
+            &settings::Settings {
+                automatically_save: on,
+                ..Default::default()
+            },
+        )
+        .expect("settings");
+    }
+
+    /// Put a proposal in the store the way the tool does.
+    async fn propose(dir: &std::path::Path, content: &str) -> Vec<PendingProposalView> {
+        let _ = memory_record_propose_inferred(
+            at(dir),
+            "user".to_string(),
+            content.to_string(),
+            Some("chat-a".to_string()),
+            Some("msg-1".to_string()),
+            None,
+        )
+        .await;
+        memory_proposals_list(at(dir)).await.expect("list")
+    }
+
+    /// A stored proposal, so the list has something to find even though the
+    /// command path above does not persist one.
+    fn store_pending(dir: &std::path::Path, content: &str, reason: &str) -> String {
+        use crate::memory::record::{Creator, MemoryId, MemoryRecord, Origin, Scope};
+        let store = crate::workspace::permanent_store(dir);
+        std::fs::create_dir_all(&store).expect("store");
+        let id = MemoryId::new(format!("mem-{}-{}", now(), content.len()));
+        let mut record = MemoryRecord::new(
+            id.clone(),
+            content,
+            Scope::User,
+            Creator::Agent,
+            Origin::Inferred,
+            now(),
+        );
+        record.provenance.session_id = Some("chat-a".to_string());
+        record.status = Status::Proposed {
+            reason: reason.to_string(),
+        };
+        crate::memory::store::upsert(&store, &record).expect("upsert");
+        id.to_string()
+    }
+
+    #[tokio::test]
+    async fn a_pending_proposal_is_listed_with_the_reason_it_is_waiting() {
+        let dir = root("list");
+        store_pending(&dir, "The user prefers tabs.", "automatic-saving-disabled");
+        let pending = memory_proposals_list(at(&dir)).await.expect("list");
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].reason, "automatic-saving-disabled");
+        // The card never says "needs approval"; it says why.
+        assert!(pending[0].explanation.contains("waiting for you"));
+        assert!(pending[0].approvable);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A conflict is a question about which memory is right. Offering "approve"
+    /// would let a person wave one side through without seeing the other.
+    #[tokio::test]
+    async fn a_conflicted_proposal_is_never_approvable() {
+        let dir = root("conflict");
+        let id = store_pending(&dir, "Always use tabs.", "conflicts-with-existing");
+        let pending = memory_proposals_list(at(&dir)).await.expect("list");
+        assert!(!pending[0].approvable);
+        assert!(pending[0].explanation.contains("contradicts"));
+
+        // And the backend refuses even if a renderer asks anyway.
+        let refused = memory_proposal_resolve(at(&dir), "user".to_string(), id, true).await;
+        assert!(refused.is_err(), "approving a conflict must be refused");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn approving_makes_the_memory_usable() {
+        let dir = root("approve");
+        let id = store_pending(&dir, "The user prefers tabs.", "automatic-saving-disabled");
+        let saved = memory_proposal_resolve(at(&dir), "user".to_string(), id, true)
+            .await
+            .expect("approve")
+            .expect("a memory");
+        assert_eq!(saved.status, "active");
+        // Gone from the pending list, and now a real memory.
+        assert!(memory_proposals_list(at(&dir)).await.expect("list").is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn rejecting_removes_it_rather_than_asking_again() {
+        let dir = root("reject");
+        let id = store_pending(&dir, "The user prefers tabs.", "automatic-saving-disabled");
+        let out = memory_proposal_resolve(at(&dir), "user".to_string(), id, false)
+            .await
+            .expect("reject");
+        assert!(out.is_none());
+        assert!(memory_proposals_list(at(&dir)).await.expect("list").is_empty());
+        let store = crate::workspace::permanent_store(&dir);
+        assert!(crate::memory::store::load(&store, crate::memory::record::Scope::User)
+            .records
+            .is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The refusals run at the moment of the decision, not only at the moment
+    /// of the proposal: a card can sit on screen for a long time.
+    #[tokio::test]
+    async fn a_credential_is_discarded_at_approval_not_stored() {
+        let dir = root("secret");
+        let id = store_pending(
+            &dir,
+            "The API key is sk-live-abcdefghijklmnopqrstuvwxyz012345.",
+            "automatic-saving-disabled",
+        );
+        let refused = memory_proposal_resolve(at(&dir), "user".to_string(), id, true).await;
+        assert!(refused.is_err(), "a credential must not be approvable");
+        let store = crate::workspace::permanent_store(&dir);
+        assert!(
+            crate::memory::store::load(&store, crate::memory::record::Scope::User)
+                .records
+                .is_empty(),
+            "and it must not be left lying in the store"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Never injected while it waits: `is_usable` admits `Active` only.
+    #[test]
+    fn a_pending_proposal_is_not_usable() {
+        use crate::memory::record::{Creator, MemoryId, MemoryRecord, Origin, Scope};
+        let mut record = MemoryRecord::new(
+            MemoryId::new("mem-x"),
+            "The user prefers tabs.",
+            Scope::User,
+            Creator::Agent,
+            Origin::Inferred,
+            100,
+        );
+        assert!(record.is_usable(200));
+        record.status = Status::Proposed {
+            reason: "automatic-saving-disabled".to_string(),
+        };
+        assert!(!record.is_usable(200), "an unanswered guess must never inject");
+    }
+
+    #[tokio::test]
+    async fn resolving_something_that_is_not_pending_is_refused() {
+        let dir = root("notpending");
+        let out = memory_proposal_resolve(
+            at(&dir),
+            "user".to_string(),
+            "mem-does-not-exist".to_string(),
+            true,
+        )
+        .await;
+        assert!(out.is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The tool stores the question, so it survives the turn and a restart.
+    #[tokio::test]
+    async fn the_tool_persists_the_question_it_asked() {
+        let dir = root("persist");
+        allow_automatic(&dir, false);
+        let store = crate::workspace::permanent_store(&dir);
+        let ctx_root = dir.join("proj");
+        std::fs::create_dir_all(&ctx_root).expect("proj");
+        let root_ref: &'static std::path::Path =
+            Box::leak(ctx_root.into_boxed_path());
+        let store_ref: &'static std::path::Path =
+            Box::leak(store.clone().into_boxed_path());
+        let ctx = crate::tools::ToolContext::new(root_ref, store_ref, &[])
+            .in_session(Some("chat-a"), false);
+        let out = crate::tools::handlers::execute_text(
+            crate::tools::lookup("memory_propose").unwrap(),
+            &serde_json::json!({"content": "The user prefers tabs.", "scope": "user"}),
+            &ctx,
+        )
+        .await;
+        assert!(out.contains("Not saved yet"), "{out}");
+
+        // Re-read from disk, which is what a restart does.
+        let pending = crate::memory::store::load(&store, crate::memory::record::Scope::User)
+            .records;
+        assert_eq!(pending.len(), 1);
+        assert!(matches!(pending[0].status, Status::Proposed { .. }));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

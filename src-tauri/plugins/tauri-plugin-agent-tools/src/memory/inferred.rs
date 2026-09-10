@@ -157,6 +157,34 @@ pub fn decide(
     }
 }
 
+/// The record to store for a proposal awaiting an answer.
+///
+/// Persisting the question is what makes it survivable: the user is asked once
+/// and can answer later, after a restart, from Settings rather than only from
+/// the conversation that produced it. `Status::Proposed` keeps it out of every
+/// prompt in the meantime, because `is_usable` admits only `Active`.
+pub fn as_pending(proposal: &Proposal, reason: PendingReason) -> super::record::MemoryRecord {
+    let mut record = proposal.record.clone();
+    record.status = super::record::Status::Proposed {
+        reason: reason.as_str().to_string(),
+    };
+    record
+}
+
+/// The reason a stored proposal is waiting, recovered from its status.
+pub fn pending_reason(record: &super::record::MemoryRecord) -> Option<PendingReason> {
+    let super::record::Status::Proposed { reason } = &record.status else {
+        return None;
+    };
+    Some(match reason.as_str() {
+        "conflicts-with-existing" => PendingReason::ConflictsWithExisting,
+        "would-promote-project-fact-globally" => {
+            PendingReason::WouldPromoteProjectFactGlobally
+        }
+        _ => PendingReason::AutomaticSavingDisabled,
+    })
+}
+
 /// Read the setting from a store root, defaulting to off.
 pub fn automatic_saving_enabled(settings_root: &Path) -> bool {
     settings::load(settings_root).automatically_save

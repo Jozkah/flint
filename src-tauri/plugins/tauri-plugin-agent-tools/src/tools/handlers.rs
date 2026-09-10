@@ -369,7 +369,7 @@ pub async fn execute_builtin(
 
 /// The text result for every tool except `read`. Split out so `read` can also
 /// return image parts without duplicating the remaining tool dispatch.
-async fn execute_text(
+pub(crate) async fn execute_text(
     tool: &BuiltinTool,
     args: &serde_json::Value,
     ctx: &ToolContext<'_>,
@@ -421,6 +421,72 @@ async fn execute_text(
         "web_fetch" => crate::tools::web::web_fetch(args).await,
         other => format!("ERROR: unknown built-in tool '{other}'"),
     }
+}
+
+/// Apply `edits` to `content` in order, each against the result of the last.
+///
+/// Shared by `edit` and by [`stage_change`], so the change a person reviews is
+/// computed by the same code that later makes it. Two implementations would be
+/// two answers to "what will this edit do".
+fn apply_edits(
+    content: &str,
+    edits: &[serde_json::Value],
+    shown: &str,
+) -> Result<String, String> {
+    let mut content = content.to_string();
+    for (i, e) in edits.iter().enumerate() {
+        let Some(old_string) = e.get("old_string").and_then(|v| v.as_str()) else {
+            return Err(format!("ERROR: {shown}: edit {}: missing 'old_string'", i + 1));
+        };
+        let Some(new_string) = e.get("new_string").and_then(|v| v.as_str()) else {
+            return Err(format!("ERROR: {shown}: edit {}: missing 'new_string'", i + 1));
+        };
+        let count = content.matches(old_string).count();
+        if count == 0 {
+            return Err(format!("ERROR: {shown}: edit {}: old_string not found", i + 1));
+        }
+        if count > 1 {
+            return Err(format!(
+                "ERROR: {shown}: edit {}: old_string not unique ({count} matches)",
+                i + 1
+            ));
+        }
+        content = content.replacen(old_string, new_string, 1);
+    }
+    Ok(content)
+}
+
+/// The change a `write` or `edit` call would make, staged as reviewable hunks
+/// against the file as it is now. AH-146/AH-148.
+///
+/// Returns the resolved target alongside the patch, because the patch is only
+/// meaningful against the file it was computed from: the caller keeps both,
+/// and before acting on an approval checks that the file is still that file.
+/// `None` for every other tool, for a call that would change nothing, and for
+/// a call whose own arguments are invalid -- the tool reports that itself.
+pub async fn stage_change(
+    tool: &BuiltinTool,
+    args: &serde_json::Value,
+    ctx: &ToolContext<'_>,
+) -> Option<(PathBuf, crate::patch::StagedPatch)> {
+    let path = arg_str(args, "path")?;
+    let target = resolve_path(ctx.project_root, ctx.scratch_root, path);
+    let prior = match tokio::fs::read(&target).await {
+        // Text only. A binary file has no lines to review, and refusing to
+        // stage it is not refusing the write -- the prompt still shows it.
+        Ok(bytes) => Some(String::from_utf8(bytes).ok()?),
+        Err(_) => None,
+    };
+    let proposed = match tool.name {
+        "write" => arg_str(args, "content")?.to_string(),
+        "edit" => {
+            let edits = args.get("edits").and_then(|v| v.as_array())?;
+            apply_edits(prior.as_deref()?, edits, path).ok()?
+        }
+        _ => return None,
+    };
+    let patch = crate::patch::StagedPatch::stage(prior.as_deref(), &proposed);
+    (!patch.is_empty()).then_some((target, patch))
 }
 
 /// Focused diff previewing what a `write`/`edit` call would change, without
@@ -977,30 +1043,14 @@ async fn edit(
     if symlink_escapes_root(root, scratch, &target) {
         return format!("ERROR: refused to edit through a symlink out of the workspace: {path}");
     }
-    let mut content = match tokio::fs::read_to_string(&target).await {
+    let content = match tokio::fs::read_to_string(&target).await {
         Ok(c) => c,
         Err(e) => return format!("ERROR: {shown}: {e}"),
     };
-
-    for (i, e) in edits.iter().enumerate() {
-        let Some(old_string) = e.get("old_string").and_then(|v| v.as_str()) else {
-            return format!("ERROR: {shown}: edit {}: missing 'old_string'", i + 1);
-        };
-        let Some(new_string) = e.get("new_string").and_then(|v| v.as_str()) else {
-            return format!("ERROR: {shown}: edit {}: missing 'new_string'", i + 1);
-        };
-        let count = content.matches(old_string).count();
-        if count == 0 {
-            return format!("ERROR: {shown}: edit {}: old_string not found", i + 1);
-        }
-        if count > 1 {
-            return format!(
-                "ERROR: {shown}: edit {}: old_string not unique ({count} matches)",
-                i + 1
-            );
-        }
-        content = content.replacen(old_string, new_string, 1);
-    }
+    let content = match apply_edits(&content, edits, &shown) {
+        Ok(content) => content,
+        Err(message) => return message,
+    };
 
     match tokio::fs::write(&target, content).await {
         Ok(()) => format!("Applied {} edit(s) to {shown}", edits.len()),
@@ -2321,10 +2371,20 @@ async fn memory_propose(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Stri
             ),
             Err(e) => format!("ERROR: could not save that memory: {e}"),
         },
-        Decision::Pending { reason, .. } => format!(
-            "Not saved yet -- the user has been asked. {} Do not propose it again in this conversation.",
-            reason.explain()
-        ),
+        Decision::Pending { proposal, reason } => {
+            // Stored, not dropped. The question has to survive the turn that
+            // asked it -- and a restart -- or the user is asked once, in a
+            // place they may not be looking, and never again.
+            // `Status::Proposed` keeps it out of every prompt meanwhile.
+            let pending = inferred::as_pending(&proposal, reason);
+            match crate::memory::store::upsert(&store_root, &pending) {
+                Ok(()) => format!(
+                    "Not saved yet -- the user has been asked. {} Do not propose it again in this conversation.",
+                    reason.explain()
+                ),
+                Err(e) => format!("ERROR: could not record that proposal: {e}"),
+            }
+        }
         Decision::Refused { reason } => {
             format!("ERROR: refused: {reason} Do not propose this again.")
         }
@@ -2395,6 +2455,81 @@ mod tests {
     }
 
     static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    /// AH-148, through the function the approval flow actually calls. The
+    /// window is real: a prompt can sit unanswered for minutes while an editor,
+    /// a formatter or another agent writes the same file.
+    #[tokio::test]
+    async fn a_file_changed_after_staging_is_caught_before_it_is_written() {
+        let root = unique_root();
+        let store = root.join("store");
+        let ctx = ToolContext::new(&root, &store, &[]);
+        std::fs::write(root.join("notes.txt"), "one\ntwo\n").unwrap();
+
+        let (target, patch) = stage_change(
+            lookup("write").unwrap(),
+            &json!({"path": "notes.txt", "content": "one\nTWO\n"}),
+            &ctx,
+        )
+        .await
+        .expect("a change to stage");
+        assert_eq!(patch.hunks().len(), 1);
+        assert!(patch
+            .check_base(crate::patch::BaseStamp::read(&target).await)
+            .is_ok());
+
+        // Someone else writes the file while the prompt is open.
+        std::fs::write(root.join("notes.txt"), "one\ntwo\nthree\n").unwrap();
+        let refused = patch.check_base(crate::patch::BaseStamp::read(&target).await);
+        assert!(refused.is_err(), "an approval must not land on a changed file");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn an_edit_is_staged_by_the_same_code_that_applies_it() {
+        let root = unique_root();
+        let store = root.join("store");
+        let ctx = ToolContext::new(&root, &store, &[]);
+        std::fs::write(root.join("a.rs"), "fn a() {}\nfn b() {}\n").unwrap();
+        let args = json!({"path": "a.rs", "edits": [
+            {"old_string": "fn a() {}", "new_string": "fn a() { 1 }"}
+        ]});
+
+        let (_, patch) = stage_change(lookup("edit").unwrap(), &args, &ctx)
+            .await
+            .expect("staged");
+        // What was reviewed is what `edit` writes.
+        let out = super::execute_builtin(lookup("edit").unwrap(), &args, &ctx).await.0;
+        assert!(out.starts_with("Applied"), "{out}");
+        assert_eq!(
+            std::fs::read_to_string(root.join("a.rs")).unwrap(),
+            patch.proposed()
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn nothing_is_staged_for_a_change_that_changes_nothing_or_an_invalid_edit() {
+        let root = unique_root();
+        let store = root.join("store");
+        let ctx = ToolContext::new(&root, &store, &[]);
+        std::fs::write(root.join("same.txt"), "x\n").unwrap();
+        assert!(stage_change(
+            lookup("write").unwrap(),
+            &json!({"path": "same.txt", "content": "x\n"}),
+            &ctx
+        )
+        .await
+        .is_none());
+        assert!(stage_change(
+            lookup("edit").unwrap(),
+            &json!({"path": "same.txt", "edits": [{"old_string": "absent", "new_string": "y"}]}),
+            &ctx
+        )
+        .await
+        .is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     fn unique_root() -> PathBuf {
         let n = COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -4640,7 +4775,20 @@ mod tests {
             out.contains("waiting for you"),
             "the reason must be specific: {out}"
         );
-        assert!(stored(&store).is_empty(), "nothing may be written yet");
+        // The question is stored so it survives the turn and a restart, but as
+        // a proposal: `is_usable` admits `Active` only, so it reaches no prompt
+        // while it waits for an answer.
+        let records =
+            crate::memory::store::load(&store, crate::memory::record::Scope::Session).records;
+        assert_eq!(records.len(), 1);
+        assert!(matches!(
+            records[0].status,
+            crate::memory::record::Status::Proposed { .. }
+        ));
+        assert!(
+            !records[0].is_usable(records[0].created_at + 1),
+            "an unanswered guess must never be injected"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -11,6 +11,7 @@ const h = vi.hoisted(() => {
   const mockSendMessage = vi.fn()
   const mockRegenerate = vi.fn()
   const mockStop = vi.fn()
+  const SMOKE_KEY = 'sk-live-abcdefghijklmnopqrstuvwxyz012345'
   const mockAddToolOutput = vi.fn()
   const mockSetChatMessages = vi.fn()
   const mockUpdateRag = vi.fn()
@@ -90,7 +91,17 @@ const h = vi.hoisted(() => {
 
   const chatSessionsState: any = {
     sessions: {},
-    getSessionData: vi.fn(() => ({ tools: [] })),
+    // One object per session, as the real store does: it keeps the data on the
+    // session, or in a standalone map keyed by id. A fresh object per call
+    // would make the route's `sessionData.tools` list vanish on every
+    // re-render, which is a property of this mock and not of the store.
+    sessionDataById: {} as Record<string, { tools: unknown[] }>,
+    getSessionData: vi.fn((sessionId: string) => {
+      if (!chatSessionsState.sessionDataById[sessionId]) {
+        chatSessionsState.sessionDataById[sessionId] = { tools: [] }
+      }
+      return chatSessionsState.sessionDataById[sessionId]
+    }),
   }
   const useChatSessionsMock: any = (selector: any) => selector(chatSessionsState)
   useChatSessionsMock.getState = () => chatSessionsState
@@ -140,6 +151,7 @@ const h = vi.hoisted(() => {
     mockSendMessage,
     mockRegenerate,
     mockStop,
+    SMOKE_KEY,
     mockAddToolOutput,
     mockSetChatMessages,
     mockUpdateRag,
@@ -369,6 +381,15 @@ vi.mock('@/hooks/useTools', () => ({ useTools: vi.fn() }))
 vi.mock('@/hooks/useAppState', () => ({ useAppState: h.useAppStateMock }))
 vi.mock('@/hooks/useModelProvider', () => ({ useModelProvider: h.useModelProviderMock }))
 vi.mock('@/stores/chat-session-store', () => ({ useChatSessions: h.useChatSessionsMock }))
+// The redaction seam. `@/lib/redactToolOutput` itself is NOT mocked: the point
+// of the test below is that the route routes tool output through it, so only
+// the IPC call underneath is replaced.
+vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
+  secretsRedact: (text: string) =>
+    Promise.resolve(text.split(h.SMOKE_KEY).join('sk-[redacted]')),
+  memoryProposalsList: () => Promise.resolve([]),
+  memoryProposalResolve: () => Promise.resolve(null),
+}))
 vi.mock('@/hooks/useChatAttachments', () => ({
   useChatAttachments: h.useChatAttachmentsMock,
   NEW_THREAD_ATTACHMENT_KEY: '__new-thread__',
@@ -459,7 +480,8 @@ describe('ThreadDetail route', () => {
     h.messagesState.updateMessage = vi.fn()
     h.messagesState.deleteMessage = vi.fn()
     h.messagesState.setMessages = vi.fn()
-    h.chatSessionsState.getSessionData = vi.fn(() => ({ tools: [] }))
+    // Fresh session data per test, still one object per session within a test.
+    h.chatSessionsState.sessionDataById = {}
     h.messageQueueState.dequeue = vi.fn(() => null)
     h.messageQueueState.clearQueue = vi.fn()
     h.agentModeState.agentThreads = {}
@@ -801,6 +823,70 @@ describe('ThreadDetail route', () => {
       expect(h.mockAddToolOutput).toHaveBeenCalledWith(
         expect.objectContaining({ toolCallId: 'tc2', tool: 'fetch' })
       )
+    })
+
+    // AH-041. The backend keeps the record of which MCP servers the user
+    // trusts and refuses a call to any other, so an approval that happened in
+    // the renderer has to be handed over as something the backend issued. The
+    // assertion is that the call carries one -- not that the renderer decided.
+    it('authorizes an MCP call with a ticket the backend issued', async () => {
+      h.appStateState.mcpToolNames = new Set(['fetch'])
+      h.appStateState.tools = [{ name: 'fetch', server: 'files' }]
+      const allowOnceForServer = vi.fn().mockResolvedValue('ticket-42')
+      const callTool = vi.fn().mockResolvedValue({ error: '', content: [] })
+      hub.mcp = () => ({ callTool, allowOnceForServer }) as never
+      try {
+        renderComponent()
+        await act(async () => {
+          await (h as any).capturedOnToolCall(toolCall('tcTicket'))
+        })
+        await act(async () => {
+          await finishWithToolCalls()
+        })
+
+        expect(allowOnceForServer).toHaveBeenCalledWith('files', 'fetch')
+        expect(callTool).toHaveBeenCalledWith(
+          expect.objectContaining({
+            toolName: 'fetch',
+            serverName: 'files',
+            approvalTicket: 'ticket-42',
+          })
+        )
+      } finally {
+        hub.mcp = realMcp
+      }
+    })
+
+    // AH-045. A transcript is a file that outlives the run and gets exported,
+    // and a tool prints whatever it prints -- a `curl -v` trace, a config file
+    // it read back. The credential must not reach the message store, and the
+    // assertion is on what is absent, because a redactor that silently returns
+    // its input passes any check for what is present.
+    it('never persists a credential a tool printed', async () => {
+      h.appStateState.mcpToolNames = new Set(['fetch'])
+      const callTool = vi.fn().mockResolvedValue({
+        error: '',
+        content: [{ type: 'text', text: `Authorization: ${h.SMOKE_KEY}` }],
+      })
+      hub.mcp = () => ({ callTool }) as never
+      try {
+        renderComponent()
+        await act(async () => {
+          await (h as any).capturedOnToolCall(toolCall('tcRedact'))
+        })
+        await act(async () => {
+          await finishWithToolCalls()
+        })
+
+        const stored = JSON.stringify(h.mockAddToolOutput.mock.calls)
+        expect(stored).not.toContain(h.SMOKE_KEY)
+        // And the call still happened, so this cannot pass by doing nothing.
+        expect(h.mockAddToolOutput).toHaveBeenCalledWith(
+          expect.objectContaining({ toolCallId: 'tcRedact' })
+        )
+      } finally {
+        hub.mcp = realMcp
+      }
     })
 
     it('reuses the early approval instead of prompting twice', async () => {

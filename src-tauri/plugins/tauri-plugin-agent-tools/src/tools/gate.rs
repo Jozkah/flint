@@ -31,20 +31,23 @@ pub enum PermissionDecision {
     Deny,
 }
 
-/// In-memory, thread-scoped permission grants (never persisted). Exec grants are
-/// per base command (e.g. granting `git` allows `git ...` but not `rm ...`),
-/// matching the user's "allow all git commands" intent. A command is covered
-/// only when EVERY base it runs is granted, so a grant cannot be escalated by
-/// hiding a second command behind `&&`, a pipe, or a substitution. Commands the
-/// scanner cannot decompose (e.g. `sudo`, `eval`) are granted/matched by their
-/// exact normalized text instead.
+/// In-memory, thread-scoped permission grants (never persisted). An exec grant
+/// covers the exact normalized command the user approved and nothing else
+/// (AH-037): approving `git status` does not cover `git push`, and approving a
+/// compound does not hand over its parts, so a grant cannot be escalated by
+/// hiding a second command behind `&&`, a pipe, `;` or a substitution.
 #[derive(Debug, Clone, Default)]
 pub struct SessionGrants {
     read_escape: bool,
     write: bool,
     write_escape: bool,
+    /// Commands approved this session, by their exact normalized text.
+    ///
+    /// Exact, not by base command. Approving `git status` used to grant the
+    /// base `git`, which then covered `git push --force` without asking --
+    /// the user answered a question about reading and was taken to have
+    /// answered one about publishing. AH-037.
     exec_commands: std::collections::BTreeSet<String>,
-    exec_opaque: std::collections::BTreeSet<String>,
     /// MCP tools granted "allow always" this thread, by tool name.
     mcp_tools: std::collections::BTreeSet<String>,
     /// Project roots this session may write to, beyond its own workspace.
@@ -78,16 +81,20 @@ impl SessionGrants {
         }
     }
 
-    /// Whether prior grants cover every command this shell string would run.
-    /// Understood commands need all their bases granted; opaque commands
-    /// (`sudo`, `eval`, ...) match only their exact prior grant.
+    /// Whether a prior grant covers this exact command. AH-037.
+    ///
+    /// Exact normalized text, so approving one command approves that command
+    /// and nothing else. Matching on the base command instead made an approval
+    /// mean far more than the user was shown: `git status` covered `git push
+    /// --force`, and it made every chaining trick free -- `&&`, `|`, `;` and
+    /// `$(...)` all compose commands whose bases were separately approved.
+    ///
+    /// Whitespace is normalized, so re-running the same command spelled with
+    /// different spacing is still the same command. Nothing else is: a changed
+    /// flag, a changed path or a changed order is a different command and is
+    /// asked about again.
     pub fn covers_command(&self, command: &str) -> bool {
-        match scan_command(command) {
-            CommandScan::Bases(bases) => {
-                !bases.is_empty() && bases.iter().all(|b| self.exec_commands.contains(b))
-            }
-            CommandScan::Opaque => self.exec_opaque.contains(&normalize(command)),
-        }
+        self.exec_commands.contains(&normalize(command))
     }
 
     pub fn grant(&mut self, kind: PromptKind) {
@@ -100,16 +107,12 @@ impl SessionGrants {
         }
     }
 
-    /// Grant `command` for the rest of this session. For an understood command
-    /// this grants every base it runs (so re-running the same compound is
-    /// covered); an opaque command is granted by its exact normalized text.
+    /// Grant `command` -- and only `command` -- for the rest of this session.
+    ///
+    /// What the user approved is the string they were shown, so that string is
+    /// what is recorded. AH-037.
     pub fn grant_command(&mut self, command: &str) {
-        match scan_command(command) {
-            CommandScan::Bases(bases) => self.exec_commands.extend(bases),
-            CommandScan::Opaque => {
-                self.exec_opaque.insert(normalize(command));
-            }
-        }
+        self.exec_commands.insert(normalize(command));
     }
 
     /// Whether an MCP tool was granted "allow always" this thread.
@@ -771,40 +774,52 @@ mod tests {
         assert!(!grants.covers_mcp("other_tool"));
     }
 
+    /// AH-037. This test asserted the opposite until the grant was narrowed:
+    /// approving `git status` granted the base `git`, and `git push` was then
+    /// covered for the rest of the session. The user was shown a question about
+    /// reading and taken to have answered one about publishing.
     #[test]
-    fn exec_grant_is_scoped_to_base_command() {
+    fn exec_grant_is_scoped_to_the_exact_command() {
         let root = unique_root();
         let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
         let mut grants = SessionGrants::default();
         grants.grant_command("git status");
 
-        // Same base command -> allowed without prompting.
-        let d = resolve_decision(
-            lookup("bash").unwrap(),
-            &json!({"command": "git push"}),
-            &root,
-            None,
-            &[],
-            &perms,
-            &grants,
-            true,
-            &crate::subject::Subject::MainAgent,
-        );
-        assert_eq!(d, Decision::Allow);
+        let decide = |command: &str| {
+            resolve_decision(
+                lookup("bash").unwrap(),
+                &json!({ "command": command }),
+                &root,
+                None,
+                &[],
+                &perms,
+                &grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
 
-        // A different command still prompts.
-        let d = resolve_decision(
-            lookup("bash").unwrap(),
-            &json!({"command": "rm -rf /"}),
-            &root,
-            None,
-            &[],
-            &perms,
-            &grants,
-            true,
-            &crate::subject::Subject::MainAgent,
+        // The command that was approved, including spelled with other spacing:
+        // re-running the same thing is not a new decision.
+        assert_eq!(decide("git status"), Decision::Allow);
+        assert_eq!(decide("git   status"), Decision::Allow);
+
+        // Anything else is a different command, and is asked about again --
+        // starting with the one the old behaviour waved through.
+        for command in ["git push", "git status --porcelain", "rm -rf /"] {
+            assert_eq!(
+                decide(command),
+                Decision::Prompt(PromptKind::Exec),
+                "approving `git status` must not cover: {command}"
+            );
+        }
+        // A force push is refused outright rather than offered as a prompt, by
+        // the destructive-git rule. Asserted separately so this test says which
+        // answer it expects instead of accepting any non-`Allow` one.
+        assert_eq!(
+            decide("git push --force"),
+            Decision::HardDeny(DenyReason::DestructiveGit(crate::resource::GitOp::ForcePush))
         );
-        assert_eq!(d, Decision::Prompt(PromptKind::Exec));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -841,17 +856,23 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The other half of AH-037, and the one that used to be the escalation.
+    ///
+    /// Approving a compound used to grant every base inside it, so approving
+    /// `git status && rm foo` handed over `rm` for the session -- and `rm bar`,
+    /// which the user never saw, ran without a prompt.
     #[test]
-    fn allow_always_on_compound_grants_every_base_it_ran() {
+    fn approving_a_compound_covers_that_compound_and_not_its_parts() {
         let root = unique_root();
         let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
         let mut grants = SessionGrants::default();
-        // User saw and approved the full compound, so both bases are granted.
+        // The user saw this whole string and approved it.
         grants.grant_command("git status && rm foo");
-        for cmd in ["git push", "rm bar", "rm baz && git pull"] {
-            let d = resolve_decision(
+
+        let decide = |command: &str| {
+            resolve_decision(
                 lookup("bash").unwrap(),
-                &json!({ "command": cmd }),
+                &json!({ "command": command }),
                 &root,
                 None,
                 &[],
@@ -859,8 +880,25 @@ mod tests {
                 &grants,
                 true,
                 &crate::subject::Subject::MainAgent,
+            )
+        };
+
+        assert_eq!(decide("git status && rm foo"), Decision::Allow);
+
+        // Its parts, and anything assembled from them, are separate decisions.
+        for command in [
+            "rm foo",
+            "rm bar",
+            "git status",
+            "git push",
+            "rm baz && git pull",
+            "git status && rm bar",
+        ] {
+            assert_eq!(
+                decide(command),
+                Decision::Prompt(PromptKind::Exec),
+                "a compound must not hand over its parts: {command}"
             );
-            assert_eq!(d, Decision::Allow, "should be covered: {cmd}");
         }
         let _ = std::fs::remove_dir_all(&root);
     }
