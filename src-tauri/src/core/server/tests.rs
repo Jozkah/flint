@@ -1155,6 +1155,27 @@ mod server_tests {
         assert_eq!(schema["allOf"][0]["type"], json!("string"));
     }
 
+    // janhq/jan#8792: a browser calling Jan's local API sends its own Origin and
+    // Referer. Forwarding those upstream made a CORS-strict backend (Ollama
+    // with OLLAMA_ORIGINS, or behind nginx) refuse the request with 403.
+    #[test]
+    fn the_caller_origin_and_referer_are_not_forwarded_upstream() {
+        use hyper::header;
+        assert!(!proxy::forwards_to_upstream(&header::ORIGIN));
+        assert!(!proxy::forwards_to_upstream(&header::REFERER));
+        // Set for the upstream, or stale after the body is rewritten.
+        assert!(!proxy::forwards_to_upstream(&header::HOST));
+        assert!(!proxy::forwards_to_upstream(&header::AUTHORIZATION));
+        assert!(!proxy::forwards_to_upstream(&header::CONTENT_LENGTH));
+        assert!(!proxy::forwards_to_upstream(&header::TRANSFER_ENCODING));
+        // What a client legitimately sets still reaches the backend.
+        assert!(proxy::forwards_to_upstream(&header::CONTENT_TYPE));
+        assert!(proxy::forwards_to_upstream(&header::ACCEPT));
+        assert!(proxy::forwards_to_upstream(
+            &header::HeaderName::from_static("x-stainless-lang")
+        ));
+    }
+
     const PROMPT: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
 
     #[test]
@@ -1184,7 +1205,11 @@ mod server_tests {
         assert!(!cyrillic.is_char_boundary("x-anthropic-billing-header:".len()));
         assert_eq!(proxy::strip_anthropic_billing_header(cyrillic), cyrillic);
 
-        for text in ["日本語のシステムプロンプトです", "émoji 😀 at the start", "x-anthropic-billing-héader: z\nrest"] {
+        for text in [
+            "日本語のシステムプロンプトです",
+            "émoji 😀 at the start",
+            "x-anthropic-billing-héader: z\nrest",
+        ] {
             assert_eq!(proxy::strip_anthropic_billing_header(text), text);
         }
     }
