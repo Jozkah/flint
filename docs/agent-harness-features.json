@@ -4442,13 +4442,16 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-048"
       ],
       "owner": "lane-08-git-pr-workflows",
       "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/patch.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/src/core/agent/loop.rs",
         "src-tauri/src/core/agent/events.rs"
       ],
       "securityImpact": "medium",
@@ -4459,10 +4462,15 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::patch::tests::separate_changes_are_separate_hunks",
+        "tauri-plugin-agent-tools::patch::tests::the_view_carries_the_base_it_was_computed_against",
+        "tauri-plugin-agent-tools::tools::handlers::tests::an_edit_is_staged_by_the_same_code_that_applies_it",
+        "tauri-plugin-agent-tools::tools::handlers::tests::nothing_is_staged_for_a_change_that_changes_nothing_or_an_invalid_edit"
+      ],
       "platformRequirements": [],
-      "blockedReason": null,
-      "auditNote": "The approval event carries a whole-change diff; there is no reviewable staged patch."
+      "blockedReason": "Every prompted write/edit carries the change twice: the existing numbered text diff for reading, and now a PatchView -- the hunks with 1-based line ranges, removed and added lines, and the base stamp they were computed against -- on StreamEvent::PermissionRequest.patch. Hunks are maximal runs of changed lines with no context merged in, so two unrelated edits are two hunks. The staged change is produced by the same apply_edits function `edit` uses to write, so what is reviewed is what is written; a test asserts the written file equals the staged proposal. Not `verified`: the TUI still renders the text diff and does not yet present hunks individually (that is AH-147), and there is no cancellation test on this path.",
+      "auditNote": "Every prompted write/edit carries the change twice: the existing numbered text diff for reading, and now a PatchView -- the hunks with 1-based line ranges, removed and added lines, and the base stamp they were computed against -- on StreamEvent::PermissionRequest.patch. Hunks are maximal runs of changed lines with no context merged in, so two unrelated edits are two hunks. The staged change is produced by the same apply_edits function `edit` uses to write, so what is reviewed is what is written; a test asserts the written file equals the staged proposal. Not `verified`: the TUI still renders the text diff and does not yet present hunks individually (that is AH-147), and there is no cancellation test on this path."
     },
     {
       "id": "AH-147",
@@ -4470,13 +4478,15 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P1",
       "dependencies": [
         "AH-146"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/patch.rs"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "A user can accept or reject individual hunks of a proposed change.",
@@ -4486,9 +4496,15 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::patch::tests::selecting_everything_is_the_proposal_and_nothing_is_the_base",
+        "tauri-plugin-agent-tools::patch::tests::a_rejected_hunk_leaves_the_base_lines_untouched",
+        "tauri-plugin-agent-tools::patch::tests::a_selection_naming_a_hunk_that_does_not_exist_is_refused",
+        "tauri-plugin-agent-tools::patch::tests::insertions_and_deletions_are_hunks_too"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": "The selection itself is built and tested: StagedPatch::select rebuilds the file from the base with only the accepted hunks applied, a rejected hunk leaves the base lines exactly as they were, and a selection naming a hunk that does not exist is refused rather than ignored. MISSING, and the reason this is not implemented: no user can yet accept or reject an individual hunk. PermissionDecision is AllowOnce / AllowAlways / Deny with no selection, and the TUI prompt has no per-hunk controls. The next step is a selection-carrying decision (AllowSome(Vec<usize>)), the TUI toggles, and the execution path writing StagedPatch::select(accepted) after the base check.",
+      "auditNote": "The selection itself is built and tested: StagedPatch::select rebuilds the file from the base with only the accepted hunks applied, a rejected hunk leaves the base lines exactly as they were, and a selection naming a hunk that does not exist is refused rather than ignored. MISSING, and the reason this is not implemented: no user can yet accept or reject an individual hunk. PermissionDecision is AllowOnce / AllowAlways / Deny with no selection, and the TUI prompt has no per-hunk controls. The next step is a selection-carrying decision (AllowSome(Vec<usize>)), the TUI toggles, and the execution path writing StagedPatch::select(accepted) after the base check."
     },
     {
       "id": "AH-148",
@@ -4496,13 +4512,18 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-147"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/patch.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/events.rs"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "Applying a patch onto changed content fails loudly instead of clobbering.",
@@ -4512,9 +4533,15 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::patch::tests::a_changed_base_is_refused",
+        "tauri-plugin-agent-tools::patch::tests::a_file_created_or_deleted_underneath_is_refused",
+        "tauri-plugin-agent-tools::patch::tests::the_refusal_says_nothing_was_written",
+        "tauri-plugin-agent-tools::tools::handlers::tests::a_file_changed_after_staging_is_caught_before_it_is_written"
+      ],
       "platformRequirements": [],
-      "blockedReason": null
+      "blockedReason": "A write or edit is staged against the file as it is when the permission prompt is shown (StagedPatch, with a BaseStamp of that content), and the stage is kept until the answer comes back. Before an approval is acted on, the file is re-stamped; if it is no longer the content the prompt was about -- changed, created or deleted underneath -- the call is refused with a message saying nothing was written, and nothing is. Before this, a `write` approved against one version of a file silently overwrote whatever was there by the time the answer arrived. A refusal, not a merge: the model re-reads and proposes against what is actually there. Applies to the prompted path in the Rust agent loop (CLI/TUI and Cowork runs that prompt). Auto-approved calls have no approval window to guard. Not `verified`: the dispatcher wiring in loop.rs is compile-checked only, because the `Jan` lib test binary does not start on this host (0xc0000139); the staging and base check themselves are tested in the plugin, which does run.",
+      "auditNote": "A write or edit is staged against the file as it is when the permission prompt is shown (StagedPatch, with a BaseStamp of that content), and the stage is kept until the answer comes back. Before an approval is acted on, the file is re-stamped; if it is no longer the content the prompt was about -- changed, created or deleted underneath -- the call is refused with a message saying nothing was written, and nothing is. Before this, a `write` approved against one version of a file silently overwrote whatever was there by the time the answer arrived. A refusal, not a merge: the model re-reads and proposes against what is actually there. Applies to the prompted path in the Rust agent loop (CLI/TUI and Cowork runs that prompt). Auto-approved calls have no approval window to guard. Not `verified`: the dispatcher wiring in loop.rs is compile-checked only, because the `Jan` lib test binary does not start on this host (0xc0000139); the staging and base check themselves are tested in the plugin, which does run."
     },
     {
       "id": "AH-149",

@@ -722,9 +722,6 @@ fn build_cli_orchestration_args(
         // `[tools].sandbox` and then the user's global `sandbox`.
         subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
         sandbox,
-        // The run the user started is the top-level agent. A subagent it
-        // dispatches gets its own name on the cloned child args.
-        agent_name: None,
     }
 }
 

@@ -156,6 +156,24 @@ renders from renderer state while nothing is written, and a record written while
 no card renders, are both failures a DOM-only or file-only check reports as a
 pass.
 
+## Staged patches: preview, selection, no clobbering (AH-146 / AH-147 / AH-148)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 12 unit tests | `plugins/tauri-plugin-agent-tools/src/patch.rs` | separate changes are separate hunks; selecting every hunk is the proposal and none is the base; a rejected hunk leaves base lines untouched; an unknown hunk is refused; insertions and deletions are hunks; a new file is one hunk against nothing; a missing final newline survives; **a changed, created or deleted base is refused**, and the refusal says nothing was written |
+| 3 integration tests | `plugins/tauri-plugin-agent-tools/src/tools/handlers.rs` | a file written by someone else after staging is caught before the approved change lands; an edit is staged by the same code that applies it (the written file equals the staged proposal); nothing is staged for a no-op or an invalid edit |
+
+Run: `cargo test -p tauri-plugin-agent-tools --lib -- --test-threads=4 patch::`
+and `... handlers::tests::a_file_changed_after_staging`.
+
+The approval flow in `core/agent/loop.rs` stages the change when the prompt is
+shown and re-stamps the file before acting on the answer. That wiring is
+compile-checked on default, `cowork-smoke` and `cli`, but not executed here --
+see Known blockers.
+
+AH-147 is `in-progress`: `StagedPatch::select` is built and tested, but no
+decision can yet carry a hunk selection and the TUI has no per-hunk controls.
+
 ## Prompt snapshots bound to their turn (AH-078)
 
 | Evidence | Where | Covers |

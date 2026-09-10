@@ -31,13 +31,11 @@ pub enum PermissionDecision {
     Deny,
 }
 
-/// In-memory, thread-scoped permission grants (never persisted). Exec grants are
-/// per base command (e.g. granting `git` allows `git ...` but not `rm ...`),
-/// matching the user's "allow all git commands" intent. A command is covered
-/// only when EVERY base it runs is granted, so a grant cannot be escalated by
-/// hiding a second command behind `&&`, a pipe, or a substitution. Commands the
-/// scanner cannot decompose (e.g. `sudo`, `eval`) are granted/matched by their
-/// exact normalized text instead.
+/// In-memory, thread-scoped permission grants (never persisted). An exec grant
+/// covers the exact normalized command the user approved and nothing else
+/// (AH-037): approving `git status` does not cover `git push`, and approving a
+/// compound does not hand over its parts, so a grant cannot be escalated by
+/// hiding a second command behind `&&`, a pipe, `;` or a substitution.
 #[derive(Debug, Clone, Default)]
 pub struct SessionGrants {
     read_escape: bool,

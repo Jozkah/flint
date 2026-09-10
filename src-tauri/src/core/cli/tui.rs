@@ -16978,6 +16978,7 @@ mod tests {
             path: Some("out.txt".into()),
             command: None,
             diff: Some("@@ created file @@\n+ hi".into()),
+            patch: None,
             prompt_kind: "write".into(),
             offers_always: true,
         });
@@ -17015,6 +17016,7 @@ mod tests {
             path: None,
             command: Some("ls".into()),
             diff: None,
+            patch: None,
             prompt_kind: "exec".into(),
             offers_always: true,
         });
@@ -20785,7 +20787,6 @@ mod tests {
                 session_id: None,
                 subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
                 sandbox: None,
-                agent_name: None,
             });
             app.args = Some(args.clone());
 
@@ -22665,6 +22666,7 @@ mod tests {
                 path: None,
                 command: Some("cargo test".into()),
                 diff: None,
+                patch: None,
                 prompt_kind: "exec".into(),
                 offers_always: true,
             },
@@ -22703,6 +22705,7 @@ mod tests {
                 path: None,
                 command: Some("cargo test".into()),
                 diff: None,
+                patch: None,
                 prompt_kind: "exec".into(),
                 offers_always: true,
             },
@@ -22718,6 +22721,7 @@ mod tests {
                 path: Some("secrets.env".into()),
                 command: None,
                 diff: None,
+                patch: None,
                 prompt_kind: "read".into(),
                 offers_always: false,
             },
@@ -24404,6 +24408,7 @@ mod tests {
                 path: None,
                 command: Some("grep -n foo src/".into()),
                 diff: None,
+                patch: None,
                 prompt_kind: "exec".into(),
                 offers_always: true,
             });

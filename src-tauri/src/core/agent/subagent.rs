@@ -1962,8 +1962,6 @@ mod tests {
             session_id: None,
             subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
             sandbox: None,
-            // A parent run: the child sets its own name when dispatched.
-            agent_name: None,
         }
     }
 

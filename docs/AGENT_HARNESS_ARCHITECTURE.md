@@ -129,6 +129,23 @@ Two rules hold everywhere:
   redaction ran stores a placeholder. A fallback to the unredacted text is a
   fallback that leaks on precisely the path least likely to be tested.
 
+### AHD-005c: an approval is about a specific version of a file
+
+A `write` or `edit` that needs approval is staged as a `StagedPatch`: hunks
+computed against the file as it is when the question is asked, plus a stamp of
+that content. The stage lives until the answer arrives, and the answer is
+applied only if the file is still that content. Otherwise the call is refused
+with nothing written.
+
+Three consequences, all deliberate:
+
+* **Hunks carry no merged context.** A unified diff joins nearby changes; here
+  two unrelated edits stay two hunks, because they are two decisions.
+* **One implementation of "what will this edit do".** The staged proposal and
+  the write both come from `apply_edits`, so what is reviewed is what lands.
+* **Refuse, do not merge.** When the base moved, the model re-reads and
+  proposes again. A three-way merge would produce a file nobody reviewed.
+
 ### AHD-006: the capability model covers every dispatchable tool
 
 `Capability::{Read, Write, Exec, Net}` classifies the 16 built-ins and drives

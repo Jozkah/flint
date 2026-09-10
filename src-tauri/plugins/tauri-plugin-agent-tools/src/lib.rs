@@ -13,6 +13,8 @@ pub mod activity;
 pub mod audit;
 /// Which MCP servers the user has agreed to run tools from (AH-041).
 pub mod mcp_trust;
+/// A proposed change held as reviewable hunks (AH-146/147/148).
+pub mod patch;
 pub mod lifecycle;
 pub mod memory;
 pub mod permissions;

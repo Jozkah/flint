@@ -642,6 +642,7 @@ impl CompositeToolInvoker {
             path: None,
             command: None,
             diff: None,
+            patch: None,
             prompt_kind: "mcp".to_string(),
             offers_always: true,
         });
@@ -666,6 +667,7 @@ impl CompositeToolInvoker {
             path: Some(name.to_string()),
             command: None,
             diff: None,
+            patch: None,
             prompt_kind: "subagent_create".to_string(),
             offers_always: false,
         });
@@ -1013,7 +1015,7 @@ impl ToolInvoker for CompositeToolInvoker {
     async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, String> {
         use tauri_plugin_agent_tools::tools::{
             gate::{resolve_decision, Decision, PromptKind},
-            handlers::{execute_builtin_with_diff, preview_diff},
+            handlers::{execute_builtin_with_diff, preview_diff, stage_change},
             is_builtin, lookup, Capability, ToolContext,
         };
         let mut out: Vec<ToolOutcome> = Vec::with_capacity(tool_calls.len());
@@ -1260,6 +1262,11 @@ impl ToolInvoker for CompositeToolInvoker {
                         .flatten()
                         .map(String::from);
                     let diff = preview_diff(tool, &args, &self.tool_context()).await;
+                    // AH-146/AH-148. Staged against the file as it is at the
+                    // moment the question is asked. Kept until the answer comes
+                    // back, because the answer is only an answer about *that*
+                    // file.
+                    let staged = stage_change(tool, &args, &self.tool_context()).await;
                     let _ = self.events.send(StreamEvent::PermissionRequest {
                         request_id: request_id.clone(),
                         tool_name: name.to_string(),
@@ -1267,6 +1274,7 @@ impl ToolInvoker for CompositeToolInvoker {
                         path,
                         command,
                         diff,
+                        patch: staged.as_ref().map(|(_, patch)| patch.view()),
                         prompt_kind: prompt_kind.to_string(),
                         offers_always: true,
                     });
@@ -1297,6 +1305,27 @@ impl ToolInvoker for CompositeToolInvoker {
                         continue;
                     }
 
+                    // AH-148. A prompt can stay open for minutes, and in that
+                    // time an editor, a formatter or another agent can write
+                    // the same file. Applying the approved change then would
+                    // overwrite work nobody reviewed -- for `write`, silently.
+                    // So an approval is checked against the file it was given
+                    // about, and refused with nothing written if that file has
+                    // moved on. A refusal, not a merge: the model re-reads and
+                    // proposes again against what is actually there.
+                    let stale = match (&staged, decision) {
+                        (Some((target, patch)), PermissionDecision::AllowOnce)
+                        | (Some((target, patch)), PermissionDecision::AllowAlways) => patch
+                            .check_base(
+                                tauri_plugin_agent_tools::patch::BaseStamp::read(target).await,
+                            )
+                            .err()
+                            .map(|refusal| refusal.message(&target.display().to_string())),
+                        _ => None,
+                    };
+                    if let Some(message) = stale {
+                        (message, None, None)
+                    } else {
                     match decision {
                         PermissionDecision::AllowOnce => {
                             let ctx = self
@@ -1327,6 +1356,7 @@ impl ToolInvoker for CompositeToolInvoker {
                         PermissionDecision::Deny => {
                             (format!("ERROR: tool '{name}' denied by user"), None, None)
                         }
+                    }
                     }
                 }
             };

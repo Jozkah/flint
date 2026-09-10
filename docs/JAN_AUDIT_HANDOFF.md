@@ -1344,3 +1344,69 @@ tsconfig.json` passed; `yarn build:web` did not, because a base-class stub in
 two. The repo typechecks with `tsc -b` (project references), which is what
 `yarn typecheck` runs and what catches that. Fixed in the next commit. Use
 `yarn typecheck` and `yarn build:web` before claiming either.
+
+## 2026-09-10 — Batch A: staged patches (AH-146, AH-148 implemented; AH-147 in progress)
+
+**The defect AH-148 names was live.** The Rust agent loop computes the diff
+preview when it shows a permission prompt, then waits — for as long as the
+person takes — and then calls `execute_builtin_with_diff` against whatever is on
+disk *by then*. For `write` that meant an approval given against one version of
+a file silently overwrote whatever an editor, a formatter or another agent had
+written in the meantime. The person approved a change; they were not shown the
+change that happened.
+
+`patch::StagedPatch` holds the change as hunks plus a `BaseStamp` (FNV-1a hash
+and length) of the content it was computed from. The loop stages when it asks,
+keeps the stage until the answer arrives, and re-stamps the file before acting.
+If it moved — changed, created or deleted underneath — the call is refused with
+a message saying nothing was written, and nothing is. Refuse, not merge: a merge
+would produce a file nobody reviewed.
+
+**AH-146.** The prompt event gains `patch: Option<PatchView>` beside the text
+diff: hunks with 1-based ranges, removed and added lines, and the base stamp.
+Hunks are maximal runs of changed lines with no context merged in, so two
+unrelated edits are two decisions. The replacement loop moved out of `edit`
+into `apply_edits`, which both `edit` and staging call — one answer to "what
+will this edit do", with a test asserting the written file equals the staged
+proposal.
+
+**AH-147 is not done, and the registry says so.** `StagedPatch::select` is
+built and tested — rejected hunks leave the base untouched, an unknown hunk is
+refused — but no person can yet choose hunks: `PermissionDecision` carries no
+selection and the TUI prompt has no per-hunk controls. Moved from `missing` to
+`in-progress` with that named as the gap. Next: `AllowSome(Vec<usize>)`, TUI
+toggles, and the execution path writing `select(accepted)` after the base check.
+
+**Where this applies.** The prompted path of the Rust agent loop — the CLI/TUI,
+and Cowork runs that prompt. The desktop's renderer-driven built-in tools never
+prompt (they are gated in Rust and refused rather than asked), so there is no
+approval window there to guard.
+
+Also corrected: the `SessionGrants` doc comment still described exec grants as
+per base command, contradicting the AH-037 change. Rewritten.
+
+Evidence: 12 patch tests, 3 handler integration tests; 713 plugin tests pass.
+The loop wiring compiles on default, `cowork-smoke` and `cli`, and is not
+executed here (the `Jan` lib test binary blocker). Registry: AH-146 and AH-148
+`implemented`, AH-147 `in-progress`.
+
+## The `cli` build was broken from `3c501f8` to this commit
+
+The merge that reconciled AH-007 with `fork/main` left three
+`agent_name: None` literals — this branch's pre-merge field, removed from
+`OrchestrationArgs` in favour of upstream's `subject` — in code compiled only
+under `--features cli`: `core/cli/mod.rs`, `core/cli/tui.rs`, and a
+`#[cfg(feature = "cli")]` test helper in `core/agent/subagent.rs`. The
+post-merge dedupe checked `loop.rs` and the default build, never the `cli`
+build, so it went out green-looking and was not.
+
+It surfaced here because Batch A's new `patch` field also had to reach four
+cli-only test constructors in `tui.rs`, which meant running
+`cargo check --tests --no-default-features --features cli` for the first time
+since the merge. Both are fixed in this commit.
+
+The rule this adds to the one about `yarn typecheck`: a change to a shared
+struct is checked on **all three** configurations — default,
+`--features cowork-smoke`, and `--no-default-features --features cli`, each with
+`--tests` — before it is called compiled. Checking one and inferring the others
+is how both this and `f318081` shipped broken.
