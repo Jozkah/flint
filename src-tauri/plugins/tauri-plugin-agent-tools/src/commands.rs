@@ -1065,16 +1065,18 @@ mod tests {
     }
 
     const T1: &str = "thread-one";
-    /// Own thread ids: the session scratch is keyed by thread id and lives in
-    /// the shared host temp dir, so reusing one couples these tests to every
-    /// other test that uses it.
-    /// Its own id: this test depends on its scratch staying alive, and any
-    /// test that deletes a thread workspace also deletes that thread's scratch.
-    const T_SCRATCH: &str = "thread-scratch";
-    const T_ATTACH_RW: &str = "thread-attach-rw";
-    const T_ATTACH_NONE: &str = "thread-attach-none";
-    const T_ATTACH_OVERLAP: &str = "thread-attach-overlap";
-    const T2: &str = "thread-two";
+
+    /// A thread id no other test uses. The session scratch is keyed by thread
+    /// id, so tests sharing one share a scratch -- and a test that deletes its
+    /// thread deletes the scratch another test is about to run bash in. The
+    /// scratch goes when the returned session is dropped at the end of the test.
+    fn unique_thread(tag: &str) -> workspace::TestSession {
+        workspace::TestSession::new(format!(
+            "{tag}-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ))
+    }
 
     #[test]
     fn default_store_is_permanent_and_outside_any_sandbox() {
@@ -1112,12 +1114,13 @@ mod tests {
     /// asked for, and nowhere else.
     #[tokio::test]
     async fn writes_are_allowed_inside_the_ephemeral_sandbox() {
+        let t1: &str = &unique_thread("writes_are_allowed_inside_the_ephemeral_sandbox");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
 
         let out = execute_tool(
             df.clone(),
-            T1.into(),
+            t1.into(),
             None,
             "write".into(),
             json!({"path": "a.txt", "content": "hello"}),
@@ -1132,7 +1135,7 @@ mod tests {
         .expect("a write inside the sandbox is allowed");
         assert!(!out.is_error, "got: {}", out.content);
 
-        let sandbox = workspace::thread_workspace(&data, T1).unwrap();
+        let sandbox = workspace::thread_workspace(&data, t1).unwrap();
         assert_eq!(
             std::fs::read_to_string(sandbox.join("a.txt")).ok(),
             Some("hello".to_string())
@@ -1144,14 +1147,15 @@ mod tests {
     /// it) while staying out of `content`, which is what the model sees.
     #[tokio::test]
     async fn edit_returns_a_diff_for_display_only() {
+        let t1: &str = &unique_thread("edit_returns_a_diff_for_display_only");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
-        let sandbox = workspace::ensure_thread_workspace(&data, T1).await.unwrap();
+        let sandbox = workspace::ensure_thread_workspace(&data, t1).await.unwrap();
         std::fs::write(sandbox.join("a.txt"), b"before").unwrap();
 
         let out = execute_tool(
             df.clone(),
-            T1.into(),
+            t1.into(),
             None,
             "edit".into(),
             json!({"path": "a.txt", "edits": [{"old_string": "before", "new_string": "after"}]}),
@@ -1182,12 +1186,13 @@ mod tests {
     /// stays refused, so allowing writes did not open the door generally.
     #[tokio::test]
     async fn escaping_reads_are_still_refused() {
+        let t1: &str = &unique_thread("escaping_reads_are_still_refused");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
 
         let err = execute_tool(
             df.clone(),
-            T1.into(),
+            t1.into(),
             None,
             "read".into(),
             json!({"path": "../../../etc/hostname"}),
@@ -1216,13 +1221,14 @@ mod tests {
     #[tokio::test]
     #[allow(clippy::await_holding_lock)]
     async fn escaping_writes_are_refused() {
+        let t_scratch: &str = &unique_thread("escaping_writes_are_refused");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
 
         for path in ["../escape.txt", "/etc/hosts", "/home/akarshan/.bashrc"] {
             let err = execute_tool(
                 df.clone(),
-                T_SCRATCH.into(),
+                t_scratch.into(),
                 None,
                 "write".into(),
                 json!({"path": path, "content": "x"}),
@@ -1248,8 +1254,7 @@ mod tests {
         // "No change" instead of "Created".
         // The sweep test collects every scratch in the shared temp dir; without
         // this it can delete ours between the write and the assertion.
-        let _guard = crate::workspace::lock_scratch_namespace();
-        let scratch = crate::workspace::ensure_scratch_dir(T_SCRATCH)
+        let scratch = crate::workspace::ensure_scratch_dir(t_scratch)
             .await
             .unwrap();
         let name = format!("jan_cmd_scratch_{}.txt", std::process::id());
@@ -1262,7 +1267,7 @@ mod tests {
         };
         let res = execute_tool(
             df.clone(),
-            T_SCRATCH.into(),
+            t_scratch.into(),
             None,
             "write".into(),
             json!({"path": requested, "content": "x"}),
@@ -1285,7 +1290,7 @@ mod tests {
         // An in-sandbox write still succeeds, so we didn't over-tighten.
         let res = execute_tool(
             df.clone(),
-            T_SCRATCH.into(),
+            t_scratch.into(),
             None,
             "write".into(),
             json!({"path": "ok.txt", "content": "x"}),
@@ -1318,12 +1323,13 @@ mod tests {
     /// keeps the fallback honest on hosts (and CI images) with no backend.
     #[tokio::test]
     async fn bash_runs_only_when_the_sandbox_can_enforce() {
+        let t1: &str = &unique_thread("bash_runs_only_when_the_sandbox_can_enforce");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
 
         let result = execute_tool(
             df.clone(),
-            T1.into(),
+            t1.into(),
             None,
             "bash".into(),
             json!({"command": "echo hi"}),
@@ -1357,16 +1363,26 @@ mod tests {
     /// depend on the host actually having connectivity.
     #[tokio::test]
     async fn bash_has_no_network_unless_the_caller_asks() {
+        let t1: &str = &unique_thread("bash_has_no_network_unless_the_caller_asks");
         if !jail::backend().enforces() {
             eprintln!("skipping: no sandbox backend on this host");
             return;
         }
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
+        // The probe has to be written for the shell `execute_tool` will pick,
+        // so the flavour is asked of the same policy that call builds: this
+        // thread's own workspace and scratch. It used to ask about the shared
+        // host temp dir, a different policy whose answer need not match.
+        let workspace = crate::workspace::ensure_thread_workspace(&data, t1)
+            .await
+            .unwrap();
+        let scratch = crate::workspace::ensure_scratch_dir(t1).await.unwrap();
+        let command = network_probe(&workspace, &scratch);
 
         let out = execute_tool(
             df.clone(),
-            T1.into(),
+            t1.into(),
             None,
             "bash".into(),
             // A connection attempt written for whichever shell will actually
@@ -1375,7 +1391,7 @@ mod tests {
             // because the MSYS2 runtime Git Bash needs cannot start inside an
             // AppContainer -- it is a parse error, so the test failed on
             // syntax rather than on whether the network was reachable.
-            json!({ "command": network_probe() }),
+            json!({ "command": command }),
             None,
             None,
             None,
@@ -1393,15 +1409,15 @@ mod tests {
             out.content
         );
         let _ = std::fs::remove_dir_all(&data);
+        let _ = crate::workspace::remove_scratch_dir(t1).await;
     }
 
     /// Try to open a TCP connection, in the language the sandboxed shell speaks.
     ///
     /// Success prints `connected`; the assertion is that it never does.
-    fn network_probe() -> String {
+    fn network_probe(workspace: &Path, scratch: &Path) -> String {
         use crate::tools::{jail, proc::ShellFlavor};
-        let flavor = std::env::temp_dir();
-        let policy = jail::Policy::new(&flavor, false);
+        let policy = jail::Policy::new(workspace, false).with_scratch_root(scratch);
         match jail::select_shell(&policy)
             .ok()
             .map(|s| s.report.cfg.flavor)
@@ -1427,12 +1443,13 @@ mod tests {
     /// canonicalizes the root and a missing root reads as an escape.
     #[tokio::test]
     async fn first_tool_call_creates_the_sandbox() {
+        let t1: &str = &unique_thread("first_tool_call_creates_the_sandbox");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
 
         let out = execute_tool(
             df.clone(),
-            T1.into(),
+            t1.into(),
             None,
             "ls".into(),
             json!({}),
@@ -1446,20 +1463,21 @@ mod tests {
         .await
         .unwrap();
         assert!(!out.is_error, "got: {}", out.content);
-        assert!(workspace::thread_workspace(&data, T1).unwrap().is_dir());
+        assert!(workspace::thread_workspace(&data, t1).unwrap().is_dir());
         let _ = std::fs::remove_dir_all(&data);
     }
 
     #[tokio::test]
     async fn allowed_read_runs_in_the_thread_sandbox() {
+        let t1: &str = &unique_thread("allowed_read_runs_in_the_thread_sandbox");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
-        let sandbox = PathBuf::from(thread_workspace_path(df.clone(), T1.into()).await.unwrap());
+        let sandbox = PathBuf::from(thread_workspace_path(df.clone(), t1.into()).await.unwrap());
         std::fs::write(sandbox.join("a.txt"), b"hello").unwrap();
 
         let out = execute_tool(
             df.clone(),
-            T1.into(),
+            t1.into(),
             None,
             "read".to_string(),
             json!({"path": "a.txt"}),
@@ -1581,12 +1599,14 @@ mod tests {
     /// note written under one thread is readable from the next.
     #[tokio::test]
     async fn memory_outlives_the_thread_that_wrote_it() {
+        let t2: &str = &unique_thread("memory_outlives_the_thread_that_wrote_it-two");
+        let t1: &str = &unique_thread("memory_outlives_the_thread_that_wrote_it");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
 
         let out = execute_tool(
             df.clone(),
-            T1.into(),
+            t1.into(),
             None,
             "memory_write".into(),
             json!({"name": "prefs", "content": "user likes tabs"}),
@@ -1601,14 +1621,14 @@ mod tests {
         .unwrap();
         assert!(!out.is_error, "got: {}", out.content);
 
-        thread_workspace_delete(df.clone(), T1.into())
+        thread_workspace_delete(df.clone(), t1.into())
             .await
             .unwrap();
-        assert!(!workspace::thread_workspace(&data, T1).unwrap().exists());
+        assert!(!workspace::thread_workspace(&data, t1).unwrap().exists());
 
         let out = execute_tool(
             df.clone(),
-            T2.into(),
+            t2.into(),
             None,
             "memory_read".into(),
             json!({"name": "prefs"}),
@@ -1629,18 +1649,19 @@ mod tests {
     /// reach it even by climbing out -- no extra rule, just `escapes_project`.
     #[tokio::test]
     async fn filesystem_tools_cannot_reach_memory() {
+        let t1: &str = &unique_thread("filesystem_tools_cannot_reach_memory");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
         memory_write(df.clone(), None, "prefs".into(), "secret".into())
             .await
             .unwrap();
-        thread_workspace_path(df.clone(), T1.into()).await.unwrap();
+        thread_workspace_path(df.clone(), t1.into()).await.unwrap();
 
         // A relative climb out of the thread sandbox toward the store is an
         // escape and must be refused.
         let err = execute_tool(
             df.clone(),
-            T1.into(),
+            t1.into(),
             None,
             "read".into(),
             json!({"path": "../../memory/prefs.md"}),
@@ -1664,20 +1685,22 @@ mod tests {
     /// A sweep clears leftover sandboxes without touching the store.
     #[tokio::test]
     async fn sweep_keeps_live_threads_and_the_store() {
+        let t2: &str = &unique_thread("sweep_keeps_live_threads_and_the_store-two");
+        let t1: &str = &unique_thread("sweep_keeps_live_threads_and_the_store");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
         memory_write(df.clone(), None, "prefs".into(), "keep me".into())
             .await
             .unwrap();
-        thread_workspace_path(df.clone(), T1.into()).await.unwrap();
-        thread_workspace_path(df.clone(), T2.into()).await.unwrap();
+        thread_workspace_path(df.clone(), t1.into()).await.unwrap();
+        thread_workspace_path(df.clone(), t2.into()).await.unwrap();
 
-        let removed = thread_workspace_sweep(df.clone(), vec![T1.to_string()])
+        let removed = thread_workspace_sweep(df.clone(), vec![t1.to_string()])
             .await
             .unwrap();
         assert_eq!(removed, 1);
-        assert!(workspace::thread_workspace(&data, T1).unwrap().is_dir());
-        assert!(!workspace::thread_workspace(&data, T2).unwrap().exists());
+        assert!(workspace::thread_workspace(&data, t1).unwrap().is_dir());
+        assert!(!workspace::thread_workspace(&data, t2).unwrap().exists());
         assert_eq!(
             memory_read(df.clone(), None, "prefs".into()).await.unwrap(),
             "keep me"
@@ -1718,13 +1741,14 @@ mod tests {
 
     #[tokio::test]
     async fn agent_config_surface_is_hard_denied() {
+        let t1: &str = &unique_thread("agent_config_surface_is_hard_denied");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
-        thread_workspace_path(df.clone(), T1.into()).await.unwrap();
+        thread_workspace_path(df.clone(), t1.into()).await.unwrap();
 
         let err = execute_tool(
             df.clone(),
-            T1.into(),
+            t1.into(),
             None,
             "read".to_string(),
             json!({"path": ".jan/agent/agent.toml"}),
@@ -1747,11 +1771,12 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_tool_is_rejected() {
+        let t1: &str = &unique_thread("unknown_tool_is_rejected");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
         let err = execute_tool(
             df,
-            T1.into(),
+            t1.into(),
             None,
             "rm_rf".to_string(),
             json!({}),
@@ -1823,12 +1848,14 @@ mod tests {
     /// same as memory.
     #[tokio::test]
     async fn skills_written_by_a_tool_outlive_the_thread() {
+        let t2: &str = &unique_thread("skills_written_by_a_tool_outlive_the_thread-two");
+        let t1: &str = &unique_thread("skills_written_by_a_tool_outlive_the_thread");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
 
         execute_tool(
             df.clone(),
-            T1.into(),
+            t1.into(),
             None,
             "skill_write".into(),
             json!({"name": "deploy", "content": "---\ndescription: d\n---\nrun it"}),
@@ -1841,13 +1868,13 @@ mod tests {
         )
         .await
         .unwrap();
-        thread_workspace_delete(df.clone(), T1.into())
+        thread_workspace_delete(df.clone(), t1.into())
             .await
             .unwrap();
 
         let out = execute_tool(
             df.clone(),
-            T2.into(),
+            t2.into(),
             None,
             "skill_read".into(),
             json!({"name": "deploy"}),
@@ -1869,6 +1896,7 @@ mod tests {
     /// writes only into its own sandbox.
     #[tokio::test]
     async fn an_attached_folder_is_readable_and_unwritable() {
+        let thread: &str = &unique_thread("an_attached_folder_is_readable_and_unwritable");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
         let repo = repo_outside_tmp("rw");
@@ -1877,7 +1905,7 @@ mod tests {
 
         let read = execute_tool(
             df.clone(),
-            T_ATTACH_RW.into(),
+            thread.into(),
             None,
             "read".into(),
             json!({"path": repo.join("main.rs").to_string_lossy()}),
@@ -1895,7 +1923,7 @@ mod tests {
 
         let write = execute_tool(
             df.clone(),
-            T_ATTACH_RW.into(),
+            thread.into(),
             None,
             "write".into(),
             json!({"path": repo.join("evil.txt").to_string_lossy(), "content": "x"}),
@@ -1923,6 +1951,7 @@ mod tests {
     /// the mount is genuinely opt-in.
     #[tokio::test]
     async fn without_an_attachment_the_same_read_is_refused() {
+        let thread: &str = &unique_thread("without_an_attachment_the_same_read_is_refused");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
         let repo = repo_outside_tmp("noattach");
@@ -1930,7 +1959,7 @@ mod tests {
 
         let out = execute_tool(
             df.clone(),
-            T_ATTACH_NONE.into(),
+            thread.into(),
             None,
             "read".into(),
             json!({"path": repo.join("main.rs").to_string_lossy()}),
@@ -1952,9 +1981,10 @@ mod tests {
     /// agent works against a folder it believes is attached and is not.
     #[tokio::test]
     async fn an_overlapping_attachment_is_rejected_not_ignored() {
+        let thread: &str = &unique_thread("an_overlapping_attachment_is_rejected_not_ignored");
         let data = unique_data_folder();
         let df = data.to_string_lossy().to_string();
-        let inside = workspace::ensure_thread_workspace(&data, T_ATTACH_OVERLAP)
+        let inside = workspace::ensure_thread_workspace(&data, thread)
             .await
             .unwrap()
             .join("nested");
@@ -1962,7 +1992,7 @@ mod tests {
 
         let out = execute_tool(
             df.clone(),
-            T_ATTACH_OVERLAP.into(),
+            thread.into(),
             None,
             "ls".into(),
             json!({}),

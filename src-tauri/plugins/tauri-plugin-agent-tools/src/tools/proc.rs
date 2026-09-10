@@ -819,6 +819,13 @@ mod windows_tests {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .kill_on_drop(true);
+        // In its own process group, as `spawn` puts every real command. Left
+        // in the test runner's group it shared the console with every other
+        // process there, and a console control event aimed at that group --
+        // from any concurrently running test binary on the same console --
+        // ended the shell before the kill, which then correctly reported
+        // `Gone`.
+        set_process_group(&mut command);
         let mut child = command.spawn().unwrap();
         let pid = child.id().unwrap();
 

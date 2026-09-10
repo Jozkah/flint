@@ -818,16 +818,54 @@ pub fn probe(cfg: &ShellConfig, policy: &Policy) -> ProbeOutcome {
             return hit.clone();
         }
     }
-    let outcome = probe_uncached(cfg, policy);
-    if let Ok(mut cache) = probe_cache().lock() {
-        cache.insert(key, outcome.clone());
+    let (outcome, verdict) = probe_uncached(cfg, policy);
+    // Only a verdict about the shell is kept. A failure that belongs to this
+    // one attempt -- a timeout while the machine was busy, a workspace or
+    // scratch the caller's session no longer has -- used to be cached with the
+    // rest, keyed by nothing but the shell's path. One slow first launch then
+    // made every shell "unavailable" for the life of the process, in every
+    // session, until something happened to invalidate the cache.
+    if verdict == Verdict::Definitive {
+        if let Ok(mut cache) = probe_cache().lock() {
+            cache.insert(key, outcome.clone());
+        }
     }
     outcome
 }
 
-fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> ProbeOutcome {
+/// Whether a probe result says something about the shell, or only about the
+/// attempt that produced it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Verdict {
+    /// True of the shell on this machine: worth keeping.
+    Definitive,
+    /// True of this attempt only: the next call probes again.
+    Transient,
+}
+
+/// A policy the probe cannot be run under at all, because a directory it names
+/// is missing. Says nothing about the shell.
+fn missing_policy_directory(policy: &Policy) -> Option<String> {
+    if !policy.workspace.is_dir() {
+        return Some(format!(
+            "workspace does not exist: {}",
+            policy.workspace.display()
+        ));
+    }
+    if let Some(scratch) = &policy.scratch_root {
+        if !scratch.is_dir() {
+            return Some(format!("scratch does not exist: {}", scratch.display()));
+        }
+    }
+    None
+}
+
+fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> (ProbeOutcome, Verdict) {
+    if let Some(reason) = missing_policy_directory(policy) {
+        return (ProbeOutcome::Unusable { reason }, Verdict::Transient);
+    }
     let Some(wrapped) = wrap(cfg, policy) else {
-        return ProbeOutcome::NoSandbox;
+        return (ProbeOutcome::NoSandbox, Verdict::Definitive);
     };
     let mut command = std::process::Command::new(&wrapped.program);
     command.args(&wrapped.args);
@@ -851,9 +889,12 @@ fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> ProbeOutcome {
     let child = match command.spawn() {
         Ok(child) => child,
         Err(e) => {
-            return ProbeOutcome::Unusable {
-                reason: format!("the shell could not be started: {e}"),
-            }
+            return (
+                ProbeOutcome::Unusable {
+                    reason: format!("the shell could not be started: {e}"),
+                },
+                Verdict::Transient,
+            )
         }
     };
 
@@ -869,24 +910,30 @@ fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> ProbeOutcome {
         Ok(Ok(output)) => output,
         Ok(Err(e)) => {
             let _ = handle.join();
-            return ProbeOutcome::Unusable {
-                reason: format!("the shell could not be waited for: {e}"),
-            };
+            return (
+                ProbeOutcome::Unusable {
+                    reason: format!("the shell could not be waited for: {e}"),
+                },
+                Verdict::Transient,
+            );
         }
         Err(_) => {
-            return ProbeOutcome::Unusable {
-                reason: format!(
-                    "the shell did not finish `{}` within {} seconds",
-                    proc::PROBE_COMMAND,
-                    PROBE_TIMEOUT.as_secs()
-                ),
-            }
+            return (
+                ProbeOutcome::Unusable {
+                    reason: format!(
+                        "the shell did not finish `{}` within {} seconds",
+                        proc::PROBE_COMMAND,
+                        PROBE_TIMEOUT.as_secs()
+                    ),
+                },
+                Verdict::Transient,
+            )
         }
     };
     let _ = handle.join();
 
     if output.status.success() {
-        return ProbeOutcome::Usable;
+        return (ProbeOutcome::Usable, Verdict::Definitive);
     }
     // The helper's own diagnostic is the most specific thing available, so it is
     // passed through rather than replaced by a summary of it.
@@ -906,7 +953,10 @@ fn probe_uncached(cfg: &ShellConfig, policy: &Policy) -> ProbeOutcome {
                 proc::PROBE_COMMAND
             )
         });
-    ProbeOutcome::Unusable { reason: detail }
+    (
+        ProbeOutcome::Unusable { reason: detail },
+        Verdict::Definitive,
+    )
 }
 
 /// Every shell this host has, with where it came from and whether it starts
@@ -1021,6 +1071,77 @@ pub fn select_shell(policy: &Policy) -> Result<SelectedShell, String> {
         ));
     }
     Err(message)
+}
+
+#[cfg(test)]
+mod probe_cache_tests {
+    use super::*;
+
+    fn existing_program() -> ShellConfig {
+        ShellConfig {
+            program: std::env::current_exe().expect("test binary path"),
+            args: Vec::new(),
+            via_stdin: false,
+            description: "probe-cache-test",
+            flavor: proc::ShellFlavor::Posix,
+        }
+    }
+
+    fn unique_missing(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "jan-probe-cache-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ))
+    }
+
+    fn cached(cfg: &ShellConfig) -> bool {
+        probe_cache()
+            .lock()
+            .map(|c| c.contains_key(&(backend(), cfg.program.clone())))
+            .unwrap_or(false)
+    }
+
+    // A probe run under a session whose scratch is gone says nothing about the
+    // shell. It used to be cached under the shell's path, so every later
+    // session in the process was told no shell could start.
+    #[test]
+    fn a_missing_scratch_is_reported_but_never_cached() {
+        let cfg = existing_program();
+        // An owned workspace that exists, so the scratch is the only thing
+        // missing -- never the shared host temp root itself.
+        let workspace = unique_missing("workspace-owned");
+        std::fs::create_dir_all(&workspace).unwrap();
+        let scratch = unique_missing("scratch");
+        let policy = Policy::new(&workspace, false).with_scratch_root(&scratch);
+
+        let outcome = probe(&cfg, &policy);
+
+        match outcome {
+            ProbeOutcome::Unusable { reason } => {
+                assert!(reason.contains("scratch does not exist"), "{reason}")
+            }
+            other => panic!("expected an unusable outcome, got {other:?}"),
+        }
+        assert!(!cached(&cfg), "a per-attempt failure must not be cached");
+        assert!(!scratch.exists(), "the probe must not create the scratch");
+        let _ = std::fs::remove_dir_all(&workspace);
+    }
+
+    #[test]
+    fn a_missing_workspace_is_transient_too() {
+        let cfg = existing_program();
+        let workspace = unique_missing("workspace");
+        let policy = Policy::new(&workspace, false);
+
+        let (outcome, verdict) = probe_uncached(&cfg, &policy);
+
+        assert_eq!(verdict, Verdict::Transient);
+        assert!(matches!(outcome, ProbeOutcome::Unusable { .. }));
+    }
 }
 
 #[cfg(test)]
