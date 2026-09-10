@@ -30,14 +30,15 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1252,
-      "fixed": 13,
+      "untriaged": 1249,
+      "fixed": 14,
       "already-fixed": 3,
       "needs-user-hardware": 2,
       "not-applicable": 1,
       "adapted": 4,
+      "cannot-reproduce": 1,
       "in-progress": 2,
-      "rejected": 1
+      "rejected": 2
     }
   },
   "items": [
@@ -51845,14 +51846,16 @@
       "privacyImpact": "none",
       "dataLossRisk": "high",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "The chat route builds the system prompt from the thread copy of its assistant (thread.assistants[0]); useAssistant.updateAssistant never refreshed those copies. New test failed against the old store.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Conversation ignores edited instructions. Root cause is the stale thread copy, not the KV cache the report suspects.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "web-app/src/hooks/__tests__/useAssistant.test.ts"
+      ],
+      "verification": "useAssistant 10+14 passed, useThreads 15 passed, typecheck clean.",
       "blockers": [],
       "notes": null
     },
@@ -59793,15 +59796,17 @@
       "privacyImpact": "high",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "needs-redesign",
-      "forkReproduction": null,
+      "forkReproduction": "Not reproducible here: the reported failure is upstream llama-server router OOM watchdog force-killing the embedding model mid-load. This fork runs llama.cpp through its own in-process engine (tauri-plugin-llamacpp/src/engine), whose load poll already ignores failures left over from an earlier attempt or an eviction (evaluate_load_poll, stale_failure_before_loading_is_ignored).",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Different engine architecture; the embedding-context probe still fails loudly if the embedding engine is unhealthy, which is the right behaviour. Runtime confirmation needs a macOS Apple Silicon run with attachments.",
+      "implementationStatus": "cannot-reproduce",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "needs a macOS Apple Silicon runtime run attaching a document"
+      ],
       "notes": null
     },
     {
@@ -66943,11 +66948,11 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Fork loop.rs treats the session token budget as a hard ceiling (AH-017): the crossing turn is kept, its pending tool calls are not run, a system note (not an assistant-voice marker) records why, and the completion keeps the model finish_reason rather than a synthesized stop.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "reject",
+      "decisionReason": "Design divergence. Upstream wants automatic compact-and-continue past the budget; in this fork the budget is the user bound on spend (AH-017), and continuing past it automatically would defeat that. The misleading-stop half of the report does not occur here.",
+      "implementationStatus": "rejected",
       "forkCommits": [],
       "tests": [],
       "verification": null,
