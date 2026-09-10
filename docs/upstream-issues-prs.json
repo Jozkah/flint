@@ -30,9 +30,10 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1269,
-      "fixed": 7,
+      "untriaged": 1264,
+      "fixed": 10,
       "already-fixed": 1,
+      "needs-user-hardware": 2,
       "not-applicable": 1
     }
   },
@@ -39478,15 +39479,17 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Not reproducible here: failure is llama.cpp rejecting the gemma4uv projector type in the bundled backend build; needs the specific GGUF + mmproj.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Depends on the pinned llama.cpp build supporting the projector; not a Jan-side code path.",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "requires the Gemma 4 12B GGUF and mmproj to reproduce against the fork backend pin"
+      ],
       "notes": null
     },
     {
@@ -43055,14 +43058,16 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "strip_anthropic_billing_header indexed text[..27]; the reported Cyrillic prompt puts byte 27 mid-character (verified), which panics the handler.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "P1: local API server request dies with no response for ordinary multi-byte prompts.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/src/core/server/tests.rs"
+      ],
+      "verification": "strip_billing_header tests 6 passed; restoring the byte slice panics the new test.",
       "blockers": [],
       "notes": null
     },
@@ -51537,16 +51542,18 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "get_mcp_configs answered an unparseable mcp_config.json by starting from {}, re-adding Jan Browser MCP and writing it back over the original -- the reporter exact resulting file. Every mcp_config writer used truncate-then-write fs::write, so a torn file was reachable. New durability test failed against the old code.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "P1 data loss: every configured MCP server silently destroyed.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/src/core/mcp/config_durability_tests.rs"
+      ],
+      "verification": "config_durability 2 passed; full Rust lib 816 passed.",
       "blockers": [],
-      "notes": null
+      "notes": "The key arguments not found generation error in the same report is a separate symptom (a tool call without arguments reaching the chat template); not addressed here."
     },
     {
       "source": "janhq/jan",
@@ -54285,15 +54292,17 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Not reproducible here: llama-server exits with 0xC0000005 on the reporter Vulkan setup (i9-10940X); hardware/driver specific.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "blocked",
+      "decisionReason": "Native crash inside the Vulkan backend on specific hardware.",
+      "implementationStatus": "needs-user-hardware",
       "forkCommits": [],
       "tests": [],
       "verification": null,
-      "blockers": [],
+      "blockers": [
+        "requires the reporter GPU/driver combination"
+      ],
       "notes": null
     },
     {
@@ -73809,15 +73818,19 @@
       "privacyImpact": "high",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "needs-redesign",
-      "forkReproduction": null,
+      "forkReproduction": "setup.rs schema-v3 migration set the default Exa MCP entry to the hosted endpoint with active:true, and the v4 cleanup only removed it while inactive, leaving an active remote MCP server that connects on every start. No startup api.github.com call exists in this fork (skill hub is user-triggered).",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "P0 unwanted network traffic created by Jan own migration.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
-      "blockers": [],
+      "tests": [
+        "src-tauri/src/core/setup.rs (exa_migration_tests)"
+      ],
+      "verification": "exa_migration_tests 6 passed; full Rust lib 816 passed; local-only guard clean.",
+      "blockers": [
+        "offline launch-and-load run not yet exercised on this machine"
+      ],
       "notes": null
     }
   ],
