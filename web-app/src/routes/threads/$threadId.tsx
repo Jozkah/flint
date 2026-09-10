@@ -93,7 +93,7 @@ import { IconAlertCircle, IconRefresh, IconLoader2 } from '@tabler/icons-react'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
-import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
+import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { TemporaryChatBanner } from '@/containers/TemporaryChatBanner'
@@ -128,7 +128,7 @@ function serverForTool(toolName: string): string | undefined {
 function isAutoAllowedTool(toolName: string): boolean {
   return (
     useAppState.getState().ragToolNames.has(toolName) ||
-    WEB_TOOL_NAMES.has(toolName) ||
+    isNativeWebTool(toolName) ||
     AGENT_TOOL_NAMES.has(toolName)
   )
 }
@@ -598,7 +598,7 @@ function ThreadDetail() {
 
             let result
 
-            if (WEB_TOOL_NAMES.has(toolName)) {
+            if (isNativeWebTool(toolName)) {
               result = await executeWebTool(toolName, toolCall.input)
             } else if (AGENT_TOOL_NAMES.has(toolName)) {
               const agentResult = await executeAgentTool(

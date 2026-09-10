@@ -832,6 +832,52 @@ describe('ThreadDetail route', () => {
     // trusts and refuses a call to any other, so an approval that happened in
     // the renderer has to be handed over as something the backend issued. The
     // assertion is that the call carries one -- not that the renderer decided.
+    // janhq/jan#8777: with built-in web search off, a `web_search` call came
+    // from an MCP server that exposes one. The name alone used to mark it as
+    // Jan's own tool, so it skipped that server's approval prompt and was sent
+    // to the native adapter instead of the server.
+    it('treats an MCP server web_search as that server tool while built-in search is off', async () => {
+      const { useWebSearchConfig } = await import('@/hooks/useWebSearchConfig')
+      useWebSearchConfig.setState({ webSearchEnabled: false })
+      h.appStateState.mcpToolNames = new Set(['web_search'])
+      h.appStateState.tools = [{ name: 'web_search', server: 'mcp-search' }]
+      h.toolApprovalState.requestApproval = vi.fn().mockResolvedValue(true)
+      const allowOnceForServer = vi.fn().mockResolvedValue('ticket-web')
+      const callTool = vi.fn().mockResolvedValue({ error: '', content: [] })
+      hub.mcp = () => ({ callTool, allowOnceForServer }) as never
+      try {
+        renderComponent()
+        await act(async () => {
+          await (h as any).capturedOnToolCall({
+            toolCall: {
+              toolCallId: 'tcWeb',
+              toolName: 'web_search',
+              input: { query: 'x' },
+            },
+          })
+        })
+        await act(async () => {
+          await finishWithToolCalls()
+        })
+
+        expect(h.toolApprovalState.requestApproval).toHaveBeenCalledWith(
+          'tcWeb',
+          'web_search',
+          'thread-1',
+          'mcp-search'
+        )
+        expect(callTool).toHaveBeenCalledWith(
+          expect.objectContaining({
+            toolName: 'web_search',
+            serverName: 'mcp-search',
+          })
+        )
+      } finally {
+        hub.mcp = realMcp
+        useWebSearchConfig.setState({ webSearchEnabled: true })
+      }
+    })
+
     it('authorizes an MCP call with a ticket the backend issued', async () => {
       h.appStateState.mcpToolNames = new Set(['fetch'])
       h.appStateState.tools = [{ name: 'fetch', server: 'files' }]
