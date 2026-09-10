@@ -23,9 +23,7 @@
 
 use std::path::Path;
 
-use super::record::{
-    content_hash, Creator, MemoryId, MemoryRecord, Origin, Provenance, Scope,
-};
+use super::record::{content_hash, Creator, MemoryId, MemoryRecord, Origin, Provenance, Scope};
 use super::{catalog, store};
 
 /// What a migration did. Counts and names only -- never contents.
@@ -85,10 +83,8 @@ pub fn migrate_project_notes(
     }
 
     let mut existing = store::load(store_root, Scope::Project).records;
-    let known: std::collections::HashSet<String> = existing
-        .iter()
-        .map(|r| r.content_hash.clone())
-        .collect();
+    let known: std::collections::HashSet<String> =
+        existing.iter().map(|r| r.content_hash.clone()).collect();
 
     for (name, _summary) in notes {
         // Read the body directly: `catalog` returns the summary line, and a

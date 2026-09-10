@@ -187,6 +187,25 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "memory_propose",
+                "description": "Propose remembering a durable fact you inferred from the conversation, such as a stated preference or a project convention. Whether it is saved or shown to the user for approval is decided by Jan, not by you. Never propose credentials, tokens, passwords or anything the user asked to keep private. One fact per call, in a single short sentence.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "content": { "type": "string", "description": "The fact, as one short sentence written in the third person." },
+                        "scope": {
+                            "type": "string",
+                            "enum": ["session", "project", "user"],
+                            "description": "session: only this conversation. project: this codebase. user: everywhere. Choose the narrowest that is true."
+                        }
+                    },
+                    "required": ["content"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "skill_list",
                 "description": "List the project skills (reusable procedures) with a one-line description of each. No arguments.",
                 "parameters": { "type": "object", "properties": {}, "required": [] }
@@ -261,7 +280,10 @@ mod tests {
     #[test]
     fn schemas_match_builtin_tools() {
         let schemas = builtin_tool_schemas();
-        assert_eq!(schemas.len(), 16);
+        // Kept in step with BUILTIN_TOOLS below; the count is asserted here
+        // too so a tool added to one list and not the other fails loudly
+        // rather than being silently unadvertised.
+        assert_eq!(schemas.len(), 17);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

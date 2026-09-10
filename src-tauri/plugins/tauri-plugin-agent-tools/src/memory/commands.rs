@@ -37,7 +37,9 @@ fn parse_scope(raw: &str) -> Result<Scope, AgentToolsError> {
         "chat" | "session" => Ok(Scope::Session),
         "project" => Ok(Scope::Project),
         "user" | "global" | "across-chats" => Ok(Scope::User),
-        other => Err(AgentToolsError::from(format!("unknown memory scope '{other}'"))),
+        other => Err(AgentToolsError::from(format!(
+            "unknown memory scope '{other}'"
+        ))),
     }
 }
 
@@ -457,14 +459,11 @@ pub async fn memory_record_move_scope(
 ) -> Result<MemoryView, AgentToolsError> {
     let from = parse_scope(&from_scope)?;
     let to = parse_scope(&to_scope)?;
-    service::move_scope(&location.access(), from, &MemoryId::new(id), to, now())
-        .map_err(Into::into)
+    service::move_scope(&location.access(), from, &MemoryId::new(id), to, now()).map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn memory_storage_summary(
-    location: Where,
-) -> Result<StorageSummary, AgentToolsError> {
+pub async fn memory_storage_summary(location: Where) -> Result<StorageSummary, AgentToolsError> {
     Ok(service::storage_summary(&location.access()))
 }
 
@@ -618,9 +617,7 @@ pub async fn memory_retrieve(
     if let Some(store) = access.project_store.as_deref() {
         records.extend(super::store::load(store, Scope::Project).records);
     }
-    let permanent = crate::workspace::permanent_store(std::path::Path::new(
-        &location.data_folder,
-    ));
+    let permanent = crate::workspace::permanent_store(std::path::Path::new(&location.data_folder));
     records.extend(super::store::load(&permanent, Scope::User).records);
     records.extend(super::store::load(&permanent, Scope::Session).records);
 
@@ -813,7 +810,9 @@ mod inferred_tests {
         }
         let store = crate::workspace::permanent_store(&dir);
         assert_eq!(
-            crate::memory::store::load(&store, Scope::User).records.len(),
+            crate::memory::store::load(&store, Scope::User)
+                .records
+                .len(),
             1
         );
         let _ = std::fs::remove_dir_all(&dir);

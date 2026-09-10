@@ -121,12 +121,8 @@ pub fn propose(
     // A scope without its identity would apply to nothing or, worse, to
     // everything. Refused here rather than stored and silently ignored.
     match scope {
-        Scope::Project if project_id.is_none() => {
-            return Err(Refusal::MissingScopeIdentity(scope))
-        }
-        Scope::Session if session_id.is_none() => {
-            return Err(Refusal::MissingScopeIdentity(scope))
-        }
+        Scope::Project if project_id.is_none() => return Err(Refusal::MissingScopeIdentity(scope)),
+        Scope::Session if session_id.is_none() => return Err(Refusal::MissingScopeIdentity(scope)),
         _ => {}
     }
 
@@ -420,7 +416,10 @@ mod tests {
         assert!(forget(&root, Scope::User, &id, 2_000).unwrap());
         let after = store::load(&root, Scope::User).records;
         assert_eq!(after.len(), 1, "the record must survive for undo");
-        assert!(!after[0].is_usable(2_000), "a forgotten memory is still in use");
+        assert!(
+            !after[0].is_usable(2_000),
+            "a forgotten memory is still in use"
+        );
 
         assert!(restore(&root, Scope::User, &id, 3_000).unwrap());
         let restored = store::load(&root, Scope::User).records;

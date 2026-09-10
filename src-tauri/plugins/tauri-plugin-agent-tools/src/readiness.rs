@@ -413,7 +413,9 @@ impl ToolAvailability {
 pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
     match tool {
         "bash" => vec![capability::SHELL_ANY, capability::SANDBOX_ENFORCED],
-        "write" | "edit" | "memory_write" | "skill_write" => vec![capability::FS_WRITE],
+        "write" | "edit" | "memory_write" | "memory_propose" | "skill_write" => {
+            vec![capability::FS_WRITE]
+        }
         "read" | "ls" | "find" | "grep" | "screenshot" | "memory_list" | "memory_read"
         | "skill_list" | "skill_read" => vec![capability::FS_READ],
         // The web tools reach the network, which is a per-run policy decision

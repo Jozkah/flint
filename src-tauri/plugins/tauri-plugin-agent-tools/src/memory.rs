@@ -17,6 +17,10 @@
 pub mod commands;
 pub mod create;
 pub mod identity;
+/// The decision an inferred proposal gets, shared by the command the
+/// renderer calls and the tool the model calls. Free of `tauri` so the
+/// headless CLI is bound by the same gates.
+pub mod inferred;
 pub mod migrate;
 pub mod record;
 pub mod retrieve;

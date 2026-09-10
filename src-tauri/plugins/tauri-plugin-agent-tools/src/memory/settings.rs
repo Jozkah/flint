@@ -107,7 +107,10 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(load(&root).automatically_save, "the setting did not persist");
+        assert!(
+            load(&root).automatically_save,
+            "the setting did not persist"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
