@@ -30,14 +30,14 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1228,
+      "untriaged": 1227,
       "needs-user-hardware": 7,
       "fixed": 20,
       "already-fixed": 3,
       "cannot-reproduce": 2,
       "not-applicable": 3,
       "adapted": 10,
-      "implementation-ready": 3,
+      "implementation-ready": 4,
       "rejected": 2
     }
   },
@@ -62485,9 +62485,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Local-only value: persistent rotating CLI log plus a redacted local bug-report archive; credentials scrubbed at the sink. Large (+1430) and CLI-surface-wide, so it needs a port onto the fork CLI rather than a cherry-pick, and a check that the archive is only written locally, never uploaded.",
+      "implementationStatus": "implementation-ready",
       "forkCommits": [],
       "tests": [],
       "verification": null,
