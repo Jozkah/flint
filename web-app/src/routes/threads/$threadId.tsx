@@ -27,6 +27,7 @@ import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { deriveToolOutputCap } from '@/lib/context-manager'
 import { renderInstructions } from '@/lib/instructionTemplate'
 import {
+  contextIsResizable,
   knownContextWindow,
   stoppedAtContextLimit,
 } from '@/lib/knownContextWindow'
@@ -2007,15 +2008,36 @@ function ThreadDetail() {
                             .includes('limit'))) ||
                       (error ?? contextLimitError)?.message ===
                         OUT_OF_CONTEXT_SIZE ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="mt-3"
-                          onClick={handleContextSizeIncrease}
-                        >
-                          <IconAlertCircle className="size-4 mr-2" />
-                          Increase Context Size
-                        </Button>
+                        // Only where Jan sets the window at load. For any
+                        // other provider the server owns it, and raising a
+                        // setting nothing sends cannot help (janhq/jan#8760).
+                        contextIsResizable(selectedProvider) ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3"
+                            onClick={handleContextSizeIncrease}
+                          >
+                            <IconAlertCircle className="size-4 mr-2" />
+                            Increase Context Size
+                          </Button>
+                        ) : (
+                          <div className="mt-3 space-y-2">
+                            <p className="text-sm text-muted-foreground">
+                              This model's context window is set by its server,
+                              so Jan cannot enlarge it. Start a new chat, shorten
+                              the conversation, or raise the limit on the server.
+                            </p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRegenerate()}
+                            >
+                              <IconRefresh className="size-4 mr-2" />
+                              Regenerate
+                            </Button>
+                          </div>
+                        )
                       ) : (
                         <Button
                           variant="outline"

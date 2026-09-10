@@ -428,7 +428,10 @@ vi.mock('@/constants/chat', () => ({
   TEMPORARY_CHAT_QUERY_ID: 'temporary-chat',
 }))
 
-vi.mock('@/utils/error', () => ({
+vi.mock('@/utils/error', async (importOriginal) => ({
+  // Keep the real parsers: the context banner calls them once an error is
+  // present, and a mock that dropped them made that path untestable.
+  ...(await importOriginal<typeof import('@/utils/error')>()),
   OUT_OF_CONTEXT_SIZE: 'OUT_OF_CONTEXT_SIZE',
 }))
 
@@ -1133,6 +1136,35 @@ describe('ThreadDetail route', () => {
     expect(updates.find((m) => m.id === 'u2')?.metadata?.parentId).toBe('u1')
     expect(updates.find((m) => m.id === 'u1')?.metadata?.activeChildId).toBe('u2')
     expect(h.messagesState.deleteMessage).toHaveBeenCalledWith('thread-1', 'a1')
+  })
+
+  // janhq/jan#8760: raising ctx_len for a server-owned window changed nothing
+  // that was sent, so the button promised a fix that could not work.
+  it('offers Increase Context Size only where Jan sets the window', () => {
+    // The banner is driven by a context error stamped on the thread.
+    h.messagesState.messages = {
+      'thread-1': [
+        {
+          id: 'a1',
+          role: 'assistant',
+          content: [],
+          metadata: { contextError: 'OUT_OF_CONTEXT_SIZE' },
+        },
+      ],
+    }
+    try {
+      h.modelProviderState.selectedProvider = 'openai'
+      const remote = renderComponent()
+      expect(screen.queryByText('Increase Context Size')).toBeNull()
+      expect(screen.getByText(/set by its server/)).toBeInTheDocument()
+      remote.unmount()
+
+      h.modelProviderState.selectedProvider = 'llamacpp'
+      renderComponent()
+      expect(screen.getByText('Increase Context Size')).toBeInTheDocument()
+    } finally {
+      delete h.messagesState.messages
+    }
   })
 
   it('shows PromptProgress while status is submitted', () => {

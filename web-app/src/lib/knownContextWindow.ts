@@ -49,6 +49,21 @@ export function knownContextWindow(
   }).contextTokens
 }
 
+/**
+ * Providers whose context window Jan itself sets when it loads the model.
+ *
+ * For these, raising the model's context size and reloading gives the next
+ * request a bigger window. For every other provider the window belongs to the
+ * server: raising a number in Jan's settings changes nothing that is sent, so
+ * offering "Increase Context Size" there promised a fix that could not work
+ * (janhq/jan#8760).
+ */
+const RESIZABLE_CONTEXT_PROVIDERS = new Set<string>(['llamacpp', 'mlx'])
+
+export function contextIsResizable(providerId: string | null | undefined): boolean {
+  return !!providerId && RESIZABLE_CONTEXT_PROVIDERS.has(providerId)
+}
+
 /** Whether a length stop at `totalTokens` means the window was exhausted. */
 export function stoppedAtContextLimit(
   totalTokens: number,

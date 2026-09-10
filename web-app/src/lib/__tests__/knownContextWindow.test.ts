@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import {
+  contextIsResizable,
   knownContextWindow,
   stoppedAtContextLimit,
 } from '@/lib/knownContextWindow'
@@ -52,6 +53,22 @@ describe('knownContextWindow', () => {
   it('has nothing to say without a model', () => {
     expect(knownContextWindow(null, customProvider)).toBeNull()
     expect(knownContextWindow({ id: '' }, customProvider)).toBeNull()
+  })
+})
+
+describe('contextIsResizable', () => {
+  it('is true only where Jan sets the window at load', () => {
+    expect(contextIsResizable('llamacpp')).toBe(true)
+    expect(contextIsResizable('mlx')).toBe(true)
+  })
+
+  // janhq/jan#8760: raising ctx_len for a server-owned window changed nothing
+  // that was sent, so the button could not help.
+  it('is false for providers whose server owns the window', () => {
+    expect(contextIsResizable('openai')).toBe(false)
+    expect(contextIsResizable('my-vllm')).toBe(false)
+    expect(contextIsResizable('')).toBe(false)
+    expect(contextIsResizable(undefined)).toBe(false)
   })
 })
 
