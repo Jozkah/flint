@@ -157,37 +157,73 @@ fn remove_exa_server(app_handle: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Install/update the bundled `jan` CLI binary.
+/// Install/update the bundled `jan` CLI binary on launch.
 ///
-/// - `version_changed`: pass `true` whenever the app version has changed (i.e. after an update).
-///   When `true` the binary is always overwritten so the CLI stays in sync with the new app.
-///   When `false` only installs if the binary is not yet present on PATH.
+/// Only ever touches a `jan` this app installed. A standalone agent CLI at the
+/// same path, or earlier on PATH, is left exactly as it is; the settings
+/// button is the way to replace it on purpose (janhq/jan#8812).
+///
+/// - `version_changed`: `true` after an app update, when an installed copy of
+///   ours is refreshed to match the new app.
 ///
 /// Runs in a background task — never blocks startup.
 /// Errors are logged as warnings and never prevent the app from starting.
 pub fn setup_jan_cli<R: Runtime>(app_handle: tauri::AppHandle<R>, version_changed: bool) {
     tauri::async_runtime::spawn(async move {
-        // On a normal launch where the version hasn't changed, skip reinstall if already on PATH.
-        if !version_changed {
-            let which_cmd = if cfg!(windows) { "where" } else { "which" };
-            let mut cmd = std::process::Command::new(which_cmd);
-            cmd.arg("jan");
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-            }
-            if cmd.output().map(|o| o.status.success()).unwrap_or(false) {
-                log::debug!("jan CLI already on PATH — skipping reinstall");
+        use crate::core::system::cli_provenance::{
+            decide_auto, first_resolved, ownership, AutoAction,
+        };
+
+        let (bundled, target) = match crate::core::system::commands::cli_install_target(&app_handle)
+        {
+            Ok(paths) => paths,
+            Err(e) => {
+                log::warn!("jan CLI auto-install skipped: {e}");
                 return;
             }
+        };
+
+        let which_cmd = if cfg!(windows) { "where" } else { "which" };
+        let mut cmd = std::process::Command::new(which_cmd);
+        cmd.arg("jan");
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+        let on_path = cmd
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| first_resolved(&String::from_utf8_lossy(&o.stdout)));
+
+        let action = decide_auto(
+            on_path.as_deref(),
+            &target,
+            &ownership(&target, &bundled),
+            version_changed,
+        );
+        match &action {
+            AutoAction::UpToDate => {
+                log::debug!("jan CLI already installed and current — skipping reinstall");
+                return;
+            }
+            AutoAction::LeaveForeign(path) => {
+                log::info!(
+                    "jan CLI at {} was not installed by Jan Desktop; leaving it alone \
+                     (Settings > General can replace it on request)",
+                    path.display()
+                );
+                return;
+            }
+            AutoAction::Install | AutoAction::Update => {}
         }
 
         match crate::core::system::commands::install_jan_cli_sync(&app_handle) {
             Ok(status) => {
                 log::info!(
                     "jan CLI {} to {}",
-                    if version_changed {
+                    if action == AutoAction::Update {
                         "updated"
                     } else {
                         "installed"
