@@ -1029,6 +1029,25 @@ pub(crate) fn describe_request_error(err: &reqwest::Error) -> String {
     msg
 }
 
+/// The endpoint for a log line: everything after `?` dropped, which is where
+/// a query credential (`api_key=`, `key=`) would be.
+pub(crate) fn log_safe_upstream_url(url: &str) -> &str {
+    url.split('?').next().unwrap_or(url)
+}
+
+/// How much of an upstream error a log breadcrumb keeps.
+pub(crate) const LOG_ERR_BUDGET: usize = 200;
+
+/// Bound an upstream error for a log breadcrumb. Errors wrap the provider's
+/// response body, which is unbounded; the log keeps enough to name the
+/// failure. Removing credentials is the file sink's job, not this one's.
+pub(crate) fn log_brief(err: &str) -> String {
+    match err.char_indices().nth(LOG_ERR_BUDGET) {
+        Some((cut, _)) => format!("{}...", &err[..cut]),
+        None => err.to_string(),
+    }
+}
+
 /// Stream a chat completion for the agent loop.
 ///
 /// A thin delegate to [`super::genai_bridge`], which owns the wire format, SSE
@@ -1050,7 +1069,15 @@ pub(crate) async fn stream_openai_chat_completions(
     body: &serde_json::Value,
     events: &mpsc::UnboundedSender<StreamEvent>,
 ) -> Result<serde_json::Value, String> {
-    super::genai_bridge::stream_chat_completions(
+    // A start line with no `stream: done` after it pins a hang to this call,
+    // and the elapsed time tells a stall from a slow provider.
+    let model = body.get("model").and_then(|v| v.as_str()).unwrap_or("?");
+    log::info!(
+        "stream: model={model} upstream={}",
+        log_safe_upstream_url(upstream_url)
+    );
+    let started = std::time::Instant::now();
+    let result = super::genai_bridge::stream_chat_completions(
         client,
         upstream_url,
         api_keys,
@@ -1058,7 +1085,13 @@ pub(crate) async fn stream_openai_chat_completions(
         body,
         events,
     )
-    .await
+    .await;
+    log::info!(
+        "stream: done model={model} outcome={} elapsed={}ms",
+        if result.is_ok() { "ok" } else { "error" },
+        started.elapsed().as_millis()
+    );
+    result
 }
 
 /// Streaming counterpart of [`stream_openai_chat_completions`] for providers
@@ -1514,6 +1547,23 @@ fn flush_trailing_line(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// Breadcrumbs are bounded, on a char boundary, and keep the failure.
+    #[test]
+    fn log_brief_bounds_the_error_on_a_char_boundary() {
+        assert_eq!(log_brief("short"), "short");
+        let out = log_brief(&"x".repeat(LOG_ERR_BUDGET + 50));
+        assert_eq!(out.len(), LOG_ERR_BUDGET + 3);
+        assert!(out.ends_with("..."));
+        let out = log_brief(&"é".repeat(LOG_ERR_BUDGET + 50));
+        assert_eq!(out.chars().count(), LOG_ERR_BUDGET + 3);
+        let err = format!("Upstream returned HTTP 400.\nBody: {}", "PAD".repeat(4000));
+        assert!(log_brief(&err).contains("HTTP 400"));
+        assert_eq!(
+            log_safe_upstream_url("http://v100:8555/v1/chat/completions?api_key=x"),
+            "http://v100:8555/v1/chat/completions"
+        );
+    }
 
     fn sink() -> (
         mpsc::UnboundedSender<StreamEvent>,

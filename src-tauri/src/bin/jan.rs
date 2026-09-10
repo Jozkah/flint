@@ -181,6 +181,23 @@ enum Commands {
         #[command(subcommand)]
         cmd: PluginCommands,
     },
+    /// Preview, then save, a redacted local diagnostic bundle (never uploaded)
+    #[command(display_order = 6)]
+    BugReport {
+        /// Bundle this thread id (default: the most recently updated thread)
+        #[arg(long)]
+        thread: Option<String>,
+        /// Print one member's redacted content (e.g. `logs/jan.log`) and exit
+        /// without writing anything
+        #[arg(long, value_name = "MEMBER")]
+        show: Option<String>,
+        /// Save without asking (required when stdin is not a terminal)
+        #[arg(long)]
+        yes: bool,
+        /// Directory for the archive (default: <data folder>/diagnostics)
+        #[arg(long, value_name = "DIR")]
+        out: Option<std::path::PathBuf>,
+    },
 }
 
 /// Tokamak sign-in inspection and control.
@@ -492,14 +509,15 @@ async fn main() {
     tauri_plugin_agent_tools::run_sandbox_helper_if_requested();
 
     // Pre-scan raw args for --verbose / -v before full parse so we can set
-    // the log level before any logging happens.
+    // the log level before any logging happens. stderr keeps its `warn`
+    // default (`info` under -v); every info+ record also goes to a rotating
+    // local file under the data folder, so a hung run leaves a trail without
+    // the user having to rerun with -v (janhq/jan#8713).
     let verbose = std::env::args().any(|a| a == "--verbose" || a == "-v");
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(if verbose {
-        "info"
-    } else {
-        "warn"
-    }))
-    .init();
+    app_lib::core::cli::file_log::init(
+        app_lib::core::app::commands::resolve_jan_data_folder(),
+        verbose,
+    );
 
     // Inject the logo at runtime so we can use ANSI styling.
     let logo = make_logo();
@@ -559,6 +577,95 @@ async fn main() {
             }
         }
         Commands::Plugin { cmd } => handle_plugin(cmd).await,
+        Commands::BugReport {
+            thread,
+            show,
+            yes,
+            out,
+        } => handle_bug_report(thread, show, yes, out),
+    }
+}
+
+/// `jan bug-report`: show what the bundle would hold, then write it only when
+/// the user agrees. Writing the local archive is the last thing it does --
+/// nothing is uploaded, opened, or sent.
+fn handle_bug_report(
+    thread: Option<String>,
+    show: Option<String>,
+    yes: bool,
+    out: Option<std::path::PathBuf>,
+) {
+    use std::io::IsTerminal;
+
+    let data_folder = app_lib::core::app::commands::resolve_jan_data_folder();
+    // Agent runs persist threads to the project's `.jan/agent`; the desktop
+    // app uses the data folder. Prefer the project store when the cwd has one,
+    // so running this where the run misbehaved reports on that run.
+    let project = app_lib::core::cli::agent_dir_for(std::path::Path::new("."));
+    let threads_base = if project.join("threads").is_dir() {
+        project
+    } else {
+        data_folder.clone()
+    };
+    let preview = match app_lib::core::cli::doctor::prepare(
+        &threads_base,
+        &data_folder,
+        thread.as_deref(),
+        out.as_deref(),
+    ) {
+        Ok(preview) => preview,
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    if let Some(member) = show {
+        match preview.member(&member) {
+            Some(content) => {
+                print!("{content}");
+                if !content.ends_with('\n') {
+                    println!();
+                }
+            }
+            None => {
+                eprintln!("Error: no member named '{member}'. Members:");
+                for (name, _) in &preview.members {
+                    eprintln!("  {name}");
+                }
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+
+    for line in preview.summary() {
+        println!("{line}");
+    }
+    println!("Review a member with: jan bug-report --show <member>");
+
+    let confirmed = if yes {
+        true
+    } else if std::io::stdin().is_terminal() {
+        use std::io::Write;
+        print!("Save this bundle? [y/N] ");
+        let _ = std::io::stdout().flush();
+        let mut answer = String::new();
+        let _ = std::io::stdin().read_line(&mut answer);
+        matches!(answer.trim(), "y" | "Y" | "yes" | "YES")
+    } else {
+        false
+    };
+    if !confirmed {
+        println!("Nothing written. Re-run with --yes to save it.");
+        return;
+    }
+    match preview.save() {
+        Ok(path) => println!("Saved: {}", path.display()),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
     }
 }
 
@@ -1027,6 +1134,35 @@ fn build_mcp_config(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bug_report_parses_its_flags_and_nothing_else() {
+        let cli = Cli::parse_from([
+            "jan",
+            "bug-report",
+            "--thread",
+            "abc123",
+            "--show",
+            "logs/jan.log",
+        ]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::BugReport { thread, show, yes: false, out: None })
+                if thread.as_deref() == Some("abc123") && show.as_deref() == Some("logs/jan.log")
+        ));
+        let cli = Cli::parse_from(["jan", "bug-report", "--yes", "--out", "."]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::BugReport { yes: true, out: Some(_), .. })
+        ));
+        // There is deliberately no flag that sends the bundle anywhere.
+        for flag in ["--upload", "--submit", "--send", "--open-issue"] {
+            assert!(
+                Cli::try_parse_from(["jan", "bug-report", flag]).is_err(),
+                "{flag} must not exist"
+            );
+        }
+    }
 
     // `--plan` is a per-invocation startup toggle mirroring `--safe`; it must
     // parse on the top-level `jan` command and default off.

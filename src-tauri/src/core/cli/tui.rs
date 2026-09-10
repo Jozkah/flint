@@ -1892,6 +1892,9 @@ struct App {
     /// screen without touching ratatui's buffers, so the cell diff alone sees
     /// nothing to redraw and the damage stays for the rest of the session.
     repaint: bool,
+    /// A diagnostic bundle `/bug` has shown but not written. `/bug save`
+    /// writes exactly this, so what was reviewed is what lands on disk.
+    pending_bug_report: Option<super::doctor::Preview>,
     /// Set when the user submits a message; the loop spawns a run next tick.
     want_start: bool,
     /// Turns (model roundtrips, plus the submission that kicked off a run)
@@ -2346,6 +2349,7 @@ impl App {
             overflow_retries: 0,
             scrollback: 0,
             repaint: false,
+            pending_bug_report: None,
             want_start: false,
             turns_since_todos_closed: 0,
             todos_closed_at: None,
@@ -7399,11 +7403,12 @@ pub async fn run(
     // switch to the alternate screen -- a single `log::warn!` from anywhere
     // (MCP, http, a dependency) then paints raw text over the frame and stays
     // there until the next full repaint. Nothing may write to the terminal
-    // except the renderer, so mute the log facade for the duration and restore
-    // it on the way out. Anything worth the user's attention is a transcript
-    // note; see `connect_active` for the MCP case.
-    let prev_log_level = log::max_level();
-    log::set_max_level(log::LevelFilter::Off);
+    // except the renderer, so mute the stderr sink for the duration and
+    // restore it on the way out. Anything worth the user's attention is a
+    // transcript note; see `connect_active` for the MCP case. Only stderr is
+    // muted: the persistent log keeps recording, and an interactive session
+    // that hangs is exactly what `jan bug-report` needs a trail for.
+    let prev_stderr_log = super::file_log::set_stderr_enabled(false);
 
     enable_raw_mode().map_err(|e| e.to_string())?;
     let mut stdout = io::stdout();
@@ -7519,7 +7524,7 @@ pub async fn run(
         LeaveAlternateScreen,
     );
     let _ = terminal.show_cursor();
-    log::set_max_level(prev_log_level);
+    super::file_log::set_stderr_enabled(prev_stderr_log);
     // The session is closed: leave a copyable continuation command on the real
     // terminal, the same line the non-interactive path prints after a save.
     // Only a persisted thread can be resumed, so an empty session stays quiet.
@@ -8394,6 +8399,64 @@ async fn handle_ask_key(
         resolve_front_ask(app, registry, false).await;
     }
     true
+}
+
+/// `/bug`: show what a diagnostic bundle for this session would hold;
+/// `/bug show <member>` prints one member's redacted content; `/bug save`
+/// writes exactly the bundle last shown. Local only: nothing is uploaded, and
+/// writing the file is the last thing it does. Needs no model, so it works
+/// even when the bug being reported froze the session.
+fn bug_report_command(app: &mut App, arg: &str) {
+    let arg = arg.trim();
+    if arg == "save" {
+        let Some(preview) = app.pending_bug_report.take() else {
+            app.note("nothing to save yet: run /bug to preview the bundle first");
+            return;
+        };
+        match preview.save() {
+            Ok(path) => app.note(&format!("bug report saved: {}", path.display())),
+            Err(e) => {
+                app.note(&format!("bug report not saved: {e}"));
+                app.pending_bug_report = Some(preview);
+            }
+        }
+        return;
+    }
+    if let Some(member) = arg.strip_prefix("show") {
+        let member = member.trim();
+        let Some(preview) = app.pending_bug_report.as_ref() else {
+            app.note("run /bug first to prepare the bundle");
+            return;
+        };
+        match preview.member(member) {
+            Some(content) => {
+                let lines: Vec<String> = content.lines().map(str::to_string).collect();
+                let shown = lines.len().min(200);
+                app.note(&format!("{member} ({} lines):", lines.len()));
+                for line in &lines[lines.len() - shown..] {
+                    app.system_detail_text(line);
+                }
+            }
+            None => {
+                let names: Vec<&str> = preview.members.iter().map(|(n, _)| n.as_str()).collect();
+                app.note(&format!("no member '{member}'; members: {}", names.join(", ")));
+            }
+        }
+        return;
+    }
+    let data_folder = crate::core::app::commands::resolve_jan_data_folder();
+    let threads_base = app.agent_dir.clone();
+    let thread_id = app.thread_id.clone();
+    match super::doctor::prepare(&threads_base, &data_folder, thread_id.as_deref(), None) {
+        Ok(preview) => {
+            for line in preview.summary() {
+                app.system_detail_text(&line);
+            }
+            app.note("/bug show <member> to read one, /bug save to write it");
+            app.pending_bug_report = Some(preview);
+        }
+        Err(e) => app.note(&format!("bug report failed: {e}")),
+    }
 }
 
 /// Route a terminal resize to a full repaint. ratatui notices a *changed*
@@ -9862,6 +9925,12 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
         alias_of: None,
     },
     SlashCommand {
+        name: "/bug",
+        hint: "[save | show <member>]",
+        description: "Preview a redacted local diagnostic bundle; /bug save writes it",
+        alias_of: None,
+    },
+    SlashCommand {
         name: "/quit",
         hint: "",
         description: "Exit the TUI",
@@ -10066,6 +10135,7 @@ async fn run_command(
         "effort" | "think" | "reasoning" => effort_command(app, arg),
         "todo" => todo_command(app, arg).await,
         "cancel" => cancel_command(app, arg),
+        "bug" => bug_report_command(app, arg),
         "quit" | "exit" => app.should_quit = true,
         other => {
             // A `/name` that isn't a built-in is a plugin command or an
@@ -30144,6 +30214,46 @@ mod tests {
         let (mut app, root) = skill_test_app("deploy", "How to deploy.");
         run_command(&mut app, "warp_drive", &no_mcp()).await;
         assert!(transcript_text(&app).contains("unknown command '/warp_drive'"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `/bug` previews and writes nothing; `/bug save` writes exactly the
+    /// previewed bundle; with no thread it says so instead of doing nothing.
+    #[tokio::test]
+    async fn bug_previews_first_and_saves_only_on_request() {
+        let (mut app, root) = skill_test_app("deploy", "How to deploy.");
+        run_command(&mut app, "bug", &no_mcp()).await;
+        assert!(
+            transcript_text(&app).contains("bug report failed"),
+            "no thread yet: {}",
+            transcript_text(&app)
+        );
+        run_command(&mut app, "bug save", &no_mcp()).await;
+        assert!(transcript_text(&app).contains("nothing to save yet"));
+
+        let id = "bug-thread";
+        let dir = crate::core::threads::utils::get_thread_dir(&app.agent_dir, id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            crate::core::threads::utils::get_thread_metadata_path(&app.agent_dir, id),
+            serde_json::json!({"id": id, "title": "t", "updated": 1}).to_string(),
+        )
+        .unwrap();
+        std::fs::write(dir.join("messages.jsonl"), "{\"role\":\"user\",\"content\":\"hi\"}\n").unwrap();
+        app.thread_id = Some(id.to_string());
+
+        run_command(&mut app, "bug", &no_mcp()).await;
+        let preview = app.pending_bug_report.clone().expect("a preview is held");
+        assert!(!preview.destination.exists(), "/bug wrote before being asked");
+        assert!(transcript_text(&app).contains("Nothing is uploaded"));
+
+        run_command(&mut app, "bug show thread/messages.jsonl", &no_mcp()).await;
+        assert!(transcript_text(&app).contains("\"content\":\"hi\""));
+
+        run_command(&mut app, "bug save", &no_mcp()).await;
+        assert!(preview.destination.is_file(), "/bug save wrote nothing");
+        assert!(app.pending_bug_report.is_none());
+        let _ = std::fs::remove_file(&preview.destination);
         let _ = std::fs::remove_dir_all(&root);
     }
 
