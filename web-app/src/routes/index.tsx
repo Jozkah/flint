@@ -58,7 +58,14 @@ function Index() {
     <div className="flex h-full flex-col justify-center">
       <HeaderPage>
         <PageHeaderRow>
-          <DropdownModelProvider model={threadModel} />
+          {/* A new chat with no model chosen starts from the last-used model,
+              or the first local one on a first run (janhq/jan#7703). The
+              composer's own picker, which used to ask for this, is not
+              rendered, so without it nothing was ever selected. */}
+          <DropdownModelProvider
+            model={threadModel}
+            useLastUsedModel={!threadModel}
+          />
           <NewTemporaryChatButton />
         </PageHeaderRow>
       </HeaderPage>

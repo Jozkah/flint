@@ -128,4 +128,25 @@ describe('the model initializer', () => {
     expect(useModelProvider.getState().selectedModel?.id).toBe('smoke-model')
   })
 
+  /// janhq/jan#7703: a first run has no last-used model; the first local
+  /// llama.cpp model is picked, which the home screen now asks for.
+  it('falls back to the first local model on a first run', async () => {
+    localStorage.removeItem(localStorageKey.lastUsedModel)
+    useModelProvider.setState({
+      providers: [
+        {
+          provider: 'llamacpp',
+          active: true,
+          models: [{ ...MODEL, id: 'first-local' }],
+          settings: [],
+        } as never,
+      ],
+      selectedProvider: '',
+      selectedModel: null,
+    })
+    render(<DropdownModelProvider useLastUsedModel />)
+    await flush()
+
+    expect(useModelProvider.getState().selectedModel?.id).toBe('first-local')
+  })
 })
