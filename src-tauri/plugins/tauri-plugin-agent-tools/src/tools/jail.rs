@@ -661,6 +661,17 @@ const DENIAL_MARKERS: &[&str] = &[
     "temporary failure in name resolution",
     "could not resolve host",
     "name or service not known",
+    // Windows phrasings. Every marker above is a Unix one, so an AppContainer
+    // that correctly refused a socket produced a raw Win32 message the model
+    // was left to interpret on its own -- the exact unexplained failure this
+    // list exists to prevent. WSAEACCES is what a lowbox token gets when it
+    // opens a socket without `internetClient`; the others are how a blocked
+    // name lookup and a refused file open read on Windows.
+    "forbidden by its access permissions",
+    "no such host is known",
+    "attempt was made to access a socket",
+    "the requested operation requires elevation",
+    "access to the path",
 ];
 
 /// True when `output` looks like the sandbox blocked something, so the model can

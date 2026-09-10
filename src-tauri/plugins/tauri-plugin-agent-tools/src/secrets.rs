@@ -89,6 +89,19 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
         }
     }
 
+    // A credential written into a sentence.
+    //
+    // Everything above this point needs the credential to be *shaped* like
+    // something -- an assignment, a URL, a PEM header. That is the right model
+    // for a diff or a config file, which is what this scanner was built for.
+    // It is the wrong model for prose, and memory content is prose: "The API
+    // key is sk-live-..." has no `NAME =` anywhere in it, so it walked straight
+    // through and was stored verbatim. Found by a test asserting that
+    // automatic memory saving refuses a secret; it did not.
+    if let Some(found) = token_like(trimmed) {
+        return Some(found);
+    }
+
     // NAME = value, where the name says what the value is.
     let (name, value) = split_assignment(trimmed)?;
     let value = value.trim().trim_matches(['"', '\'']).trim();
@@ -135,6 +148,73 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
     };
 
     Some((kind, format!("{name}={REDACTED}")))
+}
+
+/// Issued-credential prefixes, and how much must follow to be one.
+///
+/// Prefix plus a length floor rather than a full character-class pattern: these
+/// are vendor-assigned shapes, so the prefix is the evidence and the length is
+/// what separates a real key from someone typing `sk-` in a sentence about
+/// keys. Deliberately conservative -- a missed credential is a stored
+/// credential, but a false positive here refuses to remember something
+/// harmless, so the floors are set where prose does not reach.
+const ISSUED_PREFIXES: &[(&str, usize, SecretKind)] = &[
+    // OpenAI, Stripe and everything that copied them.
+    ("sk-", 20, SecretKind::ApiKey),
+    ("pk-live-", 20, SecretKind::ApiKey),
+    ("rk-live-", 20, SecretKind::ApiKey),
+    // GitHub, all five token classes.
+    ("ghp_", 30, SecretKind::Token),
+    ("gho_", 30, SecretKind::Token),
+    ("ghu_", 30, SecretKind::Token),
+    ("ghs_", 30, SecretKind::Token),
+    ("ghr_", 30, SecretKind::Token),
+    // Slack.
+    ("xoxb-", 24, SecretKind::Token),
+    ("xoxp-", 24, SecretKind::Token),
+    ("xoxa-", 24, SecretKind::Token),
+    ("xoxs-", 24, SecretKind::Token),
+    // AWS access key id.
+    ("AKIA", 20, SecretKind::ApiKey),
+    ("ASIA", 20, SecretKind::ApiKey),
+    // Google.
+    ("AIza", 35, SecretKind::ApiKey),
+    // Anthropic.
+    ("sk-ant-", 30, SecretKind::ApiKey),
+];
+
+/// A credential recognisable by its own shape, anywhere in a line.
+fn token_like(line: &str) -> Option<(SecretKind, String)> {
+    // `Bearer <token>` and `Basic <token>` carry no variable name at all, and
+    // are how a credential most often appears in pasted terminal output.
+    let lower = line.to_ascii_lowercase();
+    for scheme in ["bearer ", "basic "] {
+        if let Some(at) = lower.find(scheme) {
+            let rest = line[at + scheme.len()..].trim();
+            let token: &str = rest.split_whitespace().next().unwrap_or("");
+            if token.len() >= 16 {
+                return Some((SecretKind::Token, format!("{scheme}{REDACTED}")));
+            }
+        }
+    }
+
+    for word in line.split(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == ',') {
+        // Punctuation a sentence puts after a value, not part of it.
+        let word = word.trim_end_matches(['.', ';', ':', ')', ']', '}']);
+        if word.len() < 16 {
+            continue;
+        }
+        // A JWT: three base64url segments, and the header always starts `eyJ`.
+        if word.starts_with("eyJ") && word.matches('.').count() == 2 {
+            return Some((SecretKind::Token, format!("jwt {REDACTED}")));
+        }
+        for (prefix, min_len, kind) in ISSUED_PREFIXES {
+            if word.len() >= *min_len && word.starts_with(prefix) {
+                return Some((*kind, format!("{prefix}{REDACTED}")));
+            }
+        }
+    }
+    None
 }
 
 fn split_assignment(line: &str) -> Option<(&str, &str)> {
@@ -296,6 +376,51 @@ mod tests {
         assert!(kinds.contains(&SecretKind::Token));
         assert!(kinds.contains(&SecretKind::PrivateKey));
         assert!(kinds.contains(&SecretKind::ConnectionString));
+    }
+
+    /// A credential in a sentence, which is what memory content looks like.
+    /// Everything else in this scanner needs an assignment, a URL or a PEM
+    /// header; prose has none of those, so these went straight through and
+    /// were stored.
+    #[test]
+    fn finds_an_issued_credential_written_into_prose() {
+        for line in [
+            "The API key is sk-live-abcdefghijklmnopqrstuvwxyz012345.",
+            "use ghp_9d7f6a5b4c3e2d1f0a9b8c7d6e5f4a3b2c1d0e when pushing",
+            "token: xoxb-123456789012-abcdefghijklmnopqrst",
+            "the id is AKIAIOSFODNN7EXAMPLE",
+            "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcdefghij",
+            "anthropic key sk-ant-api03-aaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ] {
+            assert!(
+                !scan_text(line).is_empty(),
+                "missed a credential in: {line}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_prose_finding_does_not_repeat_the_credential() {
+        let findings = scan_text("The API key is sk-live-abcdefghijklmnopqrstuvwxyz012345.");
+        assert_eq!(findings.len(), 1);
+        assert!(!findings[0].hint.contains("abcdefghijklmnopqrstuvwxyz"));
+        assert!(findings[0].hint.contains(REDACTED));
+    }
+
+    /// The other half: refusing to remember something harmless is a real cost,
+    /// so ordinary sentences that merely mention keys stay quiet.
+    #[test]
+    fn ordinary_prose_about_keys_is_not_a_credential() {
+        for line in [
+            "The user prefers tabs over spaces.",
+            "Ask for the API key before deploying.",
+            "sk- is the prefix OpenAI uses",
+            "the bearer of this note may enter",
+            "Set AWS_PROFILE to the one named production.",
+            "documentation lives at https://example.com/api-keys",
+        ] {
+            assert!(scan_text(line).is_empty(), "cried wolf over: {line}");
+        }
     }
 
     #[test]
