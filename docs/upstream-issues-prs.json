@@ -30,12 +30,12 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1242,
-      "fixed": 17,
+      "untriaged": 1240,
+      "fixed": 18,
       "already-fixed": 3,
       "needs-user-hardware": 2,
       "not-applicable": 1,
-      "adapted": 7,
+      "adapted": 8,
       "cannot-reproduce": 1,
       "implementation-ready": 3,
       "rejected": 2
@@ -66121,7 +66121,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8778
+      ],
       "affectedAreas": [
         "tool-calling",
         "mcp",
@@ -66137,22 +66139,22 @@
       ],
       "upstreamCommits": [],
       "severity": "medium",
-      "priority": "P2",
+      "priority": "P0",
       "signals": {
         "p0": [],
         "p1": [],
         "p3": [],
         "reject": []
       },
-      "securityImpact": "none",
+      "securityImpact": "high",
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Closed by the janhq/jan#8778 reimplementation.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -66211,18 +66213,21 @@
         ],
         "reject": []
       },
-      "securityImpact": "review",
+      "securityImpact": "high",
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Permission bypass present in fork: name-only web tool classification auto-approved and misrouted an MCP server web_search when built-in search was off. PR does not apply; reimplemented at the two call sites.",
+      "implementationStatus": "adapted",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "web-app/src/lib/__tests__/webSearchTool.native.test.ts",
+        "web-app/src/routes/threads/__tests__/$threadId.test.tsx"
+      ],
+      "verification": "3 + 38 passed; reverting the gate fails both new tests.",
       "blockers": [],
       "notes": null
     },
