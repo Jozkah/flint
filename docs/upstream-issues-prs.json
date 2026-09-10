@@ -30,8 +30,9 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1276,
-      "fixed": 2
+      "untriaged": 1273,
+      "fixed": 4,
+      "already-fixed": 1
     }
   },
   "items": [
@@ -24332,14 +24333,17 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "extensions/rag-extension/src/index.ts read numeric tool args with a TypeScript cast, so a string 0 reached the Rust vector engine unchanged.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Whole OpenAI-compatible runtimes serialize every tool argument as a string; rejecting them breaks RAG for that entire class of local server.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "extensions/rag-extension/src/args.test.ts",
+        "extensions/rag-extension/src/index.test.ts"
+      ],
+      "verification": "vitest --project @janhq/rag-extension — 57 passed; new cases fail against the unfixed intake.",
       "blockers": [],
       "notes": null
     },
@@ -31195,14 +31199,16 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Not reproducible: cancellation runs from ChatInput through the streamText abort signal to providerFetch, which invokes provider_http_cancel and drops the Rust-side stream.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "already-fixed",
+      "decisionReason": "Fork already implements end-to-end cancellation with existing coverage.",
+      "implementationStatus": "already-fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "web-app/src/lib/__tests__/providerFetch.test.ts"
+      ],
+      "verification": "Existing tests pin cancel-on-abort, cancel-on-body-release, and no-cancel-after-end.",
       "blockers": [],
       "notes": null
     },
@@ -72762,16 +72768,18 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "extensions/llamacpp-extension/src/preset.ts gated n-gpu-layers emission on !fitEnabled, and fit defaults on, so a per-model GPU Layers setting never reached the router preset.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Same user-visible defect as upstream via a different cause: our fork suppressed the explicit override instead of never plumbing it.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "extensions/llamacpp-extension/src/preset.test.ts"
+      ],
+      "verification": "vitest --project @janhq/llamacpp-extension — 202 passed.",
       "blockers": [],
-      "notes": null
+      "notes": "Reporter also alleges inconsistent backend resolution in one startup log. Not reproduced; tracked separately."
     },
     {
       "source": "janhq/jan",

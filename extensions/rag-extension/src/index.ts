@@ -12,6 +12,7 @@ import {
 } from '@janhq/core'
 import './env.d'
 import { getRAGTools, RETRIEVE, LIST_ATTACHMENTS, GET_CHUNKS } from './tools'
+import { coerceIntegerArg, coerceStringArrayArg } from './args'
 import * as ragApi from '@janhq/tauri-plugin-rag-api'
 
 export default class RagExtension extends RAGExtension {
@@ -189,14 +190,14 @@ export default class RagExtension extends RAGExtension {
     const threadId = String(args['thread_id'] || '')
     const projectId = String(args['project_id'] || '')
     const query = String(args['query'] || '')
-    const fileIds = args['file_ids'] as string[] | undefined
+    const fileIds = coerceStringArrayArg(args['file_ids'])
     const scope = String(args['scope'] || 'thread')
 
     // Use project_id as threadId when scope is project
     const effectiveThreadId = scope === 'project' ? projectId || threadId : threadId
 
     const s = this.config
-    const topK = (args['top_k'] as number) || s.retrievalLimit || 3
+    const topK = coerceIntegerArg(args['top_k']) || s.retrievalLimit || 3
     const threshold = s.retrievalThreshold ?? 0.3
     const mode: 'auto' | 'ann' | 'linear' = s.searchMode || 'auto'
 
@@ -307,8 +308,8 @@ export default class RagExtension extends RAGExtension {
   ): Promise<MCPToolCallResult> {
     const threadId = String(args['thread_id'] || '')
     const fileId = String(args['file_id'] || '')
-    const startOrder = args['start_order'] as number | undefined
-    const endOrder = args['end_order'] as number | undefined
+    const startOrder = coerceIntegerArg(args['start_order'])
+    const endOrder = coerceIntegerArg(args['end_order'])
     const scope = String(args['scope'] || 'thread')
 
     if (
