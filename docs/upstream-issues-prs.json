@@ -31,13 +31,12 @@
     },
     "byStatus": {
       "untriaged": 1244,
-      "fixed": 15,
+      "fixed": 16,
       "already-fixed": 3,
       "needs-user-hardware": 2,
       "not-applicable": 1,
-      "adapted": 5,
+      "adapted": 6,
       "cannot-reproduce": 1,
-      "in-progress": 2,
       "implementation-ready": 3,
       "rejected": 2
     }
@@ -59930,12 +59929,12 @@
       "registryIds": [],
       "decision": "fix",
       "decisionReason": "Tracked through janhq/jan#8760; fork-native redesign pending.",
-      "implementationStatus": "in-progress",
+      "implementationStatus": "fixed",
       "forkCommits": [],
       "tests": [],
       "verification": null,
       "blockers": [],
-      "notes": "Misclassification fixed via knownContextWindow; increase-action semantics for remote endpoints still open (see janhq/jan#8760)."
+      "notes": "Fixed via the janhq/jan#8760 reimplementation."
     },
     {
       "source": "janhq/jan",
@@ -65131,12 +65130,12 @@
       "registryIds": [],
       "decision": "adapt",
       "decisionReason": "Real defect for custom OpenAI-compatible endpoints, but the PR adds a parallel model-context-size module while the fork already learns windows from refusals (contextLimitRecovery, AH-195). Needs a redesign on the fork architecture rather than a port.",
-      "implementationStatus": "in-progress",
+      "implementationStatus": "adapted",
       "forkCommits": [],
       "tests": [],
-      "verification": null,
+      "verification": "knownContextWindow 11 passed; route 37 passed incl. offers Increase Context Size only where Jan sets the window; typecheck clean; forcing the gate true fails the route test.",
       "blockers": [],
-      "notes": "Half done: the finish-length check no longer assumes 32768 for an unknown window; it uses knownContextWindow (setting, learned refusal limit, provider metadata, bundled table) and treats unknown as not a context verdict (web-app/src/lib/knownContextWindow.ts, 9 tests). Still open: an Increase Context Size action that is honest for providers whose window Jan cannot change."
+      "notes": "Reimplemented on the fork architecture instead of porting: length stops use knownContextWindow (never a 32768 guess), and Increase Context Size is offered only for llamacpp/mlx; other providers get an explanation and Regenerate."
     },
     {
       "source": "janhq/jan",

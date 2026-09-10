@@ -44,8 +44,24 @@ vitest src/routes/threads/__tests__/$threadId.test.tsx   36 passed
 yarn typecheck                                            exit 0
 ```
 
-## Still open
+## The increase action
 
-Make the increase action honest for providers whose window Jan cannot change:
-offer it only where raising `ctx_len` reaches the server (llama.cpp, MLX), and
-for other providers offer continuation or a trimmed retry instead.
+`contextIsResizable(provider)` is true only for llama.cpp and MLX, where Jan
+sets the window when it loads the model. The banner offers **Increase Context
+Size** only there. For every other provider it explains that the server owns the
+window and offers Regenerate, instead of a button that raised a setting nothing
+sent.
+
+Making the route test reach this path also fixed its `@/utils/error` mock, which
+dropped the real parsers the banner calls (`parseContextOverflow`), so the
+context banner had never been renderable in that suite.
+
+```
+vitest src/lib/__tests__/knownContextWindow.test.ts       11 passed
+vitest src/routes/threads/__tests__/$threadId.test.tsx   37 passed
+```
+
+Mutation: forcing the gate to `true` fails
+`offers Increase Context Size only where Jan sets the window`.
+
+Status: **adapted**.
