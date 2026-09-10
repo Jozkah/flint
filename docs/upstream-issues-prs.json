@@ -73808,5 +73808,7 @@
   "mergeBaseDate": "2026-09-03",
   "upstreamHeadAtIntake": "e3b129792fd00e83d4098b86364d97cfd183197b",
   "forkMainAtIntake": "d9ef24bc37548e64e345065136067fa36bd182e4",
-  "forkBranch": "feat/windows-agent-completion"
+  "forkBranch": "feat/windows-agent-completion",
+  "forkMainAfterBatch2": "9a4cfe2",
+  "lastBatch": "batch-2 (2026-09-10): 8067, 8007, 7939, 8894, 8096"
 }
