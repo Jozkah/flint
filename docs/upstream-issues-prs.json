@@ -30,12 +30,14 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1258,
+      "untriaged": 1254,
       "fixed": 12,
       "already-fixed": 3,
       "needs-user-hardware": 2,
       "not-applicable": 1,
-      "adapted": 2
+      "adapted": 3,
+      "implementation-ready": 2,
+      "rejected": 1
     }
   },
   "items": [
@@ -59886,7 +59888,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8760
+      ],
       "affectedAreas": [
         "llamacpp",
         "provider",
@@ -59918,9 +59922,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Tracked through janhq/jan#8760; fork-native redesign pending.",
+      "implementationStatus": "implementation-ready",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -65117,16 +65121,16 @@
       "privacyImpact": "none",
       "dataLossRisk": "none",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Present in fork: the finish-length handler in web-app/src/routes/threads/$threadId.tsx treats a missing ctx_len as 32768, and handleContextSizeIncrease on non-llamacpp providers raises a ctx_len nothing sends and calls stopModel, which is a no-op for remote endpoints.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Real defect for custom OpenAI-compatible endpoints, but the PR adds a parallel model-context-size module while the fork already learns windows from refusals (contextLimitRecovery, AH-195). Needs a redesign on the fork architecture rather than a port.",
+      "implementationStatus": "implementation-ready",
       "forkCommits": [],
       "tests": [],
       "verification": null,
       "blockers": [],
-      "notes": null
+      "notes": "Next: replace the ?? 32768 fallback with the learned/discovered window (unknown means not a context-limit verdict), and make the increase action honest for providers whose window Jan cannot change."
     },
     {
       "source": "janhq/jan",
@@ -67575,12 +67579,16 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "decision": "adapt",
+      "decisionReason": "Catalogue-only capability fix for a user-configured remote provider; applies cleanly, no new traffic.",
+      "implementationStatus": "adapted",
+      "forkCommits": [
+        "0d1dbf0"
+      ],
+      "tests": [
+        "web-app/src/lib/__tests__/models.test.ts"
+      ],
+      "verification": "models.test.ts 55 passed.",
       "blockers": [],
       "notes": null
     },
@@ -70517,9 +70525,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "reject",
+      "decisionReason": "Adds a hosted third-party search service (You.com) to the default MCP server list. Defaults must not point at remote services in a local-only fork; users can add it themselves.",
+      "implementationStatus": "rejected",
       "forkCommits": [],
       "tests": [],
       "verification": null,
