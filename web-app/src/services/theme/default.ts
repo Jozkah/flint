@@ -4,18 +4,21 @@
 
 import type { ThemeService, ThemeMode } from './types'
 
+// The parameters stay in the signatures: `TauriThemeService` extends this
+// class and overrides with the theme argument, which a zero-argument base
+// method would not accept. They are deliberately unused -- this service does
+// nothing -- and deliberately not logged.
 export class DefaultThemeService implements ThemeService {
   async setTheme(theme: ThemeMode): Promise<void> {
-    console.log('setTheme called with theme:', theme)
-    // No-op - not implemented in default service
+    void theme
   }
 
   getCurrentWindow() {
     return {
       setTheme: (theme: ThemeMode): Promise<void> => {
-        console.log('window.setTheme called with theme:', theme)
+        void theme
         return Promise.resolve()
-      }
+      },
     }
   }
 }

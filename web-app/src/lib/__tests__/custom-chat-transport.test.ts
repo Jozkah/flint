@@ -591,6 +591,29 @@ describe('resolveOrphanToolCalls', () => {
     expect(out).toEqual(input)
   })
 
+  // A call whose arguments were not JSON keeps the raw text as its input, and
+  // a thread saved that way reloads it as a string. Replayed, that is a tool
+  // call a chat template cannot render, and every later request failed.
+  it('replaces a tool input that is not an object, keeping the call', () => {
+    const input = [
+      userMsg('u1', 'read it'),
+      assistantMsg('a1', [
+        toolPart('output-error', { input: '{"path":', errorText: 'not JSON' }),
+        toolPart('output-available', { input: { q: 'x' }, output: 'ok' }),
+      ]),
+    ]
+    const out = resolveOrphanToolCalls(input)
+    const [broken, fine] = out[1].parts as unknown as {
+      input: unknown
+      state: string
+      errorText?: string
+    }[]
+    expect(broken.input).toEqual({})
+    expect(broken.state).toBe('output-error')
+    expect(broken.errorText).toBe('not JSON')
+    expect(fine.input).toEqual({ q: 'x' })
+  })
+
   it('preserves an existing errorText on an orphan', () => {
     const input = [
       userMsg('u1', 'q'),

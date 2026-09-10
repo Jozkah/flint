@@ -52,8 +52,10 @@ vi.mock('@/containers/HeaderPage', () => ({
 }))
 
 vi.mock('@/containers/DropdownModelProvider', () => ({
-  default: ({ model }: any) => (
-    <div data-testid="dropdown">{model ? model.id : 'none'}</div>
+  default: ({ model, useLastUsedModel }: any) => (
+    <div data-testid="dropdown" data-last-used={String(!!useLastUsedModel)}>
+      {model ? model.id : 'none'}
+    </div>
   ),
 }))
 
@@ -160,6 +162,16 @@ describe('Index route', () => {
     expect(screen.getByTestId('dropdown')).toHaveTextContent('gpt-x')
     expect(screen.getByTestId('chat-input')).toHaveTextContent('gpt-x')
     expect(screen.getByTestId('chat-input')).toHaveAttribute('data-initial', 'true')
+    // A thread's own model is kept, never replaced by the last-used one.
+    expect(screen.getByTestId('dropdown')).toHaveAttribute('data-last-used', 'false')
+  })
+
+  // janhq/jan#7703: a new chat without a model asks the picker to start from
+  // the last-used (or first local) model; before, nothing was ever selected.
+  it('asks the picker for the last-used model when the chat has none', () => {
+    h.providers = [{ provider: 'llamacpp', models: [{ id: 'local-1' }] }]
+    renderComponent()
+    expect(screen.getByTestId('dropdown')).toHaveAttribute('data-last-used', 'true')
   })
 
   it('calls setCurrentThreadId(undefined) and useTools on mount', () => {

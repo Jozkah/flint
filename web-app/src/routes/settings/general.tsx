@@ -53,6 +53,9 @@ function General() {
   }
   const { pausePolling } = useHardware()
   const [janDataFolder, setJanDataFolder] = useState<string | undefined>()
+  const [unavailableDataFolder, setUnavailableDataFolder] = useState<
+    string | undefined
+  >()
   const [isCopied, setIsCopied] = useState(false)
   const [selectedNewPath, setSelectedNewPath] = useState<string | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -65,6 +68,9 @@ function General() {
     const fetchDataFolder = async () => {
       const path = await serviceHub.app().getJanDataFolder()
       setJanDataFolder(path)
+      setUnavailableDataFolder(
+        await serviceHub.app().getUnavailableJanDataFolder?.()
+      )
     }
 
     fetchDataFolder()
@@ -263,6 +269,13 @@ function General() {
                         )}
                       </button>
                     </div>
+                    {unavailableDataFolder && (
+                      <p role="alert" className="text-xs text-destructive mt-1">
+                        {t('settings:dataFolder.unavailable', {
+                          path: unavailableDataFolder,
+                        })}
+                      </p>
+                    )}
                   </>
                 }
                 actions={

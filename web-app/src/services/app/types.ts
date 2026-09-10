@@ -20,6 +20,11 @@ export interface AppService {
   readLogs(): Promise<LogEntry[]>
   parseLogLine(line: string): LogEntry
   getJanDataFolder(): Promise<string | undefined>
+  /**
+   * The saved data folder when it could not be used this run (a disconnected
+   * drive, a renamed profile) and the default folder is in use instead.
+   */
+  getUnavailableJanDataFolder(): Promise<string | undefined>
   relocateJanDataFolder(path: string): Promise<void>
   getServerStatus(): Promise<boolean>
   setServerRunInBackground(enabled: boolean): Promise<void>

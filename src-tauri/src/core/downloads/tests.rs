@@ -81,16 +81,19 @@ fn test_validate_proxy_config() {
 // production caller is this helper, so the environment has to reach it.
 #[test]
 fn download_proxy_bypass_honours_the_no_proxy_environment() {
-    let previous = std::env::var("NO_PROXY").ok();
-    std::env::set_var("NO_PROXY", "models.internal.example");
-
-    let bypassed = should_bypass_proxy("https://models.internal.example/x.gguf", &[]);
-    let proxied = should_bypass_proxy("https://huggingface.co/x.gguf", &[]);
-
-    match previous {
-        Some(v) => std::env::set_var("NO_PROXY", v),
-        None => std::env::remove_var("NO_PROXY"),
-    }
+    // Through an explicit environment: setting NO_PROXY for the process would
+    // change what every concurrently running test's HTTP client does.
+    let env = jan_utils::network::no_proxy_from(|name| {
+        (name == "no_proxy").then(|| " models.internal.example, ,".to_string())
+    });
+    assert_eq!(env, vec!["models.internal.example".to_string()]);
+    let bypassed = jan_utils::network::should_bypass_proxy_with_env(
+        "https://models.internal.example/x.gguf",
+        &[],
+        &env,
+    );
+    let proxied =
+        jan_utils::network::should_bypass_proxy_with_env("https://huggingface.co/x.gguf", &[], &env);
     assert!(bypassed, "a host listed in NO_PROXY must skip the proxy");
     assert!(!proxied, "a host not listed must still use the proxy");
 }

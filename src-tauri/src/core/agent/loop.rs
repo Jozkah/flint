@@ -1496,15 +1496,27 @@ pub(crate) async fn run_orchestration_streamed(
     json_body: &serde_json::Value,
     args: &OrchestrationArgs,
 ) -> Result<serde_json::Value, String> {
+    let started = std::time::Instant::now();
     let result = orchestrate_inner(events, json_body, args).await;
     match &result {
         Ok(completion) => {
+            log::info!(
+                "agent: run finished outcome=ok elapsed={}ms",
+                started.elapsed().as_millis()
+            );
             let _ = events.send(StreamEvent::Done {
                 stop_reason: stop_reason_of(completion),
                 usage: Usage::from_completion(completion),
             });
         }
         Err(message) => {
+            // Bounded: the message wraps a provider body, and this line is
+            // persisted to the local log.
+            log::info!(
+                "agent: run finished outcome=error elapsed={}ms -- {}",
+                started.elapsed().as_millis(),
+                crate::core::agent::upstream::log_brief(message)
+            );
             let _ = events.send(StreamEvent::Error {
                 code: "error".to_string(),
                 message: message.clone(),

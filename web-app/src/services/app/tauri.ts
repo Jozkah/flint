@@ -67,6 +67,20 @@ export class TauriAppService extends DefaultAppService {
     }
   }
 
+  async getUnavailableJanDataFolder(): Promise<string | undefined> {
+    try {
+      // Set by the backend when the saved data folder could not be used this
+      // run (janhq/jan#8855); never part of the saved configuration.
+      const appConfiguration:
+        | (AppConfiguration & { unavailable_data_folder?: string })
+        | undefined = await window.core?.api?.getAppConfigurations()
+      return appConfiguration?.unavailable_data_folder || undefined
+    } catch (error) {
+      console.error('Failed to get Jan data folder:', error)
+      return undefined
+    }
+  }
+
   async relocateJanDataFolder(path: string): Promise<void> {
     await window.core?.api?.changeAppDataFolder({ newDataFolder: path })
   }

@@ -635,18 +635,15 @@ pub(crate) fn ensure_global_config() -> Result<PathBuf, String> {
 #[cfg(test)]
 pub(crate) fn with_temp_home<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
     use std::sync::atomic::{AtomicU32, Ordering};
-    use std::sync::Mutex;
 
-    // A lock of its own, deliberately not `SECRET_STORE_TEST_LOCK`. Sharing
-    // that one would serialise every environment mutator against every other,
-    // which sounds right and deadlocks: `MutexGuard` is not reentrant, and
-    // tests that already hold it through a `TempSecrets` go on to call this.
-    // Helpers that need both roots isolated set `JAN_HOME` themselves while
-    // holding the secret-store lock.
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    // The environment lock every `JAN_HOME` and `JAN_DATA_FOLDER` mutator
+    // takes. It used to be a lock of its own, because the shared one was not
+    // reentrant and tests holding it through a `TempSecrets` call this -- but
+    // those tests also set `JAN_HOME`, so the two locks let each side replace
+    // the other's home mid-test. The shared lock is reentrant now.
     static COUNTER: AtomicU32 = AtomicU32::new(0);
 
-    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
     let n = COUNTER.fetch_add(1, Ordering::SeqCst);
     let home = std::env::temp_dir().join(format!(
         "jan_global_cfg_test_{}_{n}",
@@ -761,6 +758,7 @@ mod tests {
     #[test]
     fn an_unset_override_still_never_reaches_the_real_home() {
         use crate::core::app::commands::{jan_home_dir, JAN_HOME_ENV};
+        let _env = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
         let prev = std::env::var_os(JAN_HOME_ENV);
         std::env::remove_var(JAN_HOME_ENV);
         let resolved = jan_home_dir().expect("a test build always resolves somewhere");

@@ -8,6 +8,26 @@ fn main() {
 
     #[cfg(feature = "tauri-app")]
     {
+        // The app's command allowlist is built here from the permission files
+        // each local plugin generates. Tauri tracks those through an
+        // environment path that does not change when the files do, so a
+        // command added to a plugin stayed "not allowed. Command not found" in
+        // the app until something else made this script run -- a smoke run
+        // that way had memory retrieval and the tool readiness check denied.
+        // Watch the files themselves, but not `schemas/`, which every plugin
+        // build rewrites.
+        if let Ok(plugins) = std::fs::read_dir("plugins") {
+            for plugin in plugins.flatten() {
+                let Ok(entries) = std::fs::read_dir(plugin.path().join("permissions")) else {
+                    continue;
+                };
+                for entry in entries.flatten() {
+                    if entry.file_name() != "schemas" {
+                        println!("cargo:rerun-if-changed={}", entry.path().display());
+                    }
+                }
+            }
+        }
         tauri_build::build();
     }
 

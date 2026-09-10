@@ -66,8 +66,21 @@ describe('what counts as an empty session', () => {
     ).toBe(false)
   })
 
+  it('not one with a project attached', () => {
+    // Reusing it as the "new" session kept the previous project attached.
+    expect(isSessionEmpty(session({ folder: 'C:/work/repo' }))).toBe(false)
+  })
+
   it('treats a missing session as empty', () => {
     expect(isSessionEmpty(undefined)).toBe(true)
+  })
+})
+
+describe('New session after attaching a project', () => {
+  it('starts a fresh session instead of keeping the project', () => {
+    expect(decide({ current: session({ folder: 'C:/work/repo' }) })).toBe(
+      'create'
+    )
   })
 })
 

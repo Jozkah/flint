@@ -187,16 +187,14 @@ pub fn resolve_config_file_path() -> PathBuf {
 }
 
 /// Run `f` with `JAN_DATA_FOLDER` pointed at a fresh temp directory, restoring
-/// the previous value afterwards. Serialized on `SECRET_STORE_TEST_LOCK`, the
+/// the previous value afterwards. Serialized on `TEST_ENV_LOCK`, the
 /// one lock every `JAN_DATA_FOLDER` mutator takes: the env is process-wide and
 /// Rust runs tests on threads, so a private lock here would exclude only the
 /// other callers of this helper while the secret-store tests redirected the
 /// folder (and dropped its temp dir) underneath a run already in progress.
 #[cfg(all(test, feature = "cli"))]
 pub(crate) fn with_temp_data_folder<T>(f: impl FnOnce(&std::path::Path) -> T) -> T {
-    let _guard = crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
 
     let dir = tempfile::tempdir().expect("tempdir");
     let prev = std::env::var_os("JAN_DATA_FOLDER");
@@ -245,16 +243,26 @@ pub fn resolve_jan_data_folder() -> PathBuf {
     }
 
     let config_file = resolve_config_file_path();
+    let default = default_cli_data_folder();
 
     if config_file.exists() {
         if let Ok(content) = fs::read_to_string(&config_file) {
             if let Ok(config) = serde_json::from_str::<AppConfiguration>(&content) {
-                return PathBuf::from(config.data_folder);
+                let (folder, _) = choose_data_folder(
+                    config.data_folder,
+                    default.to_string_lossy().into_owned(),
+                    &UNAVAILABLE_DATA_FOLDER,
+                );
+                return PathBuf::from(folder);
             }
         }
     }
 
-    // Default: data_dir/Jan/data  (mirrors default_data_folder_path)
+    default
+}
+
+/// Default: data_dir/Jan/data  (mirrors default_data_folder_path)
+fn default_cli_data_folder() -> PathBuf {
     let app_name = std::env::var("APP_NAME").unwrap_or_else(|_| "Jan".to_string());
     if let Some(data_dir) = dirs::data_dir() {
         return data_dir.join(&app_name).join("data");
@@ -263,6 +271,48 @@ pub fn resolve_jan_data_folder() -> PathBuf {
         .or_else(|_| std::env::var("USERPROFILE"))
         .unwrap_or_default();
     PathBuf::from(home).join(&app_name).join("data")
+}
+
+/// A saved data folder found unusable in this process. It stays passed over
+/// for the rest of the run, so a drive that comes back mid-session does not
+/// switch the folder under work already written to the default one.
+static UNAVAILABLE_DATA_FOLDER: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Whether a saved data folder can be used as it stands (janhq/jan#8855).
+///
+/// One on a drive that is not connected, or renamed away with the user's
+/// profile, cannot: starting against it showed an empty Jan, or -- where the
+/// parent still existed -- created a fresh, empty folder in its place. A
+/// relative folder is anchored at the working directory later, so it is not
+/// judged here.
+fn data_folder_is_usable(folder: &Path) -> bool {
+    folder.is_relative() || (folder.is_dir() && fs::read_dir(folder).is_ok())
+}
+
+/// The folder to run against: the saved one when it is usable, the default
+/// otherwise, with the saved one returned second when it was passed over.
+///
+/// The saved setting is never rewritten here. Writing the default back would
+/// make the move permanent, and the user's data would stay behind on the
+/// drive once it returned; left alone, the next start finds it again.
+fn choose_data_folder(
+    saved: String,
+    default: String,
+    memo: &std::sync::Mutex<Option<String>>,
+) -> (String, Option<String>) {
+    let mut memo = memo.lock().unwrap_or_else(|e| e.into_inner());
+    let passed_over = memo.as_deref() == Some(saved.as_str());
+    if !passed_over && data_folder_is_usable(Path::new(&saved)) {
+        return (saved, None);
+    }
+    if !passed_over {
+        log::warn!(
+            "The configured data folder {saved} is missing or unreadable; using the default \
+             data folder {default} for this run. The setting is unchanged."
+        );
+        *memo = Some(saved.clone());
+    }
+    (default, Some(saved))
 }
 
 #[cfg(not(feature = "cli"))]
@@ -314,7 +364,16 @@ pub fn get_app_configurations<R: Runtime>(app_handle: tauri::AppHandle<R>) -> Ap
     match fs::read_to_string(&configuration_file) {
         Ok(content) => {
             match serde_json::from_str::<AppConfiguration>(&content) {
-                Ok(app_configurations) => app_configurations,
+                Ok(mut app_configurations) => {
+                    let (folder, unavailable) = choose_data_folder(
+                        app_configurations.data_folder,
+                        default_data_folder,
+                        &UNAVAILABLE_DATA_FOLDER,
+                    );
+                    app_configurations.data_folder = folder;
+                    app_configurations.unavailable_data_folder = unavailable;
+                    app_configurations
+                }
                 Err(err) => {
                     log::error!("Failed to parse app config, returning default config instead. Error: {err}");
                     // Use the proper default data folder path, not the relative "./data"
@@ -378,7 +437,26 @@ pub fn get_jan_data_folder_path<R: Runtime>(app_handle: tauri::AppHandle<R>) -> 
     }
 
     let app_configurations = get_app_configurations(app_handle);
-    PathBuf::from(app_configurations.data_folder)
+    absolute_data_folder(
+        PathBuf::from(app_configurations.data_folder),
+        std::env::current_dir().ok(),
+    )
+}
+
+/// The data folder as an absolute path.
+///
+/// A relative one -- the `./data` default `CI=e2e` serves -- was resolved by
+/// each consumer against its own base. Most used the working directory, but
+/// the settings store resolves a relative path against the OS app-data
+/// directory, so an isolated harness run read and wrote `store.json` under the
+/// installed app's own `%APPDATA%\jan.ai.app\data`, inherited its
+/// `mcp_version`, and skipped the startup migrations it was meant to test.
+#[cfg(not(feature = "cli"))]
+fn absolute_data_folder(folder: PathBuf, cwd: Option<PathBuf>) -> PathBuf {
+    match cwd {
+        Some(cwd) if folder.is_relative() => cwd.join(folder),
+        _ => folder,
+    }
 }
 
 #[cfg(not(feature = "cli"))]
@@ -480,6 +558,107 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use tempfile::tempdir;
+
+    fn fresh_memo() -> std::sync::Mutex<Option<String>> {
+        std::sync::Mutex::new(None)
+    }
+
+    #[test]
+    fn a_usable_saved_data_folder_is_kept() {
+        let dir = tempdir().unwrap();
+        let saved = dir.path().to_string_lossy().into_owned();
+        assert_eq!(
+            choose_data_folder(saved.clone(), "default".into(), &fresh_memo()),
+            (saved, None)
+        );
+    }
+
+    /// janhq/jan#8855: a saved folder that no longer exists -- a disconnected
+    /// drive, a renamed profile -- falls back to the default and is reported.
+    #[test]
+    fn a_missing_saved_data_folder_falls_back_to_the_default() {
+        let dir = tempdir().unwrap();
+        let saved = dir.path().join("gone").to_string_lossy().into_owned();
+        assert_eq!(
+            choose_data_folder(saved.clone(), "default".into(), &fresh_memo()),
+            ("default".to_string(), Some(saved))
+        );
+    }
+
+    #[test]
+    fn a_file_where_the_data_folder_should_be_is_not_usable() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("data");
+        fs::write(&file, b"not a folder").unwrap();
+        let saved = file.to_string_lossy().into_owned();
+        assert_eq!(
+            choose_data_folder(saved.clone(), "default".into(), &fresh_memo()).1,
+            Some(saved)
+        );
+    }
+
+    /// Once passed over, the saved folder stays passed over for the run: a
+    /// drive reconnected mid-session must not move the app's folder under it.
+    #[test]
+    fn a_passed_over_data_folder_stays_passed_over_for_the_run() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("later");
+        let saved = path.to_string_lossy().into_owned();
+        let memo = fresh_memo();
+        assert_eq!(
+            choose_data_folder(saved.clone(), "default".into(), &memo).0,
+            "default"
+        );
+        fs::create_dir_all(&path).unwrap();
+        assert_eq!(
+            choose_data_folder(saved.clone(), "default".into(), &memo),
+            ("default".to_string(), Some(saved))
+        );
+        // A fresh run finds it again.
+        assert_eq!(
+            choose_data_folder(
+                path.to_string_lossy().into_owned(),
+                "default".into(),
+                &fresh_memo()
+            )
+            .1,
+            None
+        );
+    }
+
+    /// A relative folder is anchored at the working directory later; it is
+    /// not judged against whatever directory the check happens to run in.
+    #[test]
+    fn a_relative_saved_data_folder_is_left_to_be_anchored() {
+        assert_eq!(
+            choose_data_folder("./data".into(), "default".into(), &fresh_memo()),
+            ("./data".to_string(), None)
+        );
+    }
+
+    /// A relative data folder is anchored at the working directory once, so
+    /// no consumer can resolve it against a base of its own (the settings
+    /// store used the OS app-data directory).
+    #[cfg(not(feature = "cli"))]
+    #[test]
+    fn a_relative_data_folder_is_anchored_at_the_working_directory() {
+        let cwd = PathBuf::from(if cfg!(windows) { r"C:\run" } else { "/run" });
+        assert_eq!(
+            absolute_data_folder(PathBuf::from("./data"), Some(cwd.clone())),
+            cwd.join("./data")
+        );
+        assert!(absolute_data_folder(PathBuf::from("./data"), Some(cwd.clone())).is_absolute());
+        let absolute = cwd.join("elsewhere");
+        assert_eq!(
+            absolute_data_folder(absolute.clone(), Some(PathBuf::from("/ignored"))),
+            absolute
+        );
+        // No working directory to anchor at: left as given rather than guessed.
+        assert_eq!(
+            absolute_data_folder(PathBuf::from("data"), None),
+            PathBuf::from("data")
+        );
+    }
 
     #[test]
     fn migration_recovers_legacy_then_removes_stale_copy() {

@@ -589,6 +589,23 @@ pub struct ProxyConfig {
     pub host: String,
     pub port: u16,
     pub enable_server_tool_execution: bool,
+    /// The Settings "CORS" switch. Off, no response grants a page on another
+    /// origin access, the preflight included (janhq/jan#8836).
+    pub cors_enabled: bool,
+}
+
+/// Remove every `Access-Control-*` header from a response, including any a
+/// backend sent, so a browser page on another origin is refused.
+pub(crate) fn strip_cors_headers<B>(response: &mut Response<B>) {
+    let names: Vec<_> = response
+        .headers()
+        .keys()
+        .filter(|name| name.as_str().starts_with("access-control-"))
+        .cloned()
+        .collect();
+    for name in names {
+        response.headers_mut().remove(&name);
+    }
 }
 
 /// Determines the final destination path based on the original request path
@@ -2417,6 +2434,7 @@ pub async fn start_server(
     mcp_settings: Arc<Mutex<McpSettings>>,
     jan_data_folder: String,
     enable_server_tool_execution: bool,
+    cors_enabled: bool,
 ) -> Result<u16, Box<dyn std::error::Error + Send + Sync>> {
     start_server_internal(
         server_handle,
@@ -2434,6 +2452,7 @@ pub async fn start_server(
         mcp_settings,
         jan_data_folder,
         enable_server_tool_execution,
+        cors_enabled,
     )
     .await
 }
@@ -2455,6 +2474,7 @@ async fn start_server_internal(
     mcp_settings: Arc<Mutex<McpSettings>>,
     jan_data_folder: String,
     enable_server_tool_execution: bool,
+    cors_enabled: bool,
 ) -> Result<u16, Box<dyn std::error::Error + Send + Sync>> {
     let mut handle_guard = server_handle.lock().await;
     if handle_guard.is_some() {
@@ -2481,6 +2501,7 @@ async fn start_server_internal(
         host: host.clone(),
         port,
         enable_server_tool_execution,
+        cors_enabled,
     };
 
     let client = Client::builder()
@@ -2533,7 +2554,8 @@ async fn start_server_internal(
             let jan_data_folder = jan_data_folder.clone();
 
             let svc = service_fn(move |req| {
-                proxy_request(
+                let cors_enabled = config.cors_enabled;
+                let response = proxy_request(
                     req,
                     client.clone(),
                     config.clone(),
@@ -2544,7 +2566,16 @@ async fn start_server_internal(
                     mcp_servers.clone(),
                     mcp_settings.clone(),
                     jan_data_folder.clone(),
-                )
+                );
+                // One choke point for the CORS switch rather than a check at
+                // each of the many places a response is built.
+                async move {
+                    let mut response = response.await?;
+                    if !cors_enabled {
+                        strip_cors_headers(&mut response);
+                    }
+                    Ok::<_, hyper::Error>(response)
+                }
             });
 
             tokio::spawn(async move {

@@ -20,7 +20,7 @@
 
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -38,7 +38,15 @@ const SMOKE_PROVIDER: &str = "cowork-smoke-mock";
 /// The single-label hostname the provider is configured at, exactly as a user
 /// would type it. It is never rewritten to an address.
 const SMOKE_ENDPOINT_HOST: &str = "v100";
-const SMOKE_ENDPOINT_PORT: u16 = 8080;
+/// The port the provider is configured at. `COWORK_SMOKE_PORT` moves it, so
+/// two harness runs on one machine never share -- and re-script -- one
+/// fixture server.
+fn smoke_port() -> u16 {
+    std::env::var("COWORK_SMOKE_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080)
+}
 /// A documentation-range address standing in for the public answer a search
 /// domain collision produces. Reaching it would hang; the point is that it is
 /// never dialled.
@@ -47,6 +55,42 @@ const SMOKE_MODEL: &str = "smoke-model";
 /// `AppHandle::exit` unwinds the event loop but does not set this process's
 /// status, so the verdict is stashed here and applied once `run_app` returns.
 static VERDICT: AtomicI32 = AtomicI32::new(2);
+/// Set when `COWORK_SMOKE_KEEP` named a profile an earlier run left behind:
+/// this process is the same install started again, so its state is inherited
+/// on purpose and the restart scenarios run instead of the fresh-profile ones.
+static RESUMED: AtomicBool = AtomicBool::new(false);
+/// The fixture server, reachable from the watchdog so an aborted run never
+/// leaves it behind.
+static MOCK: std::sync::Mutex<Option<std::process::Child>> = std::sync::Mutex::new(None);
+/// What the driver is waiting on right now, for the watchdog's report.
+static LAST_STEP: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+
+/// The real-provider lane (`COWORK_SMOKE_REAL_BASE_URL`): base URL and model.
+static LANE: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
+/// The lane's ephemeral key: 32 random bytes made in this process, written
+/// only into the isolated profile, never printed, passed or exported.
+static LANE_KEY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+/// Every host the app's transport resolved during a lane run.
+static LOOKED_UP: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+const LANE_PROVIDER: &str = "v100-lane";
+
+fn note_step(step: &str) {
+    if let Ok(mut last) = LAST_STEP.lock() {
+        *last = step.chars().take(160).collect();
+    }
+}
+
+fn kill_mock() {
+    if let Ok(mut mock) = MOCK.lock() {
+        if let Some(mut child) = mock.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+/// The MCP server entries the harness seeds, by name.
+const SMOKE_MCP_USER_SERVER: &str = "smoke-user-server";
+const SMOKE_MCP_WEB_SEARCH: &str = "smoke-web-search";
 
 // ---------------------------------------------------------------------------
 // Driver
@@ -129,11 +173,13 @@ impl Ctx {
 }})();"#
         );
 
+        note_step(&format!("dispatching: {}", js.trim()));
         if let Err(e) = self.window.eval(&script) {
             self.window.unlisten(handler_id);
             bail!("eval dispatch failed: {e}");
         }
 
+        note_step(&format!("awaiting the page: {}", js.trim()));
         let received = rx.recv_timeout(timeout);
         self.window.unlisten(handler_id);
 
@@ -635,14 +681,6 @@ fn start_mock_provider(fixtures: &Path, port: u16) -> Result<(std::process::Chil
 /// provider (one absent from `predefinedProviders`) is usable on models alone
 /// -- no credential -- which is exactly what a harness needs: deterministic,
 /// offline, and never touching a real endpoint.
-/// Seed a fresh data folder; leave a resumed one exactly as the last run left it.
-fn seed_settings_unless(resumed: bool, data_folder: &Path, base_url: &str) -> Result<(), String> {
-    if resumed {
-        return Ok(());
-    }
-    seed_settings(data_folder, base_url)
-}
-
 fn seed_settings(data_folder: &Path, base_url: &str) -> Result<(), String> {
     std::fs::create_dir_all(data_folder).map_err(|e| e.to_string())?;
     let providers = serde_json::json!({
@@ -683,6 +721,62 @@ fn seed_settings(data_folder: &Path, base_url: &str) -> Result<(), String> {
     std::fs::write(
         data_folder.join("settings.json"),
         serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Seed `mcp_config.json` the way an upgraded install finds it:
+///
+/// - a server the user added (inactive, so it never has to start), which must
+///   survive every rewrite (janhq/jan#8519);
+/// - the hosted Exa entry an earlier Jan migration switched on by itself,
+///   which the v5 migration must remove before anything dials it
+///   (janhq/jan#8911);
+/// - an active stdio server exposing a tool named `web_search`, which must be
+///   approved and run as that server's tool while built-in web search is off
+///   (janhq/jan#8777). It logs every call it receives into the data folder.
+fn seed_mcp_config(data_folder: &Path) -> Result<(), String> {
+    let interpreter = ["python3", "python", "py"]
+        .into_iter()
+        .find(|name| {
+            std::process::Command::new(name)
+                .arg("--version")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        })
+        .ok_or("no python interpreter for the MCP fixture")?;
+    let server = Path::new(MANIFEST_DIR).join("tests/fixtures/mock_mcp_web_search.py");
+    let config = serde_json::json!({
+        "mcpServers": {
+            SMOKE_MCP_USER_SERVER: {
+                "command": "smoke-user-command-that-never-runs",
+                "args": ["--kept"],
+                "env": {},
+                "active": false
+            },
+            "exa": {
+                "type": "http",
+                "url": "https://mcp.exa.ai/mcp",
+                "active": true
+            },
+            SMOKE_MCP_WEB_SEARCH: {
+                "command": interpreter,
+                "args": [
+                    server.to_string_lossy(),
+                    "--log",
+                    data_folder.join("mcp-web-search-calls.jsonl").to_string_lossy()
+                ],
+                "env": {},
+                "active": true
+            }
+        }
+    });
+    std::fs::write(
+        data_folder.join("mcp_config.json"),
+        serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())
 }
@@ -975,6 +1069,83 @@ const SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "memory-proposal-approval",
         run: scenario_memory_proposal,
+    },
+    Scenario {
+        name: "thread-files-are-atomic",
+        run: scenario_thread_durability,
+    },
+    Scenario {
+        name: "mcp-config-is-kept-and-the-default-exa-removed",
+        run: scenario_mcp_config_durability,
+    },
+    Scenario {
+        name: "a-malformed-tool-call-fails-cleanly",
+        run: scenario_malformed_tool_call,
+    },
+    Scenario {
+        name: "deleting-a-message-keeps-later-replies",
+        run: scenario_delete_keeps_later_replies,
+    },
+    Scenario {
+        name: "edited-instructions-reach-the-open-chat",
+        run: scenario_instructions_reach_open_chat,
+    },
+    Scenario {
+        name: "custom-endpoint-length-stop-offers-no-fake-resize",
+        run: scenario_length_stop_on_custom_endpoint,
+    },
+    Scenario {
+        name: "mcp-web-search-is-approved-as-the-servers-tool",
+        run: scenario_mcp_web_search_approval,
+    },
+];
+
+/// The real-provider lane: the app against a real OpenAI-compatible server,
+/// driven through the UI end to end.
+const LANE_SCENARIOS: &[Scenario] = &[
+    Scenario {
+        name: "lane-discovers-the-servers-models",
+        run: lane_discovers_models,
+    },
+    Scenario {
+        name: "lane-streams-a-reply-with-token-speed",
+        run: lane_streams_a_reply,
+    },
+    // After a request has gone through the app's transport: the endpoint is
+    // classified from the address that connection actually used, and model
+    // discovery goes through the HTTP plugin, which records none.
+    Scenario {
+        name: "lane-endpoint-is-grouped-as-local",
+        run: lane_grouped_local,
+    },
+    Scenario {
+        name: "lane-memory-reaches-the-model",
+        run: lane_memory_reaches_the_model,
+    },
+    Scenario {
+        name: "lane-cowork-model-tool-model-loop",
+        run: lane_cowork_tool_loop,
+    },
+    Scenario {
+        name: "lane-key-and-peers-are-contained",
+        run: lane_contained,
+    },
+];
+
+/// Scenarios for a second process started on a kept profile
+/// (`COWORK_SMOKE_KEEP`): what a real restart has to bring back.
+const RESTART_SCENARIOS: &[Scenario] = &[
+    Scenario {
+        name: "tool-activity-survives-a-restart",
+        run: scenario_tool_activity_after_restart,
+    },
+    Scenario {
+        name: "a-torn-thread-tail-heals-after-a-restart",
+        run: scenario_torn_tail_after_restart,
+    },
+    Scenario {
+        name: "a-deleted-reply-stays-deleted-after-a-restart",
+        run: scenario_delete_after_restart,
     },
 ];
 
@@ -4674,7 +4845,7 @@ fn scenario_provider_error(ctx: &Ctx) -> ScenarioResult {
             "cloudflare",
             // The endpoint as configured, not the address it resolved to:
             // the message has to name what the user typed.
-            &format!("{SMOKE_ENDPOINT_HOST}:{SMOKE_ENDPOINT_PORT}"),
+            &format!("{SMOKE_ENDPOINT_HOST}:{}", smoke_port()),
         ] {
             ensure!(
                 text.contains(needle),
@@ -4747,7 +4918,7 @@ fn scenario_local_hostname(ctx: &Ctx) -> ScenarioResult {
            }});
            return JSON.stringify({{ status: r.status, peer: r.peer, body: r.body.slice(0, 300) }});"#,
         host = SMOKE_ENDPOINT_HOST,
-        port = SMOKE_ENDPOINT_PORT,
+        port = smoke_port(),
     ))?;
     println!("      discovery: {listed}");
     let v: Value = serde_json::from_str(&listed).unwrap_or(Value::Null);
@@ -4774,7 +4945,7 @@ fn scenario_local_hostname(ctx: &Ctx) -> ScenarioResult {
              'provider_endpoint_diagnostics', {{ host: {host:?}, port: {port} }});
            return JSON.stringify(d);"#,
         host = SMOKE_ENDPOINT_HOST,
-        port = SMOKE_ENDPOINT_PORT,
+        port = smoke_port(),
     ))?;
     println!("      diagnostics: {diag}");
     let d: Value = serde_json::from_str(&diag).unwrap_or(Value::Null);
@@ -4829,7 +5000,7 @@ fn scenario_stream_over_local_hostname(ctx: &Ctx) -> ScenarioResult {
            {{ host: {host:?}, port: {port} }});
          return true;",
         host = SMOKE_ENDPOINT_HOST,
-        port = SMOKE_ENDPOINT_PORT,
+        port = smoke_port(),
     ))?;
 
     ctx.goto("/cowork")?;
@@ -4871,7 +5042,7 @@ fn scenario_stream_over_local_hostname(ctx: &Ctx) -> ScenarioResult {
              'provider_endpoint_diagnostics', {{ host: {host:?}, port: {port} }});
            return JSON.stringify(d);"#,
         host = SMOKE_ENDPOINT_HOST,
-        port = SMOKE_ENDPOINT_PORT,
+        port = smoke_port(),
     ))?;
     println!("      streaming diagnostics: {diag}");
     let d: Value = serde_json::from_str(&diag).unwrap_or(Value::Null);
@@ -5214,25 +5385,30 @@ fn fixtures_dir(args: &[String]) -> PathBuf {
 }
 
 fn main() {
+    // The agent-tools plugin re-executes the current binary as its Windows
+    // sandbox helper for every confined shell. Without this hand-off, as in
+    // the app's own `main`, each helper launch of this binary started a whole
+    // second harness -- WebView, fixture server and a full scenario run --
+    // which loaded the machine, fought over the fixture port and wedged the
+    // WebView under test.
+    tauri_plugin_agent_tools::run_sandbox_helper_if_requested();
+
     let args: Vec<String> = std::env::args().collect();
     let fixtures = fixtures_dir(&args);
 
     // Per-run scratch tree. `CI=e2e` makes the app resolve its data folder
     // relative to the CWD, so chdir'ing here keeps the run out of the real
     // Jan data folder.
-    //
-    // `COWORK_SMOKE_KEEP=<dir>` names a workspace that outlives this process
-    // instead, so a second invocation starts the app again on the same data
-    // folder and WebView profile: that is what a real restart is. The first
-    // run against it seeds it; a run that finds it seeded resumes it.
-    let kept = std::env::var_os("COWORK_SMOKE_KEEP").map(PathBuf::from);
-    let resumed = kept
-        .as_ref()
-        .is_some_and(|d| d.join("data").join("settings.json").exists());
-    let workspace = kept
+    // `COWORK_SMOKE_KEEP=<dir>` keeps the profile for a second run, which is
+    // how a real restart is exercised: the second process inherits the data
+    // folder and the WebView profile exactly as an installed app would.
+    let keep = std::env::var_os("COWORK_SMOKE_KEEP").map(PathBuf::from);
+    let workspace = keep
         .clone()
         .unwrap_or_else(|| std::env::temp_dir().join(format!("cowork-smoke-{}", std::process::id())));
-    if kept.is_none() {
+    let resumed = keep.is_some() && workspace.join("data").join("settings.json").is_file();
+    RESUMED.store(resumed, Ordering::SeqCst);
+    if !resumed {
         let _ = std::fs::remove_dir_all(&workspace);
     }
     std::fs::create_dir_all(&workspace).expect("failed to create smoke workspace");
@@ -5246,14 +5422,28 @@ fn main() {
     // The provider is reached at a single-label hostname on a fixed port, so
     // every scenario that talks to a model exercises the short-hostname path
     // that was resolving to the wrong machine.
-    let (mut mock, mock_port) = match start_mock_provider(&fixtures, SMOKE_ENDPOINT_PORT) {
-        Ok(pair) => pair,
-        Err(e) => {
-            eprintln!("FATAL: {e}");
-            std::process::exit(2);
-        }
+    let lane_base = std::env::var("COWORK_SMOKE_REAL_BASE_URL").ok();
+    if let Some(base) = &lane_base {
+        let model = std::env::var("COWORK_SMOKE_REAL_MODEL").unwrap_or_else(|_| "pxa-27b".into());
+        let _ = LANE.set((base.clone(), model));
+        let bytes: [u8; 32] = rand::random();
+        let _ = LANE_KEY.set(bytes.iter().map(|b| format!("{b:02x}")).collect());
+        println!("real-provider lane: {base} (a fresh 32-byte key, never shown)");
+    }
+    let mock_port = if lane_base.is_some() {
+        0
+    } else {
+        let (mock, mock_port) = match start_mock_provider(&fixtures, smoke_port()) {
+            Ok(pair) => pair,
+            Err(e) => {
+                eprintln!("FATAL: {e}");
+                std::process::exit(2);
+            }
+        };
+        *MOCK.lock().unwrap_or_else(|e| e.into_inner()) = Some(mock);
+        println!("mock provider on port {mock_port}");
+        mock_port
     };
-    println!("mock provider on port {mock_port}");
 
     // Deterministic resolution for the harness only: `v100` answers with a
     // public address and a loopback one, exactly the shape that sent requests
@@ -5271,16 +5461,38 @@ fn main() {
             app_lib::core::net::resolver::SystemDns.lookup(host, port)
         }
     }
-    app_lib::core::net::transport::set_probe(std::sync::Arc::new(SmokeDns));
+    /// The lane resolves for real, and remembers every name it was asked for.
+    struct RecordingDns;
+    impl app_lib::core::net::resolver::DnsProbe for RecordingDns {
+        fn lookup(&self, host: &str, port: u16) -> Result<Vec<std::net::SocketAddr>, String> {
+            if let Ok(mut seen) = LOOKED_UP.lock() {
+                seen.push(format!("{host}:{port}"));
+            }
+            app_lib::core::net::resolver::SystemDns.lookup(host, port)
+        }
+    }
+    if lane_base.is_some() {
+        app_lib::core::net::transport::set_probe(std::sync::Arc::new(RecordingDns));
+    } else {
+        app_lib::core::net::transport::set_probe(std::sync::Arc::new(SmokeDns));
+    }
 
     let data_folder = workspace.join("data");
-    if let Err(e) = seed_settings_unless(
-        resumed,
-        &data_folder,
-        &format!("http://{SMOKE_ENDPOINT_HOST}:{SMOKE_ENDPOINT_PORT}/v1"),
-    ) {
+    let seeded = if resumed {
+        println!("resuming the profile at {}", workspace.display());
+        Ok(())
+    } else if let (Some((base, _)), Some(key)) = (LANE.get(), LANE_KEY.get()) {
+        seed_lane_settings(&data_folder, base, key)
+    } else {
+        seed_settings(
+            &data_folder,
+            &format!("http://{SMOKE_ENDPOINT_HOST}:{}/v1", smoke_port()),
+        )
+        .and_then(|()| seed_mcp_config(&data_folder))
+    };
+    if let Err(e) = seeded {
         eprintln!("FATAL: could not seed the smoke data folder: {e}");
-        let _ = mock.kill();
+        kill_mock();
         std::process::exit(2);
     }
     std::env::set_var("JAN_DATA_FOLDER", &data_folder);
@@ -5303,6 +5515,9 @@ fn main() {
     std::fs::create_dir_all(&webview_profile).expect("failed to create webview profile");
     std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", &webview_profile);
     std::env::set_current_dir(&workspace).expect("failed to enter smoke workspace");
+    // Provider keys go to the isolated data folder's encrypted file, not the
+    // system credential store, which is shared with the developer's own Jan.
+    app_lib::core::server::provider_secrets::use_file_secrets_only();
 
     let app = app_lib::build_app();
     let handle: AppHandle = app.handle().clone();
@@ -5314,8 +5529,7 @@ fn main() {
             let _ = std::fs::remove_dir_all(&driver_workspace);
         }
         // Never leave the fixture server behind.
-        let _ = mock.kill();
-        let _ = mock.wait();
+        kill_mock();
         VERDICT.store(code, Ordering::SeqCst);
         // On macOS the platform event loop terminates the process itself with
         // status 0, so `handle.exit(code)` would discard the verdict. Run
@@ -5356,15 +5570,13 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
     std::thread::sleep(Duration::from_millis(800));
 
     let template = fixtures.is_dir().then(|| fixtures.clone());
-    // Resuming a kept workspace: the fixture, its Git history and everything
-    // the app persisted are exactly what the previous process left.
-    let resumed = std::env::var_os("COWORK_SMOKE_KEEP").is_some()
-        && workspace.join("cowork-smoke-fixture").join(".git").exists();
-    let project = match if resumed {
-        Ok(workspace.join("cowork-smoke-fixture"))
+    let existing = workspace.join("cowork-smoke-fixture");
+    let materialized = if RESUMED.load(Ordering::SeqCst) && existing.is_dir() {
+        Ok(existing)
     } else {
         materialize_project(&workspace, template.as_deref())
-    } {
+    };
+    let project = match materialized {
         Ok(p) => p,
         Err(e) => {
             eprintln!("FATAL: could not materialise the fixture project: {e}");
@@ -5381,11 +5593,18 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
         mock_port,
     };
 
-    if let Err(Failure(e)) = if resumed {
-        Ok(())
+    let resumed = RESUMED.load(Ordering::SeqCst);
+    let started = if resumed {
+        // Inherited state is the point of a restart run; only wait for mount.
+        ctx.wait_until(
+            "React root to mount",
+            "return !!document.querySelector('#root') && document.querySelector('#root').children.length > 0;",
+            Duration::from_secs(90),
+        )
     } else {
         ctx.reset_persisted_state()
-    } {
+    };
+    if let Err(Failure(e)) = started {
         eprintln!("FATAL: could not reset persisted WebView state: {e}");
         return 2;
     }
@@ -5399,7 +5618,14 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
         .windows(2)
         .find(|w| w[0] == "--only")
         .map(|w| w[1].split(',').map(|s| s.trim().to_string()).collect());
-    let scenarios: Vec<&Scenario> = SCENARIOS
+    let set = if LANE.get().is_some() {
+        LANE_SCENARIOS
+    } else if resumed {
+        RESTART_SCENARIOS
+    } else {
+        SCENARIOS
+    };
+    let scenarios: Vec<&Scenario> = set
         .iter()
         .chain(if self_test {
             std::slice::from_ref(&SELF_TEST_FAIL)
@@ -5413,7 +5639,7 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
         .collect();
     if let Some(names) = &only {
         for name in names {
-            if !scenarios.iter().any(|s| &s.name == name) {
+            if !scenarios.iter().any(|s| &s.name == name) && !(self_test && name == SELF_TEST_FAIL.name) {
                 eprintln!("FATAL: no scenario named {name:?}");
                 return 2;
             }
@@ -5439,6 +5665,31 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
         // cascades into every scenario that follows until it recovers. A stall
         // is not a defect, but a pass that needed a retry is reported as such
         // so it never reads as a clean one.
+        // A bound on one scenario, retries included. Each wait already has a
+        // timeout, but a page that stops answering turns every eval into a
+        // full-length one; past this the run says where it was and stops,
+        // instead of looking hung.
+        let limit = std::env::var("COWORK_SMOKE_SCENARIO_LIMIT_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(1200);
+        let done = std::sync::Arc::new(AtomicBool::new(false));
+        {
+            let done = done.clone();
+            let name = scenario.name;
+            std::thread::spawn(move || {
+                let started = Instant::now();
+                while !done.load(Ordering::SeqCst) {
+                    if started.elapsed() > Duration::from_secs(limit) {
+                        let step = LAST_STEP.lock().map(|s| s.clone()).unwrap_or_default();
+                        println!("FAIL {name}\n      no verdict after {limit}s; last step: {step}");
+                        kill_mock();
+                        std::process::exit(3);
+                    }
+                    std::thread::sleep(Duration::from_secs(2));
+                }
+            });
+        }
         let mut attempt = 0;
         let mut first_err: Option<String> = None;
         let outcome = loop {
@@ -5458,11 +5709,19 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
                             _ => e,
                         }));
                     }
-                    // Let the WebView finish whatever wedged it.
+                    // Let the WebView finish whatever wedged it. A page that
+                    // stopped answering a script entirely does not recover by
+                    // waiting: the retry would only time out the same way, so
+                    // reload it first.
+                    if e.contains("eval timed out") {
+                        println!("      (reloading an unresponsive WebView before retrying)");
+                        ctx.eval_detached("window.location.replace('/')").ok();
+                    }
                     ctx.settle();
                 }
             }
         };
+        done.store(true, Ordering::SeqCst);
         match outcome {
             Ok(false) => println!("PASS {}", scenario.name),
             Ok(true) => {
@@ -5738,5 +5997,1423 @@ fn scenario_memory_proposal(ctx: &Ctx) -> ScenarioResult {
 
     // Leave the store as this scenario found it.
     let _ = std::fs::remove_file(&records);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Durability and integration regressions (the batch-1 fixes, end to end)
+// ---------------------------------------------------------------------------
+
+fn data_folder() -> Result<PathBuf, Failure> {
+    std::env::var("JAN_DATA_FOLDER")
+        .map(PathBuf::from)
+        .map_err(|_| Failure("JAN_DATA_FOLDER is not set".into()))
+}
+
+/// Type into the chat composer, send, and wait for `expect` on the page.
+fn send_and_wait(ctx: &Ctx, text: &str, expect: &str) -> ScenarioResult {
+    ctx.type_into("[data-testid=\"chat-input\"]", text)?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        &format!("{expect:?} on the page"),
+        &format!("return (document.body.innerText || '').includes({expect:?});"),
+        Duration::from_secs(90),
+    )
+}
+
+/// The thread open in the chat route, and its directory on disk.
+fn open_thread_dir(ctx: &Ctx) -> Result<(String, PathBuf), Failure> {
+    ctx.wait_until(
+        "a thread route",
+        "return location.pathname.startsWith('/threads/') && location.pathname.length > 9;",
+        Duration::from_secs(30),
+    )?;
+    let path = ctx.eval_string("return location.pathname;")?;
+    let id = path
+        .trim_start_matches("/threads/")
+        .trim_end_matches('/')
+        .to_string();
+    Ok((path, data_folder()?.join("threads").join(id)))
+}
+
+/// Every line of a messages file, each of which must be a JSON object.
+fn message_lines(dir: &Path) -> Result<Vec<Value>, Failure> {
+    let text = std::fs::read_to_string(dir.join("messages.jsonl"))
+        .map_err(|e| Failure(format!("messages.jsonl: {e}")))?;
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            serde_json::from_str::<Value>(l)
+                .map_err(|e| Failure(format!("an unparseable line survived ({e}): {l:.120}")))
+        })
+        .collect()
+}
+
+/// Staging files still present after any in-flight write has had time to
+/// finish. The atomic writer creates `<name>.tmp` and renames it over the
+/// target, so one seen for an instant is a write in progress, not a leak; one
+/// that is still there seconds later is.
+fn staging_files(dir: &Path) -> Vec<String> {
+    let list = || -> Vec<String> {
+        std::fs::read_dir(dir)
+            .map(|rd| {
+                rd.flatten()
+                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .filter(|n| n.ends_with(".tmp"))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let found = list();
+        if found.is_empty() || Instant::now() >= deadline {
+            return found;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+}
+
+/// janhq/jan#8019. Thread files are replaced atomically (no staging file left
+/// behind, every record parses). Ends by tearing the final line the way a
+/// crash mid-append does; `a-torn-thread-tail-heals-after-a-restart` checks
+/// that it neither hides the conversation nor swallows the next message.
+fn scenario_thread_durability(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    ctx.goto("/")?;
+    ctx.wait_until(
+        "the chat composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.wait_until(
+        "the previous run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
+    ctx.ensure_model_selected()?;
+    send_and_wait(ctx, "durable message one", "Hello from the smoke model")?;
+    let (route, dir) = open_thread_dir(ctx)?;
+
+    // The reply is persisted when its stream ends, not when it is drawn.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let n = message_lines(&dir).map(|l| l.len()).unwrap_or(0);
+        if n >= 2 {
+            break;
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "the exchange never reached {} ({n} records)",
+            dir.display()
+        );
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    let meta = std::fs::read_to_string(dir.join("thread.json"))
+        .map_err(|e| Failure(format!("thread.json: {e}")))?;
+    serde_json::from_str::<Value>(&meta)
+        .map_err(|e| Failure(format!("thread.json does not parse: {e}")))?;
+    let before = message_lines(&dir)?.len();
+    ensure!(
+        staging_files(&dir).is_empty(),
+        "a staging file was left behind: {:?}",
+        staging_files(&dir)
+    );
+
+    // What a crash mid-append leaves: an unterminated fragment. It is the last
+    // thing this process does, so the restart half finds it exactly as a crash
+    // would have left it; reloading the page in place instead left the WebView2
+    // page unanswered in this harness.
+    {
+        use std::io::Write as _;
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(dir.join("messages.jsonl"))
+            .map_err(|e| Failure(e.to_string()))?;
+        f.write_all(TORN_TAIL.as_bytes())
+            .map_err(|e| Failure(e.to_string()))?;
+    }
+    write_handoff(
+        ctx,
+        TORN_TAIL_HANDOFF,
+        &serde_json::json!({ "route": route, "dir": dir, "before": before }),
+    )
+}
+
+/// The fragment `thread-files-are-atomic` leaves at the end of a thread file.
+const TORN_TAIL: &str = r#"{"id":"smoke-torn-tail","role":"assis"#;
+const TORN_TAIL_HANDOFF: &str = "torn-tail";
+
+/// Second process on the profile `thread-files-are-atomic` tore: the
+/// conversation opens from disk despite the fragment, and the next message is
+/// neither glued onto it nor lost (janhq/jan#8019).
+fn scenario_torn_tail_after_restart(ctx: &Ctx) -> ScenarioResult {
+    let handoff = read_handoff(ctx, TORN_TAIL_HANDOFF, "thread-files-are-atomic")?;
+    let route = handoff["route"].as_str().unwrap_or_default().to_string();
+    let dir = PathBuf::from(handoff["dir"].as_str().unwrap_or_default());
+    let before = handoff["before"].as_u64().unwrap_or(0) as usize;
+    let on_disk = std::fs::read_to_string(dir.join("messages.jsonl"))
+        .map_err(|e| Failure(format!("messages.jsonl: {e}")))?;
+    ensure!(
+        on_disk.ends_with(TORN_TAIL),
+        "the torn fragment was gone before the restart, so nothing here reads a torn file"
+    );
+
+    ctx.goto(&route)?;
+    ctx.wait_until(
+        "the conversation to survive the torn tail",
+        "const t = document.body.innerText || '';
+         return t.includes('durable message one') && t.includes('Hello from the smoke model');",
+        Duration::from_secs(45),
+    )?;
+
+    ctx.ensure_model_selected()?;
+    ctx.script_model("plain", &[])?;
+    send_and_wait(ctx, "durable message two", "durable message two")?;
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        match message_lines(&dir) {
+            Ok(lines) if lines.len() >= before + 2 => {
+                let text = serde_json::to_string(&lines).unwrap_or_default();
+                ensure!(
+                    !text.contains("smoke-torn-tail"),
+                    "the torn fragment was kept as a record"
+                );
+                ensure!(
+                    text.contains("durable message two"),
+                    "the message sent after the torn tail was lost"
+                );
+                break;
+            }
+            Ok(_) => {}
+            Err(Failure(e)) if Instant::now() >= deadline => bail!("{e}"),
+            Err(_) => {}
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "the second exchange never reached disk"
+        );
+        std::thread::sleep(Duration::from_millis(300));
+    }
+    ensure!(
+        staging_files(&dir).is_empty(),
+        "a staging file was left behind: {:?}",
+        staging_files(&dir)
+    );
+    Ok(())
+}
+
+/// janhq/jan#8519 and #8911 through the real app. After startup the user's
+/// server is still configured and the hosted Exa entry Jan's own migration
+/// once switched on is gone; and a config that stops parsing is copied aside
+/// before the defaults are written, instead of being overwritten.
+fn scenario_mcp_config_durability(ctx: &Ctx) -> ScenarioResult {
+    let data = data_folder()?;
+    let path = data.join("mcp_config.json");
+    let original =
+        std::fs::read_to_string(&path).map_err(|e| Failure(format!("mcp_config.json: {e}")))?;
+    let config: Value = serde_json::from_str(&original)
+        .map_err(|e| Failure(format!("mcp_config.json does not parse: {e}")))?;
+    let servers = config
+        .get("mcpServers")
+        .and_then(Value::as_object)
+        .ok_or_else(|| Failure("no mcpServers".into()))?;
+    ensure!(
+        servers.contains_key(SMOKE_MCP_USER_SERVER),
+        "the user's server was dropped at startup: {:?}",
+        servers.keys().collect::<Vec<_>>()
+    );
+    ensure!(
+        !servers.contains_key("exa"),
+        "the default hosted Exa entry survived the migration"
+    );
+    let logs = std::fs::read_dir(data.join("logs"))
+        .map(|rd| {
+            rd.flatten()
+                .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+                .collect::<String>()
+        })
+        .unwrap_or_default();
+    ensure!(
+        !logs.contains("mcp.exa.ai"),
+        "the app log mentions mcp.exa.ai, so something tried to reach it"
+    );
+
+    // The settings page lists what the file holds.
+    ctx.goto("/settings/mcp-servers")?;
+    ctx.wait_until(
+        "the user's MCP server in the list",
+        // Case-insensitive: the page shows names with CSS `capitalize`, which
+        // `innerText` applies.
+        &format!(
+            "return (document.body.innerText || '').toLowerCase().includes({SMOKE_MCP_USER_SERVER:?});"
+        ),
+        Duration::from_secs(30),
+    )?;
+
+    // An unreadable config: kept aside, never destroyed.
+    let corrupt = "{ \"mcpServers\": { \"smoke-user-server\": ";
+    std::fs::write(&path, corrupt).map_err(|e| Failure(e.to_string()))?;
+    let served = ctx.eval_string(
+        "return String(await window.__TAURI_INTERNALS__.invoke('get_mcp_configs'));",
+    );
+    let kept: Vec<PathBuf> = std::fs::read_dir(&data)
+        .map(|rd| {
+            rd.flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.file_name()
+                        .is_some_and(|n| n.to_string_lossy().starts_with("mcp_config.json.corrupt-"))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let kept_ok = kept
+        .iter()
+        .any(|p| std::fs::read_to_string(p).ok().as_deref() == Some(corrupt));
+    // Put the real config back before judging, so later scenarios keep their
+    // servers whatever happened here.
+    std::fs::write(&path, &original).map_err(|e| Failure(e.to_string()))?;
+    for p in &kept {
+        let _ = std::fs::remove_file(p);
+    }
+    served?;
+    ensure!(
+        kept_ok,
+        "the unreadable config was not kept aside before defaults were written ({} copies)",
+        kept.len()
+    );
+    let after = ctx.eval_string(
+        "return String(await window.__TAURI_INTERNALS__.invoke('get_mcp_configs'));",
+    )?;
+    ensure!(
+        after.contains(SMOKE_MCP_USER_SERVER),
+        "the restored config did not load: {after:.200}"
+    );
+    Ok(())
+}
+
+/// A model that sends tool-call arguments that are not JSON must not wedge
+/// the run or the thread: the call fails, the run ends, the conversation
+/// reloads, and the next turn works (janhq/jan#8519's missing-`arguments`
+/// replay was one form of this).
+fn scenario_malformed_tool_call(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("tools", &["read:{\"path\":"])?;
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.wait_until(
+        "the previous run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+
+    ctx.type_into("[data-testid=\"chat-input\"]", "read with broken arguments")?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the run to start",
+        "return !document.querySelector('[data-test-id=\"send-message-button\"]')
+           || (document.body.innerText || '').includes('read with broken arguments');",
+        Duration::from_secs(30),
+    )?;
+    ctx.wait_until(
+        "the run to end instead of hanging",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(120),
+    )?;
+
+    // The page reloads cleanly with the conversation intact.
+    ctx.goto("/")?;
+    ctx.settle();
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the conversation after a reload",
+        "return (document.body.innerText || '').includes('read with broken arguments');",
+        Duration::from_secs(45),
+    )?;
+
+    // And the session still works. The history carries a tool result, so the
+    // fixture answers with its summary -- which the first run already put on
+    // the page, so only a reply drawn after the follow-up counts.
+    ctx.script_model("plain", &[])?;
+    let before = model_requests(ctx).map(|r| r.len()).unwrap_or(0);
+    let answered = send_and_wait(ctx, "are you still there", "are you still there").and_then(|()| {
+        ctx.wait_until(
+            "a reply after the follow-up",
+            "const t = document.body.innerText || '';
+             const i = t.lastIndexOf('are you still there');
+             return i >= 0 && t.slice(i).includes('Done. I used the tools you allowed.');",
+            Duration::from_secs(90),
+        )
+    });
+    if answered.is_err() {
+        // Which half failed: a follow-up that never reached the model, or one
+        // the model answered and the page did not show.
+        let requests = model_requests(ctx).unwrap_or_default();
+        println!(
+            "      model requests before/after the follow-up: {before}/{}",
+            requests.len()
+        );
+        if let Some(last) = requests.last() {
+            let roles: Vec<String> = last
+                .get("messages")
+                .and_then(Value::as_array)
+                .map(|m| {
+                    m.iter()
+                        .map(|x| {
+                            let role = x.get("role").and_then(Value::as_str).unwrap_or("?");
+                            let calls = x
+                                .get("tool_calls")
+                                .map(|c| c.to_string())
+                                .unwrap_or_default();
+                            format!("{role}{}", if calls.is_empty() { String::new() } else { format!(" {calls:.160}") })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            println!("      last request messages: {roles:?}");
+        }
+        println!(
+            "      page tail: {}",
+            ctx.eval_string("const t = document.body.innerText || ''; return t.slice(-600);")
+                .unwrap_or_default()
+        );
+    }
+    answered
+}
+
+/// Second process on a kept profile: the tool activity the first process
+/// recorded is drawn again from the record, and hydrating it writes nothing.
+fn scenario_tool_activity_after_restart(ctx: &Ctx) -> ScenarioResult {
+    let before = activity_events(ctx);
+    ensure!(
+        !before.is_empty(),
+        "the kept profile holds no tool activity; run tool-activity-timeline with COWORK_SMOKE_KEEP first"
+    );
+    ensure!(
+        before.iter().any(|e| e.contains("\"phase\":\"succeeded\"")),
+        "the kept record has no finished call to hydrate"
+    );
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the recorded tool call after a restart",
+        "return !!document.querySelector('[data-testid=\"tool-activity-item\"]');",
+        Duration::from_secs(60),
+    )?;
+    ctx.settle();
+    let after = activity_events(ctx);
+    let new: Vec<&String> = after[before.len().min(after.len())..]
+        .iter()
+        .filter(|e| !e.contains("\"phase\":\"stale\""))
+        .collect();
+    ensure!(
+        new.is_empty(),
+        "hydrating the timeline wrote {} new event(s): {:?}",
+        new.len(),
+        new.iter().take(2).collect::<Vec<_>>()
+    );
+    Ok(())
+}
+
+/// Set the words the model fixture answers with.
+fn script_reply(ctx: &Ctx, reply: &str) -> ScenarioResult {
+    let port = ctx.mock_port;
+    let ok = ctx.eval_bool(&format!(
+        r#"const res = await fetch('http://127.0.0.1:{port}/__control', {{
+             method: 'POST',
+             headers: {{ 'Content-Type': 'application/json' }},
+             body: JSON.stringify({{ reply: {reply:?} }}),
+           }});
+           return res.ok;"#
+    ))?;
+    ensure!(ok, "could not set the fixture reply");
+    Ok(())
+}
+
+const DEFAULT_REPLY: &str = "Hello from the smoke model.";
+
+/// The chat bodies the fixture received, oldest first.
+fn model_requests(ctx: &Ctx) -> Result<Vec<Value>, Failure> {
+    let port = ctx.mock_port;
+    let raw = ctx.eval_string(&format!(
+        "const r = await fetch('http://127.0.0.1:{port}/__requests');
+         return JSON.stringify(await r.json());"
+    ))?;
+    let v: Value = serde_json::from_str(&raw).map_err(|e| Failure(e.to_string()))?;
+    Ok(v.get("requests")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default())
+}
+
+/// The system prompt of the most recent chat request.
+fn last_system_prompt(ctx: &Ctx) -> Result<String, Failure> {
+    let requests = model_requests(ctx)?;
+    let last = requests
+        .last()
+        .ok_or_else(|| Failure("the fixture received no chat request".into()))?;
+    Ok(last
+        .get("messages")
+        .and_then(Value::as_array)
+        .map(|m| {
+            m.iter()
+                .filter(|m| m.get("role").and_then(Value::as_str) == Some("system"))
+                .map(|m| m.get("content").map(|c| c.to_string()).unwrap_or_default())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default())
+}
+
+/// A fresh chat with the smoke model selected.
+fn new_chat(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/")?;
+    ctx.wait_until(
+        "the chat composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.wait_until(
+        "the previous run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
+    ctx.ensure_model_selected()
+}
+
+/// janhq/jan#8495. Deleting a reply in the middle of a conversation re-links
+/// what hung below it, so the later exchange stays on screen and on disk;
+/// `a-deleted-reply-stays-deleted-after-a-restart` checks it after a restart.
+fn scenario_delete_keeps_later_replies(ctx: &Ctx) -> ScenarioResult {
+    let result = (|| {
+        ctx.script_model("plain", &[])?;
+        new_chat(ctx)?;
+        script_reply(ctx, "Reply alpha from the smoke model.")?;
+        send_and_wait(ctx, "message alpha", "Reply alpha from the smoke model.")?;
+        let (route, dir) = open_thread_dir(ctx)?;
+        ctx.wait_until(
+            "the first run to finish",
+            "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+            Duration::from_secs(60),
+        )?;
+        script_reply(ctx, "Reply bravo from the smoke model.")?;
+        send_and_wait(ctx, "message bravo", "Reply bravo from the smoke model.")?;
+        ctx.wait_until(
+            "the second run to finish",
+            "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+            Duration::from_secs(60),
+        )?;
+        std::thread::sleep(Duration::from_secs(1));
+
+        // The first reply's own action row: its last button is the trash.
+        let clicked = ctx.eval_string(
+            r#"const rows = [...document.querySelectorAll('div.group\\/message')];
+               const row = rows.find(r => (r.innerText || '').includes('Reply alpha from the smoke model.')
+                                       && !(r.innerText || '').includes('message bravo'));
+               if (!row) return 'no row';
+               const buttons = [...row.querySelectorAll('button')].filter(b => b.querySelector('svg'));
+               const trash = buttons.find(b => b.querySelector('svg.tabler-icon-trash'))
+                 || buttons[buttons.length - 1];
+               if (!trash) return 'no button';
+               trash.click();
+               return 'clicked';"#,
+        )?;
+        if clicked != "clicked" {
+            ctx.describe("delete-message")?;
+            bail!("could not reach the reply's delete control: {clicked}");
+        }
+        ctx.wait_until(
+            "the delete confirmation",
+            "return !!document.querySelector('[role=\"dialog\"] button[aria-label=\"Delete Message\"]');",
+            Duration::from_secs(15),
+        )?;
+        ctx.eval(
+            "document.querySelector('[role=\"dialog\"] button[aria-label=\"Delete Message\"]').click();
+             return true;",
+        )?;
+        ctx.wait_until(
+            "the reply to go",
+            "return !(document.body.innerText || '').includes('Reply alpha from the smoke model.');",
+            Duration::from_secs(20),
+        )?;
+        let visible = |ctx: &Ctx| {
+            ctx.eval_bool(
+                "const t = document.body.innerText || '';
+                 return t.includes('message bravo') && t.includes('Reply bravo from the smoke model.');",
+            )
+        };
+        ensure!(visible(ctx)?, "the later exchange vanished with the deleted reply");
+
+        // On disk: the reply is gone and the later exchange is not.
+        let lines = message_lines(&dir)?;
+        let text = serde_json::to_string(&lines).unwrap_or_default();
+        ensure!(
+            !text.contains("Reply alpha from the smoke model."),
+            "the deleted reply is still on disk"
+        );
+        ensure!(
+            text.contains("Reply bravo from the smoke model.") && text.contains("message bravo"),
+            "the later exchange is not on disk"
+        );
+
+        // The restart half rebuilds the tree from the record. Reloading the
+        // page in place left the WebView2 page unanswered in this harness.
+        write_handoff(ctx, DELETE_HANDOFF, &serde_json::json!({ "route": route }))
+    })();
+    let _ = script_reply(ctx, DEFAULT_REPLY);
+    result
+}
+
+const DELETE_HANDOFF: &str = "deleted-reply";
+
+/// Second process on the profile `deleting-a-message-keeps-later-replies`
+/// left: the tree rebuilt from the record still shows the later exchange and
+/// not the deleted reply.
+fn scenario_delete_after_restart(ctx: &Ctx) -> ScenarioResult {
+    let handoff = read_handoff(ctx, DELETE_HANDOFF, "deleting-a-message-keeps-later-replies")?;
+    ctx.goto(handoff["route"].as_str().unwrap_or_default())?;
+    ctx.wait_until(
+        "the later exchange after a restart",
+        "const t = document.body.innerText || '';
+         return t.includes('message bravo') && t.includes('Reply bravo from the smoke model.');",
+        Duration::from_secs(45),
+    )?;
+    ensure!(
+        !ctx.eval_bool(
+            "return (document.body.innerText || '').includes('Reply alpha from the smoke model.');"
+        )?,
+        "the deleted reply came back after a restart"
+    );
+    Ok(())
+}
+
+/// Where a scenario whose second half needs a restart leaves what that half
+/// needs, inside the kept profile.
+fn handoff_path(ctx: &Ctx, name: &str) -> PathBuf {
+    ctx.workspace.join(format!("handoff-{name}.json"))
+}
+
+fn write_handoff(ctx: &Ctx, name: &str, value: &Value) -> ScenarioResult {
+    std::fs::write(handoff_path(ctx, name), value.to_string())
+        .map_err(|e| Failure(format!("could not leave the restart handoff: {e}")))
+}
+
+fn read_handoff(ctx: &Ctx, name: &str, first: &str) -> Result<Value, Failure> {
+    let text = std::fs::read_to_string(handoff_path(ctx, name)).map_err(|_| {
+        Failure(format!(
+            "the kept profile has no handoff from {first}; run it with COWORK_SMOKE_KEEP first"
+        ))
+    })?;
+    serde_json::from_str(&text).map_err(|e| Failure(format!("unreadable handoff: {e}")))
+}
+
+/// Open the edit dialog for the assistant named `name`, set its instructions,
+/// save, and return what they were.
+fn set_assistant_instructions(ctx: &Ctx, name: &str, instructions: &str) -> Result<String, Failure> {
+    ctx.goto("/settings/assistant")?;
+    ctx.wait_until(
+        "the assistant list",
+        "return !!document.querySelector('button[title=\"Edit Assistant\"]');",
+        Duration::from_secs(30),
+    )?;
+    let opened = ctx.eval_bool(&format!(
+        r#"const edits = [...document.querySelectorAll('button[title="Edit Assistant"]')];
+           let target = null;
+           for (const b of edits) {{
+             let row = b;
+             for (let i = 0; i < 6 && row && !(row.innerText || '').includes({name:?}); i++) row = row.parentElement;
+             if (row && (row.innerText || '').includes({name:?})) {{ target = b; break; }}
+           }}
+           if (!target) target = edits[0];
+           target.click();
+           return true;"#
+    ))?;
+    ensure!(opened, "no Edit Assistant control");
+    ctx.wait_until(
+        "the instructions field",
+        "return !!document.querySelector('textarea[placeholder=\"Enter instructions\"]');",
+        Duration::from_secs(15),
+    )?;
+    let previous = ctx.eval_string(
+        "return document.querySelector('textarea[placeholder=\"Enter instructions\"]').value;",
+    )?;
+    ctx.type_into("textarea[placeholder=\"Enter instructions\"]", instructions)?;
+    std::thread::sleep(Duration::from_millis(300));
+    let saved = ctx.eval_bool(
+        "const b = [...document.querySelectorAll('[role=\"dialog\"] button')]
+           .find(x => (x.textContent || '').trim() === 'Save');
+         if (!b) return false; b.click(); return true;",
+    )?;
+    ensure!(saved, "no Save button in the assistant dialog");
+    ctx.wait_until(
+        "the dialog to close",
+        "return !document.querySelector('textarea[placeholder=\"Enter instructions\"]');",
+        Duration::from_secs(15),
+    )?;
+    Ok(previous)
+}
+
+/// janhq/jan#8524. Editing the assistant an open chat uses changes what the
+/// next request in that chat carries -- not only new chats.
+fn scenario_instructions_reach_open_chat(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    new_chat(ctx)?;
+    send_and_wait(ctx, "instructions check one", "Hello from the smoke model")?;
+    let (route, dir) = open_thread_dir(ctx)?;
+    ctx.wait_until(
+        "the run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(60),
+    )?;
+    let thread: Value = serde_json::from_str(
+        &std::fs::read_to_string(dir.join("thread.json")).map_err(|e| Failure(e.to_string()))?,
+    )
+    .map_err(|e| Failure(e.to_string()))?;
+    let name = thread
+        .pointer("/assistants/0/name")
+        .and_then(Value::as_str)
+        .unwrap_or("Jan")
+        .to_string();
+
+    let nonce = format!("SMOKE-INSTRUCTION-{}", std::process::id());
+    ensure!(
+        !last_system_prompt(ctx)?.contains(&nonce),
+        "the nonce was in the prompt before it was set"
+    );
+    let previous = set_assistant_instructions(ctx, &name, &format!("Always sign off with {nonce}."))?;
+    let result = (|| {
+        ctx.goto(&route)?;
+        ctx.wait_until(
+            "the open chat",
+            "return (document.body.innerText || '').includes('instructions check one');",
+            Duration::from_secs(30),
+        )?;
+        ctx.ensure_model_selected()?;
+        send_and_wait(ctx, "instructions check two", "instructions check two")?;
+        ctx.wait_until(
+            "the run to finish",
+            "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+            Duration::from_secs(60),
+        )?;
+        let system = last_system_prompt(ctx)?;
+        ensure!(
+            system.contains(&nonce),
+            "the open chat still sent the old instructions: {system:.300}"
+        );
+        Ok(())
+    })();
+    // Leave the assistant as it was for every later scenario.
+    let restored = set_assistant_instructions(ctx, &name, &previous);
+    result?;
+    restored.map(|_| ())
+}
+
+/// janhq/jan#8760. A custom endpoint that stops a turn with
+/// `finish_reason: "length"` has no known context window, so the reply stays as
+/// a stopped turn: no "ran out of context" verdict and no Increase Context Size
+/// button that would change nothing on a server Jan does not run.
+fn scenario_length_stop_on_custom_endpoint(ctx: &Ctx) -> ScenarioResult {
+    let result = (|| {
+        ctx.script_model("length", &[])?;
+        new_chat(ctx)?;
+        script_reply(ctx, "A reply the output cap cut short")?;
+        send_and_wait(ctx, "write something long", "A reply the output cap cut short")?;
+        ctx.wait_until(
+            "the run to finish",
+            "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+            Duration::from_secs(60),
+        )?;
+        std::thread::sleep(Duration::from_secs(2));
+        let text = ctx.eval_string("return document.body.innerText || '';")?;
+        ensure!(
+            !text.contains("Increase Context Size"),
+            "a custom endpoint was offered Increase Context Size"
+        );
+        ensure!(
+            !text.contains("Model ran out of context size"),
+            "an output-cap stop was reported as a context overflow on an unknown window"
+        );
+        Ok(())
+    })();
+    let _ = ctx.script_model("plain", &[]);
+    let _ = script_reply(ctx, DEFAULT_REPLY);
+    result
+}
+
+/// Read or set the built-in web search switch; returns the previous state.
+fn set_builtin_web_search(ctx: &Ctx, on: bool) -> Result<bool, Failure> {
+    ctx.goto("/settings/web-search")?;
+    ctx.wait_until(
+        "the web search switch",
+        "return !!document.querySelector('button[role=\"switch\"]');",
+        Duration::from_secs(30),
+    )?;
+    let was = ctx.eval_bool(
+        "return document.querySelector('button[role=\"switch\"]').getAttribute('aria-checked') === 'true';",
+    )?;
+    if was != on {
+        ctx.eval("document.querySelector('button[role=\"switch\"]').click(); return true;")?;
+        ctx.wait_until(
+            "the switch to move",
+            &format!(
+                "return document.querySelector('button[role=\"switch\"]').getAttribute('aria-checked') === '{on}';"
+            ),
+            Duration::from_secs(10),
+        )?;
+        ctx.settle();
+    }
+    Ok(was)
+}
+
+/// janhq/jan#8777. With built-in web search off, a `web_search` call comes
+/// from the MCP server that offers one: it is held for the user's approval
+/// and, once allowed, runs on that server -- not auto-approved and sent to
+/// Jan's native adapter because of its name.
+fn scenario_mcp_web_search_approval(ctx: &Ctx) -> ScenarioResult {
+    let log = data_folder()?.join("mcp-web-search-calls.jsonl");
+    let calls = || {
+        std::fs::read_to_string(&log)
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count()
+    };
+    let was_on = set_builtin_web_search(ctx, false)?;
+    let result = (|| {
+        let before = calls();
+        ctx.script_model("tools", &["web_search:{\"query\":\"smoke approval query\"}"])?;
+        new_chat(ctx)?;
+        ctx.type_into("[data-testid=\"chat-input\"]", "search the web for the smoke query")?;
+        ctx.wait_until(
+            "the send control to arm",
+            "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+             return !!b && b.disabled !== true;",
+            Duration::from_secs(60),
+        )?;
+        ctx.eval(
+            "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+             return true;",
+        )?;
+        let asked = ctx.wait_until(
+            "the approval request",
+            "return (document.body.innerText || '').includes('This tool needs your approval before it runs.');",
+            Duration::from_secs(60),
+        );
+        if asked.is_err() {
+            println!(
+                "      page: {}",
+                ctx.eval_string("return (document.body.innerText || '').slice(-800);")
+                    .unwrap_or_default()
+            );
+        }
+        asked?;
+        ensure!(
+            calls() == before,
+            "the MCP server ran web_search before the user approved it"
+        );
+        let clicked = ctx.eval_bool(
+            "const b = [...document.querySelectorAll('button')]
+               .find(x => (x.textContent || '').trim() === 'Allow Once');
+             if (!b) return false; b.click(); return true;",
+        )?;
+        ensure!(clicked, "no Allow Once control on the approval card");
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while calls() == before {
+            ensure!(
+                Instant::now() < deadline,
+                "the approved web_search never reached the MCP server that offered it"
+            );
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        let text = std::fs::read_to_string(&log).unwrap_or_default();
+        ensure!(
+            text.contains("smoke approval query"),
+            "the MCP server was called without the model's arguments: {text:.200}"
+        );
+        ctx.wait_until(
+            "the run to finish",
+            "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+            Duration::from_secs(90),
+        )?;
+        let sent = serde_json::to_string(&model_requests(ctx)?).unwrap_or_default();
+        ensure!(
+            sent.contains("SMOKE-MCP-WEB-SEARCH-RESULT"),
+            "the server's result never went back to the model"
+        );
+        Ok(())
+    })();
+    let _ = ctx.script_model("plain", &[]);
+    let restored = set_builtin_web_search(ctx, was_on);
+    result?;
+    restored.map(|_| ())
+}
+
+// ---------------------------------------------------------------------------
+// Real-provider lane
+// ---------------------------------------------------------------------------
+
+/// A custom provider pointing at the real server, with the ephemeral key and
+/// one placeholder model: discovery has to find the real one.
+fn seed_lane_settings(data_folder: &Path, base_url: &str, key: &str) -> Result<(), String> {
+    std::fs::create_dir_all(data_folder).map_err(|e| e.to_string())?;
+    let placeholder = serde_json::json!({
+        "id": "lane-placeholder", "model": "lane-placeholder", "name": "lane-placeholder",
+        "capabilities": ["completion"], "version": "1.0"
+    });
+    let providers = serde_json::json!({
+        "version": 18,
+        "state": {
+            "providers": [{
+                "active": true,
+                "persist": true,
+                "provider": LANE_PROVIDER,
+                "base_url": base_url,
+                "api_key": key,
+                "settings": [],
+                "models": [placeholder]
+            }],
+            "selectedProvider": LANE_PROVIDER,
+            "selectedModel": placeholder,
+            "deletedModels": []
+        }
+    });
+    let settings = serde_json::json!({
+        "model-provider": providers.to_string(),
+        "jan-model-prompt-dismissed": "true",
+        "productAnalytic": "false",
+        "productAnalyticPrompt": "false",
+    });
+    std::fs::write(
+        data_folder.join("settings.json"),
+        serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
+}
+
+fn lane_model() -> String {
+    LANE.get().map(|(_, m)| m.clone()).unwrap_or_default()
+}
+
+/// Pick `model` in the composer's model picker.
+fn select_model(ctx: &Ctx, model: &str) -> ScenarioResult {
+    let already = ctx.eval_bool(&format!(
+        "return [...document.querySelectorAll('button')].some(b =>
+           (b.textContent || '').trim() === {model:?} || (b.textContent || '').includes({model:?}));"
+    ))?;
+    if already {
+        return Ok(());
+    }
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /select a model|lane-placeholder/i.test((x.getAttribute('aria-label') || '')
+             + ' ' + (x.textContent || '')));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the model picker",
+        "return [...document.querySelectorAll('input')].some(i =>
+            /search|find|model/i.test(i.getAttribute('placeholder') || ''));",
+        Duration::from_secs(20),
+    )?;
+    ctx.type_into(
+        "input[placeholder*='model' i], input[placeholder*='search' i]",
+        model,
+    )?;
+    std::thread::sleep(Duration::from_millis(800));
+    let picked = ctx.eval_bool(&format!(
+        "const el = [...document.querySelectorAll('[role=\"option\"],button,li,div')]
+           .filter(e => e.children.length <= 2 && (e.textContent || '').trim() === {model:?})
+           .pop();
+         if (!el) return false;
+         (el.closest('[role=\"option\"],button,li') || el).click();
+         return true;"
+    ))?;
+    if !picked {
+        ctx.describe("lane-model-picker")?;
+        bail!("the picker never offered {model}");
+    }
+    std::thread::sleep(Duration::from_millis(900));
+    Ok(())
+}
+
+fn lane_provider_page(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto(&format!("/settings/providers/{LANE_PROVIDER}"))?;
+    ctx.wait_until(
+        "the provider page",
+        "return !!document.querySelector('button[title=\"Refresh\"]');",
+        Duration::from_secs(30),
+    )
+}
+
+/// Discovery through the app: the provider page's Refresh asks the server's
+/// `/v1/models`, and the real model appears beside the seeded placeholder.
+fn lane_discovers_models(ctx: &Ctx) -> ScenarioResult {
+    let model = lane_model();
+    lane_provider_page(ctx)?;
+    ensure!(
+        !ctx.eval_bool(&format!("return !!document.querySelector('h1[title={model:?}]');"))?,
+        "{model} was listed before discovery"
+    );
+    ctx.eval("document.querySelector('button[title=\"Refresh\"]').click(); return true;")?;
+    let found = ctx.wait_until(
+        "the discovered model",
+        &format!("return !!document.querySelector('h1[title={model:?}]');"),
+        Duration::from_secs(60),
+    );
+    if found.is_err() {
+        println!(
+            "      page: {}",
+            ctx.eval_string("return (document.body.innerText || '').slice(0, 900);")
+                .unwrap_or_default()
+        );
+    }
+    found
+}
+
+/// A private or tailnet endpoint is listed under Local in the settings
+/// sidebar once the resolver has classified it.
+fn lane_grouped_local(ctx: &Ctx) -> ScenarioResult {
+    lane_provider_page(ctx)?;
+    ctx.wait_until(
+        "the endpoint under the Local heading",
+        &format!(
+            r#"const spans = [...document.querySelectorAll('span')];
+               const local = spans.find(s => (s.textContent || '').trim() === 'Local');
+               const remote = spans.find(s => (s.textContent || '').trim() === 'Remote');
+               const item = [...document.querySelectorAll('a,button,div,span')]
+                 .filter(e => e.children.length === 0 && (e.textContent || '').trim().toLowerCase() === {LANE_PROVIDER:?})
+                 .shift();
+               if (!local || !item) return false;
+               const after = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+               if (!after(local, item)) return false;
+               // Under Local means not also past the Remote heading that
+               // follows it.
+               if (remote && after(local, remote) && after(remote, item)) return false;
+               return true;"#
+        ),
+        Duration::from_secs(45),
+    )
+}
+
+/// The model streams a reply the prompt did not contain, and the reply shows
+/// its token speed.
+fn lane_streams_a_reply(ctx: &Ctx) -> ScenarioResult {
+    let model = lane_model();
+    new_chat_lane(ctx, &model)?;
+    let a: u32 = 100 + rand::random::<u32>() % 800;
+    let b: u32 = 100 + rand::random::<u32>() % 800;
+    let expect = format!("LANE-{}", a + b);
+    ctx.type_into(
+        "[data-testid=\"chat-input\"]",
+        &format!("Compute {a}+{b}. Reply with only LANE- followed by the sum, for example LANE-7, and nothing else."),
+    )?;
+    send_armed(ctx)?;
+    ctx.wait_until(
+        "the streamed answer",
+        &format!("return (document.body.innerText || '').includes({expect:?});"),
+        Duration::from_secs(240),
+    )?;
+    ctx.wait_until(
+        "the run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(240),
+    )?;
+    ctx.wait_until(
+        "the token speed",
+        "return /\\d+ tokens\\/sec/.test(document.body.innerText || '');",
+        Duration::from_secs(20),
+    )?;
+    let speed = ctx.eval_string(
+        "const m = (document.body.innerText || '').match(/\\d+ tokens\\/sec[^\\n]*/); return m ? m[0] : '';",
+    )?;
+    println!("      reply {expect} at {speed}");
+    Ok(())
+}
+
+fn new_chat_lane(ctx: &Ctx, model: &str) -> ScenarioResult {
+    ctx.goto("/")?;
+    ctx.wait_until(
+        "the chat composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    select_model(ctx, model)
+}
+
+fn send_armed(ctx: &Ctx) -> ScenarioResult {
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+    Ok(())
+}
+
+/// The last prompt snapshot written for `thread`, as text.
+fn last_snapshot_for(thread: &str) -> Result<String, Failure> {
+    let text = std::fs::read_to_string(data_folder()?.join("audit/prompts.jsonl"))
+        .map_err(|e| Failure(format!("audit/prompts.jsonl: {e}")))?;
+    Ok(text
+        .lines()
+        .rev()
+        .find(|l| l.contains(thread))
+        .unwrap_or_default()
+        .to_string())
+}
+
+/// A remembered fact is injected into the request the model receives, and
+/// the model answers from it.
+fn lane_memory_reaches_the_model(ctx: &Ctx) -> ScenarioResult {
+    let model = lane_model();
+    new_chat_lane(ctx, &model)?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "Reply with only the word READY.")?;
+    send_armed(ctx)?;
+    ctx.wait_until(
+        "the first reply",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]')
+           && (document.body.innerText || '').includes('READY');",
+        Duration::from_secs(240),
+    )?;
+    let (route, _) = open_thread_dir(ctx)?;
+    let thread = route.trim_start_matches("/threads/").trim_end_matches('/').to_string();
+
+    let pass = format!("amber-{}", rand::random::<u32>() % 90000 + 10000);
+    let proposed = ctx.eval_string(&format!(
+        r#"const c = await window.__TAURI_INTERNALS__.invoke('get_app_configurations');
+           const out = await window.__TAURI_INTERNALS__.invoke(
+             'plugin:agent-tools|memory_record_propose_inferred',
+             {{ location: {{ dataFolder: c.data_folder, sessionId: {thread:?} }},
+                scope: 'chat',
+                content: 'The lane passphrase is {pass}.',
+                sourceSessionId: {thread:?},
+                sourceMessageId: 'lane-1' }});
+           return JSON.stringify(out);"#
+    ))?;
+    println!("      memory proposal: {proposed:.160}");
+    ctx.goto("/")?;
+    ctx.goto(&route)?;
+    let card = ctx.wait_until(
+        "the memory proposal",
+        "return !!document.querySelector('[data-testid=\"memory-proposal-approve\"]');",
+        Duration::from_secs(30),
+    );
+    if card.is_ok() {
+        ctx.eval(
+            "document.querySelector('[data-testid=\"memory-proposal-approve\"]').click(); return true;",
+        )?;
+        std::thread::sleep(Duration::from_secs(2));
+    }
+
+    ctx.type_into(
+        "[data-testid=\"chat-input\"]",
+        "What is the lane passphrase? Reply with only the passphrase.",
+    )?;
+    send_armed(ctx)?;
+    ctx.wait_until(
+        "the answer",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]')
+           && (document.body.innerText || '').split('What is the lane passphrase').length > 1;",
+        Duration::from_secs(240),
+    )?;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut snapshot = String::new();
+    while Instant::now() < deadline {
+        snapshot = last_snapshot_for(&thread)?;
+        if snapshot.contains("What is the lane passphrase") {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    ensure!(
+        snapshot.contains("Remembered") && snapshot.contains(&pass),
+        "the request the model received did not carry the memory (card shown: {}): {:.300}",
+        card.is_ok(),
+        snapshot
+    );
+    ctx.wait_until(
+        "the model to answer from memory",
+        &format!("return (document.body.innerText || '').includes({pass:?});"),
+        Duration::from_secs(60),
+    )
+}
+
+/// Turn tool calling on for the lane model through its edit dialog.
+fn enable_tools(ctx: &Ctx, model: &str) -> ScenarioResult {
+    lane_provider_page(ctx)?;
+    let opened = ctx.eval_bool(&format!(
+        r#"const h = document.querySelector('h1[title={model:?}]');
+           if (!h) return false;
+           let row = h;
+           for (let i = 0; i < 8 && row; i++) {{
+             const pencil = row.querySelector('svg.tabler-icon-pencil');
+             if (pencil) {{ (pencil.closest('.cursor-pointer') || pencil).click(); return true; }}
+             row = row.parentElement;
+           }}
+           return false;"#
+    ))?;
+    ensure!(opened, "no edit control for {model}");
+    ctx.wait_until(
+        "the tools switch",
+        "return !!document.querySelector('#tools-capability');",
+        Duration::from_secs(15),
+    )?;
+    let on = ctx.eval_bool(
+        "return document.querySelector('#tools-capability').getAttribute('aria-checked') === 'true';",
+    )?;
+    if !on {
+        ctx.eval("document.querySelector('#tools-capability').click(); return true;")?;
+        std::thread::sleep(Duration::from_millis(300));
+        let saved = ctx.eval_bool(
+            "const b = [...document.querySelectorAll('[role=\"dialog\"] button')]
+               .find(x => /^save/i.test((x.textContent || '').trim()));
+             if (!b || b.disabled) return false; b.click(); return true;",
+        )?;
+        ensure!(saved, "no enabled Save in the model dialog");
+    }
+    std::thread::sleep(Duration::from_secs(1));
+    let _ = ctx.eval(
+        "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true;",
+    );
+    Ok(())
+}
+
+/// One real model -> tool -> model loop in Cowork, with the provider's usage
+/// recorded against the dispatch and the context window reported.
+fn lane_cowork_tool_loop(ctx: &Ctx) -> ScenarioResult {
+    let model = lane_model();
+    enable_tools(ctx, &model)?;
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    select_model(ctx, &model)?;
+    let before = activity_events(ctx).len();
+    ctx.type_into(
+        "[data-testid=\"chat-input\"]",
+        "Call the ls tool exactly once to list the workspace root. After it returns, reply with the single word FINISHED.",
+    )?;
+    send_armed(ctx)?;
+    ctx.wait_until(
+        "the tool call to finish",
+        "return !!document.querySelector('[data-testid=\"tool-activity-item\"][data-tool-state=\"output-available\"]');",
+        Duration::from_secs(300),
+    )?;
+    ctx.wait_until(
+        "the model's answer after the tool",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]')
+           && /FINISHED/.test(document.body.innerText || '');",
+        Duration::from_secs(300),
+    )?;
+    let fresh: Vec<String> = activity_events(ctx).into_iter().skip(before).collect();
+    ensure!(
+        fresh.iter().any(|e| e.contains("\"tool\":\"ls\"") && e.contains("\"phase\":\"succeeded\"")),
+        "no succeeded ls call was recorded: {:?}",
+        fresh.iter().take(3).collect::<Vec<_>>()
+    );
+    let usage = std::fs::read_to_string(data_folder()?.join("audit/payload-usage.jsonl"))
+        .unwrap_or_default();
+    ensure!(
+        usage
+            .lines()
+            .any(|l| l.contains(&format!("\"model\":\"{model}\"")) && l.contains("\"source\":\"provider\"")),
+        "the provider's usage for {model} was not recorded"
+    );
+    // The breakdown lives in the session details dialog, mounted only while
+    // it is open.
+    ctx.eval(
+        "const t = document.querySelector('[data-testid=\"session-details-trigger\"]');
+         if (t) t.click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the session details",
+        "return !!document.querySelector('[data-testid=\"session-details-body\"]');",
+        Duration::from_secs(15),
+    )?;
+    let window = ctx.eval_string(
+        r#"const d = document.querySelector('details[aria-label="What the model received"]');
+           if (!d) return 'no breakdown';
+           d.open = true;
+           // The innermost element whose text starts with the label is the
+           // label itself; its row is the first ancestor carrying more text.
+           const label = [...d.querySelectorAll('*')]
+             .filter(e => (e.textContent || '').trim().startsWith('Context window')).pop();
+           if (!label) return 'no context row';
+           let row = label;
+           while (row.parentElement && row.parentElement !== d
+                  && (row.textContent || '').trim() === 'Context window') row = row.parentElement;
+           return row.textContent.replace(/\s+/g, ' ').trim().slice(0, 160);"#,
+    )?;
+    println!("      context window: {window}");
+    let _ = ctx.eval(
+        "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true;",
+    );
+    ensure!(
+        window.starts_with("Context window"),
+        "the run did not report its context window: {window}"
+    );
+    Ok(())
+}
+
+/// Where the key is, and whom the app talked to.
+fn lane_contained(ctx: &Ctx) -> ScenarioResult {
+    let key = LANE_KEY.get().cloned().unwrap_or_default();
+    ensure!(key.len() == 64, "the lane key was not made");
+    // Never in this process's arguments or environment.
+    ensure!(
+        !std::env::args().any(|a| a.contains(&key)),
+        "the key is in the process arguments"
+    );
+    ensure!(
+        !std::env::vars().any(|(_, v)| v.contains(&key)),
+        "the key is in the process environment"
+    );
+
+    // Every file of the run's profile, data folder and WebView profile both.
+    let root = ctx.workspace.clone();
+    let mut hits: Vec<String> = Vec::new();
+    let mut stack = vec![root.clone()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if let Ok(bytes) = std::fs::read(&p) {
+                if bytes.windows(key.len()).any(|w| w == key.as_bytes()) {
+                    hits.push(
+                        p.strip_prefix(&root)
+                            .unwrap_or(&p)
+                            .to_string_lossy()
+                            .replace('\\', "/"),
+                    );
+                }
+            }
+        }
+    }
+    println!("      key found in: {hits:?}");
+    let allowed = |rel: &str| {
+        rel == "data/settings.json" || (rel.starts_with("webview/") && rel.contains("Local Storage"))
+    };
+    let stray: Vec<&String> = hits.iter().filter(|h| !allowed(h)).collect();
+    ensure!(
+        stray.is_empty(),
+        "the key is stored outside credential handling: {stray:?}"
+    );
+
+    // Every connection the app opened, from its own log, plus what the
+    // transport resolved and what the page fetched.
+    let base = LANE.get().map(|(b, _)| b.clone()).unwrap_or_default();
+    let lane_host = base
+        .trim_start_matches("http://")
+        .trim_start_matches("https://")
+        .split('/')
+        .next()
+        .unwrap_or_default()
+        .to_string();
+    let logs = std::fs::read_dir(data_folder()?.join("logs"))
+        .map(|rd| {
+            rd.flatten()
+                .filter_map(|e| std::fs::read_to_string(e.path()).ok())
+                .collect::<String>()
+        })
+        .unwrap_or_default();
+    let mut peers: Vec<String> = logs
+        .lines()
+        .filter_map(|l| l.split("starting new connection: ").nth(1))
+        .map(|u| {
+            u.trim()
+                .trim_start_matches("http://")
+                .trim_start_matches("https://")
+                .trim_end_matches('/')
+                .to_string()
+        })
+        .collect();
+    peers.sort();
+    peers.dedup();
+    let resolved: Vec<String> = LOOKED_UP.lock().map(|v| v.clone()).unwrap_or_default();
+    let page = ctx.eval_string(
+        "return JSON.stringify([...new Set(performance.getEntriesByType('resource').map(e => e.name))]);",
+    )?;
+    println!("      connections: {peers:?}; resolved: {:?}", {
+        let mut r = resolved.clone();
+        r.sort();
+        r.dedup();
+        r
+    });
+    let local = |p: &str| {
+        p.starts_with("127.0.0.1") || p.starts_with("localhost") || p.starts_with("[::1]")
+    };
+    let foreign: Vec<&String> = peers
+        .iter()
+        .filter(|p| **p != lane_host && !local(p))
+        .collect();
+    ensure!(foreign.is_empty(), "the app connected elsewhere: {foreign:?}");
+    ensure!(
+        !peers.iter().any(|p| p.ends_with(":8080")) && !resolved.iter().any(|p| p.ends_with(":8080")),
+        "something reached port 8080"
+    );
+    let page_urls: Vec<String> = serde_json::from_str(&page).unwrap_or_default();
+    let page_foreign: Vec<&String> = page_urls
+        .iter()
+        .filter(|u| {
+            !(u.starts_with("tauri://")
+                || u.starts_with("asset://")
+                || u.starts_with("ipc://")
+                || u.starts_with("data:")
+                || u.starts_with("blob:")
+                || u.contains("://localhost")
+                || u.contains("://tauri.localhost")
+                || u.contains("://asset.localhost")
+                || u.contains("://ipc.localhost"))
+        })
+        .collect();
+    ensure!(
+        page_foreign.is_empty(),
+        "the page fetched from elsewhere: {page_foreign:?}"
+    );
     Ok(())
 }

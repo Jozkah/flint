@@ -299,6 +299,7 @@ pub fn factory_reset<R: Runtime>(
         if !keep_models_and_configs {
             let default_config = AppConfiguration {
                 data_folder: default_data_folder_path(app_handle.clone()),
+                unavailable_data_folder: None,
             };
             let _ = update_app_configuration(app_handle.clone(), default_config);
         }

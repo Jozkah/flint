@@ -32,6 +32,13 @@ The reply is chosen by ``--script``:
 ``no-models``
     ``/v1/models`` answers ``404``; the chat endpoint still works, which is the
     case where the UI must fall back to a manually entered model id.
+``length``
+    Streams the reply and stops with ``finish_reason: "length"``, the way a
+    server does when the output cap cuts a turn short.
+
+Every chat request body is kept (the last 20) and served back on
+``GET /__requests``, so a scenario can assert what the app actually sent --
+the system prompt, the tool results -- rather than what the UI shows.
 """
 
 from __future__ import annotations
@@ -44,6 +51,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ARGS = argparse.Namespace()
+REQUESTS: list = []
+REQUESTS_LOCK = threading.Lock()
 
 
 def sse(payload: dict) -> bytes:
@@ -117,6 +126,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):  # noqa: N802
+        if self.path.rstrip("/").endswith("/__requests"):
+            with REQUESTS_LOCK:
+                return self._json(200, {"requests": list(REQUESTS)})
         if ARGS.script == "proxy-403":
             return self._forbidden()
         if not self.path.rstrip("/").endswith("/models"):
@@ -157,6 +169,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if not self.path.rstrip("/").endswith("/chat/completions"):
             return self._json(404, {"error": "not found"})
+
+        with REQUESTS_LOCK:
+            REQUESTS.append(body)
+            del REQUESTS[:-20]
 
         # A request whose messages already carry tool results is the follow-up
         # turn: answer in words rather than asking for the tools again.
@@ -259,7 +275,8 @@ class Handler(BaseHTTPRequestHandler):
             for word in text.split(" "):
                 self.wfile.write(sse(chunk({"content": word + " "})))
                 self.wfile.flush()
-            self.wfile.write(sse(chunk({}, finish="stop")))
+            finish = "length" if ARGS.script == "length" else "stop"
+            self.wfile.write(sse(chunk({}, finish=finish)))
             send_usage()
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
@@ -278,7 +295,7 @@ def main() -> int:
     parser.add_argument(
         "--script",
         default="plain",
-        choices=["plain", "tools", "fail", "slow", "proxy-403", "no-models"],
+        choices=["plain", "tools", "fail", "slow", "proxy-403", "no-models", "length"],
     )
     parser.add_argument(
         "--tools",

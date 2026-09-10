@@ -965,8 +965,17 @@ fn should_try_next_api_key(status: reqwest::StatusCode) -> bool {
 /// routinely carry credentials). A proxy set in the environment is a common
 /// reason a request fails for Jan and for nothing else, and it is invisible in
 /// the error itself.
-#[cfg(any(not(feature = "cli"), test))]
+#[cfg(not(feature = "cli"))]
 fn proxy_env_hint() -> Option<String> {
+    proxy_env_hint_in(|name| std::env::var_os(name))
+}
+
+/// [`proxy_env_hint`] over an explicit environment, so it can be tested
+/// without setting a proxy for every other test in the process: reqwest reads
+/// `HTTPS_PROXY` whenever a client is built, and a concurrent test's client
+/// would have routed through it.
+#[cfg(any(not(feature = "cli"), test))]
+fn proxy_env_hint_in(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<String> {
     const VARS: &[&str] = &[
         "HTTPS_PROXY",
         "https_proxy",
@@ -980,9 +989,7 @@ fn proxy_env_hint() -> Option<String> {
     let set: Vec<&str> = VARS
         .iter()
         .copied()
-        .filter(|name| {
-            std::env::var_os(name).is_some_and(|v| !v.to_string_lossy().trim().is_empty())
-        })
+        .filter(|name| var(name).is_some_and(|v| !v.to_string_lossy().trim().is_empty()))
         .collect();
     (!set.is_empty()).then(|| format!("proxy env set: {}", set.join(", ")))
 }
@@ -1022,6 +1029,25 @@ pub(crate) fn describe_request_error(err: &reqwest::Error) -> String {
     msg
 }
 
+/// The endpoint for a log line: everything after `?` dropped, which is where
+/// a query credential (`api_key=`, `key=`) would be.
+pub(crate) fn log_safe_upstream_url(url: &str) -> &str {
+    url.split('?').next().unwrap_or(url)
+}
+
+/// How much of an upstream error a log breadcrumb keeps.
+pub(crate) const LOG_ERR_BUDGET: usize = 200;
+
+/// Bound an upstream error for a log breadcrumb. Errors wrap the provider's
+/// response body, which is unbounded; the log keeps enough to name the
+/// failure. Removing credentials is the file sink's job, not this one's.
+pub(crate) fn log_brief(err: &str) -> String {
+    match err.char_indices().nth(LOG_ERR_BUDGET) {
+        Some((cut, _)) => format!("{}...", &err[..cut]),
+        None => err.to_string(),
+    }
+}
+
 /// Stream a chat completion for the agent loop.
 ///
 /// A thin delegate to [`super::genai_bridge`], which owns the wire format, SSE
@@ -1043,7 +1069,15 @@ pub(crate) async fn stream_openai_chat_completions(
     body: &serde_json::Value,
     events: &mpsc::UnboundedSender<StreamEvent>,
 ) -> Result<serde_json::Value, String> {
-    super::genai_bridge::stream_chat_completions(
+    // A start line with no `stream: done` after it pins a hang to this call,
+    // and the elapsed time tells a stall from a slow provider.
+    let model = body.get("model").and_then(|v| v.as_str()).unwrap_or("?");
+    log::info!(
+        "stream: model={model} upstream={}",
+        log_safe_upstream_url(upstream_url)
+    );
+    let started = std::time::Instant::now();
+    let result = super::genai_bridge::stream_chat_completions(
         client,
         upstream_url,
         api_keys,
@@ -1051,7 +1085,13 @@ pub(crate) async fn stream_openai_chat_completions(
         body,
         events,
     )
-    .await
+    .await;
+    log::info!(
+        "stream: done model={model} outcome={} elapsed={}ms",
+        if result.is_ok() { "ok" } else { "error" },
+        started.elapsed().as_millis()
+    );
+    result
 }
 
 /// Streaming counterpart of [`stream_openai_chat_completions`] for providers
@@ -1508,6 +1548,23 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// Breadcrumbs are bounded, on a char boundary, and keep the failure.
+    #[test]
+    fn log_brief_bounds_the_error_on_a_char_boundary() {
+        assert_eq!(log_brief("short"), "short");
+        let out = log_brief(&"x".repeat(LOG_ERR_BUDGET + 50));
+        assert_eq!(out.len(), LOG_ERR_BUDGET + 3);
+        assert!(out.ends_with("..."));
+        let out = log_brief(&"é".repeat(LOG_ERR_BUDGET + 50));
+        assert_eq!(out.chars().count(), LOG_ERR_BUDGET + 3);
+        let err = format!("Upstream returned HTTP 400.\nBody: {}", "PAD".repeat(4000));
+        assert!(log_brief(&err).contains("HTTP 400"));
+        assert_eq!(
+            log_safe_upstream_url("http://v100:8555/v1/chat/completions?api_key=x"),
+            "http://v100:8555/v1/chat/completions"
+        );
+    }
+
     fn sink() -> (
         mpsc::UnboundedSender<StreamEvent>,
         mpsc::UnboundedReceiver<StreamEvent>,
@@ -1790,24 +1847,21 @@ mod tests {
     /// in the error. Names only: the values carry credentials.
     #[test]
     fn proxy_env_hint_names_set_variables_without_their_values() {
-        static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let prev = std::env::var_os("HTTPS_PROXY");
-        std::env::remove_var("HTTPS_PROXY");
-        let before = proxy_env_hint();
+        let env = |value: &'static str| {
+            move |name: &str| (name == "HTTPS_PROXY").then(|| value.into())
+        };
+        assert_eq!(proxy_env_hint_in(|_| None), None);
 
-        std::env::set_var("HTTPS_PROXY", "http://user:secret@proxy.internal:8080");
-        let hint = proxy_env_hint().expect("a set proxy is reported");
+        let hint = proxy_env_hint_in(env("http://user:secret@proxy.internal:8080"))
+            .expect("a set proxy is reported");
         assert!(hint.contains("HTTPS_PROXY"), "names the variable: {hint}");
         assert!(!hint.contains("secret"), "never prints the value: {hint}");
 
-        std::env::set_var("HTTPS_PROXY", "   ");
-        assert_eq!(proxy_env_hint(), before, "a blank value is not a proxy");
-
-        match prev {
-            Some(v) => std::env::set_var("HTTPS_PROXY", v),
-            None => std::env::remove_var("HTTPS_PROXY"),
-        }
+        assert_eq!(
+            proxy_env_hint_in(env("   ")),
+            None,
+            "a blank value is not a proxy"
+        );
     }
 
     /// A model served both by a Jan desktop API server (reachable over HTTP) and
@@ -1889,7 +1943,7 @@ mod tests {
     /// alive across `.await` without holding a bare lock guard over it.
     #[cfg(feature = "cli")]
     struct TempSecretStore {
-        _guard: std::sync::MutexGuard<'static, ()>,
+        _guard: crate::core::server::provider_secrets::TestEnvGuard,
         previous: Option<String>,
         _dir: tempfile::TempDir,
     }
@@ -1897,9 +1951,7 @@ mod tests {
     #[cfg(feature = "cli")]
     impl TempSecretStore {
         fn new() -> Self {
-            let guard = crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
             let dir = tempfile::tempdir().unwrap();
             let previous = std::env::var("JAN_DATA_FOLDER").ok();
             std::env::set_var("JAN_DATA_FOLDER", dir.path());

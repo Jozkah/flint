@@ -1886,6 +1886,15 @@ struct App {
     /// Lines scrolled back from the tail; 0 pins the view to the bottom so new
     /// content follows. Non-zero survives streaming so scroll-back stays usable.
     scrollback: u16,
+    /// A full repaint is owed before the next frame. Set by Ctrl-L and by a
+    /// terminal resize, never per frame: a foreign write to the TTY (a
+    /// `wall(1)` broadcast) or an emulator's own reflow changes the physical
+    /// screen without touching ratatui's buffers, so the cell diff alone sees
+    /// nothing to redraw and the damage stays for the rest of the session.
+    repaint: bool,
+    /// A diagnostic bundle `/bug` has shown but not written. `/bug save`
+    /// writes exactly this, so what was reviewed is what lands on disk.
+    pending_bug_report: Option<super::doctor::Preview>,
     /// Set when the user submits a message; the loop spawns a run next tick.
     want_start: bool,
     /// Turns (model roundtrips, plus the submission that kicked off a run)
@@ -2339,6 +2348,8 @@ impl App {
             retry_after_compact: false,
             overflow_retries: 0,
             scrollback: 0,
+            repaint: false,
+            pending_bug_report: None,
             want_start: false,
             turns_since_todos_closed: 0,
             todos_closed_at: None,
@@ -2479,6 +2490,18 @@ impl App {
     fn clear_selection(&mut self) {
         self.selection = None;
         self.copy_armed = false;
+    }
+
+    /// Owe a full repaint on the next frame. Display only: the draft, scroll
+    /// position and any running turn are left alone, so it is safe from any
+    /// mode, mid-turn included.
+    fn request_repaint(&mut self) {
+        self.repaint = true;
+    }
+
+    /// Take the pending full-repaint request, if there is one.
+    fn take_repaint(&mut self) -> bool {
+        std::mem::take(&mut self.repaint)
     }
 
     /// Line count of a copy recent enough to still advertise, if any.
@@ -7380,11 +7403,12 @@ pub async fn run(
     // switch to the alternate screen -- a single `log::warn!` from anywhere
     // (MCP, http, a dependency) then paints raw text over the frame and stays
     // there until the next full repaint. Nothing may write to the terminal
-    // except the renderer, so mute the log facade for the duration and restore
-    // it on the way out. Anything worth the user's attention is a transcript
-    // note; see `connect_active` for the MCP case.
-    let prev_log_level = log::max_level();
-    log::set_max_level(log::LevelFilter::Off);
+    // except the renderer, so mute the stderr sink for the duration and
+    // restore it on the way out. Anything worth the user's attention is a
+    // transcript note; see `connect_active` for the MCP case. Only stderr is
+    // muted: the persistent log keeps recording, and an interactive session
+    // that hangs is exactly what `jan bug-report` needs a trail for.
+    let prev_stderr_log = super::file_log::set_stderr_enabled(false);
 
     enable_raw_mode().map_err(|e| e.to_string())?;
     let mut stdout = io::stdout();
@@ -7500,7 +7524,7 @@ pub async fn run(
         LeaveAlternateScreen,
     );
     let _ = terminal.show_cursor();
-    log::set_max_level(prev_log_level);
+    super::file_log::set_stderr_enabled(prev_stderr_log);
     // The session is closed: leave a copyable continuation command on the real
     // terminal, the same line the non-interactive path prints after a save.
     // Only a persisted thread can be resumed, so an empty session stays quiet.
@@ -7903,6 +7927,13 @@ async fn chat_loop<B: Backend>(
         if sync_output {
             let _ = execute!(io::stdout(), BeginSynchronizedUpdate);
         }
+        // A repaint was asked for (Ctrl-L, or a resize): reset the diff
+        // baseline so this draw re-emits every cell. Inside the synchronized
+        // frame, so the terminal flips from the damaged frame straight to the
+        // repaired one and never presents the cleared screen in between.
+        if app.take_repaint() {
+            apply_repaint(terminal);
+        }
         let draw_result = terminal.draw(|f| draw(f, app)).map_err(|e| e.to_string());
         if sync_output {
             let _ = execute!(io::stdout(), EndSynchronizedUpdate);
@@ -7930,6 +7961,7 @@ async fn chat_loop<B: Backend>(
                             }
                         }
                         Ok(event @ Event::Paste(_)) => route_paste_event(app, event),
+                        Ok(event @ Event::Resize(_, _)) => route_resize_event(app, event),
                         // `handle_ask_mouse` mutates app state, so it stays in the
                         // arm body rather than a match guard that hides the effect.
                         #[allow(clippy::collapsible_match)]
@@ -8320,6 +8352,13 @@ async fn handle_ask_key(
         return true;
     }
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    // A docked ask runs before `handle_key`, so the repaint key is honoured
+    // here too -- otherwise a broadcast landing during a question stays on
+    // screen until it is answered. Consumed, never typed into the answer.
+    if ctrl && key.code == KeyCode::Char('l') {
+        app.request_repaint();
+        return true;
+    }
     if ctrl && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d')) {
         crate::core::agent::interaction::cancel_all(registry).await;
         app.ask_queue.clear();
@@ -8360,6 +8399,91 @@ async fn handle_ask_key(
         resolve_front_ask(app, registry, false).await;
     }
     true
+}
+
+/// `/bug`: show what a diagnostic bundle for this session would hold;
+/// `/bug show <member>` prints one member's redacted content; `/bug save`
+/// writes exactly the bundle last shown. Local only: nothing is uploaded, and
+/// writing the file is the last thing it does. Needs no model, so it works
+/// even when the bug being reported froze the session.
+fn bug_report_command(app: &mut App, arg: &str) {
+    let arg = arg.trim();
+    if arg == "save" {
+        let Some(preview) = app.pending_bug_report.take() else {
+            app.note("nothing to save yet: run /bug to preview the bundle first");
+            return;
+        };
+        match preview.save() {
+            Ok(path) => app.note(&format!("bug report saved: {}", path.display())),
+            Err(e) => {
+                app.note(&format!("bug report not saved: {e}"));
+                app.pending_bug_report = Some(preview);
+            }
+        }
+        return;
+    }
+    if let Some(member) = arg.strip_prefix("show") {
+        let member = member.trim();
+        let Some(preview) = app.pending_bug_report.as_ref() else {
+            app.note("run /bug first to prepare the bundle");
+            return;
+        };
+        match preview.member(member) {
+            Some(content) => {
+                let lines: Vec<String> = content.lines().map(str::to_string).collect();
+                let shown = lines.len().min(200);
+                app.note(&format!("{member} ({} lines):", lines.len()));
+                for line in &lines[lines.len() - shown..] {
+                    app.system_detail_text(line);
+                }
+            }
+            None => {
+                let names: Vec<&str> = preview.members.iter().map(|(n, _)| n.as_str()).collect();
+                app.note(&format!("no member '{member}'; members: {}", names.join(", ")));
+            }
+        }
+        return;
+    }
+    let data_folder = crate::core::app::commands::resolve_jan_data_folder();
+    let threads_base = app.agent_dir.clone();
+    let thread_id = app.thread_id.clone();
+    match super::doctor::prepare(&threads_base, &data_folder, thread_id.as_deref(), None) {
+        Ok(preview) => {
+            for line in preview.summary() {
+                app.system_detail_text(&line);
+            }
+            app.note("/bug show <member> to read one, /bug save to write it");
+            app.pending_bug_report = Some(preview);
+        }
+        Err(e) => app.note(&format!("bug report failed: {e}")),
+    }
+}
+
+/// Route a terminal resize to a full repaint. ratatui notices a *changed*
+/// size on the next `draw` and redraws, but an emulator that reflows during a
+/// drag can damage the screen and come back to the same size before that draw
+/// runs -- and then the diff sees nothing to do. Display only.
+fn route_resize_event(app: &mut App, event: Event) {
+    if matches!(event, Event::Resize(_, _)) {
+        app.request_repaint();
+    }
+}
+
+/// Clear the screen and reset ratatui's diff baseline, so the next `draw`
+/// re-emits every cell instead of only those its buffers say changed.
+///
+/// `Terminal::resize` rather than `Terminal::clear`: both clear and reset the
+/// baseline, but `clear` first asks the backend for the cursor position, which
+/// on crossterm is a blocking DSR (`\x1b[6n`) round trip of up to two seconds.
+/// A terminal that never answers would freeze streaming and input for that
+/// long and then skip the clear anyway. `size` is a local ioctl.
+///
+/// Best-effort, like the synchronized-update markers: a terminal that will not
+/// report its size is no reason to end the session, and the frame still draws.
+fn apply_repaint<B: Backend>(terminal: &mut Terminal<B>) {
+    if let Ok(size) = terminal.size() {
+        let _ = terminal.resize(size.into());
+    }
 }
 
 /// Route a bracketed paste event to the active input owner. The order mirrors
@@ -8700,6 +8824,14 @@ async fn handle_key(
     }
 
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    // Ctrl-L is the readline/less spelling of "redraw". It sits ahead of every
+    // mode guard below because the screen can be damaged at any moment,
+    // including while a prompt or picker owns the keyboard. It changes only
+    // the display.
+    if ctrl && key.code == KeyCode::Char('l') {
+        app.request_repaint();
+        return;
+    }
     let alt = key.modifiers.contains(KeyModifiers::ALT);
     let sup = key.modifiers.contains(KeyModifiers::SUPER);
     // A modified Enter is a newline, never a submit or a completion, so the
@@ -9793,6 +9925,12 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
         alias_of: None,
     },
     SlashCommand {
+        name: "/bug",
+        hint: "[save | show <member>]",
+        description: "Preview a redacted local diagnostic bundle; /bug save writes it",
+        alias_of: None,
+    },
+    SlashCommand {
         name: "/quit",
         hint: "",
         description: "Exit the TUI",
@@ -9887,6 +10025,7 @@ const KEY_BINDINGS: &[(&str, &str)] = &[
     ("PgUp/PgDn", "Scroll the transcript"),
     ("Ctrl-O", "Expand or collapse all tool calls"),
     ("Ctrl-V", "Paste an image from the clipboard"),
+    ("Ctrl-L", "Redraw the screen (repairs a broadcast over it)"),
     ("Shift+Tab", "Cycle reasoning effort (low/medium/high)"),
     ("Alt+T", "Toggle reasoning effort (low / last)"),
     (
@@ -9996,6 +10135,7 @@ async fn run_command(
         "effort" | "think" | "reasoning" => effort_command(app, arg),
         "todo" => todo_command(app, arg).await,
         "cancel" => cancel_command(app, arg),
+        "bug" => bug_report_command(app, arg),
         "quit" | "exit" => app.should_quit = true,
         other => {
             // A `/name` that isn't a built-in is a plugin command or an
@@ -16263,7 +16403,7 @@ mod tests {
     use super::SessionLimits;
     use super::{
         age_closed_todos, alt_scroll_restore, alt_scroll_save_off, answer_without_reasoning,
-        apply_resume, apply_stream_event, assistant_is_awaiting_user_answer, assistant_runs,
+        apply_repaint, apply_resume, apply_stream_event, assistant_is_awaiting_user_answer, assistant_runs,
         autoscroll_selection, await_branch_poll, backgrounded_job_id, brand, build_user_message,
         clipboard_path, compact_tokens, context_lines, diff_lines, drain_stream_events,
         estimate_token_count, finish_account_login, finish_compaction, finish_context_report,
@@ -16273,7 +16413,8 @@ mod tests {
         load_first_file_image, load_image_file, message_text, open_config_screen,
         open_rewind_picker, pairs_to_str, parse_command, partial_json_field,
         provider_label_for_model, rebuild_recall, replay_display_log, restore_goal,
-        restore_run_mode, restore_todos, resume_hint, rewind_to, route_paste_event, row_width,
+        restore_run_mode, restore_todos, resume_hint, rewind_to, route_paste_event,
+        route_resize_event, row_width,
         run_command, running_group_rows, selection_text, spans_width, spawn_branch_poll,
         split_reasoning, starting_call_lines, startup_modes, strip_system_xml_tags,
         subagent_activity, subagent_name_from_run_id, summarize_result, sync_output_for,
@@ -17112,6 +17253,279 @@ mod tests {
         assert_eq!(p.selected, 0);
         p.move_selection(1);
         assert_eq!(p.selected, 1);
+    }
+
+    // ---- full repaint (janhq/jan#8804, #8780, adapted from #8806) ----------
+
+    use ratatui::{backend::TestBackend, Terminal};
+
+    /// Damage one painted cell of `terminal`'s screen the way a `wall(1)`
+    /// broadcast does: straight through the backend, which changes what is on
+    /// screen and leaves both of ratatui's buffers believing nothing moved.
+    fn broadcast_over<B: ratatui::backend::Backend>(
+        terminal: &mut ratatui::Terminal<B>,
+        clean: &Buffer,
+    ) -> (u16, u16) {
+        let (cx, cy) = (0..clean.area.height)
+            .flat_map(|y| (0..clean.area.width).map(move |x| (x, y)))
+            .find(|&(x, y)| clean[(x, y)].symbol().trim() != "")
+            .expect("the frame must paint something");
+        let mut cell = ratatui::buffer::Cell::EMPTY;
+        cell.set_symbol("W");
+        terminal
+            .backend_mut()
+            .draw(std::iter::once((cx, cy, &cell)))
+            .ok()
+            .expect("the backend accepts the write");
+        (cx, cy)
+    }
+
+    /// #8804. First half: the bug is real -- an ordinary redraw diffs two
+    /// identical buffers, emits nothing, and leaves the broadcast on screen.
+    /// Second half: the repaint re-emits every cell and the damage is gone.
+    #[test]
+    fn repaint_restores_cells_a_foreign_write_corrupted() {
+        let mut app = test_app();
+        app.submit_user("what does this project do".to_string());
+        let mut terminal = Terminal::new(TestBackend::new(60, 30)).unwrap();
+        terminal.draw(|f| super::draw(f, &mut app)).unwrap();
+        let clean = terminal.backend().buffer().clone();
+
+        let (cx, cy) = broadcast_over(&mut terminal, &clean);
+        assert_eq!(terminal.backend().buffer()[(cx, cy)].symbol(), "W");
+
+        terminal.draw(|f| super::draw(f, &mut app)).unwrap();
+        assert_eq!(
+            terminal.backend().buffer()[(cx, cy)].symbol(),
+            "W",
+            "a plain redraw is expected to leave foreign damage in place"
+        );
+
+        app.request_repaint();
+        assert!(app.take_repaint());
+        apply_repaint(&mut terminal);
+        terminal.draw(|f| super::draw(f, &mut app)).unwrap();
+        assert_eq!(
+            terminal.backend().buffer(),
+            &clean,
+            "a repaint must restore the frame the broadcast damaged"
+        );
+    }
+
+    /// #8780. An emulator reflowing during a drag can scribble on the screen
+    /// and settle back at the size it started from before the next frame.
+    /// ratatui only redraws on a *changed* size, so without the resize arm the
+    /// damage stays; with it, the resize event alone repairs the frame.
+    #[test]
+    fn a_resize_that_ends_at_the_same_size_still_repaints() {
+        let mut app = test_app();
+        app.submit_user("what does this project do".to_string());
+        let mut terminal = Terminal::new(TestBackend::new(60, 30)).unwrap();
+        terminal.draw(|f| super::draw(f, &mut app)).unwrap();
+        let clean = terminal.backend().buffer().clone();
+
+        let (cx, cy) = broadcast_over(&mut terminal, &clean);
+        terminal.draw(|f| super::draw(f, &mut app)).unwrap();
+        assert_eq!(
+            terminal.backend().buffer()[(cx, cy)].symbol(),
+            "W",
+            "same-size autoresize must not be what repairs this"
+        );
+
+        route_resize_event(&mut app, Event::Resize(60, 30));
+        assert!(app.take_repaint(), "a resize must request a full repaint");
+        apply_repaint(&mut terminal);
+        terminal.draw(|f| super::draw(f, &mut app)).unwrap();
+        assert_eq!(terminal.backend().buffer(), &clean);
+    }
+
+    /// #8780. After a real change of geometry the frame on screen is exactly
+    /// the frame for the new size -- no rows from the old layout survive.
+    #[test]
+    fn a_resize_to_a_new_size_draws_the_whole_new_frame() {
+        let mut app = test_app();
+        app.submit_user("what does this project do".to_string());
+        let mut terminal = Terminal::new(TestBackend::new(80, 30)).unwrap();
+        terminal.draw(|f| super::draw(f, &mut app)).unwrap();
+
+        terminal.backend_mut().resize(50, 20);
+        route_resize_event(&mut app, Event::Resize(50, 20));
+        assert!(app.take_repaint());
+        apply_repaint(&mut terminal);
+        terminal.draw(|f| super::draw(f, &mut app)).unwrap();
+
+        let mut fresh = Terminal::new(TestBackend::new(50, 20)).unwrap();
+        fresh.draw(|f| super::draw(f, &mut app)).unwrap();
+        assert_eq!(terminal.backend().buffer(), fresh.backend().buffer());
+    }
+
+    /// Only a resize requests a repaint; the repaint is triggered, never
+    /// per frame, since an unconditional clear would flicker.
+    #[test]
+    fn only_a_resize_event_requests_a_repaint() {
+        let mut app = test_app();
+        route_resize_event(&mut app, Event::Paste("hi".into()));
+        assert!(!app.take_repaint());
+        route_resize_event(&mut app, Event::Resize(100, 40));
+        assert!(app.take_repaint());
+        assert!(!app.take_repaint(), "taking the request clears it");
+    }
+
+    /// Ctrl-L is the repaint key, advertised, and never typed into the draft.
+    #[tokio::test]
+    async fn ctrl_l_requests_a_repaint_and_types_nothing() {
+        let mut app = test_app();
+        let registry: PermissionRegistry = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let mut current: Option<CurrentRun> = None;
+        let ctrl_l = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL);
+
+        handle_key(&mut app, ctrl_l, &registry, &mut current, &no_mcp()).await;
+        assert!(app.take_repaint(), "Ctrl-L must request a full repaint");
+        assert!(app.input.is_empty(), "got: {:?}", app.input);
+
+        let plain_l = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE);
+        handle_key(&mut app, plain_l, &registry, &mut current, &no_mcp()).await;
+        assert!(!app.take_repaint(), "only Ctrl-L may repaint");
+        assert_eq!(app.input, "l");
+
+        assert!(KEY_BINDINGS.iter().any(|(k, _)| k.contains("Ctrl-L")));
+    }
+
+    /// A repaint is display only: the draft and scroll position survive, and
+    /// the repainted frame is the same frame.
+    #[tokio::test]
+    async fn composer_draft_and_scroll_survive_a_repaint() {
+        let mut app = test_app();
+        for i in 0..40 {
+            app.submit_user(format!("message {i}"));
+        }
+        app.input = "a draft mid-sentence".to_string();
+        app.scrollback = 7;
+
+        let mut terminal = Terminal::new(TestBackend::new(60, 30)).unwrap();
+        terminal.draw(|f| super::draw(f, &mut app)).unwrap();
+        let before = terminal.backend().buffer().clone();
+
+        let registry: PermissionRegistry = Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let mut current: Option<CurrentRun> = None;
+        let ctrl_l = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL);
+        handle_key(&mut app, ctrl_l, &registry, &mut current, &no_mcp()).await;
+
+        assert_eq!(app.input, "a draft mid-sentence");
+        assert_eq!(app.scrollback, 7);
+        assert!(app.take_repaint());
+        apply_repaint(&mut terminal);
+        terminal.draw(|f| super::draw(f, &mut app)).unwrap();
+        assert_eq!(terminal.backend().buffer(), &before);
+    }
+
+    /// A docked ask owns the keyboard and runs first, so it honours the
+    /// repaint key itself -- without answering, dismissing, or typing into
+    /// the answer being edited.
+    #[tokio::test]
+    async fn ctrl_l_repaints_while_an_ask_owns_the_keyboard() {
+        let mut app = test_app();
+        let registry = crate::core::agent::interaction::new_registry();
+        let (request_id, _receiver) = crate::core::agent::interaction::register(&registry).await;
+        app.apply(StreamEvent::AskRequest {
+            request_id,
+            request: ask_request(false, false),
+            timeout_secs: None,
+        });
+        let ask = app.ask_queue.front_mut().unwrap();
+        ask.editing_custom = true;
+        ask.custom_input = "answer in progress".into();
+
+        let ctrl_l = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL);
+        assert!(handle_ask_key(&mut app, ctrl_l, &registry).await);
+        assert!(app.take_repaint(), "Ctrl-L must repaint during an ask");
+        assert!(!app.ask_queue.is_empty());
+        assert_eq!(
+            app.ask_queue.front().unwrap().custom_input,
+            "answer in progress"
+        );
+    }
+
+    /// A backend that counts cursor-position queries and otherwise is a
+    /// `TestBackend`. `Terminal::clear` issues one, which on crossterm is a DSR
+    /// round trip that blocks for up to two seconds on a silent terminal.
+    struct CountingBackend {
+        inner: TestBackend,
+        cursor_queries: std::cell::Cell<usize>,
+    }
+
+    impl ratatui::backend::Backend for CountingBackend {
+        type Error = <TestBackend as ratatui::backend::Backend>::Error;
+
+        fn draw<'a, I>(&mut self, content: I) -> Result<(), Self::Error>
+        where
+            I: Iterator<Item = (u16, u16, &'a ratatui::buffer::Cell)>,
+        {
+            self.inner.draw(content)
+        }
+
+        fn get_cursor_position(&mut self) -> Result<ratatui::layout::Position, Self::Error> {
+            self.cursor_queries.set(self.cursor_queries.get() + 1);
+            self.inner.get_cursor_position()
+        }
+
+        fn set_cursor_position<P: Into<ratatui::layout::Position>>(
+            &mut self,
+            position: P,
+        ) -> Result<(), Self::Error> {
+            self.inner.set_cursor_position(position)
+        }
+
+        fn hide_cursor(&mut self) -> Result<(), Self::Error> {
+            self.inner.hide_cursor()
+        }
+
+        fn show_cursor(&mut self) -> Result<(), Self::Error> {
+            self.inner.show_cursor()
+        }
+
+        fn clear(&mut self) -> Result<(), Self::Error> {
+            self.inner.clear()
+        }
+
+        fn clear_region(
+            &mut self,
+            clear_type: ratatui::backend::ClearType,
+        ) -> Result<(), Self::Error> {
+            self.inner.clear_region(clear_type)
+        }
+
+        fn size(&self) -> Result<ratatui::layout::Size, Self::Error> {
+            self.inner.size()
+        }
+
+        fn window_size(&mut self) -> Result<ratatui::backend::WindowSize, Self::Error> {
+            self.inner.window_size()
+        }
+
+        fn flush(&mut self) -> Result<(), Self::Error> {
+            self.inner.flush()
+        }
+    }
+
+    /// The repaint never asks where the cursor is, and still repairs the frame.
+    #[test]
+    fn repaint_never_blocks_on_a_cursor_query() {
+        let mut app = test_app();
+        let backend = CountingBackend {
+            inner: TestBackend::new(60, 30),
+            cursor_queries: std::cell::Cell::new(0),
+        };
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal.draw(|f| super::draw(f, &mut app)).unwrap();
+        let clean = terminal.backend().inner.buffer().clone();
+        broadcast_over(&mut terminal, &clean);
+
+        let before = terminal.backend().cursor_queries.get();
+        apply_repaint(&mut terminal);
+        terminal.draw(|f| super::draw(f, &mut app)).unwrap();
+        assert_eq!(terminal.backend().cursor_queries.get() - before, 0);
+        assert_eq!(terminal.backend().inner.buffer(), &clean);
     }
 
     fn ask_request(
@@ -19526,9 +19940,7 @@ mod tests {
     }
 
     fn with_isolated_login_state<T>(f: impl FnOnce() -> T) -> T {
-        let _guard = crate::core::server::provider_secrets::SECRET_STORE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
         let dir = tempfile::tempdir().unwrap();
         let prev_data_folder = std::env::var_os("JAN_DATA_FOLDER");
         std::env::set_var("JAN_DATA_FOLDER", dir.path());
@@ -29802,6 +30214,46 @@ mod tests {
         let (mut app, root) = skill_test_app("deploy", "How to deploy.");
         run_command(&mut app, "warp_drive", &no_mcp()).await;
         assert!(transcript_text(&app).contains("unknown command '/warp_drive'"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// `/bug` previews and writes nothing; `/bug save` writes exactly the
+    /// previewed bundle; with no thread it says so instead of doing nothing.
+    #[tokio::test]
+    async fn bug_previews_first_and_saves_only_on_request() {
+        let (mut app, root) = skill_test_app("deploy", "How to deploy.");
+        run_command(&mut app, "bug", &no_mcp()).await;
+        assert!(
+            transcript_text(&app).contains("bug report failed"),
+            "no thread yet: {}",
+            transcript_text(&app)
+        );
+        run_command(&mut app, "bug save", &no_mcp()).await;
+        assert!(transcript_text(&app).contains("nothing to save yet"));
+
+        let id = "bug-thread";
+        let dir = crate::core::threads::utils::get_thread_dir(&app.agent_dir, id);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            crate::core::threads::utils::get_thread_metadata_path(&app.agent_dir, id),
+            serde_json::json!({"id": id, "title": "t", "updated": 1}).to_string(),
+        )
+        .unwrap();
+        std::fs::write(dir.join("messages.jsonl"), "{\"role\":\"user\",\"content\":\"hi\"}\n").unwrap();
+        app.thread_id = Some(id.to_string());
+
+        run_command(&mut app, "bug", &no_mcp()).await;
+        let preview = app.pending_bug_report.clone().expect("a preview is held");
+        assert!(!preview.destination.exists(), "/bug wrote before being asked");
+        assert!(transcript_text(&app).contains("Nothing is uploaded"));
+
+        run_command(&mut app, "bug show thread/messages.jsonl", &no_mcp()).await;
+        assert!(transcript_text(&app).contains("\"content\":\"hi\""));
+
+        run_command(&mut app, "bug save", &no_mcp()).await;
+        assert!(preview.destination.is_file(), "/bug save wrote nothing");
+        assert!(app.pending_bug_report.is_none());
+        let _ = std::fs::remove_file(&preview.destination);
         let _ = std::fs::remove_dir_all(&root);
     }
 

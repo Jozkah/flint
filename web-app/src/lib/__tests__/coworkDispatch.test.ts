@@ -639,3 +639,90 @@ describe('instructions that govern a subtree', () => {
     expect(result.output).toContain('JAN.md')
   })
 })
+
+// janhq/jan#8906: asked to create a file while planning, the model read the
+// missing file, announced it would create it, and read it again -- thirty
+// times. Before the fix every one of those reads ran and returned the bare
+// error, and nothing ever asked the user.
+describe('missing reads in review mode', () => {
+  const missing = { error: 'ERROR: No such file or directory (os error 2)' }
+
+  beforeEach(() => {
+    executeAgentTool.mockReset()
+  })
+
+  it('keeps the real error and says why read cannot create the file', async () => {
+    executeAgentTool.mockResolvedValue(missing)
+    const c = ctx({ mode: 'review', readFailures: new Map() })
+    const out = await dispatchCoworkTool(call('read', { path: 'index.html' }), c)
+    expect(out.isError).toBe(true)
+    expect(out.output.startsWith(missing.error)).toBe(true)
+    expect(out.output).toMatch(/cannot\s+create `index.html`/)
+    expect(c.onAsk).not.toHaveBeenCalled()
+  })
+
+  it('asks for plan review instead of reading the same missing path again', async () => {
+    executeAgentTool.mockResolvedValue(missing)
+    const onAsk = vi.fn(async () => ({ output: 'The user wants to keep planning.' }))
+    const c = ctx({ mode: 'review', readFailures: new Map(), onAsk })
+    await dispatchCoworkTool(call('read', { path: 'index.html' }), c)
+    const second = await dispatchCoworkTool(call('read', { path: 'index.html' }), c)
+
+    expect(executeAgentTool).toHaveBeenCalledTimes(1)
+    expect(onAsk).toHaveBeenCalledTimes(1)
+    const [, request] = onAsk.mock.calls[0] as unknown as [string, { questions: { id: string }[] }]
+    expect(request.questions[0].id).toBe('plan_review')
+    expect(second.isError).toBe(true)
+    expect(second.output).toContain('`index.html` does not exist')
+    expect(second.output).toContain('keep planning')
+  })
+
+  it('never escalates a different path, and a path that reads is not a miss', async () => {
+    const c = ctx({ mode: 'review', readFailures: new Map() })
+    executeAgentTool.mockResolvedValueOnce({ content: 'present' })
+    await dispatchCoworkTool(call('read', { path: 'a.html' }), c)
+    executeAgentTool.mockResolvedValueOnce({ content: 'present' })
+    await dispatchCoworkTool(call('read', { path: 'a.html' }), c)
+    executeAgentTool.mockResolvedValueOnce(missing)
+    await dispatchCoworkTool(call('read', { path: 'b.html' }), c)
+    executeAgentTool.mockResolvedValueOnce(missing)
+    await dispatchCoworkTool(call('read', { path: 'c.html' }), c)
+    expect(c.onAsk).not.toHaveBeenCalled()
+    expect(executeAgentTool).toHaveBeenCalledTimes(4)
+  })
+
+  // The history belongs to one run: a new run gets a new map, and a run
+  // with none (a caller that cannot hold one) explains but never escalates.
+  it('keeps no history across runs or without a map', async () => {
+    executeAgentTool.mockResolvedValue(missing)
+    await dispatchCoworkTool(
+      call('read', { path: 'x' }),
+      ctx({ mode: 'review', readFailures: new Map() })
+    )
+    const next = ctx({ mode: 'review', readFailures: new Map() })
+    await dispatchCoworkTool(call('read', { path: 'x' }), next)
+    expect(next.onAsk).not.toHaveBeenCalled()
+
+    const none = ctx({ mode: 'review' })
+    await dispatchCoworkTool(call('read', { path: 'x' }), none)
+    await dispatchCoworkTool(call('read', { path: 'x' }), none)
+    expect(none.onAsk).not.toHaveBeenCalled()
+  })
+
+  it('changes nothing outside review mode, or for other errors', async () => {
+    executeAgentTool.mockResolvedValue(missing)
+    const auto = ctx({ mode: 'auto', readFailures: new Map() })
+    for (let i = 0; i < 3; i++) {
+      const out = await dispatchCoworkTool(call('read', { path: 'x' }), auto)
+      expect(out.output).toBe(missing.error)
+    }
+    expect(auto.onAsk).not.toHaveBeenCalled()
+
+    executeAgentTool.mockResolvedValue({ error: 'ERROR: permission denied (os error 13)' })
+    const review = ctx({ mode: 'review', readFailures: new Map() })
+    await dispatchCoworkTool(call('read', { path: 'y' }), review)
+    const out = await dispatchCoworkTool(call('read', { path: 'y' }), review)
+    expect(out.output).toBe('ERROR: permission denied (os error 13)')
+    expect(review.onAsk).not.toHaveBeenCalled()
+  })
+})

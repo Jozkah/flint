@@ -28,6 +28,9 @@ type State = {
   invalidate: (baseUrl?: string) => Promise<void>
 }
 
+/** How often an unsettled endpoint is asked about again (a cache read). */
+export const RECHECK_MS = 3000
+
 const keyOf = (baseUrl: string) => {
   const endpoint = endpointOf(baseUrl)
   return endpoint ? `${endpoint.host.toLowerCase()}:${endpoint.port}` : null
@@ -41,7 +44,11 @@ export const useEndpointLocations = create<State>()((set, get) => ({
     const key = keyOf(baseUrl)
     const endpoint = endpointOf(baseUrl)
     if (!key || !endpoint) return
-    if (get().pending[key] || key in get().byEndpoint) return
+    // Only a real answer is final. `null` means the resolver has not seen the
+    // endpoint yet -- nothing has connected to it -- and caching that as the
+    // answer kept a tailnet host like `v100` "checking", out of both LOCAL
+    // and REMOTE, for the rest of the session.
+    if (get().pending[key] || get().byEndpoint[key]) return
     set((s) => ({ pending: { ...s.pending, [key]: true } }))
     try {
       const diagnostics = await endpointDiagnostics(endpoint.host, endpoint.port)
@@ -101,13 +108,25 @@ export function useProviderLocations(
   const resolve = useEndpointLocations((s) => s.resolve)
 
   useEffect(() => {
-    for (const provider of providers) {
-      if (!provider.base_url) continue
-      if (hasBuiltInEngine(provider.provider)) continue
-      // Only the resolver-dependent ones cost a lookup.
-      const location = classifyModelLocation({ baseUrl: provider.base_url })
-      if (location === 'checking') void resolve(provider.base_url)
+    const pendingUrls = () =>
+      providers
+        .filter((p) => p.base_url && !hasBuiltInEngine(p.provider))
+        // Only the resolver-dependent ones cost a lookup.
+        .filter((p) => classifyModelLocation({ baseUrl: p.base_url }) === 'checking')
+        .map((p) => p.base_url as string)
+        .filter((url) => !diagnosticsFor(useEndpointLocations.getState().byEndpoint, url))
+    const ask = () => {
+      for (const url of pendingUrls()) void resolve(url)
     }
+    ask()
+    // The resolver learns an endpoint when something first connects to it,
+    // which is usually after this renders. Asking again is a read of its
+    // cache, not a lookup, so keep asking while any endpoint is unsettled.
+    const timer = setInterval(() => {
+      if (pendingUrls().length === 0) clearInterval(timer)
+      else ask()
+    }, RECHECK_MS)
+    return () => clearInterval(timer)
     // `providers` is rebuilt each render by its callers; the endpoints are what
     // matter, so depend on those.
     // eslint-disable-next-line react-hooks/exhaustive-deps

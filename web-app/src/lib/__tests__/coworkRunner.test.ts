@@ -158,6 +158,42 @@ describe('an invalid tool call', () => {
     const told = JSON.stringify(out.messages)
     expect(told).toContain('was not run')
   })
+
+  /// Arguments that are not JSON arrive as the raw text. Kept as the call's
+  /// input, that string went into the history, and every later request in the
+  /// session replayed a tool call whose input is not an object.
+  it('replays with an object input when the arguments were not JSON', async () => {
+    const { convertToModelMessages } = await import('ai')
+    const d = deps([
+      [
+        {
+          type: 'tool-input-error',
+          toolCallId: 'c9',
+          toolName: 'read',
+          input: '{"path":',
+          errorText: 'Invalid input for tool read: JSON parsing failed',
+        } as unknown as UIMessageChunk,
+      ],
+      textStep('done'),
+    ])
+    const out = await runTurn({
+      messages: [user('read with broken arguments')],
+      signal: new AbortController().signal,
+      deadline: { at: Date.now() + 60_000, budgetMs: 60_000 },
+      now: Date.now,
+      sessionTokens: 0,
+      deps: d,
+    } as never)
+    const modelMessages = await convertToModelMessages(out.messages)
+    const calls = modelMessages
+      .flatMap((m) => (Array.isArray(m.content) ? m.content : []))
+      .filter((p: any) => p.type === 'tool-call') as any[]
+    expect(calls).toHaveLength(1)
+    expect(typeof calls[0].input).toBe('object')
+    expect(calls[0].input).not.toBeNull()
+    // The model is still told what it sent, so it can correct itself.
+    expect(JSON.stringify(out.messages)).toContain('{\\"path\\":')
+  })
 })
 
 describe('runTurn', () => {

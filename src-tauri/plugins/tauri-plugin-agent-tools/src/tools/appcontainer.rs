@@ -734,7 +734,7 @@ mod win {
 
     /// Put this process in a kill-on-close job, so the shell -- created inside the
     /// job by inheritance -- dies whenever the helper does. `kill_on_drop` and
-    /// `taskkill /T` reach the helper, not the extra process layer it adds, so
+    /// `kill_tree` reach the helper, not the extra process layer it adds, so
     /// without this a cancelled or timed-out command could leave a shell running.
     ///
     /// Best effort: a host that already confines us to a job it forbids nesting

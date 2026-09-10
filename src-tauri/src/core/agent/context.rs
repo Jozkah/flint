@@ -423,9 +423,10 @@ mod tests {
     /// Point the permanent store (user and session memory) at a scratch tree,
     /// so a test never reads or writes the developer's real Jan data folder.
     fn with_temp_data_folder<T>(f: impl FnOnce(&Path) -> T) -> T {
-        use std::sync::Mutex;
-        static LOCK: Mutex<()> = Mutex::new(());
-        let _guard = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // The shared environment lock: a private one excluded only the other
+        // callers of this helper, not the tests that point the same variable
+        // somewhere else.
+        let _guard = crate::core::server::provider_secrets::TEST_ENV_LOCK.lock();
 
         let dir = scratch_project("data");
         std::fs::create_dir_all(&dir).unwrap();

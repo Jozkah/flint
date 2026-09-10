@@ -103,6 +103,9 @@ export const APIs = {
                 'enable_server_tool_execution',
                 'enableServerToolExecution',
               ]),
+              // The Settings "CORS" switch, which used to stop here
+              // (janhq/jan#8836).
+              cors_enabled: pickBoolean(raw, ['cors_enabled', 'isCorsEnabled']),
             }
             return getServiceHub().core().invoke(command, { config })
           }

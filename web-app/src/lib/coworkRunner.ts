@@ -340,11 +340,25 @@ export async function consumeStep(
         // answer -- the run ended with nothing done, nothing recorded and
         // nothing said, and the model never learned its call was refused.
         case 'tool-input-error': {
+          // Arguments that are not JSON arrive as their raw text. That text
+          // must not become the call's input: the history replays it to the
+          // model, and a tool call whose input is a string rather than an
+          // object broke every later request in the session. The text goes in
+          // the refusal instead, so the model still sees what it sent.
+          const raw = chunk.input
+          const usable =
+            raw !== null && typeof raw === 'object' && !Array.isArray(raw)
           const call: PendingToolCall = {
             toolCallId: chunk.toolCallId,
             toolName: chunk.toolName,
-            input: chunk.input,
-            invalid: String(chunk.errorText ?? 'the call was not valid'),
+            input: usable ? raw : {},
+            invalid:
+              String(chunk.errorText ?? 'the call was not valid') +
+              (usable || raw === undefined
+                ? ''
+                : ` (the arguments sent were: ${
+                    typeof raw === 'string' ? raw : JSON.stringify(raw)
+                  })`),
           }
           result.toolCalls.push(call)
           sink.onToolCall(call)
