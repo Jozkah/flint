@@ -6,7 +6,12 @@ import {
   TEAM_TOOL_NAME,
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
-import { type CoworkMode } from '@/lib/coworkMode'
+import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
+import {
+  isMissingPathError,
+  missingReadGuidance,
+  planReviewRequest,
+} from '@/lib/coworkPlanReview'
 import {
   BACKEND_ACCESS_CAPABILITY,
   decideMutation,
@@ -134,6 +139,13 @@ export type DispatchContext = {
    * authority, and there is nothing here that could raise it.
    */
   trackSubagent?: () => () => void
+  /**
+   * Paths a `read` in this run found missing, and how often. janhq/jan#8906.
+   *
+   * One map per run, so the history never outlives the request it describes.
+   * Absent, a missing read is still explained but never escalated.
+   */
+  readFailures?: Map<string, number>
 }
 
 /**
@@ -435,6 +447,22 @@ async function routeCoworkTool(
       }
     }
 
+    // Review mode, a `read` of a path this run already found missing: the
+    // model is trying to create a file with the one tool that cannot. Asking
+    // the filesystem again cannot end that loop; asking the user can.
+    const readPath =
+      toolName === 'read' && isReadOnly(ctx.mode) ? pathFromInput(call.input) : null
+    const priorMisses = readPath ? (ctx.readFailures?.get(readPath) ?? 0) : 0
+    if (readPath && priorMisses > 0) {
+      const review = await ctx.onAsk(call.toolCallId, planReviewRequest(readPath))
+      return {
+        output:
+          `\`${readPath}\` does not exist; it was not read again. ` +
+          review.output,
+        isError: true,
+      }
+    }
+
     // Held for the length of the call, and released on every way out of it —
     // output, refusal or throw.
     const shellDone = toolName === 'bash' ? ctx.trackShell?.() : undefined
@@ -451,7 +479,18 @@ async function routeCoworkTool(
     } finally {
       shellDone?.()
     }
-    if (result.error) return { output: result.error, isError: true }
+    if (result.error) {
+      if (readPath && isMissingPathError(result.error)) {
+        ctx.readFailures?.set(readPath, priorMisses + 1)
+        return {
+          output: result.error + missingReadGuidance(readPath),
+          isError: true,
+        }
+      }
+      return { output: result.error, isError: true }
+    }
+    // A path that reads now is not missing any more.
+    if (readPath) ctx.readFailures?.delete(readPath)
     return {
       output:
         typeof result.content === 'string'

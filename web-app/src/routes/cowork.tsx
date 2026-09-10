@@ -239,6 +239,10 @@ import {
 import { dispatchCoworkTool } from '@/lib/coworkDispatch'
 import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
 import { parseAskRequest, renderAskResult } from '@/lib/coworkAsk'
+import {
+  planReviewDecision,
+  renderPlanReviewResult,
+} from '@/lib/coworkPlanReview'
 import { getSandboxStatus, sandboxEnforces } from '@/lib/agentTools'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
@@ -1843,6 +1847,9 @@ function CoworkPage() {
     // as a whole, or one dispatched child at a time — actually reach anything.
     const runId = crypto.randomUUID()
     beginRun(sid, runId, controller)
+    // Missing-path reads this run has seen, shared by the run and its
+    // children and dropped with it (janhq/jan#8906).
+    const runReadFailures = new Map<string, number>()
     const run: RunContext = {
       sessionId: sid,
       runId,
@@ -2045,6 +2052,7 @@ function CoworkPage() {
               sessionId: childOwner,
               readOnlyFolder: childFolder,
               mode: runMode,
+              readFailures: runReadFailures,
               writeGrant: childGrant,
               // A child in its own checkout is a managed-worktree run of its
               // own, consented to under its own owner id. Inheriting the
@@ -2267,6 +2275,7 @@ function CoworkPage() {
               sessionId: sid,
               readOnlyFolder: runReadRoot,
               mode: runMode,
+              readFailures: runReadFailures,
               writeGrant: runGrant,
               // The same frozen answers the first gate used, so the two cannot
               // disagree about what this run may change.
@@ -2382,7 +2391,18 @@ function CoworkPage() {
                         proposal: proposal.question,
                       })
                     }
-                    resolve(renderAskResult(answers))
+                    // A plan review changes the session's mode, from the next
+                    // message: this run's tools are frozen. Only ever towards
+                    // Ask, where each change still waits for the user.
+                    const review = planReviewDecision(parsed, answers)
+                    if (review === 'execute' || review === 'exit') {
+                      useCoworkSessions.getState().setMode(sid, 'ask')
+                    }
+                    resolve(
+                      review === 'none'
+                        ? renderAskResult(answers)
+                        : renderPlanReviewResult(review, answers)
+                    )
                   })
                 }),
               onTask: async (callId, input) => {
