@@ -30,9 +30,10 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1273,
-      "fixed": 4,
-      "already-fixed": 1
+      "untriaged": 1269,
+      "fixed": 7,
+      "already-fixed": 1,
+      "not-applicable": 1
     }
   },
   "items": [
@@ -27874,14 +27875,18 @@
       "privacyImpact": "none",
       "dataLossRisk": "high",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "src-tauri/src/core/threads: messages.jsonl rewritten via File::create (truncate-first) and thread.json via fs::write; reader failed the whole thread on a torn final line. 4 new durability tests failed against the old code.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "decision": "fix",
+      "decisionReason": "P0 data loss: an interrupted edit/delete/append made a thread unreadable, and a torn thread.json removed the thread from the sidebar.",
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "57ea06b"
+      ],
+      "tests": [
+        "src-tauri/src/core/threads/durability_tests.rs"
+      ],
+      "verification": "cargo test --lib (test-tauri) threads:: 41 passed; full lib 807 passed.",
       "blockers": [],
       "notes": null
     },
@@ -42930,13 +42935,15 @@
       "privacyImpact": "none",
       "dataLossRisk": "high",
       "localOnlyCompatibility": "needs-redesign",
-      "forkReproduction": null,
+      "forkReproduction": "Not applicable: the fork ships no updater plugin or module and no startup model auto-download; pinned by web-app/src/__tests__/localOnly.test.ts (ships no updater plugin / has no updater module left).",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "not-applicable",
+      "decisionReason": "The reported trigger (update popup) and the automatic Jan-v3.5 download do not exist in this fork.",
+      "implementationStatus": "not-applicable",
       "forkCommits": [],
-      "tests": [],
+      "tests": [
+        "web-app/src/__tests__/localOnly.test.ts"
+      ],
       "verification": null,
       "blockers": [],
       "notes": null
@@ -50169,16 +50176,19 @@
       "privacyImpact": "none",
       "dataLossRisk": "high",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "Messages whose parentId names a deleted message are unreachable from computeActivePath. Two fork paths produce that: handleDeleteMessage removed only the row, and the load-time empty-assistant cleanup deleted rows the next user turn hung off. Reproduced as failing pure and route tests.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Content on disk but invisible in the UI; same user-visible symptom as the report. Reporter file unavailable, so the fix targets the mechanism found in this fork.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "web-app/src/lib/__tests__/message-branching.test.ts",
+        "web-app/src/routes/threads/__tests__/$threadId.test.tsx"
+      ],
+      "verification": "branching 26 passed; route 34 passed; full JS 5991 passed; typecheck clean; mutation of the delete wiring fails the route test.",
       "blockers": [],
-      "notes": null
+      "notes": "If the reporter thread has a shape neither path produces, a redacted messages.jsonl is needed."
     },
     {
       "source": "janhq/jan",
@@ -68171,15 +68181,21 @@
       "privacyImpact": "none",
       "dataLossRisk": "high",
       "localOnlyCompatibility": "compatible",
-      "forkReproduction": null,
+      "forkReproduction": "setup_jan_cli skipped the which-jan guard on version change and install_jan_cli_sync copied over the unix target unconditionally; Windows add_to_path_windows pruned %LOCALAPPDATA%/Programs/Jan (the standalone installer default) as stale and prepended its own dir.",
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
-      "blockers": [],
+      "decision": "fix",
+      "decisionReason": "Destructive, silent downgrade of a separately managed tool by the desktop app.",
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "6e67724"
+      ],
+      "tests": [
+        "src-tauri/src/core/system/cli_provenance.rs"
+      ],
+      "verification": "12 cli_provenance unit tests; full lib 807 passed. Unix copy path not executed on this Windows host — runtime verification pending on Linux/macOS.",
+      "blockers": [
+        "unix runtime verification needs a Linux/macOS host"
+      ],
       "notes": null
     },
     {
