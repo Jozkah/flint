@@ -81,6 +81,12 @@ export type OnFinishCallback = (params: {
 /** Partial assistant output replayed as a prefill to resume a stopped turn. */
 export type ContinuationContent = { text?: string; reasoning?: string }
 export type ServiceHub = {
+  /**
+   * A partially-stubbed host can hand back no app service at all, which is
+   * why the return type admits `undefined` rather than the caller
+   * optional-calling the method itself.
+   */
+  app(): { getJanDataFolder(): Promise<string | undefined> } | undefined
   rag(): {
     getTools(): Promise<
       Array<{ name: string; description: string; inputSchema: unknown }>
@@ -545,9 +551,24 @@ export function resolveOrphanToolCalls(messages: UIMessage[]): UIMessage[] {
     if (parts.length === 0) return message
 
     let mutated = false
-    const nextParts = parts.map((part) => {
-      const type = (part as { type?: string }).type
-      if (typeof type !== 'string' || !type.startsWith('tool-')) return part
+    const nextParts = parts.map((original) => {
+      const type = (original as { type?: string }).type
+      if (typeof type !== 'string' || !type.startsWith('tool-')) return original
+      let part = original
+      // A call whose arguments were not JSON keeps its raw text as `input`,
+      // and a thread saved that way reloads it the same (messages.ts keeps
+      // the unparsed string). Replayed, that is a tool call whose input is
+      // not an object, which a chat template cannot render -- every later
+      // request in the conversation failed. The call itself stays in the
+      // history; only its unusable input is replaced.
+      const input = (part as { input?: unknown }).input
+      if (
+        input !== undefined &&
+        (input === null || typeof input !== 'object' || Array.isArray(input))
+      ) {
+        mutated = true
+        part = { ...(part as object), input: {} } as typeof part
+      }
       const state = (part as { state?: string }).state
       if (typeof state === 'string' && RESOLVED_TOOL_STATES.has(state)) {
         return part
