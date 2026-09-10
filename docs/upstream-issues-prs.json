@@ -30,14 +30,15 @@
       "P3": 145
     },
     "byStatus": {
-      "untriaged": 1249,
-      "fixed": 14,
+      "untriaged": 1244,
+      "fixed": 15,
       "already-fixed": 3,
       "needs-user-hardware": 2,
       "not-applicable": 1,
-      "adapted": 4,
+      "adapted": 5,
       "cannot-reproduce": 1,
       "in-progress": 2,
+      "implementation-ready": 3,
       "rejected": 2
     }
   },
@@ -66312,7 +66313,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8806
+      ],
       "affectedAreas": [
         "chat",
         "cowork",
@@ -66343,9 +66346,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Resize blackout is the same missing-repaint class addressed by janhq/jan#8806 (synchronized full repaint clears); reimplementation pending.",
+      "implementationStatus": "implementation-ready",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -67729,7 +67732,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8806
+      ],
       "affectedAreas": [
         "chat",
         "cowork",
@@ -67759,9 +67764,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Fix lives in janhq/jan#8806; reimplementation pending on the fork TUI.",
+      "implementationStatus": "implementation-ready",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -67849,7 +67854,8 @@
       "baseRef": "main",
       "headRepo": "janhq/jan",
       "linked": [
-        8804
+        8804,
+        8780
       ],
       "affectedAreas": [
         "cowork",
@@ -67877,9 +67883,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "adapt",
+      "decisionReason": "Merged upstream after our merge base. Its TUI repaint path (f891b16, da436ca) does not apply to the fork tui.rs, and the PR also bundles a gate refactor (GateContext) that conflicts with the fork subject-aware gate. Needs reimplementation of the repaint path only.",
+      "implementationStatus": "implementation-ready",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -72385,7 +72391,9 @@
       "headSha": null,
       "baseRef": null,
       "headRepo": null,
-      "linked": [],
+      "linked": [
+        8893
+      ],
       "affectedAreas": [
         "chat",
         "tool-calling",
@@ -72412,9 +72420,9 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
+      "decision": "fix",
+      "decisionReason": "Closed by cherry-picking janhq/jan#8893.",
+      "implementationStatus": "fixed",
       "forkCommits": [],
       "tests": [],
       "verification": null,
@@ -72756,11 +72764,16 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
+      "decision": "adapt",
+      "decisionReason": "Merged upstream after our merge base; fork ships the same agent TUI. Test-only network code (local socket). Applies as a series.",
+      "implementationStatus": "adapted",
+      "forkCommits": [
+        "d588f43",
+        "0fd57bf"
+      ],
+      "tests": [
+        "src-tauri/src/core/cli/tui.rs"
+      ],
       "verification": null,
       "blockers": [],
       "notes": null
