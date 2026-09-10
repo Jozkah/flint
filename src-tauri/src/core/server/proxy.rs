@@ -145,7 +145,15 @@ pub(crate) fn transform_anthropic_to_openai(body: &serde_json::Value) -> Option<
 ///   wrapped: "x-anthropic-billing-header:\n   cc_version=…;\n<prompt>"
 pub(crate) fn strip_anthropic_billing_header(text: &str) -> &str {
     const KEY: &str = "x-anthropic-billing-header:";
-    if text.len() < KEY.len() || !text[..KEY.len()].eq_ignore_ascii_case(KEY) {
+    // `get`, not `[..]`: the length is in bytes, and a prompt that starts with
+    // multi-byte text puts that byte in the middle of a character. Indexing
+    // there panicked the request handler, and the local API server closed the
+    // connection without a response for any system prompt whose alignment
+    // happened to land that way (janhq/jan#8358).
+    if !text
+        .get(..KEY.len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(KEY))
+    {
         return text;
     }
     let first_nl = match text.find('\n') {
