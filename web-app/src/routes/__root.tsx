@@ -10,6 +10,7 @@ import { route } from '@/constants/routes'
 import { ExtensionProvider } from '@/providers/ExtensionProvider'
 import { ToasterProvider } from '@/providers/ToasterProvider'
 import { SearchDialog } from '@/containers/dialogs/SearchDialog'
+import { CommandPalette } from '@/containers/CommandPalette'
 import { useSearchDialog } from '@/hooks/useSearchDialog'
 import { useLeftPanel } from '@/hooks/useLeftPanel'
 import { useClearSettingsSearchOnExit } from '@/hooks/useSettingsSearch'
@@ -128,6 +129,7 @@ function RootLayout() {
                 inside the sidebar simply did not exist on a surface that did
                 not render it. */}
             <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
+            <CommandPalette />
             {IS_LOGS_ROUTE ? <LogsLayout /> : <AppLayout />}
           </ExtensionProvider>
           {/* <TanStackRouterDevtools position="bottom-right" /> */}

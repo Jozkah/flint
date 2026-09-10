@@ -142,6 +142,26 @@
     "unresolvedRefs_one": "1 file this page links to can't load in the preview. Open it to see it in a browser.",
     "unresolvedRefs_other": "{{count}} files this page links to can't load in the preview. Open it to see it in a browser."
   },
+  "commandPalette": {
+    "title": "Command palette",
+    "placeholder": "Type a command, a page or a conversation…",
+    "empty": "Nothing matches.",
+    "untitled": "Untitled conversation",
+    "newChat": "New chat",
+    "newProject": "New project",
+    "searchThreads": "Search conversations",
+    "toggleSidebar": "Toggle sidebar",
+    "openCowork": "Open Cowork",
+    "openArtifacts": "Open artifacts",
+    "openSystemMonitor": "Open system monitor",
+    "openLogs": "Open app logs",
+    "section": {
+      "actions": "Action",
+      "navigation": "Go to",
+      "settings": "Settings",
+      "threads": "Conversation"
+    }
+  },
   "rail": {
     "label": "Cowork panels",
     "code": "Code",

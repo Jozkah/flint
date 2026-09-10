@@ -46,4 +46,11 @@ export const PlatformShortcuts: ShortcutMap = {
     aliasKeys: ['_', 'Subtract'],
     usePlatformMetaKey: true,
   },
+
+  // Shift, because the unshifted key is New Project.
+  [ShortcutAction.COMMAND_PALETTE]: {
+    key: 'p',
+    usePlatformMetaKey: true,
+    shiftKey: true,
+  },
 }

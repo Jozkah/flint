@@ -6269,11 +6269,15 @@
       "category": "navigation",
       "phase": 9,
       "phaseName": "Approved additions",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [],
       "owner": "lane-24-navigation",
-      "files": [],
+      "files": [
+        "web-app/src/containers/CommandPalette.tsx",
+        "web-app/src/lib/commandPalette.ts",
+        "web-app/src/providers/KeyboardShortcuts.tsx"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "One palette opens from a keyboard shortcut anywhere in the app and offers navigation, session actions and settings.",
@@ -6288,12 +6292,14 @@
         "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
       ],
       "tests": [
-        "web-app/src/containers/__tests__/CommandPalette.test.tsx"
+        "web-app::commandPalette.test.ts",
+        "web-app::CommandPalette.test.tsx",
+        "cowork-smoke::command-palette-keybindings"
       ],
       "platformRequirements": [],
       "blockedReason": null,
       "evidence": "Not implemented. `SearchDialog` searches threads only and offers no commands.",
-      "auditNote": ""
+      "auditNote": "Ctrl/Cmd+Shift+P (rebindable) opens one palette above every route: actions (new chat, new project, search conversations, toggle sidebar), navigation (Cowork, artifacts, system monitor, logs), every settings page and every conversation. Ranked in memory with Fuse; no request of any kind. Escape closes it. Windows: cowork-smoke command-palette-keybindings opens it from the home route by the chord, ranks 'system monitor' first and navigates on Enter."
     },
     {
       "id": "AH-207",
@@ -6301,13 +6307,18 @@
       "category": "navigation",
       "phase": 9,
       "phaseName": "Approved additions",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P2",
       "dependencies": [
         "AH-206"
       ],
       "owner": "lane-24-navigation",
-      "files": [],
+      "files": [
+        "web-app/src/hooks/useKeybindings.ts",
+        "web-app/src/containers/ShortcutRebind.tsx",
+        "web-app/src/routes/settings/shortcuts.tsx",
+        "web-app/src/hooks/useHotkeys.ts"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Shortcuts are editable, persisted, and restored on restart.",
@@ -6322,12 +6333,13 @@
         "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
       ],
       "tests": [
-        "web-app/src/lib/__tests__/shortcuts.custom.test.ts"
+        "web-app::useKeybindings.test.ts",
+        "cowork-smoke::command-palette-keybindings"
       ],
       "platformRequirements": [],
-      "blockedReason": null,
+      "blockedReason": "MISSING for implemented: restoration after a real application restart is proven by the rehydrate unit test and by the Windows scenario seeing the override written to settings.json, not by restarting the app on Windows; and the sidebar's New Chat hint still shows the default chord.",
       "evidence": "Not implemented. `lib/shortcuts` exposes a fixed platform table with no user overrides.",
-      "auditNote": ""
+      "auditNote": "Settings > Shortcuts: Change records the next chord; a chord any other command uses (including zoom's alias keys) is refused naming that command; every app shortcut stands down while recording, so the taken chord is reported instead of run; Reset restores the default. Only overrides are persisted through the backend settings store and rehydrated with the other backend stores. Windows: cowork-smoke command-palette-keybindings proves the conflict message, acceptance, the write to settings.json, the new chord working and the old one not, and Reset. MISSING for implemented: restoration after a real application restart is proven by the rehydrate unit test and by the Windows scenario seeing the override written to settings.json, not by restarting the app on Windows; and the sidebar's New Chat hint still shows the default chord."
     },
     {
       "id": "AH-208",

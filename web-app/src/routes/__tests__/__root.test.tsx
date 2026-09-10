@@ -87,6 +87,10 @@ vi.mock('@/containers/dialogs/AttachmentIngestionDialog', () => ({
 vi.mock('@/containers/dialogs/ErrorDialog', () => ({
   default: () => <div data-testid="error-dialog" />,
 }))
+vi.mock('@/containers/CommandPalette', () => ({
+  CommandPalette: () => <div data-testid="command-palette-mount" />,
+  useCommandPalette: { getState: () => ({ setOpen: () => {} }) },
+}))
 vi.mock('@/containers/GlobalError', () => ({
   default: ({ error }: any) => <div data-testid="global-error">{error?.message}</div>,
 }))

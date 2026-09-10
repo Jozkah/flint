@@ -7,6 +7,8 @@ import { ShortcutAction, PlatformShortcuts, type ShortcutSpec } from '@/lib/shor
 import { PlatformMetaKey } from '@/containers/PlatformMetaKey'
 import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import HeaderPage from '@/containers/HeaderPage'
+import { ShortcutRebind } from '@/containers/ShortcutRebind'
+import { useKeybindings } from '@/hooks/useKeybindings'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.shortcuts as any)({
@@ -22,7 +24,9 @@ interface ShortcutLabelProps {
  * Renders a keyboard shortcut label consistently across platforms
  */
 function ShortcutLabel({ action, className = '' }: ShortcutLabelProps) {
-  const spec = PlatformShortcuts[action]
+  // The binding in force: the user's own if they changed it (AH-207).
+  useKeybindings((s) => s.overrides[action])
+  const spec = useKeybindings.getState().specFor(action) ?? PlatformShortcuts[action]
 
   return (
     <KbdGroup className={className}>
@@ -72,6 +76,20 @@ function ShortcutKeys({ spec }: { spec: ShortcutSpec }) {
 
 function Shortcuts() {
   const { t } = useTranslation()
+  // What a conflict message calls the command it collides with.
+  const names: Record<ShortcutAction, string> = {
+    [ShortcutAction.NEW_CHAT]: t('settings:shortcuts.newChat'),
+    [ShortcutAction.NEW_AGENT_CHAT]: t('settings:shortcuts.newChat'),
+    [ShortcutAction.NEW_PROJECT]: t('settings:shortcuts.newProject'),
+    [ShortcutAction.TOGGLE_SIDEBAR]: t('settings:shortcuts.toggleSidebar'),
+    [ShortcutAction.GO_TO_SETTINGS]: t('settings:shortcuts.goToSettings'),
+    [ShortcutAction.SEARCH]: t('settings:shortcuts.search'),
+    [ShortcutAction.SWITCH_ASSISTANT]: t('settings:shortcuts.switchAssistant'),
+    [ShortcutAction.ZOOM_IN]: t('settings:shortcuts.zoomIn'),
+    [ShortcutAction.ZOOM_OUT]: t('settings:shortcuts.zoomOut'),
+    [ShortcutAction.COMMAND_PALETTE]: t('settings:shortcuts.commandPalette'),
+  }
+  const commandName = (action: ShortcutAction) => names[action]
 
   return (
     <div className="flex flex-col h-svh w-full">
@@ -90,19 +108,31 @@ function Shortcuts() {
                 anchor="settings-shortcuts-new-chat"
                 title={t('settings:shortcuts.newChat')}
                 description={t('settings:shortcuts.newChatDesc')}
-                actions={<ShortcutLabel action={ShortcutAction.NEW_CHAT} />}
+                actions={
+                  <ShortcutRebind action={ShortcutAction.NEW_CHAT} label={commandName}>
+                    <ShortcutLabel action={ShortcutAction.NEW_CHAT} />
+                  </ShortcutRebind>
+                }
               />
               <CardItem
                 anchor="settings-shortcuts-new-project"
                 title={t('settings:shortcuts.newProject')}
                 description={t('settings:shortcuts.newProjectDesc')}
-                actions={<ShortcutLabel action={ShortcutAction.NEW_PROJECT} />}
+                actions={
+                  <ShortcutRebind action={ShortcutAction.NEW_PROJECT} label={commandName}>
+                    <ShortcutLabel action={ShortcutAction.NEW_PROJECT} />
+                  </ShortcutRebind>
+                }
               />
               <CardItem
                 anchor="settings-shortcuts-toggle-sidebar"
                 title={t('settings:shortcuts.toggleSidebar')}
                 description={t('settings:shortcuts.toggleSidebarDesc')}
-                actions={<ShortcutLabel action={ShortcutAction.TOGGLE_SIDEBAR} />}
+                actions={
+                  <ShortcutRebind action={ShortcutAction.TOGGLE_SIDEBAR} label={commandName}>
+                    <ShortcutLabel action={ShortcutAction.TOGGLE_SIDEBAR} />
+                  </ShortcutRebind>
+                }
               />
               <CardItem
                 anchor="settings-shortcuts-zoom-in"
@@ -146,7 +176,9 @@ function Shortcuts() {
                 title={t('settings:shortcuts.switchAssistant')}
                 description={t('settings:shortcuts.switchAssistantDesc')}
                 actions={
-                  <ShortcutLabel action={ShortcutAction.SWITCH_ASSISTANT} />
+                  <ShortcutRebind action={ShortcutAction.SWITCH_ASSISTANT} label={commandName}>
+                    <ShortcutLabel action={ShortcutAction.SWITCH_ASSISTANT} />
+                  </ShortcutRebind>
                 }
               />
             </Card>
@@ -154,16 +186,34 @@ function Shortcuts() {
             {/* Navigation */}
             <Card title={t('settings:shortcuts.navigation')}>
               <CardItem
+                anchor="settings-shortcuts-command-palette"
+                title={t('settings:shortcuts.commandPalette')}
+                description={t('settings:shortcuts.commandPaletteDesc')}
+                actions={
+                  <ShortcutRebind action={ShortcutAction.COMMAND_PALETTE} label={commandName}>
+                    <ShortcutLabel action={ShortcutAction.COMMAND_PALETTE} />
+                  </ShortcutRebind>
+                }
+              />
+              <CardItem
                 anchor="settings-shortcuts-search"
                 title={t('settings:shortcuts.search')}
                 description={t('settings:shortcuts.searchDesc')}
-                actions={<ShortcutLabel action={ShortcutAction.SEARCH} />}
+                actions={
+                  <ShortcutRebind action={ShortcutAction.SEARCH} label={commandName}>
+                    <ShortcutLabel action={ShortcutAction.SEARCH} />
+                  </ShortcutRebind>
+                }
               />
               <CardItem
                 anchor="settings-shortcuts-go-to-settings"
                 title={t('settings:shortcuts.goToSettings')}
                 description={t('settings:shortcuts.goToSettingsDesc')}
-                actions={<ShortcutLabel action={ShortcutAction.GO_TO_SETTINGS} />}
+                actions={
+                  <ShortcutRebind action={ShortcutAction.GO_TO_SETTINGS} label={commandName}>
+                    <ShortcutLabel action={ShortcutAction.GO_TO_SETTINGS} />
+                  </ShortcutRebind>
+                }
               />
             </Card>
           </div>

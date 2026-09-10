@@ -1612,3 +1612,23 @@ handled (the worktree's `.git` file points into the source repository). That
 single change makes the mode — and this review — reachable on Windows.
 (2) Offer team children's worktrees for review from the team report, which
 already names each child's worktree.
+
+## 2026-09-10 — Batch 4: command palette (AH-206 implemented) and rebindable shortcuts (AH-207 in progress)
+
+- **Palette.** `CommandPalette` is mounted once above every route and opened
+  by `ShortcutAction.COMMAND_PALETTE` (Ctrl/Cmd+Shift+P; Shift because the
+  unshifted chord is New Project). Entries are the app's own actions, routes,
+  settings pages and conversations, ranked in memory with Fuse. Nothing is
+  fetched.
+- **Keybindings.** `useKeybindings` stores only overrides through the backend
+  settings store (`keybindings` key) and is rehydrated with the other backend
+  stores. `bind` refuses a chord any other command uses — rebindable or not,
+  aliases included — and names it. While a new binding is being recorded,
+  every app shortcut (`useHotkeys`, zoom, the sidebar's own Ctrl+B) stands
+  down; the first Windows run showed why: Ctrl+N ran New Chat and navigated
+  away instead of being reported as taken.
+- **Also fixed on the way.** The sidebar component's hard-coded Ctrl+B toggled
+  the sidebar even after the user moved Toggle Sidebar elsewhere; it now stands
+  down when that action has an override.
+- **Left.** The sidebar's New Chat hint shows the default chord, not the
+  user's; a restart on Windows was not exercised (see the verification note).

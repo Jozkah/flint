@@ -22,6 +22,7 @@ import { useFileActivity } from '@/hooks/useFileActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
+import { useKeybindings } from '@/hooks/useKeybindings'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -57,6 +58,7 @@ const secondaryStores = [
   useAgentToolsConfig,
   useModelOverrides,
   useCoworkDisplay,
+  useKeybindings,
 ] as const
 
 export async function hydrateBackendStores(): Promise<void> {

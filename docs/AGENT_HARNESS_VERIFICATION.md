@@ -329,3 +329,15 @@ this check. Fixed in `providerFetch`; the scenario now passes on Windows.
 | Evidence | Where | Covers |
 | --- | --- | --- |
 | 9 unit tests | `web-app/src/hooks/__tests__/useCoworkSessions.fork.test.ts` | the conversation copied to the named turn; the whole conversation by default; parent and divergence recorded; messages rebuilt with the fork's own ids; no folder, access, consent or budget inherited; unknown session and out-of-range turn refused; both sessions independently renamable and deletable; the fork is shown |
+
+## Command palette and rebindable shortcuts (AH-206 / AH-207)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 5 unit tests | `web-app/src/lib/__tests__/commandPalette.test.ts` | section order with nothing typed and threads capped; typo-tolerant title ranking; keyword matches; every thread searchable; no `fetch` |
+| 4 unit tests | `web-app/src/containers/__tests__/CommandPalette.test.tsx` | actions, navigation, conversations and settings listed; Enter runs the best match and closes; arrow keys move the selection; an empty result says so |
+| 12 unit tests | `web-app/src/hooks/__tests__/useKeybindings.test.ts` | default until set; a free chord binds; a taken chord refused naming its command; zoom aliases count as taken; a rebound command frees its old chord; zoom not rebindable; only overrides persisted; rehydration restores them and never restores "recording"; reset; a bare key or lone modifier is not a binding |
+| Real WebView scenario | `cowork-smoke --only command-palette-keybindings` | Ctrl+Shift+P opens the palette on `/`; "system monitor" ranks first and Enter navigates; in Settings → Shortcuts, Ctrl+N is refused naming New Chat and does not open a chat; Ctrl+Alt+Y is accepted and written to `settings.json`; the new chord opens the palette and the old one no longer does; Reset restores the default. **Passed on Windows 2026-09-10** |
+
+AH-207 stays `in-progress`: restoration is proven by the rehydrate test and the
+write to `settings.json`, not by restarting the app on Windows.

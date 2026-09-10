@@ -53,6 +53,12 @@
     "resetFactoryDesc": "Restore application to its initial state, erasing all models and chat history. This action is irreversible and recommended only if the application is corrupted."
   },
   "shortcuts": {
+    "change": "Change",
+    "reset": "Reset",
+    "pressKeys": "Press the new shortcut… (Esc to cancel)",
+    "conflict": "Already used by {{command}}. Choose another shortcut, or change that one first.",
+    "commandPalette": "Command Palette",
+    "commandPaletteDesc": "Open the command palette: navigation, actions, conversations and settings.",
     "application": "Application",
     "newChat": "New Chat",
     "newChatDesc": "Create a new chat.",

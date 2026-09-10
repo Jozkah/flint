@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { isMac } from '@/lib/shortcuts'
+import { useKeybindings } from '@/hooks/useKeybindings'
 
 interface UseKeyboardShortcutProps {
   key: string
@@ -42,6 +43,9 @@ export function useKeyboardShortcut({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // A shortcut is being rebound: the chord pressed is the new binding, not
+      // a command. Also stand down for an event something already handled.
+      if (e.defaultPrevented || useKeybindings.getState().recording) return
       // Check if we're on an excluded route
       if (excludeRoutes.includes(pathname)) {
         // console.warn('Excluded route, not executing shortcut')

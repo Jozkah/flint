@@ -21,6 +21,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useSidebarResize } from "@/hooks/use-sidebar-resize";
 import { mergeButtonRefs } from "@/lib/merge-button-refs";
 import { cn } from "@/lib/utils";
+import { useKeybindings } from "@/hooks/useKeybindings";
+import { ShortcutAction } from "@/lib/shortcuts";
 
 const SIDEBAR_COOKIE_NAME = "sidebar:state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -133,6 +135,16 @@ const SidebarProvider = React.forwardRef<
 		// Adds a keyboard shortcut to toggle the sidebar.
 		React.useEffect(() => {
 			const handleKeyDown = (event: KeyboardEvent) => {
+				// Stand down while a shortcut is being recorded, and once the
+				// user has moved Toggle Sidebar to another chord (AH-207).
+				const bindings = useKeybindings.getState();
+				if (
+					event.defaultPrevented ||
+					bindings.recording ||
+					bindings.overrides[ShortcutAction.TOGGLE_SIDEBAR]
+				) {
+					return;
+				}
 				if (
 					event.key === SIDEBAR_KEYBOARD_SHORTCUT &&
 					(event.metaKey || event.ctrlKey)
