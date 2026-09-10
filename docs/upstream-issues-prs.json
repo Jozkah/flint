@@ -27900,7 +27900,7 @@
       "tests": [
         "src-tauri/src/core/threads/durability_tests.rs"
       ],
-      "verification": "cargo test --lib (test-tauri) threads:: 41 passed; full lib 807 passed.",
+      "verification": "cargo test --lib (test-tauri) threads:: 41 passed; full lib 807 passed. | real-WebView smoke (batch 3): thread-files-are-atomic PASS, then a-torn-thread-tail-heals-after-a-restart PASS in a second process on the kept profile",
       "blockers": [],
       "notes": null
     },
@@ -50231,7 +50231,7 @@
         "web-app/src/lib/__tests__/message-branching.test.ts",
         "web-app/src/routes/threads/__tests__/$threadId.test.tsx"
       ],
-      "verification": "branching 26 passed; route 34 passed; full JS 5991 passed; typecheck clean; mutation of the delete wiring fails the route test.",
+      "verification": "branching 26 passed; route 34 passed; full JS 5991 passed; typecheck clean; mutation of the delete wiring fails the route test. | real-WebView smoke (batch 3): deleting-a-message-keeps-later-replies PASS, then a-deleted-reply-stays-deleted-after-a-restart PASS in a second process on the kept profile",
       "blockers": [],
       "notes": "If the reporter thread has a shape neither path produces, a redacted messages.jsonl is needed."
     },
@@ -51591,7 +51591,7 @@
       "tests": [
         "src-tauri/src/core/mcp/config_durability_tests.rs"
       ],
-      "verification": "config_durability 2 passed; full Rust lib 816 passed.",
+      "verification": "config_durability 2 passed; full Rust lib 816 passed. | real-WebView smoke (batch 3): mcp-config-is-kept-and-the-default-exa-removed PASS",
       "blockers": [],
       "notes": "Both halves fixed. Lost servers: config durability (4f62c64). key arguments not found: tool calls stored without arguments are now stored and restored with an empty input object (web-app/src/lib/messages.ts); removing the load-side default fails the new messages test."
     },
@@ -51891,7 +51891,7 @@
       "tests": [
         "web-app/src/hooks/__tests__/useAssistant.test.ts"
       ],
-      "verification": "useAssistant 10+14 passed, useThreads 15 passed, typecheck clean.",
+      "verification": "useAssistant 10+14 passed, useThreads 15 passed, typecheck clean. | real-WebView smoke (batch 3): edited-instructions-reach-the-open-chat PASS",
       "blockers": [],
       "notes": null
     },
@@ -65182,7 +65182,7 @@
       "implementationStatus": "adapted",
       "forkCommits": [],
       "tests": [],
-      "verification": "knownContextWindow 11 passed; route 37 passed incl. offers Increase Context Size only where Jan sets the window; typecheck clean; forcing the gate true fails the route test.",
+      "verification": "knownContextWindow 11 passed; route 37 passed incl. offers Increase Context Size only where Jan sets the window; typecheck clean; forcing the gate true fails the route test. | real-WebView smoke (batch 3): custom-endpoint-length-stop-offers-no-fake-resize PASS",
       "blockers": [],
       "notes": "Reimplemented on the fork architecture instead of porting: length stops use knownContextWindow (never a 32768 guess), and Increase Context Size is offered only for llamacpp/mlx; other providers get an explanation and Regenerate."
     },
@@ -66276,7 +66276,7 @@
         "web-app/src/lib/__tests__/webSearchTool.native.test.ts",
         "web-app/src/routes/threads/__tests__/$threadId.test.tsx"
       ],
-      "verification": "3 + 38 passed; reverting the gate fails both new tests.",
+      "verification": "3 + 38 passed; reverting the gate fails both new tests. | real-WebView smoke (batch 3): mcp-web-search-is-approved-as-the-servers-tool PASS",
       "blockers": [],
       "notes": "Cowork refuses native web tools when web access is off and has no MCP dispatch path, so no misrouting there."
     },
@@ -73962,7 +73962,7 @@
       "tests": [
         "src-tauri/src/core/setup.rs (exa_migration_tests)"
       ],
-      "verification": "exa_migration_tests 6 passed; full Rust lib 816 passed; local-only guard clean.",
+      "verification": "exa_migration_tests 6 passed; full Rust lib 816 passed; local-only guard clean. | real-WebView smoke (batch 3): mcp-config-is-kept-and-the-default-exa-removed PASS",
       "blockers": [
         "offline launch-and-load run not yet exercised on this machine"
       ],

@@ -410,6 +410,18 @@ pub(crate) fn force_file_secrets() {
     KEYRING_DOWN.store(true, Ordering::Relaxed);
 }
 
+/// Keep every provider secret in the data folder's encrypted file for the
+/// rest of the process, never the OS keyring.
+///
+/// For the real-WebView harness. The keyring is keyed by provider name alone
+/// (`jan-providers` / `<provider>`), not by data folder, so an isolated harness
+/// profile still read the developer's real entries and wrote its own test keys
+/// beside them in the system credential store.
+#[cfg(feature = "cowork-smoke")]
+pub fn use_file_secrets_only() {
+    KEYRING_DOWN.store(true, Ordering::Relaxed);
+}
+
 /// Read a single generic secret stored via `set_secret`. None when absent.
 #[cfg(not(feature = "cli"))]
 #[tauri::command]
