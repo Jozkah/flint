@@ -931,6 +931,19 @@ const SCENARIOS: &[Scenario] = &[
         name: "project-init",
         run: scenario_project_init,
     },
+    Scenario {
+        name: "session-handoff",
+        run: scenario_session_handoff,
+    },
+    // A pair: what a handoff could not restore is still said after a restart.
+    Scenario {
+        name: "handoff-persist-1",
+        run: scenario_handoff_persist_first,
+    },
+    Scenario {
+        name: "handoff-persist-2",
+        run: scenario_handoff_persist_second,
+    },
     // A pair: a draft edited in one process is still there in the next.
     Scenario {
         name: "project-init-draft-1",
@@ -3640,6 +3653,272 @@ fn scenario_session_export_import(ctx: &Ctx) -> ScenarioResult {
         Duration::from_secs(20),
     )?;
     let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}
+
+/// Hand a session to another computer, and continue it there. AH-210.
+///
+/// In the real WebView: a run in a session with the fixture attached is
+/// handed off through the session menu; the file names the folder by name,
+/// branch and commit and carries no path from this machine; importing it says
+/// plainly what could not be restored, checks the folder once it is attached,
+/// and names a model this machine does not have.
+fn scenario_session_handoff(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    let readme = ctx.project.join("README.md").to_string_lossy().to_string();
+    ctx.script_model(
+        "tools",
+        &[&format!("read:{}", serde_json::json!({ "path": readme }))],
+    )?;
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    attach_project(ctx)?;
+    ctx.ensure_model_selected()?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "read the readme for the handoff")?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval("document.querySelector('[data-test-id=\"send-message-button\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the tool call in the transcript",
+        "return !!document.querySelector('[data-testid=\"tool-activity-item\"]');",
+        Duration::from_secs(90),
+    )?;
+    ctx.wait_until(
+        "the run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
+    ctx.settle();
+
+    let dir = std::env::temp_dir().join(format!("jan-smoke-handoff-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|e| fail(e.to_string()))?;
+    let target = dir.join("handoff.jan-session.json");
+    std::fs::write(&target, "").map_err(|e| fail(e.to_string()))?;
+    ctx.script_dialog(Some(&target));
+    let saved = ctx
+        .eval_bool(
+            r#"const row = document.querySelector('[data-sidebar="menu-button"][data-active="true"]')
+                 ?.closest('li');
+               const more = row && row.querySelector('[data-sidebar="menu-action"]');
+               if (!more) return false;
+               more.dispatchEvent(new PointerEvent('pointerdown',
+                 { bubbles: true, cancelable: true, button: 0, pointerType: 'mouse' }));
+               return true;"#,
+        )
+        .and_then(|ok| {
+            ensure!(ok, "the current session's menu is not on the page");
+            ctx.wait_until(
+                "the handoff item",
+                "return !!document.querySelector('[data-testid=\"handoff-session\"]');",
+                Duration::from_secs(10),
+            )?;
+            ctx.eval("document.querySelector('[data-testid=\"handoff-session\"]').click(); return true;")?;
+            let mut body = String::new();
+            for _ in 0..40 {
+                body = std::fs::read_to_string(&target).unwrap_or_default();
+                if body.contains("\"handoff\"") {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            Ok(body)
+        });
+    ctx.clear_dialog_script();
+    let body = saved?;
+    ensure!(
+        body.contains("\"handoff\""),
+        "the handoff was not written; toasts: {}",
+        toasts(ctx)
+    );
+    ensure!(
+        body.contains("read the readme for the handoff"),
+        "the handoff does not carry the conversation"
+    );
+    // No path from this machine: the fixture, its workspace, either separator.
+    let workspace = ctx.workspace.to_string_lossy().to_string();
+    for spelled in [
+        workspace.replace('\\', "\\\\"),
+        workspace.replace('\\', "/"),
+    ] {
+        ensure!(
+            !body.to_lowercase().contains(&spelled.to_lowercase()),
+            "the handoff holds a path from this machine: {spelled}"
+        );
+    }
+    ensure!(
+        body.contains("<folder>"),
+        "the folder's path was not replaced by what it means"
+    );
+    ensure!(!body.contains("smoke-not-a-real-key"), "the handoff holds the provider key");
+    let parsed: Value = serde_json::from_str(&body).map_err(|e| fail(e.to_string()))?;
+    let identity = &parsed["handoff"]["folder"];
+    ensure!(
+        identity["name"] == "cowork-smoke-fixture",
+        "the folder is not named: {identity}"
+    );
+    ensure!(
+        identity["head"].as_str().is_some_and(|h| h.len() == 40),
+        "the folder's commit is not recorded: {identity}"
+    );
+    ensure!(
+        parsed["handoff"]["model"]["provider"] == SMOKE_PROVIDER,
+        "the model is not named: {}",
+        parsed["handoff"]["model"]
+    );
+
+    // Import it: what could not be restored is said plainly.
+    let import = |ctx: &Ctx, file: &Path| -> ScenarioResult {
+        ctx.script_dialog(Some(file));
+        let clicked = ctx.eval_bool(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /import session/i.test((x.textContent || '').trim()));
+             if (!b) return false; b.click(); return true;",
+        );
+        std::thread::sleep(Duration::from_millis(1500));
+        ctx.clear_dialog_script();
+        ensure!(clicked?, "the Import session action is not on the page");
+        Ok(())
+    };
+    import(ctx, &target)?;
+    ctx.wait_until(
+        "the notice of what to restore",
+        "const n = document.querySelector('[data-testid=\"handoff-item-folder\"]');
+         return !!n && n.textContent.includes('cowork-smoke-fixture');",
+        Duration::from_secs(20),
+    )?;
+    ensure!(
+        !ctx.eval_bool("return !!document.querySelector('[data-testid=\"handoff-item-model\"]');")?,
+        "the session's model was reported missing, though this machine has it"
+    );
+
+    // Attach the folder: it is checked against the one the session was on.
+    attach_project(ctx)?;
+    ctx.wait_until(
+        "the attached folder to be checked",
+        "const c = document.querySelector('[data-testid=\"handoff-folder-check\"]');
+         return !!c && c.textContent.includes('matches');",
+        Duration::from_secs(20),
+    )?;
+
+    // A model this machine does not have is named, not silently swapped.
+    let other = dir.join("other-model.jan-session.json");
+    let mut changed = parsed.clone();
+    changed["exportId"] = Value::from("handoff-other-model");
+    changed["handoff"]["model"]["id"] = Value::from("not-a-model");
+    std::fs::write(&other, serde_json::to_vec_pretty(&changed).unwrap())
+        .map_err(|e| fail(e.to_string()))?;
+    import(ctx, &other)?;
+    ctx.wait_until(
+        "the missing model to be named",
+        "const n = document.querySelector('[data-testid=\"handoff-item-model\"]');
+         return !!n && n.textContent.includes('not-a-model');",
+        Duration::from_secs(20),
+    )?;
+    let _ = std::fs::remove_dir_all(&dir);
+    Ok(())
+}
+
+const HANDOFF_MARKER: &str = "handoff-phase-1.txt";
+const HANDOFF_EXPORT_ID: &str = "handoff-persist-check";
+
+/// Phase one: import a handoff whose folder and model this machine does not
+/// have, see the notice, and exit once the session is on disk.
+fn scenario_handoff_persist_first(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    let file = ctx.workspace.join("persist.jan-session.json");
+    let bundle = serde_json::json!({
+        "format": "jan.cowork-session",
+        "schemaVersion": 1,
+        "exportId": HANDOFF_EXPORT_ID,
+        "exportedAt": "2026-09-10T00:00:00Z",
+        "session": { "id": "remote-1", "title": "Handed over", "turns": [], "updated": 1 },
+        "toolActivity": [],
+        "fileActivity": [],
+        "changeSummary": [],
+        "handoff": {
+            "folder": { "name": "far-away-repo", "branch": "main", "head": "0123456789abcdef0123456789abcdef01234567" },
+            "model": { "provider": "provider-not-here", "id": "model-x" }
+        }
+    });
+    std::fs::write(&file, serde_json::to_vec_pretty(&bundle).unwrap()).map_err(|e| fail(e.to_string()))?;
+    ctx.goto("/cowork")?;
+    ctx.script_dialog(Some(&file));
+    let clicked = ctx.eval_bool(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /import session/i.test((x.textContent || '').trim()));
+         if (!b) return false; b.click(); return true;",
+    );
+    std::thread::sleep(Duration::from_millis(1500));
+    ctx.clear_dialog_script();
+    ensure!(clicked?, "the Import session action is not on the page");
+    ctx.wait_until(
+        "the notice naming the provider",
+        "const n = document.querySelector('[data-testid=\"handoff-item-provider\"]');
+         return !!n && n.textContent.includes('provider-not-here');",
+        Duration::from_secs(20),
+    )?;
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let settings = Path::new(&data).join("settings.json");
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let raw = std::fs::read_to_string(&settings).unwrap_or_default();
+        if raw.contains(HANDOFF_EXPORT_ID) && raw.contains("far-away-repo") {
+            break;
+        }
+        ensure!(
+            std::time::Instant::now() < deadline,
+            "the imported session never reached settings.json"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    std::fs::write(ctx.workspace.join(HANDOFF_MARKER), "imported").map_err(|e| fail(e.to_string()))
+}
+
+/// Phase two, a new process: the notice is still there, and dismissing it
+/// is remembered.
+fn scenario_handoff_persist_second(ctx: &Ctx) -> ScenarioResult {
+    ensure!(
+        ctx.workspace.join(HANDOFF_MARKER).exists(),
+        "phase one did not run against this workspace"
+    );
+    ctx.goto("/cowork")?;
+    // The imported session, by its title in the sidebar.
+    ctx.wait_until(
+        "the imported session in the sidebar",
+        "const b = [...document.querySelectorAll('[data-sidebar=\"menu-button\"]')]
+           .find(x => (x.textContent || '').includes('Handed over'));
+         if (b) b.click();
+         return !!b;",
+        Duration::from_secs(20),
+    )?;
+    ctx.wait_until(
+        "the notice to come back after the restart",
+        "const f = document.querySelector('[data-testid=\"handoff-item-folder\"]');
+         const p = document.querySelector('[data-testid=\"handoff-item-provider\"]');
+         return !!f && f.textContent.includes('far-away-repo') && !!p;",
+        Duration::from_secs(20),
+    )?;
+    ctx.eval("document.querySelector('[data-testid=\"handoff-dismiss\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the notice to be dismissed",
+        "return !document.querySelector('[data-testid=\"handoff-notice\"]');",
+        Duration::from_secs(10),
+    )?;
     Ok(())
 }
 

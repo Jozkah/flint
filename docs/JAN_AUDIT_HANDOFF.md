@@ -1878,6 +1878,28 @@ Found while running it on Windows, both fixed with regression tests:
   removes the offer, and the live region was inside the removed element. The
   live region now stays mounted. Mutation-checked.
 
+**AH-210: handing a session to another computer.** A session's menu has
+*Hand off to another computer…*. It writes the AH-203 export, which uses the
+same schema and the same credential redaction and drops the authority the
+session held. It adds a `handoff` block. The block names the folder by its name,
+branch and commit, never its path. It names the model by provider and id, and
+nothing else sent under `handoff` survives, keys included. Every absolute path
+that only means something on this machine is replaced by what it means: the
+session's folder becomes `<folder>`, Jan's data folder becomes `<jan-data>`, and
+the home folder becomes `~`. The file is written and read through dialogs the
+backend owns. Nothing is uploaded, and no account or Jan service is involved.
+
+Importing a handoff creates the session unbound, like any import. It then
+states, item by item, what could not be restored:
+
+- the folder to attach, which is checked against the recorded name, branch and
+  commit once one is attached;
+- a provider that is not set up on this machine;
+- a model that its provider does not offer here.
+
+The notice stays on the session until dismissed, including across a restart.
+It is placed beside the composer and uses a polite live region.
+
 **Stopping a process tree on Windows no longer goes through `taskkill`.**
 `kill_tree` takes one process snapshot, then calls `TerminateProcess` on the
 root and on every descendant. A process counts as a child only if it was created

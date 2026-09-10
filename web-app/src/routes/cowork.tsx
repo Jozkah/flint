@@ -179,6 +179,7 @@ import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
+import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
 import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
 import { orphans as orphanWorktrees } from '@/lib/coworkWorktrees'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
@@ -3144,6 +3145,15 @@ function CoworkPage() {
                   />
                 </div>
               )}
+              {/* AH-210: what a handed-off session could not bring with it. */}
+              <CoworkHandoffNotice
+                handoff={session?.handoff}
+                folder={folder}
+                onDismiss={() =>
+                  session &&
+                  useCoworkSessions.getState().dismissHandoff(session.id)
+                }
+              />
               {/* AH-209: a folder with no JAN.md is offered a starting one,
                   proposed from a survey and written only when accepted. */}
               <CoworkProjectInit

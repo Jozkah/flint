@@ -4,6 +4,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { coworkTurnsToUIMessages } from '@/lib/coworkTurns'
+import type { HandoffRecord } from '@/lib/sessionHandoff'
 import type { ContinuityRecord } from '@/lib/coworkContinuity'
 import {
   emptyCodePanelState,
@@ -128,6 +129,12 @@ export type CoworkSession = {
    * rather than a duplicate. Grants nothing.
    */
   importedFrom?: ImportedFrom
+  /**
+   * What a handed-off session could not bring from the other computer.
+   * AH-210. Grants nothing: the folder it names must be attached here, by
+   * the user, like any other.
+   */
+  handoff?: HandoffRecord
   updated: number
 }
 
@@ -184,8 +191,12 @@ type CoworkSessionsState = {
    * An export already imported is refused, naming the session it became.
    */
   importSession: (
-    bundle: SessionBundle
+    bundle: SessionBundle,
+    /** For a handoff (AH-210): what could not be restored here. */
+    handoff?: HandoffRecord
   ) => { ok: true; id: string } | { ok: false; refusal: ImportRefusal }
+  /** The user has read what a handoff could not restore. */
+  dismissHandoff: (id: string) => void
   setFolder: (id: string, folder: string | null) => void
   setMode: (id: string, mode: CoworkMode) => void
   /** Record, or clear, where the session is in its opening exchange. */
@@ -324,7 +335,16 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         return forkId
       },
 
-      importSession: (bundle) => {
+      dismissHandoff: (id) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id && x.handoff
+              ? { ...x, handoff: { ...x.handoff, dismissed: true } }
+              : x
+          ),
+        })),
+
+      importSession: (bundle, handoff) => {
         const problem = checkBundle(bundle)
         if (problem) {
           return { ok: false, refusal: { reason: 'invalid', message: problem } }
@@ -358,6 +378,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
             sessionId: bundle.session.id,
             at: now(),
           },
+          handoff,
           updated: now(),
         }
         set((s) => ({ sessions: [session, ...s.sessions], currentId: id }))

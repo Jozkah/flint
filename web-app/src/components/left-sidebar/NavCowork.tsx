@@ -33,6 +33,7 @@ import {
   Download,
   FileClock,
   GitFork,
+  Share2,
   Upload,
   MoreHorizontal,
   Trash2,
@@ -65,6 +66,14 @@ import { FileActivityDialog } from '@/containers/dialogs/FileActivityDialog'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
 import { loadToolActivity } from '@/lib/toolActivity'
 import { buildBundle, exportBundle, openBundle } from '@/lib/sessionBundle'
+import {
+  describeRestoreItem,
+  exportHandoff,
+  restoreReport,
+  type HandoffBundle,
+} from '@/lib/sessionHandoff'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { isProviderUsable } from '@/lib/providerReadiness'
 
 type CoworkNavItem = {
   title: string
@@ -199,6 +208,43 @@ const SessionItem = memo(function SessionItem({
             <Download />
             <span>{t('common:exportSession')}</span>
           </DropdownMenuItem>
+          {/* AH-210. The same export, plus which folder (by name, branch and
+              commit) and which model, so another computer can continue it.
+              Paths from this machine are replaced before anything is
+              written; the folder's path is never written. */}
+          <DropdownMenuItem
+            data-testid="handoff-session"
+            onSelect={async () => {
+              const toolActivity = await loadToolActivity(session.id)
+              const models = useModelProvider.getState()
+              const out = await exportHandoff(
+                buildBundle({
+                  session,
+                  toolActivity,
+                  fileActivity: useFileActivity
+                    .getState()
+                    .eventsFor(session.id),
+                }),
+                models.selectedModel
+                  ? {
+                      provider: models.selectedProvider,
+                      id: models.selectedModel.id,
+                    }
+                  : null,
+                session.folder
+              )
+              if (out.ok) {
+                toast.success(
+                  `Handoff saved. ${out.redactions} credential(s) were left out, and the folder is named rather than located.`
+                )
+              } else if (!out.cancelled) {
+                toast.error(`The handoff could not be saved: ${out.message}`)
+              }
+            }}
+          >
+            <Share2 />
+            <span>Hand off to another computer…</span>
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
@@ -303,7 +349,28 @@ export function NavCowork() {
       }
       return
     }
-    const result = useCoworkSessions.getState().importSession(opened.bundle)
+    // A handoff (AH-210) says what it needs to continue; what this computer
+    // cannot give it is worked out now and kept on the session.
+    const info = (opened.bundle as HandoffBundle).handoff
+    const handoff = info
+      ? {
+          info,
+          unrestored: restoreReport(
+            info,
+            useModelProvider.getState().providers.map((provider) => ({
+              provider: provider.provider,
+              models: provider.models.map((model) => ({ id: model.id })),
+              usable: isProviderUsable(provider),
+            }))
+          ),
+        }
+      : undefined
+    const result = useCoworkSessions
+      .getState()
+      .importSession(opened.bundle, handoff)
+    if (result.ok && handoff?.unrestored.length) {
+      toast.info(handoff.unrestored.map(describeRestoreItem).join(' '))
+    }
     if (!result.ok) {
       toast.error(
         result.refusal.reason === 'already-imported'

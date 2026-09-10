@@ -91,6 +91,141 @@ fn scrub_strings(value: &mut Value, count: &mut usize) {
     }
 }
 
+/// A folder as another computer can recognise it: its name and, for a git
+/// checkout, the branch and commit it is on. Never its path. AH-210.
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct FolderIdentity {
+    pub name: String,
+    pub branch: Option<String>,
+    pub head: Option<String>,
+}
+
+pub fn folder_identity(folder: &std::path::Path) -> FolderIdentity {
+    let git = |args: &[&str]| -> Option<String> {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(folder)
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .ok()?;
+        let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        (out.status.success() && !text.is_empty()).then_some(text)
+    };
+    FolderIdentity {
+        name: folder
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        // A detached HEAD has no branch to name.
+        branch: git(&["rev-parse", "--abbrev-ref", "HEAD"]).filter(|b| b != "HEAD"),
+        head: git(&["rev-parse", "HEAD"]),
+    }
+}
+
+/// Every way `path` may have been spelled into a transcript: as given and
+/// canonical, without Windows' verbatim prefix, with either separator.
+fn spellings(path: &std::path::Path) -> Vec<String> {
+    let mut forms = vec![path.to_string_lossy().to_string()];
+    if let Ok(canonical) = path.canonicalize() {
+        forms.push(canonical.to_string_lossy().to_string());
+    }
+    let mut out = Vec::new();
+    for form in forms {
+        let plain = form.trim_start_matches(r"\\?\").to_string();
+        for variant in [plain.clone(), plain.replace('\\', "/"), plain.replace('/', "\\")] {
+            let variant = variant.trim_end_matches(['/', '\\']).to_string();
+            if variant.len() > 3 && !out.contains(&variant) {
+                out.push(variant);
+            }
+        }
+    }
+    out
+}
+
+/// Replace `needle` in `text` wherever it occurs, ignoring ASCII case on
+/// Windows, where a path is the same path in any case.
+fn replace_path(text: &str, needle: &str, with: &str) -> String {
+    if !cfg!(windows) {
+        return text.replace(needle, with);
+    }
+    let lower = text.to_ascii_lowercase();
+    let target = needle.to_ascii_lowercase();
+    let mut out = String::with_capacity(text.len());
+    let mut last = 0;
+    let mut from = 0;
+    while let Some(found) = lower[from..].find(&target) {
+        let at = from + found;
+        out.push_str(&text[last..at]);
+        out.push_str(with);
+        last = at + needle.len();
+        from = last;
+    }
+    out.push_str(&text[last..]);
+    out
+}
+
+fn scrub_paths(value: &mut Value, places: &[(String, &str)]) {
+    match value {
+        Value::String(text) => {
+            for (needle, with) in places {
+                if text.len() >= needle.len() {
+                    *text = replace_path(text, needle, with);
+                }
+            }
+        }
+        Value::Array(items) => items.iter_mut().for_each(|v| scrub_paths(v, places)),
+        Value::Object(map) => map.values_mut().for_each(|v| scrub_paths(v, places)),
+        _ => {}
+    }
+}
+
+/// Ready a session for another computer. AH-210.
+///
+/// Everything [`prepare_export`] does, and then: every absolute path that only
+/// means something on this machine is replaced by what it means -- the
+/// session's folder becomes `<folder>`, Jan's data folder `<jan-data>`, the
+/// home folder `~` -- and a `handoff` block says which folder that was (by
+/// name, branch and commit) and which model the session used (provider and
+/// id only; nothing else the renderer sent under `handoff` survives).
+pub fn prepare_handoff(
+    bundle: Value,
+    folder: Option<&std::path::Path>,
+    data_folder: &std::path::Path,
+    home: Option<&std::path::Path>,
+) -> Result<(Value, usize), String> {
+    let model = bundle
+        .get("handoff")
+        .and_then(|h| h.get("model"))
+        .and_then(|m| {
+            let provider = m.get("provider")?.as_str()?;
+            let id = m.get("id")?.as_str()?;
+            Some(serde_json::json!({ "provider": provider, "id": id }))
+        })
+        .unwrap_or(Value::Null);
+    let (mut out, redactions) = prepare_export(bundle)?;
+    if let Some(map) = out.as_object_mut() {
+        map.remove("handoff");
+    }
+    let mut places: Vec<(String, &str)> = Vec::new();
+    if let Some(folder) = folder {
+        places.extend(spellings(folder).into_iter().map(|p| (p, "<folder>")));
+    }
+    places.extend(spellings(data_folder).into_iter().map(|p| (p, "<jan-data>")));
+    if let Some(home) = home {
+        places.extend(spellings(home).into_iter().map(|p| (p, "~")));
+    }
+    // Longest first, so a folder inside the home folder is named as the
+    // folder rather than as `~/...`.
+    places.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    scrub_paths(&mut out, &places);
+    out["handoff"] = serde_json::json!({
+        "folder": folder.map(folder_identity),
+        "model": model,
+    });
+    Ok((out, redactions))
+}
+
 /// Read a bundle from bytes that came off disk.
 pub fn parse_import(bytes: &[u8]) -> Result<Value, String> {
     if bytes.len() as u64 > MAX_BYTES {
@@ -167,6 +302,93 @@ mod tests {
         let mut b = bundle();
         b["session"]["turns"] = json!("nope");
         assert!(parse_import(b.to_string().as_bytes()).is_err());
+    }
+
+    fn git(dir: &std::path::Path, args: &[&str]) {
+        let ok = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.invalid")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.invalid")
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok, "git {args:?}");
+    }
+
+    fn temp(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "jan-handoff-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// AH-210: the other computer is told which folder, not where it was.
+    #[test]
+    fn a_handoff_names_the_folder_and_carries_no_path_from_this_machine() {
+        let home = temp("home");
+        let folder = home.join("widget");
+        std::fs::create_dir_all(&folder).unwrap();
+        git(&folder, &["init", "-q", "-b", "main"]);
+        std::fs::write(folder.join("a.txt"), "a").unwrap();
+        git(&folder, &["add", "."]);
+        git(&folder, &["commit", "-q", "-m", "base"]);
+        let data = home.join("jan-data");
+        let f = folder.to_string_lossy().to_string();
+        let mut b = bundle();
+        b["session"]["turns"] = json!([
+            { "role": "tool", "name": "write", "args": { "path": format!("{f}{}src{}a.ts", std::path::MAIN_SEPARATOR, std::path::MAIN_SEPARATOR) } },
+            { "role": "tool", "name": "read", "args": { "path": f.replace('\\', "/") + "/README.md" } },
+            { "role": "assistant", "content": format!("the sandbox is {}", data.join("agent-workspace").display()) },
+            { "role": "assistant", "content": format!("notes live in {}", home.join("notes.txt").display()) },
+        ]);
+        b["handoff"] = json!({ "model": { "provider": "openrouter", "id": "gpt-x", "api_key": "sk-live-abcdefghijklmnopqrstuvwxyz0123" } });
+
+        let (out, _) = prepare_handoff(b, Some(&folder), &data, Some(&home)).unwrap();
+        let text = out.to_string();
+        let home_s = home.to_string_lossy().to_string();
+        assert!(!text.contains(&home_s), "{text}");
+        assert!(!text.contains(&home_s.replace('\\', "/")), "{text}");
+        assert!(text.contains("<folder>"), "{text}");
+        assert!(text.contains("<jan-data>"), "{text}");
+        assert!(text.contains("~"), "{text}");
+        assert_eq!(out["handoff"]["folder"]["name"], "widget");
+        assert_eq!(out["handoff"]["folder"]["branch"], "main");
+        assert_eq!(out["handoff"]["folder"]["head"].as_str().unwrap().len(), 40);
+        // Only the provider and the id: a key sent along is never written.
+        assert_eq!(out["handoff"]["model"], json!({ "provider": "openrouter", "id": "gpt-x" }));
+        assert!(!text.contains("sk-live"), "{text}");
+        // Still an export this and older builds read.
+        assert!(parse_import(text.as_bytes()).is_ok());
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn a_handoff_without_a_folder_says_so() {
+        let data = temp("data-only");
+        let (out, _) = prepare_handoff(bundle(), None, &data, None).unwrap();
+        assert!(out["handoff"]["folder"].is_null());
+        assert!(out["handoff"]["model"].is_null());
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn a_folder_that_is_not_a_checkout_is_named_without_a_branch() {
+        let dir = temp("plain");
+        let id = folder_identity(&dir);
+        assert!(id.name.starts_with("jan-handoff-plain"));
+        assert_eq!(id.branch, None);
+        assert_eq!(id.head, None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

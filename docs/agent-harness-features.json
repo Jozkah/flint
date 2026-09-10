@@ -6498,14 +6498,22 @@
       "category": "sessions",
       "phase": 9,
       "phaseName": "Approved additions",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-203",
         "AH-146"
       ],
       "owner": "lane-21-sessions",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/session_bundle.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/lib/sessionHandoff.ts",
+        "web-app/src/containers/CoworkHandoffNotice.tsx",
+        "web-app/src/components/left-sidebar/NavCowork.tsx",
+        "web-app/src/hooks/useCoworkSessions.ts",
+        "web-app/src/routes/cowork.tsx"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "A session and the state needed to continue it export to one bundle that another machine can import and resume.",
@@ -6520,12 +6528,19 @@
         "Tests: unit and integration coverage for the success, refusal, cancellation and negative-authority paths."
       ],
       "tests": [
-        "web-app/src/lib/__tests__/handoffBundle.test.ts"
+        "Jan::core::agent::session_bundle::tests::a_handoff_names_the_folder_and_carries_no_path_from_this_machine",
+        "Jan::core::agent::session_bundle::tests::a_handoff_without_a_folder_says_so",
+        "web-app::sessionHandoff.test.ts",
+        "web-app::CoworkHandoffNotice.test.tsx",
+        "web-app::useCoworkSessions.handoff.test.ts",
+        "cowork-smoke::session-handoff",
+        "cowork-smoke::handoff-persist-1",
+        "cowork-smoke::handoff-persist-2"
       ],
       "platformRequirements": [],
       "blockedReason": null,
       "evidence": "Not implemented. Depends on AH-203, which does not exist yet.",
-      "auditNote": ""
+      "auditNote": "'Hand off to another computer' in a session's menu writes the AH-203 export (same schema, same credential redaction, authority dropped) plus a handoff block: the folder by name, branch and commit (never its path) and the model by provider and id (anything else sent under handoff is dropped, keys included). Every absolute path that only means something on this machine is replaced by what it means: the session's folder becomes <folder>, Jan's data folder <jan-data>, the home folder ~. It is produced and consumed locally through dialogs the backend owns; nothing is uploaded. Importing it creates the session unbound and says, item by item, what could not be restored: the folder to attach (checked against the recorded name, branch and commit once one is attached), a provider not set up here, a model its provider does not offer here. The notice is kept on the session until dismissed. Windows: session-handoff passes in the real WebView, and handoff-persist-1/2 prove the notice survives a real restart. macOS and Linux were not run."
     }
   ]
 }

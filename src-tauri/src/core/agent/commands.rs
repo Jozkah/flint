@@ -815,6 +815,66 @@ pub async fn session_export_save(
     }))
 }
 
+/// Save a session for another computer to continue. AH-210.
+///
+/// The same export as [`session_export_save`], plus the folder's identity and
+/// the model, with every path that only means something here replaced. The
+/// folder's path is used to work those out and is never written. `None`
+/// means the user cancelled.
+#[tauri::command]
+pub async fn session_handoff_save(
+    app: tauri::AppHandle,
+    bundle: serde_json::Value,
+    folder: Option<String>,
+) -> Result<Option<SessionExportReport>, String> {
+    let data_folder = get_jan_data_folder_path(app);
+    let folder = folder
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_dir());
+    let home = dirs::home_dir();
+    let (bundle, redactions) = tauri::async_runtime::spawn_blocking(move || {
+        crate::core::agent::session_bundle::prepare_handoff(
+            bundle,
+            folder.as_deref(),
+            &data_folder,
+            home.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let Some(path) = pick_bundle_path(true).await else {
+        return Ok(None);
+    };
+    let body = serde_json::to_vec_pretty(&bundle).map_err(|e| e.to_string())?;
+    let temp = path.with_extension("json.tmp");
+    std::fs::write(&temp, &body).map_err(|e| format!("could not write the handoff: {e}"))?;
+    std::fs::rename(&temp, &path).map_err(|e| {
+        let _ = std::fs::remove_file(&temp);
+        format!("could not write the handoff: {e}")
+    })?;
+    Ok(Some(SessionExportReport {
+        path: path.to_string_lossy().to_string(),
+        redactions,
+    }))
+}
+
+/// The identity of a folder attached on this machine, to compare with the one
+/// a handed-off session worked in. AH-210.
+#[tauri::command]
+pub async fn session_folder_identity(
+    folder: String,
+) -> Result<crate::core::agent::session_bundle::FolderIdentity, String> {
+    let path = std::path::PathBuf::from(folder);
+    if !path.is_dir() {
+        return Err("that folder is not there".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::core::agent::session_bundle::folder_identity(&path)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 /// Read a session export the user picks. AH-203. `None` means cancelled.
 ///
 /// Only reads and validates: the renderer creates the session, under a new id,

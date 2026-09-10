@@ -101,6 +101,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::utility_agent_record,
         core::agent::commands::session_export_save,
         core::agent::commands::session_import_open,
+        core::agent::commands::session_handoff_save,
+        core::agent::commands::session_folder_identity,
         core::agent::commands::utility_agent_lookup,
         core::agent::commands::agent_skill_list,
         core::agent::commands::agent_skill_read,
