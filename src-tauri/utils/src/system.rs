@@ -5,20 +5,34 @@ pub fn is_flatpak() -> bool {
     Path::new("/.flatpak-info").exists()
 }
 
+/// Whether the bundled `bun` can run on this CPU.
+///
+/// The `bun` Jan bundles is the regular x86-64 build, which requires AVX2. On
+/// a CPU without it `bun` dies on its first instruction ("panic: Illegal
+/// instruction", "Features: no_avx2"), and every MCP server Jan starts through
+/// `npx` fails with it. That check used to run only on Intel macOS, so Windows
+/// and Linux machines without AVX2 lost every npx-based MCP server
+/// (janhq/jan#8314). Non-x86 CPUs are unaffected.
+pub fn bun_runs_on_cpu(is_x86: bool, has_avx2: bool) -> bool {
+    !is_x86 || has_avx2
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+fn this_cpu_runs_bun() -> bool {
+    bun_runs_on_cpu(true, is_x86_feature_detected!("avx2"))
+}
+
+#[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+fn this_cpu_runs_bun() -> bool {
+    bun_runs_on_cpu(false, false)
+}
+
 /// Checks if npx can be overridden with bun binary
 pub fn can_override_npx(bun_path: String) -> bool {
-    // We need to check the CPU for the AVX2 instruction support if we are running under MacOS
-    // with Intel CPU. We can override `npx` command with `bun` only if CPU is
-    // supporting AVX2, otherwise we need to use default `npx` binary
-    #[cfg(all(target_os = "macos", any(target_arch = "x86", target_arch = "x86_64")))]
-    {
-        if !is_x86_feature_detected!("avx2") {
-            #[cfg(feature = "logging")]
-            log::warn!(
-                "Your CPU doesn't support AVX2 instruction, default npx binary will be used"
-            );
-            return false; // we cannot override npx with bun binary
-        }
+    if !this_cpu_runs_bun() {
+        #[cfg(feature = "logging")]
+        log::warn!("Your CPU doesn't support AVX2 instruction, default npx binary will be used");
+        return false; // we cannot override npx with bun binary
     }
     // Check if bun_path exists
     if !std::path::Path::new(bun_path.as_str()).exists() {
@@ -757,7 +771,11 @@ mod tests {
     fn find_rocm_paths_returns_existing_dirs() {
         let rp = find_rocm_paths();
         for p in rp.lib_paths.iter().chain(rp.bin_paths.iter()) {
-            assert!(Path::new(p).exists(), "Returned ROCm path should exist: {}", p);
+            assert!(
+                Path::new(p).exists(),
+                "Returned ROCm path should exist: {}",
+                p
+            );
         }
     }
 
@@ -795,5 +813,26 @@ mod tests {
         } else {
             assert!(!result);
         }
+    }
+}
+
+#[cfg(test)]
+mod bun_cpu_tests {
+    use super::bun_runs_on_cpu;
+
+    // janhq/jan#8314: the regular x86-64 bun build dies on a CPU without AVX2.
+    #[test]
+    fn an_x86_cpu_without_avx2_cannot_run_the_bundled_bun() {
+        assert!(!bun_runs_on_cpu(true, false));
+    }
+
+    #[test]
+    fn an_x86_cpu_with_avx2_can() {
+        assert!(bun_runs_on_cpu(true, true));
+    }
+
+    #[test]
+    fn a_non_x86_cpu_is_unaffected() {
+        assert!(bun_runs_on_cpu(false, false));
     }
 }
