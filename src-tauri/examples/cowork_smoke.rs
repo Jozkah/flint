@@ -10890,6 +10890,9 @@ fn main() {
     });
 
     app_lib::run_app(app);
+    // The app can also end on its own (its window closed, the event loop
+    // gone); the fixture server this process started goes with it.
+    kill_mock();
     std::process::exit(VERDICT.load(Ordering::SeqCst));
 }
 
