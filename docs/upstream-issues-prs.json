@@ -31,11 +31,11 @@
     },
     "byStatus": {
       "not-applicable": 22,
-      "untriaged": 1075,
+      "untriaged": 1074,
       "rejected": 31,
       "already-fixed": 84,
       "needs-user-hardware": 16,
-      "fixed": 29,
+      "fixed": 30,
       "adapted": 15,
       "implementation-ready": 3,
       "cannot-reproduce": 3
@@ -62446,14 +62446,18 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
+      "decision": "fix",
       "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "bee129d"
+      ],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs (a_reasoning_only_reply_is_retried_rather_than_accepted, a_second_empty_reply_ends_the_turn_instead_of_looping)"
+      ],
+      "verification": "Reproduced first: both tests fail on the previous loop (empty reply returned after 2 requests). With the fix: agent suite 464 passed (cli feature). Not run against a real model returning reasoning-only output.",
       "blockers": [],
-      "notes": "batch-3 P1 triage: unsure, leaning needs-fix. The Rust agent loop may accept an empty or reasoning-only final answer as success; needs a test first."
+      "notes": "Upstream PR #8711 closed unmerged; fork had no guard. Reimplemented: one corrective retry per cycle with a stated reason, bounded."
     },
     {
       "source": "janhq/jan",
