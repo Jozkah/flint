@@ -709,9 +709,18 @@ impl CompositeToolInvoker {
                     },
                     &self.events,
                 ) {
-                    Ok(run_id) => format!(
-                        "Subagent started in the background. run_id={run_id}. Continue working, then call await_subagent with this run_id to collect its result."
-                    ),
+                    Ok(run_id) => {
+                        let mut out = format!(
+                            "Subagent started in the background. run_id={run_id}. Continue working, then call await_subagent with this run_id to collect its result."
+                        );
+                        if let Some(c) = ctx.bg.checkout_of(&run_id) {
+                            out.push_str(&format!(
+                                " It works in a checkout of its own at {} (branch {}), so its changes are not in the project until the user reviews and applies them.",
+                                c.path, c.branch
+                            ));
+                        }
+                        out
+                    }
                     Err(e) => format!("ERROR: {e}"),
                 }
             }
@@ -720,12 +729,21 @@ impl CompositeToolInvoker {
                     Ok(r) => r,
                     Err(e) => return format!("ERROR: {e}"),
                 };
-                match await_subagent(&ctx.bg, &run_id).await {
+                let outcome = match await_subagent(&ctx.bg, &run_id).await {
                     Ok(text) if text.trim().is_empty() => {
                         "The subagent finished but produced no text output.".to_string()
                     }
                     Ok(text) => text,
                     Err(e) => format!("ERROR: {e}"),
+                };
+                // A child's report reads as "done" whether or not its changes
+                // are anywhere the user can see; this says where they are.
+                match ctx.bg.checkout_of(&run_id) {
+                    Some(c) => format!(
+                        "{outcome}\n\n(Its changes are in its own checkout at {} on branch {}, waiting for the user's review; none has been applied to the project.)",
+                        c.path, c.branch
+                    ),
+                    None => outcome,
                 }
             }
             "create_subagent" => {

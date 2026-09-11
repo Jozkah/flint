@@ -32,6 +32,7 @@ pub mod session;
 pub mod skill_hub;
 pub mod skills;
 pub mod subagent;
+pub mod team_children;
 pub mod todo;
 pub mod upstream;
 pub mod worktree;

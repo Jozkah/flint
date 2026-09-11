@@ -266,6 +266,7 @@ class Handler(BaseHTTPRequestHandler):
                 "reply",
                 "summary",
                 "delay",
+                "routes",
                 "upstream",
                 "upstream_model",
             ):
@@ -316,8 +317,12 @@ class Handler(BaseHTTPRequestHandler):
                 },
             )
 
+        route = pick_route(body)
         self._begin_stream()
         try:
+            if route is not None:
+                return self._route(route, body, carries_results)
+
             if ARGS.script == "slow":
                 self.wfile.write(sse(chunk({"role": "assistant", "content": ""})))
                 self.wfile.flush()
@@ -403,6 +408,106 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             # The client cancelled. That is a scenario, not an error.
             pass
+
+    def _route(self, route: dict, body: dict, carries_results: bool):
+        """Answer one routed request: its tool calls, then how it ends."""
+        if not carries_results:
+            folder = folder_of(body)
+            self.wfile.write(sse(chunk({"role": "assistant", "content": ""})))
+            for index, spec in enumerate(route.get("tools", [])):
+                name, _, raw_args = spec.partition(":")
+                raw_args = raw_args.replace(
+                    "{{FOLDER}}", json.dumps(folder)[1:-1] if folder else ""
+                )
+                self.wfile.write(
+                    sse(
+                        chunk(
+                            {
+                                "tool_calls": [
+                                    {
+                                        "index": index,
+                                        "id": f"call_{index}",
+                                        "type": "function",
+                                        "function": {
+                                            "name": name,
+                                            "arguments": raw_args or "{}",
+                                        },
+                                    }
+                                ]
+                            }
+                        )
+                    )
+                )
+            self.wfile.write(sse(chunk({}, finish="tool_calls")))
+            self.wfile.write(b"data: [DONE]\n\n")
+            self.wfile.flush()
+            self.close_connection = True
+            return
+        then = route.get("then", "summary")
+        if then == "fail":
+            self.wfile.write(sse(chunk({"role": "assistant", "content": "starting"})))
+            self.wfile.flush()
+            self.wfile.write(b'data: {"error":')
+            self.wfile.flush()
+            self.close_connection = True
+            return
+        if then == "slow":
+            self.wfile.write(sse(chunk({"role": "assistant", "content": ""})))
+            self.wfile.flush()
+            while True:
+                self.wfile.write(sse(chunk({"content": "working "})))
+                self.wfile.flush()
+                time.sleep(ARGS.delay)
+        text = route.get("summary") or ARGS.summary
+        self.wfile.write(sse(chunk({"role": "assistant", "content": ""})))
+        for word in text.split(" "):
+            self.wfile.write(sse(chunk({"content": word + " "})))
+        self.wfile.write(sse(chunk({}, finish="stop")))
+        self.wfile.write(b"data: [DONE]\n\n")
+        self.wfile.flush()
+        self.close_connection = True
+
+
+def text_of(message: dict) -> str:
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            part.get("text", "") for part in content if isinstance(part, dict)
+        )
+    return ""
+
+
+def pick_route(body: dict):
+    """The first route whose `match` is in the request's first user message.
+
+    A team's children each start from their own task description as the only
+    user message, so this is how one scripted server gives each child its own
+    behaviour while the parent keeps the default script.
+    """
+    routes = getattr(ARGS, "routes", None) or []
+    users = [m for m in body.get("messages", []) if m.get("role") == "user"]
+    if not users or not routes:
+        return None
+    first = text_of(users[0])
+    for route in routes:
+        if route.get("match") and route["match"] in first:
+            return route
+    return None
+
+
+def folder_of(body: dict) -> str:
+    """The folder the system prompt says this run may work in."""
+    import re
+
+    for message in body.get("messages", []):
+        if message.get("role") != "system":
+            continue
+        found = re.search(r"attached a project folder: `([^`]+)`", text_of(message))
+        if found:
+            return found.group(1)
+    return ""
 
 
 def main() -> int:

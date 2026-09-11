@@ -338,6 +338,10 @@ pub fn agent_worktree_list(data_folder: String, project: String) -> Vec<worktree
 pub struct ProposalFailure {
     pub message: String,
     pub conflicts: Vec<tauri_plugin_agent_tools::proposal::Conflict>,
+    /// What kind of refusal this is, when the review needs to tell them apart:
+    /// a deleted worktree, a link out of one, a child that did not finish.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<crate::core::agent::team_children::ChildErrorKind>,
 }
 
 impl From<tauri_plugin_agent_tools::proposal::ProposalError> for ProposalFailure {
@@ -349,6 +353,17 @@ impl From<tauri_plugin_agent_tools::proposal::ProposalError> for ProposalFailure
         ProposalFailure {
             message: e.message(),
             conflicts,
+            kind: None,
+        }
+    }
+}
+
+impl From<crate::core::agent::team_children::ChildError> for ProposalFailure {
+    fn from(e: crate::core::agent::team_children::ChildError) -> Self {
+        ProposalFailure {
+            message: e.message,
+            conflicts: Vec::new(),
+            kind: Some(e.kind),
         }
     }
 }
@@ -357,6 +372,7 @@ fn proposal_failure(message: impl Into<String>) -> ProposalFailure {
     ProposalFailure {
         message: message.into(),
         conflicts: Vec::new(),
+        kind: None,
     }
 }
 
@@ -430,8 +446,18 @@ fn proposal_from_worktree(
             "the worktree is not in the state it was recorded in, so its changes are not proposed",
         ));
     }
-    let inputs = crate::core::agent::proposals::changes_in_worktree(&record)
-        .map_err(proposal_failure)?;
+    let inputs = crate::core::agent::proposals::changes_in_worktree(&record).map_err(|e| {
+        let kind = match e {
+            crate::core::agent::proposals::ChangesError::LinkEscape(_) => {
+                Some(crate::core::agent::team_children::ChildErrorKind::LinkEscape)
+            }
+            crate::core::agent::proposals::ChangesError::Other(_) => None,
+        };
+        ProposalFailure {
+            kind,
+            ..proposal_failure(e.to_string())
+        }
+    })?;
     if inputs.is_empty() {
         return Err(proposal_failure("the worktree has no changes to propose"));
     }
@@ -490,6 +516,98 @@ pub async fn agent_proposal_reject(
     let data_folder = get_jan_data_folder_path(app);
     off_the_main_thread(move || {
         tauri_plugin_agent_tools::proposal::reject(&data_folder, &id, &scope).map_err(Into::into)
+    })
+    .await
+}
+
+/// Jan's worktree folder under the data folder the backend itself resolves.
+fn team_roots(data_folder: &std::path::Path) -> Result<std::path::PathBuf, ProposalFailure> {
+    worktree::absolute(&workspace::worktrees_dir(data_folder)).map_err(proposal_failure)
+}
+
+/// Record that a team's isolated child is starting. AH-109.
+///
+/// The renderer names the child -- parent session and task id -- and nothing
+/// else about where it works: the worktree, branch and base are found here.
+#[tauri::command]
+pub async fn agent_team_child_begin(
+    app: tauri::AppHandle,
+    input: crate::core::agent::team_children::BeginInput,
+) -> Result<crate::core::agent::team_children::ChildRecord, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        let roots = team_roots(&data_folder)?;
+        crate::core::agent::team_children::begin(&data_folder, &roots, input).map_err(Into::into)
+    })
+    .await
+}
+
+/// Record how a team's isolated child ended, and fingerprint what it left.
+#[tauri::command]
+pub async fn agent_team_child_settle(
+    app: tauri::AppHandle,
+    parent_session: String,
+    task_id: String,
+    status: crate::core::agent::team_children::ChildStatus,
+    detail: Option<String>,
+) -> Result<crate::core::agent::team_children::ChildRecord, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        let roots = team_roots(&data_folder)?;
+        crate::core::agent::team_children::settle(
+            &data_folder,
+            &roots,
+            &parent_session,
+            &task_id,
+            status,
+            detail.as_deref().unwrap_or_default(),
+        )
+        .map_err(Into::into)
+    })
+    .await
+}
+
+/// Every recorded team child of `project`, looked at again on disk.
+#[tauri::command]
+pub async fn agent_team_children_list(
+    app: tauri::AppHandle,
+    project: String,
+    session: Option<String>,
+) -> Vec<crate::core::agent::team_children::ChildView> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        let roots = team_roots(&data_folder)?;
+        Ok(crate::core::agent::team_children::list(
+            &data_folder,
+            &roots,
+            &project,
+            session.as_deref(),
+        ))
+    })
+    .await
+    .unwrap_or_default()
+}
+
+/// Store a team child's changes as a proposal, refusing with a typed reason
+/// when they are not what the child left or the child did not finish.
+#[tauri::command]
+pub async fn agent_team_child_propose(
+    app: tauri::AppHandle,
+    parent_session: String,
+    task_id: String,
+    acknowledge: bool,
+) -> Result<tauri_plugin_agent_tools::proposal::ProposalRecord, ProposalFailure> {
+    let data_folder = get_jan_data_folder_path(app);
+    off_the_main_thread(move || {
+        let roots = team_roots(&data_folder)?;
+        crate::core::agent::team_children::propose(
+            &data_folder,
+            &roots,
+            &parent_session,
+            &task_id,
+            acknowledge,
+        )
+        .map_err(Into::into)
     })
     .await
 }

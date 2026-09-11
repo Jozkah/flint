@@ -1058,6 +1058,18 @@ async fn edit(
     }
 }
 
+/// `path` made absolute against this process's working directory, with `.`
+/// and `..` resolved lexically. Nothing has to exist yet.
+fn anchored(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        return path.to_path_buf();
+    }
+    match std::env::current_dir() {
+        Ok(cwd) => lexical_normalize(&cwd.join(path)),
+        Err(_) => path.to_path_buf(),
+    }
+}
+
 async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let Some(command) = arg_str(args, "command").filter(|command| !command.trim().is_empty())
     else {
@@ -1072,7 +1084,18 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     // caller explicitly asked for it to keep running and be polled by job_id.
     let background = arg_bool(args, "background");
 
-    let root = ctx.project_root;
+    // Every path the sandbox is given is made absolute first. The confined
+    // helper runs with its working directory set to the workspace, so a
+    // relative path means somewhere else by the time the helper reads it, and
+    // Jan's data folder defaults to the relative `./data`. The shell then
+    // failed in the helper's setup ("workspace does not exist") on every
+    // command, even with a sandbox that works.
+    let root_abs = anchored(ctx.project_root);
+    let root = root_abs.as_path();
+    let mask_abs = ctx.mask_root.map(anchored);
+    let scratch_abs = ctx.scratch_root.map(anchored);
+    let read_abs: Vec<PathBuf> = ctx.read_roots.iter().map(|p| anchored(p)).collect();
+    let write_abs: Vec<PathBuf> = ctx.write_roots.iter().map(|p| anchored(p)).collect();
     if !root.is_dir() {
         return format!(
             "ERROR: working directory does not exist: {}",
@@ -1089,14 +1112,14 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     if ctx.sandbox {
         policy = policy.with_hide_root(&root.join(crate::tools::sandbox::JAN_DIR));
     }
-    if let Some(mask) = ctx.mask_root {
+    if let Some(mask) = mask_abs.as_deref() {
         policy = policy.with_mask_root(mask);
     }
-    if let Some(scratch) = ctx.scratch_root {
+    if let Some(scratch) = scratch_abs.as_deref() {
         policy = policy.with_scratch_root(scratch);
     }
-    if !ctx.read_roots.is_empty() {
-        policy = policy.with_read_roots(ctx.read_roots.to_vec());
+    if !read_abs.is_empty() {
+        policy = policy.with_read_roots(read_abs.clone());
     }
     // The same roots the file tools were granted. Refused outright where the
     // backend cannot confine a shell to them, so `bash` is never the loose end
@@ -1104,11 +1127,11 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     // sandbox-only shell and the mode is not offered in the first place.
     // On AppContainer that means Jan-owned worktrees only: see
     // [`jail::can_confine_write_roots`].
-    let owned = ctx.mask_root.map(crate::workspace::worktrees_dir);
-    if !ctx.write_roots.is_empty()
-        && jail::can_confine_write_roots(jail::backend(), ctx.write_roots, owned.as_deref())
+    let owned = mask_abs.as_deref().map(crate::workspace::worktrees_dir);
+    if !write_abs.is_empty()
+        && jail::can_confine_write_roots(jail::backend(), &write_abs, owned.as_deref())
     {
-        policy = policy.with_write_roots(ctx.write_roots.to_vec());
+        policy = policy.with_write_roots(write_abs.clone());
     }
     // With the sandbox off the shell is spawned bare, the way the user's own
     // terminal would: no wrapper, no policy, the real `$HOME` and `/tmp`. Only
@@ -3881,6 +3904,65 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A sandboxed command runs when the workspace is spelled relatively, as it
+    /// is under Jan's default `./data` data folder. The confined helper starts
+    /// in the workspace, so a relative path handed to it named somewhere else,
+    /// and every command failed in setup with "workspace does not exist" --
+    /// found by the Windows managed-worktree scenario once a shell started.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_sandboxed_command_runs_in_a_relatively_spelled_workspace() {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let rel = PathBuf::from("target").join(format!(
+            "jan-relative-ws-{}-{n}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&rel).unwrap();
+        let store = crate::workspace::project_store(&rel);
+        let ctx = ToolContext::new(&rel, &store, &[]);
+        // The target is spelled absolutely so this is about how the workspace
+        // is handed to the sandbox, not about the shell's working directory.
+        let target = anchored(&rel.join("made.txt"));
+        let out = super::execute_builtin(
+            lookup("bash").unwrap(),
+            &json!({"command": format!("echo made > \"{}\"", target.display())}),
+            &ctx,
+        )
+        .await
+        .0;
+        // No skip for "no shell could be started": on the old code that is
+        // exactly how this failed -- the probe ran under the relative spelling
+        // too -- so it has to fail the test, not excuse it.
+        assert!(!out.contains("does not exist"), "{out}");
+        assert!(rel.join("made.txt").is_file(), "the command did not run: {out}");
+        let _ = std::fs::remove_dir_all(&rel);
+        crate::tools::appcontainer::release(&anchored(&rel));
+    }
+
+    /// A relative path in a sandboxed command lands in the workspace, whatever
+    /// shell was selected. Windows PowerShell in an AppContainer started at a
+    /// drive root instead (`G:\` here), so `echo x > f.txt` wrote elsewhere.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn a_sandboxed_command_starts_in_its_workspace() {
+        let root = unique_root();
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[]);
+        let out = super::execute_builtin(
+            lookup("bash").unwrap(),
+            &json!({"command": "echo here > relative.txt"}),
+            &ctx,
+        )
+        .await
+        .0;
+        assert!(
+            root.join("relative.txt").is_file(),
+            "a relative path did not land in the workspace: {out}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+        crate::tools::appcontainer::release(&root);
+    }
+
     /// A backgrounded command keeps streaming after the call has returned its
     /// `job_id`: the sink lives in the detached task, which is the whole reason
     /// waiting on a long job can show progress.
@@ -4391,15 +4473,25 @@ mod tests {
     #[tokio::test]
     async fn bash_strips_control_chars_but_keeps_text() {
         let root = unique_root();
-        // NUL and bell around visible text plus an ANSI color escape.
-        let out = execute_builtin(
-            lookup("bash").unwrap(),
-            &json!({"command": "printf 'a\\000b\\007\\033[31mred\\033[0m\\n'"}),
-            &root,
-        )
-        .await;
+        // NUL and bell around visible text plus an ANSI color escape, written in
+        // the language of the shell that will run it. `printf` in PowerShell is
+        // an unknown command, and this test used to pass there only because
+        // PowerShell's error echoes the command line, which contains "red".
+        let command = match sandbox_flavor(&root) {
+            Some(proc::ShellFlavor::PowerShell) => {
+                "Write-Output (\"a\" + [char]0 + \"b\" + [char]7 + [char]27 + \"[31mr\" + \"ed\" + [char]27 + \"[0m\")"
+            }
+            Some(proc::ShellFlavor::Cmd) | None => {
+                eprintln!("skipped: no shell here can print raw control characters");
+                return;
+            }
+            Some(proc::ShellFlavor::Posix) => "printf 'a\\000b\\007\\033[31mr''ed\\033[0m\\n'",
+        };
+        let out = execute_builtin(lookup("bash").unwrap(), &json!({"command": command}), &root).await;
+        // "red" never appears in the command itself, so an error that echoes
+        // the command cannot satisfy this.
         assert!(
-            out.contains("red"),
+            out.contains("red") && !out.contains("not recognized") && !out.contains("not found"),
             "text must survive sanitization: {out:?}"
         );
         assert!(!out.contains('\u{0}'), "NUL must be stripped");

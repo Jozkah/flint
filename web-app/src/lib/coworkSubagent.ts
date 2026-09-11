@@ -24,6 +24,7 @@ import {
   type ToolOutcome,
 } from '@/lib/coworkRunner'
 import { buildSubagentSystemPrompt } from '@/lib/coworkPrompt'
+import { streamCutOff } from '@/lib/streamFinish'
 import type { StreamEvent } from '@/hooks/useCoworkRun'
 
 /**
@@ -350,7 +351,10 @@ function childStep(opts: {
       messageMetadata: ({ part }) => {
         usage.observe(part)
         if (part.type !== 'finish') return undefined
-        return { usage: usage.total((part as any).totalUsage) }
+        return {
+          usage: usage.total((part as any).totalUsage),
+          streamCutOff: streamCutOff(part),
+        }
       },
       onError: (error) =>
         error instanceof Error ? error.message : String(error),

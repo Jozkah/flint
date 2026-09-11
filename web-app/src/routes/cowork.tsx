@@ -230,15 +230,29 @@ import {
   type WorktreeRecord,
 } from '@/hooks/useCoworkWorktrees'
 import {
+  applyDecision,
+  conflictKey,
   parseTeamRequest,
   refuseGraph,
+  refuseUnresolved,
   renderTeamReport,
   runTeam,
+  scopeConflicts,
   teamProgress,
   TEAM_DEFAULT_PROMPT,
   type TeamState,
   type TeamTask,
 } from '@/lib/coworkTeam'
+import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
+import { CoworkTeamConflicts } from '@/containers/CoworkTeamConflicts'
+import { CoworkTeamReviews } from '@/containers/CoworkTeamReviews'
+import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
+import {
+  beginTeamChild,
+  settleTeamChild,
+  useTeamChildrenVersion,
+  type ParallelOverride,
+} from '@/lib/teamChildren'
 import {
   describeDestinations,
   planDestinations,
@@ -2109,11 +2123,22 @@ function CoworkPage() {
                 (current?.folder ?? null),
               webSearch,
               // A subagent's mutations are the session's mutations, so
-              // they go through the same prompt rather than around it.
+              // they go through the same prompt rather than around it --
+              // shown on its own, because the child's calls are not parts of
+              // any message on screen.
               onApprove: (callId, toolName, _input, preview) =>
                 useToolApprovalRequests
                   .getState()
-                  .requestApproval(callId, toolName, sid, undefined, preview),
+                  .requestApproval(
+                    callId,
+                    toolName,
+                    sid,
+                    undefined,
+                    preview,
+                    destination
+                      ? `${resolved.name} (its own checkout)`
+                      : resolved.name
+                  ),
               trackShell: () =>
                 useCoworkActiveWork.getState().acquire({
                   sessionId: sid,
@@ -2445,15 +2470,77 @@ function CoworkPage() {
                 return dispatchChild(callId, req)
               },
               onTeam: async (callId, input) => {
-                const tasks = parseTeamRequest(input)
-                if (typeof tasks === 'string') {
-                  return { output: `ERROR: ${tasks}`, isError: true }
+                const parsed = parseTeamRequest(input)
+                if (typeof parsed === 'string') {
+                  return { output: `ERROR: ${parsed}`, isError: true }
                 }
+                let tasks: TeamTask[] = parsed
                 // Refused here rather than inside `runTeam`, so a graph that
                 // cannot run never causes a worktree to be created for it.
                 const badGraph = refuseGraph(tasks)
                 if (badGraph) {
                   return { output: `ERROR: ${badGraph}`, isError: true }
+                }
+                // AH-109: tasks whose declared changes overlap go to the
+                // person before anything is provisioned or dispatched. Each
+                // answer is applied and the graph is looked at again, so a
+                // revised scope that still overlaps is asked about too.
+                const allowParallel = new Set<string>()
+                const overrides: ParallelOverride[] = []
+                const decided: string[] = []
+                for (let round = 0; ; round += 1) {
+                  const open = scopeConflicts(tasks).filter(
+                    (c) => !allowParallel.has(conflictKey(c))
+                  )
+                  if (open.length === 0) break
+                  if (round >= 6) {
+                    return {
+                      output: `ERROR: ${refuseUnresolved(tasks, allowParallel)}`,
+                      isError: true,
+                    }
+                  }
+                  const answer = await useTeamConflictRequests
+                    .getState()
+                    .request(sid, callId, tasks, open, controller.signal)
+                  if (answer.kind === 'cancel') {
+                    return {
+                      output:
+                        'ERROR: the user chose not to run these tasks, because ' +
+                        `they would change the same paths: ${open
+                          .map((c) => `${c.tasks.join(' and ')} on ${c.overlaps.map((o) => o.paths[0]).join(', ')}`)
+                          .join('; ')}. Nothing ran.`,
+                      isError: true,
+                    }
+                  }
+                  for (const c of open) {
+                    const d = answer.decisions[conflictKey(c)]
+                    if (!d) continue
+                    const where = c.overlaps.map((o) => o.paths[0]).join(', ')
+                    if (d.kind === 'parallel') {
+                      allowParallel.add(conflictKey(c))
+                      overrides.push({
+                        tasks: [...c.tasks],
+                        paths: c.overlaps.map((o) => o.paths[0]),
+                        decidedAt: new Date().toISOString(),
+                      })
+                      decided.push(
+                        `${c.tasks.join(' and ')} ran side by side at the user's decision despite both changing ${where}`
+                      )
+                    } else if (d.kind === 'serialize') {
+                      decided.push(
+                        `${d.then} ran after ${d.first}, at the user's decision, because both change ${where}`
+                      )
+                    } else {
+                      decided.push(
+                        `the user limited ${d.task} to: ${d.writes.join(', ') || 'nothing'}`
+                      )
+                    }
+                    tasks = applyDecision(tasks, d)
+                  }
+                  const revised = refuseGraph(tasks)
+                  if (revised) {
+                    return { output: `ERROR: ${revised}`, isError: true }
+                  }
                 }
                 // Every isolated task gets its checkout before any child
                 // starts. A team that could only isolate some of its tasks is
@@ -2508,6 +2595,7 @@ function CoworkPage() {
                     // The turn's controller: stopping the run stops the team,
                     // and every child hangs off a signal chained to this one.
                     signal: controller.signal,
+                    allowParallel,
                     onState: (state: TeamState) =>
                       useCoworkActivity
                         .getState()
@@ -2526,34 +2614,91 @@ function CoworkPage() {
                           .patchTask(taskIdFor(sid, runId, childId), {
                             detail: `own checkout: ${destination.path}`,
                           })
-                      }
-                      const result = await dispatchChild(
-                        childId,
-                        {
-                          subagent_name: one.subagentName ?? 'worker',
+                        // AH-109: recorded before it runs, so its worktree is
+                        // listed for review whatever becomes of the run -- and
+                        // an isolated child that cannot be recorded does not
+                        // run, rather than leaving work nobody is shown.
+                        const began = await beginTeamChild({
+                          parentSession: sid,
+                          taskId: one.id,
+                          run: runId,
+                          call: callId,
                           description: one.description,
-                          // A task that names no saved agent still has to be
-                          // runnable: without a prompt it resolves to nothing
-                          // and is refused as unknown, which would make the
-                          // ordinary case the one that cannot run. A named
-                          // agent ignores this, as `resolveSubagent` prefers
-                          // the saved definition.
-                          system_prompt: TEAM_DEFAULT_PROMPT,
-                        },
-                        signal,
-                        teamTaskId,
-                        destination
-                      )
-                      return {
-                        taskId: one.id,
-                        ok: !result.isError,
-                        output: result.output,
-                        producedBy: childId,
-                        // Not authority-bearing, and the one thing that stops a
-                        // completed task reading as "changed your folder".
-                        ...(destination
-                          ? { destination: destination.path }
-                          : {}),
+                          agent: one.subagentName ?? 'worker',
+                          project: current?.folder ?? '',
+                          declaredWrites: one.writes,
+                          overrides: overrides.filter((o) =>
+                            o.tasks.includes(one.id)
+                          ),
+                        })
+                        useTeamChildrenVersion.getState().bump()
+                        if (!began.ok) {
+                          return {
+                            taskId: one.id,
+                            ok: false,
+                            output: `its checkout could not be recorded for review, so it did not run: ${began.reason}`,
+                            producedBy: childId,
+                          }
+                        }
+                      }
+                      // How the child ended, for its review record: a Stop
+                      // from the panel or the run is a cancellation, never a
+                      // failure and never a success.
+                      const childTask = taskIdFor(sid, runId, childId)
+                      const endedAs = (isError: boolean) =>
+                        signal.aborted ||
+                        useCoworkActivity.getState().tasks[childTask]
+                          ?.status === 'cancelled'
+                          ? ('cancelled' as const)
+                          : isError
+                            ? ('failed' as const)
+                            : ('completed' as const)
+                      let status: 'completed' | 'failed' | 'cancelled' =
+                        'failed'
+                      let detail = ''
+                      try {
+                        const result = await dispatchChild(
+                          childId,
+                          {
+                            subagent_name: one.subagentName ?? 'worker',
+                            description: one.description,
+                            // A task that names no saved agent still has to be
+                            // runnable: without a prompt it resolves to nothing
+                            // and is refused as unknown, which would make the
+                            // ordinary case the one that cannot run. A named
+                            // agent ignores this, as `resolveSubagent` prefers
+                            // the saved definition.
+                            system_prompt: TEAM_DEFAULT_PROMPT,
+                          },
+                          signal,
+                          teamTaskId,
+                          destination
+                        )
+                        status = endedAs(result.isError === true)
+                        detail = result.output.slice(0, 500)
+                        return {
+                          taskId: one.id,
+                          ok: status === 'completed',
+                          output: result.output,
+                          producedBy: childId,
+                          // Not authority-bearing, and the one thing that stops a
+                          // completed task reading as "changed your folder".
+                          ...(destination
+                            ? { destination: destination.path }
+                            : {}),
+                        }
+                      } catch (error) {
+                        status = endedAs(true)
+                        detail =
+                          error instanceof Error ? error.message : String(error)
+                        throw error
+                      } finally {
+                        if (destination) {
+                          await settleTeamChild(sid, one.id, status, detail).catch(
+                            () => {}
+                          )
+                          useTeamChildrenVersion.getState().bump()
+                        }
                       }
                     },
                   })
@@ -2569,9 +2714,17 @@ function CoworkPage() {
                     }
                   }
                   const where = describeDestinations(plan.byTask)
-                  const rendered = where
-                    ? `${renderTeamReport(outcome.report)}\n\n${where}`
-                    : renderTeamReport(outcome.report)
+                  const rendered = [
+                    renderTeamReport(outcome.report),
+                    where
+                      ? `${where}\nTheir changes wait for the user's review in the Changes panel; none of them has been applied.`
+                      : '',
+                    decided.length
+                      ? `Decided by the user before the team ran:\n${decided.map((d) => `- ${d}`).join('\n')}`
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join('\n\n')
                   useCoworkActivity.getState().patchTask(teamTaskId, {
                     // The team's own row settles on what actually happened, so a
                     // partial run cannot read as a finished one at a glance.
@@ -3073,6 +3226,9 @@ function CoworkPage() {
                       </Fragment>
                     ))}
                   </CodeOpenProvider>
+                  {/* AH-109: overlapping team tasks, before either runs. */}
+                  <CoworkTeamConflicts sessionId={session?.id} />
+                  <CoworkChildApprovals sessionId={session?.id} />
                   {running && (
                     // Row wrapper as in the chat route: the transcript is a
                     // column flex, which stretches the indicator's own
@@ -3300,6 +3456,14 @@ function CoworkPage() {
               {worktree && session?.id ? (
                 <CoworkProposalReview
                   worktree={worktree}
+                  session={session.id}
+                  onApplied={() => git.refresh()}
+                />
+              ) : null}
+              {/* AH-109: each isolated team child's worktree, for review. */}
+              {folder && session?.id ? (
+                <CoworkTeamReviews
+                  project={folder}
                   session={session.id}
                   onApplied={() => git.refresh()}
                 />

@@ -361,3 +361,133 @@ fn diagnostics_never_carry_environment_values() {
         "a missing shell should be reported as a missing shell: {seen}"
     );
 }
+
+fn powershell() -> PathBuf {
+    let root = std::env::var_os("SystemRoot")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    root.join(r"System32\WindowsPowerShell\v1.0\powershell.exe")
+}
+
+/// The shell this host actually selects for sandboxed commands (Git Bash's
+/// MSYS2 runtime cannot initialise in an AppContainer, so PowerShell is the
+/// first candidate that starts): it runs inside a Jan-owned worktree granted
+/// as a write root, writes there, and cannot write the user's checkout beside
+/// it -- the managed-worktree layout, with the directories under the test's
+/// own temp root.
+#[test]
+fn the_selected_shell_writes_its_worktree_and_not_the_checkout() {
+    let sandbox = Sandbox::new("worktree-roots");
+    let worktree = sandbox.root.join("jan-worktree");
+    let checkout = sandbox.root.join("user-checkout");
+    std::fs::create_dir_all(&worktree).expect("worktree");
+    std::fs::create_dir_all(&checkout).expect("checkout");
+    let inside = worktree.join("made-by-the-shell.txt");
+    let outside = checkout.join("must-not-exist.txt");
+    let script = format!(
+        "Set-Content -LiteralPath '{}' -Value inside; \
+         try {{ Set-Content -LiteralPath '{}' -Value outside -ErrorAction Stop; 'wrote-outside' }} \
+         catch {{ 'refused-outside' }}",
+        inside.display(),
+        outside.display()
+    );
+    let argv = appcontainer::helper_args(
+        &sandbox.workspace,
+        Some(&sandbox.scratch),
+        &[worktree.clone()],
+        false,
+        &powershell(),
+        &[
+            "-NoProfile".to_string(),
+            "-NonInteractive".to_string(),
+            "-Command".to_string(),
+            script,
+        ],
+    );
+    let out = Command::new(HELPER).args(&argv).output().expect("helper");
+    let seen = text(&out);
+    appcontainer::release(&worktree);
+    assert!(
+        std::fs::read_to_string(&inside).is_ok_and(|t| t.contains("inside")),
+        "the confined shell could not write its worktree: {seen}"
+    );
+    assert!(seen.contains("refused-outside"), "{seen}");
+    assert!(!outside.exists(), "the confined shell wrote the user's checkout: {seen}");
+}
+
+/// Whether `pid` names a running process.
+fn alive(pid: u32) -> bool {
+    Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains(&format!("\"{pid}\"")))
+        .unwrap_or(false)
+}
+
+/// The processes whose parent is `pid`.
+fn children_of(pid: u32) -> Vec<u32> {
+    let out = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &format!(
+                "(Get-CimInstance Win32_Process -Filter 'ParentProcessId={pid}').ProcessId"
+            ),
+        ])
+        .output()
+        .expect("powershell");
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| l.trim().parse().ok())
+        .collect()
+}
+
+/// A confined command stopped part-way -- a timeout or a cancellation -- takes
+/// everything it started with it: the helper, the confined shell and the
+/// shell's own child. Nothing is left running.
+#[test]
+fn a_stopped_sandboxed_command_leaves_no_process_behind() {
+    let sandbox = Sandbox::new("stopped");
+    let argv = appcontainer::helper_args(
+        &sandbox.workspace,
+        Some(&sandbox.scratch),
+        &[],
+        false,
+        &cmd_exe(),
+        // Not `ping`: the sandbox has no network, so it fails at once. A
+        // shell that starts a second program that sleeps is the tree a real
+        // long-running command makes.
+        &[
+            "/C".to_string(),
+            "powershell -NoProfile -NonInteractive -Command Start-Sleep -Seconds 60".to_string(),
+        ],
+    );
+    let mut helper = Command::new(HELPER)
+        .args(&argv)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("helper");
+    let pid = helper.id();
+    // Wait for the confined shell and its ping to exist.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let mut tree = Vec::new();
+    while std::time::Instant::now() < deadline {
+        let shells = children_of(pid);
+        let grandchildren: Vec<u32> = shells.iter().flat_map(|s| children_of(*s)).collect();
+        if !grandchildren.is_empty() {
+            tree = shells.into_iter().chain(grandchildren).collect();
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    assert!(!tree.is_empty(), "the confined command never started");
+
+    let _ = tauri_plugin_agent_tools::tools::proc::kill_tree(pid);
+    let _ = helper.wait();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    for one in std::iter::once(pid).chain(tree.iter().copied()) {
+        assert!(!alive(one), "process {one} outlived the stop");
+    }
+}
