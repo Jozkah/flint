@@ -172,6 +172,7 @@ serde_yaml = "0.9.34"
 toml = "0.8"
 toml_edit = "0.23"
 sha2 = "0.10"
+unicode-normalization = "0.1"
 tar = "0.4"
 zip = "0.6"
 tauri-plugin-deep-link = { version = "2", optional = true }

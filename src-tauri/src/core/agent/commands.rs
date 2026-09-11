@@ -860,6 +860,98 @@ pub async fn agent_worktree_export(
     .map_err(|e| ExportError::io_error(format!("the export did not finish: {e}")))?
 }
 
+// ---------------------------------------------------------------------------
+// AH-169: importing a worktree bundle
+// ---------------------------------------------------------------------------
+
+async fn import_blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, crate::core::agent::bundle_import::ImportError> + Send + 'static,
+) -> Result<T, crate::core::agent::bundle_import::ImportError> {
+    use crate::core::agent::bundle_import::{ImportError, ImportErrorKind};
+    tokio::task::spawn_blocking(work).await.map_err(|e| {
+        ImportError::new(ImportErrorKind::Io, format!("the import did not finish: {e}"))
+    })?
+}
+
+/// Read a bundle folder into a private copy, check it, and store it as a
+/// proposal against `destination`. `token` names the import so it can be
+/// stopped before it has an id.
+#[tauri::command]
+pub async fn agent_bundle_import(
+    app: tauri::AppHandle,
+    token: String,
+    bundle: String,
+    destination: String,
+) -> Result<crate::core::agent::bundle_import::ImportView, crate::core::agent::bundle_import::ImportError> {
+    use crate::core::agent::bundle_import::{self as bi, ImportError, ImportErrorKind};
+    if !bi::valid_token(&token) {
+        return Err(ImportError::new(ImportErrorKind::Io, "an import needs a valid token"));
+    }
+    let data_folder = get_jan_data_folder_path(app);
+    import_blocking(move || {
+        let flag = bi::register(&token);
+        // A test seam, compiled only into the smoke harness: slow each piece
+        // down so a scenario can stop an import part-way.
+        #[cfg(feature = "cowork-smoke")]
+        let pause = std::env::var("JAN_SMOKE_IMPORT_DELAY_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok());
+        let out = bi::import(
+            &data_folder,
+            std::path::Path::new(&bundle),
+            std::path::Path::new(&destination),
+            &flag,
+            bi::LIMITS,
+            &mut |_| {
+                #[cfg(feature = "cowork-smoke")]
+                if let Some(ms) = pause {
+                    std::thread::sleep(std::time::Duration::from_millis(ms));
+                }
+                Ok(())
+            },
+        );
+        bi::unregister(&token);
+        out
+    })
+    .await
+}
+
+/// Stop a running import. Its private copy is removed and nothing is kept.
+#[tauri::command]
+pub fn agent_bundle_import_cancel(token: String) -> bool {
+    crate::core::agent::bundle_import::cancel(&token)
+}
+
+/// Every import into a repository, with its proposal, newest first.
+#[tauri::command]
+pub async fn agent_bundle_imports_list(
+    app: tauri::AppHandle,
+    destination: String,
+) -> Result<Vec<crate::core::agent::bundle_import::ImportView>, crate::core::agent::bundle_import::ImportError> {
+    let data_folder = get_jan_data_folder_path(app);
+    import_blocking(move || Ok(crate::core::agent::bundle_import::list(&data_folder, &destination))).await
+}
+
+/// Apply an approved import, re-checking everything it was bound to.
+#[tauri::command]
+pub async fn agent_bundle_apply(
+    app: tauri::AppHandle,
+    approval: crate::core::agent::bundle_import::BundleApproval,
+) -> Result<tauri_plugin_agent_tools::proposal::ApplyReport, crate::core::agent::bundle_import::ImportError> {
+    let data_folder = get_jan_data_folder_path(app);
+    import_blocking(move || crate::core::agent::bundle_import::apply(&data_folder, &approval)).await
+}
+
+/// Give up on a pending import; its proposal is rejected.
+#[tauri::command]
+pub async fn agent_bundle_abandon(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<crate::core::agent::bundle_import::ImportRecord, crate::core::agent::bundle_import::ImportError> {
+    let data_folder = get_jan_data_folder_path(app);
+    import_blocking(move || crate::core::agent::bundle_import::abandon(&data_folder, &id)).await
+}
+
 async fn replay_blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, crate::core::agent::replay::ReplayError> + Send + 'static,
 ) -> Result<T, crate::core::agent::replay::ReplayError> {

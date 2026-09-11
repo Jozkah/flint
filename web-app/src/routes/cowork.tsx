@@ -243,6 +243,7 @@ import {
 import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 import { CoworkTeamConflicts } from '@/containers/CoworkTeamConflicts'
 import { CoworkTeamReviews } from '@/containers/CoworkTeamReviews'
+import { CoworkBundleImport } from '@/containers/CoworkBundleImport'
 import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
 import {
   beginTeamChild,
@@ -3443,6 +3444,20 @@ function CoworkPage() {
                 <CoworkTeamReviews
                   project={folder}
                   session={session.id}
+                  onApplied={() => git.refresh()}
+                />
+              ) : null}
+              {/* AH-169: a patch bundle exported elsewhere, reviewed here. */}
+              {folder && session?.id ? (
+                <CoworkBundleImport
+                  destination={folder}
+                  session={session.id}
+                  pickFolder={async () => {
+                    const picked = await serviceHub
+                      .dialog()
+                      .open({ directory: true })
+                    return typeof picked === 'string' ? picked : null
+                  }}
                   onApplied={() => git.refresh()}
                 />
               ) : null}

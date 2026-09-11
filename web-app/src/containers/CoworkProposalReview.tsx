@@ -10,7 +10,7 @@
  * refuses -- writing nothing -- when a chosen hunk overlaps such an edit. Those
  * conflicts are shown against the hunks they belong to.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, GitPullRequestArrow, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { WorktreeRecord } from '@/hooks/useCoworkWorktrees'
@@ -24,9 +24,11 @@ import {
   proposeFromWorktree,
   rejectProposal,
   unacknowledgedSelection,
+  type Approval,
   type Conflict,
   type Outcome,
   type ProposalRecord,
+  type ProposalState,
   type ProposedFile,
   type ReviewFlag,
 } from '@/lib/proposals'
@@ -35,6 +37,8 @@ const FLAG_LABEL: Record<ReviewFlag['kind'], string> = {
   dependency: 'Dependency change',
   lockfile: 'Lock file',
   migration: 'Irreversible migration',
+  binary: 'Binary file',
+  deletion: 'Deletion',
 }
 
 /** A lock file is shown apart from source changes (AH-155). */
@@ -245,6 +249,7 @@ export function CoworkProposalReview({
   onApplied,
   propose,
   title,
+  applyWith,
 }: {
   /** A run's own record, or just where a team child worked and where to. */
   worktree: WorktreeRecord | Pick<WorktreeRecord, 'path' | 'sourceRoot'>
@@ -258,10 +263,18 @@ export function CoworkProposalReview({
    */
   propose?: () => Promise<Outcome<{ proposal: ProposalRecord }>>
   title?: string
+  /**
+   * How to apply, when it is not the plain proposal apply: an imported
+   * bundle's approval is also bound to the import (AH-169).
+   */
+  applyWith?: (
+    approval: Approval
+  ) => Promise<Outcome<{ state: ProposalState; filesWritten: number }>>
 }) {
   const [proposal, setProposal] = useState<ProposalRecord | null>(null)
   const [selected, setSelected] = useState<Record<string, string[]>>({})
   const [acknowledged, setAcknowledged] = useState<string[]>([])
+  const applying = useRef(false)
   const [conflicts, setConflicts] = useState<Conflict[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -332,7 +345,18 @@ export function CoworkProposalReview({
     : []
 
   const apply = async () => {
-    if (!proposal) return
+    // A second click that arrives before the first has re-rendered the
+    // button disabled must not send a second approval.
+    if (!proposal || applying.current) return
+    applying.current = true
+    try {
+      await applyOnce(proposal)
+    } finally {
+      applying.current = false
+    }
+  }
+
+  const applyOnce = async (proposal: ProposalRecord) => {
     const approval = approvalFor(proposal, selected, acknowledged)
     if (approval.files.length === 0) {
       setError('Nothing is selected. Reject the proposal to discard it.')
@@ -341,7 +365,9 @@ export function CoworkProposalReview({
     setBusy('apply')
     setError(null)
     setMessage(null)
-    const out = await applyProposal(approval)
+    const out = applyWith
+      ? await applyWith(approval)
+      : await applyProposal(approval)
     setBusy(null)
     if (!out.ok) {
       setError(out.message)

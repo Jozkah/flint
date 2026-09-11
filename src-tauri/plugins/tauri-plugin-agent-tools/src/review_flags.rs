@@ -28,6 +28,11 @@ pub enum FlagKind {
     Lockfile,
     /// A schema or data migration, which a revert of the file does not undo.
     Migration,
+    /// Content that is not text, so no diff of it can be read. AH-169.
+    Binary,
+    /// A file removed. A rename arrives as a removal and an addition, so the
+    /// removed half is reviewed as a deletion. AH-169.
+    Deletion,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -61,6 +66,21 @@ pub fn flags_for(path: &str, base: Option<&[u8]>, proposed: Option<&[u8]>) -> Ve
     }
     if let Some(flag) = migration_flag(path, after.as_deref(), proposed.is_none()) {
         out.push(flag);
+    }
+    let not_text = |b: Option<&[u8]>| b.is_some_and(|b| b.contains(&0) || std::str::from_utf8(b).is_err());
+    if not_text(base) || not_text(proposed) {
+        out.push(ReviewFlag {
+            kind: FlagKind::Binary,
+            summary: format!("{name} is not text, so its change cannot be shown as a diff"),
+            details: Vec::new(),
+        });
+    }
+    if base.is_some() && proposed.is_none() {
+        out.push(ReviewFlag {
+            kind: FlagKind::Deletion,
+            summary: format!("{name} is deleted"),
+            details: Vec::new(),
+        });
     }
     out
 }
@@ -465,10 +485,22 @@ mod tests {
     }
 
     #[test]
+    fn binary_content_and_deletions_are_flagged() {
+        let k = |p: &str, b: Option<&[u8]>, n: Option<&[u8]>| -> Vec<FlagKind> {
+            flags_for(p, b, n).into_iter().map(|f| f.kind).collect()
+        };
+        assert_eq!(k("logo.png", None, Some(&[0x89, 0, 1])), vec![FlagKind::Binary]);
+        assert_eq!(k("logo.png", Some(&[0x89, 0, 1]), None), vec![FlagKind::Binary, FlagKind::Deletion]);
+        assert_eq!(k("notes.txt", Some(b"a\n"), None), vec![FlagKind::Deletion]);
+        assert_eq!(k("latin1.txt", Some(b"a"), Some(&[0xE9])), vec![FlagKind::Binary]);
+        assert!(k("notes.txt", Some(b"a\n"), Some(b"b\n")).is_empty());
+    }
+
+    #[test]
     fn lock_files_are_flagged_on_their_own() {
         assert_eq!(kinds("Cargo.lock", Some("a"), Some("b")), vec![FlagKind::Lockfile]);
         assert_eq!(kinds("web/yarn.lock", None, Some("b")), vec![FlagKind::Lockfile]);
-        assert_eq!(kinds("go.sum", Some("a"), None), vec![FlagKind::Lockfile]);
+        assert_eq!(kinds("go.sum", Some("a"), None), vec![FlagKind::Lockfile, FlagKind::Deletion]);
         assert!(kinds("notes/lock.md", Some("a"), Some("b")).is_empty());
     }
 
