@@ -45,6 +45,11 @@ pub const METADATA_FIELDS: &[&str] = &[
     // The same facts as the tool-activity payload names them (`activity`).
     "kind", "elapsed_ms", "exit_code", "event_type", "lifecycle", "source", "output_truncated",
     "refusal",
+    // usage.reported and message.completed: counts and sizes, never content.
+    // Named apart from the activity payload's `input`/`output`, which are a
+    // tool's arguments and result and must never pass as metadata.
+    "inputTokens", "cachedTokens", "uncachedTokens", "cacheWriteTokens", "outputTokens",
+    "totalTokens", "cacheStatus", "requests", "textChars", "reasoningChars", "toolCalls",
 ];
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]

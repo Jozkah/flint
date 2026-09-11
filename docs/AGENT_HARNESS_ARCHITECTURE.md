@@ -615,6 +615,63 @@ plugin started, and subagent futures end with the process. On the next start
 never show it running. There is no durable worker, which is why AH-101's
 persistence criterion is open.
 
+## Execution timeline panel (AH-172)
+
+The Timeline rail (`CoworkTimelinePanel`, model in `lib/executionTimeline.ts`)
+reads the session's canonical event log through `agent_events_list(session,
+after_seq, limit)` -- one session only, oldest first, at most 5000 per page,
+with `lastSeq` so polling knows it caught up; an unreadable log is an error
+shown in the panel, never an empty list.
+
+- **Rows.** A tool call or run lifecycle item is one row folded from its
+  phases (keyed by call, agent and run, so two agents reusing a provider call
+  id stay two rows); every other event is its own row: `run.started`/`ended`,
+  `agent.dispatched`/`ended`, `job.started`/`ended`, and per model request
+  `usage.reported` (provider counts only, token-named keys) and
+  `message.completed` (sizes only: characters and tool calls; the words stay in
+  the transcript). Order is the log's `seq`. A kind this build does not know is
+  shown by name.
+- **States.** running, queued, awaiting approval, completed, failed, refused
+  (with the typed refusal kind), cancelled, interrupted (a call a dead run
+  left, settled `stale` at start-up) -- in words, not only an icon.
+- **Categories and filters.** messages, reasoning, tools, edits, usage,
+  steering, approvals, background, subagents, run; a row can be in several (an
+  edit that waited for Allow once is tools, edits and approvals). Reasoning is
+  a category but Cowork's runner records no reasoning size yet, so it is empty
+  there.
+- **Edits.** A row's `+added −removed` are that call's own diff counts; opening
+  it loads the diff the backend stored for that session and call
+  (`tool_activity_diff`) and renders it with file path and hunk count --
+  never the repository's current aggregate and never a tool's own display
+  text. `change.kind` is `created`/`deleted`/`edited` from the diff's headers
+  unless the caller said otherwise.
+- **Invocation linking.** Each row carries its request's invocation id;
+  pressing it highlights every row of that request (tool calls, usage,
+  response), which is the same id the prompt snapshot and the usage record
+  carry.
+- **Live, keyboard, size.** Polls every 1.5 s while a run is going and once
+  more when it ends; follows the end of the list until the user scrolls up,
+  then says "Paused" until "Follow live". `role="feed"`, rows are `article`s
+  with `aria-posinset`/`aria-setsize` and a label of title and status; arrow
+  keys, Home and End move between rows. Above 200 rows the list is virtualized
+  (`@tanstack/react-virtual`).
+- **Isolation.** Switching session clears the panel and drops any page that
+  arrives late for the previous one.
+
+**Audit export formats (versioned).**
+
+- `jan-event-export`, schema 1 (`event_export.rs`): a folder with
+  `events.jsonl` (envelopes, version 1: `v, id, session, run, invocation, seq,
+  at, kind, payload, redactions`) and `manifest.json` (`schemaVersion, kind,
+  envelopeVersion, session, run, metadataOnly, count, firstSeq, lastSeq,
+  eventsSha256, createdAt, note`). Metadata-only by default: payloads keep only
+  the scalar allowlist `METADATA_FIELDS` (status, phase, tool, capability,
+  kind, agent, durations, exit codes, refusal kind, token counts and sizes).
+- `jan-audit-export`, version 1 (`activity::export`, `audit_export(session)`):
+  `{ format, version, exported_at, session, permissions: PermissionRecord[],
+  activity: ToolActivityItem[] }` -- the session's permission decisions and its
+  folded execution record, both redacted when written; a session is required.
+
 ## Tool activity: the canonical record (AH-050) and the timeline (AH-172)
 
 Two logs, deliberately separate:

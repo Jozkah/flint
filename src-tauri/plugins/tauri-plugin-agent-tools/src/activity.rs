@@ -341,6 +341,24 @@ fn bound_tail(text: &str, max: usize) -> (String, bool) {
     (text[start..].to_string(), true)
 }
 
+/// What a unified diff did to its file, from its own headers: a hunk that
+/// starts from nothing (`@@ -0,0`, or `--- /dev/null`) created it, one that
+/// ends in nothing deleted it, anything else edited it. The caller's own
+/// `change.kind` wins when it gave one.
+pub fn change_kind_of(diff: &str) -> &'static str {
+    let created = diff.lines().any(|l| l.starts_with("--- /dev/null"))
+        || diff.lines().find(|l| l.starts_with("@@")).is_some_and(|h| h.starts_with("@@ -0,0 "));
+    let deleted = diff.lines().any(|l| l.starts_with("+++ /dev/null"))
+        || diff.lines().find(|l| l.starts_with("@@")).is_some_and(|h| h.contains(" +0,0 @@"));
+    if created {
+        "created"
+    } else if deleted {
+        "deleted"
+    } else {
+        "edited"
+    }
+}
+
 /// Lines added and removed by a unified diff.
 pub fn diff_counts(diff: &str) -> (u32, u32) {
     let mut added = 0u32;
@@ -492,9 +510,10 @@ fn store_diff(data_folder: &Path, event: &mut ToolActivityEvent) -> Result<(), S
     if let Some(diff) = event.diff.take() {
         let (added, removed) = diff_counts(&diff);
         let default_path = event.resource.clone();
+        let default_kind = change_kind_of(&diff);
         let change = event.change.get_or_insert_with(|| FileChange {
             path: default_path,
-            kind: "edited".into(),
+            kind: default_kind.into(),
             from: None,
             added: None,
             removed: None,
@@ -1135,6 +1154,35 @@ mod tests {
         append(&dir, &e);
         assert_eq!(read_legacy(&dir).len(), 1);
         assert_eq!(items(&dir, None).len(), 1);
+    }
+
+    /// A new file is recorded as created and a removed one as deleted, from
+    /// the diff's own headers; a caller's own kind is kept.
+    #[test]
+    fn a_change_says_whether_it_created_edited_or_deleted_the_file() {
+        assert_eq!(change_kind_of("--- /dev/null\n+++ b/a.txt\n@@ -0,0 +1,2 @@\n+a\n+b\n"), "created");
+        assert_eq!(change_kind_of("@@ -0,0 +1 @@\n+a\n"), "created");
+        assert_eq!(change_kind_of("--- a/a.txt\n+++ /dev/null\n@@ -1,1 +0,0 @@\n-a\n"), "deleted");
+        assert_eq!(change_kind_of("@@ -1,2 +1,2 @@\n-a\n+b\n c\n"), "edited");
+        let dir = scratch();
+        let mut made = ev("w1", "write", Phase::Succeeded);
+        made.diff = Some("@@ -0,0 +1,2 @@\n+a\n+b\n".into());
+        append(&dir, &made);
+        let mut given = ev("w2", "write", Phase::Succeeded);
+        given.diff = Some("@@ -0,0 +1 @@\n+a\n".into());
+        given.change = Some(FileChange {
+            path: "x".into(),
+            kind: "renamed".into(),
+            from: Some("y".into()),
+            added: None,
+            removed: None,
+            diff_stored: false,
+            oversized: false,
+        });
+        append(&dir, &given);
+        let items = items(&dir, Some("s1"));
+        assert_eq!(items[0].change.as_ref().unwrap().kind, "created");
+        assert_eq!(items[1].change.as_ref().unwrap().kind, "renamed");
     }
 
     /// A harness refusal keeps its kind through the log and onto the item,

@@ -138,6 +138,7 @@ import { usePrompt } from '@/hooks/usePrompt'
 import { setSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
 import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { fromCoworkUsage, summarizeUsage } from '@/lib/tokenUsage'
+import { usageEventPayload } from '@/lib/executionTimeline'
 import { TurnUsageDetails } from '@/components/TurnUsageDetails'
 import { recordMemoryUses } from '@/lib/memoryUses'
 import type { TurnMemory } from '@/types/coworkSession'
@@ -164,6 +165,7 @@ import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
 import { CoworkRewind } from '@/containers/CoworkRewind'
 import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
+import { CoworkTimelinePanel } from '@/containers/CoworkTimelinePanel'
 import type { LiveJob } from '@/lib/coworkTasks'
 import {
   codeRefToken,
@@ -3064,6 +3066,39 @@ function CoworkPage() {
              * Without that the count is "the last request", which is a
              * different thing on every step of a long turn.
              */
+            // AH-172: the request's own events in the canonical log, bound
+            // to its invocation -- its usage (counts only) and what the
+            // response was made of (sizes only; the words stay in the
+            // transcript). One id per invocation, so a retried record is one.
+            const stepInvocation = (stepSnapshot ?? lastSnapshotRef.current[sid])?.invocation
+            if (stepInvocation) {
+              const stepUsage = fromCoworkUsage(result.usage)
+              recordEvents([
+                ...(stepUsage
+                  ? [
+                      {
+                        id: `usage:${stepInvocation}`,
+                        session: sid,
+                        run: runId,
+                        invocation: stepInvocation,
+                        kind: 'usage.reported' as const,
+                        payload: usageEventPayload(stepUsage),
+                      },
+                    ]
+                  : []),
+                {
+                  id: `message:${stepInvocation}`,
+                  session: sid,
+                  run: runId,
+                  invocation: stepInvocation,
+                  kind: 'message.completed' as const,
+                  payload: {
+                    textChars: result.text.length,
+                    toolCalls: result.toolCalls.length,
+                  },
+                },
+              ])
+            }
             if (result.usage) {
               void recordPayloadUsage({
                 session: sid,
@@ -3970,6 +4005,13 @@ function CoworkPage() {
                 useCoworkActivity.getState().clearFinished(session.id)
               }
             }}
+            onClose={() => setRail(null)}
+          />
+        )}
+        {rail?.kind === 'timeline' && session?.id && (
+          <CoworkTimelinePanel
+            sessionId={session.id}
+            running={running}
             onClose={() => setRail(null)}
           />
         )}

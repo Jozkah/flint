@@ -97,6 +97,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_prompt_snapshots_delete,
         core::agent::commands::agent_worktree_export,
         core::agent::commands::agent_events_record,
+        core::agent::commands::agent_events_list,
         core::agent::commands::agent_events_export,
         core::agent::commands::agent_events_export_cancel,
         core::agent::commands::agent_events_inspect,

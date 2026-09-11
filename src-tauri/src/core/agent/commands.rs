@@ -1167,6 +1167,48 @@ pub fn agent_events_export_cancel(token: String) -> bool {
     }
 }
 
+/// One page of a session's canonical events, oldest first, for the desktop
+/// execution timeline. AH-172.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventsPage {
+    pub events: Vec<tauri_plugin_agent_tools::event_log::Envelope>,
+    /// The highest `seq` in the session's log, so a caller polling with
+    /// `after_seq` knows whether it has caught up.
+    pub last_seq: u64,
+    /// More events after `after_seq` than `limit` allowed.
+    pub truncated: bool,
+}
+
+/// A session's events after `after_seq`, at most `limit` (default and cap
+/// 5000). Scoped to the one session named; payloads were redacted and bounded
+/// when they were written. A log that cannot be read is a typed error, not an
+/// empty page.
+#[tauri::command]
+pub async fn agent_events_list(
+    app: tauri::AppHandle,
+    session: String,
+    after_seq: Option<u64>,
+    limit: Option<usize>,
+) -> Result<EventsPage, String> {
+    if session.trim().is_empty() {
+        return Err("listing events needs the session they belong to".to_string());
+    }
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        let all = tauri_plugin_agent_tools::event_log::read_session(&data_folder, &session)
+            .map_err(|e| e.message())?;
+        let last_seq = all.last().map_or(0, |e| e.seq);
+        let after = after_seq.unwrap_or(0);
+        let cap = limit.unwrap_or(5000).clamp(1, 5000);
+        let newer: Vec<_> = all.into_iter().filter(|e| e.seq > after).collect();
+        let truncated = newer.len() > cap;
+        Ok(EventsPage { events: newer.into_iter().take(cap).collect(), last_seq, truncated })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// Read an export back as untrusted input and summarize it. Nothing in it is
 /// run or replayed.
 #[tauri::command]

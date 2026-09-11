@@ -1675,11 +1675,12 @@
         "web-app/src/lib/__tests__/toolActivityRecord.test.ts",
         "src-tauri/examples/cowork_smoke.rs::tool-activity-timeline",
         "src-tauri/examples/cowork_smoke.rs::execution-record",
-        "src-tauri/examples/cowork_smoke.rs::execution-record-restart"
+        "src-tauri/examples/cowork_smoke.rs::execution-record-restart",
+        "tauri-plugin-agent-tools::activity::tests::a_change_says_whether_it_created_edited_or_deleted_the_file"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Canonical lifecycle events for every dispatched tool call; append-only JSONL, session-scoped reads, stale settlement at startup. 2026-09-11: Chat's tool loop now writes the same record as Cowork (it wrote none before), including its approval and refusal phases; schema v2 adds a per-log sequence number, redacted and bounded input and output (unavailable output reads as unavailable, never empty), job/task/parent/supersession ids, lifecycle events (compaction, subagent queue, stops) in the same sequence, and per-call diffs stored beside the log with their own +/- counts; items are keyed by session and call, so two sessions reusing a provider call id no longer merge. Still implemented rather than verified: the Rust agent loop (CLI) does not write this record. Integration 2026-09-11: stored in the session event log (AH-005) instead of audit/tool-activity.jsonl, which is now read-only legacy input; items() folds legacy and canonical events with each transition counted once, and settle_unfinished writes its stale ending to the same log the export reads. Cowork main-agent tool events carry the invocation of the request that asked for them (the runner reports each response before its calls run); subagent tool events still carry none."
+      "auditNote": "Canonical lifecycle events for every dispatched tool call; append-only JSONL, session-scoped reads, stale settlement at startup. 2026-09-11: Chat's tool loop now writes the same record as Cowork (it wrote none before), including its approval and refusal phases; schema v2 adds a per-log sequence number, redacted and bounded input and output (unavailable output reads as unavailable, never empty), job/task/parent/supersession ids, lifecycle events (compaction, subagent queue, stops) in the same sequence, and per-call diffs stored beside the log with their own +/- counts; items are keyed by session and call, so two sessions reusing a provider call id no longer merge. Still implemented rather than verified: the Rust agent loop (CLI) does not write this record. Integration 2026-09-11: stored in the session event log (AH-005) instead of audit/tool-activity.jsonl, which is now read-only legacy input; items() folds legacy and canonical events with each transition counted once, and settle_unfinished writes its stale ending to the same log the export reads. Cowork main-agent tool events carry the invocation of the request that asked for them (the runner reports each response before its calls run); subagent tool events still carry none. 2026-09-11: each model request also writes usage.reported and message.completed to the same log under its invocation, and a file change's kind is created/deleted/edited from its diff headers."
     },
     {
       "id": "AH-051",
@@ -5687,7 +5688,9 @@
         "web-app/src/lib/coworkActivityTimeline.ts",
         "web-app/src/lib/coworkTurns.ts",
         "web-app/src/containers/message/ChainOfThoughtGroup.tsx",
-        "web-app/src/containers/CoworkHiddenTools.tsx"
+        "web-app/src/containers/CoworkHiddenTools.tsx",
+        "web-app/src/containers/CoworkTimelinePanel.tsx",
+        "web-app/src/lib/executionTimeline.ts"
       ],
       "securityImpact": "none",
       "acceptanceCriteria": [
@@ -5700,11 +5703,15 @@
       "tests": [
         "web-app/src/lib/__tests__/coworkActivityTimeline.test.ts",
         "web-app/src/lib/__tests__/coworkToolActivity.test.ts",
-        "src-tauri/examples/cowork_smoke.rs::tool-activity-timeline"
+        "src-tauri/examples/cowork_smoke.rs::tool-activity-timeline",
+        "web-app::CoworkTimelinePanel.test.tsx",
+        "web-app::executionTimeline.test.ts",
+        "cowork-smoke::execution-timeline",
+        "cowork-smoke::execution-timeline-restart"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Timeline built on the AH-050 record: one durable item per call, ordered by request time, restored after a restart, and never folded away behind an answer."
+      "auditNote": "Timeline built on the AH-050 record: one durable item per call, ordered by request time, restored after a restart, and never folded away behind an answer. 2026-09-11 (feat/integrated-phase-2): a dedicated Timeline rail reads the session's canonical event log (agent_events_list) and shows every recorded call and run event chronologically with compact/expanded rows, ten category filters, running/queued/awaiting/completed/failed/refused/cancelled/interrupted states in words, per-edit +/- counts and the stored unified diff with file and hunk metadata, invocation linking (a request's tool calls, usage and response highlight together), follow-live with pause/resume, arrow/Home/End keyboard navigation, feed/article screen-reader semantics, and virtualization above 200 rows. Real app: execution-timeline and execution-timeline-restart (Windows, mock provider, retries off) -- log order, edits with counts and approvals, filters, the edit's own diff, keyboard, invocation linking, no raw i18n key, and the same rows after a restart with nothing sent."
     },
     {
       "id": "AH-173",
@@ -6498,7 +6505,7 @@
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "2026-09-11: `audit_export(session)` returns one JSON document joining the session's permission decisions (permissions.jsonl) and its execution record (tool calls and run lifecycle events, tool-activity.jsonl), both redacted when written; an export needs a session. Not complete: the Rust agent loop (CLI) writes no execution record, and there is no negative authority test beyond session scoping. Integration 2026-09-11: AH-005 and AH-177 are implemented on main, so the dependency is no longer blocked; the execution record the export joins is folded from the session event log (legacy tool-activity.jsonl lines still read). Remaining: the CLI loop writes no record, and no negative authority test beyond session scoping."
+      "auditNote": "2026-09-11: `audit_export(session)` returns one JSON document joining the session's permission decisions (permissions.jsonl) and its execution record (tool calls and run lifecycle events, tool-activity.jsonl), both redacted when written; an export needs a session. Not complete: the Rust agent loop (CLI) writes no execution record, and there is no negative authority test beyond session scoping. Integration 2026-09-11: AH-005 and AH-177 are implemented on main, so the dependency is no longer blocked; the execution record the export joins is folded from the session event log (legacy tool-activity.jsonl lines still read). Remaining: the CLI loop writes no record, and no negative authority test beyond session scoping. 2026-09-11: both export formats (jan-event-export schema 1, jan-audit-export version 1) are documented field by field in AGENT_HARNESS_ARCHITECTURE.md. Remaining unchanged: the CLI loop writes no record, and no negative authority test beyond session scoping."
     },
     {
       "id": "AH-201",

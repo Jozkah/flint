@@ -182,7 +182,8 @@
     "code": "Code",
     "preview": "Preview",
     "changes": "Changes",
-    "activity": "Activity"
+    "activity": "Activity",
+    "timeline": "Timeline"
   },
   "changes": {
     "title": "Changes",
@@ -1305,5 +1306,53 @@
     "currentStopped": "Stopped this task.",
     "allStopped": "Stopped all activity ({{count}} stopped).",
     "incomplete": "Stopped, but {{count}} process(es) are still running."
+  },
+  "timeline": {
+    "title": "Timeline",
+    "count_one": "1 event",
+    "count_other": "{{count}} events",
+    "filters": "Show on the timeline",
+    "following": "Following live",
+    "paused": "Paused: scroll to the end or press Follow live",
+    "followLive": "Follow live",
+    "clearLink": "Clear request link",
+    "linkHint": "Highlight everything from this model request",
+    "empty": "Nothing recorded for this session yet.",
+    "unreadable": "This session's event log could not be read: {{error}}",
+    "call": "Call",
+    "invocation": "Request",
+    "phases": "Phases",
+    "duration": "Duration",
+    "exitCode": "Exit code",
+    "refusal": "Refused as",
+    "input": "Input",
+    "output": "Output",
+    "truncated": "end only",
+    "hunks_one": "1 hunk",
+    "hunks_other": "{{count}} hunks",
+    "diffOversized": "This edit's diff was too large to keep; its line counts are shown.",
+    "diffUnavailable": "No diff was stored for this edit.",
+    "category": {
+      "messages": "Messages",
+      "reasoning": "Reasoning",
+      "tools": "Tools",
+      "edits": "Edits",
+      "usage": "Usage",
+      "steering": "Steering",
+      "approvals": "Approvals",
+      "background": "Background",
+      "subagents": "Subagents",
+      "run": "Run"
+    },
+    "status": {
+      "running": "Running",
+      "queued": "Queued",
+      "awaiting": "Awaiting approval",
+      "completed": "Completed",
+      "failed": "Failed",
+      "refused": "Refused",
+      "cancelled": "Cancelled",
+      "interrupted": "Interrupted"
+    }
   }
 }

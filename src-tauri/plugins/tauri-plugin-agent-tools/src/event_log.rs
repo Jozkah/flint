@@ -49,6 +49,10 @@ pub const KNOWN_KINDS: &[&str] = &[
     "agent.ended",
     "job.started",
     "job.ended",
+    // One per model request: the provider's usage (counts only), and what the
+    // response was made of (sizes only; the words stay in the transcript).
+    "usage.reported",
+    "message.completed",
     // One per `activity::Phase`, for a tool call ...
     "tool.requested",
     "tool.queued",

@@ -1090,6 +1090,10 @@ const SCENARIOS: &[Scenario] = &[
         name: "agent-role-cancel",
         run: scenario_role_cancel,
     },
+    Scenario {
+        name: "execution-timeline",
+        run: scenario_execution_timeline,
+    },
     // A pair (AH-005/AH-177).
     Scenario {
         name: "event-export-1",
@@ -1331,6 +1335,10 @@ const RESTART_SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "agent-role-cancel-restart",
         run: scenario_role_cancel_restart,
+    },
+    Scenario {
+        name: "execution-timeline-restart",
+        run: scenario_execution_timeline_restart,
     },
 ];
 
@@ -4684,6 +4692,254 @@ fn scenario_agent_roles(ctx: &Ctx) -> ScenarioResult {
         ensure!(text.contains(role), "the run does not name the {role} child by role");
     }
     println!("      NOTE: explorer's ls {}", if explorer_read { "succeeded" } else { "was not recorded" });
+    Ok(())
+}
+
+const TIMELINE_HANDOFF: &str = "execution-timeline";
+
+/// Open the Timeline rail if it is not showing.
+fn show_timeline(ctx: &Ctx) -> ScenarioResult {
+    if !ctx.eval_bool("return !!document.querySelector('[data-testid=\"timeline-panel\"]');")? {
+        ctx.click_rail("Timeline")?;
+    }
+    ctx.wait_until(
+        "the timeline panel",
+        "return !!document.querySelector('[data-testid=\"timeline-panel\"]');",
+        Duration::from_secs(15),
+    )
+}
+
+/// Every row the timeline shows, as `seq|status|categories|invocation`.
+fn timeline_rows(ctx: &Ctx) -> Result<Vec<String>, Failure> {
+    let v = ctx.eval(
+        "return [...document.querySelectorAll('[data-testid=\"timeline-row\"]')].map(r =>
+           [r.dataset.seq, r.dataset.status, r.dataset.categories, r.dataset.invocation].join('|'));",
+    )?;
+    Ok(v.as_array()
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+        .unwrap_or_default())
+}
+
+/// AH-172: the desktop execution timeline, read from the session's canonical
+/// event log through the real UI. A run reads a file and edits one (the edit
+/// waits for Allow once); the Timeline rail then shows, in log order: the run
+/// starting and ending, the read, the edit with its own +/- counts and the
+/// approval it waited for, and the response. Filters narrow it; an edit opens
+/// to its own unified diff with file and hunk metadata; the arrow keys move
+/// between rows; a request's rows light up together from its invocation; no
+/// raw translation key is on screen. The second half reads the same rows back
+/// after a restart.
+fn scenario_execution_timeline(ctx: &Ctx) -> ScenarioResult {
+    // The project folder, not the session workspace: a bare path names a
+    // file in the workspace (first attempt).
+    let read_call = format!("read:{}", serde_json::json!({ "path": "{{FOLDER}}/README.md" }));
+    // The attached folder is read-only in this access mode, so the edit is to
+    // a file the run writes in its own workspace first (third attempt).
+    let write_call = format!(
+        "write:{}",
+        serde_json::json!({ "path": "timeline.txt", "content": "# Old heading\nbody\n" })
+    );
+    let edit_call = format!(
+        "edit:{}",
+        serde_json::json!({ "path": "timeline.txt", "edits": [{ "old_string": "# Old heading", "new_string": "# Timeline heading" }] })
+    );
+    // Routed, so the fixture fills in {{FOLDER}}: only routed calls are.
+    let routes = serde_json::json!([
+        { "match": "TIMELINE-RUN", "tools": [read_call, write_call, edit_call], "summary": "timeline run done" }
+    ]);
+    let port = ctx.mock_port;
+    ensure!(
+        ctx.eval_bool(&format!(
+            r#"const res = await fetch('http://127.0.0.1:{port}/__control', {{
+                 method: 'POST', headers: {{ 'Content-Type': 'application/json' }},
+                 body: JSON.stringify({{ script: 'plain', tools: [], routes: {routes} }}),
+               }});
+               return res.ok;"#
+        ))?,
+        "could not script the run"
+    );
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    attach_project(ctx)?;
+    choose_mode(ctx, "Ask before changes")?;
+    let session = current_cowork_session(ctx)?;
+    // A directive verb from `coworkContinuity`'s list ("edit" is not one): a
+    // first message that is not directive is answered with a read-only
+    // inspection, where `edit` is not offered (first two attempts).
+    ctx.type_into("[data-testid=\"chat-input\"]", "Update the README heading now. TIMELINE-RUN")?;
+    send_armed(ctx)?;
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let mut asked = false;
+    loop {
+        asked |= ctx.eval_bool(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /^allow once$/i.test((x.textContent || '').trim()));
+             if (b) b.click();
+             return !!b;",
+        )?;
+        let done = ctx.eval_bool(
+            "return !!document.querySelector('[data-test-id=\"send-message-button\"]')
+               && /timeline run done/.test(document.body.innerText || '');",
+        )?;
+        if done {
+            break;
+        }
+        ensure!(Instant::now() < deadline, "the run did not read, edit and finish: {}", run_state_page(ctx));
+        std::thread::sleep(Duration::from_millis(600));
+    }
+    show_timeline(ctx)?;
+    ctx.wait_until(
+        "the run's rows on the timeline",
+        "const rows = [...document.querySelectorAll('[data-testid=\"timeline-row\"]')];
+         return rows.some(r => (r.dataset.categories || '').includes('edits') && r.dataset.status === 'completed')
+           && rows.some(r => r.getAttribute('aria-label') === 'Run ended, Completed');",
+        Duration::from_secs(20),
+    )?;
+    let rows = timeline_rows(ctx)?;
+    println!("      rows: {rows:?}");
+    let seqs: Vec<u64> = rows.iter().filter_map(|r| r.split('|').next()?.parse().ok()).collect();
+    ensure!(seqs.windows(2).all(|w| w[0] < w[1]), "the timeline is not in log order: {seqs:?}");
+    // The run's end is its last event: records are written in the order they
+    // were made (a response once landed after it).
+    let last_is_end = ctx.eval_bool(
+        "const rows = [...document.querySelectorAll('[data-testid=\"timeline-row\"]')];
+         return rows.length > 0 && rows[rows.length - 1].getAttribute('aria-label') === 'Run ended, Completed';",
+    )?;
+    ensure!(last_is_end, "the run's end is not its last event: {rows:?}");
+    let has = |cat: &str, status: &str| {
+        rows.iter().any(|r| {
+            let f: Vec<&str> = r.split('|').collect();
+            f.get(1) == Some(&status) && f.get(2).is_some_and(|c| c.split(' ').any(|x| x == cat))
+        })
+    };
+    ensure!(has("tools", "completed"), "no completed tool call on the timeline");
+    ensure!(has("edits", "completed"), "no completed edit on the timeline");
+    // Only when a prompt was actually raised: a workspace write may not ask.
+    ensure!(!asked || has("approvals", "completed"), "an approval was asked but is not on the timeline");
+    ensure!(has("run", "completed"), "the run is not on the timeline");
+    ensure!(has("messages", "completed"), "no response row on the timeline");
+    // The edit's row carries its own +/- counts.
+    let counts = ctx.eval_string(
+        "const r = [...document.querySelectorAll('[data-testid=\"timeline-row\"]')]
+           .find(r => (r.dataset.categories || '').includes('edits'));
+         const c = r && r.querySelector('[data-testid=\"timeline-row-counts\"]');
+         return c ? c.textContent : '';",
+    )?;
+    ensure!(counts.contains('+') && counts.contains('−'), "the edit shows no +/- counts: {counts:?}");
+
+    // A filter narrows it, and everything comes back.
+    let all = rows.len();
+    for c in ["messages", "tools", "usage", "run", "approvals", "subagents", "steering", "background", "reasoning"] {
+        ctx.eval(&format!("document.querySelector('[data-testid=\"timeline-filter-{c}\"]').click(); return true;"))?;
+    }
+    let edits_only = timeline_rows(ctx)?;
+    ensure!(
+        !edits_only.is_empty() && edits_only.iter().all(|r| r.split('|').nth(2).is_some_and(|c| c.contains("edits"))),
+        "the edits filter shows other rows: {edits_only:?}"
+    );
+    for c in ["messages", "tools", "usage", "run", "approvals", "subagents", "steering", "background", "reasoning"] {
+        ctx.eval(&format!("document.querySelector('[data-testid=\"timeline-filter-{c}\"]').click(); return true;"))?;
+    }
+    ensure!(timeline_rows(ctx)?.len() == all, "turning the filters back on did not restore every row");
+
+    // The edit opens to its own diff.
+    ctx.eval(
+        "const r = [...document.querySelectorAll('[data-testid=\"timeline-row\"]')]
+           .find(r => (r.dataset.categories || '').includes('edits'));
+         r.querySelector('[data-row-toggle]').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the edit's diff",
+        "const d = document.querySelector('[data-testid=\"timeline-diff\"]');
+         return !!d && Number(d.dataset.hunks) >= 1 && /timeline\\.txt$/.test(d.dataset.path || '')
+           && /heading/.test(d.innerText || '');",
+        Duration::from_secs(15),
+    )?;
+
+    // The keyboard moves between rows.
+    let moved = ctx.eval_bool(
+        "const toggles = [...document.querySelectorAll('[data-row-toggle]')];
+         toggles[0].focus();
+         document.querySelector('[data-testid=\"timeline-list\"]')
+           .dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+         return document.activeElement === toggles[1];",
+    )?;
+    ensure!(moved, "ArrowDown did not move to the next row");
+
+    // One request's rows light up together.
+    ctx.eval(
+        "const b = [...document.querySelectorAll('[data-testid=\"timeline-row\"]')]
+           .find(r => (r.dataset.categories || '').includes('edits'))
+           .querySelector('[data-testid=\"timeline-invocation\"]');
+         if (b) b.click();
+         return true;",
+    )?;
+    // The highlight is a re-render away from the click (fifth attempt read
+    // it in the same tick).
+    ctx.wait_until(
+        "the request's rows to light up",
+        "return document.querySelectorAll('[data-testid=\"timeline-row\"][data-linked=\"true\"]').length >= 2;",
+        Duration::from_secs(10),
+    )?;
+    let linked = ctx.eval(
+        "return [...document.querySelectorAll('[data-testid=\"timeline-row\"][data-linked=\"true\"]')]
+           .map(r => r.dataset.invocation);",
+    )?;
+    let linked: Vec<String> = linked
+        .as_array()
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    ensure!(
+        linked.len() >= 2 && linked.windows(2).all(|w| w[0] == w[1]),
+        "the edit's request did not light up its own rows: {linked:?}"
+    );
+    println!("      invocation {} links {} rows", linked[0], linked.len());
+
+    let raw = ctx.eval_string(
+        "const m = (document.body.innerText || '').match(/\\b[a-z-]+:[a-zA-Z]+\\.[a-zA-Z._]+\\b/); return m ? m[0] : '';",
+    )?;
+    ensure!(raw.is_empty(), "a raw translation key is on screen: {raw}");
+    write_handoff(ctx, TIMELINE_HANDOFF, &serde_json::json!({ "session": session, "rows": rows }))
+}
+
+/// A new process on the kept profile: the same rows, in the same order, with
+/// the same states, read from disk, with nothing sent.
+fn scenario_execution_timeline_restart(ctx: &Ctx) -> ScenarioResult {
+    let handoff = read_handoff(ctx, TIMELINE_HANDOFF, "execution-timeline")?;
+    let session = handoff["session"].as_str().unwrap_or_default().to_string();
+    let expected: Vec<String> = handoff["rows"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    ensure!(!expected.is_empty(), "the handoff holds no rows");
+    ensure!(mock_requests(ctx)?.is_empty(), "a request went out before the check started");
+    open_cowork_session(ctx, &session)?;
+    show_timeline(ctx)?;
+    ctx.wait_until(
+        "the timeline after the restart",
+        &format!(
+            "return document.querySelectorAll('[data-testid=\"timeline-row\"]').length >= {};",
+            expected.len()
+        ),
+        Duration::from_secs(20),
+    )?;
+    let rows = timeline_rows(ctx)?;
+    ensure!(rows == expected, "after a restart the timeline is {rows:?}, not {expected:?}");
+    ensure!(mock_requests(ctx)?.is_empty(), "reading the timeline sent a request");
+    println!("      same {} rows after the restart", rows.len());
     Ok(())
 }
 

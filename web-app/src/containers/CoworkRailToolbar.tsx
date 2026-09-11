@@ -1,4 +1,4 @@
-import { Activity, Code2, Eye, FileDiff, Loader2 } from 'lucide-react'
+import { Activity, Code2, Eye, FileDiff, ListTree, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -9,8 +9,8 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ActivityProgress } from '@/lib/coworkActivity'
 
-/** The four mutually-exclusive Cowork rail panels. */
-export type RailMode = 'code' | 'preview' | 'changes' | 'activity'
+/** The mutually-exclusive Cowork rail panels. */
+export type RailMode = 'code' | 'preview' | 'changes' | 'activity' | 'timeline'
 
 /**
  * The stable, always-visible control for the Cowork right rail.
@@ -115,6 +115,7 @@ export function CoworkRailToolbar({
           </span>
         ) : undefined
       )}
+      {item('timeline', t('common:rail.timeline'), <ListTree className="size-3.5 shrink-0" />)}
     </div>
   )
 }
