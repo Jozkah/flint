@@ -98,6 +98,12 @@ export type CoworkPromptOptions = {
    * it is phrased.
    */
   compatInstructions?: readonly { name: string; content: string }[]
+  /**
+   * The attached project's detected tooling, as the backend rendered it
+   * (`core::agent::tooling`). Carried verbatim so the desktop and the CLI tell
+   * the model the same facts. AH-068 / AH-069 / AH-070.
+   */
+  projectTooling?: string | null
 }
 
 /**
@@ -245,6 +251,11 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
 
 export function buildCoworkSystemPrompt(opts: CoworkPromptOptions): string {
   const blocks = [IDENTITY, GUIDELINES, workspaceBlock(opts)]
+  // Facts about the attached folder, beside the workspace facts. Only with a
+  // folder: without one there is no project for them to be about.
+  if (opts.readOnlyFolder && opts.projectTooling?.trim()) {
+    blocks.push(opts.projectTooling.trim())
+  }
   if (opts.webSearch) blocks.push(WEB_BLOCK)
   if (opts.subagentNames.length > 0 && !opts.planMode) {
     blocks.push(

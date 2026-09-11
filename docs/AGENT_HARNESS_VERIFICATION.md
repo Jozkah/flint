@@ -315,3 +315,69 @@ this check. Fixed in `providerFetch`; the scenario now passes on Windows.
 | Evidence | Where | Covers |
 | --- | --- | --- |
 | 9 unit tests | `web-app/src/hooks/__tests__/useCoworkSessions.fork.test.ts` | the conversation copied to the named turn; the whole conversation by default; parent and divergence recorded; messages rebuilt with the fork's own ids; no folder, access, consent or budget inherited; unknown session and out-of-range turn refused; both sessions independently renamable and deletable; the fork is shown |
+
+
+## Project tooling: frameworks, build systems, test runners (AH-068 / AH-069 / AH-070)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 18 unit tests on Windows (17 on Unix) | `src-tauri/src/core/agent/tooling.rs` | see below |
+| 1 prompt test | `src-tauri/src/core/agent/context.rs` (`build_system_prompt_names_the_project_tooling`) | the CLI/TUI prompt carries the block, and no block without manifests |
+| 3 + 3 + 1 web tests | `projectTooling.test.ts`, `CoworkReadinessCard.test.tsx`, `coworkPrompt.test.ts` | the IPC loader never throws and types a refusal; the card lists facts with source and certainty, a typed failure, and "none"; the Cowork prompt carries the backend's block verbatim, only with a folder attached |
+| Real WebView scenario | `cowork-smoke --only project-tooling-is-detected-and-told-to-the-model` | a monorepo with a junction out of it is attached; the card shows React, Tauri, Cargo, the pnpm workspace, and Vitest with `pnpm test`, sourced and high; the backend's block reports the junction as not followed, and Express from behind it appears nowhere; the model's system prompt contains the backend's block verbatim |
+
+The unit tests cover:
+- a single framework with its evidence;
+- a monorepo with two ecosystems, an inherited package manager, unit vs e2e,
+  and Cargo integration tests;
+- conflicting lockfiles (reported, no command);
+- `packageManager` outranking a lockfile;
+- a bare `package.json` proposing no command;
+- wrapped and unsafe scripts;
+- a runner that is not a dependency;
+- Python backend, manager and runner;
+- JVM, .NET, Flutter, CMake and Go;
+- a malformed or oversized manifest reported;
+- an unsupported project;
+- dependency and output directories skipped;
+- directory, byte and time bounds;
+- cancellation writing nothing;
+- a typed refusal;
+- a junction escape (Windows) and a symlink escape (Unix);
+- Windows casing and separators;
+- repository text unable to break out of the prompt block.
+
+Mutation checks (precedence and boundary): taking the lockfile before the
+`packageManager` field fails
+`the_package_manager_field_outranks_a_stray_lockfile`; following links fails
+`a_junction_out_of_the_project_is_not_followed`.
+
+## Steering a running agent (janhq/jan#8864)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 4 loop tests | `src-tauri/src/core/agent/loop.rs` | delivery after every tool result, in order; the final-answer boundary continues the same run; a gone surface never blocks; an empty final reply is never offered |
+| 10 TUI tests | `src-tauri/src/core/cli/tui.rs` (`steering_*`) | images, paths and order; cancel; permission prompt; failed handoff; plan transition; event order; error/cancel fallback; reset; resume; skill expansion |
+| 3 runner tests | `web-app/src/lib/__tests__/coworkRunner.test.ts` | Cowork: after the tool round, in order; final answer continues the run; nothing taken after a stop |
+| 4 + 3 + 3 + 1 web tests | queue store, `CoworkHeldInput`, `cowork.sessions.test.tsx`, `coworkTurns.test.ts` | held vs ready, hold, release, restore-as-held; the held notice's send and discard; per-session delivery marked as steering, a failed run's input held and not sent, input after a finished run sent next; the steered marker |
+| Real WebView scenario | `cowork-smoke --only steering-reaches-the-running-session-at-its-next-boundary` | typed during session A's first step, both messages reach the model after the tool round, in order, as user input; the first request carried neither; both are marked in the transcript; session B's request carries neither |
+
+## Completion audit: sessions, Stop and headers (janhq/jan#8905, janhq/jan#8208)
+
+Real WebView scenarios on Windows 11 with the mock provider:
+- `stop-cancels-only-the-selected-session`, then
+  `session-models-survive-a-restart` in a second process on the kept
+  profile. Each session's recorded model is on disk after the restart, and
+  the app comes back on it.
+- `deleting-a-running-session-stops-only-its-run`: the deleted session's run
+  ends and the session leaves the disk; the other session's run is untouched.
+- `custom-headers-reach-the-provider-and-secrets-stay-secret`, then
+  `custom-headers-survive-a-restart`:
+  - a header is added, a reserved one refused, and headers switched off and
+    on;
+  - an error body echoing the secret leaves no trace on the page or the
+    disk;
+  - the value is restored from the credential store after a restart;
+  - removal takes effect on the next request.
+- Mutation check: with the error-body redaction disabled,
+  `an_error_body_echoing_a_secret_header_comes_back_redacted` fails.

@@ -275,6 +275,7 @@ import {
   type SubagentRequest,
 } from '@/lib/coworkSubagent'
 import { errorText } from '@/lib/errorText'
+import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
 import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
 import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 
@@ -377,6 +378,15 @@ function CoworkPage() {
   const stoppedBy: RunOutcome['stoppedBy'] | null = runEnding?.stoppedBy ?? null
   const runError = runEnding?.errorText
   const [gitBranch, setGitBranch] = useState<string | null>(null)
+  /**
+   * The attached folder's detected tooling (AH-068 / AH-069 / AH-070), keyed
+   * by the folder it was read for so a slow read for the previous folder is
+   * never shown for the next. `loaded` is null while the read is in flight.
+   */
+  const [tooling, setTooling] = useState<{
+    folder: string
+    loaded: LoadedTooling | null
+  } | null>(null)
   const [projectInstructions, setProjectInstructions] = useState<string | null>(
     null
   )
@@ -589,6 +599,12 @@ function CoworkPage() {
       // From the run's own snapshot when there is one, so the card and the
       // summary cannot disagree about whether anything is attributable.
       evidence: evidenceLimit(runOrigins?.context.baseline ?? null),
+      // Only the read for this folder: a late answer for another is ignored.
+      tooling: folder
+        ? tooling?.folder === folder && tooling.loaded
+          ? tooling.loaded.readiness
+          : { state: 'loading' }
+        : undefined,
       // From the run's own payload once there is one. Before that the
       // categories that depend on it stay unknown rather than zero: a run that
       // has not been built has not sent nothing, it has sent nothing *yet*.
@@ -611,6 +627,7 @@ function CoworkPage() {
     worktree,
     compat,
     runOrigins?.context.baseline,
+    tooling,
     advertisedToolCount,
     runContext,
     availableSkills,
@@ -902,6 +919,23 @@ function CoworkPage() {
     invoke<string | null>('agent_git_branch', { project: folder })
       .then(setGitBranch)
       .catch(() => setGitBranch(null))
+  }, [folder])
+
+  // Read once per attached folder. A failure is a typed state, never a throw,
+  // and never stops the folder from being used.
+  useEffect(() => {
+    if (!folder) {
+      setTooling(null)
+      return
+    }
+    let alive = true
+    setTooling({ folder, loaded: null })
+    void loadProjectTooling(folder).then((loaded) => {
+      if (alive) setTooling({ folder, loaded })
+    })
+    return () => {
+      alive = false
+    }
   }, [folder])
 
   // Every instruction file at the attached root, in one pass.
@@ -1905,6 +1939,17 @@ function CoworkPage() {
       ? { sessionId: liveGrant.sessionId, folder: liveGrant.folder }
       : undefined
     const runWorktreePath = worktree?.path ?? null
+    // The same facts the readiness card shows when the run reads the folder
+    // on screen; read afresh for any other root (a managed worktree). Given up
+    // on Stop like the rest of preparation, and never a reason not to run.
+    let runTooling: string | null = null
+    if (runReadRoot) {
+      const cached =
+        tooling?.folder === runReadRoot ? tooling.loaded : null
+      const loaded = cached ?? (await prepared(loadProjectTooling(runReadRoot)))
+      if (loaded === STOPPED) return
+      runTooling = loaded.prompt
+    }
     const transport = new CoworkChatTransport(sid, {
       // Captured now: every step of this run uses it, whatever the picker
       // says by then (janhq/jan#8905).
@@ -1926,6 +1971,7 @@ function CoworkPage() {
       // switched on, oversized, or pointing outside the folder contributes
       // nothing here.
       compatInstructions: compatInstructionBlocks(runCompat),
+      projectTooling: runTooling,
       openingInspection: inspecting,
     })
     if ((await prepared(transport.refreshTools())) === STOPPED) return

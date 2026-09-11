@@ -39,6 +39,8 @@ export type CoworkRunConfig = CoworkToolOptions & {
    * a run is going applies to the next one.
    */
   compatInstructions?: readonly { name: string; content: string }[]
+  /** The backend's project tooling block, frozen with the run. */
+  projectTooling?: string | null
   /**
    * The opening turn reads and proposes rather than acting.
    *
@@ -137,6 +139,7 @@ export class CoworkChatTransport extends CustomChatTransport {
       gitBranch: this.config.gitBranch,
       projectInstructions: this.config.projectInstructions,
       compatInstructions: this.config.compatInstructions,
+      projectTooling: this.config.projectTooling,
       planMode: this.config.planMode,
       openingInspection: this.config.openingInspection,
       bashAvailable: sandboxEnforces(),

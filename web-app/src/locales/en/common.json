@@ -1044,6 +1044,14 @@
     "budgetOver": "over the configured window by ~{{over}} tokens",
     "tokensEstimatedPartial": "at least ~{{count}} tokens ({{method}}); some parts could not be measured",
     "builtinsUnknown": "Tool set not built yet",
+    "tooling": {
+      "label": "Project tooling",
+      "loading": "Reading manifests…",
+      "none": "No framework, build or test manifests recognised",
+      "failed": "Could not be read ({{kind}}); the folder can still be used",
+      "incomplete": "incomplete: {{reason}}",
+      "fact": "{{value}} — {{confidence}}, from {{source}}: {{reason}}"
+    },
     "evidence": {
       "label": "Change attribution",
       "none": "Jan can tell its own changes from existing ones.",

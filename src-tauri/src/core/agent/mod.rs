@@ -32,5 +32,6 @@ pub mod skill_hub;
 pub mod skills;
 pub mod subagent;
 pub mod todo;
+pub mod tooling;
 pub mod upstream;
 pub mod worktree;
