@@ -1731,13 +1731,16 @@ function CoworkPage() {
     let runTurns: CoworkTurn[] = text ? [{ role: 'user', content: text }] : []
     const publish = () =>
       useCoworkRun.getState().setRunTurns(sid, runId, [...runTurns])
-    const pushLive = (turns: CoworkTurn[]) => {
+    const pushLive = (
+      turns: CoworkTurn[],
+      snapshot: PromptSnapshotRef | undefined = lastSnapshotRef.current[sid]
+    ) => {
       // AH-078. Bind each assistant row to the dispatch that produced it,
       // here, because here is where the row first exists: at dispatch the
       // lane holds the user turn and nothing else, so a reference written
       // then has nothing to land on. The snapshot is this session's latest,
-      // so a continuation, a retry and a compaction each carry their own.
-      const snapshot = lastSnapshotRef.current[sid]
+      // so a continuation, a retry and a compaction each carry their own --
+      // unless the caller names the step's own (see `stepSnapshot`).
       const stamped = turns.map((turn) =>
         turn.role === 'assistant' && !turn.promptSnapshot && snapshot
           ? { ...turn, promptSnapshot: snapshot }
@@ -2129,6 +2132,15 @@ function CoworkPage() {
     // Missing-path reads this run has seen, shared by the run and its
     // children and dropped with it (janhq/jan#8906).
     const runReadFailures = new Map<string, number>()
+    /**
+     * The snapshot of the request whose response the runner just read, taken
+     * before that step's tool calls run. The session's latest snapshot is not
+     * that once a call dispatches a subagent: the child sends requests through
+     * the same model, under the same session. One request, one invocation id,
+     * shared by its snapshot, its usage, its memory uses and the execution
+     * events of the calls it asked for.
+     */
+    let stepSnapshot: PromptSnapshotRef | undefined
     const run: RunContext = {
       sessionId: sid,
       runId,
@@ -2588,7 +2600,12 @@ function CoworkPage() {
             } as any),
           dispatch: (call, toolSignal) =>
             dispatchCoworkTool(call, {
-              activity: { session: sid, run: runId, agent: 'main' },
+              activity: {
+                session: sid,
+                run: runId,
+                agent: 'main',
+                invocation: stepSnapshot?.invocation,
+              },
               sessionId: sid,
               readOnlyFolder: runReadRoot,
               mode: runMode,
@@ -3036,7 +3053,7 @@ function CoworkPage() {
               void recordPayloadUsage({
                 session: sid,
                 run: runId,
-                snapshot: lastSnapshotRef.current[sid] ?? null,
+                snapshot: stepSnapshot ?? lastSnapshotRef.current[sid] ?? null,
                 model: selectedModel?.id,
                 usage: result.usage,
               })
@@ -3048,7 +3065,7 @@ function CoworkPage() {
                 !(turn.role === 'tool' && outcomes.has(turn.callId ?? '')) &&
                 !(turn.role === 'assistant' && turn.content === result.text)
             )
-            pushLive(turns)
+            pushLive(turns, stepSnapshot ?? lastSnapshotRef.current[sid])
             // Record this step's file work now. Ids are keyed on the tool
             // call, so the commit below re-recording the same rows is a
             // no-op rather than a duplicate.
@@ -3078,6 +3095,9 @@ function CoworkPage() {
                 },
               ])
             }
+          },
+          onResponse: () => {
+            stepSnapshot = lastSnapshotRef.current[sid]
           },
           nextMessageId: (() => {
             let n = baseMessages.length

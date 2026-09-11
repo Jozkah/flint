@@ -570,6 +570,13 @@ export type RunDeps = {
     turns: CoworkTurn[]
     outcomes: Map<string, ToolOutcome>
   }) => void
+  /**
+   * Called once a step's model response has been read, before any of its tool
+   * calls run. The one moment the request that produced the step's calls is
+   * still the latest the caller has seen: a subagent dispatched by one of
+   * those calls sends requests of its own.
+   */
+  onResponse?: () => void
   /** Monotonic ids for the assistant messages this run appends. */
   nextMessageId: () => string
   /**
@@ -754,6 +761,7 @@ export async function runTurn(opts: {
       }
     }
     step += 1
+    deps.onResponse?.()
     if (result.usage) {
       usage = result.usage
       spend = recordSpend(spend, result.usage)
