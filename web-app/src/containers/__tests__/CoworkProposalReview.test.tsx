@@ -243,6 +243,108 @@ describe('the review', () => {
     })
   })
 
+  // AH-154/155/156.
+  const flaggedRecord = () =>
+    record({
+      files: [
+        {
+          ...record().files[0],
+        },
+        {
+          path: 'package.json',
+          change: 'modified',
+          baseBlob: 'b3',
+          proposedBlob: 'p3',
+          binary: false,
+          oversized: false,
+          sensitive: false,
+          additions: 1,
+          deletions: 0,
+          hunks: [hunk('2.0-ddd', 3)],
+          flags: [
+            {
+              kind: 'dependency',
+              summary: '1 dependency change(s) in package.json',
+              details: ['left-pad (dependencies) added at 1.3.0'],
+            },
+          ],
+        },
+        {
+          path: 'yarn.lock',
+          change: 'modified',
+          baseBlob: 'b4',
+          proposedBlob: 'p4',
+          binary: false,
+          oversized: false,
+          sensitive: false,
+          additions: 4,
+          deletions: 1,
+          hunks: [hunk('3.0-eee', 9)],
+          flags: [{ kind: 'lockfile', summary: 'yarn.lock is a lock file', details: [] }],
+        },
+      ],
+    })
+
+  it('acknowledges only files that are both selected and flagged', () => {
+    const r = flaggedRecord()
+    const a = approvalFor(
+      r,
+      { 'a.txt': ['0.0-aaa'], 'package.json': ['2.0-ddd'] },
+      ['a.txt', 'package.json', 'yarn.lock']
+    )
+    expect(a.acknowledged).toEqual(['package.json'])
+  })
+
+  it('holds a flagged change until it is marked as reviewed, and says what it is', async () => {
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'agent_proposal_list') return [flaggedRecord()]
+      if (cmd === 'agent_proposal_apply')
+        return { proposalId: 'prop-1', state: 'applied', filesWritten: 3 }
+      return null
+    })
+    render(<CoworkProposalReview worktree={worktree} session="s1" />)
+    const flags = await screen.findAllByTestId('proposal-flag')
+    expect(flags.map((f) => f.getAttribute('data-kind'))).toEqual(['dependency', 'lockfile'])
+    expect(flags[0]).toHaveTextContent('left-pad (dependencies) added at 1.3.0')
+    // Lock files are kept apart from the source changes.
+    const locks = screen.getByTestId('proposal-lockfiles')
+    expect(locks.querySelector('[data-path="yarn.lock"]')).not.toBeNull()
+    expect(locks.querySelector('[data-path="package.json"]')).toBeNull()
+
+    expect(screen.getByTestId('proposal-apply')).toBeDisabled()
+    expect(screen.getByTestId('proposal-needs-ack')).toHaveTextContent('package.json, yarn.lock')
+    for (const box of screen.getAllByTestId('proposal-flag-ack')) {
+      await userEvent.click(box)
+    }
+    expect(screen.getByTestId('proposal-apply')).toBeEnabled()
+    await userEvent.click(screen.getByTestId('proposal-apply'))
+    await waitFor(() => expect(calls('agent_proposal_apply')).toHaveLength(1))
+    expect(calls('agent_proposal_apply')[0][1].approval.acknowledged.sort()).toEqual([
+      'package.json',
+      'yarn.lock',
+    ])
+  })
+
+  it('applies the unflagged part without asking once the flagged files are left out', async () => {
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'agent_proposal_list') return [flaggedRecord()]
+      if (cmd === 'agent_proposal_apply')
+        return { proposalId: 'prop-1', state: 'partially-applied', filesWritten: 1 }
+      return null
+    })
+    render(<CoworkProposalReview worktree={worktree} session="s1" />)
+    const files = await screen.findAllByTestId('proposal-file')
+    for (const path of ['package.json', 'yarn.lock']) {
+      const row = files.find((f) => f.getAttribute('data-path') === path)!
+      await userEvent.click(row.querySelector('[data-testid="proposal-file-toggle"]')!)
+    }
+    await userEvent.click(screen.getByTestId('proposal-apply'))
+    await waitFor(() => expect(calls('agent_proposal_apply')).toHaveLength(1))
+    const { approval } = calls('agent_proposal_apply')[0][1]
+    expect(approval.files.map((f: { path: string }) => f.path)).toEqual(['a.txt'])
+    expect(approval.acknowledged).toEqual([])
+  })
+
   it("does not show another worktree's proposal", async () => {
     invoke.mockImplementation(async (cmd: string) =>
       cmd === 'agent_proposal_list'

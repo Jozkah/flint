@@ -34,6 +34,13 @@ export type ProposedHunk = {
   added: string[]
 }
 
+/** Mirrors `review_flags::ReviewFlag` (AH-154/155/156). */
+export type ReviewFlag = {
+  kind: 'dependency' | 'lockfile' | 'migration'
+  summary: string
+  details: string[]
+}
+
 export type ProposedFile = {
   path: string
   change: 'added' | 'modified' | 'deleted'
@@ -45,7 +52,11 @@ export type ProposedFile = {
   additions: number
   deletions: number
   hunks: ProposedHunk[]
+  /** Worked out by the backend; absent when there are none. */
+  flags?: ReviewFlag[]
 }
+
+export const flagsOf = (file: ProposedFile): ReviewFlag[] => file.flags ?? []
 
 export type ProposalState =
   | 'pending'
@@ -74,11 +85,18 @@ export type Approval = {
   baseStateHash: string
   scope: ProposalScope
   files: { path: string; hunks: HunkChoice }[]
+  /** Flagged files the person marked as reviewed. */
+  acknowledged: string[]
 }
 
 export type Conflict = { path: string; hunk: string; reason: string }
 
-export type ProposalFailure = { message: string; conflicts: Conflict[] }
+export type ProposalFailure = {
+  message: string
+  conflicts: Conflict[]
+  /** Flagged files the backend refused because they were not acknowledged. */
+  unacknowledged?: string[]
+}
 
 export type Outcome<T> = ({ ok: true } & T) | ({ ok: false } & ProposalFailure)
 
@@ -88,6 +106,9 @@ const failure = (e: unknown): ProposalFailure => {
     return {
       message: String(f.message ?? ''),
       conflicts: Array.isArray(f.conflicts) ? f.conflicts : [],
+      ...(Array.isArray(f.unacknowledged) && f.unacknowledged.length
+        ? { unacknowledged: f.unacknowledged }
+        : {}),
     }
   }
   return { message: errorText(e), conflicts: [] }
@@ -103,7 +124,8 @@ const failure = (e: unknown): ProposalFailure => {
  */
 export function approvalFor(
   record: ProposalRecord,
-  selected: Record<string, string[]>
+  selected: Record<string, string[]>,
+  acknowledged: string[] = []
 ): Approval {
   const files: Approval['files'] = []
   for (const file of record.files) {
@@ -129,7 +151,31 @@ export function approvalFor(
     baseStateHash: record.baseStateHash,
     scope: record.scope,
     files,
+    // Only files that are selected and flagged: an acknowledgement is about a
+    // change being applied, not a blanket permission.
+    acknowledged: files
+      .map((f) => f.path)
+      .filter(
+        (p) =>
+          acknowledged.includes(p) &&
+          flagsOf(record.files.find((f) => f.path === p)!).length > 0
+      ),
   }
+}
+
+/** Selected files with a flag not yet marked as reviewed. */
+export function unacknowledgedSelection(
+  record: ProposalRecord,
+  selected: Record<string, string[]>,
+  acknowledged: string[]
+): string[] {
+  return approvalFor(record, selected, acknowledged)
+    .files.map((f) => f.path)
+    .filter(
+      (p) =>
+        flagsOf(record.files.find((f) => f.path === p)!).length > 0 &&
+        !acknowledged.includes(p)
+    )
 }
 
 /** Everything selected except what can never be applied. */

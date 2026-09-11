@@ -2178,6 +2178,38 @@ All passed on their first attempt with retries off (rounds rg2 and rp4). In
 round rg1, another process emptied this session's scratch directory
 mid-run, taking the logs with it. That round is not counted.
 
+## 2026-09-11 — AH-154/155/156: dependency, lock file and migration flags
+
+A proposed change can now say more than its diff:
+
+- a manifest's dependencies were added, changed or removed, each one named;
+- a lock file changed; lock files are listed apart from source changes;
+- a migration will change a database in a way that reverting the file does
+  not undo.
+
+`review_flags.rs` works these out in the backend. `plan` works them out again
+from the stored content when the change is applied. A flagged file is written
+only when the approval acknowledges that exact path, so neither a renderer nor
+a record edited on disk can drop a flag. The review holds Apply, naming the
+files, until each flagged file that is selected has been ticked as reviewed.
+Coverage and the one thing not run through the UI are listed in the
+verification section.
+
+Environment note: during this work another process ran `yarn install` in the
+main checkout. It moved the web dependencies from the repository root into
+`jan/web-app/node_modules`, and this worktree could no longer find
+`@vitejs/plugin-react`. A junction to that folder was tried and removed: it
+resolved the workspace packages (`@janhq/core` and the plugin APIs) to the
+main checkout's older copies. The worktree now has its own install
+(`yarn install --immutable`; `yarn.lock` unchanged). Nothing in the main
+checkout was changed. Gates after the install:
+
+- web typecheck ok; 5771 + 171 + 320 tests; `build:web` ok;
+- app `core::agent` 403, plugin 795 plus 13 Windows sandbox tests, `cli` check ok;
+- Windows scenarios passed: `proposal-flags`, `proposal-review-apply`,
+  `team-review-persist-1/2`, `context-replay-1/2`, `managed-worktree-review`
+  and `prompt-snapshot-panel`.
+
 One part of the finding is left open. A tool card in one conversation can
 show another conversation's request only when both conversations' main agents
 wait on the same call id at the same moment. The card shows that request's own

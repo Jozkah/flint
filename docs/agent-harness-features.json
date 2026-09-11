@@ -4873,13 +4873,19 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-146"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/review_flags.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/proposal.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/lib/proposals.ts",
+        "web-app/src/containers/CoworkProposalReview.tsx"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "A diff that adds or upgrades a dependency is flagged for review.",
@@ -4889,10 +4895,22 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::review_flags::tests::a_package_added_upgraded_or_removed_is_flagged_with_what_changed",
+        "tauri-plugin-agent-tools::review_flags::tests::a_manifest_change_that_leaves_dependencies_alone_is_not_flagged",
+        "tauri-plugin-agent-tools::review_flags::tests::cargo_dependencies_in_every_table_are_compared",
+        "tauri-plugin-agent-tools::review_flags::tests::python_and_go_requirements_are_compared",
+        "tauri-plugin-agent-tools::review_flags::tests::an_unreadable_manifest_is_flagged_not_passed",
+        "tauri-plugin-agent-tools::proposal::tests::a_dependency_change_is_flagged_and_not_applied_unacknowledged",
+        "tauri-plugin-agent-tools::proposal::tests::an_acknowledged_dependency_change_applies",
+        "tauri-plugin-agent-tools::proposal::tests::a_flag_removed_from_the_stored_record_still_needs_acknowledging",
+        "tauri-plugin-agent-tools::proposal::tests::lock_files_and_migrations_need_acknowledging_too",
+        "web-app::CoworkProposalReview.test.tsx",
+        "cowork-smoke::proposal-flags"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Dependency changes in a proposal are flagged per file by review_flags.rs: package.json (dependencies, dev, peer, optional), Cargo.toml (every dependency table incl. target.* and workspace, with git/path sources), pyproject.toml, requirements*.txt/constraints*.txt and go.mod are compared entry by entry (added, changed from/to, removed); other manifests (Gemfile, composer.json, pom.xml, gradle, *.csproj, ...) are flagged whenever they change; an unreadable manifest is flagged, never passed. Not a package manager: nothing is resolved or fetched. A selected flagged file is applied only when the approval names it in `acknowledged`; plan() works the flags out again from the stored blobs (never from the record or the renderer), so flags removed from a stored record still need acknowledging (negative test), and a refusal is the typed Unacknowledged(paths) with nothing written. An acknowledgement covers only its exact path. Apply and propose add no state of their own: a refused apply leaves the proposal pending and the folder untouched. Windows: proposal-flags over real IPC (refused without, and with partial, acknowledgement; applied when acknowledged). The flag display is component-tested; the scenario does not click through the review. macOS and Linux were not run."
     },
     {
       "id": "AH-155",
@@ -4900,13 +4918,19 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-154"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/review_flags.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/proposal.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/lib/proposals.ts",
+        "web-app/src/containers/CoworkProposalReview.tsx"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "Lockfile churn is surfaced separately from source changes.",
@@ -4916,10 +4940,18 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::review_flags::tests::lock_files_are_flagged_on_their_own",
+        "tauri-plugin-agent-tools::proposal::tests::a_dependency_change_is_flagged_and_not_applied_unacknowledged",
+        "tauri-plugin-agent-tools::proposal::tests::an_acknowledged_dependency_change_applies",
+        "tauri-plugin-agent-tools::proposal::tests::a_flag_removed_from_the_stored_record_still_needs_acknowledging",
+        "tauri-plugin-agent-tools::proposal::tests::lock_files_and_migrations_need_acknowledging_too",
+        "web-app::CoworkProposalReview.test.tsx",
+        "cowork-smoke::proposal-flags"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Lock files (package-lock, yarn, pnpm, bun, Cargo.lock, poetry, Pipfile.lock, uv, go.sum, composer, Gemfile, NuGet, pubspec, mix, deno) are flagged `lockfile` and listed in the review under their own heading, apart from source changes. A selected flagged file is applied only when the approval names it in `acknowledged`; plan() works the flags out again from the stored blobs (never from the record or the renderer), so flags removed from a stored record still need acknowledging (negative test), and a refusal is the typed Unacknowledged(paths) with nothing written. An acknowledgement covers only its exact path. Apply and propose add no state of their own: a refused apply leaves the proposal pending and the folder untouched. Windows: proposal-flags over real IPC (refused without, and with partial, acknowledgement; applied when acknowledged). The flag display is component-tested; the scenario does not click through the review. macOS and Linux were not run."
     },
     {
       "id": "AH-156",
@@ -4927,13 +4959,19 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-146"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/review_flags.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/proposal.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/lib/proposals.ts",
+        "web-app/src/containers/CoworkProposalReview.tsx"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "Schema and data migrations in a diff are flagged as irreversible.",
@@ -4943,10 +4981,18 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::review_flags::tests::migrations_are_flagged_as_irreversible_by_what_they_do",
+        "tauri-plugin-agent-tools::proposal::tests::a_dependency_change_is_flagged_and_not_applied_unacknowledged",
+        "tauri-plugin-agent-tools::proposal::tests::an_acknowledged_dependency_change_applies",
+        "tauri-plugin-agent-tools::proposal::tests::a_flag_removed_from_the_stored_record_still_needs_acknowledging",
+        "tauri-plugin-agent-tools::proposal::tests::lock_files_and_migrations_need_acknowledging_too",
+        "web-app::CoworkProposalReview.test.tsx",
+        "cowork-smoke::proposal-flags"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Files in migration directories (migrations, migrate, alembic, flyway, db/migrate, prisma/migrations, Flyway V__ names) and SQL with schema or data statements are flagged `migration` and described as irreversible (schema, data or both, with the statements); deleting a migration is flagged too. A selected flagged file is applied only when the approval names it in `acknowledged`; plan() works the flags out again from the stored blobs (never from the record or the renderer), so flags removed from a stored record still need acknowledging (negative test), and a refusal is the typed Unacknowledged(paths) with nothing written. An acknowledgement covers only its exact path. Apply and propose add no state of their own: a refused apply leaves the proposal pending and the folder untouched. Windows: proposal-flags over real IPC (refused without, and with partial, acknowledgement; applied when acknowledged). The flag display is component-tested; the scenario does not click through the review. macOS and Linux were not run."
     },
     {
       "id": "AH-157",

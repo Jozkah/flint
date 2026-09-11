@@ -18,14 +18,80 @@ import {
   applyProposal,
   approvalFor,
   defaultSelection,
+  flagsOf,
   listProposals,
   proposeFromWorktree,
   rejectProposal,
+  unacknowledgedSelection,
   type Conflict,
   type Outcome,
   type ProposalRecord,
   type ProposedFile,
+  type ReviewFlag,
 } from '@/lib/proposals'
+
+const FLAG_LABEL: Record<ReviewFlag['kind'], string> = {
+  dependency: 'Dependency change',
+  lockfile: 'Lock file',
+  migration: 'Irreversible migration',
+}
+
+/** A lock file is shown apart from source changes (AH-155). */
+const isLockOnly = (file: ProposedFile) => {
+  const flags = flagsOf(file)
+  return flags.length > 0 && flags.every((f) => f.kind === 'lockfile')
+}
+
+/**
+ * What a flagged file means beyond its diff, and the box that says it was
+ * read. The backend works the flags out itself and refuses a flagged file
+ * whose approval does not name it as acknowledged.
+ */
+function FileFlags({
+  file,
+  acknowledged,
+  onAcknowledge,
+}: {
+  file: ProposedFile
+  acknowledged: boolean
+  onAcknowledge: (value: boolean) => void
+}) {
+  const flags = flagsOf(file)
+  if (flags.length === 0) return null
+  return (
+    <div
+      className="mt-1 rounded border border-amber-500/30 bg-amber-500/5 p-1.5 text-xs"
+      data-testid="proposal-flags"
+    >
+      {flags.map((flag, i) => (
+        <div key={i} data-testid="proposal-flag" data-kind={flag.kind}>
+          <p className="font-medium text-amber-700 dark:text-amber-300">
+            {FLAG_LABEL[flag.kind]}: {flag.summary}
+          </p>
+          {flag.details.length > 0 ? (
+            <ul className="ml-4 list-disc text-main-view-fg/70">
+              {flag.details.map((d) => (
+                <li key={d} className="font-mono text-[11px]">
+                  {d}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ))}
+      <label className="mt-1 flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={acknowledged}
+          onChange={(e) => onAcknowledge(e.target.checked)}
+          data-testid="proposal-flag-ack"
+          data-path={file.path}
+        />
+        I have reviewed what this changes
+      </label>
+    </div>
+  )
+}
 
 /** Lines of a hunk shown before the rest is summarised. */
 const PREVIEW_LINES = 12
@@ -67,11 +133,15 @@ function FileReview({
   chosen,
   conflicts,
   onChange,
+  acknowledged,
+  onAcknowledge,
 }: {
   file: ProposedFile
   chosen: string[] | undefined
   conflicts: Conflict[]
   onChange: (ids: string[] | undefined) => void
+  acknowledged: boolean
+  onAcknowledge: (value: boolean) => void
 }) {
   const whole = file.hunks.length === 0
   const allChosen = whole
@@ -113,6 +183,11 @@ function FileReview({
           whole.
         </p>
       ) : null}
+      <FileFlags
+        file={file}
+        acknowledged={acknowledged}
+        onAcknowledge={onAcknowledge}
+      />
       {fileConflict ? (
         <p
           className="mt-1 text-xs text-destructive"
@@ -185,6 +260,7 @@ export function CoworkProposalReview({
 }) {
   const [proposal, setProposal] = useState<ProposalRecord | null>(null)
   const [selected, setSelected] = useState<Record<string, string[]>>({})
+  const [acknowledged, setAcknowledged] = useState<string[]>([])
   const [conflicts, setConflicts] = useState<Conflict[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -198,6 +274,7 @@ export function CoworkProposalReview({
       ) ?? null
     setProposal(pending)
     setSelected(pending ? defaultSelection(pending) : {})
+    setAcknowledged([])
     setConflicts([])
   }, [worktree.sourceRoot, worktree.path])
 
@@ -225,12 +302,17 @@ export function CoworkProposalReview({
     }
     setProposal(out.proposal)
     setSelected(defaultSelection(out.proposal))
+    setAcknowledged([])
     setConflicts([])
   }
 
+  const waiting = proposal
+    ? unacknowledgedSelection(proposal, selected, acknowledged)
+    : []
+
   const apply = async () => {
     if (!proposal) return
-    const approval = approvalFor(proposal, selected)
+    const approval = approvalFor(proposal, selected, acknowledged)
     if (approval.files.length === 0) {
       setError('Nothing is selected. Reject the proposal to discard it.')
       return
@@ -327,8 +409,8 @@ export function CoworkProposalReview({
               {proposal.scope.subject}
             </p>
           ) : null}
-          <ul className="mt-2 flex flex-col gap-1">
-            {proposal.files.map((file) => (
+          {(() => {
+            const row = (file: ProposedFile) => (
               <FileReview
                 key={file.path}
                 file={file}
@@ -342,14 +424,46 @@ export function CoworkProposalReview({
                     return next
                   })
                 }
+                acknowledged={acknowledged.includes(file.path)}
+                onAcknowledge={(value) =>
+                  setAcknowledged((a) =>
+                    value
+                      ? [...a.filter((p) => p !== file.path), file.path]
+                      : a.filter((p) => p !== file.path)
+                  )
+                }
               />
-            ))}
-          </ul>
+            )
+            const source = proposal.files.filter((f) => !isLockOnly(f))
+            const locks = proposal.files.filter(isLockOnly)
+            return (
+              <>
+                <ul className="mt-2 flex flex-col gap-1">{source.map(row)}</ul>
+                {locks.length > 0 ? (
+                  <div className="mt-2" data-testid="proposal-lockfiles">
+                    <p className="text-[11px] font-medium text-main-view-fg/60">
+                      Lock files ({locks.length}), kept apart from the source
+                      changes above
+                    </p>
+                    <ul className="mt-1 flex flex-col gap-1">{locks.map(row)}</ul>
+                  </div>
+                ) : null}
+              </>
+            )
+          })()}
+          {waiting.length > 0 ? (
+            <p
+              className="mt-2 text-xs text-amber-700 dark:text-amber-300"
+              data-testid="proposal-needs-ack"
+            >
+              Mark {waiting.join(', ')} as reviewed, or leave {waiting.length === 1 ? 'it' : 'them'} out, to apply.
+            </p>
+          ) : null}
           <div className="mt-2 flex items-center gap-1">
             <Button
               size="sm"
               variant="ghost"
-              disabled={busy != null}
+              disabled={busy != null || waiting.length > 0}
               onClick={() => void apply()}
               data-testid="proposal-apply"
             >

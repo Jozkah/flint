@@ -342,18 +342,28 @@ pub struct ProposalFailure {
     /// a deleted worktree, a link out of one, a child that did not finish.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kind: Option<crate::core::agent::team_children::ChildErrorKind>,
+    /// Selected files whose dependency, lock file or migration flag was not
+    /// acknowledged (AH-154/155/156). Nothing was written.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub unacknowledged: Vec<String>,
 }
 
 impl From<tauri_plugin_agent_tools::proposal::ProposalError> for ProposalFailure {
     fn from(e: tauri_plugin_agent_tools::proposal::ProposalError) -> Self {
+        use tauri_plugin_agent_tools::proposal::ProposalError;
         let conflicts = match &e {
-            tauri_plugin_agent_tools::proposal::ProposalError::Conflicts(c) => c.clone(),
+            ProposalError::Conflicts(c) => c.clone(),
+            _ => Vec::new(),
+        };
+        let unacknowledged = match &e {
+            ProposalError::Unacknowledged(paths) => paths.clone(),
             _ => Vec::new(),
         };
         ProposalFailure {
             message: e.message(),
             conflicts,
             kind: None,
+            unacknowledged,
         }
     }
 }
@@ -364,6 +374,7 @@ impl From<crate::core::agent::team_children::ChildError> for ProposalFailure {
             message: e.message,
             conflicts: Vec::new(),
             kind: Some(e.kind),
+            unacknowledged: Vec::new(),
         }
     }
 }
@@ -373,6 +384,7 @@ fn proposal_failure(message: impl Into<String>) -> ProposalFailure {
         message: message.into(),
         conflicts: Vec::new(),
         kind: None,
+        unacknowledged: Vec::new(),
     }
 }
 
