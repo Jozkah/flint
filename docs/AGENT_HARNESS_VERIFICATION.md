@@ -1001,3 +1001,82 @@ Real WebView scenarios on Windows 11 with the mock provider:
   - removal takes effect on the next request.
 - Mutation check: with the error-body redaction disabled,
   `an_error_body_echoing_a_secret_header_comes_back_redacted` fails.
+
+## Integration of the four agent workstreams (2026-09-11)
+
+Branch `feat/integrate-all-agent-workstreams`, from `fork/main` at
+`f3d6d2b81`. Merge commits, in order: `2e4a4dca7` (agent roles, `5f872e750`),
+`fb3acc93a` (desktop workflow, `47fb778bd`), `734840eea` (token usage and
+memory, `54f02cf3f`), `f8b416369` (agent completion, `d202d05dd`). Each
+merge was checked with `cargo check` (desktop, all targets) and the web
+typecheck before the next; the CLI configuration was checked after the last.
+
+**Integration fixes on top of the merges**
+
+| Commit | What |
+| --- | --- |
+| `af757d7a0` | One execution record: the session event log (AH-005) is the only store; `activity` is a projection of it; the legacy `audit/tool-activity.jsonl` is read-only input |
+| `ca58a1d18` | A step's tool events, usage and snapshot stamp share the invocation of the request that asked for them |
+| `0e749b610` | Harness: the fixture server stops when the app ends on its own |
+| `c7747b19a` | Steering is recorded in its own session's execution record, without the user's text; registry notes |
+| `860bfc9e0` | A refused-without-dispatch call is recorded under its run and agent; a reused provider call id is not dropped as a repeat |
+| `e45209626`, `64c95ea3b` | Harness: native separators for the tooling fixture's junction; wait for the memory page's tabs |
+
+**Full gate, on `860bfc9e0`** (the two later commits change only the
+smoke harness and this document; the harness was rebuilt and the affected
+scenarios rerun):
+
+| Step | Result |
+| --- | --- |
+| `yarn build:tauri:plugin:api` | ok |
+| `yarn typecheck` | ok |
+| `yarn lint` | 0 errors, 14 warnings |
+| `yarn build:web` | ok |
+| `yarn test:web` | 458 files passed, 2 skipped; 6029 tests passed, 3 skipped |
+| `yarn test:core` / `yarn test:ext` | 171 / 320 passed |
+| `yarn test:scripts` | 46 passed |
+| `node scripts/agent-harness/validate-registry.mjs` | 211 features, clean |
+| `yarn guard:local-only` | clean |
+| `git diff --check f3d6d2b81 HEAD` | clean |
+| `cargo test --lib --no-default-features --features test-tauri` | 946 passed |
+| `cargo check --no-default-features --features cli --all-targets` | 0 errors |
+| `cargo test --lib --no-default-features --features cli` | 1628 passed |
+| `cargo test --bin jan --no-default-features --features cli` | 14 passed |
+| `cargo clippy` desktop (test-tauri) / cli, all targets | 0 errors (53 / 55 warnings) |
+| `cargo test -p tauri-plugin-agent-tools -- --test-threads=4` (with `jan-sandbox-helper`) | 897 passed, 1 ignored |
+| `cargo build --features cowork-smoke --example cowork-smoke` | ok; embeds the `build:web` output of this commit (checked by asset name) |
+
+**Windows real-app matrix** (Windows 11, one process per scenario or per
+restart half, a fresh profile and a unique fixture port per unit,
+`COWORK_SMOKE_RETRIES=0`; the real-input title bar scenarios with
+`COWORK_SMOKE_REAL_INPUT=1`). Final full run on `860bfc9e0`: 47 of 48
+processes passed first time; the one failure (`memory-session-after-restart`,
+a harness race) was fixed and that pair then passed three runs out of
+three. Covered:
+window-chrome and its restart; Stop, session models after restart, deleting
+a running session, approval withdrawal, steering; custom headers and their
+restart; background-job isolation; execution record and its restart; tool
+activity timeline and its restart; event export 1/2; session export/import;
+project attachment with session isolation; memory session, project, user,
+provenance (each with its restart), precedence, conflict settle, conflict
+scope with restart, security, proposal approval; prompt snapshot panel and
+cross-session refusal; context replay 1/2; managed worktree review; team
+review 1/2; proposal flags; proposal review/apply; worktree export; bundle
+import 1/2; project tooling; agent roles.
+
+First failures, kept, and what they were:
+
+| Scenario | First failure | Kind | Resolution |
+| --- | --- | --- | --- |
+| `project-tooling-is-detected-and-told-to-the-model` | `mklink` "Invalid switch - tmp" (the caller spelled the kept profile `C:/...`) | harness | the fixture now passes native separators, as the other junction fixtures did (`e45209626`) |
+| `memory-session-after-restart` | no "This chat" tab (first and second full runs) | harness race | wait for the tabs (`64c95ea3b`); 3 of 3 passes after |
+| `session-isolation` alone | the attached session never appeared | harness ordering | it relies on `project-attachment` in the same process; passes run after it |
+| `agent-roles` (passed, but its record showed it) | a child's refused calls written with no session, two children's `call_0` merged | integration defect | `860bfc9e0` |
+
+**Real provider.** llama-server at `v100:8080` (`qwen3.8-27b`), through the
+fixture's relay: `token-usage-cache` (Chat) showed input 2,816, cached 2,793,
+output 26 against the provider's 2816 / 2793 / 26; `token-usage-cache-cowork`
+showed 6,379 / 6,342 / 22 against 6379 / 6342 / 22; after a restart with no
+provider traffic both were shown again unchanged.
+
+Not run: macOS, Linux; providers other than the mock and this llama-server.
