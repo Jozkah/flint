@@ -1326,37 +1326,37 @@ impl ToolInvoker for CompositeToolInvoker {
                     if let Some(message) = stale {
                         (message, None, None)
                     } else {
-                    match decision {
-                        PermissionDecision::AllowOnce => {
-                            let ctx = self
-                                .streaming_tool_context(&id)
-                                .with_cancel(registered.token().clone());
-                            execute_builtin_with_diff(tool, &args, &ctx).await
-                        }
-                        PermissionDecision::AllowAlways => {
-                            // Thread-scoped only; never persisted to agent.toml.
-                            // An exec grant covers the exact command the user was
-                            // shown and nothing else (AH-037). Granting the base
-                            // instead let "allow always" for `git status` cover
-                            // `git push`, and made every chaining trick free:
-                            // `&&`, `|`, `;` and `$(...)` compose commands out of
-                            // separately-approved bases.
-                            if matches!(tool.capability, Capability::Exec) {
-                                let command =
-                                    args.get("command").and_then(|v| v.as_str()).unwrap_or("");
-                                self.grants.lock().unwrap().grant_command(command);
-                            } else {
-                                self.grants.lock().unwrap().grant(kind);
+                        match decision {
+                            PermissionDecision::AllowOnce => {
+                                let ctx = self
+                                    .streaming_tool_context(&id)
+                                    .with_cancel(registered.token().clone());
+                                execute_builtin_with_diff(tool, &args, &ctx).await
                             }
-                            let ctx = self
-                                .streaming_tool_context(&id)
-                                .with_cancel(registered.token().clone());
-                            execute_builtin_with_diff(tool, &args, &ctx).await
+                            PermissionDecision::AllowAlways => {
+                                // Thread-scoped only; never persisted to agent.toml.
+                                // An exec grant covers the exact command the user was
+                                // shown and nothing else (AH-037). Granting the base
+                                // instead let "allow always" for `git status` cover
+                                // `git push`, and made every chaining trick free:
+                                // `&&`, `|`, `;` and `$(...)` compose commands out of
+                                // separately-approved bases.
+                                if matches!(tool.capability, Capability::Exec) {
+                                    let command =
+                                        args.get("command").and_then(|v| v.as_str()).unwrap_or("");
+                                    self.grants.lock().unwrap().grant_command(command);
+                                } else {
+                                    self.grants.lock().unwrap().grant(kind);
+                                }
+                                let ctx = self
+                                    .streaming_tool_context(&id)
+                                    .with_cancel(registered.token().clone());
+                                execute_builtin_with_diff(tool, &args, &ctx).await
+                            }
+                            PermissionDecision::Deny => {
+                                (format!("ERROR: tool '{name}' denied by user"), None, None)
+                            }
                         }
-                        PermissionDecision::Deny => {
-                            (format!("ERROR: tool '{name}' denied by user"), None, None)
-                        }
-                    }
                     }
                 }
             };
@@ -2074,12 +2074,7 @@ async fn orchestrate_inner(
         openai_tools.clear();
         tool_to_server.clear();
     } else {
-        retain_advertisable_mcp_tools(
-            &mut openai_tools,
-            &mut tool_to_server,
-            permissions,
-            subject,
-        );
+        retain_advertisable_mcp_tools(&mut openai_tools, &mut tool_to_server, permissions, subject);
     }
 
     // Per-run allowlist shared by builtin/subagent/ask advertisement below.
@@ -2539,6 +2534,9 @@ async fn run_turn_cycle(
     let mut mid_run_nudge_count: u32 = 0;
     // One-shot: asked the model to close out its todos before handing back.
     let mut closeout_nudged = false;
+    // janhq/jan#8712: one corrective retry per cycle for a reply with neither
+    // an answer nor a tool call, so an empty turn is not reported as finished.
+    let mut empty_retried = false;
 
     while unlimited || turn < max_turns {
         let _ = events.send(StreamEvent::Step {
@@ -2654,6 +2652,23 @@ async fn run_turn_cycle(
                 .unwrap_or_default()
                 .to_string();
             let awaiting_user = final_text.trim_end().ends_with('?');
+            // A reply with no answer text and no tool call -- typically one
+            // that only streamed reasoning, which is kept out of `content` --
+            // is not a finished turn, and returning it made a run end with
+            // nothing to show while reporting success (janhq/jan#8712). Ask
+            // once more, saying why; a second empty reply ends the turn rather
+            // than asking again until a budget runs out.
+            if final_text.trim().is_empty() && !empty_retried {
+                empty_retried = true;
+                crate::core::agent::reminder::attach(
+                    &mut conversation_messages,
+                    "Your last reply had no answer text and no tool call, so the user saw \
+                     no answer. Reply now with your answer to the user, or call a tool if \
+                     work remains.",
+                );
+                turn += 1;
+                continue;
+            }
             if !closeout_nudged
                 && run_mode == crate::core::agent::plan::RunMode::Normal
                 && !awaiting_user
@@ -3159,6 +3174,96 @@ mod tests {
         assert!(prompt.contains("web_search"));
         assert!(prompt.contains("web_fetch"));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A reply with neither answer text nor a tool call: what a model that only
+    /// streamed reasoning leaves once the reasoning is kept out of `content`.
+    fn reasoning_only_completion() -> serde_json::Value {
+        json!({
+            "choices": [{
+                "message": {
+                    "content": serde_json::Value::Null,
+                    "reasoning_content": "thinking it over"
+                },
+                "finish_reason": "stop"
+            }]
+        })
+    }
+
+    /// janhq/jan#8712. A reasoning-only reply is not a finished turn. It used to
+    /// be returned as the turn's successful result, so a long tool-heavy run
+    /// could end with no answer at all while reporting success.
+    #[tokio::test]
+    async fn a_reasoning_only_reply_is_retried_rather_than_accepted() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = MockModel::new(vec![
+            tool_call_completion(),
+            reasoning_only_completion(),
+            json!({ "choices": [{ "message": { "content": "final answer" }, "finish_reason": "stop" }] }),
+        ]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "hi" })];
+
+        let result = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            8,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result["choices"][0]["message"]["content"], "final answer");
+        assert_eq!(model.requests.lock().unwrap().len(), 3);
+        // The retry says why it is asking again, rather than resending the same
+        // conversation and hoping for a different answer.
+        let retried = model.requests.lock().unwrap()[2].to_string();
+        assert!(retried.contains("no answer"), "{retried}");
+    }
+
+    /// The retry is bounded: a second empty reply ends the turn rather than
+    /// asking again until the budget or the turn limit runs out.
+    #[tokio::test]
+    async fn a_second_empty_reply_ends_the_turn_instead_of_looping() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let model = MockModel::new(vec![
+            tool_call_completion(),
+            reasoning_only_completion(),
+            reasoning_only_completion(),
+            json!({ "choices": [{ "message": { "content": "never sent" }, "finish_reason": "stop" }] }),
+        ]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "hi" })];
+
+        let result = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            8,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(model.requests.lock().unwrap().len(), 3);
+        assert!(result["choices"][0]["message"]["content"].is_null());
     }
 
     fn tool_call_completion() -> serde_json::Value {
