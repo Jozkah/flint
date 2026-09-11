@@ -202,6 +202,33 @@ macOS and Linux. The real-input scenario moves the desktop's actual pointer,
 so a person using the machine at the same time can fail it; the failure
 message then says whether the window still had the foreground.
 
+## Background tasks: lifecycle, isolation and restart (AH-101 / AH-102)
+
+One task system, extended rather than duplicated: background `bash` jobs live
+in the agent-tools plugin's job registry, subagents in the Rust loop's
+`BackgroundSubagents` and the Cowork runner, and the desktop records both in
+the canonical activity model (`coworkActivity`) that the Background Tasks
+panel, the inline workflow card and the activity chip all read.
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| unit tests | `plugins/tauri-plugin-agent-tools/src/tools/handlers.rs` (`bash_job_registry_tests`) | another conversation's job is invisible and untouchable (list, status, collect, kill all read as "no such job"); a status check shows state and recent output and never takes the result; listed commands and peeked output are redacted; a finished job reports its exit code, a stopped one says so; the registry is bounded per conversation (oldest finished job makes room, all-running refuses); job ids carry a per-process prefix; the live tail is bounded and keeps the end |
+| unit tests | `src-tauri/src/core/agent/subagent.rs` | one running child cancelled while its sibling finishes; a queued child cancelled before it starts, releasing its queue count exactly once and never taking a slot; finished, unknown and repeated cancels reported as such; teardown after a cancel announces nothing twice; the two new tools are routed to the subagent handler |
+| unit tests | `web-app/src/lib/__tests__/coworkBackgroundLifecycle.test.ts` | restart marks live work *interrupted by application exit*, never running; older `cancelled` + restart records read the same way; a late event cannot revive interrupted work; job lookup confined to the session; a finished job's exit code, signal or stop request decides its row; only a collection settles a row; no credential from a command line or its output reaches the stored record; the end of a long log is kept |
+| unit tests | `coworkCancel.test.ts`, `CoworkTasksPanel.test.tsx` | kills are scoped to the session; a failed stop stays on the row; kind in words, exit code, start/end time, copy of the whole output; finished workflows render a bounded page |
+| Real Windows app, real IPC | `cowork-smoke --only background-job-isolation` | `execute_tool` runs `bash {"background": true}` in the confined shell (PowerShell 5.1 in AppContainer on this host) and gets a job id at once; another session's `bash_jobs_list` shows nothing and its `bash_job_kill` answers `unknown` without stopping anything; the listed command is redacted; the owner's kill reports `killed`, the job says `stoppedByRequest`, and the kernel shows the job's `ping` gone (1 process before, 0 after); another session's collection is refused; the owner collects once and a second collection is refused. **Passed on Windows 2026-09-11.** Its first two runs failed on the scenario's own command (`&&` is not a PowerShell 5.1 separator; logs `FIRST-FAILURE-bgjob.log`, `bgjob-2.log`) |
+| Mutation checks | `C:\tmp\jan-dwi\mut2.sh` | removing the owner check on collection, the queue-count release on a queued cancel, output redaction, or the `interrupted` restart state each fails its test |
+
+### Restart semantics
+
+Jobs and subagents are run-scoped: nothing keeps running once the app exits
+(`proc::kill_all` reaps every process tree at graceful exit; subagent futures
+die with the process). After a restart the record is truthful rather than
+hopeful -- anything left in flight is `interrupted` with the reason
+"Interrupted by application exit", its stale job id is dropped, and it can
+never be shown as running. No durable worker exists, so AH-101's persistence
+criterion is not met and the item is `in-progress`.
+
 ## Memory proposals: the approval card (AH-045-adjacent, memory path)
 
 | Evidence | Where | Covers |

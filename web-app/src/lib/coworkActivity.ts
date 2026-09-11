@@ -40,6 +40,12 @@ export type ActivityStatus =
   | 'done'
   | 'error'
   | 'cancelled'
+  /**
+   * Stopped by something other than the work or the user: the app closed
+   * while it ran. Distinct from `cancelled`, which says someone decided to
+   * stop it, and never shown as still running.
+   */
+  | 'interrupted'
 
 export type ActivityKind = 'agent' | 'shell'
 
@@ -103,10 +109,23 @@ export type ActivityTask = {
   toolCount?: number
   /** The subagent's own trace. */
   transcript?: CoworkTurn[]
-  /** The final answer, or the command's output. */
+  /** The final answer, or the command's output. Redacted and bounded to its
+   * tail before it is stored (see `coworkActivityRecorder`). */
   output?: string
+  /** `output` is the end of something longer; the rest was not kept. */
+  outputTruncated?: boolean
+  /** A shell command's exit code, when its result reported one. */
+  exitCode?: number
+  /** The command was killed by a signal rather than exiting. */
+  signalled?: boolean
   /** Why this stopped, when it was cancelled or failed. */
   detail?: string
+  /**
+   * The last attempt to stop this task failed, and why. Kept on the row --
+   * not only toasted -- so a stop that did not happen stays visible until one
+   * does. Cleared by a later successful stop.
+   */
+  cancelError?: string
 }
 
 /** One agent run that dispatched background work. */
@@ -141,6 +160,7 @@ const FINISHED: ReadonlySet<ActivityStatus> = new Set<ActivityStatus>([
   'done',
   'error',
   'cancelled',
+  'interrupted',
 ])
 
 export const isFinished = (status: ActivityStatus): boolean =>
@@ -193,10 +213,16 @@ export function findTask(
  */
 export function findTaskByJob(
   state: ActivityState,
-  jobId: string
+  jobId: string,
+  /** Confine the search to one session, as the backend confines the job. */
+  sessionId?: string
 ): ActivityTask | undefined {
   return Object.values(state.tasks)
-    .filter((task) => task.jobId === jobId)
+    .filter(
+      (task) =>
+        task.jobId === jobId &&
+        (sessionId === undefined || task.sessionId === sessionId)
+    )
     .sort((a, b) => {
       const live = Number(isFinished(a.status)) - Number(isFinished(b.status))
       return live !== 0 ? live : b.startedAt - a.startedAt
@@ -369,11 +395,23 @@ export function settleOnLoad(
   now: number,
   reason: string
 ): ActivityState {
-  const settled = settleMatching(
+  // Interrupted, not cancelled: nobody decided to stop this work, the app
+  // exiting did. Records written before `interrupted` existed said the same
+  // thing as `cancelled` plus this reason, and read the same way now.
+  const migrated = settleMatching(
     state,
+    (task) => task.status === 'cancelled' && task.detail === reason,
+    now,
+    reason,
+    'interrupted',
+    { keepEndedAt: true }
+  )
+  const settled = settleMatching(
+    migrated,
     (task) => !isFinished(task.status),
     now,
-    reason
+    reason,
+    'interrupted'
   )
   // Job ids are dropped as well as the statuses. The backend that minted them
   // died with the app and its counter restarts at zero, so a persisted id will
@@ -418,7 +456,9 @@ function settleMatching(
   state: ActivityState,
   matches: (task: ActivityTask) => boolean,
   now: number,
-  reason: string
+  reason: string,
+  status: ActivityStatus = 'cancelled',
+  opts: { keepEndedAt?: boolean } = {}
 ): ActivityState {
   let tasks = state.tasks
   let changed = false
@@ -430,8 +470,8 @@ function settleMatching(
     }
     tasks[task.id] = {
       ...task,
-      status: 'cancelled',
-      endedAt: now,
+      status,
+      endedAt: opts.keepEndedAt ? (task.endedAt ?? now) : now,
       detail: reason,
     }
   }
@@ -537,6 +577,7 @@ export type ActivityProgress = {
   done: number
   error: number
   cancelled: number
+  interrupted: number
   finished: number
   /** 0–1, or `null` with nothing to measure. Counts finished work of any kind:
    * a failed task is over, and a bar that never fills is not progress. */
@@ -551,7 +592,8 @@ export function progressOf(tasks: ActivityTask[]): ActivityProgress {
   const done = count('done')
   const error = count('error')
   const cancelled = count('cancelled')
-  const finished = done + error + cancelled
+  const interrupted = count('interrupted')
+  const finished = done + error + cancelled + interrupted
   return {
     total: tasks.length,
     running: count('running'),
@@ -559,6 +601,7 @@ export function progressOf(tasks: ActivityTask[]): ActivityProgress {
     done,
     error,
     cancelled,
+    interrupted,
     finished,
     fraction: tasks.length === 0 ? null : finished / tasks.length,
     tokens: tasks.reduce((sum, task) => sum + (task.usage?.total_tokens ?? 0), 0),
@@ -594,6 +637,9 @@ export function workflowStatus(
     return workflow.endedAt == null ? 'queued' : 'cancelled'
   }
   if (tasks.some((task) => task.status === 'error')) return 'error'
+  // Interrupted outranks cancelled: the user stopping part of a run is less
+  // surprising than the app having cut all of it off.
+  if (tasks.some((task) => task.status === 'interrupted')) return 'interrupted'
   if (tasks.some((task) => task.status === 'cancelled')) return 'cancelled'
   // No children yet and the run is still going: the dispatch that created this
   // workflow is itself the work in flight.

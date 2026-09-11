@@ -110,7 +110,9 @@ describe('cancelling a shell command', () => {
   it('kills the backend job and reports it stopped', async () => {
     const d = deps()
     const result = await cancelTask(SESSION, shell({ jobId: 'bash-1' }), d)
-    expect(d.killJob).toHaveBeenCalledWith('bash-1')
+    // Scoped to the session the job ran under: the backend refuses another
+    // conversation's job, so the session is part of the request.
+    expect(d.killJob).toHaveBeenCalledWith('bash-1', SESSION)
     expect(result.outcome).toBe('cancelled')
   })
 
@@ -156,7 +158,12 @@ describe('what the record should say afterwards', () => {
   it('marks a task cancelled only when something was actually stopped', () => {
     expect(
       patchForOutcome({ taskId: 'call-1', outcome: 'cancelled' }, T0)
-    ).toEqual({ status: 'cancelled', endedAt: T0, detail: CANCELLED_BY_USER })
+    ).toEqual({
+      status: 'cancelled',
+      endedAt: T0,
+      detail: CANCELLED_BY_USER,
+      cancelError: undefined,
+    })
   })
 
   it('leaves the row alone for every outcome that stopped nothing', () => {
@@ -164,10 +171,20 @@ describe('what the record should say afterwards', () => {
       'alreadyFinished',
       'notRunning',
       'unreachable',
-      'failed',
     ] as const) {
       expect(patchForOutcome({ taskId: 'call-1', outcome }, T0)).toBeNull()
     }
+  })
+
+  it('writes a failed stop onto the row, without claiming it stopped', () => {
+    // The work is still running; the row must keep saying the stop failed
+    // after the toast is gone.
+    const patch = patchForOutcome(
+      { taskId: 'call-1', outcome: 'failed', error: 'access denied' },
+      T0
+    )
+    expect(patch).toEqual({ cancelError: 'access denied' })
+    expect(patch).not.toHaveProperty('status')
   })
 })
 
@@ -249,7 +266,7 @@ describe('stopping a whole workflow', () => {
       { deps: d }
     )
     expect(d.abortAgent).toHaveBeenCalledOnce()
-    expect(d.killJob).toHaveBeenCalledWith('bash-7')
+    expect(d.killJob).toHaveBeenCalledWith('bash-7', SESSION)
   })
 
   it('skips a foreground command it cannot reach', async () => {
@@ -344,7 +361,10 @@ describe('a kill the system refuses', () => {
       outcome: 'failed',
       error: 'not permitted to signal this process group',
     })
-    // Not marked cancelled: the command is still running.
-    expect(patchForOutcome(result, T0)).toBeNull()
+    // Not marked cancelled -- the command is still running -- but the row
+    // keeps the refusal.
+    expect(patchForOutcome(result, T0)).toEqual({
+      cancelError: 'not permitted to signal this process group',
+    })
   })
 })

@@ -30,12 +30,12 @@ and the latter two require a recorded `blockedReason`.
 | 2 | Security and permissions | 1 | 0 | 1 | 18 | 0 | 0 | 0 | 20 |
 | 3 | Repository intelligence | 18 | 0 | 2 | 0 | 0 | 0 | 0 | 20 |
 | 4 | Context and memory | 1 | 0 | 8 | 7 | 0 | 0 | 0 | 16 |
-| 5 | Agent orchestration | 8 | 0 | 4 | 13 | 0 | 0 | 0 | 25 |
+| 5 | Agent orchestration | 8 | 0 | 5 | 12 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 16 | 0 | 1 | 9 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 17 | 0 | 6 | 5 | 0 | 0 | 1 | 29 |
 | 9 | Approved additions | 0 | 0 | 0 | 10 | 0 | 0 | 0 | 10 |
-| **all** | | **77** | **0** | **31** | **101** | **0** | **0** | **1** | **210** |
+| **all** | | **77** | **0** | **32** | **100** | **0** | **0** | **1** | **210** |
 
 ## Ownership lanes
 
@@ -170,7 +170,7 @@ per-OS evidence log rather than backlog items.
 | `AH-098` | Test agent role | 5 | orchestration | P1 | `missing` | medium | `AH-089` |
 | `AH-099` | Security agent role | 5 | orchestration | P1 | `missing` | medium | `AH-089` |
 | `AH-100` | Forked contexts | 5 | orchestration | P1 | `in-progress` | medium | `AH-078` |
-| `AH-101` | Background agents | 5 | orchestration | P0 | `implemented` | medium | `AH-089` |
+| `AH-101` | Background agents | 5 | orchestration | P0 | `in-progress` | medium | `AH-089` |
 | `AH-102` | Background agent lifecycle control | 5 | orchestration | P1 | `in-progress` | medium | `AH-101` |
 | `AH-103` | Agent-to-agent messaging | 5 | orchestration | P1 | `missing` | medium | `AH-101` |
 | `AH-104` | Shared task board | 5 | orchestration | P1 | `implemented` | medium | `AH-016` |
@@ -343,7 +343,8 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-087` What-the-model-saw inspector** - /context shows category sizes re-derived from disk, omits the date line and memory recall, and offers no text view.
 - **`AH-088` Context budget planner** - planTurn reserves reply headroom and classifies the turn before dispatch; an over-capacity request raises ContextOverflowError instead of being sent. An undiscoverable window is reported, never refused. max_tokens: 0 is never dispatched: llama.cpp gets its -1 "no cap" spelling and every other provider gets the key omitted, because a zero reply cap asks for an empty answer. A context-overflow refusal is now read for the window the server itself named -- structured fields first, then only known message shapes, and only when the numbers agree -- and stored as a `server-response` capability bound to provider, base URL and model, forgotten when any of the three changes. Recovery allows one compaction and one retry, never a loop.
 - **`AH-100` Forked contexts** - Children are isolated, not forked: they start from a fresh single-message history.
-- **`AH-102` Background agent lifecycle control** - Only bulk abort_all on parent teardown exists; there is no per-agent cancel.
+- **`AH-101` Background agents** - Reclassified from implemented (2026-09-11). Spawn-without-blocking and await-later work (dispatch_subagent / await_subagent; the Cowork task tool), but the persistence criterion is not met: children are run-scoped futures, aborted on parent teardown (AbortOnDrop) and gone at app exit. After a restart the record is truthful -- the desktop marks unfinished children interrupted by application exit -- but nothing survives or resumes. Meeting it needs a durable worker outside the app process, which does not exist.
+- **`AH-102` Background agent lifecycle control** - Individual control now exists on both surfaces. Rust loop: list_subagent_runs and cancel_subagent (queued children leave the queue and never start; running ones are aborted; finished ones are left alone; a late result cannot revive a cancelled child; teardown does not announce a cancelled child twice). Cowork: per-child abort and the Background Tasks panel. Background bash jobs: list/status/await/cancel confined to the owning conversation. Still in-progress because the persistence criterion is not met -- see AH-101: nothing survives an app exit, and the record says interrupted rather than running.
 - **`AH-104` Shared task board** - TeamTask and TeamState carry one board across the team, settled centrally and reported through assembleReport.
 - **`AH-105` Task dependency graph** - Tasks declare dependsOn; danglingDependencies and findCycle refuse a graph that could never run.
 - **`AH-106` Ready-task scheduling** - readyTasks dispatches only tasks whose dependencies have completed, bounded by MAX_TEAM_PARALLEL and MAX_TEAM_TASKS.

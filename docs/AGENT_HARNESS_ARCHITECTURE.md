@@ -389,6 +389,45 @@ context measurement, checkpoints and compatibility ingestion. Citing
 "Phase 5" without saying which document is a defect; cite `AH-###` or a
 blueprint section number.
 
+## Background tasks: lifecycle and control (AH-101 / AH-102)
+
+There is one task system, with three sources that feed one record:
+
+- **Background shell commands** -- the agent-tools job registry
+  (`tools/handlers.rs`). `bash {"command", "background": true}` backgrounds at
+  once (a timeout given with it means "wait this long first") and returns a
+  job id `bash-<process prefix>-<n>`; the prefix keeps ids from a previous app
+  run from ever naming a new job. With no command, `bash` manages jobs:
+  `{"action": "list"}`, `{"job_id"}` to await and collect (exactly once),
+  `{"job_id", "action": "status"}` for state and recent output without
+  consuming anything, `{"job_id", "action": "cancel"}` to kill the process
+  tree. Every job belongs to the conversation that started it (`job_owner`,
+  the thread id on the desktop); another conversation's job reads as "no such
+  job" everywhere, including the Tauri `bash_jobs_list` / `bash_job_kill`
+  commands. Each owner holds at most 32 jobs; the oldest finished job makes
+  room, and with all 32 running a new one is refused and stopped. Commands and
+  peeked output are redacted with `audit::redact`.
+- **Subagents in the Rust loop** -- `BackgroundSubagents` (`subagent.rs`).
+  Each child's life is one atomic phase (queued, running, finished,
+  cancelled) moved only by compare-and-swap, so a cancel and the child's own
+  progress cannot both win. `list_subagent_runs` lists the run's children;
+  `cancel_subagent` takes a queued child out of the queue before it starts or
+  aborts a running one, settles its checkout and announces its end once.
+  Parent teardown cancels every child (`AbortOnDrop`); a clean parent exit
+  waits for them (`join_all`).
+- **Cowork subagents and commands** -- recorded by `coworkActivityRecorder`
+  into `coworkActivity`, the model the Background Tasks panel, the workflow
+  card and the chip all read. A child is stopped through its own
+  `AbortController`, a command through `bash_job_kill` scoped to the session.
+  A failed stop is kept on the row (`cancelError`), not only toasted.
+
+Nothing survives an app exit: graceful shutdown reaps every process tree the
+plugin started, and subagent futures end with the process. On the next start
+`settleOnLoad` marks anything left in flight `interrupted` with the reason
+"Interrupted by application exit" and drops its job id, so the record can
+never show it running. There is no durable worker, which is why AH-101's
+persistence criterion is open.
+
 ## Tool activity: the canonical record (AH-050) and the timeline (AH-172)
 
 Two logs, deliberately separate:

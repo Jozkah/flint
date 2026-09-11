@@ -417,11 +417,16 @@ pub fn resolve_decision(
             // command) never prompts: the exec permission was already
             // granted (or denied above) when the command was started. A real
             // command wins over a stray model-supplied job_id.
+            // The same holds for inspecting, cancelling and listing the
+            // run's own background commands: none of them runs anything new,
+            // and the handler confines each to the conversation that started
+            // the job, so an id from elsewhere reaches nothing.
             if command.trim().is_empty()
-                && args
+                && (args
                     .get("job_id")
                     .and_then(|v| v.as_str())
                     .is_some_and(|job_id| !job_id.trim().is_empty())
+                    || args.get("action").and_then(|v| v.as_str()) == Some("list"))
             {
                 return Decision::Allow;
             }

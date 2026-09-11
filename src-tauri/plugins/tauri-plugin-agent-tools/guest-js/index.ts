@@ -667,13 +667,15 @@ export async function projectReadFile(
 }
 
 /**
- * Shell commands still running in the background, newest first.
+ * The background shell commands one conversation started, newest first.
  *
  * Read-only: polling this never takes the output the agent collects with
  * `bash {"job_id": ...}`, so a UI can show live jobs without racing the run.
+ * `session` is the conversation the tool calls ran under; another
+ * conversation's jobs are never listed.
  */
-export async function bashJobsList(): Promise<BashJobStatus[]> {
-  return await invoke('plugin:agent-tools|bash_jobs_list')
+export async function bashJobsList(session: string): Promise<BashJobStatus[]> {
+  return await invoke('plugin:agent-tools|bash_jobs_list', { session })
 }
 
 /** Why a kill request ended the way it did. Mirrors `BashJobKillOutcome`. */
@@ -702,10 +704,14 @@ export type BashJobKill = {
  * The job entry survives, so the agent's own collection still returns whatever
  * the command printed before it died. The outcome is reported rather than
  * assumed: a UI must not claim to have stopped something that had already
- * finished, or that it could not signal.
+ * finished, or that it could not signal. Confined to `session`: another
+ * conversation's job reports `unknown`, the same as no job at all.
  */
-export async function bashJobKill(jobId: string): Promise<BashJobKill> {
-  return await invoke('plugin:agent-tools|bash_job_kill', { jobId })
+export async function bashJobKill(
+  jobId: string,
+  session: string
+): Promise<BashJobKill> {
+  return await invoke('plugin:agent-tools|bash_job_kill', { jobId, session })
 }
 
 /** Which OS sandbox, if any, can confine a shell on this machine. */

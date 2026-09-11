@@ -19,6 +19,12 @@ import {
   type ActivityTask,
 } from '@/lib/coworkActivity'
 import { backgroundJobId } from '@/lib/coworkTasks'
+import {
+  bashExitCode,
+  bashSignalled,
+  boundTail,
+  redactSecrets,
+} from '@/lib/redact'
 import type { UIMessage } from 'ai'
 
 /**
@@ -123,6 +129,8 @@ export function recordShellDispatch(
   task: { callId: string; command: string; anchorMessageId?: string }
 ): void {
   const phaseId = openWorkflow(run, task.anchorMessageId)
+  // The command line is shown and persisted: redacted once, here.
+  const command = redactSecrets(task.command)
   useCoworkActivity.getState().beginTask({
     id: taskIdFor(run.sessionId, run.runId, task.callId),
     callId: task.callId,
@@ -130,8 +138,8 @@ export function recordShellDispatch(
     workflowId: run.runId,
     phaseId,
     kind: 'shell',
-    title: task.command,
-    command: task.command,
+    title: command,
+    command,
     status: 'running',
     startedAt: Date.now(),
   })
@@ -154,27 +162,55 @@ export function recordShellOutcome(
     taskIdFor(run.sessionId, run.runId, callId),
     jobId
       ? { jobId, status: 'running' }
-      : {
-          status: outcome.isError ? 'error' : 'done',
-          endedAt: Date.now(),
-          output: outcome.output,
-        }
+      : { ...settledShell(outcome), endedAt: Date.now() }
   )
 }
 
 /** Settle the command a collecting `bash {"job_id": ...}` call just waited on. */
 export function recordJobCollected(
+  sessionId: string,
   jobId: string,
   outcome: { output: string; isError?: boolean }
 ): void {
   const state = useCoworkActivity.getState()
-  // Found by job id, which the backend mints and which is unique across it —
-  // the collecting call may not even be in the run that started the command.
-  const task = findTaskByJob(state, jobId)
+  // Found by job id within this session only: the backend confines a job to
+  // the conversation that started it, and so does the record. The collecting
+  // call may be in a later run than the one that started the command.
+  const task = findTaskByJob(state, jobId, sessionId)
   if (!task) return
   state.patchTask(task.id, {
-    status: outcome.isError ? 'error' : 'done',
+    ...settledShell(outcome),
     endedAt: Date.now(),
-    output: outcome.output,
   })
+}
+
+/** Output kept on a shell task: its tail, which is where it says how it ended. */
+export const MAX_KEPT_OUTPUT_CHARS = 64 * 1024
+export const MAX_KEPT_OUTPUT_LINES = 2000
+
+/**
+ * What a finished shell command's row records: how it ended, and its output
+ * redacted and bounded before it is stored. The record is persisted, so a
+ * credential a command printed must never reach it.
+ */
+function settledShell(outcome: {
+  output: string
+  isError?: boolean
+}): Partial<ActivityTask> {
+  const exitCode = bashExitCode(outcome.output)
+  const signalled = bashSignalled(outcome.output) || undefined
+  const failed =
+    outcome.isError || (exitCode != null && exitCode !== 0) || !!signalled
+  const kept = boundTail(
+    redactSecrets(outcome.output),
+    MAX_KEPT_OUTPUT_CHARS,
+    MAX_KEPT_OUTPUT_LINES
+  )
+  return {
+    status: failed ? 'error' : 'done',
+    output: kept.text,
+    outputTruncated: kept.truncated || undefined,
+    exitCode,
+    signalled,
+  }
 }

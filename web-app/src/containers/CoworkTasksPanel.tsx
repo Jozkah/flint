@@ -4,8 +4,10 @@ import {
   ChevronDown,
   CircleAlert,
   CircleCheck,
+  CircleOff,
   CircleSlash,
   Clock,
+  Copy,
   Loader2,
   Square,
   Terminal,
@@ -39,6 +41,10 @@ const TICK_MS = 1000
 /** Output lines kept in view. A build log can be megabytes; the tail is the
  * part that says what happened, and the rest would freeze the panel. */
 const MAX_OUTPUT_LINES = 200
+
+/** Finished workflows rendered before "show more". A long session collects
+ * hundreds; rendering every row at once is what makes a panel sluggish. */
+export const FINISHED_PAGE = 50
 
 type Props = {
   /** This session's workflows, newest first, from the canonical store. */
@@ -194,8 +200,18 @@ export function CoworkTasksPanel({
   // workflow whose backgrounded command is still running stays under Running
   // even though its model turn is over, because the process is.
   const [showFinished, setShowFinished] = useState(true)
+  const [finishedLimit, setFinishedLimit] = useState(FINISHED_PAGE)
   const running = workflows.filter((view) => isLive(view.status))
   const finished = workflows.filter((view) => !isLive(view.status))
+  // A focused workflow is always rendered, even past the page, so "show in
+  // Activity" never scrolls to nothing.
+  const focusIndex = workflowOfFocus
+    ? finished.findIndex((v) => v.workflow.id === workflowOfFocus.workflow.id)
+    : -1
+  const finishedShown = finished.slice(
+    0,
+    Math.max(finishedLimit, focusIndex + 1)
+  )
 
   const section = (view: WorkflowView) => (
     <WorkflowSection
@@ -277,7 +293,25 @@ export function CoworkTasksPanel({
                     {t('common:tasks.clearFinished')}
                   </Button>
                 </div>
-                {showFinished && finished.map(section)}
+                {showFinished && finishedShown.map(section)}
+                {showFinished && finished.length > finishedShown.length && (
+                  <div className="px-3 py-2">
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() =>
+                        setFinishedLimit((n) => n + FINISHED_PAGE)
+                      }
+                    >
+                      {t('common:tasks.showMoreFinished', {
+                        count: Math.min(
+                          FINISHED_PAGE,
+                          finished.length - finishedShown.length
+                        ),
+                      })}
+                    </Button>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -325,10 +359,12 @@ function WorkflowSection({
   const stopping = cancelling.has(workflow.id)
   const isFocus = focusWorkflowId === workflow.id
 
+  const titles = new Map(view.tasks.map((one) => [one.id, one.title]))
   const taskRow = (task: ActivityTask) => (
     <TaskItem
       key={task.id}
       task={task}
+      parentTitle={task.parentTaskId ? titles.get(task.parentTaskId) : undefined}
       now={now}
       expanded={expandedTasks.has(task.id)}
       onToggle={() => onToggleTask(task.id)}
@@ -506,6 +542,15 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
           data-testid="task-status-cancelled"
         />
       )
+    case 'interrupted':
+      return (
+        <CircleOff
+          size={13}
+          aria-label={t('common:tasks.statusInterrupted')}
+          className={cn(shared, 'text-amber-600 dark:text-amber-400')}
+          data-testid="task-status-interrupted"
+        />
+      )
     default:
       return (
         <CircleCheck
@@ -518,8 +563,18 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
   }
 }
 
+/** A wall-clock time, short: what a row shows for when work began and ended. */
+function clockTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
 function TaskItem({
   task,
+  parentTitle,
   now,
   expanded,
   onToggle,
@@ -529,6 +584,8 @@ function TaskItem({
   containerRef,
 }: {
   task: ActivityTask
+  /** The task that dispatched this one, when it was nested. */
+  parentTitle?: string
   now: number
   expanded: boolean
   onToggle: () => void
@@ -575,6 +632,13 @@ function TaskItem({
               </span>
             </span>
             <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-main-view-fg/50">
+              {/* Kind in words as well as the icon, so it is read out and
+                does not rest on telling two glyphs apart. */}
+              <span className="uppercase tracking-wider">
+                {task.kind === 'shell'
+                  ? t('common:tasks.kindShell')
+                  : t('common:tasks.kindAgent')}
+              </span>
               {task.status === 'queued' && task.waiting != null && (
                 <span>
                   {t('common:tasks.queuePosition', { position: task.waiting })}
@@ -603,7 +667,26 @@ function TaskItem({
                   {t('common:tasks.background', { jobId: task.jobId })}
                 </span>
               )}
+              {task.exitCode != null && (
+                <span
+                  className={cn(
+                    'font-mono',
+                    task.exitCode !== 0 && 'text-destructive'
+                  )}
+                >
+                  {t('common:tasks.exitCode', { code: task.exitCode })}
+                </span>
+              )}
+              {task.signalled && <span>{t('common:tasks.signalled')}</span>}
             </span>
+            {task.cancelError && (
+              <span
+                role="status"
+                className="mt-0.5 block text-[11px] text-destructive"
+              >
+                {t('common:tasks.stopFailedOnRow', { error: task.cancelError })}
+              </span>
+            )}
           </span>
           <ChevronDown
             size={12}
@@ -636,6 +719,15 @@ function TaskItem({
 
       {expanded && (
         <div className="border-t bg-background px-3 py-2 pl-5">
+          <p className="mb-2 flex flex-wrap gap-x-3 text-[11px] text-main-view-fg/50">
+            <span>{t('common:tasks.startedAt', { time: clockTime(task.startedAt) })}</span>
+            {task.endedAt != null && (
+              <span>{t('common:tasks.finishedAt', { time: clockTime(task.endedAt) })}</span>
+            )}
+            {parentTitle && (
+              <span>{t('common:tasks.fromTask', { name: parentTitle })}</span>
+            )}
+          </p>
           {task.description && (
             <p className="mb-2 text-[11px] text-main-view-fg/70">
               {task.description}
@@ -689,6 +781,7 @@ function TaskItem({
  */
 function TaskOutput({ task }: { task: ActivityTask }) {
   const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
   const output = task.output
   if (!output) {
     return (
@@ -702,13 +795,36 @@ function TaskOutput({ task }: { task: ActivityTask }) {
   const lines = output.split('\n')
   const truncated = lines.length > MAX_OUTPUT_LINES
   const shown = truncated ? lines.slice(-MAX_OUTPUT_LINES) : lines
+  const copy = () => {
+    // The whole kept output, not just the lines in view.
+    void navigator.clipboard?.writeText(output).then(
+      () => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      },
+      () => setCopied(false)
+    )
+  }
   return (
     <>
-      {truncated && (
-        <p className="mb-1 text-[11px] text-main-view-fg/40">
-          {t('common:tasks.outputTruncated', { lines: MAX_OUTPUT_LINES })}
-        </p>
-      )}
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-[11px] text-main-view-fg/40">
+          {task.outputTruncated && t('common:tasks.outputPartial')}{' '}
+          {truncated &&
+            t('common:tasks.outputTruncated', { lines: MAX_OUTPUT_LINES })}
+        </span>
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={copy}
+          aria-label={t('common:tasks.copyOutput')}
+        >
+          <Copy size={11} className="shrink-0" />
+          <span className="sr-only" aria-live="polite">
+            {copied ? t('common:tasks.copied') : ''}
+          </span>
+        </Button>
+      </div>
       <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-muted/40 p-2 font-mono text-[11px]">
         {shown.join('\n')}
       </pre>

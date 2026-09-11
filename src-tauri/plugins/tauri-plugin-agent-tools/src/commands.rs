@@ -821,7 +821,9 @@ async fn execute_tool_inner(
         .with_mask_root(Path::new(&data_folder))
         .with_scratch_root(&scratch)
         .with_read_roots(&read_roots)
-        .with_write_roots(&write_roots);
+        .with_write_roots(&write_roots)
+        // The thread is the conversation: its background commands are its own.
+        .with_job_owner(&thread_id);
     if let Some(id) = call_id.as_deref() {
         ctx = ctx.with_call_id(id);
     }
@@ -1226,14 +1228,15 @@ pub async fn project_init_accept(
     .map_err(AgentToolsError::from)
 }
 
-/// Every shell command still running in the background, newest first.
+/// The background shell commands one conversation started, newest first.
 ///
 /// Read-only and non-consuming: a caller polling this can never take the
-/// output the agent is waiting to collect with `bash {"job_id": ...}`. The
-/// jobs are process-global, matching where the shell actually runs them.
+/// output the agent is waiting to collect with `bash {"job_id": ...}`.
+/// `session` is the conversation (the `thread_id` its tool calls ran under);
+/// another conversation's jobs are not listed.
 #[tauri::command]
-pub fn bash_jobs_list() -> Vec<crate::tools::handlers::BashJobStatus> {
-    crate::tools::handlers::list_bash_jobs()
+pub fn bash_jobs_list(session: String) -> Vec<crate::tools::handlers::BashJobStatus> {
+    crate::tools::handlers::list_bash_jobs(Some(&session))
 }
 
 /// Kill one backgrounded shell command and every process it spawned.
@@ -1243,9 +1246,12 @@ pub fn bash_jobs_list() -> Vec<crate::tools::handlers::BashJobStatus> {
 /// printed before it died rather than failing with an unknown id. The reported
 /// outcome distinguishes a kill from "already finished" and "no such job", so a
 /// UI never claims to have stopped something it did not.
+///
+/// Confined to `session`: another conversation's job reports `unknown`, the
+/// same as no job, so an id cannot be used to probe for work elsewhere.
 #[tauri::command]
-pub fn bash_job_kill(job_id: String) -> crate::tools::handlers::BashJobKill {
-    crate::tools::handlers::kill_bash_job(&job_id)
+pub fn bash_job_kill(job_id: String, session: String) -> crate::tools::handlers::BashJobKill {
+    crate::tools::handlers::kill_bash_job(&job_id, Some(&session))
 }
 
 #[cfg(test)]

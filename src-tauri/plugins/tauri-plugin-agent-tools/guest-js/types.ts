@@ -57,12 +57,24 @@ export interface ProjectFile {
  * `bashJobsList`. Listing never consumes a job's output. */
 export interface BashJobStatus {
   jobId: string
+  /** Redacted: a command line is where a credential most often appears. */
   command: string
   elapsedMs: number
   /** The command has produced its output; the agent has not collected it yet. */
   finished: boolean
   /** The tool call that backgrounded it, when known. */
   callId: string | null
+  /** Wall-clock start and end, epoch milliseconds. */
+  startedAtMs: number
+  finishedAtMs: number | null
+  /** From the output's `[exit N]` marker, once finished. */
+  exitCode: number | null
+  /** Killed by a signal rather than exiting. */
+  signalled: boolean
+  /** Stopped on request (the Stop control, or the agent's own cancel). */
+  stoppedByRequest: boolean
+  /** The output is waiting to be collected. */
+  outputAvailable: boolean
 }
 
 /** One fragment of a tool's live output. */

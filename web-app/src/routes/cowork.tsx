@@ -37,7 +37,12 @@ import {
   recordShellOutcome,
   type RunContext,
 } from '@/lib/coworkActivityRecorder'
-import { collectedJobId, commandOf, countToolCalls } from '@/lib/coworkTasks'
+import {
+  collectedJobId,
+  commandOf,
+  countToolCalls,
+  finishedJobPatch,
+} from '@/lib/coworkTasks'
 import {
   INTERRUPTED_BY_RUN_END,
   findTaskByJob,
@@ -1320,11 +1325,17 @@ function CoworkPage() {
   // the chip derives its counts from the same list, and polling only while the
   // panel was open let the two disagree — a collected job still spinning in the
   // chip while the panel showed it finished.
+  // Scoped to the session on screen: the backend lists only that
+  // conversation's jobs, and the list is dropped the moment the session
+  // changes, so one session's jobs can never settle -- or block -- another's.
   const [liveJobs, setLiveJobs] = useState<LiveJob[]>([])
+  const liveJobsSession = session?.id
   useEffect(() => {
+    setLiveJobs([])
+    if (!liveJobsSession) return
     let alive = true
     const poll = () => {
-      void bashJobsList()
+      void bashJobsList(liveJobsSession)
         .then((jobs) => {
           if (alive) setLiveJobs(jobs)
         })
@@ -1339,7 +1350,7 @@ function CoworkPage() {
       alive = false
       clearInterval(id)
     }
-  }, [])
+  }, [liveJobsSession])
 
   /**
    * What is holding this session's authority in place, if anything.
@@ -1389,16 +1400,20 @@ function CoworkPage() {
   // The backend is the authority on whether a backgrounded shell is still
   // running: the agent may not collect a job for many turns, and until it does
   // nothing else would ever settle that row.
+  // It also says how the command ended -- exit code, signal, or a stop request
+  // -- so an uncollected failure reads as a failure, not a success.
   useEffect(() => {
+    if (!liveJobsSession) return
     const state = useCoworkActivity.getState()
     for (const job of liveJobs) {
       if (!job.finished) continue
-      const task = findTaskByJob(state, job.jobId)
+      const task = findTaskByJob(state, job.jobId, liveJobsSession)
       if (task && task.status === 'running') {
-        state.patchTask(task.id, { status: 'done', endedAt: Date.now() })
+        const patch = finishedJobPatch(job)
+        state.patchTask(task.id, { ...patch, endedAt: patch.endedAt ?? Date.now() })
       }
     }
-  }, [liveJobs])
+  }, [liveJobs, liveJobsSession])
 
   // Advances the cards' elapsed labels. Only while work is live: an idle
   // conversation must not re-render every second.
@@ -2800,7 +2815,7 @@ function CoworkPage() {
               // A collecting call settles the command it collects, which is a
               // different row; a plain call settles its own.
               const collecting = collectedJobId(turn.args)
-              if (collecting) recordJobCollected(collecting, outcome)
+              if (collecting) recordJobCollected(sid, collecting, outcome)
               else recordShellOutcome(run, callId, outcome)
             }
           },

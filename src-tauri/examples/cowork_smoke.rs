@@ -1012,6 +1012,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_window_chrome,
     },
     Scenario {
+        name: "background-job-isolation",
+        run: scenario_background_job_isolation,
+    },
+    Scenario {
         name: "prompt-snapshot-cross-session-refused",
         run: scenario_prompt_snapshot_isolation,
     },
@@ -9565,5 +9569,150 @@ fn scenario_window_chrome(_ctx: &Ctx) -> ScenarioResult {
 #[cfg(not(windows))]
 fn scenario_window_chrome_restart(_ctx: &Ctx) -> ScenarioResult {
     println!("      skipped: the native title-bar scenario is Windows-only");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Background shell jobs through the real backend (AH-102)
+// ---------------------------------------------------------------------------
+
+/// How many processes on the machine carry `needle` in their command line.
+/// Asked of the kernel through PowerShell, so a surviving child of the killed
+/// shell is counted even though the app no longer tracks it.
+#[cfg(windows)]
+fn processes_matching(needle: &str) -> Option<usize> {
+    let script = format!(
+        "@(Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*{needle}*' -and $_.Name -notmatch 'powershell' }}).Count"
+    );
+    let out = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+        .ok()?;
+    String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+}
+
+#[cfg(not(windows))]
+fn processes_matching(_needle: &str) -> Option<usize> {
+    None
+}
+
+/// A backgrounded command belongs to the conversation that started it, is
+/// killed with every process it started, and is collected exactly once.
+///
+/// Over real IPC into the real plugin: `execute_tool` with the same arguments
+/// the Cowork dispatcher sends, then the `bash_jobs_list` / `bash_job_kill`
+/// commands the Background Tasks panel calls. Another conversation must see
+/// nothing and stop nothing.
+fn scenario_background_job_isolation(ctx: &Ctx) -> ScenarioResult {
+    let data = std::env::var("JAN_DATA_FOLDER").map_err(|_| Failure("JAN_DATA_FOLDER unset".into()))?;
+    let (a, b) = ("smoke-bg-owner", "smoke-bg-other");
+    // A unique ping count marks this job's processes on the machine.
+    let marker = "127.0.0.1 -n 67";
+    // `;`, not `&&`: the confined shell on Windows is PowerShell 5.1, which has
+    // no `&&`, and `;` separates statements in every shell the tool may pick.
+    let command = format!("ping {marker}; echo token=sk-live_abcdefghijklmnop0123456789");
+    let (ok, started) = ipc(
+        ctx,
+        "plugin:agent-tools|execute_tool",
+        &format!(
+            "{{ dataFolder: {data:?}, threadId: {a:?}, name: 'bash', \
+               args: {{ command: {command:?}, background: true }}, callId: 'bg-call-1' }}"
+        ),
+    )?;
+    let content = started.get("content").and_then(Value::as_str).unwrap_or("").to_string();
+    println!("      started: {}", content.chars().take(160).collect::<String>());
+    if !ok || content.contains("bash is unavailable") {
+        bail!("BLOCKED: this host starts no sandboxed shell for the desktop, so no background job can run: {started}");
+    }
+    let job = content
+        .split("job_id=")
+        .nth(1)
+        .and_then(|rest| rest.split(')').next())
+        .map(str::to_string)
+        .ok_or_else(|| Failure(format!("no job id in: {content}")))?;
+    ensure!(
+        content.contains("started as a background job"),
+        "background: true did not background at once: {content}"
+    );
+
+    let list = |session: &str| -> Result<Vec<Value>, Failure> {
+        let (ok, v) = ipc(ctx, "plugin:agent-tools|bash_jobs_list", &format!("{{ session: {session:?} }}"))?;
+        ensure!(ok, "bash_jobs_list failed: {v}");
+        Ok(v.as_array().cloned().unwrap_or_default())
+    };
+    let mine = |jobs: &[Value]| jobs.iter().find(|j| j["jobId"] == job.as_str()).cloned();
+
+    // Another conversation sees nothing of it.
+    ensure!(mine(&list(b)?).is_none(), "another session lists the job");
+    let owned = mine(&list(a)?).ok_or_else(|| Failure("the owner does not list its job".into()))?;
+    ensure!(owned["finished"] == false, "the job is not running: {owned}");
+    let shown = owned["command"].as_str().unwrap_or("");
+    ensure!(!shown.contains("sk-live_"), "the listed command carries the credential: {shown}");
+
+    // Another conversation cannot stop it, and learns nothing by trying.
+    let (ok, refused) = ipc(
+        ctx,
+        "plugin:agent-tools|bash_job_kill",
+        &format!("{{ jobId: {job:?}, session: {b:?} }}"),
+    )?;
+    ensure!(ok && refused["outcome"] == "unknown", "another session's kill was not refused as unknown: {refused}");
+    ensure!(mine(&list(a)?).is_some_and(|j| j["finished"] == false), "a refused kill stopped the job");
+    let running = processes_matching(marker);
+    println!("      processes carrying the marker while running: {running:?}");
+
+    // Its own conversation stops it, with everything it started.
+    let (ok, killed) = ipc(
+        ctx,
+        "plugin:agent-tools|bash_job_kill",
+        &format!("{{ jobId: {job:?}, session: {a:?} }}"),
+    )?;
+    if killed["outcome"] == "alreadyFinished" {
+        // The command ended on its own before it could be stopped: say what it
+        // printed, which is the only way to tell a sandbox refusal from a bug.
+        let (_, v) = ipc(
+            ctx,
+            "plugin:agent-tools|execute_tool",
+            &format!("{{ dataFolder: {data:?}, threadId: {a:?}, name: 'bash', args: {{ job_id: {job:?} }} }}"),
+        )?;
+        bail!("the background command finished by itself before the kill; it printed: {v}");
+    }
+    ensure!(ok && killed["outcome"] == "killed", "the owner's kill did not report killed: {killed}");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut after = None;
+    while Instant::now() < deadline {
+        if let Some(j) = mine(&list(a)?) {
+            if j["finished"] == true {
+                after = Some(j);
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    let after = after.ok_or_else(|| Failure("the killed job never reported finished".into()))?;
+    ensure!(after["stoppedByRequest"] == true, "the job does not say it was stopped: {after}");
+    std::thread::sleep(Duration::from_millis(500));
+    let left = processes_matching(marker);
+    println!("      processes carrying the marker after the kill: {left:?}");
+    if let (Some(before), Some(now)) = (running, left) {
+        ensure!(before > 0, "the marker matched no process while the job ran; the check proves nothing");
+        ensure!(now == 0, "{now} process(es) of the killed job are still alive");
+    }
+
+    // Collected exactly once, by its owner only.
+    let collect = |session: &str| -> Result<String, Failure> {
+        let (_, v) = ipc(
+            ctx,
+            "plugin:agent-tools|execute_tool",
+            &format!("{{ dataFolder: {data:?}, threadId: {session:?}, name: 'bash', args: {{ job_id: {job:?} }} }}"),
+        )?;
+        Ok(v.get("content").and_then(Value::as_str).unwrap_or(&v.to_string()).to_string())
+    };
+    let stolen = collect(b)?;
+    ensure!(stolen.contains("unknown or already-collected"), "another session collected it: {stolen}");
+    let first = collect(a)?;
+    ensure!(!first.contains("unknown or already-collected"), "the owner could not collect: {first}");
+    let second = collect(a)?;
+    ensure!(second.contains("unknown or already-collected"), "a second collection returned output again: {second}");
+    println!("      job {job}: refused across sessions, killed with its tree, collected once");
     Ok(())
 }

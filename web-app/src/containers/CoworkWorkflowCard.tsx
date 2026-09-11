@@ -2,6 +2,7 @@ import {
   Bot,
   CircleAlert,
   CircleCheck,
+  CircleOff,
   CircleSlash,
   Clock,
   Loader2,
@@ -175,6 +176,13 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
         <CircleSlash
           aria-label={t('common:tasks.statusCancelled')}
           className={cn(common, 'text-main-view-fg/40')}
+        />
+      )
+    case 'interrupted':
+      return (
+        <CircleOff
+          aria-label={t('common:tasks.statusInterrupted')}
+          className={cn(common, 'text-amber-600 dark:text-amber-400')}
         />
       )
     default:

@@ -139,6 +139,12 @@ pub struct ToolContext<'a> {
     /// frontend's tool-call id) rather than inside `bash`, so the sink can carry
     /// it from the first chunk.
     pub call_id: Option<&'a str>,
+    /// Who owns the background commands this call starts or touches: the
+    /// conversation. `bash` job listing, status, collection and cancellation
+    /// are confined to it, so a job id learned from one session is useless in
+    /// another. Kept apart from `session_id`, which also decides what memory a
+    /// call may read and write.
+    pub job_owner: Option<&'a str>,
 }
 
 impl std::fmt::Debug for ToolContext<'_> {
@@ -159,6 +165,7 @@ impl std::fmt::Debug for ToolContext<'_> {
             .field("read_roots", &self.read_roots)
             .field("write_roots", &self.write_roots)
             .field("call_id", &self.call_id)
+            .field("job_owner", &self.job_owner)
             .finish()
     }
 }
@@ -187,7 +194,15 @@ impl<'a> ToolContext<'a> {
             read_roots: &[],
             write_roots: &[],
             call_id: None,
+            job_owner: None,
         }
+    }
+
+    /// Confine the background commands this call starts or touches to
+    /// `owner`. See [`Self::job_owner`].
+    pub fn with_job_owner(mut self, owner: &'a str) -> Self {
+        self.job_owner = Some(owner);
+        self
     }
 
     /// Attach a cancellation token scoped to this call.

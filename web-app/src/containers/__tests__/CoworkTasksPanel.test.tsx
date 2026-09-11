@@ -2,7 +2,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { CoworkTasksPanel } from '../CoworkTasksPanel'
+import { CoworkTasksPanel, FINISHED_PAGE } from '../CoworkTasksPanel'
 import { CoworkTasksChip } from '../CoworkTasksChip'
 import {
   emptyActivityState,
@@ -559,6 +559,7 @@ describe('what a screen reader hears', () => {
             status: 'queued',
             endedAt: undefined,
           }),
+          task({ id: 'f', title: 'cut off', status: 'interrupted' }),
         ])}
       />
     )
@@ -569,6 +570,7 @@ describe('what a screen reader hears', () => {
       'statusError',
       'statusCancelled',
       'statusQueued',
+      'statusInterrupted',
     ]) {
       expect(
         screen.getAllByLabelText(`common:tasks.${key}`).length
@@ -944,5 +946,87 @@ describe('revealing the workflow the card pointed at', () => {
       />
     )
     await waitFor(() => expect(onFocusHandled).toHaveBeenCalled())
+  })
+})
+
+describe('what a background task row says', () => {
+  it('names the kind in words, and the exit code of a finished command', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({ id: 'a', kind: 'shell', title: 'pnpm build', status: 'error', exitCode: 2 }),
+          task({ id: 'b', kind: 'agent', title: 'researcher', status: 'done' }),
+        ])}
+      />
+    )
+    await openWorkflow()
+    expect(screen.getAllByText('common:tasks.kindShell').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('common:tasks.kindAgent').length).toBeGreaterThan(0)
+    expect(screen.getByText(/tasks.exitCode code=2/)).toBeInTheDocument()
+  })
+
+  it('keeps a failed stop on the row until a stop succeeds', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({
+            id: 'a',
+            kind: 'shell',
+            status: 'running',
+            endedAt: undefined,
+            jobId: 'bash-1',
+            cancelError: 'access denied',
+          }),
+        ])}
+      />
+    )
+    await openWorkflow()
+    expect(screen.getByRole('status')).toHaveTextContent(/stopFailedOnRow/)
+    expect(screen.getByRole('status')).toHaveTextContent(/access denied/)
+  })
+
+  it('shows start and end times and offers to copy the whole output', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+    render(
+      <Panel
+        state={stateWith([
+          task({
+            id: 'a',
+            kind: 'shell',
+            title: 'pnpm test',
+            status: 'done',
+            output: 'line one\nline two\n[exit 0]',
+            outputTruncated: true,
+          }),
+        ])}
+      />
+    )
+    await openWorkflow()
+    await userEvent.click(screen.getByRole('button', { name: /pnpm test/ }))
+    expect(screen.getByText(/tasks.startedAt/)).toBeInTheDocument()
+    expect(screen.getByText(/tasks.finishedAt/)).toBeInTheDocument()
+    expect(screen.getByText(/tasks.outputPartial/)).toBeInTheDocument()
+    await userEvent.click(screen.getByLabelText('common:tasks.copyOutput'))
+    expect(writeText).toHaveBeenCalledWith('line one\nline two\n[exit 0]')
+  })
+
+  it('renders a bounded page of finished workflows and grows on request', async () => {
+    let state = emptyActivityState()
+    for (let i = 0; i < FINISHED_PAGE + 30; i++) {
+      state = startWorkflow(
+        state,
+        workflow({ id: `run-${i}`, title: `finished run ${i}`, startedAt: T0 + i, endedAt: T0 + i + 1 })
+      )
+      state = startTask(
+        state,
+        task({ id: `t-${i}`, workflowId: `run-${i}`, status: 'done' })
+      )
+    }
+    render(<Panel state={state} />)
+    const shown = () => screen.getAllByText(/^finished run \d+$/).length
+    expect(shown()).toBe(FINISHED_PAGE)
+    await userEvent.click(screen.getByText(/tasks.showMoreFinished count=30/))
+    expect(shown()).toBe(FINISHED_PAGE + 30)
   })
 })
