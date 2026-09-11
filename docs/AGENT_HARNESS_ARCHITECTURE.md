@@ -226,6 +226,40 @@ re-derives the prompt from present-day disk state and admits in its own docstrin
 that it omits parts of what was sent; a resumed thread therefore cannot be shown
 the context it actually ran under.
 
+**Replay (`AH-079`)** sends a stored snapshot's request to the model again.
+The backend (`core/agent/replay.rs`) owns the record and hands out the payload.
+A replay begins by naming a snapshot and its session, and gets back the stored
+request or a typed refusal:
+
+- `not-found`: no such snapshot in that session;
+- `unavailable`: no payload was stored;
+- `redacted`: fields were removed before storage, so the request is not what
+  the model saw;
+- `not-a-chat`: the stored request is not a chat request.
+
+The renderer (`lib/contextReplay.ts`) sends the request unchanged, through the
+ordinary provider transport, to the provider the turn used. Renderer-side
+refusals are also typed and recorded: `provider-gone`, `provider-unsupported`
+(Anthropic wire format, MLX) and `model-not-running` (a local model is never
+started for a replay).
+
+The transport snapshots the replay dispatch like any other, under agent
+`replay`, which the timeline's sink ignores. `settle` compares that
+snapshot's hash with the original's, so `matched` is checked on the record
+rather than asserted by the caller. Tool calls in the reply are recorded by
+name and never run.
+
+Endings are `completed`, `failed` (`provider-error`, `stream-cut-off`),
+`cancelled` and `refused`. The first ending is kept. A `running` record
+written by an earlier process reads as `interrupted`, and one this window no
+longer holds is recorded as `abandoned`. Records live in
+`<data>/replays/<sha256(session)>.json` and are redacted and bounded before
+they are written.
+
+Snapshot ids carry the process's launch stamp. Before this, every launch
+numbered its snapshots from `snap-1` again, so an id could name an earlier
+launch's record.
+
 ### AHD-010: persistence is versioned
 
 Every on-disk structure carries a schema version and has a migration path.

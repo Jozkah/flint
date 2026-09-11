@@ -58,6 +58,20 @@ export function setSnapshotSink(sink: SnapshotSink | null): void {
   snapshotSink = sink
 }
 
+/**
+ * The agent name a context replay (AH-079) dispatches under. Its snapshot
+ * belongs to the replay, not to a turn of the conversation, so it is not
+ * handed to the sink that attaches snapshots to turns.
+ */
+export const REPLAY_AGENT = 'replay'
+
+const responseSnapshots = new WeakMap<Response, PromptSnapshotRef>()
+
+/** The snapshot the transport took of the request that produced `response`. */
+export function snapshotOf(response: Response): PromptSnapshotRef | undefined {
+  return responseSnapshots.get(response)
+}
+
 /** Header names carrying the dispatch identity. Consumed here, never sent. */
 const DISPATCH_HEADER_FIELDS: Record<string, string> = {
   'x-jan-session': 'session',
@@ -257,7 +271,11 @@ export const providerFetch: typeof globalThis.fetch = async (
         case 'head': {
           if (settled) return
           settled = true
-          if (chunk.snapshot && identity.session) {
+          if (
+            chunk.snapshot &&
+            identity.session &&
+            identity.agent !== REPLAY_AGENT
+          ) {
             snapshotSink?.(identity.session, chunk.snapshot)
           }
           const body = new ReadableStream<Uint8Array>({
@@ -275,13 +293,13 @@ export const providerFetch: typeof globalThis.fetch = async (
           // `Response` refuses a body on 204/205/304, and the transport never
           // produces one for them either.
           const bodyless = [204, 205, 304].includes(chunk.status)
-          resolve(
-            new Response(bodyless ? null : body, {
-              status: chunk.status,
-              statusText: chunk.statusText,
-              headers: chunk.headers,
-            })
-          )
+          const response = new Response(bodyless ? null : body, {
+            status: chunk.status,
+            statusText: chunk.statusText,
+            headers: chunk.headers,
+          })
+          if (chunk.snapshot) responseSnapshots.set(response, chunk.snapshot)
+          resolve(response)
           break
         }
         case 'data':

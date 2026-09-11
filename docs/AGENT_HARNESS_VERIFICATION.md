@@ -227,6 +227,24 @@ Run: `cargo test -p tauri-plugin-agent-tools -- --test-threads=4 proposal::`,
 `cargo test --lib --no-default-features --features test-tauri -- team_children proposals subagent`,
 `npx vitest run src/lib/__tests__/coworkTeamScopes.test.ts src/containers/__tests__/CoworkTeam*`.
 
+## Context replay (AH-079)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 10 integration tests | `src-tauri/src/core/agent/replay.rs` | against a real snapshot log: the payload handed out is the stored one, and a replay dispatch with the same payload is `matched`; a different one is not, and one from another session is not evidence; redacted, unavailable, not-a-chat, foreign and unknown snapshots are typed refusals, a redacted one kept as a record, a foreign one leaving none; a cancelled replay keeps its first ending when a late completion arrives; a replay `running` in an earlier process is `interrupted`; settling is scoped to the session and refuses `running`; a key in the reply never reaches disk and the text is bounded at a character boundary; records are read back from disk |
+| 1 unit test | `plugins/tauri-plugin-agent-tools/src/snapshot.rs` | a snapshot id is never one an earlier launch issued; the old `snap-N` counter failed it |
+| 9 unit tests | `web-app/src/lib/__tests__/contextReplay.test.ts` | the stored request is sent byte-for-byte to the provider's chat endpoint with its key and the `replay` identity; tool calls are recorded, not run; a redacted snapshot sends nothing; a provider that is gone or speaks Anthropic, and a local model that is not running, are typed refusals with nothing sent and nothing started; an HTTP error and a cut-off stream are failures; a replay stopped part-way aborts the request and records `cancelled`; a replay whose window went away is recorded as abandoned; whole and split streamed replies are read |
+| 2 component tests | `web-app/src/containers/__tests__/PromptSnapshotView.test.tsx` | a redacted snapshot's replay control is disabled with the reason; a replay's ending, `matched` and reply are listed under the snapshot |
+| Real WebView scenario, **phase one** | `cowork-smoke --only context-replay-1` (mock provider, Windows) | a turn is sent; "Replay this context" in its panel completes with `matched`, and the model fixture received a request byte-identical to the turn's; a slow replay is stopped from the panel and reads as stopped; a second turn carrying a key-shaped string has its replay control disabled with the reason, and the backend refuses it (`redacted`) and refuses the first snapshot to another session (`not-found`); a replay is left running as the app exits. **Passed on Windows 2026-09-11** |
+| Real WebView scenario, **phase two after a real restart** | `cowork-smoke --only context-replay-2` on the kept profile | a new process lists the first snapshot's replays as interrupted, cancelled, completed (the completed one still `matched`, with its reply), and the redacted turn's refusal; the panel shows the same three after the restart. **Passed on Windows 2026-09-11** |
+
+Not run: macOS, Linux, a real model, and a local llama.cpp model (the
+`model-not-running` refusal and the local path are unit-tested only).
+
+Run: `cargo test --lib --no-default-features --features test-tauri -- replay::`,
+`cargo test -p tauri-plugin-agent-tools --lib snapshot::`,
+`npx vitest run src/lib/__tests__/contextReplay.test.ts src/containers/__tests__/PromptSnapshotView.test.tsx`.
+
 ## Prompt snapshots bound to their turn (AH-078)
 
 | Evidence | Where | Covers |
@@ -471,9 +489,11 @@ probe is a real product latency, recorded separately and not fixed here.
 
 The same runs showed `prompts.jsonl` holding two records with id `snap-1`:
 the id was a process-local counter, so the first snapshot after a restart took
-an old record's id, and a lookup by id could return the wrong request. Ids are
-now `snap-<process start>-<pid>-<n>`; regression test
-`snapshot.rs::ids_carry_the_process_so_a_restart_cannot_reuse_one`.
+an old record's id, and a lookup by id could return the wrong request. The
+same defect was fixed independently on `fork/main` alongside AH-079 replay
+(which depends on lookup by id); the merged tree keeps that version, ids of the
+form `snap-<launch>-<n>`, with its regression test
+`snapshot.rs::an_id_from_an_earlier_launch_is_never_issued_again`.
 
 
 ## Run reliability (AH-018 / AH-019 / AH-021 / AH-024 / AH-025 / AH-029 / AH-030)

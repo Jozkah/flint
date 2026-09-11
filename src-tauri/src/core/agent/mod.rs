@@ -27,6 +27,7 @@ pub mod plugins;
 pub mod project;
 pub mod proposals;
 pub mod reminder;
+pub mod replay;
 pub mod session_bundle;
 pub mod session;
 pub mod skill_hub;

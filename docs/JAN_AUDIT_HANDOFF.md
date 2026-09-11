@@ -2126,6 +2126,58 @@ reproduced, then fixed with a test, and each test fails with its fix reverted.
    name is unique. Test: `racing_settles_agree_on_one_ending`, which failed
    three runs out of three without the lock.
 
+## 2026-09-11 — AH-079 context replay, and two harness defects
+
+**AH-079.** A prompt snapshot's panel now has "Replay this context". The
+backend (`core/agent/replay.rs`) hands out the stored request and keeps the
+record. The renderer (`lib/contextReplay.ts`) sends the request unchanged to
+the provider the turn used, and reports how it ended. The transport's own
+snapshot of the replay dispatch is compared with the original by hash, so
+"same context" is checked on the record. Refusals are typed and kept:
+
+- redacted, unavailable, foreign or missing snapshots;
+- a provider that is gone, or speaks Anthropic;
+- a local model that is not running.
+
+A replay left running when Jan stops reads as interrupted after a restart.
+Tool calls in a replay's reply are recorded and never run. Details:
+`AGENT_HARNESS_ARCHITECTURE.md` AHD-009 and the verification section.
+
+**An AH-078 defect found on the way.** Snapshot ids came from a counter that
+restarted at `snap-1` in every launch, so an id could name an earlier launch's
+record, and the timeline could show the wrong payload. Ids now carry the
+launch. `an_id_from_an_earlier_launch_is_never_issued_again` fails on the old
+scheme.
+
+**Harness: a script that does not parse read as a stalled page.** The first
+two runs of `context-replay-1` "stalled" at the same step. The cause was the
+scenario's own script, which declared `const p` twice. That made the whole
+injected script a syntax error, so nothing ran and nothing replied, which is
+exactly what a stalled page looks like. The eval body is now compiled inside
+the `try`, so a body that does not parse is reported as an error. The r39
+and r43 stalls are not explained by this: the same scripts passed in other
+runs.
+
+**Harness: the stall diagnostic captured the whole desktop.** The screen
+capture added in the AH-109 batch (`1e925e397`) recorded every monitor,
+including unrelated windows. It is removed, and the one capture it had taken
+was deleted. The diagnostic now reports the app window's visibility,
+minimised and focused state, position, size and monitor instead.
+
+**Harness: `prompt-snapshot-panel` read the prompt log once.** It checked the
+log straight after clicking send, racing the transport's write, and failed
+with "0 records" when the check came first. It now polls for up to 60 s.
+
+Scenario results on Windows with the mock provider:
+
+- `context-replay-1/2`, `prompt-snapshot-panel`, `prompt-snapshot-cross-session-refused`;
+- `team-review-persist-1/2`, `managed-worktree-review`, `proposal-review-apply`;
+- `app-startup`.
+
+All passed on their first attempt with retries off (rounds rg2 and rp4). In
+round rg1, another process emptied this session's scratch directory
+mid-run, taking the logs with it. That round is not counted.
+
 One part of the finding is left open. A tool card in one conversation can
 show another conversation's request only when both conversations' main agents
 wait on the same call id at the same moment. The card shows that request's own
