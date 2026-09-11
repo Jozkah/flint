@@ -1092,41 +1092,14 @@ pub async fn tool_activity_record(
 ) -> Result<(), String> {
     let data_folder = get_jan_data_folder_path(app);
     // Redacted here rather than trusting the caller: the caller is renderer
-    // code, and the file outlives the window.
+    // code, and the file outlives the window. Written once, to the session's
+    // canonical event log (AH-005); the activity timeline is folded from it.
     let event = event.redacted();
-    tauri_plugin_agent_tools::activity::append(&data_folder, &event);
-    // AH-005: the same transition in the session's canonical event log. One
-    // id per call and phase, so a retried record is not a second event.
-    if !event.session.is_empty() {
-        let phase = serde_json::to_value(event.phase)
-            .ok()
-            .and_then(|v| v.as_str().map(str::to_string))
-            .unwrap_or_default();
-        let _ = tauri_plugin_agent_tools::event_log::append(
-            &data_folder,
-            tauri_plugin_agent_tools::event_log::NewEvent {
-                id: format!("tool:{}:{phase}", event.call),
-                session: event.session.clone(),
-                run: event.run.clone(),
-                invocation: event.invocation.clone(),
-                kind: format!("tool.{phase}"),
-                payload: serde_json::json!({
-                    "tool": event.tool,
-                    "phase": phase,
-                    "capability": event.capability,
-                    "resourceKind": event.kind,
-                    "agent": event.agent,
-                    "elapsedMs": event.elapsed_ms,
-                    "exitCode": event.exit_code,
-                    "call": event.call,
-                    "resource": event.resource,
-                    "summary": event.summary,
-                    "detail": event.detail,
-                }),
-            },
-        );
-    }
-    Ok(())
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::activity::append(&data_folder, &event)
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------

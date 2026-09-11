@@ -13,21 +13,36 @@
 //! end, background jobs starting and stopping -- as items of their own, in the
 //! same sequence.
 //!
-//! Append-only JSONL, flushed per record, with a reader that drops an
-//! unparseable line so a truncated tail costs one event rather than the file.
-//! Every event gets a sequence number when it is written; lines from before
-//! sequence numbers existed keep their file order. Inputs and outputs are
-//! redacted and bounded before they are written; a file change's unified diff
-//! is stored beside the log, one file per call, and never inline.
+//! # Where it is stored
+//!
+//! The session's canonical event log (`event_log`, AH-005) is the only store
+//! this record is written to. Each transition is one envelope there: kind
+//! `tool.<phase>` for a tool call and `lifecycle.<phase>` for something the
+//! run itself did, id `tool:<call>:<phase>` / `life:<call>:<phase>`, and this
+//! module's event as the payload. The envelope gives the one sequence, the
+//! stable id (a retried record is one event), the version and the bounds; the
+//! items below are a projection folded from it, never a second truth.
+//!
+//! `<data>/audit/tool-activity.jsonl` is the store this record used before the
+//! two were consolidated. It is read, never rewritten, so a timeline recorded
+//! by an older build still loads; a transition present in both (older builds
+//! wrote each one to both) counts once. The only new lines it receives are
+//! events with no session, which have no session log to live in.
+//!
+//! Inputs and outputs are redacted and bounded before they are written; a file
+//! change's unified diff is stored beside the log, one file per call, and
+//! never inline.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::audit::{now, redact};
+use crate::event_log::{self, Envelope, NewEvent};
 
 /// Version 2 adds the sequence, input/output, lifecycle and change fields.
 /// Every one of them is optional on the way in, so version-1 lines still read.
@@ -46,7 +61,7 @@ pub const MAX_DIFF_BYTES: usize = 512 * 1024;
 /// Deliberately not collapsed into "done": a refusal, a cancellation and a
 /// failure are different things to have happened, and a timeline that shows
 /// them alike cannot answer "what went wrong" or "what did I not allow".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Phase {
     /// The model asked for the call. Always the first event of an item.
@@ -89,7 +104,7 @@ impl Phase {
 }
 
 /// A tool call, or something the run itself did.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum EventType {
     #[default]
@@ -363,30 +378,98 @@ pub fn read_diff(data_folder: &Path, session: &str, call: &str) -> Option<String
     std::fs::read_to_string(diff_path(data_folder, session, call)).ok()
 }
 
-/// The next sequence number for each log, known once per process.
+/// The next sequence number of the legacy log, known once per process.
 fn sequences() -> &'static Mutex<HashMap<PathBuf, u64>> {
     static SEQ: std::sync::OnceLock<Mutex<HashMap<PathBuf, u64>>> = std::sync::OnceLock::new();
     SEQ.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn phase_name(phase: Phase) -> String {
+    serde_json::to_value(phase)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
+}
+
+/// The envelope kind and id one transition is written under. The id is the
+/// same for a retried record, so the log keeps it once.
+pub fn envelope_identity(event: &ToolActivityEvent) -> (String, String) {
+    let phase = phase_name(event.phase);
+    match event.event_type {
+        EventType::Tool => (format!("tool.{phase}"), format!("tool:{}:{phase}", event.call)),
+        EventType::Lifecycle => (format!("lifecycle.{phase}"), format!("life:{}:{phase}", event.call)),
+    }
+}
+
+/// Room kept under the envelope's payload limit for the envelope's own
+/// bookkeeping and for redaction markers.
+const PAYLOAD_HEADROOM: usize = 4 * 1024;
+
+/// The event as an envelope payload: without the diff (stored beside the log)
+/// and without a sequence (the envelope's is the one that counts), cut down
+/// further if it would not fit, so a transition is never replaced by the log's
+/// "too large" note and lost from the timeline.
+fn payload_of(event: &ToolActivityEvent) -> Value {
+    let mut event = event.clone();
+    event.diff = None;
+    event.seq = None;
+    let limit = event_log::MAX_PAYLOAD_BYTES - PAYLOAD_HEADROOM;
+    let size = |e: &ToolActivityEvent| serde_json::to_vec(e).map(|v| v.len()).unwrap_or(usize::MAX);
+    if size(&event) > limit {
+        if let Some(out) = event.output.take() {
+            let (kept, cut) = bound_tail(&out, MAX_OUTPUT_BYTES / 4);
+            event.output = Some(kept);
+            event.output_truncated |= cut;
+        }
+        event.input = event.input.map(|i| bound_head(&i, MAX_INPUT_BYTES / 4));
+        event.detail = bound_head(&event.detail, 4 * 1024);
+        event.summary = bound_head(&event.summary, 2 * 1024);
+        event.resource = bound_head(&event.resource, 2 * 1024);
+    }
+    serde_json::to_value(&event).unwrap_or(Value::Null)
+}
+
 /// Record one event. A failure to write is reported, never swallowed into a
 /// silent gap in the record.
 pub fn append(data_folder: &Path, event: &ToolActivityEvent) {
-    if let Err(e) = try_append(data_folder, event) {
+    if let Err(e) = record(data_folder, event) {
         eprintln!("tool activity: could not record {:?}: {e}", event.phase);
     }
 }
 
-fn try_append(data_folder: &Path, event: &ToolActivityEvent) -> Result<(), String> {
-    let path = log_path(data_folder);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
+/// Record one event in the session's canonical log.
+///
+/// This is the only writer: the renderer's `tool_activity_record` and the
+/// restart settlement both come through here, so no second store can reach a
+/// different terminal status for the same call.
+pub fn record(data_folder: &Path, event: &ToolActivityEvent) -> Result<(), String> {
     let mut event = event.clone();
     if event.at_ms.is_none() {
         event.at_ms = Some(now_ms());
     }
+    store_diff(data_folder, &mut event)?;
+    if event.session.is_empty() {
+        // No session, no session log. Kept rather than dropped.
+        return append_legacy(data_folder, &event);
+    }
+    let (kind, id) = envelope_identity(&event);
+    event_log::append(
+        data_folder,
+        NewEvent {
+            id,
+            session: event.session.clone(),
+            run: event.run.clone(),
+            invocation: event.invocation.clone(),
+            kind,
+            payload: payload_of(&event),
+        },
+    )
+    .map(|_| ())
+    .map_err(|e| e.message())
+}
 
+/// Store a call's diff beside the log and put its counts on the event.
+fn store_diff(data_folder: &Path, event: &mut ToolActivityEvent) -> Result<(), String> {
     // The diff is stored beside the log, never in it. Counted from what this
     // call produced, so the numbers are the edit's and not the tree's.
     if let Some(diff) = event.diff.take() {
@@ -416,13 +499,23 @@ fn try_append(data_folder: &Path, event: &ToolActivityEvent) -> Result<(), Strin
             change.diff_stored = true;
         }
     }
+    Ok(())
+}
 
+/// Append to the legacy file. Only events with no session come here.
+fn append_legacy(data_folder: &Path, event: &ToolActivityEvent) -> Result<(), String> {
+    let path = log_path(data_folder);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let mut event = event.clone();
+    event.diff = None;
     // Numbered and written under one lock, so the order of the numbers is the
     // order of the lines.
     let mut seqs = sequences().lock().unwrap_or_else(|e| e.into_inner());
     let next = match seqs.get(&path) {
         Some(n) => *n,
-        None => read_all(data_folder).iter().filter_map(|e| e.seq).max().map_or(1, |m| m + 1),
+        None => read_legacy(data_folder).iter().filter_map(|e| e.seq).max().map_or(1, |m| m + 1),
     };
     event.seq = Some(next);
     let line = serde_json::to_string(&event).map_err(|e| e.to_string())?;
@@ -438,7 +531,9 @@ fn try_append(data_folder: &Path, event: &ToolActivityEvent) -> Result<(), Strin
     Ok(())
 }
 
-pub fn read_all(data_folder: &Path) -> Vec<ToolActivityEvent> {
+/// The legacy file's events, in file order. A line that does not parse costs
+/// that line only.
+pub fn read_legacy(data_folder: &Path) -> Vec<ToolActivityEvent> {
     let Ok(file) = std::fs::File::open(log_path(data_folder)) else {
         return Vec::new();
     };
@@ -448,6 +543,86 @@ pub fn read_all(data_folder: &Path) -> Vec<ToolActivityEvent> {
         .filter(|l| !l.trim().is_empty())
         .filter_map(|l| serde_json::from_str(&l).ok())
         .collect()
+}
+
+/// An activity event read back from its envelope, or `None` for an envelope
+/// that is not one (a run or job event, a kind from a newer build).
+///
+/// Envelopes written before the consolidation carry a smaller camelCase
+/// payload (`elapsedMs`, `exitCode`, `resourceKind`, no `v` or `at`); they
+/// are read too. The envelope's session, sequence and time are the ones that
+/// count.
+pub fn event_from_envelope(envelope: &Envelope) -> Option<ToolActivityEvent> {
+    let lifecycle = envelope.kind.starts_with("lifecycle.");
+    let phase_from_kind = envelope
+        .kind
+        .strip_prefix("tool.")
+        .or_else(|| envelope.kind.strip_prefix("lifecycle."))?;
+    let Value::Object(mut map) = envelope.payload.clone() else {
+        return None;
+    };
+    for (camel, snake) in [("elapsedMs", "elapsed_ms"), ("exitCode", "exit_code"), ("resourceKind", "kind")] {
+        if let Some(v) = map.remove(camel) {
+            map.entry(snake.to_string()).or_insert(v);
+        }
+    }
+    map.entry("v".to_string()).or_insert(Value::from(1));
+    map.entry("at".to_string()).or_insert_with(|| Value::from(envelope.at.clone()));
+    map.entry("phase".to_string()).or_insert_with(|| Value::from(phase_from_kind));
+    map.entry("tool".to_string()).or_insert_with(|| Value::from(""));
+    if lifecycle {
+        map.insert("event_type".to_string(), Value::from("lifecycle"));
+    }
+    // Only the call id is required; an envelope without one is not ours.
+    map.get("call").and_then(Value::as_str).filter(|c| !c.is_empty())?;
+    let mut event: ToolActivityEvent = serde_json::from_value(Value::Object(map)).ok()?;
+    event.session = envelope.session.clone();
+    if event.run.is_empty() {
+        event.run = envelope.run.clone();
+    }
+    if event.invocation.is_empty() {
+        event.invocation = envelope.invocation.clone();
+    }
+    event.seq = Some(envelope.seq);
+    event.diff = None;
+    Some(event)
+}
+
+/// The canonical log's activity events: one session's in log order, or every
+/// session's ordered by when they were recorded. A session log that cannot be
+/// read is reported and left out; it never takes the others with it.
+pub fn read_canonical(data_folder: &Path, session: Option<&str>) -> Vec<ToolActivityEvent> {
+    let envelopes = match session {
+        Some(s) => event_log::read_session(data_folder, s).unwrap_or_else(|e| {
+            eprintln!("tool activity: the event log of a session cannot be read: {}", e.message());
+            Vec::new()
+        }),
+        None => event_log::read_all_sessions(data_folder),
+    };
+    let mut events: Vec<ToolActivityEvent> = envelopes.iter().filter_map(event_from_envelope).collect();
+    if session.is_none() {
+        events.sort_by(|a, b| {
+            (a.at_ms.unwrap_or(0), &a.session, a.seq).cmp(&(b.at_ms.unwrap_or(0), &b.session, b.seq))
+        });
+    }
+    events
+}
+
+/// Every activity event: the legacy file's first, then the canonical log's,
+/// with a transition present in both counted once.
+pub fn read_all(data_folder: &Path, session: Option<&str>) -> Vec<ToolActivityEvent> {
+    let canonical = read_canonical(data_folder, session);
+    let known: HashSet<(String, String, EventType, Phase)> = canonical
+        .iter()
+        .map(|e| (e.session.clone(), e.call.clone(), e.event_type, e.phase))
+        .collect();
+    let mut out: Vec<ToolActivityEvent> = read_legacy(data_folder)
+        .into_iter()
+        .filter(|e| session.map_or(true, |s| e.session == s))
+        .filter(|e| !known.contains(&(e.session.clone(), e.call.clone(), e.event_type, e.phase)))
+        .collect();
+    out.extend(canonical);
+    out
 }
 
 /// One call, folded from its events.
@@ -598,16 +773,11 @@ pub fn item_id(session: &str, call: &str) -> String {
 /// are keyed by session *and* call, so two sessions that reuse a provider call
 /// id stay two items.
 pub fn items(data_folder: &Path, session: Option<&str>) -> Vec<ToolActivityItem> {
-    let events = read_all(data_folder);
+    let events = read_all(data_folder, session);
     let mut order: Vec<String> = Vec::new();
     let mut items: HashMap<String, ToolActivityItem> = HashMap::new();
 
     for event in events {
-        if let Some(want) = session {
-            if event.session != want {
-                continue;
-            }
-        }
         let id = item_id(&event.session, &event.call);
         match items.get_mut(&id) {
             Some(item) => item.refine(event),
@@ -823,14 +993,126 @@ mod tests {
         let dir = scratch();
         append(&dir, &ev("c1", "read", Phase::Requested));
         append(&dir, &ev("c1", "read", Phase::Succeeded));
-        let path = log_path(&dir);
+        let path = event_log::log_path(&dir, "s1");
         let mut raw = std::fs::read_to_string(&path).unwrap();
-        raw.push_str("{\"v\":1,\"at\":\"2026-");
+        raw.push_str("{\"v\":1,\"id\":\"tool:c2:requ");
         std::fs::write(&path, raw).unwrap();
 
         let items = items(&dir, None);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].phase, Phase::Succeeded);
+    }
+
+    /// The one store: a transition lands in the session's canonical log, as
+    /// one envelope of the tool's kind, and nowhere else.
+    #[test]
+    fn a_transition_is_one_envelope_in_the_session_log_and_nothing_else() {
+        let dir = scratch();
+        append(&dir, &ev("c1", "bash", Phase::Requested));
+        append(&dir, &ev("c1", "bash", Phase::Succeeded));
+        // A retried record of the same transition is the same event.
+        append(&dir, &ev("c1", "bash", Phase::Succeeded));
+        let envelopes = event_log::read_session(&dir, "s1").unwrap();
+        assert_eq!(
+            envelopes.iter().map(|e| (e.kind.as_str(), e.id.as_str())).collect::<Vec<_>>(),
+            [("tool.requested", "tool:c1:requested"), ("tool.succeeded", "tool:c1:succeeded")]
+        );
+        assert!(!log_path(&dir).exists(), "nothing is written to the legacy file");
+        assert_eq!(items(&dir, Some("s1"))[0].history, [Phase::Requested, Phase::Succeeded]);
+    }
+
+    /// Older builds wrote every transition to both stores. Loading them counts
+    /// each transition once, and a call an older build left in the legacy file
+    /// alone still reads.
+    #[test]
+    fn a_transition_recorded_in_both_stores_by_an_older_build_counts_once() {
+        let dir = scratch();
+        std::fs::create_dir_all(dir.join("audit")).unwrap();
+        std::fs::write(
+            log_path(&dir),
+            concat!(
+                "{\"v\":1,\"at\":\"2026-09-01T00:00:00Z\",\"session\":\"s1\",\"call\":\"c1\",\"tool\":\"read\",\"phase\":\"requested\",\"detail\":\"\"}\n",
+                "{\"v\":1,\"at\":\"2026-09-01T00:00:01Z\",\"session\":\"s1\",\"call\":\"c1\",\"tool\":\"read\",\"phase\":\"succeeded\",\"detail\":\"\"}\n",
+                "{\"v\":2,\"at\":\"2026-09-01T00:00:02Z\",\"seq\":3,\"session\":\"s1\",\"call\":\"only-legacy\",\"tool\":\"ls\",\"phase\":\"succeeded\",\"detail\":\"\"}\n",
+            ),
+        )
+        .unwrap();
+        // The envelopes the older build wrote beside them: its smaller payload.
+        for phase in ["requested", "succeeded"] {
+            event_log::append(
+                &dir,
+                NewEvent {
+                    id: format!("tool:c1:{phase}"),
+                    session: "s1".into(),
+                    run: "r1".into(),
+                    invocation: String::new(),
+                    kind: format!("tool.{phase}"),
+                    payload: serde_json::json!({ "tool": "read", "phase": phase, "call": "c1", "elapsedMs": 5, "resourceKind": "path" }),
+                },
+            )
+            .unwrap();
+        }
+        let items = items(&dir, Some("s1"));
+        assert_eq!(items.len(), 2);
+        let c1 = items.iter().find(|i| i.call == "c1").unwrap();
+        assert_eq!(c1.history, [Phase::Requested, Phase::Succeeded], "each transition once");
+        assert_eq!(c1.elapsed_ms, Some(5));
+        assert!(items.iter().any(|i| i.call == "only-legacy" && i.phase == Phase::Succeeded));
+    }
+
+    /// Settling after a restart writes the ending into the canonical log, so
+    /// the timeline and the export agree on how the call ended.
+    #[test]
+    fn a_settled_call_ends_in_the_canonical_log() {
+        let dir = scratch();
+        append(&dir, &ev("c1", "bash", Phase::Requested));
+        append(&dir, &ev("c1", "bash", Phase::Running));
+        event_log::forget_loaded();
+        assert_eq!(settle_unfinished(&dir), 1);
+        let kinds: Vec<String> = event_log::read_session(&dir, "s1").unwrap().into_iter().map(|e| e.kind).collect();
+        assert_eq!(kinds, ["tool.requested", "tool.running", "tool.stale"]);
+        assert_eq!(settle_unfinished(&dir), 0);
+    }
+
+    /// An event with no session has no session log; it is kept in the legacy
+    /// file rather than dropped, and still reads.
+    #[test]
+    fn an_event_with_no_session_is_kept() {
+        let dir = scratch();
+        let mut e = ToolActivityEvent::new("u1", "read", Phase::Succeeded);
+        e.session = String::new();
+        append(&dir, &e);
+        assert_eq!(read_legacy(&dir).len(), 1);
+        assert_eq!(items(&dir, None).len(), 1);
+    }
+
+    /// A lifecycle event is its own kind in the log, and reads back as one.
+    #[test]
+    fn a_lifecycle_event_keeps_its_kind_in_the_log() {
+        let dir = scratch();
+        let mut steer = ev("steer-1", "steering", Phase::Succeeded);
+        steer.event_type = EventType::Lifecycle;
+        steer.lifecycle = "steering".into();
+        append(&dir, &steer);
+        let envelope = &event_log::read_session(&dir, "s1").unwrap()[0];
+        assert_eq!(envelope.kind, "lifecycle.succeeded");
+        assert_eq!(envelope.id, "life:steer-1:succeeded");
+        assert_eq!(items(&dir, Some("s1"))[0].event_type, EventType::Lifecycle);
+    }
+
+    /// A payload too large for an envelope is cut down, not replaced by the
+    /// log's "too large" note, so the transition still reads.
+    #[test]
+    fn an_oversized_transition_still_reads() {
+        let dir = scratch();
+        let mut done = ev("big-detail", "bash", Phase::Failed);
+        done.detail = "d".repeat(event_log::MAX_PAYLOAD_BYTES);
+        done.output = Some("o".repeat(MAX_OUTPUT_BYTES));
+        append(&dir, &done);
+        let item = &items(&dir, Some("s1"))[0];
+        assert_eq!(item.phase, Phase::Failed);
+        assert!(item.detail.len() < event_log::MAX_PAYLOAD_BYTES);
+        assert!(item.output_truncated);
     }
 
     #[test]
@@ -844,7 +1126,7 @@ mod tests {
         e.diff = Some("+API_KEY=sk-not-a-real-key\n".into());
         append(&dir, &e.redacted());
 
-        let raw = std::fs::read_to_string(log_path(&dir)).unwrap();
+        let raw = std::fs::read_to_string(event_log::log_path(&dir, "s1")).unwrap();
         assert!(!raw.contains("sk-not-a-real-key"), "{raw}");
         assert!(!raw.contains("hunter2"), "{raw}");
         let diff = read_diff(&dir, "s1", "c1").unwrap();
@@ -857,12 +1139,12 @@ mod tests {
         for call in ["a", "b", "c"] {
             append(&dir, &ev(call, "read", Phase::Requested));
         }
-        let seqs: Vec<u64> = read_all(&dir).iter().filter_map(|e| e.seq).collect();
+        let seqs: Vec<u64> = read_all(&dir, Some("s1")).iter().filter_map(|e| e.seq).collect();
         assert_eq!(seqs, vec![1, 2, 3]);
         // A new process continues from what is on disk rather than restarting.
-        sequences().lock().unwrap().remove(&log_path(&dir));
+        event_log::forget_loaded();
         append(&dir, &ev("d", "read", Phase::Requested));
-        assert_eq!(read_all(&dir).last().unwrap().seq, Some(4));
+        assert_eq!(read_all(&dir, Some("s1")).last().unwrap().seq, Some(4));
         let items = items(&dir, None);
         assert_eq!(items.iter().map(|i| i.seq).collect::<Vec<_>>(), vec![Some(1), Some(2), Some(3), Some(4)]);
     }
@@ -915,7 +1197,7 @@ mod tests {
         assert_eq!(change.path, "src/lib.rs");
         assert!(read_diff(&dir, "s1", "e1").unwrap().contains("+more"));
         // The diff lives beside the log, not in it.
-        assert!(!std::fs::read_to_string(log_path(&dir)).unwrap().contains("+more"));
+        assert!(!std::fs::read_to_string(event_log::log_path(&dir, "s1")).unwrap().contains("+more"));
     }
 
     #[test]
@@ -1038,24 +1320,30 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].invocation, "inv-1");
         assert_eq!(items[0].seq, Some(7));
-        // And the next event continues the sequence after it.
+        // And an unscoped event continues the legacy file's sequence after it.
         sequences().lock().unwrap().remove(&log_path(&dir));
-        append(&dir, &ev("c2", "read", Phase::Requested));
-        assert_eq!(read_all(&dir).last().unwrap().seq, Some(8));
+        let mut unscoped = ev("c2", "read", Phase::Requested);
+        unscoped.session = String::new();
+        append(&dir, &unscoped);
+        assert_eq!(read_legacy(&dir).last().unwrap().seq, Some(8));
     }
 
-    /// A damaged line in the middle costs that line only; everything after it
-    /// still reads, in order.
+    /// In the legacy file, a damaged line in the middle costs that line only;
+    /// everything after it still reads, in order.
     #[test]
-    fn a_damaged_line_in_the_middle_costs_that_line_only() {
+    fn a_damaged_legacy_line_in_the_middle_costs_that_line_only() {
         let dir = scratch();
-        append(&dir, &ev("c1", "read", Phase::Requested));
-        let path = log_path(&dir);
-        let mut raw = std::fs::read_to_string(&path).unwrap();
-        raw.push_str("not json at all\n{\"v\":2,\"call\":\n");
-        std::fs::write(&path, raw).unwrap();
-        append(&dir, &ev("c1", "read", Phase::Succeeded));
-        append(&dir, &ev("c2", "read", Phase::Requested));
+        std::fs::create_dir_all(dir.join("audit")).unwrap();
+        std::fs::write(
+            log_path(&dir),
+            concat!(
+                "{\"v\":2,\"at\":\"2026-09-01T00:00:00Z\",\"seq\":1,\"session\":\"s1\",\"call\":\"c1\",\"tool\":\"read\",\"phase\":\"requested\",\"detail\":\"\"}\n",
+                "not json at all\n{\"v\":2,\"call\":\n",
+                "{\"v\":2,\"at\":\"2026-09-01T00:00:01Z\",\"seq\":2,\"session\":\"s1\",\"call\":\"c1\",\"tool\":\"read\",\"phase\":\"succeeded\",\"detail\":\"\"}\n",
+                "{\"v\":2,\"at\":\"2026-09-01T00:00:02Z\",\"seq\":3,\"session\":\"s1\",\"call\":\"c2\",\"tool\":\"read\",\"phase\":\"requested\",\"detail\":\"\"}\n",
+            ),
+        )
+        .unwrap();
         let items = items(&dir, None);
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].phase, Phase::Succeeded);
@@ -1085,7 +1373,7 @@ mod tests {
         let dir = scratch();
         append(&dir, &ev("c1", "read", Phase::Requested));
         let first = items(&dir, None)[0].id.clone();
-        sequences().lock().unwrap().remove(&log_path(&dir));
+        event_log::forget_loaded();
         append(&dir, &ev("c1", "read", Phase::Succeeded));
         assert_eq!(items(&dir, None)[0].id, first);
         assert_eq!(first, "s1|c1");

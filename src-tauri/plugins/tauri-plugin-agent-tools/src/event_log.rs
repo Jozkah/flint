@@ -49,8 +49,9 @@ pub const KNOWN_KINDS: &[&str] = &[
     "agent.ended",
     "job.started",
     "job.ended",
-    // One per `activity::Phase`.
+    // One per `activity::Phase`, for a tool call ...
     "tool.requested",
+    "tool.queued",
     "tool.awaiting-permission",
     "tool.allowed",
     "tool.refused",
@@ -60,6 +61,19 @@ pub const KNOWN_KINDS: &[&str] = &[
     "tool.cancelled",
     "tool.stale",
     "tool.timed-out",
+    // ... and for something the run itself did (compaction, steering, a
+    // subagent or background job stopped): `activity::EventType::Lifecycle`.
+    "lifecycle.requested",
+    "lifecycle.queued",
+    "lifecycle.awaiting-permission",
+    "lifecycle.allowed",
+    "lifecycle.refused",
+    "lifecycle.running",
+    "lifecycle.succeeded",
+    "lifecycle.failed",
+    "lifecycle.cancelled",
+    "lifecycle.stale",
+    "lifecycle.timed-out",
 ];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -321,6 +335,49 @@ pub fn read_session(data_folder: &Path, session: &str) -> Result<Vec<Envelope>, 
     Ok(out)
 }
 
+/// Forget what this process loaded, as a restart would. Tests only.
+#[cfg(test)]
+pub(crate) fn forget_loaded() {
+    STATE.lock().unwrap_or_else(|p| p.into_inner()).clear();
+}
+
+/// Every session's events, each log read under the same rules as
+/// [`read_session`]. A log that cannot be read is reported and skipped, so one
+/// damaged session never hides the others. Order: by session log, then `seq`.
+pub fn read_all_sessions(data_folder: &Path) -> Vec<Envelope> {
+    let Ok(entries) = std::fs::read_dir(events_dir(data_folder)) else {
+        return Vec::new();
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+        .collect();
+    paths.sort();
+    let mut out = Vec::new();
+    for path in paths {
+        // The session is named by the log's own first envelope; read_session
+        // then holds every line to it.
+        let first = std::fs::File::open(&path).ok().and_then(|f| {
+            std::io::BufReader::new(f)
+                .lines()
+                .map_while(Result::ok)
+                .find(|l| !l.trim().is_empty())
+                .and_then(|l| decode_line(&l).ok())
+        });
+        let Some(first) = first else { continue };
+        if log_path(data_folder, &first.session) != path {
+            eprintln!("event log: {} is not the log of the session it holds", path.display());
+            continue;
+        }
+        match read_session(data_folder, &first.session) {
+            Ok(events) => out.extend(events),
+            Err(e) => eprintln!("event log: {} cannot be read: {}", path.display(), e.message()),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,6 +409,7 @@ mod tests {
         use crate::activity::Phase;
         for phase in [
             Phase::Requested,
+            Phase::Queued,
             Phase::AwaitingPermission,
             Phase::Allowed,
             Phase::Refused,
@@ -363,8 +421,10 @@ mod tests {
             Phase::TimedOut,
         ] {
             let name = serde_json::to_value(phase).unwrap();
-            let kind = format!("tool.{}", name.as_str().unwrap());
-            assert!(KNOWN_KINDS.contains(&kind.as_str()), "{kind} is not a known kind");
+            for prefix in ["tool", "lifecycle"] {
+                let kind = format!("{prefix}.{}", name.as_str().unwrap());
+                assert!(KNOWN_KINDS.contains(&kind.as_str()), "{kind} is not a known kind");
+            }
         }
     }
 

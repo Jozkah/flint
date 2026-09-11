@@ -42,6 +42,8 @@ pub const MAX_EXPORT_BYTES: u64 = 64 * 1024 * 1024;
 pub const METADATA_FIELDS: &[&str] = &[
     "status", "phase", "stoppedBy", "tool", "capability", "resourceKind", "agent", "elapsedMs",
     "exitCode", "index", "max", "count", "model", "decision",
+    // The same facts as the tool-activity payload names them (`activity`).
+    "kind", "elapsed_ms", "exit_code", "event_type", "lifecycle", "source", "output_truncated",
 ];
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]

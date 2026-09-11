@@ -4311,12 +4311,10 @@ fn scenario_event_export_first(ctx: &Ctx) -> ScenarioResult {
         ensure!(!body.contains(leaked), "the metadata-only export holds {leaked:?}");
     }
     // The same order as the durable tool-activity record.
-    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
-    let activity: Vec<String> = std::fs::read_to_string(Path::new(&data).join("audit/tool-activity.jsonl"))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+    let activity: Vec<String> = activity_records()
+        .into_iter()
         .filter(|e| e["session"] == session.as_str())
+        .filter(|e| e["event_type"].as_str().unwrap_or("tool") == "tool")
         .filter_map(|e| e["phase"].as_str().map(|p| format!("tool.{p}")))
         .collect();
     let exported_tools: Vec<String> = kinds.iter().filter(|k| k.starts_with("tool.")).cloned().collect();
@@ -4564,12 +4562,7 @@ fn scenario_agent_roles(ctx: &Ctx) -> ScenarioResult {
     ensure!(!escape.exists(), "a read-only role wrote into the project");
 
     // The children's calls, as the durable record has them.
-    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
-    let activity: Vec<Value> = std::fs::read_to_string(Path::new(&data).join("audit/tool-activity.jsonl"))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .collect();
+    let activity: Vec<Value> = activity_records();
     for agent in ["reviewer", "explorer"] {
         let mutating_ran = activity.iter().any(|e| {
             e["agent"] == agent
@@ -8283,6 +8276,15 @@ fn scenario_tool_activity(ctx: &Ctx) -> ScenarioResult {
             "{file} contains the provider key"
         );
     }
+    // The canonical event logs, where the execution record now lives.
+    for log in std::fs::read_dir(Path::new(&data).join("events")).into_iter().flatten().flatten() {
+        let text = std::fs::read_to_string(log.path()).unwrap_or_default();
+        ensure!(
+            !text.contains("smoke-not-a-real-key"),
+            "{} contains the provider key",
+            log.path().display()
+        );
+    }
     if let Some(failure) = accounting_failure {
         bail!("{failure}");
     }
@@ -8291,15 +8293,57 @@ fn scenario_tool_activity(ctx: &Ctx) -> ScenarioResult {
 
 /// The lifecycle events on disk, one JSON line each.
 fn activity_events(_ctx: &Ctx) -> Vec<String> {
-    std::env::var("JAN_DATA_FOLDER")
-        .map(|d| Path::new(&d).join("audit/tool-activity.jsonl"))
-        .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
+    activity_records().iter().map(Value::to_string).collect()
+}
+
+/// The execution record on disk, one object per transition, read the way the
+/// app reads it: the legacy `audit/tool-activity.jsonl` lines older builds
+/// wrote, then every session's canonical event log (`events/*.jsonl`), each
+/// tool or lifecycle envelope flattened to the activity event it carries, with
+/// the envelope's session and sequence number. Oldest first, so a slice taken
+/// after a count taken earlier is what was recorded since.
+fn activity_records() -> Vec<Value> {
+    let Ok(data) = std::env::var("JAN_DATA_FOLDER") else {
+        return Vec::new();
+    };
+    let data = Path::new(&data);
+    let mut out: Vec<Value> = std::fs::read_to_string(data.join("audit/tool-activity.jsonl"))
         .unwrap_or_default()
         .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(str::to_string)
-        .collect()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .collect();
+    let mut logs: Vec<PathBuf> = std::fs::read_dir(data.join("events"))
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+                .collect()
+        })
+        .unwrap_or_default();
+    logs.sort();
+    let mut canonical = Vec::new();
+    for log in logs {
+        for line in std::fs::read_to_string(&log).unwrap_or_default().lines() {
+            let Ok(envelope) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
+            let kind = envelope["kind"].as_str().unwrap_or("");
+            let Some(phase) = kind.strip_prefix("tool.").or_else(|| kind.strip_prefix("lifecycle.")) else {
+                continue;
+            };
+            let mut event = envelope["payload"].clone();
+            if let Some(map) = event.as_object_mut() {
+                map.insert("session".into(), envelope["session"].clone());
+                map.insert("seq".into(), envelope["seq"].clone());
+                map.entry("phase").or_insert_with(|| Value::from(phase));
+                canonical.push(event);
+            }
+        }
+    }
+    canonical.sort_by_key(|e| e["at_ms"].as_u64().unwrap_or(0));
+    out.extend(canonical);
+    out
 }
 
 /// A snapshot belonging to another session must not be retrievable.

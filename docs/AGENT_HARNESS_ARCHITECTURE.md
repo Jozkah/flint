@@ -379,10 +379,28 @@ a silent gap. A session log is bounded at 32 MiB, and the oldest of more than
 **Writers.** Two paths write events, both in the backend:
 
 - `tool_activity_record` appends every tool phase (`tool.requested` …
-  `tool.timed-out`, one per `activity::Phase`).
+  `tool.timed-out`, one per `activity::Phase`) and every run lifecycle event
+  (`lifecycle.<phase>`: compaction, steering, a subagent or job stopped),
+  through `activity::record`. That is the only writer of the execution
+  record: the payload is the whole activity event (schema v2, redacted and
+  bounded), the id is `tool:<call>:<phase>` or `life:<call>:<phase>`, so a
+  retried record is one event. The restart settlement writes `tool.stale`
+  the same way.
 - `agent_events_record` takes the run-level events the renderer owns:
   `run.started`, `run.ended` (with `stoppedBy`), `agent.dispatched`,
   `job.started` and `job.ended`.
+
+**One store (integration of AH-005 with AH-050's v2 record).** Before the
+integration, main wrote each tool phase twice -- to this log and to
+`audit/tool-activity.jsonl` -- and the desktop branch's v2 record wrote only
+the latter, so the two could disagree on how a call ended (the restart
+settlement, for one, wrote only the legacy file). Now this log is the single
+source, and `activity::items` (the timeline, the Background Tasks panel,
+`audit_export`) is a projection folded from it. The legacy file is read, never
+rewritten, so older timelines still load; a transition present in both counts
+once, and an envelope written before the consolidation (smaller camelCase
+payload) is read too. Only an event with no session, which has no session log,
+is still appended there.
 
 Not yet written: the Rust CLI and subagent loop's own `StreamEvent`s, and
 steering and compaction. So AH-004 ("sole source for streaming, journalling,
@@ -581,10 +599,12 @@ Two logs, deliberately separate:
 
 - `audit/permissions.jsonl` (`plugins/tauri-plugin-agent-tools/src/audit.rs`)
   records *decisions* -- what was allowed, refused, expired or revoked.
-- `audit/tool-activity.jsonl` (`.../src/activity.rs`) records what each tool
-  call *did*: one item per call, moving through `requested`,
+- the execution record (`.../src/activity.rs`) records what each tool call
+  *did*: one item per call, moving through `requested`, `queued`,
   `awaiting-permission`, `allowed`, `refused`, `running`, `succeeded`,
-  `failed`, `cancelled`, `stale`, `timed-out`.
+  `failed`, `cancelled`, `stale`, `timed-out`. It is stored as envelopes in
+  the session's canonical event log (AHD-009e); `audit/tool-activity.jsonl`
+  is the pre-integration file, read for compatibility only.
 
 **Two ways in, one wrapper.** Cowork routes every tool call -- the main
 agent's, a subagent's, a background task's, an MCP server's, a skill's --
