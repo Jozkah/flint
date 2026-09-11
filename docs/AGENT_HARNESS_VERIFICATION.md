@@ -378,14 +378,20 @@ WebView profile all kept). `COWORK_SMOKE_PORT` moves the fixture off 8080.
 These scenarios are never retried: a retry would hide exactly the kind of
 nondeterminism they exist to catch.
 
-Last run, 2026-09-11, merged onto `fork/main` 9ab30620e, Windows WebView2,
-llama-server `qwen3.8-27b`, all three passing on the first attempt:
+Last run, 2026-09-11, merged onto `fork/main` 4a9ba6f68, Windows WebView2,
+llama-server `qwen3.8-27b`, all three passing on the first attempt (retries
+off). Each popover value equals what the provider reported for that request:
 
 | Check | Input | Cached | Uncached (derived) | Output | Total (derived) |
 | --- | --- | --- | --- | --- | --- |
-| Chat follow-up | 2,825 | 2,802 | 23 | 39 | 2,864 |
-| Cowork follow-up | 5,542 | 5,505 | 37 | 17 | 5,559 |
+| Chat follow-up | 2,807 | 2,784 | 23 | 19 | 2,826 |
+| Cowork follow-up | 6,093 | 6,056 | 37 | 35 | 6,128 |
 | After restart (new process, no provider request) | same | same | same | same | same |
+
+The previous run, on `fork/main` 9ab30620e, gave Chat 2,825 / 2,802 / 23 / 39
+/ 2,864 and Cowork 5,542 / 5,505 / 37 / 17 / 5,559; the prompts differ between
+the two trees, so the counts do, and in both runs the display matched the
+provider exactly.
 
 Raw field mapping for that provider: `usage.prompt_tokens` to Input,
 `usage.prompt_tokens_details.cached_tokens` to Cached input,
