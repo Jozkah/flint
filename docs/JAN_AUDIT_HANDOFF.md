@@ -2258,3 +2258,60 @@ One part of the finding is left open. A tool card in one conversation can
 show another conversation's request only when both conversations' main agents
 wait on the same call id at the same moment. The card shows that request's own
 diff, and the answer names that request.
+
+## 2026-09-11 — Registry finding resolved: the harness crate was lost, not moved
+
+This follows up the finding above.
+
+**Where `src-tauri/harness` went.** It was never deleted. `7c48d71aa` added the
+crate on the `feat/agent-harness-phase-1` line, which shares no commit with
+main (main is an orphan snapshot of the codebase). Merge `5534adb8e`
+("merge(feat/agent-harness-phase-1): incorporate its history; the integration
+tree already supersedes it") joined that line with the integration tree kept,
+so every commit on it became an ancestor of main while none of its files did.
+The first parent of `5534adb8e` (`9e013105d`) never had the crate, which is
+why `git log --first-parent --diff-filter=D` finds no deletion. The later
+merges `3c1dc9aa3`, `467ed7779` and `88f1e40a6` did the same for other side
+branches.
+
+**Did the code move?** No. A search of the tree finds none of the crate's
+types under any name: `HarnessEvent`, `EventPayload`, `Envelope`,
+`ENVELOPE_VERSION`, `EventLog`, `RunIdentity`, `RunId`, `HarnessError`,
+`ErrorKind`, `Retry`, `Audience`, `RunRecord`, `StateStore`,
+`STATE_SCHEMA_VERSION`, `EventStreamBuilder`. The modules have their own
+narrow error kinds (`ExportErrorKind`, `ChildErrorKind`, `ReplayErrorKind`)
+and `src-tauri/src/core/agent/events.rs` has the in-memory `StreamEvent`. No
+shared taxonomy, persisted event model or run identity exists. The code was
+not restored. It can be recovered with `git show 7c48d71aa:src-tauri/harness/…`
+if the operator decides to bring it back.
+
+**Registry changes** (`docs/agent-harness-features.json`):
+
+| Item | Was | Now | Why |
+| --- | --- | --- | --- |
+| AH-004 | implemented | in-progress | `StreamEvent` exists, but the canonical persisted event model is gone. Files: `events.rs` only. |
+| AH-005 | implemented | missing | Envelope and JSONL log lost. |
+| AH-008 | implemented | missing | Run identity lost. |
+| AH-009 | implemented | missing | Error taxonomy lost. Only per-module error kinds exist. |
+| AH-010 | implemented | missing | Versioned run record and store lost. `thread.json` is still unversioned. |
+| AH-011 | implemented | missing | Fixture library lost. |
+| AH-199 | implemented | rejected-with-decision | Telemetry was removed on purpose by `3be88793f`, so there is nothing for a control to govern. |
+
+Each item's `auditNote` records this. The lost items' `files` and `tests` are
+emptied, because they named paths that do not exist.
+
+**AH-177 (event export)** stays `missing` and is recorded as blocked on
+AH-005, which is now `missing` too. It cannot start until an event envelope
+and log exist again.
+
+**Not re-audited.** Several items still marked `implemented` depend on the lost
+foundations (AH-015, 016, 017, 020, 022, 024, 025, 027, 029, 049, 075, 078,
+172, 198). Their own listed files exist, so the new check passes them, but
+they may have been built against the crate on the side branch. They need a
+separate look.
+
+**Gate.** `validate-registry.mjs` now fails when an `implemented` or
+`verified` item lists a file that does not exist (`findMissingFiles` in
+`registry.mjs`). Unfinished items are exempt. Before the registry fix it
+reported exactly these seven items. Three tests in `registry.test.mjs` cover
+the check.
