@@ -720,7 +720,19 @@ through `coworkDispatch.ts`; Chat runs its tool calls in the thread route's
 tool loop (`routes/threads/$threadId.tsx`). Both wrap execution in
 `withToolActivity`, and both record the permission phases around it, so a
 tool added later is covered without being told to be. The Rust agent loop
-(CLI) does not write this record yet.
+(CLI and the desktop's own agent runs) writes the same record from its tool
+invoker: each call as it is asked for, then how it ended, under the run's
+session, run and agent, with `run.started` / `run.ended` around it.
+
+**MCP server liveness (AH-139).** The desktop's per-server health monitor
+probes every 30 seconds with the MCP protocol `ping`
+(`core/mcp/helpers.rs::probe_liveness`), not a tool call and not
+`tools/list`. Any answer, a JSON-RPC error included, is a live server; a
+server that ignores `ping` gets one `tools/list` before it is called
+unresponsive, and is logged as not answering `ping`; a closed transport is
+gone. A gone or unresponsive server is removed and restarted with the
+configured backoff. `check_jan_browser_extension_connected` is separate: it
+calls the browser server's own tool named `ping` to test the extension link.
 
 **What an event carries (schema v2).** Identity (session, run, call,
 invocation, agent, source, the parent task, a call it supersedes), a sequence

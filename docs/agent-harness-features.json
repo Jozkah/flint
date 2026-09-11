@@ -4641,14 +4641,16 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-136"
       ],
       "owner": "lane-07-mcp-skills-plugins",
       "files": [
-        "src-tauri/src/core/mcp/commands.rs"
+        "src-tauri/src/core/mcp/commands.rs",
+        "src-tauri/src/core/mcp/helpers.rs",
+        "src-tauri/tests/fixtures/mock_mcp_web_search.py"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -4659,10 +4661,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/mcp/tests.rs::liveness_tests",
+        "src-tauri/examples/cowork_smoke.rs::mcp-liveness-uses-the-protocol-ping"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Liveness is probed by calling a tool that happens to be named `ping`, not by the protocol ping."
+      "auditNote": "Liveness is probed by calling a tool that happens to be named `ping`, not by the protocol ping. 2026-09-11 (Phase 2): the desktop health monitor now probes each server with the MCP protocol ping (ClientRequest::PingRequest through the rmcp client) every 30s instead of tools/list. Any answer, a JSON-RPC error included, is a live server; a server that ignores ping gets one tools/list before it is called unresponsive, and is logged as not answering ping; a closed transport is gone. A dead or unresponsive server is removed and restarted with the existing backoff. Evidence: 5 integration tests through the real rmcp client against an in-process JSON-RPC peer (answers, errors, ignores ping, ignores everything, hangs up; the probe sends no tools/list to a server that answers ping), and the WebView scenario mcp-liveness-uses-the-protocol-ping: the seeded stdio fixture recorded two pings ~30s apart with one initialize, the harness then stopped exactly that fixture (by its own pid file, checked to be python), the next probe logged \"failed health check\", the app started it again (new pid, new initialize) and pinged the new process. First attempt, retries off. Limit: the check_jan_browser_extension_connected command still calls the browser server's tool named ping, which tests the extension link rather than the server; the CLI has no monitor."
     },
     {
       "id": "AH-140",

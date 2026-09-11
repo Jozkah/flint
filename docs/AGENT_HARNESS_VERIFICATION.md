@@ -472,6 +472,17 @@ Run: `cargo test --lib --no-default-features --features test-tauri -- replay::`,
 Not exercised in the real app: a window that actually overflowed, so the
 "left the window" path is shown by unit tests only.
 
+## MCP liveness by protocol ping (AH-139)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView app | `cowork-smoke --only mcp-liveness-uses-the-protocol-ping` | the seeded stdio fixture (`tests/fixtures/mock_mcp_web_search.py --methods --pid`) records every method it receives: `initialize`, then `ping` at +30.5s and +60.5s (the monitor's schedule) with no second `initialize`; the harness stops exactly that process (its own pid file, checked to be python); the next probe logs `health check failed: Transport closed` and `failed health check, attempting auto-reconnect`; the app starts it again (new pid, `initialize` at +91.6s) and pings the new process at +122.1s |
+| Integration tests | `src-tauri/src/core/mcp/tests.rs::liveness_tests` (5) | through the real rmcp client over an in-process JSON-RPC peer: a server answering `ping` is alive and is sent no `tools/list`; an error reply to `ping` is alive; a server ignoring `ping` but answering `tools/list` is alive and reported as such; a server answering nothing is unresponsive; a server that hung up is never alive |
+
+Last run 2026-09-11, Windows WebView2, retries off: passed on the first
+attempt. The five `tools/list` requests after each `initialize` come from the
+app's startup and tool refresh, not the probe.
+
 ## What the model saw, from the CLI (AH-087)
 
 | Evidence | Where | Covers |

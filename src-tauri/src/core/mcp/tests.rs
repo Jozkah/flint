@@ -2141,6 +2141,115 @@ mod registration_decision_tests {
     }
 }
 
+/// AH-139: the liveness probe, through the real rmcp client, against an
+/// in-process JSON-RPC peer that answers, errors, stays silent or hangs up.
+#[cfg(test)]
+mod liveness_tests {
+    use super::super::helpers::{probe_liveness, Liveness};
+    use rmcp::ServiceExt;
+    use std::sync::{Arc, Mutex as StdMutex};
+    use std::time::Duration;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+    #[derive(Clone, Copy)]
+    enum Ping {
+        Answer,
+        Error,
+        Ignore,
+        IgnoreEverything,
+        HangUp,
+    }
+
+    /// A client connected to a peer that handles `initialize` and then treats
+    /// `ping` (and `tools/list`) as `mode` says. Returns the client and the
+    /// methods the peer saw.
+    async fn connect(
+        mode: Ping,
+    ) -> (
+        rmcp::service::RunningService<rmcp::RoleClient, ()>,
+        Arc<StdMutex<Vec<String>>>,
+    ) {
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let seen = Arc::new(StdMutex::new(Vec::new()));
+        let log = seen.clone();
+        tokio::spawn(async move {
+            let (r, mut w) = tokio::io::split(server_io);
+            let mut lines = BufReader::new(r).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let msg: serde_json::Value = match serde_json::from_str(&line) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let method = msg["method"].as_str().unwrap_or("").to_string();
+                log.lock().unwrap().push(method.clone());
+                let Some(id) = msg.get("id").cloned() else { continue };
+                let reply = match (method.as_str(), mode) {
+                    ("initialize", _) => serde_json::json!({ "jsonrpc": "2.0", "id": id, "result": {
+                        "protocolVersion": "2024-11-05", "capabilities": { "tools": {} },
+                        "serverInfo": { "name": "liveness-peer", "version": "1" } } }),
+                    ("ping", Ping::Answer) => serde_json::json!({ "jsonrpc": "2.0", "id": id, "result": {} }),
+                    ("ping", Ping::Error) => serde_json::json!({ "jsonrpc": "2.0", "id": id,
+                        "error": { "code": -32601, "message": "Method not found" } }),
+                    ("ping", Ping::HangUp) => return,
+                    ("ping", Ping::Ignore | Ping::IgnoreEverything) => continue,
+                    ("tools/list", Ping::IgnoreEverything) => continue,
+                    ("tools/list", _) => serde_json::json!({ "jsonrpc": "2.0", "id": id, "result": { "tools": [] } }),
+                    _ => continue,
+                };
+                let mut out = reply.to_string();
+                out.push('\n');
+                if w.write_all(out.as_bytes()).await.is_err() {
+                    return;
+                }
+            }
+        });
+        let (r, w) = tokio::io::split(client_io);
+        let client = ().serve((r, w)).await.expect("initialize");
+        (client, seen)
+    }
+
+    const QUICK: Duration = Duration::from_millis(400);
+
+    #[tokio::test]
+    async fn a_server_that_answers_ping_is_alive_and_is_not_asked_for_its_tools() {
+        let (client, seen) = connect(Ping::Answer).await;
+        assert_eq!(probe_liveness(&client, QUICK, QUICK).await, Liveness::Alive);
+        let seen = seen.lock().unwrap().clone();
+        assert!(seen.contains(&"ping".to_string()), "{seen:?}");
+        assert!(!seen.contains(&"tools/list".to_string()), "the probe listed tools: {seen:?}");
+    }
+
+    #[tokio::test]
+    async fn an_error_reply_to_ping_is_still_a_live_server() {
+        let (client, _) = connect(Ping::Error).await;
+        assert_eq!(probe_liveness(&client, QUICK, QUICK).await, Liveness::Alive);
+    }
+
+    #[tokio::test]
+    async fn a_server_that_ignores_ping_but_lists_tools_is_alive_and_said_so() {
+        let (client, seen) = connect(Ping::Ignore).await;
+        assert_eq!(probe_liveness(&client, QUICK, QUICK).await, Liveness::AliveWithoutPing);
+        assert!(seen.lock().unwrap().contains(&"tools/list".to_string()));
+    }
+
+    #[tokio::test]
+    async fn a_server_that_answers_nothing_is_unresponsive() {
+        let (client, _) = connect(Ping::IgnoreEverything).await;
+        assert!(matches!(probe_liveness(&client, QUICK, QUICK).await, Liveness::Unresponsive(_)));
+    }
+
+    #[tokio::test]
+    async fn a_server_that_hung_up_is_gone_or_unresponsive_never_alive() {
+        let (client, _) = connect(Ping::HangUp).await;
+        let first = probe_liveness(&client, QUICK, QUICK).await;
+        assert!(!first.is_alive(), "{first:?}");
+        // Once the transport has noticed, the answer is that it is gone.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let later = probe_liveness(&client, QUICK, QUICK).await;
+        assert!(!later.is_alive(), "{later:?}");
+    }
+}
+
 /// The manager's own bookkeeping, driven through a real Tauri app handle.
 ///
 /// `start_mcp_server` is more than a connection: it records the active config,

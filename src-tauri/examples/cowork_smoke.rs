@@ -91,6 +91,9 @@ fn kill_mock() {
 /// The MCP server entries the harness seeds, by name.
 const SMOKE_MCP_USER_SERVER: &str = "smoke-user-server";
 const SMOKE_MCP_WEB_SEARCH: &str = "smoke-web-search";
+/// Every method the web-search fixture received, and its process id.
+const MCP_METHODS_LOG: &str = "mcp-web-search-methods.jsonl";
+const MCP_PID_FILE: &str = "mcp-web-search.pid";
 
 // ---------------------------------------------------------------------------
 // Driver
@@ -822,7 +825,11 @@ fn seed_mcp_config(data_folder: &Path) -> Result<(), String> {
                 "args": [
                     server.to_string_lossy(),
                     "--log",
-                    data_folder.join("mcp-web-search-calls.jsonl").to_string_lossy()
+                    data_folder.join("mcp-web-search-calls.jsonl").to_string_lossy(),
+                    "--methods",
+                    data_folder.join(MCP_METHODS_LOG).to_string_lossy(),
+                    "--pid",
+                    data_folder.join(MCP_PID_FILE).to_string_lossy()
                 ],
                 "env": {},
                 "active": true
@@ -11545,6 +11552,10 @@ const OPT_IN_SCENARIOS: &[Scenario] = &[
         run: scenario_memory_user_after_restart,
     },
     Scenario {
+        name: "mcp-liveness-uses-the-protocol-ping",
+        run: scenario_mcp_liveness,
+    },
+    Scenario {
         name: "memory-export-import",
         run: scenario_memory_export_import,
     },
@@ -12253,6 +12264,94 @@ fn scenario_memory_proposal(ctx: &Ctx) -> ScenarioResult {
 // ---------------------------------------------------------------------------
 // Durability and integration regressions (the batch-1 fixes, end to end)
 // ---------------------------------------------------------------------------
+
+/// The methods the web-search fixture has received so far, with times.
+fn mcp_methods_seen() -> Result<Vec<(String, f64)>, Failure> {
+    let text = std::fs::read_to_string(data_folder()?.join(MCP_METHODS_LOG)).unwrap_or_default();
+    Ok(text
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .map(|v| {
+            (
+                v["method"].as_str().unwrap_or("").to_string(),
+                v["at"].as_f64().unwrap_or(0.0),
+            )
+        })
+        .collect())
+}
+
+fn wait_for_methods(
+    what: &str,
+    limit: Duration,
+    done: impl Fn(&[(String, f64)]) -> bool,
+) -> Result<Vec<(String, f64)>, Failure> {
+    let deadline = Instant::now() + limit;
+    loop {
+        let seen = mcp_methods_seen()?;
+        if done(&seen) {
+            return Ok(seen);
+        }
+        if Instant::now() >= deadline {
+            let methods: Vec<&str> = seen.iter().map(|(m, _)| m.as_str()).collect();
+            bail!("timed out waiting for {what}; the MCP fixture saw {methods:?}");
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+
+/// AH-139: the app checks its MCP servers with the protocol `ping`, on a
+/// schedule, and a server that dies is found by that probe and restarted.
+/// The fixture records every method it receives, so what the app sent is
+/// read from the server's side, not inferred.
+fn scenario_mcp_liveness(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    let count = |seen: &[(String, f64)], m: &str| seen.iter().filter(|(x, _)| x == m).count();
+    // Two pings, 30s apart: the monitor's schedule.
+    let seen = wait_for_methods("two liveness pings", Duration::from_secs(100), |s| count(s, "ping") >= 2)?;
+    let pings: Vec<f64> = seen.iter().filter(|(m, _)| m == "ping").map(|(_, at)| *at).collect();
+    let gap = pings[1] - pings[0];
+    ensure!((20.0..=45.0).contains(&gap), "pings were {gap:.1}s apart, not on the 30s schedule");
+    ensure!(count(&seen, "initialize") == 1, "the server was restarted while alive: {seen:?}");
+
+    // Stop exactly the fixture (its own pid file), then the next probe must
+    // find it gone and the app must bring it back.
+    let pid_path = data_folder()?.join(MCP_PID_FILE);
+    let pid: u32 = std::fs::read_to_string(&pid_path)
+        .ok()
+        .and_then(|p| p.trim().parse().ok())
+        .ok_or_else(|| Failure("the MCP fixture wrote no pid".into()))?;
+    let image = std::process::Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase())
+        .unwrap_or_default();
+    ensure!(image.contains("python"), "pid {pid} is not the python fixture: {image}");
+    let killed = std::process::Command::new("taskkill")
+        .args(["/PID", &pid.to_string(), "/F"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    ensure!(killed, "could not stop the MCP fixture (pid {pid})");
+    let before = seen.len();
+    let back = wait_for_methods("the server to be restarted after it died", Duration::from_secs(120), |s| {
+        s.len() > before && s[before..].iter().any(|(m, _)| m == "initialize")
+    })?;
+    let new_pid = std::fs::read_to_string(&pid_path).unwrap_or_default();
+    ensure!(new_pid.trim() != pid.to_string(), "the pid file still names the dead server");
+    let logs = std::fs::read_dir(data_folder()?.join("logs"))
+        .map(|rd| rd.flatten().filter_map(|e| std::fs::read_to_string(e.path()).ok()).collect::<String>())
+        .unwrap_or_default();
+    ensure!(
+        logs.contains(&format!("MCP server {SMOKE_MCP_WEB_SEARCH} failed health check")),
+        "the restart was not the health check's doing"
+    );
+    // And the restarted server is probed with ping too.
+    let after_restart = back.len();
+    wait_for_methods("a ping to the restarted server", Duration::from_secs(60), |s| {
+        s.len() > after_restart && s[after_restart..].iter().any(|(m, _)| m == "ping")
+    })?;
+    Ok(())
+}
 
 const TRANSFER_EXPECTED: &str = "memory-transfer-expected.json";
 const TRANSFER_FACT: &str = "Smoke transfer fact: release builds are signed on the build farm.";

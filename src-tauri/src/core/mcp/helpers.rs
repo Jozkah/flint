@@ -161,6 +161,66 @@ pub async fn run_mcp_commands<R: Runtime>(
     Ok(())
 }
 
+/// What a liveness probe found (AH-139).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Liveness {
+    /// The server answered the protocol `ping`. Any answer counts, a JSON-RPC
+    /// error included: an error is a live server replying.
+    Alive,
+    /// The server ignored `ping` but answered `tools/list`: alive, and not
+    /// following the protocol's liveness request. Kept distinct so the log
+    /// says so instead of hiding it.
+    AliveWithoutPing,
+    /// No answer to either request in time.
+    Unresponsive(String),
+    /// The connection is gone: closed, or the request could not be sent.
+    Gone(String),
+}
+
+impl Liveness {
+    pub(crate) fn is_alive(&self) -> bool {
+        matches!(self, Liveness::Alive | Liveness::AliveWithoutPing)
+    }
+}
+
+/// Probe a server with the MCP protocol `ping` (AH-139), not a tool call: a
+/// tool that happens to be named `ping` is the server's business, and a
+/// `tools/list` makes some servers echo their whole catalogue to stderr every
+/// probe. A server that does not answer `ping` within `ping_wait` gets one
+/// `tools/list` before it is called unresponsive, so a server that skips the
+/// liveness request is not restarted every probe for it.
+pub(crate) async fn probe_liveness(
+    peer: &rmcp::Peer<rmcp::RoleClient>,
+    ping_wait: Duration,
+    list_wait: Duration,
+) -> Liveness {
+    use rmcp::model::{ClientRequest, PingRequest};
+    match timeout(
+        ping_wait,
+        peer.send_request(ClientRequest::PingRequest(PingRequest::default())),
+    )
+    .await
+    {
+        Ok(Ok(_)) => return Liveness::Alive,
+        Ok(Err(rmcp::ServiceError::McpError(e))) => {
+            log::debug!("MCP ping answered with an error, so the server is up: {e}");
+            return Liveness::Alive;
+        }
+        Ok(Err(e)) => return Liveness::Gone(e.to_string()),
+        Err(_) => {}
+    }
+    match timeout(list_wait, peer.list_all_tools()).await {
+        Ok(Ok(_)) => Liveness::AliveWithoutPing,
+        Ok(Err(rmcp::ServiceError::McpError(_))) => Liveness::AliveWithoutPing,
+        Ok(Err(e)) => Liveness::Gone(e.to_string()),
+        Err(_) => Liveness::Unresponsive(format!(
+            "no answer to ping in {}s or tools/list in {}s",
+            ping_wait.as_secs(),
+            list_wait.as_secs()
+        )),
+    }
+}
+
 /// Monitor MCP server health and auto-reconnect on failure with exponential backoff
 pub async fn monitor_mcp_server_handle<R: Runtime>(
     app: AppHandle<R>,
@@ -174,7 +234,9 @@ pub async fn monitor_mcp_server_handle<R: Runtime>(
     let mut consecutive_failures: u32 = 0;
 
     loop {
-        // 30s, not 2s: every probe forces a ListToolsRequest the server echoes to stderr.
+        // Every 30s: the probe is the protocol ping (a tools/list only for a
+        // server that ignores ping), so it is cheap, but a probe is still a
+        // request the server has to answer.
         tokio::select! {
             _ = sleep(Duration::from_secs(30)) => {}
             _ = reconnect_notify.notified() => {
@@ -193,17 +255,19 @@ pub async fn monitor_mcp_server_handle<R: Runtime>(
         let health_check_result = {
             let servers = servers_state.lock().await;
             if let Some(service) = servers.get(&name) {
-                match timeout(Duration::from_secs(2), service.list_all_tools()).await {
-                    Ok(Ok(_)) => true,
-                    Ok(Err(e)) => {
-                        log::warn!("MCP server {name} health check failed: {e}");
-                        false
+                let live =
+                    probe_liveness(service, Duration::from_secs(5), Duration::from_secs(2)).await;
+                match &live {
+                    Liveness::Alive => {}
+                    Liveness::AliveWithoutPing => {
+                        log::info!("MCP server {name} does not answer ping; it answered tools/list")
                     }
-                    Err(_) => {
-                        log::warn!("MCP server {name} health check timed out");
-                        false
+                    Liveness::Unresponsive(why) => {
+                        log::warn!("MCP server {name} health check timed out: {why}")
                     }
+                    Liveness::Gone(why) => log::warn!("MCP server {name} health check failed: {why}"),
                 }
+                live.is_alive()
             } else {
                 // Entry was removed (e.g., by get_tools cleanup or deactivate).
                 // Only stop monitoring if the server was deliberately deactivated.
