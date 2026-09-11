@@ -1016,6 +1016,18 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_custom_headers,
     },
     Scenario {
+        name: "deleting-a-running-session-stops-only-its-run",
+        run: scenario_delete_running_session,
+    },
+    Scenario {
+        name: "project-tooling-is-detected-and-told-to-the-model",
+        run: scenario_project_tooling,
+    },
+    Scenario {
+        name: "steering-reaches-the-running-session-at-its-next-boundary",
+        run: scenario_steering,
+    },
+    Scenario {
         name: "deleting-a-message-keeps-later-replies",
         run: scenario_delete_keeps_later_replies,
     },
@@ -1083,6 +1095,10 @@ const RESTART_SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "custom-headers-survive-a-restart",
         run: scenario_custom_headers_after_restart,
+    },
+    Scenario {
+        name: "session-models-survive-a-restart",
+        run: scenario_session_models_after_restart,
     },
 ];
 
@@ -2107,10 +2123,12 @@ fn clear_custom_headers(ctx: &Ctx) -> ScenarioResult {
     Ok(())
 }
 
-/// Send one Cowork request and check the headers the provider received: the
-/// plain and the secret one, and never the refused `Authorization`. Prints
-/// header names only, never the secret.
-fn check_custom_headers_sent(ctx: &Ctx, label: &str, secret: &str) -> ScenarioResult {
+/// Send one Cowork request and return the headers the provider received,
+/// names lower-cased.
+fn send_and_capture(
+    ctx: &Ctx,
+    label: &str,
+) -> Result<serde_json::Map<String, Value>, Failure> {
     let before = captured_headers(ctx)?.len();
     ctx.goto("/cowork")?;
     ctx.wait_until(
@@ -2124,23 +2142,151 @@ fn check_custom_headers_sent(ctx: &Ctx, label: &str, secret: &str) -> ScenarioRe
     send_and_wait(ctx, &format!("custom headers {label}"), "Hello from the smoke model")?;
     let all = captured_headers(ctx)?;
     ensure!(all.len() > before, "{label}: no chat request reached the provider");
-    let last = all.last().unwrap();
+    Ok(all.last().cloned().unwrap_or_default())
+}
+
+/// Send one request and check each custom header is there with its value, or
+/// absent, as `tenant` and `key` say; never the refused `Authorization`.
+/// Messages name headers only, never the secret.
+fn check_custom_headers_sent_as(
+    ctx: &Ctx,
+    label: &str,
+    secret: &str,
+    tenant: bool,
+    key: bool,
+) -> ScenarioResult {
+    let last = send_and_capture(ctx, label)?;
     let value_of = |name: &str| last.get(name).and_then(|v| v.as_str()).unwrap_or("");
-    ensure!(
-        value_of("x-smoke-tenant") == "tenant-8208",
-        "{label}: the plain header did not reach the provider (headers sent: {:?})",
-        last.keys().collect::<Vec<_>>()
-    );
-    ensure!(
-        value_of("x-smoke-key") == secret,
-        "{label}: the secret header did not reach the provider with its value (present: {})",
-        last.contains_key("x-smoke-key")
-    );
+    if tenant {
+        ensure!(
+            value_of("x-smoke-tenant") == "tenant-8208",
+            "{label}: the plain header did not reach the provider (headers sent: {:?})",
+            last.keys().collect::<Vec<_>>()
+        );
+    } else {
+        ensure!(
+            !last.contains_key("x-smoke-tenant"),
+            "{label}: a switched-off or removed header was still sent"
+        );
+    }
+    if key {
+        ensure!(
+            value_of("x-smoke-key") == secret,
+            "{label}: the secret header did not reach the provider with its value (present: {})",
+            last.contains_key("x-smoke-key")
+        );
+    } else {
+        ensure!(
+            !last.contains_key("x-smoke-key"),
+            "{label}: a removed secret header was still sent"
+        );
+    }
     ensure!(
         !value_of("authorization").contains("spoofed-8208"),
         "{label}: the refused Authorization header was sent"
     );
     Ok(())
+}
+
+fn check_custom_headers_sent(ctx: &Ctx, label: &str, secret: &str) -> ScenarioResult {
+    check_custom_headers_sent_as(ctx, label, secret, true, true)
+}
+
+/// Type a value the test must never print. Carried into the page base64
+/// encoded, so a timed-out script echoed into the log does not show it.
+fn fill_and_leave_hidden(ctx: &Ctx, selector: &str, value: &str) -> ScenarioResult {
+    use base64::Engine as _;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(value);
+    let ok = ctx.eval_bool(&format!(
+        r#"const el = document.querySelector({selector:?});
+           if (!el) return false;
+           const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+           el.focus();
+           setter.call(el, atob({encoded:?}));
+           el.dispatchEvent(new Event('input', {{ bubbles: true }}));
+           el.blur();
+           return true;"#
+    ))?;
+    ensure!(ok, "input {selector:?} was not present");
+    std::thread::sleep(Duration::from_millis(300));
+    Ok(())
+}
+
+/// Switch custom header `index` on or off in the editor and wait until the
+/// change is on disk.
+fn set_custom_header_enabled(ctx: &Ctx, index: usize, on: bool) -> ScenarioResult {
+    open_custom_headers(ctx)?;
+    let sel = format!("[data-testid=\"custom-header-enabled-{index}\"]");
+    let want = if on { "checked" } else { "unchecked" };
+    let state = ctx.eval_string(&format!(
+        "return document.querySelector({sel:?})?.getAttribute('data-state') || '';"
+    ))?;
+    if state != want {
+        ctx.eval(&format!("document.querySelector({sel:?}).click(); return true;"))?;
+    }
+    ctx.wait_until(
+        "the header switch to settle",
+        &format!("return document.querySelector({sel:?})?.getAttribute('data-state') === {want:?};"),
+        Duration::from_secs(10),
+    )?;
+    let settings = data_folder()?.join("settings.json");
+    let by = Instant::now() + Duration::from_secs(20);
+    loop {
+        let off = std::fs::read_to_string(&settings)
+            .unwrap_or_default()
+            .replace('\\', "")
+            .contains("\"enabled\":false");
+        if off != on {
+            return Ok(());
+        }
+        ensure!(Instant::now() < by, "switching the header {want} never reached settings.json");
+        std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
+/// A gateway that rejects the request and echoes its headers in the error:
+/// the secret value must reach neither the page nor the disk.
+fn check_echoed_secret_stays_hidden(ctx: &Ctx, secret: &str) -> ScenarioResult {
+    ctx.script_model("echo-401", &[])?;
+    let result = (|| -> ScenarioResult {
+        let before = captured_headers(ctx)?.len();
+        ctx.goto("/cowork")?;
+        ctx.wait_until(
+            "the cowork composer",
+            "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+            Duration::from_secs(30),
+        )?;
+        ctx.click_matching("button", "New session")?;
+        std::thread::sleep(Duration::from_millis(500));
+        send_without_waiting(ctx, "custom headers echoed back")?;
+        ctx.wait_until(
+            "the rejected request",
+            &format!(
+                "const r = await fetch('http://127.0.0.1:{}/__headers');
+                 return (await r.json()).headers.length > {before};",
+                ctx.mock_port
+            ),
+            Duration::from_secs(60),
+        )?;
+        ctx.wait_until(
+            "the rejected run to end",
+            "return document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]').length === 0;",
+            Duration::from_secs(60),
+        )?;
+        std::thread::sleep(Duration::from_secs(2));
+        let page = ctx.eval_string("return document.body.innerText || '';")?;
+        ensure!(
+            page.contains("rejected"),
+            "the provider's error was not shown, so the check below proves nothing"
+        );
+        ensure!(
+            !page.contains(secret),
+            "the secret header's value was shown after an error echoed it"
+        );
+        ensure_secret_not_on_disk(secret)
+    })();
+    let _ = ctx.script_model("plain", &[]);
+    result
 }
 
 /// The secret value is in no file of the data folder: not settings, not the
@@ -2206,7 +2352,7 @@ fn scenario_custom_headers(ctx: &Ctx) -> ScenarioResult {
         // A secret one: the name alone makes it secret, and its value is masked.
         ctx.eval("document.querySelector('[data-testid=\"custom-header-add\"]').click(); return true;")?;
         fill_and_leave(ctx, &row("name", 1), "X-Smoke-Key")?;
-        fill_and_leave(ctx, &row("value", 1), &secret)?;
+        fill_and_leave_hidden(ctx, &row("value", 1), &secret)?;
         let masked = ctx.eval_bool(&format!(
             "return document.querySelector({:?})?.getAttribute('data-state') === 'checked'
                && document.querySelector({:?})?.getAttribute('type') === 'password';",
@@ -2237,6 +2383,13 @@ fn scenario_custom_headers(ctx: &Ctx) -> ScenarioResult {
         );
 
         check_custom_headers_sent(ctx, "configured", &secret)?;
+        // Switched off, the next request goes without it; switched back on,
+        // with it. The secret one is untouched either way.
+        set_custom_header_enabled(ctx, 0, false)?;
+        check_custom_headers_sent_as(ctx, "tenant switched off", &secret, false, true)?;
+        set_custom_header_enabled(ctx, 0, true)?;
+        check_custom_headers_sent(ctx, "tenant switched back on", &secret)?;
+        check_echoed_secret_stays_hidden(ctx, &secret)?;
         ensure_secret_not_on_disk(&secret)?;
         if keep_for_restart {
             // The handoff lives in the kept workspace, outside the data folder
@@ -2283,6 +2436,8 @@ fn scenario_custom_headers_after_restart(ctx: &Ctx) -> ScenarioResult {
     let cleanup = clear_custom_headers(ctx);
     result?;
     cleanup?;
+    // Removed, the headers are gone from the very next request.
+    check_custom_headers_sent_as(ctx, "after removal", &secret, false, false)?;
     std::thread::sleep(Duration::from_secs(1));
     ensure!(
         !credential_store_holds_headers()?,
@@ -2371,6 +2526,9 @@ fn scenario_stop_is_per_session(ctx: &Ctx) -> ScenarioResult {
             );
             std::thread::sleep(Duration::from_millis(500));
         }
+        if std::env::var_os("COWORK_SMOKE_KEEP").is_some() {
+            write_handoff(ctx, SESSION_MODELS_HANDOFF, &serde_json::json!({ "a": a, "b": b }))?;
+        }
 
         // Clean up: select A and stop it too.
         ctx.eval_bool(&format!(
@@ -2385,6 +2543,505 @@ fn scenario_stop_is_per_session(ctx: &Ctx) -> ScenarioResult {
             "return document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]').length === 0;",
             Duration::from_secs(30),
         )
+    })();
+    let _ = ctx.script_model("plain", &[]);
+    result
+}
+
+const SESSION_MODELS_HANDOFF: &str = "session-models";
+
+/// Every object in `value`, depth first.
+fn objects(value: &Value) -> Vec<&serde_json::Map<String, Value>> {
+    let mut out = Vec::new();
+    let mut stack = vec![value];
+    while let Some(v) = stack.pop() {
+        match v {
+            Value::Object(map) => {
+                out.push(map);
+                stack.extend(map.values());
+            }
+            Value::Array(items) => stack.extend(items.iter()),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// The persisted Cowork session `id`, read from settings.json the way the app
+/// stores it (the store's state as a JSON string under its key).
+fn persisted_session(id: &str) -> Result<Option<serde_json::Map<String, Value>>, Failure> {
+    let text = std::fs::read_to_string(data_folder()?.join("settings.json"))
+        .map_err(|e| Failure(format!("settings.json: {e}")))?;
+    let outer: Value = serde_json::from_str(&text).map_err(|e| Failure(e.to_string()))?;
+    for map in objects(&outer) {
+        for value in map.values() {
+            let inner = match value {
+                Value::String(s) if s.contains(id) => serde_json::from_str::<Value>(s).ok(),
+                _ => None,
+            };
+            let candidates = match &inner {
+                Some(v) => objects(v),
+                None => Vec::new(),
+            };
+            if let Some(found) = candidates
+                .into_iter()
+                .find(|m| m.get("id").and_then(|v| v.as_str()) == Some(id))
+            {
+                return Ok(Some(found.clone()));
+            }
+        }
+        if map.get("id").and_then(|v| v.as_str()) == Some(id) {
+            return Ok(Some(map.clone()));
+        }
+    }
+    Ok(None)
+}
+
+/// janhq/jan#8905, second half of `stop-cancels-only-the-selected-session` in
+/// a new process on the kept profile: each session still names the model it
+/// ran on, and the app comes back on it.
+fn scenario_session_models_after_restart(ctx: &Ctx) -> ScenarioResult {
+    let handoff = read_handoff(
+        ctx,
+        SESSION_MODELS_HANDOFF,
+        "stop-cancels-only-the-selected-session",
+    )?;
+    for key in ["a", "b"] {
+        let id = handoff[key].as_str().unwrap_or_default();
+        ensure!(!id.is_empty(), "the handoff has no session {key}");
+        let session = persisted_session(id)?
+            .ok_or_else(|| Failure(format!("session {key} did not survive the restart")))?;
+        let model = session.get("model").cloned().unwrap_or(Value::Null);
+        ensure!(
+            model["provider"] == SMOKE_PROVIDER && model["id"] == SMOKE_MODEL,
+            "session {key} came back without its model: {model}"
+        );
+    }
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the viewed session's model in the picker",
+        &format!(
+            "return [...document.querySelectorAll('button')].some(b =>
+               (b.textContent || '').includes({SMOKE_MODEL:?}));"
+        ),
+        Duration::from_secs(30),
+    )
+}
+
+/// janhq/jan#8905. Deleting a session whose run is streaming stops that run
+/// and removes the session, and another session's run keeps going.
+fn scenario_delete_running_session(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("slow", &[])?;
+    let result = (|| -> ScenarioResult {
+        ctx.goto("/cowork")?;
+        ctx.wait_until(
+            "the cowork composer",
+            "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+            Duration::from_secs(30),
+        )?;
+        ctx.ensure_model_selected()?;
+        ctx.click_matching("button", "New session")?;
+        std::thread::sleep(Duration::from_millis(500));
+        send_without_waiting(ctx, "keeps running in A")?;
+        ctx.wait_until(
+            "session A to be running",
+            "return document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]').length === 1;",
+            Duration::from_secs(60),
+        )?;
+        let a = running_sessions(ctx)?
+            .first()
+            .cloned()
+            .ok_or_else(|| Failure("no running session".into()))?;
+        ctx.click_matching("button", "New session")?;
+        ctx.wait_until(
+            "a fresh, idle session in view",
+            "return !document.querySelector('[data-testid=\"cowork-stop\"]');",
+            Duration::from_secs(20),
+        )?;
+        send_without_waiting(ctx, "to be deleted in B")?;
+        ctx.wait_until(
+            "both sessions running",
+            "return document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]').length === 2;",
+            Duration::from_secs(60),
+        )?;
+        let b = running_sessions(ctx)?
+            .into_iter()
+            .find(|id| *id != a)
+            .ok_or_else(|| Failure("no second running session".into()))?;
+        // The store writes to disk on a debounce, not synchronously: wait for
+        // B to be there, or its disappearance later would prove nothing.
+        let by = Instant::now() + Duration::from_secs(20);
+        while persisted_session(&b)?.is_none() {
+            ensure!(Instant::now() < by, "session B was never persisted");
+            std::thread::sleep(Duration::from_millis(250));
+        }
+
+        // B's row menu, then Delete session, then confirm. Radix opens its
+        // menu on pointerdown, not on click.
+        let opened = ctx.eval_bool(&format!(
+            "const dot = document.querySelector('[data-testid=\"cowork-session-running-{b}\"]');
+             const item = dot && dot.closest('li');
+             const more = item && [...item.querySelectorAll('button')]
+               .find(x => (x.textContent || '').includes('More'));
+             if (!more) return false;
+             more.dispatchEvent(new PointerEvent('pointerdown',
+               {{ bubbles: true, cancelable: true, button: 0, pointerType: 'mouse' }}));
+             return true;"
+        ))?;
+        ensure!(opened, "session B's row has no menu");
+        ctx.wait_until(
+            "the session menu",
+            "return [...document.querySelectorAll('[role=\"menuitem\"]')]
+               .some(x => (x.textContent || '').trim() === 'Delete session');",
+            Duration::from_secs(10),
+        )?;
+        ctx.eval(
+            "[...document.querySelectorAll('[role=\"menuitem\"]')]
+               .find(x => (x.textContent || '').trim() === 'Delete session').click();
+             return true;",
+        )?;
+        ctx.wait_until(
+            "the delete confirmation",
+            "const d = document.querySelector('[role=\"dialog\"]');
+             return !!d && (d.textContent || '').includes('Delete session?');",
+            Duration::from_secs(10),
+        )?;
+        ctx.eval(
+            "const d = document.querySelector('[role=\"dialog\"]');
+             [...d.querySelectorAll('button')].find(x => (x.textContent || '').trim() === 'Delete').click();
+             return true;",
+        )?;
+
+        ctx.wait_until(
+            "B's run to be gone",
+            &format!(
+                "return !document.querySelector('[data-testid=\"cowork-session-running-{b}\"]');"
+            ),
+            Duration::from_secs(30),
+        )?;
+        let by = Instant::now() + Duration::from_secs(20);
+        while persisted_session(&b)?.is_some() {
+            ensure!(Instant::now() < by, "the deleted session is still on disk");
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        // A was never touched.
+        std::thread::sleep(Duration::from_secs(3));
+        let after = running_sessions(ctx)?;
+        ensure!(
+            after == vec![a.clone()],
+            "deleting B changed other runs: running after delete = {after:?} (A = {a})"
+        );
+
+        ctx.eval_bool(&format!(
+            "const dot = document.querySelector('[data-testid=\"cowork-session-running-{a}\"]');
+             const row = dot && dot.closest('button');
+             if (row) row.click();
+             return !!row;"
+        ))?;
+        stop_current(ctx)?;
+        ctx.wait_until(
+            "no session running",
+            "return document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]').length === 0;",
+            Duration::from_secs(30),
+        )
+    })();
+    let _ = ctx.script_model("plain", &[]);
+    result
+}
+
+/// A monorepo for the tooling scenario: a pnpm workspace with a React/Vitest
+/// app, a Tauri crate, and a junction to a folder outside it whose manifest
+/// must never be read.
+fn materialize_tooling_fixture(workspace: &Path) -> Result<(PathBuf, PathBuf), Failure> {
+    let root = workspace.join("tooling-fixture");
+    let outside = workspace.join("tooling-outside");
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&outside);
+    let write = |rel: &Path, body: &str| -> ScenarioResult {
+        std::fs::create_dir_all(rel.parent().unwrap()).map_err(|e| Failure(e.to_string()))?;
+        std::fs::write(rel, body).map_err(|e| Failure(format!("{}: {e}", rel.display())))
+    };
+    write(&root.join("package.json"), r#"{"private":true,"workspaces":["apps/*"]}"#)?;
+    write(&root.join("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n")?;
+    write(&root.join("pnpm-workspace.yaml"), "packages:\n  - apps/*\n")?;
+    write(
+        &root.join("apps").join("web").join("package.json"),
+        r#"{"scripts":{"build":"vite build","test":"vitest run"},
+            "dependencies":{"react":"18.3.1"},"devDependencies":{"vitest":"3.2.4","vite":"6.0.0"}}"#,
+    )?;
+    write(
+        &root.join("src-tauri").join("Cargo.toml"),
+        "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\n\n[dependencies]\ntauri = \"2\"\n",
+    )?;
+    write(&outside.join("package.json"), r#"{"dependencies":{"express":"4.21.0"}}"#)?;
+    #[cfg(windows)]
+    {
+        let made = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(root.join("linked"))
+            .arg(&outside)
+            .output()
+            .map_err(|e| Failure(e.to_string()))?;
+        ensure!(made.status.success(), "could not make the fixture junction: {made:?}");
+    }
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&outside, root.join("linked")).map_err(|e| Failure(e.to_string()))?;
+    Ok((root, outside))
+}
+
+/// AH-068 / AH-069 / AH-070, in the real app.
+///
+/// A monorepo is attached. The readiness card lists what was detected, each
+/// with its source and certainty; the model's request carries exactly the
+/// block the backend rendered for that folder -- not a re-rendering -- with
+/// the right command for the right package; and a junction out of the
+/// project is reported as not followed, its manifest's framework nowhere.
+fn scenario_project_tooling(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    let (fixture, outside) = materialize_tooling_fixture(&ctx.workspace)?;
+    let link = fixture.join("linked");
+    let result = (|| -> ScenarioResult {
+        ctx.script_dialog(Some(&fixture));
+        let opened = open_picker_through_the_pill(ctx);
+        let landed = opened.and_then(|()| {
+            ctx.wait_until(
+                "the tooling fixture to attach",
+                &format!("return document.body.innerText.includes('tooling-fixture') && !{PILL_JS};"),
+                Duration::from_secs(45),
+            )
+        });
+        ctx.clear_dialog_script();
+        landed?;
+
+        // What the user sees.
+        ctx.eval("document.querySelector('[data-testid=\"session-details-trigger\"]').click(); return true;")?;
+        ctx.wait_until(
+            "the detected tooling on the readiness card",
+            "return document.querySelectorAll('[data-testid=\"readiness-tooling-fact\"]').length > 0;",
+            Duration::from_secs(30),
+        )?;
+        let raw = ctx.eval_string(
+            "return JSON.stringify([...document.querySelectorAll('[data-testid=\"readiness-tooling-fact\"]')]
+               .map(e => ({ kind: e.dataset.kind, confidence: e.dataset.confidence,
+                            text: (e.textContent || '').trim(), title: e.getAttribute('title') || '' })));",
+        )?;
+        let shown: Vec<Value> = serde_json::from_str(&raw).map_err(|e| Failure(e.to_string()))?;
+        let has = |kind: &str, text: &str| {
+            shown
+                .iter()
+                .any(|f| f["kind"] == kind && f["text"].as_str().is_some_and(|t| t.contains(text)))
+        };
+        ensure!(has("test-runner", "Vitest") && has("test-runner", "pnpm test"), "the card does not show Vitest with its command: {raw}");
+        ensure!(has("framework", "React") && has("framework", "Tauri"), "the card does not show both frameworks: {raw}");
+        ensure!(has("build-system", "Cargo"), "the card does not show Cargo: {raw}");
+        ensure!(has("workspace", "pnpm workspace"), "the card does not show the pnpm workspace: {raw}");
+        ensure!(!raw.contains("Express"), "a manifest behind the junction was read: {raw}");
+        let vitest = shown
+            .iter()
+            .find(|f| f["text"].as_str().is_some_and(|t| t.starts_with("Vitest")))
+            .unwrap();
+        ensure!(
+            vitest["confidence"] == "high"
+                && vitest["title"].as_str().is_some_and(|t| t.contains("apps/web/package.json")),
+            "the card does not name Vitest's source and certainty: {vitest}"
+        );
+        let _ = ctx.eval(
+            "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+             return true;",
+        );
+        std::thread::sleep(Duration::from_millis(500));
+
+        // What the backend rendered for this folder, straight from its command.
+        let folder = fixture.to_string_lossy().to_string();
+        let expected = ctx.eval_string(&format!(
+            "const r = await window.__TAURI_INTERNALS__.invoke('project_tooling', {{ folder: {folder:?} }});
+             return r.prompt || '';"
+        ))?;
+        ensure!(expected.starts_with("# Project Tooling"), "the backend rendered no block: {expected:?}");
+        ensure!(
+            expected.contains("- Vitest [unit] `pnpm test` in `apps/web/` -- high; apps/web/package.json"),
+            "the block has no Vitest line for the web package: {expected}"
+        );
+        ensure!(expected.contains("- linked (a link; links are not followed)"), "the junction is not reported: {expected}");
+        ensure!(!expected.contains("Express"), "the junction was followed: {expected}");
+
+        // What the model got.
+        let before = model_requests(ctx)?.len();
+        send_and_wait(ctx, "what does this project build and test with", "Hello from the smoke model")?;
+        let requests = model_requests(ctx)?;
+        ensure!(requests.len() > before, "no request reached the model");
+        let body = requests.last().unwrap();
+        let system = body["messages"]
+            .as_array()
+            .and_then(|m| m.iter().find(|m| m["role"] == "system"))
+            .map(|m| match &m["content"] {
+                Value::String(s) => s.clone(),
+                Value::Array(parts) => parts
+                    .iter()
+                    .filter_map(|p| p["text"].as_str())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                _ => String::new(),
+            })
+            .unwrap_or_default();
+        ensure!(
+            system.contains(&expected),
+            "the model's system prompt does not carry the backend's block verbatim"
+        );
+        Ok(())
+    })();
+    // Remove the junction itself, never what it points at; then the fixture.
+    let _ = std::fs::remove_dir(&link);
+    let _ = std::fs::remove_dir_all(&fixture);
+    let _ = std::fs::remove_dir_all(&outside);
+    result
+}
+
+/// Type into the composer and press Enter, the way a user adds input while
+/// the agent works: with a run going, the composer queues it for the run.
+fn type_and_enter(ctx: &Ctx, text: &str) -> ScenarioResult {
+    ctx.type_into("[data-testid=\"chat-input\"]", text)?;
+    std::thread::sleep(Duration::from_millis(200));
+    ctx.eval(
+        "const el = document.querySelector('[data-testid=\"chat-input\"]');
+         el.focus();
+         el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+         return true;",
+    )?;
+    std::thread::sleep(Duration::from_millis(300));
+    Ok(())
+}
+
+/// The text of a request's user messages, in order.
+fn user_texts(body: &Value) -> Vec<String> {
+    body["messages"]
+        .as_array()
+        .map(|messages| {
+            messages
+                .iter()
+                .filter(|m| m["role"] == "user")
+                .map(|m| match &m["content"] {
+                    Value::String(s) => s.clone(),
+                    Value::Array(parts) => parts
+                        .iter()
+                        .filter_map(|p| p["text"].as_str())
+                        .collect::<Vec<_>>()
+                        .join(""),
+                    _ => String::new(),
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// janhq/jan#8864, in the real app.
+///
+/// Session A starts a run whose first step streams for a while and then asks
+/// for a tool. Two messages are typed into A's composer meanwhile. The model's
+/// next request -- the one after the tool result -- carries both, in order,
+/// as user messages after the tool round; the first request carried neither;
+/// the transcript marks them as steering; and a request from session B never
+/// sees them.
+fn scenario_steering(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("steer", &[])?;
+    let result = (|| -> ScenarioResult {
+        ctx.goto("/cowork")?;
+        ctx.wait_until(
+            "the cowork composer",
+            "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+            Duration::from_secs(30),
+        )?;
+        ctx.ensure_model_selected()?;
+        ctx.click_matching("button", "New session")?;
+        std::thread::sleep(Duration::from_millis(500));
+        let before = model_requests(ctx)?.len();
+        send_without_waiting(ctx, "start the steered task")?;
+        ctx.wait_until(
+            "session A to be running",
+            "return document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]').length === 1;",
+            Duration::from_secs(60),
+        )?;
+        // Typed once the first model call is under way, so the next boundary
+        // is the one after the tool round. (Typed earlier, it is delivered at
+        // the boundary before the first call, which is also correct.)
+        ctx.wait_until(
+            "the first request to reach the model",
+            &format!(
+                "const r = await fetch('http://127.0.0.1:{}/__requests');
+                 return (await r.json()).requests.length > {before};",
+                ctx.mock_port
+            ),
+            Duration::from_secs(60),
+        )?;
+        type_and_enter(ctx, "steer one: use pnpm")?;
+        type_and_enter(ctx, "steer two: then run the tests")?;
+        ctx.wait_until(
+            "A's run to finish",
+            "return document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]').length === 0;",
+            Duration::from_secs(120),
+        )?;
+
+        let requests = model_requests(ctx)?;
+        let mine = &requests[before.min(requests.len())..];
+        ensure!(mine.len() >= 2, "expected a request before and after the tool round, got {}", mine.len());
+        let first = user_texts(&mine[0]);
+        ensure!(
+            !first.iter().any(|t| t.contains("steer one")),
+            "the first request already carried the steering: {first:?}"
+        );
+        let carrying = mine
+            .iter()
+            .find(|b| user_texts(b).iter().any(|t| t.contains("steer one")))
+            .ok_or_else(|| Failure("no request carried the steering".into()))?;
+        // Consecutive user messages may be merged by the provider conversion,
+        // in order; either way "one" precedes "two".
+        let texts = user_texts(carrying).join("
+");
+        let one = texts.find("steer one").unwrap();
+        let two = texts
+            .find("steer two")
+            .ok_or_else(|| Failure(format!("the second message was not delivered: {texts:?}")))?;
+        ensure!(one < two, "steering arrived out of order: {texts:?}");
+        // After the tool round, as user messages -- not in the model's turn.
+        let roles: Vec<String> = carrying["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["role"].as_str().unwrap_or("").to_string())
+            .collect();
+        let tool_at = roles.iter().position(|r| r == "tool");
+        ensure!(tool_at.is_some(), "the steered request has no tool round: {roles:?}");
+        let steer_at = carrying["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .position(|m| m["role"] == "user" && m.to_string().contains("steer one"))
+            .unwrap();
+        ensure!(steer_at > tool_at.unwrap(), "steering was not delivered after the tool round: {roles:?}");
+        let assistant_has = carrying["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|m| m["role"] == "assistant")
+            .any(|m| m.to_string().contains("steer one"));
+        ensure!(!assistant_has, "steering was put in the model's own turn");
+
+        let labels = ctx.eval_string(
+            "return String(document.querySelectorAll('[data-testid=\"steered-label\"]').length);",
+        )?;
+        ensure!(labels == "2", "the transcript marks {labels} messages as steering, not 2");
+
+        // Session B, in the same app, never sees A's input.
+        ctx.script_model("plain", &[])?;
+        ctx.click_matching("button", "New session")?;
+        std::thread::sleep(Duration::from_millis(500));
+        let before_b = model_requests(ctx)?.len();
+        send_and_wait(ctx, "a question in session B", "Hello from the smoke model")?;
+        let requests = model_requests(ctx)?;
+        ensure!(requests.len() > before_b, "session B sent nothing");
+        let b = requests.last().unwrap().to_string();
+        ensure!(!b.contains("steer one") && !b.contains("steer two"), "session B's request carried A's steering");
+        Ok(())
     })();
     let _ = ctx.script_model("plain", &[]);
     result
