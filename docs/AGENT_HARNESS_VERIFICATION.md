@@ -226,6 +226,47 @@ Run: `cargo test -p tauri-plugin-agent-tools -- --test-threads=4 proposal::`,
 `cargo test --lib --no-default-features --features test-tauri -- team_children proposals subagent`,
 `npx vitest run src/lib/__tests__/coworkTeamScopes.test.ts src/containers/__tests__/CoworkTeam*`.
 
+## Shipped agent roles (AH-094 … AH-099)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 4 unit tests | `src-tauri/src/core/agent/roles.rs` | the read-only roles hold only read-capability tools, checked against the capability table; every role lists real tools and no dispatch tool, the implementer is the only writer and the tester the only shell user; a parent that denies writes gets an implementer that cannot write, and a call-site request for `write` on the reviewer is refused even under an allow-all parent; every role is a versioned built-in with no model of its own |
+| 2 registry tests | `src-tauri/src/core/agent/subagent.rs` | with nothing saved the registry holds exactly the shipped roles; a saved definition of the same name replaces a role; the built-in scope cannot be written through `create`, `create_in` or `subagent_dir_for` |
+| 5 unit tests | `web-app/src/lib/__tests__/coworkRoles.test.ts` | as the renderer resolves them: read-only roles get no write, edit, bash, network or MCP tool; a call site cannot widen a role; a role never holds what its parent lacks; no role is offered `task`, `team`, `ask` or `todo`; a saved definition listed first wins |
+| Windows scenario `agent-roles` (mock provider) | `src-tauri/examples/cowork_smoke.rs` | the desktop list returns the six roles as `builtin`, versioned, with no mutating tool on a read-only role; a real parent run in Ask before changes dispatches the built-in reviewer and explorer with `task`; each child is offered only `read`, `ls`, `find`, `grep`, `skill_list`, `skill_read`; the fixture's scripted `write` and `bash` calls are refused as unavailable, no approval prompt appears, no file is written, the tool-activity record has no write or bash for either role; both answers reach the parent; the UI names both children |
+
+Not shown for any role: cancellation mid-run, persistence across a restart in
+a new process, and a typed harness error on refusal (the refusal is a
+tool-error string). Planner, implementer, tester and security were not
+dispatched in a UI run. All six stay `in-progress`.
+
+First attempts, kept: ro1 and ro2 timed out waiting for the page (the lost
+event-bus result, fixed below). ro3 and ro4 got no child at all: attaching a
+repository leaves the session in Review first, a plan mode that withholds
+`task`. ro5 still dispatched nothing: "Dispatch …" is not a directive verb, so
+the first turn was an opening inspection, which runs in review. ro5b exited 0
+with no scenario verdict (the app shut down before the driver finished) and
+is not counted as a pass. ro6 and ro7 failed on the scenario's own checks: it
+waited for summary text that is folded into the task cards, and a filter still
+named the old prompt. ro8 and ro8b passed, but they are not counted. When
+ro5b's app shut itself down, the harness never stopped its fixture server,
+which kept listening on port 8080. Every later run, ro6 to ro8b and the first
+full gate g3, started a second server on the same port. The first gate's
+`context-replay` pair then failed against the leftover server's request log.
+The leftover server was stopped. The harness now refuses to start when the
+port answers, and the runner reports any listener left after a scenario. The
+role evidence is taken from runs after that fix: see the handoff.
+
+**Harness transport.** `Ctx::eval_with_timeout` now leaves each result in
+the page (`window.__smokeResults`) and collects it with `eval_with_callback`.
+It no longer uses the Tauri event bus, whose `emit_filter` only `try_lock`s
+its handler table and can park an emit indefinitely. This duplicates the fix
+in `2bd94407a` on `claude/token-usage-integration`, ported as it is because
+that commit is not on `fork/main`.
+
+Run: `cargo test --lib --no-default-features --features test-tauri -- core::agent::roles core::agent::subagent`,
+`npx vitest run src/lib/__tests__/coworkRoles.test.ts`.
+
 ## Canonical event log (AH-005) and event export (AH-177)
 
 | Evidence | Where | Covers |

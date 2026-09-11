@@ -25,7 +25,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use tauri::{AppHandle, Listener, LogicalSize, Manager, WebviewWindow};
+use tauri::{AppHandle, LogicalSize, Manager, WebviewWindow};
 
 /// Compile-time crate root. Fixtures live under this, never under the CWD.
 const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
@@ -145,22 +145,25 @@ impl Ctx {
 
     fn eval_with_timeout(&self, js: &str, timeout: Duration) -> Result<Value, Failure> {
         let id = EVAL_SEQ.fetch_add(1, Ordering::SeqCst);
-        let channel = format!("cowork-smoke-eval-{id}");
-        let (tx, rx) = mpsc::channel::<String>();
-        let handler_id = self.window.listen(channel.clone(), move |event| {
-            let _ = tx.send(event.payload().to_string());
-        });
 
-        // `payload` is emitted as a JSON string so the value survives the event
-        // bus regardless of shape; the Rust side unwraps one level below.
+        // The result is left in the page and read back with
+        // `eval_with_callback`, never sent over the Tauri event bus. This is
+        // the fix proved in 2bd94407a (on `claude/token-usage-integration`),
+        // taken as it is rather than worked around: the bus drops events here.
+        // `Listeners::emit_filter` only `try_lock`s its handler table, parks
+        // the emit in a pending queue when another thread holds it, and
+        // flushes that queue only on a later emit that reaches a handler, so
+        // while the app is busy (a run with subagents, a readiness probe) a
+        // result the page had already emitted was never delivered and read as
+        // a page that had stopped answering.
         //
         // The body is compiled inside the `try`, from a string, rather than
-        // pasted into this script: a body that does not parse used to make
-        // the whole script fail to parse, so nothing ran, nothing replied, and
-        // a typo read exactly like a page that had stopped answering.
+        // pasted into this script: a body that does not parse used to make the
+        // whole script fail to parse, so nothing ran and nothing replied.
         let body = serde_json::to_string(js).unwrap_or_else(|_| "\"\"".into());
         let script = format!(
             r#"(async () => {{
+  const results = (window.__smokeResults = window.__smokeResults || {{}});
   let out;
   try {{
     const AsyncFunction = Object.getPrototypeOf(async function () {{}}).constructor;
@@ -169,57 +172,68 @@ impl Ctx {
   }} catch (e) {{
     out = {{ err: (e && e.stack) ? String(e.stack) : String(e) }};
   }}
-  try {{
-    await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{
-      event: {channel:?},
-      payload: JSON.stringify(out),
-    }});
-  }} catch (e) {{
-    console.error('cowork-smoke transport failure', e);
-  }}
+  results[{id}] = JSON.stringify(out);
 }})();"#
         );
 
         note_step(&format!("dispatching: {}", js.trim()));
         if let Err(e) = self.window.eval(&script) {
-            self.window.unlisten(handler_id);
             bail!("eval dispatch failed: {e}");
         }
 
         note_step(&format!("awaiting the page: {}", js.trim()));
-        let received = rx.recv_timeout(timeout);
-        self.window.unlisten(handler_id);
-
-        let raw = match received {
-            Ok(raw) => raw,
-            Err(_) => {
-                // Which side is stuck: a main thread that no longer runs
-                // posted work cannot deliver the eval or its reply, while a
-                // renderer that stopped running scripts leaves it answering.
-                let (tx, rx) = mpsc::channel::<()>();
-                let main = match self.window.run_on_main_thread(move || {
-                    let _ = tx.send(());
-                }) {
-                    Ok(()) if rx.recv_timeout(Duration::from_secs(5)).is_ok() => {
-                        "the app's main thread is answering; the page is not"
-                    }
-                    Ok(()) => "the app's main thread is blocked",
-                    Err(_) => "the app's main thread could not be asked",
-                };
-                bail!(
-                    "eval timed out after {timeout:?}; {main}; app children at the time: {}; window: {}; script was:\n{js}",
-                    app_children(),
-                    window_state(&self.window)
-                )
+        let collect = format!(
+            "(() => {{ const r = window.__smokeResults || {{}}; const v = r[{id}];
+                 if (v === undefined) return null; delete r[{id}]; return v; }})()"
+        );
+        let deadline = Instant::now() + timeout;
+        let timed_out = |why: &str| -> Failure {
+            // Which side is stuck: a main thread that no longer runs posted
+            // work cannot deliver the eval, while a renderer that stopped
+            // running scripts leaves it answering.
+            let (tx, rx) = mpsc::channel::<()>();
+            let main = match self.window.run_on_main_thread(move || {
+                let _ = tx.send(());
+            }) {
+                Ok(()) if rx.recv_timeout(Duration::from_secs(5)).is_ok() => {
+                    "the app's main thread is answering; the page is not"
+                }
+                Ok(()) => "the app's main thread is blocked",
+                Err(_) => "the app's main thread could not be asked",
+            };
+            Failure(format!(
+                "eval {id} timed out after {timeout:?} ({why}); {main}; app children at the time: {}; window: {}; script was:\n{js}",
+                app_children(),
+                window_state(&self.window)
+            ))
+        };
+        let raw = loop {
+            let (tx, rx) = mpsc::channel::<String>();
+            if let Err(e) = self.window.eval_with_callback(&collect, move |v| {
+                let _ = tx.send(v);
+            }) {
+                bail!("eval {id} could not be collected: {e}");
             }
+            let left = deadline.saturating_duration_since(Instant::now());
+            // `eval_with_callback` hands back the expression's value as JSON:
+            // `null` while the script is still running, else the result string.
+            match rx.recv_timeout(left.max(Duration::from_millis(1))) {
+                Ok(v) if v != "null" && !v.is_empty() => break v,
+                Ok(_) => {}
+                Err(_) => return Err(timed_out("the collector never answered")),
+            }
+            if Instant::now() >= deadline {
+                return Err(timed_out("the script had not finished"));
+            }
+            std::thread::sleep(Duration::from_millis(40));
         };
 
-        // The event payload is a JSON document containing a JSON string.
+        // The callback value is a JSON string holding the JSON result.
         let outer: Value = serde_json::from_str(&raw)
-            .map_err(|e| Failure(format!("event payload was not JSON ({e}): {raw}")))?;
+            .map_err(|e| Failure(format!("eval result was not JSON ({e}): {raw}")))?;
         let inner = match outer.as_str() {
             Some(s) => serde_json::from_str::<Value>(s)
-                .map_err(|e| Failure(format!("inner payload was not JSON ({e}): {s}")))?,
+                .map_err(|e| Failure(format!("inner result was not JSON ({e}): {s}")))?,
             None => outer,
         };
 
@@ -670,6 +684,21 @@ fn start_mock_provider(fixtures: &Path, port: u16) -> Result<(std::process::Chil
                 .unwrap_or(false)
         })
         .ok_or("no python interpreter found (tried python3, python, py)")?;
+    // A port already in use means another fixture server is listening there,
+    // often one left behind by a run the app ended itself. Python's server can
+    // still bind beside it on Windows, and the app's requests then reach
+    // either one, so a run would quietly assert against another run's log.
+    // Refuse instead.
+    if std::net::TcpStream::connect_timeout(
+        &std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+        Duration::from_millis(300),
+    )
+    .is_ok()
+    {
+        return Err(format!(
+            "port {port} is already in use; a leftover fixture server may be listening there"
+        ));
+    }
     let mut child = std::process::Command::new(interpreter)
         .arg(script)
         .arg("--model")
@@ -1038,6 +1067,10 @@ const SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "worktree-export",
         run: scenario_worktree_export,
+    },
+    Scenario {
+        name: "agent-roles",
+        run: scenario_agent_roles,
     },
     // A pair (AH-005/AH-177).
     Scenario {
@@ -4251,6 +4284,202 @@ fn scenario_event_export_second(ctx: &Ctx) -> ScenarioResult {
     ensure!(ids == before, "after a restart the events are {ids:?}, not {before:?}");
     let first = PathBuf::from(marker["export"].as_str().unwrap_or_default());
     read_export_independently(&first, &session)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// AH-094..099: shipped roles, dispatched parent to child through the real app
+// ---------------------------------------------------------------------------
+
+/// The shipped roles are listed by the backend with their scope; a parent
+/// dispatches the read-only reviewer and the explorer, each child tries to
+/// write and to run a command, and neither can: the calls fail at the
+/// child's own toolset, nothing is written, and the activity names each
+/// child by role.
+fn scenario_agent_roles(ctx: &Ctx) -> ScenarioResult {
+    let (ok, listed) = ipc(ctx, "agent_subagent_list", "{}")?;
+    ensure!(ok, "listing agents failed: {listed}");
+    let roles: Vec<String> = listed
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|d| d["scope"] == "builtin")
+        .filter_map(|d| d["name"].as_str().map(str::to_string))
+        .collect();
+    ensure!(
+        roles == ["explorer", "planner", "implementer", "reviewer", "tester", "security"],
+        "the shipped roles are {roles:?}"
+    );
+    for d in listed.as_array().into_iter().flatten().filter(|d| d["scope"] == "builtin") {
+        let tools: Vec<&str> = d["allowed_tools"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+        if ["explorer", "planner", "reviewer", "security"].contains(&d["name"].as_str().unwrap_or("")) {
+            ensure!(
+                !tools.iter().any(|t| ["write", "edit", "bash"].contains(t)),
+                "{} lists a mutating tool: {tools:?}",
+                d["name"]
+            );
+        }
+        ensure!(d["description"].as_str().unwrap_or("").contains("built-in role, v1"), "{} is not versioned", d["name"]);
+    }
+
+    let escape = ctx.project.join("role-escape.txt");
+    let _ = std::fs::remove_file(&escape);
+    let write_try = format!(
+        "write:{}",
+        serde_json::json!({ "path": "{{FOLDER}}/role-escape.txt", "content": "a read-only role wrote this\n" })
+    );
+    let bash_try = format!("bash:{}", serde_json::json!({ "command": "echo escaped > role-escape.txt" }));
+    let routes = serde_json::json!([
+        { "match": "ROLE-REVIEWER", "tools": [write_try, bash_try], "summary": "reviewer finished" },
+        { "match": "ROLE-EXPLORER", "tools": ["ls:{\"path\":\".\"}", write_try], "summary": "explorer finished" },
+    ]);
+    let parent_calls = [
+        format!("task:{}", serde_json::json!({ "subagent_name": "reviewer", "description": "ROLE-REVIEWER: review the fixture" })),
+        format!("task:{}", serde_json::json!({ "subagent_name": "explorer", "description": "ROLE-EXPLORER: map the fixture" })),
+    ];
+    let port = ctx.mock_port;
+    ensure!(
+        ctx.eval_bool(&format!(
+            r#"const res = await fetch('http://127.0.0.1:{port}/__control', {{
+                 method: 'POST', headers: {{ 'Content-Type': 'application/json' }},
+                 body: JSON.stringify({{ script: 'tools', tools: {}, routes: {routes} }}),
+               }});
+               return res.ok;"#,
+            serde_json::to_string(&parent_calls).unwrap()
+        ))?,
+        "could not script the roles"
+    );
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.wait_until(
+        "the previous run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    attach_project(ctx)?;
+    // Attaching starts in Review first, a plan mode that withholds `task`
+    // from the parent; the parent needs a mode that can dispatch.
+    choose_mode(ctx, "Ask before changes")?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "Run the reviewer and the explorer on this project.")?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]'); return !!b && !b.disabled;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval("document.querySelector('[data-test-id=\"send-message-button\"]').click(); return true;")?;
+    // Allow the dispatches themselves if the mode asks; the children's own
+    // write and bash calls must never reach a prompt at all.
+    let deadline = Instant::now() + Duration::from_secs(150);
+    loop {
+        let _ = ctx.eval(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /^allow once$/i.test((x.textContent || '').trim()));
+             const card = b && b.closest('[data-testid=\"child-approval\"]');
+             if (b && !card) b.click();
+             return true;",
+        );
+        let child_prompt = ctx.eval_bool("return !!document.querySelector('[data-testid=\"child-approval\"]');")?;
+        ensure!(!child_prompt, "a read-only role reached an approval prompt for a write or a command");
+        // The children's answers are the `task` results, folded into their
+        // cards, so the fixture's log is where both are seen to come back:
+        // the parent's next request carries them as tool results.
+        let answered = |who: &str| {
+            mock_requests(ctx).unwrap_or_default().iter().any(|r| {
+                r["messages"].as_array().into_iter().flatten().any(|m| {
+                    m["role"] == "tool" && m["content"].to_string().contains(&format!("{who} finished"))
+                })
+            })
+        };
+        if answered("reviewer")
+            && answered("explorer")
+            && ctx.eval_bool("return !!document.querySelector('[data-test-id=\"send-message-button\"]');")?
+        {
+            break;
+        }
+        if Instant::now() >= deadline {
+            // What each child sent the model fixture, so a failed child says why.
+            let seen: Vec<String> = mock_requests(ctx)
+                .unwrap_or_default()
+                .iter()
+                .filter(|r| r["messages"].to_string().contains("ROLE-"))
+                .map(|r| {
+                    let tools: Vec<&str> = r["tools"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|t| t["function"]["name"].as_str())
+                        .collect();
+                    let last = r["messages"].as_array().and_then(|m| m.last()).map(|m| m.to_string()).unwrap_or_default();
+                    format!("tools {tools:?}; last message {}", last.chars().take(600).collect::<String>())
+                })
+                .collect();
+            bail!("the role run did not finish: {}; child requests: {seen:#?}", run_state_page(ctx));
+        }
+        std::thread::sleep(Duration::from_millis(700));
+    }
+    ensure!(!escape.exists(), "a read-only role wrote into the project");
+
+    // The children's calls, as the durable record has them.
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let activity: Vec<Value> = std::fs::read_to_string(Path::new(&data).join("audit/tool-activity.jsonl"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .collect();
+    for agent in ["reviewer", "explorer"] {
+        let mutating_ran = activity.iter().any(|e| {
+            e["agent"] == agent
+                && ["write", "bash"].contains(&e["tool"].as_str().unwrap_or(""))
+                && ["running", "succeeded"].contains(&e["phase"].as_str().unwrap_or(""))
+        });
+        ensure!(!mutating_ran, "the {agent} role ran a write or a command");
+    }
+    let explorer_read = activity
+        .iter()
+        .any(|e| e["agent"] == "explorer" && e["tool"] == "ls" && e["phase"] == "succeeded");
+    // What each child was offered, as the model fixture received it.
+    // A child's brief is its first user message; the parent's is the prompt,
+    // and the parent's own requests carry the tags only in its `task` calls.
+    let requests = mock_requests(ctx)?;
+    let brief = |r: &Value| -> String {
+        r["messages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|m| m["role"] == "user")
+            .map(|m| m["content"].to_string())
+            .unwrap_or_default()
+    };
+    for tag in ["ROLE-REVIEWER", "ROLE-EXPLORER"] {
+        let offered: Vec<String> = requests
+            .iter()
+            .filter(|r| brief(r).contains(tag))
+            .flat_map(|r| r["tools"].as_array().cloned().unwrap_or_default())
+            .filter_map(|t| t["function"]["name"].as_str().map(str::to_string))
+            .collect();
+        ensure!(!offered.is_empty(), "{tag}'s child request was not seen by the model fixture");
+        for forbidden in ["write", "edit", "bash", "task", "team"] {
+            ensure!(!offered.iter().any(|t| t == forbidden), "{tag} was offered {forbidden}: {offered:?}");
+        }
+    }
+    // Each child is named by its role where the person sees the run.
+    let named = ctx.eval_bool(
+        "const t = document.body.innerText; return /reviewer/i.test(t) && /explorer/i.test(t);",
+    )?;
+    ensure!(named, "the run does not name its children by role");
+    println!("      NOTE: explorer's ls {}", if explorer_read { "succeeded" } else { "was not recorded" });
     Ok(())
 }
 

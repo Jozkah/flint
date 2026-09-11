@@ -25,6 +25,10 @@ pub enum SubagentScope {
     /// Claude Code convention). Read-only: managed via plugin install/remove,
     /// never via `create_subagent`.
     Plugin,
+    /// A role Jan ships (`roles.rs`, AH-094..099). Lowest precedence and
+    /// read-only: a saved definition of the same name replaces it, and nothing
+    /// can rewrite it.
+    Builtin,
 }
 
 /// A dispatchable subagent definition, resolved from a `<name>.toml` file plus
@@ -141,7 +145,8 @@ impl SubagentRegistry {
     /// agent of the same name. Malformed files are skipped with a warning
     /// rather than failing the whole run.
     pub fn load(project_root: &Path) -> Self {
-        let mut defs = Vec::new();
+        // Shipped roles first: every other scope shadows them by name.
+        let mut defs = crate::core::agent::roles::definitions();
         load_plugin_agents(project_root, &mut defs);
         if let Some(dir) = user_subagents_dir() {
             load_dir(&dir, SubagentScope::User, &mut defs);
@@ -200,6 +205,11 @@ impl SubagentRegistry {
                 "plugin scope is read-only: plugin agents are managed via plugin install/remove"
                     .to_string(),
             )),
+            SubagentScope::Builtin => {
+                return Err(SubagentError::PermissionDenied(
+                    "built-in roles are read-only".to_string(),
+                ))
+            }
         };
         self.create_in(&dir, def, scope, overwrite)
     }
@@ -215,6 +225,11 @@ impl SubagentRegistry {
         overwrite: bool,
     ) -> Result<bool, SubagentError> {
         validate_name(&def.name)?;
+        if scope == SubagentScope::Builtin {
+            return Err(SubagentError::PermissionDenied(
+                "built-in roles are read-only".to_string(),
+            ));
+        }
         if scope == SubagentScope::Plugin {
             return Err(SubagentError::Upstream(
                 "plugin scope is read-only: plugin agents are managed via plugin install/remove"
@@ -1205,6 +1220,7 @@ pub fn format_subagent_list(registry: &SubagentRegistry) -> String {
             SubagentScope::User => "user",
             SubagentScope::Project => "project",
             SubagentScope::Plugin => "plugin",
+            SubagentScope::Builtin => "built-in",
         };
         lines.push(format!("{} [{}]: {}", d.name, scope, d.description));
     }
@@ -1395,6 +1411,10 @@ pub fn subagent_dir_for(
             "plugin scope is read-only: plugin agents are managed via plugin install/remove"
                 .to_string(),
         )),
+        SubagentScope::Builtin => Err(SubagentError::PermissionDenied(
+            "built-in roles are read-only; save a definition of the same name to replace one"
+                .to_string(),
+        )),
     }
 }
 
@@ -1428,8 +1448,36 @@ mod tests {
     fn empty_directories_yield_empty_registry() {
         let root = unique_root("empty");
         let reg = SubagentRegistry::load(&root);
-        assert!(reg.list().is_empty());
+        // Nothing saved: only the shipped roles (AH-094..099).
+        assert!(reg.list().iter().all(|d| d.scope == SubagentScope::Builtin));
+        assert_eq!(reg.list().len(), crate::core::agent::roles::ROLES.len());
         assert!(reg.get("nope").is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A saved definition replaces a shipped role of the same name, and the
+    /// shipped scope cannot be written.
+    #[test]
+    fn a_saved_definition_shadows_a_builtin_role() {
+        let root = unique_root("shadow-builtin");
+        assert_eq!(SubagentRegistry::load(&root).get("reviewer").unwrap().scope, SubagentScope::Builtin);
+        write_def(&project_subagents_dir(&root), "reviewer", "allowed_tools = [\"read\"]\n");
+        let reg = SubagentRegistry::load(&root);
+        let winner = reg.get("reviewer").unwrap();
+        assert_eq!(winner.scope, SubagentScope::Project);
+        assert_eq!(winner.description, "desc for reviewer");
+        let mut reg = reg;
+        let def = SubagentDefinition {
+            name: "explorer".into(),
+            description: "d".into(),
+            system_prompt: "sp".into(),
+            allowed_tools: Some(vec!["write".into()]),
+            model: None,
+            scope: SubagentScope::Builtin,
+        };
+        assert!(reg.create_in(&root, def.clone(), SubagentScope::Builtin, true).is_err());
+        assert!(reg.create(def, SubagentScope::Builtin, true).is_err());
+        assert!(subagent_dir_for(&root, SubagentScope::Builtin).is_err());
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1506,7 +1554,8 @@ mod tests {
         write_def(&dir, "good", "");
         let reg = SubagentRegistry::load(&root);
         assert!(reg.get("good").is_some());
-        assert_eq!(reg.list().len(), 1);
+        let saved: Vec<_> = reg.list().into_iter().filter(|d| d.scope != SubagentScope::Builtin).collect();
+        assert_eq!(saved.len(), 1);
         let _ = std::fs::remove_dir_all(&root);
     }
 

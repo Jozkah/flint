@@ -213,10 +213,14 @@ pub struct SubagentDefinitionDto {
     /// it never widens. `None` inherits the parent's set.
     pub allowed_tools: Option<Vec<String>>,
     pub model: Option<String>,
+    /// `builtin` for a role Jan ships, `user` for one saved on this machine.
+    pub scope: subagent::SubagentScope,
 }
 
-/// Every subagent saved for the desktop, from the single
-/// `<jan_data>/agent-workspace/subagents/` directory.
+/// The roles Jan ships (AH-094..099), then every subagent saved for the
+/// desktop, from the single `<jan_data>/agent-workspace/subagents/` directory.
+/// A saved definition replaces a built-in role of the same name, and only the
+/// winner is listed, because the renderer resolves a name to its first match.
 ///
 /// Deliberately not the CLI's plugin/user/project merge: Cowork has no project
 /// root in a default session, and an attached folder is mounted read-only, so
@@ -228,19 +232,28 @@ pub async fn agent_subagent_list<R: tauri::Runtime>(
     app_handle: tauri::AppHandle<R>,
 ) -> Result<Vec<SubagentDefinitionDto>, String> {
     let dir = subagent::desktop_subagents_dir(&get_jan_data_folder_path(app_handle));
-    Ok(
+    let saved: Vec<subagent::SubagentDefinition> =
         subagent::SubagentRegistry::load_one(&dir, subagent::SubagentScope::User)
             .list()
             .into_iter()
-            .map(|d| SubagentDefinitionDto {
-                name: d.name.clone(),
-                description: d.description.clone(),
-                system_prompt: d.system_prompt.clone(),
-                allowed_tools: d.allowed_tools.clone(),
-                model: d.model.clone(),
-            })
-            .collect(),
-    )
+            .cloned()
+            .collect();
+    let builtins: Vec<subagent::SubagentDefinition> = crate::core::agent::roles::definitions()
+        .into_iter()
+        .filter(|b| !saved.iter().any(|s| s.name == b.name))
+        .collect();
+    Ok(builtins
+        .into_iter()
+        .chain(saved)
+        .map(|d| SubagentDefinitionDto {
+            name: d.name,
+            description: d.description,
+            system_prompt: d.system_prompt,
+            allowed_tools: d.allowed_tools,
+            model: d.model,
+            scope: d.scope,
+        })
+        .collect())
 }
 
 /// Create, or reuse, the managed worktree for a Cowork session.
