@@ -5,6 +5,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
+import { CacheReuseBadge } from '@/components/CacheReuseBadge'
 import type { TokenUsage } from '@/lib/tokenUsage'
 import type { TurnMemory } from '@/types/coworkSession'
 
@@ -46,6 +47,9 @@ export function TurnUsageDetails({
         >
           <Gauge size={14} />
           {hasUsage && <span className="tabular-nums">{usage.totalTokens?.toLocaleString()}</span>}
+          {hasUsage && (
+            <CacheReuseBadge usage={usage} hideUnreported testId="turn-cache-status" />
+          )}
           {injected.length > 0 && (
             <span>
               · {injected.length} {injected.length === 1 ? 'memory' : 'memories'}

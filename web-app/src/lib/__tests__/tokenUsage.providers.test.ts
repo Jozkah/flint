@@ -134,6 +134,9 @@ describe('provider usage through the AI SDK', () => {
       cachedInputTokens: 1920,
       uncachedInputTokens: 86,
       cacheSource: 'openai-chat',
+      requests: 1,
+      cacheReportedRequests: 1,
+      cacheHitRequests: 1,
     })
   })
 
@@ -186,6 +189,9 @@ describe('provider usage through the AI SDK', () => {
       cachedInputTokens: 5957,
       uncachedInputTokens: 17,
       cacheSource: 'openai-chat',
+      requests: 1,
+      cacheReportedRequests: 1,
+      cacheHitRequests: 1,
     })
   })
 
@@ -239,7 +245,40 @@ describe('provider usage through the AI SDK', () => {
       ),
     })
     const usage = await finalUsage(provider.languageModel('pxa-27b'))
-    expect(usage).toEqual({ inputTokens: 6100, outputTokens: 3, totalTokens: 6103 })
+    expect(usage).toEqual({ inputTokens: 6100, outputTokens: 3, totalTokens: 6103, requests: 1, cacheReportedRequests: 0, cacheHitRequests: 0 })
+  })
+
+  it('vLLM with prompt-token details: the cache count arrives only in the final usage chunk', async () => {
+    const provider = createOpenAICompatible({
+      name: 'vllm',
+      baseURL: 'http://provider.test/v1',
+      includeUsage: true,
+      fetch: replay(() =>
+        sse([
+          chunk({ role: 'assistant', content: 'O' }),
+          chunk({ content: 'K' }),
+          finishChunk(),
+          {
+            ...finishChunk(),
+            choices: [],
+            usage: {
+              prompt_tokens: 1776,
+              total_tokens: 1778,
+              completion_tokens: 2,
+              prompt_tokens_details: { cached_tokens: 1760 },
+            },
+          },
+          '[DONE]',
+        ])
+      ),
+    })
+    const usage = await finalUsage(provider.languageModel('pxa-27b'))
+    expect(usage).toMatchObject({
+      inputTokens: 1776,
+      cachedInputTokens: 1760,
+      uncachedInputTokens: 16,
+      cacheHitRequests: 1,
+    })
   })
 
   it('malformed: a cached count larger than the input is clamped, the raw value kept', async () => {
@@ -370,6 +409,9 @@ describe('provider usage through the AI SDK', () => {
       uncachedInputTokens: 312,
       cacheWriteTokens: 300,
       cacheSource: 'anthropic',
+      requests: 1,
+      cacheReportedRequests: 1,
+      cacheHitRequests: 1,
     })
   })
 
@@ -420,6 +462,6 @@ describe('provider usage through the AI SDK', () => {
       ),
     })
     const usage = await finalUsage(anthropic('pxa-27b'))
-    expect(usage).toEqual({ inputTokens: 6100, outputTokens: 2, totalTokens: 6102 })
+    expect(usage).toEqual({ inputTokens: 6100, outputTokens: 2, totalTokens: 6102, requests: 1, cacheReportedRequests: 0, cacheHitRequests: 0 })
   })
 })

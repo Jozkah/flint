@@ -68,6 +68,16 @@ export type TokenUsage = {
     cachedInputTokens?: number
     cacheWriteTokens?: number
   }
+  /**
+   * How many model requests these numbers cover, how many of them reported a
+   * cache count at all, and how many reported reading from the cache. A turn
+   * or a session is several requests; these keep "how many requests hit the
+   * cache" apart from "how many tokens were cached". Absent on usage saved
+   * before they existed.
+   */
+  requests?: number
+  cacheReportedRequests?: number
+  cacheHitRequests?: number
 }
 
 type Json = Record<string, unknown>
@@ -94,6 +104,9 @@ export function finalizeTokenUsage(parts: {
   cacheWriteTokens?: unknown
   cacheSource?: CacheReportSource
   reported?: TokenUsage['reported']
+  requests?: unknown
+  cacheReportedRequests?: unknown
+  cacheHitRequests?: unknown
 }): TokenUsage {
   const input = tokenCount(parts.inputTokens)
   const output = tokenCount(parts.outputTokens)
@@ -135,7 +148,64 @@ export function finalizeTokenUsage(parts: {
     out.cacheSource = parts.cacheSource
   }
   if (Object.keys(reported).length > 0) out.reported = reported
+  const requests = tokenCount(parts.requests)
+  const reportedRequests = tokenCount(parts.cacheReportedRequests)
+  const hitRequests = tokenCount(parts.cacheHitRequests)
+  if (requests !== undefined) out.requests = requests
+  if (reportedRequests !== undefined) out.cacheReportedRequests = reportedRequests
+  if (hitRequests !== undefined) out.cacheHitRequests = hitRequests
   return out
+}
+
+/**
+ * What the provider said about its prompt cache for these requests.
+ *
+ * - `reused`: at least one request reported reading cached input tokens
+ *   (`cached > 0`). A partly cached prompt is reuse.
+ * - `none`: the provider reported the cache and said nothing was read from it
+ *   (`cached = 0`).
+ * - `not-reported`: the provider sent no cache count. Unknown is never taken
+ *   for a miss.
+ *
+ * Only ever decided from provider-reported counts -- never from repeated text,
+ * latency or an equal total.
+ */
+export type CacheStatus = 'reused' | 'none' | 'not-reported'
+
+export function cacheStatus(usage: TokenUsage | undefined): CacheStatus {
+  if (!usage) return 'not-reported'
+  if ((usage.cachedInputTokens ?? 0) > 0 || (usage.cacheHitRequests ?? 0) > 0) {
+    return 'reused'
+  }
+  if (usage.cachedInputTokens === 0) return 'none'
+  return 'not-reported'
+}
+
+/** Cached input as a share of input, 0-100, when both are known and input > 0. */
+export function cacheReusePercent(usage: TokenUsage | undefined): number | undefined {
+  const input = usage?.inputTokens
+  const cached = usage?.cachedInputTokens
+  if (input === undefined || cached === undefined || input <= 0) return undefined
+  return (Math.min(cached, input) / input) * 100
+}
+
+/** Exact values for an accessible label or tooltip; absent ones say so. */
+export function exactUsageText(usage: TokenUsage | undefined): string {
+  // Fixed grouping, so a label read aloud or asserted reads the same anywhere.
+  const n = (v: number | undefined) =>
+    v === undefined ? 'not reported' : v.toLocaleString('en-US')
+  if (!usage) return 'Usage not reported'
+  const parts = [
+    `Input ${n(usage.inputTokens)}`,
+    `Cached ${n(usage.cachedInputTokens)}`,
+    `Uncached ${n(usage.uncachedInputTokens)}`,
+    `Output ${n(usage.outputTokens)}`,
+    `Total ${n(usage.totalTokens)}`,
+  ]
+  if (usage.cacheWriteTokens !== undefined) {
+    parts.splice(3, 0, `Cache write ${n(usage.cacheWriteTokens)}`)
+  }
+  return parts.join(', ')
 }
 
 /**
@@ -295,6 +365,9 @@ export function normalizeLanguageModelUsage(
     cachedInputTokens: cached,
     cacheWriteTokens: write,
     cacheSource: source,
+    requests: 1,
+    cacheReportedRequests: cached !== undefined ? 1 : 0,
+    cacheHitRequests: cached !== undefined && cached > 0 ? 1 : 0,
   })
 }
 
@@ -324,7 +397,26 @@ export function combineTokenUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
     cacheSource:
       a.cacheSource === b.cacheSource ? a.cacheSource : undefined,
     reported: Object.keys(reported).length > 0 ? reported : undefined,
+    // Request counts add up even where a cache count could not: a hit on one
+    // request is still a hit when another request said nothing.
+    requests: sumKnown(requestsOf(a), requestsOf(b)),
+    cacheReportedRequests: sumKnown(reportedRequestsOf(a), reportedRequestsOf(b)),
+    cacheHitRequests: sumKnown(hitRequestsOf(a), hitRequestsOf(b)),
   })
+}
+
+/** Usage saved before request counts existed is one request. */
+const requestsOf = (u: TokenUsage): number | undefined =>
+  u.requests ?? (u.inputTokens !== undefined || u.totalTokens !== undefined ? 1 : undefined)
+const reportedRequestsOf = (u: TokenUsage): number | undefined =>
+  u.cacheReportedRequests ?? (u.requests === undefined ? (u.cachedInputTokens !== undefined ? 1 : 0) : undefined)
+const hitRequestsOf = (u: TokenUsage): number | undefined =>
+  u.cacheHitRequests ?? (u.requests === undefined ? ((u.cachedInputTokens ?? 0) > 0 ? 1 : 0) : undefined)
+
+/** Several requests' usage -- a session's turns -- added up. */
+export function summarizeUsage(usages: (TokenUsage | undefined)[]): TokenUsage | undefined {
+  const known = usages.filter((u): u is TokenUsage => !!u && Object.keys(u).length > 0)
+  return known.length > 0 ? known.reduce(combineTokenUsage) : undefined
 }
 
 /**
@@ -384,6 +476,9 @@ export function readTokenUsage(value: unknown): TokenUsage | undefined {
       | CacheReportSource
       | undefined,
     reported,
+    requests: value.requests,
+    cacheReportedRequests: value.cacheReportedRequests ?? value.cache_reported_requests,
+    cacheHitRequests: value.cacheHitRequests ?? value.cache_hit_requests,
   })
 }
 
@@ -405,6 +500,11 @@ export function toCoworkUsage(usage: TokenUsage): CoworkUsage {
   }
   if (usage.cacheSource) out.cache_source = usage.cacheSource
   if (usage.reported) out.reported = { ...usage.reported }
+  if (usage.requests !== undefined) out.requests = usage.requests
+  if (usage.cacheReportedRequests !== undefined) {
+    out.cache_reported_requests = usage.cacheReportedRequests
+  }
+  if (usage.cacheHitRequests !== undefined) out.cache_hit_requests = usage.cacheHitRequests
   return out
 }
 

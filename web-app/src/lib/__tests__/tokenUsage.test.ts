@@ -60,6 +60,9 @@ describe('normalizeLanguageModelUsage', () => {
       cachedInputTokens: 1920,
       uncachedInputTokens: 86,
       cacheSource: 'openai-chat',
+      requests: 1,
+      cacheReportedRequests: 1,
+      cacheHitRequests: 1,
     })
   })
 
@@ -169,7 +172,7 @@ describe('normalizeLanguageModelUsage', () => {
         raw: { prompt_tokens: 6100, total_tokens: 6103, completion_tokens: 3 },
       })
     )
-    expect(usage).toEqual({ inputTokens: 6100, outputTokens: 3, totalTokens: 6103 })
+    expect(usage).toEqual({ inputTokens: 6100, outputTokens: 3, totalTokens: 6103, requests: 1, cacheReportedRequests: 0, cacheHitRequests: 0 })
     expect('cachedInputTokens' in usage).toBe(false)
     expect('uncachedInputTokens' in usage).toBe(false)
   })
@@ -300,7 +303,7 @@ describe('createUsageCollector', () => {
         inputTokenDetails: { noCacheTokens: 10, cacheReadTokens: 0, cacheWriteTokens: undefined },
       })
     )
-    expect(total).toEqual({ inputTokens: 10, outputTokens: 2, totalTokens: 12 })
+    expect(total).toEqual({ inputTokens: 10, outputTokens: 2, totalTokens: 12, requests: 1, cacheReportedRequests: 0, cacheHitRequests: 0 })
   })
 })
 

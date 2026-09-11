@@ -9,7 +9,12 @@ import {
 } from '@/components/ui/tooltip'
 import { useTokensCount, type TokenUsageSource } from '@/hooks/useTokensCount'
 import { ThreadMessage } from '@janhq/core'
-import { finalizeTokenUsage, type TokenUsage } from '@/lib/tokenUsage'
+import {
+  finalizeTokenUsage,
+  readTokenUsage,
+  summarizeUsage,
+  type TokenUsage,
+} from '@/lib/tokenUsage'
 import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
 import {
   IconBrain,
@@ -48,6 +53,18 @@ export const TokenCounter = memo(function TokenCounter({
   // popover so nothing -- a test, a screen reader, a stale portal left over
   // from the previous session -- can mistake one session's usage for another's.
   const scope = source?.threadId ?? messages[0]?.thread_id
+  // Every request of this conversation, added up: a surface that keeps its
+  // own turns hands them in; a chat thread's messages each carry theirs.
+  const sessionUsage = useMemo(
+    () =>
+      source?.session ??
+      summarizeUsage(
+        messages.map((m) =>
+          readTokenUsage((m.metadata as { usage?: unknown } | undefined)?.usage)
+        )
+      ),
+    [source?.session, messages]
+  )
 
   const [isAnimating, setIsAnimating] = useState(false)
   const [prevTokenCount, setPrevTokenCount] = useState(0)
@@ -125,6 +142,7 @@ export const TokenCounter = memo(function TokenCounter({
       <TokenCountOnly
         totalTokens={totalTokens}
         usage={breakdown}
+        sessionUsage={sessionUsage}
         scope={scope}
         modelDisplayName={tokenData.modelDisplayName}
         className={className}
@@ -292,6 +310,8 @@ export const TokenCounter = memo(function TokenCounter({
             />
           </div>
 
+          <SessionUsageSection usage={sessionUsage} scope={scope} />
+
           {/* Footer: fit + slots + modalities */}
           {showFooter && (
             <div className="px-3 py-2 border-t border-border flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
@@ -340,12 +360,14 @@ export const TokenCounter = memo(function TokenCounter({
 function TokenCountOnly({
   totalTokens,
   usage,
+  sessionUsage,
   scope,
   modelDisplayName,
   className,
 }: {
   totalTokens: number
   usage: TokenUsage
+  sessionUsage?: TokenUsage
   scope?: string
   modelDisplayName?: string
   className?: string
@@ -393,6 +415,7 @@ function TokenCountOnly({
           <div className="px-3 py-2">
             <TokenUsageBreakdown usage={usage} scope={scope} />
           </div>
+          <SessionUsageSection usage={sessionUsage} scope={scope} />
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -424,6 +447,35 @@ function Row({
       >
         {value}
       </span>
+    </div>
+  )
+}
+
+/**
+ * Every request of this conversation, added up: how many requests there were
+ * and how many reused the provider's cache, apart from the token totals.
+ */
+function SessionUsageSection({
+  usage,
+  scope,
+}: {
+  usage?: TokenUsage
+  scope?: string
+}) {
+  if (!usage || (usage.requests ?? 0) <= 0) return null
+  return (
+    <div
+      className="px-3 py-2 border-t border-border space-y-1"
+      data-testid="session-usage"
+      data-usage-scope={scope}
+      data-requests={usage.requests}
+      data-cache-hit-requests={usage.cacheHitRequests}
+    >
+      <div className="text-[11px] font-medium text-foreground">
+        This conversation ({usage.requests}{' '}
+        {usage.requests === 1 ? 'request' : 'requests'})
+      </div>
+      <TokenUsageBreakdown usage={usage} scope={scope} testIdPrefix="session-token-usage" />
     </div>
   )
 }

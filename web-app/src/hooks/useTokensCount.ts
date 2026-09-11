@@ -52,6 +52,8 @@ export type UsageMeta = TokenUsage
 export interface TokenUsageSource {
   threadId?: string
   usage?: UsageMeta
+  /** Every request in this session, added up (see `summarizeUsage`). */
+  session?: UsageMeta
 }
 
 // The token-usage popup normally reflects the last *successful* turn. When a

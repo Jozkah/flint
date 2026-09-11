@@ -6925,7 +6925,8 @@
         "src-tauri/examples/cowork_smoke.rs",
         "web-app/src/containers/TokenSpeedIndicator.tsx",
         "web-app/src/lib/sessionBundle.ts",
-        "src-tauri/src/core/agent/session_bundle.rs"
+        "src-tauri/src/core/agent/session_bundle.rs",
+        "web-app/src/components/CacheReuseBadge.tsx"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -6950,11 +6951,14 @@
         "src-tauri/examples/cowork_smoke.rs::token-usage-cache-cowork",
         "src-tauri/examples/cowork_smoke.rs::token-usage-cache-after-restart",
         "web-app/src/lib/__tests__/sessionBundle.test.ts",
-        "src-tauri/src/core/agent/session_bundle.rs"
+        "src-tauri/src/core/agent/session_bundle.rs",
+        "web-app::cacheStatus.test.ts",
+        "web-app::CacheReuseBadge.test.tsx"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "evidence": "Merged onto fork/main 9ab30620e. Live, Windows WebView, 2026-09-11, real llama-server (qwen3.8-27b) via the fixture's transparent relay, each check its own process on one COWORK_SMOKE_KEEP profile, all first attempt with retries disabled for these scenarios: Chat follow-up input 2825 / cached 2802 / uncached 23 (derived) / output 39 / total 2864 (derived); Cowork follow-up 5542 / 5505 / 37 / 17 / 5559; each equal to the provider's own usage for that request; a restarted process showed both again from disk with no provider traffic. The previous run's first-attempt restart failure was a harness race: a portalled popover from the previous surface was still in the document and its numbers were read for the next surface; fixed by stamping the thread/session scope on the counter and breakdown and reading only the matching one (TokenCounter test 'stamps the session ... follows a session switch'). Cowork export now carries lastUsage (session_bundle.rs, sessionBundle.test.ts); Chat has no export feature. Not yet run live: export/import through the UI and rapid session switching in the WebView. Not verified live: Anthropic, OpenAI Responses, Gemini, Jan's bundled llama.cpp engine path. Separate from AH-073's estimate; AH-175 unchanged."
+      "evidence": "Merged onto fork/main 9ab30620e. Live, Windows WebView, 2026-09-11, real llama-server (qwen3.8-27b) via the fixture's transparent relay, each check its own process on one COWORK_SMOKE_KEEP profile, all first attempt with retries disabled for these scenarios: Chat follow-up input 2825 / cached 2802 / uncached 23 (derived) / output 39 / total 2864 (derived); Cowork follow-up 5542 / 5505 / 37 / 17 / 5559; each equal to the provider's own usage for that request; a restarted process showed both again from disk with no provider traffic. The previous run's first-attempt restart failure was a harness race: a portalled popover from the previous surface was still in the document and its numbers were read for the next surface; fixed by stamping the thread/session scope on the counter and breakdown and reading only the matching one (TokenCounter test 'stamps the session ... follows a session switch'). Cowork export now carries lastUsage (session_bundle.rs, sessionBundle.test.ts); Chat has no export feature. Not yet run live: export/import through the UI and rapid session switching in the WebView. Not verified live: Anthropic, OpenAI Responses, Gemini, Jan's bundled llama.cpp engine path. Separate from AH-073's estimate; AH-175 unchanged.",
+      "auditNote": "undefined 2026-09-11 (feat/integrated-phase-2): cache reuse is now flagged, not only counted. cacheStatus() classifies each request, turn and session from provider-reported counts only: reused (cached > 0, partial reuse included), none (explicit 0) or not-reported (no field; never taken for a miss). Request counts (requests, cacheReportedRequests, cacheHitRequests) are kept apart from token counts and survive the Cowork store, restart and export/import; combining a step that did not report the cache no longer erases another step's reuse. CacheReuseBadge (words plus icon, not colour alone, with an accessible label and tooltip holding the exact Input/Cached/Uncached/Output/Total values) is on the per-message Chat indicator, the per-turn Cowork usage, the popover, background-task rows and a new per-conversation total shown in both the context-window and the count-only popover. Real app, retries off: token-usage-cache, token-usage-cache-cowork and token-usage-cache-after-restart pass against llama-server v100:8080 (qwen3.8-27b; cached 2800 of 2823 and 6342 of 6379 rendered \"Cache reused 99%\", the Cowork first request with cached_tokens 0 rendered \"No cached input\") and against vLLM v100:8555 (pxa-27b; usage has no prompt_tokens_details, rendered \"Not reported\" with no cached/uncached split), each after a full restart with no provider traffic; the Cowork follow-up's usage record is bound to an invocation that has a prompt snapshot."
     }
   ]
 }

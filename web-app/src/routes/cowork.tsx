@@ -137,7 +137,7 @@ import { CoworkEnvironmentReadiness } from '@/containers/CoworkEnvironmentReadin
 import { usePrompt } from '@/hooks/usePrompt'
 import { setSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
 import { recordPayloadUsage } from '@/lib/payloadUsage'
-import { fromCoworkUsage } from '@/lib/tokenUsage'
+import { fromCoworkUsage, summarizeUsage } from '@/lib/tokenUsage'
 import { TurnUsageDetails } from '@/components/TurnUsageDetails'
 import { recordMemoryUses } from '@/lib/memoryUses'
 import type { TurnMemory } from '@/types/coworkSession'
@@ -1206,8 +1206,13 @@ function CoworkPage() {
       // Cache counts included: the counter's popover shows them for Cowork
       // exactly as it does for Chat.
       usage: fromCoworkUsage(usage),
+      // This session's requests only, from its own turns: how many reused the
+      // cache, kept apart from how many tokens were cached.
+      session: summarizeUsage(
+        (session?.turns ?? []).map((turn) => fromCoworkUsage(turn.usage))
+      ),
     }),
-    [session?.id, usage]
+    [session?.id, session?.turns, usage]
   )
 
   // Live runs write into the run store; a committed session carries its own.

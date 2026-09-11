@@ -9086,11 +9086,12 @@ fn fixtures_dir(args: &[String]) -> PathBuf {
 
 const TOKEN_USAGE_EXPECTED: &str = "token-usage-expected.json";
 
-/// One exchange as the provider reported it.
+/// One exchange as the provider reported it. `cached` is `None` when the
+/// provider sent no cache count at all -- which is "not reported", never 0.
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct ProviderCounts {
     input: u64,
-    cached: u64,
+    cached: Option<u64>,
     output: u64,
 }
 
@@ -9100,11 +9101,20 @@ impl ProviderCounts {
         Some(Self {
             input: usage.get("prompt_tokens")?.as_u64()?,
             cached: usage
-                .get("prompt_tokens_details")?
-                .get("cached_tokens")?
-                .as_u64()?,
+                .get("prompt_tokens_details")
+                .and_then(|d| d.get("cached_tokens"))
+                .and_then(Value::as_u64),
             output: usage.get("completion_tokens")?.as_u64()?,
         })
+    }
+
+    /// What Jan must show for this request, from the provider's own report.
+    fn status(self) -> &'static str {
+        match self.cached {
+            Some(c) if c > 0 => "reused",
+            Some(_) => "none",
+            None => "not-reported",
+        }
     }
 
     fn to_json(self) -> Value {
@@ -9114,10 +9124,15 @@ impl ProviderCounts {
     fn from_json(v: &Value) -> Option<Self> {
         Some(Self {
             input: v.get("input")?.as_u64()?,
-            cached: v.get("cached")?.as_u64()?,
+            cached: v.get("cached").and_then(Value::as_u64),
             output: v.get("output")?.as_u64()?,
         })
     }
+}
+
+/// The provider's raw usage object for a relayed request, for the report.
+fn raw_usage_of(record: &Value) -> String {
+    record.get("usage").map(Value::to_string).unwrap_or_else(|| "(none)".into())
 }
 
 fn cache_upstream() -> Result<(String, String), Failure> {
@@ -9200,10 +9215,14 @@ impl Ctx {
             if idle {
                 if let Some(record) = ours {
                     std::thread::sleep(Duration::from_millis(1500));
+                    println!(
+                        "      raw provider usage (stream={}): {}",
+                        record.get("stream").map(Value::to_string).unwrap_or_else(|| "?".into()),
+                        raw_usage_of(record)
+                    );
                     return ProviderCounts::from_record(record).ok_or_else(|| {
                         Failure(format!(
-                            "the provider reported no prompt-cache count for this request, \
-                             so there is nothing to verify: {record}"
+                            "the provider reported no token usage for this request: {record}"
                         ))
                     });
                 }
@@ -9271,6 +9290,10 @@ impl Ctx {
                unreported: pick('token-usage-cache-unreported'),
                output: pick('token-usage-output'),
                total: pick('token-usage-total'),
+               status: (box.querySelector('[data-testid=\"token-usage-cache-status\"]') || {}).dataset?.cacheStatus ?? null,
+               statusLabel: (box.querySelector('[data-testid=\"token-usage-cache-status\"]') || { getAttribute: () => null }).getAttribute('aria-label'),
+               sessionRequests: (document.querySelector(`[data-testid=\"session-usage\"][data-usage-scope=\"${box.getAttribute('data-usage-scope')}\"]`) || { getAttribute: () => null }).getAttribute('data-requests'),
+               sessionStatus: (document.querySelector(`[data-testid=\"session-usage\"][data-usage-scope=\"${box.getAttribute('data-usage-scope')}\"] [data-testid=\"session-token-usage-cache-status\"]`) || {}).dataset?.cacheStatus ?? null,
                note: note ? note.getAttribute('aria-label') : null,
                text: box.innerText,
                compact: document.querySelector('[data-testid=\"token-counter\"]').innerText,
@@ -9316,9 +9339,50 @@ impl Ctx {
 /// The popover's rows against the provider's own counts for the same request.
 fn check_popover(label: &str, shown: &Value, expected: ProviderCounts) -> ScenarioResult {
     println!(
-        "      {label} provider reported: input {} cached {} output {}",
-        expected.input, expected.cached, expected.output
+        "      {label} provider reported: input {} cached {} output {} -> expected status {}",
+        expected.input,
+        expected.cached.map_or("not reported".to_string(), |c| c.to_string()),
+        expected.output,
+        expected.status()
     );
+    println!(
+        "      {label} rendered status: {:?} ({:?})",
+        shown.get("status"),
+        shown.get("statusLabel")
+    );
+    ensure!(
+        shown.get("status").and_then(Value::as_str) == Some(expected.status()),
+        "{label}: the popover's cache status is {:?}; the provider's report means {}",
+        shown.get("status"),
+        expected.status()
+    );
+    let Some(cached) = expected.cached else {
+        // Not reported: no cached or uncached figure may be shown, and the
+        // popover says so rather than showing a zero nobody measured.
+        let num = |key: &str| shown.get(key).and_then(Value::as_str).and_then(|s| s.parse::<u64>().ok());
+        ensure!(num("input") == Some(expected.input), "{label}: input is {:?}", shown.get("input"));
+        ensure!(num("output") == Some(expected.output), "{label}: output is {:?}", shown.get("output"));
+        ensure!(
+            num("total") == Some(expected.input + expected.output),
+            "{label}: total is {:?}",
+            shown.get("total")
+        );
+        ensure!(
+            shown.get("cached").map_or(true, Value::is_null)
+                && shown.get("uncached").map_or(true, Value::is_null),
+            "{label}: a cached/uncached split was shown for a request whose cache was not reported"
+        );
+        // The row's text is its label and its value together.
+        ensure!(
+            shown
+                .get("unreported")
+                .and_then(Value::as_str)
+                .is_some_and(|t| t.contains("Not reported")),
+            "{label}: the popover does not say the cache was not reported: {:?}",
+            shown.get("unreported")
+        );
+        return Ok(());
+    };
     println!(
         "      {label} popover: {}",
         shown
@@ -9332,8 +9396,8 @@ fn check_popover(label: &str, shown: &Value, expected: ProviderCounts) -> Scenar
     };
     let want = [
         ("input", expected.input),
-        ("cached", expected.cached),
-        ("uncached", expected.input.saturating_sub(expected.cached)),
+        ("cached", cached.min(expected.input)),
+        ("uncached", expected.input.saturating_sub(cached)),
         ("output", expected.output),
         ("total", expected.input + expected.output),
     ];
@@ -9377,12 +9441,14 @@ fn scenario_token_usage_cache(ctx: &Ctx) -> ScenarioResult {
             Duration::from_secs(30),
         )?;
         ctx.ensure_model_selected()?;
-        ctx.send_and_settle(&first)?;
+        let chat_first = ctx.send_and_settle(&first)?;
         let chat = ctx.send_and_settle(follow_up)?;
-        ensure!(
-            chat.cached > 0,
-            "the provider served none of the follow-up from its cache ({chat:?}); \
-             prefix reuse did not happen, so there is no cache breakdown to verify"
+        // Whatever the provider said -- reused, zero or nothing -- is what has
+        // to be shown; the status is never inferred from speed or repetition.
+        println!(
+            "      chat first request: {} / follow-up: {}",
+            chat_first.status(),
+            chat.status()
         );
         let chat_path = ctx.eval_string("return window.location.pathname;")?;
         ensure!(
@@ -9392,6 +9458,7 @@ fn scenario_token_usage_cache(ctx: &Ctx) -> ScenarioResult {
         let thread = chat_path.trim_start_matches("/threads/").to_string();
         let shown = ctx.read_token_popover(&thread)?;
         check_popover("chat", &shown, chat)?;
+        check_session_and_rows("chat", &shown, &[chat_first, chat], ctx, "message-cache-status")?;
         ctx.hold_for_capture("chat");
         record_verified("chat", serde_json::json!({ "path": chat_path, "counts": chat.to_json() }))
     })();
@@ -9399,6 +9466,90 @@ fn scenario_token_usage_cache(ctx: &Ctx) -> ScenarioResult {
     // talks to the real provider by accident.
     let _ = ctx.relay_to(None);
     outcome
+}
+
+/// The session totals and the per-turn flags, against the provider's reports.
+///
+/// The session block counts requests, and says the cache was reused only when
+/// at least one request reported cached input. Per-turn flags are drawn only
+/// when the provider reported the cache (a compact row stays quiet about
+/// "not reported"); one flag per reused request is expected.
+fn check_session_and_rows(
+    label: &str,
+    shown: &Value,
+    requests: &[ProviderCounts],
+    ctx: &Ctx,
+    row_testid: &str,
+) -> ScenarioResult {
+    let session_requests = shown
+        .get("sessionRequests")
+        .and_then(Value::as_str)
+        .and_then(|s| s.parse::<usize>().ok());
+    ensure!(
+        session_requests.is_some_and(|n| n >= requests.len()),
+        "{label}: the session total counts {session_requests:?} requests; {} were sent",
+        requests.len()
+    );
+    let any_hit = requests.iter().any(|r| r.status() == "reused");
+    let all_zero = requests.iter().all(|r| r.status() == "none");
+    let want_session = if any_hit { "reused" } else if all_zero { "none" } else { "not-reported" };
+    ensure!(
+        shown.get("sessionStatus").and_then(Value::as_str) == Some(want_session),
+        "{label}: the session's cache status is {:?}, expected {want_session}",
+        shown.get("sessionStatus")
+    );
+    let rows = ctx.eval(&format!(
+        "return [...document.querySelectorAll('[data-testid=\"{row_testid}\"]')].map(e => e.dataset.cacheStatus);"
+    ))?;
+    let rows: Vec<String> = rows
+        .as_array()
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    let reused_rows = rows.iter().filter(|s| *s == "reused").count();
+    let want_reused = requests.iter().filter(|r| r.status() == "reused").count();
+    println!("      {label} per-turn flags: {rows:?} (session {want_session}, {session_requests:?} requests)");
+    ensure!(
+        reused_rows == want_reused,
+        "{label}: {reused_rows} turn(s) are flagged \"Cache reused\"; the provider reported reuse on {want_reused}"
+    );
+    ensure!(
+        !rows.iter().any(|s| s == "not-reported"),
+        "{label}: a compact row shows \"Not reported\" (it belongs in the details)"
+    );
+    Ok(())
+}
+
+/// The provider's count for the Cowork follow-up is recorded against an
+/// invocation, and that invocation has a prompt snapshot: usage, snapshot and
+/// request name the same model call.
+fn check_usage_bound_to_invocation(session: &str, expected: ProviderCounts) -> ScenarioResult {
+    let data = smoke_data_folder()?;
+    let usage: Vec<Value> = std::fs::read_to_string(data.join("audit/payload-usage.jsonl"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter(|u| u["session"] == session && u["source"] == "provider")
+        .collect();
+    let bound = usage
+        .iter()
+        .rev()
+        .find(|u| u["prompt_tokens"].as_u64() == Some(expected.input))
+        .ok_or_else(|| Failure(format!("no provider usage record for {session} with input {}", expected.input)))?;
+    let invocation = bound["invocation"].as_str().unwrap_or_default().to_string();
+    ensure!(!invocation.is_empty(), "the usage record has no invocation: {bound}");
+    ensure!(
+        bound.get("cached_prompt_tokens").and_then(Value::as_u64) == expected.cached,
+        "the usage record's cached count {:?} is not the provider's {:?}",
+        bound.get("cached_prompt_tokens"),
+        expected.cached
+    );
+    let snapshots = std::fs::read_to_string(data.join("audit/prompts.jsonl")).unwrap_or_default();
+    ensure!(
+        snapshots.contains(&format!("\"invocation\":\"{invocation}\"")),
+        "no prompt snapshot names invocation {invocation}"
+    );
+    println!("      usage bound to invocation {invocation} (snapshot present)");
+    Ok(())
 }
 
 /// Merge one surface's verified counts into the file the restart check reads.
@@ -9445,15 +9596,18 @@ fn scenario_token_usage_cache_cowork(ctx: &Ctx) -> ScenarioResult {
         ctx.settle();
         let cowork_first = format!("Do not use any tools. {first}");
         let cowork_follow_up = "Do not use any tools. Using the same facts, reply with only the word DONE.";
-        ctx.send_and_settle(&cowork_first)?;
+        let cowork_one = ctx.send_and_settle(&cowork_first)?;
         let cowork = ctx.send_and_settle(cowork_follow_up)?;
-        ensure!(
-            cowork.cached > 0,
-            "the provider served none of the Cowork follow-up from its cache ({cowork:?})"
+        println!(
+            "      cowork first request: {} / follow-up: {}",
+            cowork_one.status(),
+            cowork.status()
         );
         let session = ctx.visible_usage_scope()?;
         let shown = ctx.read_token_popover(&session)?;
         check_popover("cowork", &shown, cowork)?;
+        check_session_and_rows("cowork", &shown, &[cowork_one, cowork], ctx, "turn-cache-status")?;
+        check_usage_bound_to_invocation(&session, cowork)?;
         ctx.hold_for_capture("cowork");
         record_verified(
             "cowork",
@@ -12352,7 +12506,16 @@ fn select_model(ctx: &Ctx, model: &str) -> ScenarioResult {
         "input[placeholder*='model' i], input[placeholder*='search' i]",
         model,
     )?;
-    std::thread::sleep(Duration::from_millis(800));
+    // A model discovered moments ago reaches the picker's list asynchronously;
+    // wait for the option itself rather than a fixed pause (the first lane run
+    // searched 800 ms after discovery and found "No models found").
+    let find = format!(
+        "const el = [...document.querySelectorAll('[role=\"option\"],button,li,div')]
+           .filter(e => e.children.length <= 2 && (e.textContent || '').trim() === {model:?})
+           .pop();
+         return !!el;"
+    );
+    let _ = ctx.wait_until("the model in the picker", &find, Duration::from_secs(20));
     let picked = ctx.eval_bool(&format!(
         "const el = [...document.querySelectorAll('[role=\"option\"],button,li,div')]
            .filter(e => e.children.length <= 2 && (e.textContent || '').trim() === {model:?})

@@ -33,6 +33,7 @@ import { CANCELLED_BY_USER } from '@/lib/coworkCancel'
 import { INTERRUPTED_BY_RESTART } from '@/lib/hydrateStores'
 import type { CoworkTurn } from '@/types/coworkSession'
 import { describeTokenUsage, fromCoworkUsage } from '@/lib/tokenUsage'
+import { CacheReuseBadge } from '@/components/CacheReuseBadge'
 
 /** How often running rows re-render so their elapsed time advances. A second
  * is the resolution the duration label shows, so anything finer is wasted
@@ -659,6 +660,13 @@ function TaskItem({
                 >
                   {t('common:tasks.tokens', { tokens: formatTokens(tokens) })}
                 </span>
+              )}
+              {tokens > 0 && (
+                <CacheReuseBadge
+                  usage={fromCoworkUsage(task.usage)}
+                  hideUnreported
+                  testId="task-cache-status"
+                />
               )}
               {task.toolCount != null && task.toolCount > 0 && (
                 <span>

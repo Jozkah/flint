@@ -127,6 +127,48 @@ describe('TokenCounter', () => {
     expect(screen.getByText((1400).toLocaleString())).toBeTruthy()
   })
 
+  // Found by the real-provider scenario: a remote provider has no context
+  // window, so the count-only popover is what the user sees, and it had no
+  // session totals at all.
+  it('shows the conversation totals, with cache-hit requests, in both popovers', async () => {
+    const { finalizeTokenUsage } = await import('@/lib/tokenUsage')
+    const meta = (input: number, cached?: number) => ({
+      thread_id: 't1',
+      metadata: {
+        usage: finalizeTokenUsage({
+          inputTokens: input,
+          outputTokens: 5,
+          cachedInputTokens: cached,
+          requests: 1,
+          cacheReportedRequests: cached === undefined ? 0 : 1,
+          cacheHitRequests: (cached ?? 0) > 0 ? 1 : 0,
+        }),
+      },
+    })
+    const messages = [meta(2762, 810), meta(2808, 2785)] as any
+    for (const maxTokens of [undefined, 100000]) {
+      mockTokens({ tokenCount: 2831, maxTokens, inputTokens: 2808, outputTokens: 23 })
+      const { unmount } = render(<TokenCounter messages={messages} />)
+      const block = screen.getByTestId('session-usage')
+      expect(block.dataset.requests).toBe('2')
+      expect(block.dataset.cacheHitRequests).toBe('2')
+      expect(screen.getByTestId('session-token-usage-cache-status').dataset.cacheStatus).toBe('reused')
+      unmount()
+    }
+  })
+
+  it('scopes the conversation totals to a source that hands its own in', () => {
+    mockTokens({ tokenCount: 10, maxTokens: undefined, inputTokens: 5, outputTokens: 5 })
+    render(
+      <TokenCounter
+        source={{ threadId: 'a', session: { inputTokens: 5, requests: 1, cacheReportedRequests: 0, cacheHitRequests: 0 } }}
+        messages={[{ thread_id: 'b', metadata: { usage: { inputTokens: 999, requests: 1 } } }] as any}
+      />
+    )
+    expect(screen.getByTestId('session-usage').dataset.usageScope).toBe('a')
+    expect(screen.getByTestId('session-token-usage-cache-status').dataset.cacheStatus).toBe('not-reported')
+  })
+
   describe('formatNumber helper (via rendered output)', () => {
     it('formats thousands as K', () => {
       mockTokens({ tokenCount: 1000, maxTokens: 2000 })

@@ -10,6 +10,7 @@ import {
   IconSum,
   IconInfoCircle,
 } from '@tabler/icons-react'
+import { CacheReuseBadge } from '@/components/CacheReuseBadge'
 import {
   cacheSourceLabel,
   usageValueKinds,
@@ -75,6 +76,27 @@ export function TokenUsageBreakdown({
       data-testid={id('breakdown')}
       data-usage-scope={scope}
     >
+      {input !== undefined && (
+        <div className="flex items-center justify-between gap-2 text-xs">
+          <span className="text-muted-foreground">Prompt cache</span>
+          <CacheReuseBadge usage={usage} testId={id('cache-status')} />
+        </div>
+      )}
+      {usage.requests !== undefined && usage.requests > 1 && (
+        <div
+          className="text-[11px] text-muted-foreground"
+          data-testid={id('cache-requests')}
+          data-requests={usage.requests}
+          data-cache-hit-requests={usage.cacheHitRequests}
+        >
+          {usage.requests} requests
+          {usage.cacheHitRequests !== undefined &&
+            ` · cache reused on ${usage.cacheHitRequests}`}
+          {usage.cacheReportedRequests !== undefined &&
+            usage.cacheReportedRequests < usage.requests &&
+            ` · ${usage.requests - usage.cacheReportedRequests} did not report the cache`}
+        </div>
+      )}
       {input !== undefined && (
         <Row
           testId={id('input')}

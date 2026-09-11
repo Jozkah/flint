@@ -158,6 +158,11 @@ export type Usage = {
     | 'engine-timings'
   /** Provider values that were clamped, kept for diagnostics. */
   reported?: { cachedInputTokens?: number; cacheWriteTokens?: number }
+  /** Requests covered, requests that reported a cache count, and requests
+   * that reported cached input (see `lib/tokenUsage.ts`). */
+  requests?: number
+  cache_reported_requests?: number
+  cache_hit_requests?: number
 }
 
 /**

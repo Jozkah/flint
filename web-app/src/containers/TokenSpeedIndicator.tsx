@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/popover'
 import { readTokenUsage } from '@/lib/tokenUsage'
 import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
+import { CacheReuseBadge } from '@/components/CacheReuseBadge'
 
 interface TokenSpeedMeta {
   tokenSpeed: number
@@ -142,6 +143,11 @@ export const TokenSpeedIndicator = memo(
         </button>
       </PopoverTrigger>
     )
+    // Beside the trigger, not inside it: a per-message flag readable without
+    // opening anything, only when the provider reported the cache.
+    const cacheFlag = usage ? (
+      <CacheReuseBadge usage={usage} hideUnreported testId="message-cache-status" />
+    ) : null
 
     if (showTokenSpeed) {
       return (
@@ -150,6 +156,7 @@ export const TokenSpeedIndicator = memo(
             {trigger}
             {details}
           </Popover>
+          {cacheFlag}
           {displaySpeed > 0 && <span>{displaySpeed} tokens/sec</span>}
           {displayTokenCount > 0 && (
             <span className="text-muted-foreground">
@@ -161,10 +168,13 @@ export const TokenSpeedIndicator = memo(
     }
 
     return (
-      <Popover>
-        {trigger}
-        {details}
-      </Popover>
+      <span className="inline-flex items-center gap-2">
+        <Popover>
+          {trigger}
+          {details}
+        </Popover>
+        {cacheFlag}
+      </span>
     )
   }
 )
