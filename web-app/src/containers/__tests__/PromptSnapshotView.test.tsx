@@ -239,6 +239,72 @@ describe('PromptSnapshotView', () => {
     await waitFor(() => expect(onFetch).toHaveBeenCalled())
   })
 
+  // AH-079: a redacted snapshot is not the whole request, so it is not offered.
+  it('does not offer to replay a snapshot with redacted fields', async () => {
+    const user = userEvent.setup()
+    const invoke = vi.fn().mockResolvedValue([])
+    render(
+      <PromptSnapshotView
+        snapshotId="snap-1"
+        sessionId="s1"
+        onFetch={vi.fn().mockResolvedValue([snap()])}
+        replayDeps={{ invoke, fetch: vi.fn(), provider: () => undefined, localSession: async () => null }}
+      />
+    )
+    await openIt(user)
+    expect(await screen.findByTestId('prompt-snapshot-replay')).toBeDisabled()
+    expect(screen.getByTestId('prompt-snapshot-replay-blocked')).toHaveTextContent(/redacted/)
+  })
+
+  it('replays a whole snapshot and lists what came back', async () => {
+    const user = userEvent.setup()
+    const rows: Record<string, unknown>[] = []
+    const invoke = vi.fn(async (cmd: string, args: Record<string, unknown>) => {
+      if (cmd === 'agent_replays_list') return rows.slice().reverse()
+      if (cmd === 'agent_replay_begin') {
+        const record = {
+          id: 'r1', session: 's1', snapshotId: 'snap-1', snapshotHash: 'h', provider: 'smoke',
+          model: 'm', status: 'running', state: 'running', startedAt: 't', endedAt: null,
+          replaySnapshotId: null, matched: null, text: '', truncated: false,
+          finishReason: null, toolCalls: [], usage: null, error: null,
+        }
+        rows.push(record)
+        return { record, payload: { model: 'm', messages: [] } }
+      }
+      if (cmd === 'agent_replay_settle') {
+        const o = args.outcome as Record<string, unknown>
+        Object.assign(rows[0], { status: o.status, state: o.status, text: o.text, finishReason: o.finishReason, matched: true })
+        return rows[0]
+      }
+    })
+    const fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ choices: [{ message: { content: 'Same answer.' }, finish_reason: 'stop' }] }),
+        { headers: { 'content-type': 'application/json' } }
+      )
+    )
+    render(
+      <PromptSnapshotView
+        snapshotId="snap-1"
+        sessionId="s1"
+        onFetch={vi.fn().mockResolvedValue([snap({ redactions: [] })])}
+        replayDeps={{
+          invoke: invoke as never,
+          fetch,
+          provider: () => ({ provider: 'smoke', base_url: 'http://x/v1' }),
+          localSession: async () => null,
+        }}
+      />
+    )
+    await openIt(user)
+    await user.click(await screen.findByTestId('prompt-snapshot-replay'))
+    const row = await screen.findByTestId('prompt-replay')
+    await waitFor(() => expect(row).toHaveAttribute('data-state', 'completed'))
+    expect(row).toHaveAttribute('data-matched', 'true')
+    expect(screen.getByTestId('prompt-replay-text')).toHaveTextContent('Same answer.')
+    expect(screen.getByTestId('prompt-replay-matched')).toBeInTheDocument()
+  })
+
   it('does not re-fetch every time it is toggled', async () => {
     const onFetch = vi.fn().mockResolvedValue([snap()])
     const user = userEvent.setup()

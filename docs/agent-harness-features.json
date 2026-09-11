@@ -2481,7 +2481,7 @@
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The snapshot is taken in HttpModelInvoker::invoke from `normalized` -- the exact serialized request, after context construction and after the model id is rewritten, at the last point before dispatch. Not reconstructed from earlier state. It carries schema version, stable id, RFC3339 UTC timestamp, session, run, thread, agent, provider, model, reasoning configuration, the redacted payload, its hash, and the redaction list; message count, tool names and system prompt are derived from the payload rather than stored twice. Redaction runs while the record is built, walks the whole document (a credential in a nested tool argument leaks as surely as one in a header), matches credential fields by name because an auth header's value is opaque, and still applies the value-shaped pass to free text for an env line pasted into a prompt. Each removal records its path and reason, so an empty field is distinguishable from a redacted one. The hash is FNV-1a over a canonical key-sorted serialization of the *redacted* payload: identical payloads hash identically however built, any change to a retry produces a different hash, and a reader can verify the record against its own hash. Storage is append-only JSONL at <jan_data>/audit/prompts.jsonl, flushed per record, with a reader that drops an unparseable line so a truncated tail costs one record. Lookup by id, run and session. A snapshot that cannot be taken is recorded as explicitly unavailable with its reason and identity intact. StreamEvent::PromptSnapshot carries id, hash and redaction count to the activity timeline, never the payload. Guards mutation-checked: removing redaction, and making the hash ignore its input, each turn the relevant tests red. The viewer is built (PromptSnapshotView, verified by cowork-smoke --only prompt-snapshot-panel), and a snapshot is now bound to the assistant turn that produced it rather than matched by position. Six earlier designs wrote the reference from the snapshot sink onto 'the last assistant turn'; instrumenting the live turn lane in the running app showed the lane holds only the user turn at dispatch time, so there was no assistant row to write onto and every one of those writes silently did nothing -- while passing in vitest, which hands the mutation an array that already contains one. The attach happens in pushLive, where the row is created, from the dispatch that just went out; coworkTurns.ts already emitted a data-prompt-snapshot part for any turn carrying one, so nothing downstream needed changing. The render prefers the message's own part and keeps positional matching as a fallback for turns written to disk before rows carried one. Proven by mutation in the real WebView: with the positional fallback disabled entirely the panel still renders, so the per-turn reference is what carries it. A continuation, a retry and a compaction each carry their own snapshot, which is what position could not express.",
+      "auditNote": "The snapshot is taken in HttpModelInvoker::invoke from `normalized` -- the exact serialized request, after context construction and after the model id is rewritten, at the last point before dispatch. Not reconstructed from earlier state. It carries schema version, stable id, RFC3339 UTC timestamp, session, run, thread, agent, provider, model, reasoning configuration, the redacted payload, its hash, and the redaction list; message count, tool names and system prompt are derived from the payload rather than stored twice. Redaction runs while the record is built, walks the whole document (a credential in a nested tool argument leaks as surely as one in a header), matches credential fields by name because an auth header's value is opaque, and still applies the value-shaped pass to free text for an env line pasted into a prompt. Each removal records its path and reason, so an empty field is distinguishable from a redacted one. The hash is FNV-1a over a canonical key-sorted serialization of the *redacted* payload: identical payloads hash identically however built, any change to a retry produces a different hash, and a reader can verify the record against its own hash. Storage is append-only JSONL at <jan_data>/audit/prompts.jsonl, flushed per record, with a reader that drops an unparseable line so a truncated tail costs one record. Lookup by id, run and session. A snapshot that cannot be taken is recorded as explicitly unavailable with its reason and identity intact. StreamEvent::PromptSnapshot carries id, hash and redaction count to the activity timeline, never the payload. Guards mutation-checked: removing redaction, and making the hash ignore its input, each turn the relevant tests red. The viewer is built (PromptSnapshotView, verified by cowork-smoke --only prompt-snapshot-panel), and a snapshot is now bound to the assistant turn that produced it rather than matched by position. Six earlier designs wrote the reference from the snapshot sink onto 'the last assistant turn'; instrumenting the live turn lane in the running app showed the lane holds only the user turn at dispatch time, so there was no assistant row to write onto and every one of those writes silently did nothing -- while passing in vitest, which hands the mutation an array that already contains one. The attach happens in pushLive, where the row is created, from the dispatch that just went out; coworkTurns.ts already emitted a data-prompt-snapshot part for any turn carrying one, so nothing downstream needed changing. The render prefers the message's own part and keeps positional matching as a fallback for turns written to disk before rows carried one. Proven by mutation in the real WebView: with the positional fallback disabled entirely the panel still renders, so the per-turn reference is what carries it. A continuation, a retry and a compaction each carry their own snapshot, which is what position could not express. Snapshot ids now carry the process launch (snap-<launch>-<n>): the plain counter restarted at snap-1 in every launch, so an id could name an earlier launch's record in the same log.",
       "evidence": "Captured in core/net/transport.rs::capture_snapshot, at the last point before a provider request leaves the process -- the one path every OpenAI-compatible request takes -- from the exact serialized body that is dispatched. Redacted before it is written; FNV-1a hash over the canonical key-sorted redacted payload; append-only JSONL at <jan_data>/audit/prompts.jsonl. Retrieval is scoped: an id alone is refused, and an unscoped list is refused (agent_prompt_snapshots -> snapshot::scoped_lookup). The reference reaches the timeline through the transport's head chunk and a session-keyed store, and the Nth dispatch renders under the Nth assistant message, so a snapshot sits with its own invocation. Smoke: prompt-snapshot-panel (performs a real model request over http://v100:8080/v1, asserts the dispatch was recorded on disk, opens the panel, checks provider/model/session/hash/redactions, switches tree and JSON views, and asserts no credential appears) and prompt-snapshot-cross-session-refused (a snapshot id with another session's scope returns nothing; an unscoped list errors)."
     },
     {
@@ -2490,13 +2490,20 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-078"
       ],
       "owner": "lane-05-context-memory",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/replay.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/snapshot.rs",
+        "web-app/src/lib/contextReplay.ts",
+        "web-app/src/lib/providerFetch.ts",
+        "web-app/src/containers/PromptSnapshotView.tsx"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A past turn can be re-materialised with the context it actually ran under.",
@@ -2506,10 +2513,26 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "Jan::core::agent::replay::tests::a_replay_sends_the_stored_payload_and_proves_it_was_the_same",
+        "Jan::core::agent::replay::tests::a_replay_whose_dispatch_differed_says_so",
+        "Jan::core::agent::replay::tests::a_replay_snapshot_from_another_session_is_not_evidence",
+        "Jan::core::agent::replay::tests::a_redacted_snapshot_is_refused_and_the_refusal_is_kept",
+        "Jan::core::agent::replay::tests::an_unavailable_or_foreign_snapshot_is_refused",
+        "Jan::core::agent::replay::tests::a_cancelled_replay_is_recorded_and_its_first_ending_kept",
+        "Jan::core::agent::replay::tests::a_replay_running_in_an_earlier_process_is_interrupted",
+        "Jan::core::agent::replay::tests::settling_is_scoped_to_the_session_and_rejects_running",
+        "Jan::core::agent::replay::tests::what_is_written_is_redacted_and_bounded",
+        "Jan::core::agent::replay::tests::replays_survive_a_reload_from_disk",
+        "tauri-plugin-agent-tools::snapshot::tests::an_id_from_an_earlier_launch_is_never_issued_again",
+        "web-app::contextReplay.test.ts",
+        "web-app::PromptSnapshotView.test.tsx",
+        "cowork-smoke::context-replay-1",
+        "cowork-smoke::context-replay-2"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "A stored prompt snapshot is sent to the model again from its panel ('Replay this context'). The backend (core/agent/replay.rs) looks the snapshot up within its session and hands out the stored payload; the renderer never assembles it. Refusals are typed and recorded: not-found (including another session's id, which leaves no record), unavailable, redacted (a snapshot with any redaction is not the whole context), not-a-chat, and, on the renderer side, provider-gone, provider-unsupported (Anthropic wire format, MLX) and model-not-running (a local model is never started for a replay). The request goes through the ordinary provider transport under agent 'replay' (ignored by the timeline sink); settle compares the transport's snapshot of that dispatch with the original by hash, scoped to the session, so 'matched' is checked on the record. Tool calls in the reply are recorded by name and never executed. Endings: completed, failed (provider-error, stream-cut-off), cancelled (AbortController stops the transport stream), refused; first ending kept; a running record from an earlier process reads as interrupted; one the current window no longer holds is recorded as abandoned. Records are redacted and bounded before they are written to <data>/replays. Found and fixed on the way: snapshot ids restarted at snap-1 in every launch, so an id could name an earlier launch's record. Windows scenario context-replay-1 (completed with matched and a byte-identical request at the model fixture, stopped, refused in the panel and by the backend, left running) and context-replay-2 after a real restart (interrupted, cancelled, completed and the refusal, in the backend and the panel) passed. Mock provider only; a real model, a local llama.cpp model, macOS and Linux were not run."
     },
     {
       "id": "AH-080",

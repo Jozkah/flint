@@ -1,7 +1,17 @@
-import { useCallback, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button } from '@/components/ui/button'
 import { errorText } from '@/lib/errorText'
+import {
+  cancelReplay,
+  isReplaying,
+  listReplays,
+  startReplay,
+  useReplayVersion,
+  type ReplayDeps,
+  type ReplayError,
+  type ReplayView,
+} from '@/lib/contextReplay'
 
 /**
  * What the model received. AH-078.
@@ -46,6 +56,167 @@ export type PromptSnapshotViewProps = {
     session?: string
     run?: string
   }) => Promise<PromptSnapshot[]>
+  /** Injectable for tests; defaults to the real replay path (AH-079). */
+  replayDeps?: ReplayDeps
+}
+
+const STATE_LABEL: Record<ReplayView['state'], string> = {
+  running: 'Replaying…',
+  interrupted: 'Interrupted: Jan stopped while it ran',
+  completed: 'Completed',
+  failed: 'Failed',
+  cancelled: 'Stopped',
+  refused: 'Refused',
+}
+
+/**
+ * Send this snapshot's request to the model again (AH-079) and list what came
+ * back each time. Only a snapshot that holds the whole request can be
+ * replayed: one with redacted fields would not send what the model received.
+ */
+function ReplaySection({
+  snapshot,
+  sessionId,
+  deps,
+}: {
+  snapshot: PromptSnapshot
+  sessionId?: string
+  deps?: ReplayDeps
+}) {
+  const [replays, setReplays] = useState<ReplayView[]>([])
+  const [refusal, setRefusal] = useState<ReplayError | null>(null)
+  const [starting, setStarting] = useState(false)
+  const version = useReplayVersion((s) => s.version)
+
+  useEffect(() => {
+    if (!sessionId) return
+    let live = true
+    listReplays(sessionId, snapshot.id, deps)
+      .then((found) => live && setReplays(found))
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [deps, sessionId, snapshot.id, version])
+
+  const blocked = !sessionId
+    ? 'Replay needs the session this turn belongs to.'
+    : snapshot.redactions.length > 0
+      ? `It cannot be replayed: ${snapshot.redactions.length} field(s) were redacted before it was stored, so the model would not receive what it received then.`
+      : null
+  const running = replays.some((r) => r.state === 'running' && isReplaying(r.id))
+
+  const replay = async () => {
+    if (!sessionId || blocked) return
+    setStarting(true)
+    setRefusal(null)
+    try {
+      const outcome = await startReplay(sessionId, snapshot.id, deps)
+      if (!outcome.ok && !outcome.record) setRefusal(outcome.error)
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  return (
+    <section
+      className="flex flex-col gap-2 border-t border-border pt-2"
+      aria-label="Replays of this context"
+      data-testid="prompt-replays"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={Boolean(blocked) || starting || running}
+          onClick={() => void replay()}
+          data-testid="prompt-snapshot-replay"
+        >
+          Replay this context
+        </Button>
+        <span className="text-main-view-fg/50">
+          Sends exactly this request again. Tools the model asks for are not run.
+        </span>
+      </div>
+      {blocked && (
+        <p data-testid="prompt-snapshot-replay-blocked">{blocked}</p>
+      )}
+      {refusal && (
+        <p
+          className="text-destructive"
+          data-testid="prompt-replay-refusal"
+          data-kind={refusal.kind}
+        >
+          {refusal.message}
+        </p>
+      )}
+      {replays.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {replays.map((r) => (
+            <li
+              key={r.id}
+              className="rounded border border-border p-2"
+              data-testid="prompt-replay"
+              data-state={r.state}
+              data-matched={r.matched === null ? '' : String(r.matched)}
+              data-kind={r.error?.kind ?? ''}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{STATE_LABEL[r.state]}</span>
+                <span className="text-main-view-fg/50">{r.startedAt}</span>
+                {r.matched === true && (
+                  <span data-testid="prompt-replay-matched">
+                    Same context as the turn (hashes match)
+                  </span>
+                )}
+                {r.matched === false && (
+                  <span className="text-destructive">
+                    The request sent differed from the turn&apos;s
+                  </span>
+                )}
+                {r.finishReason && (
+                  <span className="text-main-view-fg/50">
+                    finish: {r.finishReason}
+                  </span>
+                )}
+                {r.state === 'running' && isReplaying(r.id) && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="link"
+                    onClick={() => cancelReplay(r.id)}
+                    data-testid="prompt-replay-cancel"
+                  >
+                    Stop
+                  </Button>
+                )}
+              </div>
+              {r.toolCalls.length > 0 && (
+                <p className="text-main-view-fg/60">
+                  Asked for {r.toolCalls.join(', ')} (not run)
+                </p>
+              )}
+              {r.text && (
+                <p
+                  className="max-h-40 overflow-auto whitespace-pre-wrap break-words"
+                  data-testid="prompt-replay-text"
+                >
+                  {r.text}
+                  {r.truncated ? '…' : ''}
+                </p>
+              )}
+              {r.error && (
+                <p className="text-destructive" data-testid="prompt-replay-error">
+                  {r.error.message}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
 }
 
 const UNAVAILABLE_REASON: Record<string, string> = {
@@ -270,6 +441,12 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
                 </div>
               )}
             </div>
+
+            <ReplaySection
+              snapshot={snapshot}
+              sessionId={props.sessionId}
+              deps={props.replayDeps}
+            />
           </>
         )}
       </div>

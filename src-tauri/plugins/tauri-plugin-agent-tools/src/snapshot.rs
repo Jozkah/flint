@@ -316,10 +316,23 @@ fn canonical_string(value: &Value) -> String {
     }
 }
 
+/// A snapshot id no earlier process of the app has issued.
+///
+/// The counter alone restarted at 1 with every launch, so the second run of
+/// the app wrote `snap-1` again into the same log, and a lookup by id found
+/// the older record. The process's start time keeps each launch's ids apart.
 fn next_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT: AtomicU64 = AtomicU64::new(1);
-    format!("snap-{}", NEXT.fetch_add(1, Ordering::Relaxed))
+    static LAUNCH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    let launch = LAUNCH.get_or_init(|| {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        format!("{nanos:x}{:x}", std::process::id())
+    });
+    format!("snap-{launch}-{}", NEXT.fetch_add(1, Ordering::Relaxed))
 }
 
 /// Identity to attach to a snapshot. Separate from the payload so the caller
@@ -496,6 +509,27 @@ mod tests {
                 { "type": "function", "function": { "name": "bash", "parameters": {} } }
             ]
         })
+    }
+
+    // ---- ids ------------------------------------------------------------
+
+    /// An earlier launch of the app numbered its snapshots from 1 as well. A
+    /// new snapshot must not take one of those ids, or a lookup by id --
+    /// the timeline's, and a replay's -- finds the older record instead.
+    #[test]
+    fn an_id_from_an_earlier_launch_is_never_issued_again() {
+        let d = dir("relaunch");
+        let earlier = capture(&payload(), &ident());
+        for n in 1..=2000 {
+            let mut old = earlier.clone();
+            old.id = format!("snap-{n}");
+            old.run = "earlier-launch".into();
+            append(&d, &old);
+        }
+        let mine = capture(&payload(), &ident());
+        append(&d, &mine);
+        let found = find(&d, &mine.id).expect("the new snapshot is on disk");
+        assert_eq!(found.run, "r1", "{} named an earlier launch's record", mine.id);
     }
 
     // ---- the snapshot is the dispatch -----------------------------------

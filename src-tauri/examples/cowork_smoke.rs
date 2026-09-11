@@ -153,11 +153,18 @@ impl Ctx {
 
         // `payload` is emitted as a JSON string so the value survives the event
         // bus regardless of shape; the Rust side unwraps one level below.
+        //
+        // The body is compiled inside the `try`, from a string, rather than
+        // pasted into this script: a body that does not parse used to make
+        // the whole script fail to parse, so nothing ran, nothing replied, and
+        // a typo read exactly like a page that had stopped answering.
+        let body = serde_json::to_string(js).unwrap_or_else(|_| "\"\"".into());
         let script = format!(
             r#"(async () => {{
   let out;
   try {{
-    const v = await (async () => {{ {js} }})();
+    const AsyncFunction = Object.getPrototypeOf(async function () {{}}).constructor;
+    const v = await new AsyncFunction({body})();
     out = {{ ok: v === undefined ? null : v }};
   }} catch (e) {{
     out = {{ err: (e && e.stack) ? String(e.stack) : String(e) }};
@@ -200,9 +207,9 @@ impl Ctx {
                     Err(_) => "the app's main thread could not be asked",
                 };
                 bail!(
-                    "eval timed out after {timeout:?}; {main}; app children at the time: {}; screen: {}; script was:\n{js}",
+                    "eval timed out after {timeout:?}; {main}; app children at the time: {}; window: {}; script was:\n{js}",
                     app_children(),
-                    screen_capture()
+                    window_state(&self.window)
                 )
             }
         };
@@ -1006,6 +1013,16 @@ const SCENARIOS: &[Scenario] = &[
         name: "prompt-snapshot-panel",
         run: scenario_prompt_snapshot,
     },
+    // A pair (AH-079): a past turn's context is replayed, stopped, refused and
+    // left running; a restart brings every ending back.
+    Scenario {
+        name: "context-replay-1",
+        run: scenario_context_replay_first,
+    },
+    Scenario {
+        name: "context-replay-2",
+        run: scenario_context_replay_second,
+    },
     Scenario {
         name: "tool-activity-timeline",
         run: scenario_tool_activity,
@@ -1169,6 +1186,10 @@ const RESTART_SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "team-review-persist-2",
         run: scenario_team_review_second,
+    },
+    Scenario {
+        name: "context-replay-2",
+        run: scenario_context_replay_second,
     },
     Scenario {
         name: "tool-activity-survives-a-restart",
@@ -4404,32 +4425,22 @@ fn scenario_restart_persist_second(ctx: &Ctx) -> ScenarioResult {
     Ok(())
 }
 
-/// A picture of the whole screen, saved beside the run, for a page that has
-/// stopped answering: a dialog the page is blocked on, or a window that is not
-/// on screen at all, is visible there and nowhere else. Returns the path.
-fn screen_capture() -> String {
-    let path = std::env::temp_dir().join(format!(
-        "cowork-smoke-stall-{}-{}.png",
-        std::process::id(),
-        EVAL_SEQ.load(Ordering::SeqCst)
-    ));
-    let shown = path.to_string_lossy().to_string();
-    let script = format!(
-        "Add-Type -AssemblyName System.Windows.Forms,System.Drawing; \
-         $b=[System.Windows.Forms.SystemInformation]::VirtualScreen; \
-         $bmp=New-Object System.Drawing.Bitmap $b.Width,$b.Height; \
-         $g=[System.Drawing.Graphics]::FromImage($bmp); \
-         $g.CopyFromScreen($b.Left,$b.Top,0,0,$bmp.Size); \
-         $bmp.Save('{}'); 'ok'",
-        shown.replace('\'', "''")
-    );
-    match std::process::Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .output()
-    {
-        Ok(o) if String::from_utf8_lossy(&o.stdout).contains("ok") => shown,
-        _ => "(could not capture the screen)".into(),
-    }
+/// Where the app's window is and what state it is in, for a page that has
+/// stopped answering: a window that is minimised, hidden or off every screen
+/// is throttled by WebView2 whatever the flags say.
+///
+/// Deliberately no picture. An earlier version captured the whole desktop,
+/// which recorded everything else the person had open.
+fn window_state(window: &tauri::WebviewWindow) -> String {
+    format!(
+        "visible={:?} minimized={:?} focused={:?} position={:?} size={:?} monitor={:?}",
+        window.is_visible().ok(),
+        window.is_minimized().ok(),
+        window.is_focused().ok(),
+        window.outer_position().ok().map(|p| (p.x, p.y)),
+        window.outer_size().ok().map(|s| (s.width, s.height)),
+        window.current_monitor().ok().flatten().map(|m| m.name().cloned()),
+    )
 }
 
 /// Every process this app started that is still running, with its command
@@ -5200,12 +5211,24 @@ fn scenario_prompt_snapshot(ctx: &Ctx) -> ScenarioResult {
     // identical from the DOM.
     // The dispatch is recorded before anything is rendered, so a missing panel
     // and a missing record are different defects and must not read alike.
-    let recorded = std::env::var("JAN_DATA_FOLDER")
-        .map(|d| Path::new(&d).join("audit/prompts.jsonl"))
-        .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .unwrap_or_default();
-    let records = recorded.lines().filter(|l| !l.trim().is_empty()).count();
+    // Polled: the click only starts the dispatch, and reading the log once,
+    // straight after it, raced the transport writing the record.
+    let count = || {
+        std::env::var("JAN_DATA_FOLDER")
+            .map(|d| Path::new(&d).join("audit/prompts.jsonl"))
+            .ok()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .unwrap_or_default()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .count()
+    };
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut records = count();
+    while records == 0 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(250));
+        records = count();
+    }
     ensure!(
         records >= 1,
         "the dispatch was never recorded ({records} records on disk)"
@@ -5282,6 +5305,311 @@ fn scenario_prompt_snapshot(ctx: &Ctx) -> ScenarioResult {
     for secret in ["smoke-not-a-real-key", "Bearer ", "sk-"] {
         ensure!(!panel.contains(secret), "the panel exposed {secret:?}");
     }
+    Ok(())
+}
+
+const REPLAY_MARKER: &str = "context-replay-phase-1.json";
+const REPLAY_PROBE: &str = "replay probe one";
+
+/// The newest snapshot the transport recorded of a turn whose user message
+/// contains `needle`, leaving out replays' own dispatches.
+fn recorded_dispatch(needle: &str) -> Option<Value> {
+    let data = std::env::var("JAN_DATA_FOLDER").ok()?;
+    let text = std::fs::read_to_string(Path::new(&data).join("audit/prompts.jsonl")).ok()?;
+    text.lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter(|s| s["agent"] != "replay")
+        .filter(|s| {
+            s["payload"]["messages"].as_array().is_some_and(|m| {
+                m.iter()
+                    .any(|x| x["role"] == "user" && x["content"].to_string().contains(needle))
+            })
+        })
+        .last()
+}
+
+/// JS for the `i`th prompt snapshot panel, opened.
+fn replay_panel(i: usize) -> String {
+    format!(
+        r#"{{ const p = document.querySelectorAll('[data-testid="prompt-snapshot"]')[{i}];
+           if (p && !p.open) p.querySelector('[data-testid="prompt-snapshot-toggle"]').click(); }}"#
+    )
+}
+
+/// The replay rows of panel `i`, newest first, as `state/matched/kind`.
+fn replay_rows(ctx: &Ctx, i: usize) -> Result<Vec<String>, Failure> {
+    let raw = ctx.eval_string(&format!(
+        r#"const p = document.querySelectorAll('[data-testid="prompt-snapshot"]')[{i}];
+           if (!p) return '[]';
+           return JSON.stringify([...p.querySelectorAll('[data-testid="prompt-replay"]')].map(r =>
+             [r.getAttribute('data-state'), r.getAttribute('data-matched'), r.getAttribute('data-kind')].join('/')));"#
+    ))?;
+    serde_json::from_str(&raw).map_err(|e| Failure(format!("replay rows: {e}")))
+}
+
+fn click_replay(ctx: &Ctx, i: usize) -> ScenarioResult {
+    ctx.wait_until(
+        "the replay control to be ready",
+        &format!(
+            r#"{}
+               const b = document.querySelectorAll('[data-testid="prompt-snapshot"]')[{i}]
+                 ?.querySelector('[data-testid="prompt-snapshot-replay"]');
+               return !!b && !b.disabled;"#,
+            replay_panel(i)
+        ),
+        Duration::from_secs(45),
+    )?;
+    ctx.eval(&format!(
+        r#"document.querySelectorAll('[data-testid="prompt-snapshot"]')[{i}]
+             .querySelector('[data-testid="prompt-snapshot-replay"]').click();
+           return true;"#
+    ))?;
+    Ok(())
+}
+
+fn wait_top_replay(ctx: &Ctx, i: usize, rows: usize, state: &str) -> ScenarioResult {
+    ctx.wait_until(
+        &format!("replay {rows} of panel {i} to be {state}"),
+        &format!(
+            r#"const p = document.querySelectorAll('[data-testid="prompt-snapshot"]')[{i}];
+               const rows = p ? [...p.querySelectorAll('[data-testid="prompt-replay"]')] : [];
+               return rows.length === {rows} && rows[0].getAttribute('data-state') === {state:?};"#
+        ),
+        Duration::from_secs(60),
+    )
+}
+
+/// AH-079, phase one: a past turn's exact context is sent again from the
+/// panel that shows it, and the backend confirms the replay dispatch carried
+/// the same payload. A replay is stopped part-way; a turn whose snapshot had a
+/// field redacted is refused, in the panel and by the backend; and a replay is
+/// left running when the app exits, for phase two to find.
+fn scenario_context_replay_first(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    ctx.script_model("plain", &[])?;
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.wait_until(
+        "the previous run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    ctx.wait_until(
+        "an empty transcript",
+        "return !document.body.innerText.includes('Hello from the smoke model');",
+        Duration::from_secs(20),
+    )?;
+
+    let send = |text: &str| -> ScenarioResult {
+        ctx.type_into("[data-testid=\"chat-input\"]", text)?;
+        ctx.wait_until(
+            "the send control to arm",
+            "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+             return !!b && b.disabled !== true;",
+            Duration::from_secs(60),
+        )?;
+        ctx.eval(
+            "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+             return true;",
+        )?;
+        Ok(())
+    };
+    let replies = |n: usize| -> ScenarioResult {
+        ctx.wait_until(
+            &format!("{n} model repl(ies) and an idle composer"),
+            &format!(
+                "return (document.body.innerText.split('Hello from the smoke model').length - 1) >= {n}
+                   && !!document.querySelector('[data-test-id=\"send-message-button\"]')
+                   && document.querySelectorAll('[data-testid=\"prompt-snapshot\"]').length >= {n};"
+            ),
+            Duration::from_secs(90),
+        )
+    };
+
+    // 1. A turn to replay.
+    send(REPLAY_PROBE)?;
+    replies(1)?;
+    let original = recorded_dispatch(REPLAY_PROBE)
+        .ok_or_else(|| fail("the turn's dispatch was not recorded".into()))?;
+    let session = original["session"].as_str().unwrap_or_default().to_string();
+    let snapshot = original["id"].as_str().unwrap_or_default().to_string();
+    ensure!(
+        original["redactions"].as_array().is_some_and(|r| r.is_empty()),
+        "the probe turn's snapshot has redactions: {}",
+        original["redactions"]
+    );
+
+    // 2. Replayed from its panel: completed, and the same payload again.
+    let before = mock_requests(ctx)?.len();
+    click_replay(ctx, 0)?;
+    wait_top_replay(ctx, 0, 1, "completed")?;
+    let rows = replay_rows(ctx, 0)?;
+    ensure!(
+        rows[0].starts_with("completed/true"),
+        "the replay did not confirm the same context: {rows:?}"
+    );
+    let requests = mock_requests(ctx)?;
+    ensure!(requests.len() > before, "the replay never reached the model");
+    let probes: Vec<&Value> = requests
+        .iter()
+        .filter(|r| r.to_string().contains(REPLAY_PROBE))
+        .collect();
+    ensure!(probes.len() >= 2, "the model saw {} probe request(s)", probes.len());
+    let (turn, replay) = (probes[probes.len() - 2], probes[probes.len() - 1]);
+    ensure!(
+        turn == replay,
+        "the replay sent a different request:\n turn   {turn}\n replay {replay}"
+    );
+
+    // 3. Stopped part-way.
+    ctx.script_model("slow", &[])?;
+    click_replay(ctx, 0)?;
+    wait_top_replay(ctx, 0, 2, "running")?;
+    ctx.wait_until(
+        "the Stop control",
+        "return !!document.querySelector('[data-testid=\"prompt-replay-cancel\"]');",
+        Duration::from_secs(20),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-testid=\"prompt-replay-cancel\"]').click(); return true;",
+    )?;
+    wait_top_replay(ctx, 0, 2, "cancelled")?;
+    let rows = replay_rows(ctx, 0)?;
+    ensure!(
+        !rows.iter().any(|r| r.starts_with("running")),
+        "a stopped replay still reads as running: {rows:?}"
+    );
+
+    // 4. A turn whose snapshot had a field redacted is refused.
+    ctx.script_model("plain", &[])?;
+    send("replay probe two uses sk-abcdefghijklmnopqrstuvwxyz0123 please")?;
+    replies(2)?;
+    let secret = recorded_dispatch("replay probe two")
+        .ok_or_else(|| fail("the second turn's dispatch was not recorded".into()))?;
+    let secret_id = secret["id"].as_str().unwrap_or_default().to_string();
+    ensure!(
+        secret["redactions"].as_array().is_some_and(|r| !r.is_empty()),
+        "the fixture secret was not redacted, so there is nothing to refuse"
+    );
+    ctx.wait_until(
+        "the redacted turn's replay control, disabled with a reason",
+        &format!(
+            r#"{}
+               const p = document.querySelectorAll('[data-testid="prompt-snapshot"]')[1];
+               const b = p && p.querySelector('[data-testid="prompt-snapshot-replay"]');
+               const why = p && p.querySelector('[data-testid="prompt-snapshot-replay-blocked"]');
+               return !!b && b.disabled && !!why && /redacted/.test(why.textContent);"#,
+            replay_panel(1)
+        ),
+        Duration::from_secs(45),
+    )?;
+    let (ok, refused) = ipc(
+        ctx,
+        "agent_replay_begin",
+        &format!("{{ session: {session:?}, snapshotId: {secret_id:?} }}"),
+    )?;
+    ensure!(
+        !ok && refused["kind"] == "redacted",
+        "the backend did not refuse the redacted snapshot: {refused}"
+    );
+    let (ok, foreign) = ipc(
+        ctx,
+        "agent_replay_begin",
+        &format!("{{ session: 'someone-else', snapshotId: {snapshot:?} }}"),
+    )?;
+    ensure!(
+        !ok && foreign["kind"] == "not-found",
+        "another session could replay this snapshot: {foreign}"
+    );
+
+    // 5. Left running as the app exits.
+    ctx.script_model("slow", &[])?;
+    click_replay(ctx, 0)?;
+    wait_top_replay(ctx, 0, 3, "running")?;
+    std::fs::write(
+        ctx.workspace.join(REPLAY_MARKER),
+        serde_json::json!({ "session": session, "snapshot": snapshot, "secret": secret_id })
+            .to_string(),
+    )
+    .map_err(|e| fail(e.to_string()))
+}
+
+/// AH-079, phase two, a new process on the same profile: every replay is
+/// still listed with its ending, the one left running reads as interrupted,
+/// and the refusal is kept.
+fn scenario_context_replay_second(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    let marker: Value = serde_json::from_str(
+        &std::fs::read_to_string(ctx.workspace.join(REPLAY_MARKER))
+            .map_err(|_| fail("phase one did not run against this workspace".into()))?,
+    )
+    .map_err(|e| fail(e.to_string()))?;
+    let session = marker["session"].as_str().unwrap_or_default();
+    let snapshot = marker["snapshot"].as_str().unwrap_or_default();
+    let secret = marker["secret"].as_str().unwrap_or_default();
+    ctx.script_model("plain", &[])?;
+
+    let (ok, listed) = ipc(
+        ctx,
+        "agent_replays_list",
+        &format!("{{ session: {session:?}, snapshotId: {snapshot:?} }}"),
+    )?;
+    ensure!(ok, "listing replays failed after a restart: {listed}");
+    let states: Vec<&str> = listed
+        .as_array()
+        .map(|a| a.iter().filter_map(|r| r["state"].as_str()).collect())
+        .unwrap_or_default();
+    ensure!(
+        states == ["interrupted", "cancelled", "completed"],
+        "after a restart the replays are {states:?}"
+    );
+    ensure!(
+        listed[2]["matched"] == true && !listed[2]["text"].as_str().unwrap_or_default().is_empty(),
+        "the completed replay lost its result: {}",
+        listed[2]
+    );
+    let (_, refusals) = ipc(
+        ctx,
+        "agent_replays_list",
+        &format!("{{ session: {session:?}, snapshotId: {secret:?} }}"),
+    )?;
+    ensure!(
+        refusals[0]["state"] == "refused" && refusals[0]["error"]["kind"] == "redacted",
+        "the refusal was not kept: {refusals}"
+    );
+
+    // And in the panel.
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the turn's snapshot panel after a restart",
+        "return document.querySelectorAll('[data-testid=\"prompt-snapshot\"]').length >= 1;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval(&format!("{} return true;", replay_panel(0)))?;
+    ctx.wait_until(
+        "the replays listed in the panel",
+        r#"const p = document.querySelectorAll('[data-testid="prompt-snapshot"]')[0];
+           return p.querySelectorAll('[data-testid="prompt-replay"]').length === 3;"#,
+        Duration::from_secs(45),
+    )?;
+    let rows = replay_rows(ctx, 0)?;
+    let shown: Vec<&str> = rows.iter().map(|r| r.split('/').next().unwrap_or("")).collect();
+    ensure!(
+        shown == ["interrupted", "cancelled", "completed"],
+        "the panel shows {rows:?} after a restart"
+    );
     Ok(())
 }
 

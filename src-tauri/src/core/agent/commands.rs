@@ -823,6 +823,60 @@ pub async fn agent_prompt_snapshots(
     )
 }
 
+async fn replay_blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, crate::core::agent::replay::ReplayError> + Send + 'static,
+) -> Result<T, crate::core::agent::replay::ReplayError> {
+    use crate::core::agent::replay::{ReplayError, ReplayErrorKind};
+    tokio::task::spawn_blocking(work).await.map_err(|e| {
+        ReplayError::new(ReplayErrorKind::Io, format!("the replay operation did not finish: {e}"))
+    })?
+}
+
+/// Start replaying a prompt snapshot. AH-079.
+///
+/// The renderer names the snapshot and the session it belongs to; the payload
+/// to send is read from disk here and handed back. A snapshot stored without
+/// its payload, or with fields redacted, is refused with a typed error.
+#[tauri::command]
+pub async fn agent_replay_begin(
+    app: tauri::AppHandle,
+    session: String,
+    snapshot_id: String,
+) -> Result<crate::core::agent::replay::ReplayStart, crate::core::agent::replay::ReplayError> {
+    let data_folder = get_jan_data_folder_path(app);
+    replay_blocking(move || crate::core::agent::replay::begin(&data_folder, &session, &snapshot_id))
+        .await
+}
+
+/// Record how a replay ended. The first ending is the one kept.
+#[tauri::command]
+pub async fn agent_replay_settle(
+    app: tauri::AppHandle,
+    session: String,
+    replay_id: String,
+    outcome: crate::core::agent::replay::SettleInput,
+) -> Result<crate::core::agent::replay::ReplayRecord, crate::core::agent::replay::ReplayError> {
+    let data_folder = get_jan_data_folder_path(app);
+    replay_blocking(move || {
+        crate::core::agent::replay::settle(&data_folder, &session, &replay_id, outcome)
+    })
+    .await
+}
+
+/// A session's replays, newest first, optionally of one snapshot.
+#[tauri::command]
+pub async fn agent_replays_list(
+    app: tauri::AppHandle,
+    session: String,
+    snapshot_id: Option<String>,
+) -> Result<Vec<crate::core::agent::replay::ReplayView>, crate::core::agent::replay::ReplayError> {
+    let data_folder = get_jan_data_folder_path(app);
+    replay_blocking(move || {
+        Ok(crate::core::agent::replay::list(&data_folder, &session, snapshot_id.as_deref()))
+    })
+    .await
+}
+
 /// Record one tool lifecycle event. AH-050.
 ///
 /// Every tool execution reaches this, whatever ran it -- a built-in, a file
