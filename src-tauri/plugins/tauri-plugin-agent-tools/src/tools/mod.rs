@@ -145,6 +145,10 @@ pub struct ToolContext<'a> {
     /// another. Kept apart from `session_id`, which also decides what memory a
     /// call may read and write.
     pub job_owner: Option<&'a str>,
+    /// The user's own skills, shared by every project (AH-121). `skill_list`
+    /// and `skill_read` consult it after `store_root`, which shadows it. `None`
+    /// where the store already is the user store (the desktop) or none exists.
+    pub user_skills_root: Option<&'a Path>,
 }
 
 impl std::fmt::Debug for ToolContext<'_> {
@@ -166,6 +170,7 @@ impl std::fmt::Debug for ToolContext<'_> {
             .field("write_roots", &self.write_roots)
             .field("call_id", &self.call_id)
             .field("job_owner", &self.job_owner)
+            .field("user_skills_root", &self.user_skills_root)
             .finish()
     }
 }
@@ -195,7 +200,15 @@ impl<'a> ToolContext<'a> {
             write_roots: &[],
             call_id: None,
             job_owner: None,
+            user_skills_root: None,
         }
+    }
+
+    /// Offer the user's own skills beside the store's. See
+    /// [`Self::user_skills_root`].
+    pub fn with_user_skills(mut self, user_skills_root: Option<&'a Path>) -> Self {
+        self.user_skills_root = user_skills_root;
+        self
     }
 
     /// Confine the background commands this call starts or touches to

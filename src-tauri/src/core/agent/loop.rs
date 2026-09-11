@@ -366,6 +366,9 @@ struct CompositeToolInvoker {
     /// (see `workspace::scratch_dir`), so `bash` scratch files persist across
     /// calls for the whole run. Created at run start and wiped at run end.
     scratch_root: std::path::PathBuf,
+    /// The user's own skills, offered to `skill_list` / `skill_read` beside
+    /// the project's (AH-121). `None` when no data folder resolves.
+    user_skills: Option<std::path::PathBuf>,
     permissions: tauri_plugin_agent_tools::permissions::ToolPermissions,
     events: mpsc::UnboundedSender<StreamEvent>,
     permission_requests: PermissionRegistry,
@@ -659,6 +662,7 @@ impl CompositeToolInvoker {
         .with_home_readonly(self.allow_home_read)
         .with_sandbox(self.sandbox)
         .with_scratch_root(&self.scratch_root)
+        .with_user_skills(self.user_skills.as_deref())
     }
 
     /// A tool context whose output streams to the run's event channel as
@@ -1365,6 +1369,7 @@ impl CompositeToolInvoker {
                 let root = self.project_root.clone();
                 let store = self.store_root.clone();
                 let enabled = self.enabled_skills.clone();
+                let user_skills = self.user_skills.clone();
                 let allow_network = self.allow_network;
                 let allow_home_read = self.allow_home_read;
                 let sandbox = self.sandbox;
@@ -1378,6 +1383,7 @@ impl CompositeToolInvoker {
                         .with_home_readonly(allow_home_read)
                         .with_sandbox(sandbox)
                         .with_scratch_root(&scratch)
+                        .with_user_skills(user_skills.as_deref())
                         .with_cancel(registered.token().clone());
                     // Held until the future completes, then dropped, which
                     // deregisters it.
@@ -2371,6 +2377,7 @@ async fn orchestrate_inner(
             allow_home_read: settings.allow_home_read,
             sandbox: settings.sandbox,
             scratch_root: scratch_root.clone(),
+            user_skills: crate::core::agent::skills::user_skill_store(),
             project_root: root.clone(),
             permissions: permissions.clone(),
             events: events.clone(),
@@ -5431,6 +5438,7 @@ mod tests {
             allow_network: DEFAULT_ALLOW_NETWORK,
             allow_home_read: DEFAULT_ALLOW_HOME_READ,
             scratch_root: tauri_plugin_agent_tools::workspace::scratch_dir("test-session"),
+            user_skills: None,
             project_root: root,
             permissions,
             events,
@@ -5601,6 +5609,45 @@ mod tests {
             assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "keep\n", "{} edited a file", role.name);
             let _ = std::fs::remove_dir_all(&root);
         }
+    }
+
+    /// AH-121: the loop's `skill_read` reaches a skill in the user's store --
+    /// the store root, as the plugin's skill functions take it -- from a
+    /// project that has no skill of that name.
+    #[tokio::test]
+    async fn the_loop_reads_a_user_skill_from_any_project() {
+        let base = std::env::temp_dir().join(format!("jan_loop_user_skill_{}", std::process::id()));
+        let root = base.join("proj");
+        let user_store = base.join("agent-workspace");
+        std::fs::create_dir_all(&root).expect("project");
+        tauri_plugin_agent_tools::skills::write(
+            &user_store,
+            "house-style",
+            "---\ndescription: house rules\n---\nEnd with HOUSE-STYLE-APPLIED.",
+        )
+        .expect("user skill");
+        let (tx, _rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            registry,
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        invoker.user_skills = Some(user_store.clone());
+        let calls = vec![
+            serde_json::json!({ "id": "r1", "type": "function",
+                "function": { "name": "skill_read", "arguments": "{\"name\":\"house-style\"}" } }),
+            serde_json::json!({ "id": "l1", "type": "function",
+                "function": { "name": "skill_list", "arguments": "{}" } }),
+        ];
+        let out = invoker.invoke(&calls).await.expect("dispatch");
+        let read = out.iter().find(|o| o.id == "r1").expect("read outcome");
+        assert!(read.content.contains("HOUSE-STYLE-APPLIED"), "{}", read.content);
+        let list = out.iter().find(|o| o.id == "l1").expect("list outcome");
+        assert!(list.content.contains("house-style"), "{}", list.content);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// AH-200 negative authority: a model cannot reach the app's export and

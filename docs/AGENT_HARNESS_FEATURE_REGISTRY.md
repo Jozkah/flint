@@ -31,11 +31,11 @@ and the latter two require a recorded `blockedReason`.
 | 3 | Repository intelligence | 15 | 0 | 2 | 0 | 3 | 0 | 0 | 20 |
 | 4 | Context and memory | 0 | 0 | 2 | 14 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 2 | 0 | 5 | 18 | 0 | 0 | 0 | 25 |
-| 6 | Compatibility and integrations | 11 | 0 | 5 | 16 | 0 | 0 | 0 | 32 |
+| 6 | Compatibility and integrations | 11 | 0 | 4 | 17 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 15 | 0 | 1 | 10 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 15 | 0 | 6 | 7 | 0 | 0 | 1 | 29 |
 | 9 | Approved additions | 0 | 0 | 0 | 11 | 0 | 0 | 0 | 11 |
-| **all** | | **63** | **0** | **25** | **119** | **3** | **0** | **1** | **211** |
+| **all** | | **63** | **0** | **24** | **120** | **3** | **0** | **1** | **211** |
 
 ## Ownership lanes
 
@@ -190,7 +190,7 @@ per-OS evidence log rather than backlog items.
 | `AH-118` | OpenCode agent format import | 6 | integrations | P2 | `missing` | medium | `AH-089` |
 | `AH-119` | Qwen agent format import | 6 | integrations | P2 | `missing` | medium | `AH-089` |
 | `AH-120` | Project-level skills | 6 | integrations | P0 | `implemented` | medium | `AH-040` |
-| `AH-121` | User-level skills | 6 | integrations | P1 | `in-progress` | medium | `AH-120` |
+| `AH-121` | User-level skills | 6 | integrations | P1 | `implemented` | medium | `AH-120` |
 | `AH-122` | Skill permissions | 6 | integrations | P1 | `implemented` | high | `AH-040` |
 | `AH-123` | Skill versioning | 6 | integrations | P2 | `missing` | low | `AH-120` |
 | `AH-124` | Skill dependency resolution | 6 | integrations | P2 | `missing` | medium | `AH-123` |
@@ -367,7 +367,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-115` CLAUDE.md compatibility** - Ingested only after the user switches compatibility on for a folder, wrapped and labelled with its source file, ranked below JAN.md, and capped at 64 KiB.
 - **`AH-116` AGENTS.md compatibility** - Same opt-in, labelling, ranking and size cap as CLAUDE.md.
 - **`AH-117` Instruction precedence chain** - INSTRUCTION_PRECEDENCE with instructionOrder and scopedInstructionChain; no instruction file can move the repository, grant a tool or redirect changes however it is phrased.
-- **`AH-121` User-level skills** - CompatSource covers project, user and plugin scopes for imported skills. Native Jan skills still resolve the project scope only in the CLI.
+- **`AH-121` User-level skills** - CompatSource covers project, user and plugin scopes for imported skills. Native Jan skills still resolve the project scope only in the CLI. 2026-09-11 (Phase 2): native Jan skills now have a user scope in the CLI and the Rust loop: <jan_data_folder>/agent-workspace/skills, the store the desktop already writes native skills to, is read in every project after the project store, which shadows it by name; the [skills].enabled whitelist applies to both. The system-prompt catalog, skill_list and skill_read all see it (ToolContext::with_user_skills carries the store root to the plugin handlers). Real evidence: a skill placed only in the isolated data folder's user store was listed in the system prompt of a `jan cli agent run` against vLLM v100:8555 (pxa-27b) in a project with no skills; the model called skill_read("house-style"), got the body, and ended its reply with the marker the skill asked for (checked with `jan cli agent prompts --show last`). First two attempts failed on real defects, not flakiness: skill_read/skill_list resolved only the project store (the catalog alone had been extended), then the loop handed the handlers the skills folder where they take a store root.
 - **`AH-127` Lifecycle hooks** - The largest single compatibility gap; no hook registry exists anywhere in the codebase.
 - **`AH-134` MCP token refresh and storage** - Refresh and expiry handling are not verified as complete.
 - **`AH-139` MCP server health checks** - Liveness is probed by calling a tool that happens to be named `ping`, not by the protocol ping. 2026-09-11 (Phase 2): the desktop health monitor now probes each server with the MCP protocol ping (ClientRequest::PingRequest through the rmcp client) every 30s instead of tools/list. Any answer, a JSON-RPC error included, is a live server; a server that ignores ping gets one tools/list before it is called unresponsive, and is logged as not answering ping; a closed transport is gone. A dead or unresponsive server is removed and restarted with the existing backoff. Evidence: 5 integration tests through the real rmcp client against an in-process JSON-RPC peer (answers, errors, ignores ping, ignores everything, hangs up; the probe sends no tools/list to a server that answers ping), and the WebView scenario mcp-liveness-uses-the-protocol-ping: the seeded stdio fixture recorded two pings ~30s apart with one initialize, the harness then stopped exactly that fixture (by its own pid file, checked to be python), the next probe logged "failed health check", the app started it again (new pid, new initialize) and pinged the new process. First attempt, retries off. Limit: the check_jan_browser_extension_connected command still calls the browser server's tool named ping, which tests the extension link rather than the server; the CLI has no monitor.

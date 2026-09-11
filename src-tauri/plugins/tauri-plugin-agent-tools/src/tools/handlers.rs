@@ -914,7 +914,7 @@ fn render_write_diff(prior: Option<&str>, content: &str) -> String {
 /// `skill_list` tool: catalog of `name — description` lines for ENABLED skills
 /// only (disabled skills must stay invisible to the model). Empty if none.
 fn skill_list(ctx: &ToolContext<'_>) -> String {
-    skills::catalog(ctx.store_root, ctx.enabled_skills)
+    skills::catalog_with_user(ctx.store_root, ctx.user_skills_root, ctx.enabled_skills)
         .iter()
         .map(|m| {
             if m.description.is_empty() {
@@ -937,7 +937,7 @@ fn skill_read(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     if !skills::is_enabled(ctx.enabled_skills, name) {
         return format!("ERROR: skill '{name}' not found");
     }
-    let raw = match skills::read_raw(ctx.store_root, name) {
+    let raw = match skills::read_raw_with_user(ctx.store_root, ctx.user_skills_root, name) {
         Ok(raw) => raw,
         Err(e) => return e,
     };
@@ -5206,6 +5206,47 @@ mod tests {
         let l = execute_builtin(lookup("memory_list").unwrap(), &json!({}), &root).await;
         assert_eq!(l, "drift");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AH-121: `skill_list` and `skill_read` reach the user's own skills from
+    /// any project, a project skill of the same name wins, and the enabled
+    /// whitelist still applies.
+    #[tokio::test]
+    async fn skill_tools_reach_user_skills_and_the_project_shadows_them() {
+        let base = std::env::temp_dir().join(format!(
+            "jan_user_skill_tools_{}",
+            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+        ));
+        let root = base.join("proj");
+        let store = crate::workspace::project_store(&root);
+        let user = base.join("user-store");
+        std::fs::create_dir_all(&root).unwrap();
+        crate::skills::write(&user, "house-style", "---\ndescription: house rules\n---\nSay HOUSE.").unwrap();
+        crate::skills::write(&user, "deploy", "---\ndescription: user deploy\n---\nUSER DEPLOY").unwrap();
+        crate::skills::write(&store, "deploy", "---\ndescription: project deploy\n---\nPROJECT DEPLOY").unwrap();
+
+        let enabled: Vec<String> = Vec::new();
+        let ctx = ToolContext::new(&root, &store, &enabled).with_user_skills(Some(&user));
+        let list = super::execute_builtin(lookup("skill_list").unwrap(), &json!({}), &ctx).await.0;
+        assert!(list.contains("house-style — house rules"), "{list}");
+        assert!(list.contains("deploy — project deploy") && !list.contains("user deploy"), "{list}");
+        let read = |name: &str| json!({ "name": name });
+        let body = super::execute_builtin(lookup("skill_read").unwrap(), &read("house-style"), &ctx).await.0;
+        assert_eq!(body.trim(), "Say HOUSE.");
+        let deploy = super::execute_builtin(lookup("skill_read").unwrap(), &read("deploy"), &ctx).await.0;
+        assert_eq!(deploy.trim(), "PROJECT DEPLOY");
+
+        // Without the user store, the project sees only its own.
+        let bare = ToolContext::new(&root, &store, &enabled);
+        let missing = super::execute_builtin(lookup("skill_read").unwrap(), &read("house-style"), &bare).await.0;
+        assert!(missing.starts_with("ERROR"), "{missing}");
+
+        // The whitelist governs user skills too.
+        let only_deploy = vec!["deploy".to_string()];
+        let narrow = ToolContext::new(&root, &store, &only_deploy).with_user_skills(Some(&user));
+        let hidden = super::execute_builtin(lookup("skill_read").unwrap(), &read("house-style"), &narrow).await.0;
+        assert!(hidden.starts_with("ERROR"), "{hidden}");
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[tokio::test]

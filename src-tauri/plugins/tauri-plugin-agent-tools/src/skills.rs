@@ -287,12 +287,13 @@ pub fn list_meta(store: &Path) -> Vec<SkillMeta> {
 /// (nothing to advertise or invoke).
 fn side_catalog(
     root: &Path,
+    user: Option<&Path>,
     enabled: &[String],
     side: impl Fn(&ParsedSkill) -> bool,
 ) -> Vec<SkillMeta> {
     let allow: Option<std::collections::HashSet<&str>> =
         (!enabled.is_empty()).then(|| enabled.iter().map(String::as_str).collect());
-    let mut skills = discover(root)
+    let mut skills = discover_with_user(root, user)
         .into_iter()
         .filter_map(|e| {
             if let Some(allow) = &allow {
@@ -331,8 +332,32 @@ fn side_catalog(
 ///
 /// `enabled` is a whitelist of skill names; an empty list means "all skills"
 /// (backward-compatible with the agent.toml scaffold, which ships `enabled = []`).
+///
+/// Test-only: the `skill_list` tool goes through [`catalog_with_user`].
+#[cfg(test)]
 pub(crate) fn catalog(root: &Path, enabled: &[String]) -> Vec<SkillMeta> {
-    side_catalog(root, enabled, |p| p.model_invocable)
+    side_catalog(root, None, enabled, |p| p.model_invocable)
+}
+
+/// [`catalog`] over the store and the user's own skills (AH-121). A skill in
+/// the store shadows a user skill of the same name.
+pub(crate) fn catalog_with_user(root: &Path, user: Option<&Path>, enabled: &[String]) -> Vec<SkillMeta> {
+    side_catalog(root, user, enabled, |p| p.model_invocable)
+}
+
+/// The store's skills, then the user store's skills that no store skill
+/// shadows. `user` equal to `store` (the desktop, whose store is the user
+/// store) adds nothing twice.
+fn discover_with_user(store: &Path, user: Option<&Path>) -> Vec<SkillEntry> {
+    let mut out = discover(store);
+    if let Some(user) = user.filter(|u| *u != store) {
+        let extra: Vec<SkillEntry> = discover(user)
+            .into_iter()
+            .filter(|u| !out.iter().any(|p| p.name == u.name))
+            .collect();
+        out.extend(extra);
+    }
+    out
 }
 
 /// Raw SKILL.md text (frontmatter included) for the editor.
@@ -342,6 +367,18 @@ pub fn read_raw(store: &Path, name: &str) -> Result<String, String> {
     }
     let entry = resolve(store, name)?;
     std::fs::read_to_string(&entry.file).map_err(|e| format!("ERROR: {e}"))
+}
+
+/// [`read_raw`], falling back to the user's own skills when the store has
+/// none of that name (AH-121).
+pub fn read_raw_with_user(store: &Path, user: Option<&Path>, name: &str) -> Result<String, String> {
+    match read_raw(store, name) {
+        Ok(raw) => Ok(raw),
+        Err(missing) => match user.filter(|u| *u != store) {
+            Some(user) => read_raw(user, name),
+            None => Err(missing),
+        },
+    }
 }
 
 /// A skill's markdown body with the frontmatter fence stripped — what the

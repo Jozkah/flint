@@ -472,6 +472,19 @@ Run: `cargo test --lib --no-default-features --features test-tauri -- replay::`,
 Not exercised in the real app: a window that actually overflowed, so the
 "left the window" path is shown by unit tests only.
 
+## User-level skills in the CLI (AH-121)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real provider | `jan cli agent run` against vLLM `http://v100:8555/v1` (`pxa-27b`), isolated `JAN_DATA_FOLDER` with `house-style` only in `<data>/agent-workspace/skills`, project with no skills; then `jan cli agent prompts <session> --show last` | the system prompt lists `house-style`; the model calls `skill_read({"name":"house-style"})` and gets the body; the reply ends with the marker the skill asks for |
+| Rust tests | `core/agent/skills.rs::user_skills_apply_in_every_project_and_a_project_skill_shadows_them`, `tools/handlers.rs::skill_tools_reach_user_skills_and_the_project_shadows_them`, `core/agent/loop.rs::the_loop_reads_a_user_skill_from_any_project` | catalog in two unrelated projects, `read_raw`, project shadowing, the enabled whitelist, nothing without a user store; `skill_list` / `skill_read` through the plugin handlers; the loop's own dispatch with the store root |
+
+First attempts, retries off: the first real run failed because only the
+catalog saw user skills (`skill_read` said "not found"); the second because the
+loop passed the skills folder where the handlers take a store root. Both were
+fixed in code, with the loop test above added for the second; the third run
+passed. Evidence kept in `/c/tmp/jan-p2-first-failures/ah121-*`.
+
 ## MCP liveness by protocol ping (AH-139)
 
 | Evidence | Where | Covers |

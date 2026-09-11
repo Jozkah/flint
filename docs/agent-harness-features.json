@@ -4122,7 +4122,7 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-120"
@@ -4130,7 +4130,11 @@
       "owner": "lane-07-mcp-skills-plugins",
       "files": [
         "web-app/src/lib/claudeCompat.ts",
-        "src-tauri/src/core/agent/skills.rs"
+        "src-tauri/src/core/agent/skills.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/skills.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -4141,10 +4145,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/skills.rs::user_skills_apply_in_every_project_and_a_project_skill_shadows_them",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::skill_tools_reach_user_skills_and_the_project_shadows_them",
+        "src-tauri/src/core/agent/loop.rs::the_loop_reads_a_user_skill_from_any_project"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "CompatSource covers project, user and plugin scopes for imported skills. Native Jan skills still resolve the project scope only in the CLI."
+      "auditNote": "CompatSource covers project, user and plugin scopes for imported skills. Native Jan skills still resolve the project scope only in the CLI. 2026-09-11 (Phase 2): native Jan skills now have a user scope in the CLI and the Rust loop: <jan_data_folder>/agent-workspace/skills, the store the desktop already writes native skills to, is read in every project after the project store, which shadows it by name; the [skills].enabled whitelist applies to both. The system-prompt catalog, skill_list and skill_read all see it (ToolContext::with_user_skills carries the store root to the plugin handlers). Real evidence: a skill placed only in the isolated data folder's user store was listed in the system prompt of a `jan cli agent run` against vLLM v100:8555 (pxa-27b) in a project with no skills; the model called skill_read(\"house-style\"), got the body, and ended its reply with the marker the skill asked for (checked with `jan cli agent prompts --show last`). First two attempts failed on real defects, not flakiness: skill_read/skill_list resolved only the project store (the catalog alone had been extended), then the loop handed the handlers the skills folder where they take a store root."
     },
     {
       "id": "AH-122",

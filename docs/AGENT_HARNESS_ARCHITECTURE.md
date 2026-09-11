@@ -734,6 +734,17 @@ gone. A gone or unresponsive server is removed and restarted with the
 configured backoff. `check_jan_browser_extension_connected` is separate: it
 calls the browser server's own tool named `ping` to test the extension link.
 
+**User-level skills (AH-121).** Native Jan skills have two scopes on every
+surface. The desktop keeps them in the permanent store,
+`<jan_data_folder>/agent-workspace/skills`, which is already shared across
+projects. The CLI and the Rust agent loop read the project store
+(`<project>/.jan/agent/skills`) first and that same user store after it; a
+project skill shadows a user skill of the same name, and `[skills].enabled`
+filters both. The system-prompt catalog (`core/agent/skills.rs`),
+`skill_list` and `skill_read` (the plugin handlers, given the user store root
+through `ToolContext::with_user_skills`) all resolve the same way, so a skill
+the model is shown is a skill it can read.
+
 **What an event carries (schema v2).** Identity (session, run, call,
 invocation, agent, source, the parent task, a call it supersedes), a sequence
 number stamped as the line is written, the call's redacted input (bounded to
