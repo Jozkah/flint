@@ -3111,6 +3111,20 @@ function CoworkPage() {
           takeSteering: () => {
             const taken = useMessageQueue.getState().takeReady(sid)
             if (taken.length === 0) return []
+            // Into this run's execution record, in sequence with its calls:
+            // steering changes what the model works from. The words stay in
+            // the transcript; the record says only that input was delivered.
+            for (const m of taken) {
+              void recordLifecycle(
+                { session: sid, run: runId, source: 'cowork' },
+                {
+                  id: `steer:${runId}:${m.id}`,
+                  lifecycle: 'steering',
+                  phase: 'succeeded',
+                  summary: 'Input delivered to the running agent',
+                }
+              )
+            }
             pushLive(
               taken.map((m) => ({ role: 'user' as const, content: m.text, steered: true }))
             )

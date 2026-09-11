@@ -161,7 +161,8 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/event_log.rs",
         "src-tauri/src/core/agent/commands.rs",
         "web-app/src/lib/eventLog.ts",
-        "web-app/src/routes/cowork.tsx"
+        "web-app/src/routes/cowork.tsx",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -185,7 +186,7 @@
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Rebuilt on current interfaces (not restored from the lost src-tauri/harness crate, see 16ae36728): event_log.rs in the agent-tools plugin. One append-only JSON-lines log per session under <data>/events/. Envelope {v, id, session, run, invocation, seq, at, kind, payload, redactions}: v=1 and a newer version is a typed UnsupportedVersion; an unknown kind is kept and read back verbatim; ids are stable and a repeated id is one event (also after a restart); seq is assigned by the backend and strictly increasing per session; payloads are redacted with the plugin's redactor before writing and bounded to 64 KiB. A torn last line is skipped by readers and cut off before the next append; any other bad line is a typed Corrupt, never a silent gap. Each session log is bounded at 32 MiB (TooLarge) and the oldest of more than 500 logs are pruned. Writers: every tool phase through tool_activity_record, and run.started/run.ended/agent.dispatched/job.started/job.ended from the renderer through agent_events_record. Windows: event-export-1/2 read the log back through an export with an independent reader, in the durable tool-activity order, with the same ids after a real restart. Mutation-checked (dedup, torn-tail repair, version refusal, redaction). The Rust CLI/subagent loop's StreamEvents, steering and compaction are not yet written to it, which is why AH-004 remains in progress. macOS and Linux not run."
+      "auditNote": "Rebuilt on current interfaces (not restored from the lost src-tauri/harness crate, see 16ae36728): event_log.rs in the agent-tools plugin. One append-only JSON-lines log per session under <data>/events/. Envelope {v, id, session, run, invocation, seq, at, kind, payload, redactions}: v=1 and a newer version is a typed UnsupportedVersion; an unknown kind is kept and read back verbatim; ids are stable and a repeated id is one event (also after a restart); seq is assigned by the backend and strictly increasing per session; payloads are redacted with the plugin's redactor before writing and bounded to 64 KiB. A torn last line is skipped by readers and cut off before the next append; any other bad line is a typed Corrupt, never a silent gap. Each session log is bounded at 32 MiB (TooLarge) and the oldest of more than 500 logs are pruned. Writers: every tool phase through tool_activity_record, and run.started/run.ended/agent.dispatched/job.started/job.ended from the renderer through agent_events_record. Windows: event-export-1/2 read the log back through an export with an independent reader, in the durable tool-activity order, with the same ids after a real restart. Mutation-checked (dedup, torn-tail repair, version refusal, redaction). The Rust CLI/subagent loop's StreamEvents, steering and compaction are not yet written to it, which is why AH-004 remains in progress. macOS and Linux not run. Integration 2026-09-11 (feat/integrate-all-agent-workstreams): this log is now the only store of the execution record. activity::record writes each tool or lifecycle transition as one envelope (kind tool.<phase> / lifecycle.<phase>, id tool:<call>:<phase> / life:<call>:<phase>, payload = the redacted v2 activity event); tool_activity_record and the restart settlement both write through it, and the timeline, Background Tasks panel and audit_export are a projection folded from it. The pre-integration audit/tool-activity.jsonl is read for compatibility only (a transition in both stores counts once). Chat compaction and trim now reach the log as lifecycle events; the Rust CLI/subagent loop still writes nothing, so AH-004 stays in progress."
     },
     {
       "id": "AH-006",
@@ -1655,7 +1656,8 @@
         "src-tauri/src/core/agent/commands.rs",
         "web-app/src/lib/toolActivity.ts",
         "web-app/src/lib/coworkDispatch.ts",
-        "web-app/src/routes/threads/$threadId.tsx"
+        "web-app/src/routes/threads/$threadId.tsx",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/event_log.rs"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -1677,7 +1679,7 @@
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Canonical lifecycle events for every dispatched tool call; append-only JSONL, session-scoped reads, stale settlement at startup. 2026-09-11: Chat's tool loop now writes the same record as Cowork (it wrote none before), including its approval and refusal phases; schema v2 adds a per-log sequence number, redacted and bounded input and output (unavailable output reads as unavailable, never empty), job/task/parent/supersession ids, lifecycle events (compaction, subagent queue, stops) in the same sequence, and per-call diffs stored beside the log with their own +/- counts; items are keyed by session and call, so two sessions reusing a provider call id no longer merge. Still implemented rather than verified: the Rust agent loop (CLI) does not write this record."
+      "auditNote": "Canonical lifecycle events for every dispatched tool call; append-only JSONL, session-scoped reads, stale settlement at startup. 2026-09-11: Chat's tool loop now writes the same record as Cowork (it wrote none before), including its approval and refusal phases; schema v2 adds a per-log sequence number, redacted and bounded input and output (unavailable output reads as unavailable, never empty), job/task/parent/supersession ids, lifecycle events (compaction, subagent queue, stops) in the same sequence, and per-call diffs stored beside the log with their own +/- counts; items are keyed by session and call, so two sessions reusing a provider call id no longer merge. Still implemented rather than verified: the Rust agent loop (CLI) does not write this record. Integration 2026-09-11: stored in the session event log (AH-005) instead of audit/tool-activity.jsonl, which is now read-only legacy input; items() folds legacy and canonical events with each transition counted once, and settle_unfinished writes its stale ending to the same log the export reads. Cowork main-agent tool events carry the invocation of the request that asked for them (the runner reports each response before its calls run); subagent tool events still carry none."
     },
     {
       "id": "AH-051",
@@ -6454,7 +6456,7 @@
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "2026-09-11: `audit_export(session)` returns one JSON document joining the session's permission decisions (permissions.jsonl) and its execution record (tool calls and run lifecycle events, tool-activity.jsonl), both redacted when written; an export needs a session. Not complete: its dependency AH-177 is blocked on AH-005, the Rust agent loop (CLI) writes no execution record, and there is no negative authority test beyond session scoping."
+      "auditNote": "2026-09-11: `audit_export(session)` returns one JSON document joining the session's permission decisions (permissions.jsonl) and its execution record (tool calls and run lifecycle events, tool-activity.jsonl), both redacted when written; an export needs a session. Not complete: the Rust agent loop (CLI) writes no execution record, and there is no negative authority test beyond session scoping. Integration 2026-09-11: AH-005 and AH-177 are implemented on main, so the dependency is no longer blocked; the execution record the export joins is folded from the session event log (legacy tool-activity.jsonl lines still read). Remaining: the CLI loop writes no record, and no negative authority test beyond session scoping."
     },
     {
       "id": "AH-201",

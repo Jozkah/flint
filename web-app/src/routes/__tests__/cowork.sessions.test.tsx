@@ -433,6 +433,15 @@ describe('a run belongs to the session that started it', () => {
       takenB = b.opts.deps.takeSteering()
     })
     expect(takenB.map((m: any) => m.parts[0].text)).toEqual(['for B only'])
+    // Each delivery is in its own session's execution record, and the record
+    // says only that input arrived: the words stay in the transcript.
+    const steering = () =>
+      h.invoke.mock.calls
+        .filter(([cmd, args]: any[]) => cmd === 'tool_activity_record' && args?.event?.lifecycle === 'steering')
+        .map(([, args]: any[]) => args.event)
+    await waitFor(() => expect(steering()).toHaveLength(3))
+    expect(steering().map((e: any) => e.session).sort()).toEqual(['A', 'A', 'B'])
+    expect(JSON.stringify(steering())).not.toMatch(/use pnpm|then test|for B only/)
   })
 
   it('holds input a failed run did not take, and does not send it on its own', async () => {
