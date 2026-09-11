@@ -766,9 +766,10 @@ impl CompositeToolInvoker {
                 let scope_label = match scope {
                     SubagentScope::User => "user",
                     SubagentScope::Project => "project",
-                    // Unreachable: create_subagent rejects the plugin scope
-                    // before this point.
+                    // Unreachable: create_subagent rejects the plugin and
+                    // built-in scopes before this point.
                     SubagentScope::Plugin => "plugin",
+                    SubagentScope::Builtin => "built-in",
                 };
                 let mut registry = SubagentRegistry::load(&self.project_root);
                 match registry.create_in(&dir, def.clone(), scope, overwrite) {

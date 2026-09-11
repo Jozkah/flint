@@ -19,6 +19,11 @@ export type SubagentDefinition = {
   /** Narrows the child's toolset. `null` inherits the parent's. */
   allowed_tools: string[] | null
   model: string | null
+  /**
+   * `builtin` for a role Jan ships (AH-094..099), `user` for one saved here.
+   * A saved definition of the same name replaces the built-in.
+   */
+  scope?: 'builtin' | 'user' | 'project' | 'plugin'
 }
 
 let cache: SubagentDefinition[] | null = null

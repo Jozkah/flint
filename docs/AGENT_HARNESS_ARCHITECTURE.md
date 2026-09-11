@@ -311,6 +311,45 @@ partial directory, and one left by a stopped process is swept by the next
 export. Nothing in the worktree or the user's checkout is written. Applying a
 bundle elsewhere (AH-169) is not implemented.
 
+### AHD-009f: shipped agent roles (AH-094..099)
+
+`roles.rs` ships six versioned subagent definitions, which a parent dispatches
+by name with the `task` tool:
+
+| Role | Tools | Job |
+| --- | --- | --- |
+| explorer | read, ls, find, grep | find and explain, with references |
+| planner | read, ls, find, grep | investigate, then return a phased plan (plan mode: read only) |
+| implementer | read, ls, find, grep, write, edit | make the change it is given, nothing else |
+| reviewer | read, ls, find, grep | report real defects, each with its location |
+| tester | read, ls, find, grep, bash | select and run the covering tests, report exact results |
+| security | read, ls, find, grep | report exploitable weaknesses and the attacker's path |
+
+**Where they sit.** They form their own scope, `SubagentScope::Builtin`,
+loaded first, so a plugin, user, project or desktop-saved definition of the
+same name replaces one. The scope is read-only: `create`, `create_in` and
+`subagent_dir_for` refuse it. The desktop list (`agent_subagent_list`)
+returns only the winner for each name, because the renderer resolves a name
+to its first match. Each role carries `scope: builtin` and a version in its
+description.
+
+**Authority comes from the allowlist, never from the prompt:**
+
+- A role's list is explicit, so a tool it does not name, MCP tools
+  included, is never offered.
+- The child's set is that list narrowed by the parent: by the parent's tool
+  names in the renderer (`intersectAllowedTools`), and by the parent's deny
+  rules in Rust (`intersect_allowed_tools`). A call site can narrow it and
+  never widen it.
+- `task`, `team`, `ask` and `todo` are withheld from every child, so a role
+  cannot dispatch further agents.
+- The four read-only roles are checked against the tool capability table
+  (`read_only_roles_hold_no_mutating_tool`), so they hold no write, exec or
+  network tool.
+- The implementer's writes and the tester's commands still go through the
+  parent's approval gate. In a team, each isolated child works in its own
+  worktree and is reviewed through AH-107/109.
+
 ### AHD-009e: one versioned envelope for a session's events (AH-005), exported (AH-177)
 
 The Phase 0 harness crate that first carried an event envelope never reached

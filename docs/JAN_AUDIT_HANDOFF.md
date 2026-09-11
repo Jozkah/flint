@@ -2222,6 +2222,67 @@ bundle to a fresh clone at the base and compares the result byte for byte.
 Applying a bundle inside Jan (AH-169) is the next item in this chain and is not
 implemented.
 
+## 2026-09-11 — Shipped agent roles (AH-094..099), in progress; harness eval fix ported from 2bd94407a
+
+Six built-in subagent roles now ship in `src-tauri/src/core/agent/roles.rs`:
+explorer, planner, implementer, reviewer, tester and security. They are
+version 1 definitions in a new read-only, lowest-precedence scope,
+`SubagentScope::Builtin`. Design: architecture AHD-009f. Evidence and every
+attempt: the verification section "Shipped agent roles".
+
+- **Authority.** Each role holds an explicit minimum tool list, narrowed by
+  the parent and never widened.
+- **No nesting.** `task`, `team`, `ask` and `todo` are withheld from every
+  child.
+- **Read-only roles.** They are checked against the capability table.
+- **Windows UI run.** `agent-roles` shows a real parent dispatching the
+  reviewer and the explorer. Their scripted `write` and `bash` calls were
+  refused and never reached a prompt or the disk. Evidence is from ro9, ro9b
+  and full gate g4, each a first-attempt pass in a fresh process.
+
+**Registry.** AH-094..099 go from `missing` to `in-progress`, not
+`implemented`:
+
+- Cancellation, restart persistence and a typed refusal error are part of
+  every role's acceptance criteria. None was shown.
+- Only two of the six roles ran in the UI.
+
+**First attempts, kept.** Runs ro1 to ro7 failed: two eval timeouts, a
+parent in plan mode, an opening inspection, and two wrong scenario checks.
+ro5b exited 0 with no verdict. The verification section lists each one.
+
+**A leaked fixture server tainted the runs.** When ro5b's app shut down, the
+harness never stopped its mock provider, so it stayed on port 8080. Every
+later run started a second server beside it. In the first full gate, g3,
+`context-replay-1/2` failed against the leftover log, and 2 agent-tools bash
+tests failed to find git-bash. Both tests pass alone and in g4. g3 and the
+passes ro8 and ro8b are not counted. The leftover server was mine, and I
+checked that before stopping it. Two guards now exist:
+
+- `start_mock_provider` refuses a port that already answers.
+- The runner reports any listener left after a scenario.
+
+**Gate g4**, on this tree, retries off:
+
+- Registry: OK, 29 tests.
+- Web: typecheck; lint 0 errors (15 warnings, as before); tests
+  171 + 5788 + 320; `build:web`.
+- App: lib 885 tests; integration 885 + 8 + 1 + 1.
+- CLI check.
+- Clippy, desktop and CLI: 0 errors.
+- Agent-tools with the sandbox helper: 811 + 13.
+- `git diff --check`.
+- Scenarios: 15, each passed on its first attempt, with no leaks.
+
+**Harness transport, duplicated work.** The run reproduced the lost eval
+result twice (ro1, ro2), with the page idle. `Ctx::eval_with_timeout` now
+uses the method from `2bd94407a` (`claude/token-usage-integration`, not on
+`fork/main`): results are left in the page and collected with
+`eval_with_callback`. It keeps this branch's own additions: the in-page
+compile of the body, and the main-thread and window diagnostics. When that
+branch lands, keep one of the two versions of the function. They do the same
+thing.
+
 ## 2026-09-11 — The composer/apply "stall": diagnosed elsewhere, fix not yet on main
 
 The intermittent eval timeouts at apply clicks (r39, r43) were proved by
@@ -2238,8 +2299,9 @@ harness losing its own results, not the page stalling.
 - **Their fix.** Results are left in the page and collected with
   `eval_with_callback`.
 
-That commit has not reached `fork/main`, so this branch does not duplicate it
-with a transport workaround of its own. It keeps its complementary harness
+That commit has not reached `fork/main`. At first this branch did not
+duplicate it. The roles batch below then reproduced the loss twice (ro1,
+ro2), so that batch ports the fix as it is. See the later entry. It keeps its complementary harness
 changes: a script that does not parse is reported as an error, not a stall;
 there is no desktop-wide screenshot; the window's own state is reported. The
 two changes touch the same function, `Ctx::eval_with_timeout`, and will need
