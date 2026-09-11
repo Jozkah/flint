@@ -148,6 +148,84 @@ pub struct PromptSnapshot {
 }
 
 impl PromptSnapshot {
+    /// The payload as a person reads it (AH-087): every message in order with
+    /// its role and full text, each tool call the model made with its
+    /// arguments, and the tools offered. Nothing is summarised or truncated;
+    /// what redaction replaced is already replaced in the payload, and the
+    /// header says how many values that was. A snapshot with no payload says
+    /// why instead of printing an empty conversation.
+    pub fn render_text(&self) -> String {
+        use std::fmt::Write;
+        let mut out = String::new();
+        let _ = writeln!(out, "snapshot {} at {}", self.id, self.at);
+        let _ = writeln!(
+            out,
+            "model {} · {:?} dispatch · hash {} · {} redaction(s)",
+            if self.model.is_empty() { "unknown" } else { &self.model },
+            self.kind,
+            self.hash,
+            self.redactions.len()
+        );
+        if let Some(why) = &self.unavailable {
+            let _ = writeln!(out, "\nno payload was kept: {why:?}");
+            return out;
+        }
+        let text_of = |content: &Value| -> String {
+            match content {
+                Value::String(s) => s.clone(),
+                Value::Array(parts) => parts
+                    .iter()
+                    .map(|p| match p.get("type").and_then(Value::as_str) {
+                        Some("text") => p.get("text").and_then(Value::as_str).unwrap_or("").to_string(),
+                        Some(other) => format!("[{other} part]"),
+                        None => p.to_string(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                Value::Null => String::new(),
+                other => other.to_string(),
+            }
+        };
+        let messages = self.payload.get("messages").and_then(Value::as_array);
+        for (i, m) in messages.into_iter().flatten().enumerate() {
+            let role = m.get("role").and_then(Value::as_str).unwrap_or("?");
+            let _ = write!(out, "\n--- {} · {role}", i + 1);
+            if let Some(id) = m.get("tool_call_id").and_then(Value::as_str) {
+                let _ = write!(out, " · result of {id}");
+            }
+            let _ = writeln!(out, " ---");
+            let body = text_of(m.get("content").unwrap_or(&Value::Null));
+            if !body.is_empty() {
+                let _ = writeln!(out, "{body}");
+            }
+            for call in m.get("tool_calls").and_then(Value::as_array).into_iter().flatten() {
+                let f = call.get("function");
+                let _ = writeln!(
+                    out,
+                    "[tool call {}] {}({})",
+                    call.get("id").and_then(Value::as_str).unwrap_or("?"),
+                    f.and_then(|f| f.get("name")).and_then(Value::as_str).unwrap_or("?"),
+                    f.and_then(|f| f.get("arguments")).and_then(Value::as_str).unwrap_or("")
+                );
+            }
+        }
+        let tools: Vec<&str> = self
+            .payload
+            .get("tools")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|t| t.get("function").and_then(|f| f.get("name")).and_then(Value::as_str))
+            .collect();
+        let _ = writeln!(
+            out,
+            "\n--- tools offered: {} ---\n{}",
+            tools.len(),
+            if tools.is_empty() { "(none)".to_string() } else { tools.join(", ") }
+        );
+        out
+    }
+
     /// How many messages the payload carried, for a summary view.
     pub fn message_count(&self) -> usize {
         self.payload
@@ -545,6 +623,55 @@ pub fn by_session(data_folder: &Path, session: &str) -> Vec<PromptSnapshot> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// AH-087: the text view carries every message whole, in order, with its
+    /// role, each tool call with its arguments, and the tools offered.
+    #[test]
+    fn the_text_view_is_what_the_model_saw() {
+        let long = "x".repeat(5_000);
+        let payload = json!({
+            "model": "m",
+            "messages": [
+                { "role": "system", "content": "You are Jan. Today is 2026-09-11." },
+                { "role": "user", "content": [{ "type": "text", "text": format!("read it {long}") }, { "type": "image_url", "image_url": { "url": "data:x" } }] },
+                { "role": "assistant", "content": null, "tool_calls": [{ "id": "c1", "type": "function", "function": { "name": "read", "arguments": "{\"path\":\"README.md\"}" } }] },
+                { "role": "tool", "tool_call_id": "c1", "content": "# Readme" },
+            ],
+            "tools": [{ "type": "function", "function": { "name": "read" } }, { "type": "function", "function": { "name": "ls" } }],
+        });
+        let snap = capture(&payload, &Identity { session: "s1".into(), ..Default::default() });
+        let text = snap.render_text();
+        let order = ["1 · system", "Today is 2026-09-11", "2 · user", "3 · assistant", "4 · tool · result of c1", "# Readme"];
+        let mut at = 0;
+        for needle in order {
+            let found = text[at..].find(needle).unwrap_or_else(|| panic!("{needle} missing or out of order:\n{text}"));
+            at += found;
+        }
+        assert!(text.contains(&long), "a long message was cut");
+        assert!(text.contains("[image_url part]"));
+        assert!(text.contains("[tool call c1] read({\"path\":\"README.md\"})"));
+        assert!(text.contains("tools offered: 2 ---\nread, ls"));
+        assert!(text.contains(&snap.hash));
+    }
+
+    /// A credential is not in the text view: it was redacted before the
+    /// snapshot was written, and the header says a redaction was made.
+    #[test]
+    fn the_text_view_shows_redactions_not_secrets() {
+        let payload = json!({ "messages": [{ "role": "user", "content": "key sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }] });
+        let snap = capture(&payload, &Identity::default());
+        let text = snap.render_text();
+        assert!(!text.contains("AAAAAAAAAAAAAAAAAAAA"), "{text}");
+        assert!(!text.contains(" 0 redaction(s)"), "{text}");
+    }
+
+    #[test]
+    fn a_snapshot_without_a_payload_says_why() {
+        let snap = unavailable(&Identity::default(), Unavailable::TooLarge);
+        let text = snap.render_text();
+        assert!(text.contains("no payload was kept: TooLarge"), "{text}");
+        assert!(!text.contains("tools offered"));
+    }
 
     fn dir(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(

@@ -472,6 +472,17 @@ Run: `cargo test --lib --no-default-features --features test-tauri -- replay::`,
 Not exercised in the real app: a window that actually overflowed, so the
 "left the window" path is shown by unit tests only.
 
+## What the model saw, from the CLI (AH-087)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real provider | `jan cli agent run` against vLLM `http://v100:8555/v1` (`pxa-27b`), isolated `JAN_DATA_FOLDER`, then `jan cli agent prompts <session>` and `--show last` | the run recorded two requests and the list shows both (id, time, kind, model, message count, hash); `--show last` printed the 4-message request -- system prompt, the user task, the assistant's `ls` call, the tool result -- and the 23 tools offered; every message text and the hash match `prompts.jsonl`; a read of that snapshot id under another session is refused |
+| Rust tests | `snapshot.rs::the_text_view_is_what_the_model_saw`, `the_text_view_shows_redactions_not_secrets`, `a_snapshot_without_a_payload_says_why`; `bin/jan.rs::agent_prompts_lists_and_prints_a_sessions_requests_only`, `prompts_is_a_cli_agent_command` | order and roles, no truncation of a 5,000-character message, non-text parts named, tool calls with arguments, tools offered; a credential is redacted and counted; a payload-less snapshot says why; list, last, by id, another session's id refused, unknown session and blank session refused |
+
+Limits: the TUI has no in-session text view (the command works from a second
+terminal), `/context` still re-derives category sizes from disk, and the loop
+labels every dispatch `Initial`, continuations included.
+
 ## Context pressure warnings (AH-077, in progress)
 
 | Evidence | Where | Covers |

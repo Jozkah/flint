@@ -223,6 +223,16 @@ detection, and the UI says so.
 The dispatched payload is persisted (`AH-078`). Token accounting, replay,
 diffing and the inspector read that record.
 
+**The CLI's view of it (AH-087).** `jan cli agent prompts <session>` lists a
+session's recorded requests; `--show last` or `--show <id>` prints one through
+`PromptSnapshot::render_text`: every message in order with its role and whole
+text (the system prompt's date line and memory block are in it because they
+were in the payload), each tool call with its arguments, each tool result, the
+tools offered, and a header with model, dispatch kind, hash and redaction
+count. It reads the same `prompts.jsonl` as the desktop panel, through the same
+`scoped_lookup`, so a snapshot id is only readable with the session it belongs
+to.
+
 **Context diff (AH-086).** "Compare with the previous request" in the
 snapshot panel diffs a stored payload against the one the same session sent
 just before it (`lib/contextDiff.ts`). Messages are matched as a longest

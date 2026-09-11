@@ -2937,14 +2937,16 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-078"
       ],
       "owner": "lane-05-context-memory",
       "files": [
-        "src-tauri/src/core/agent/loop.rs"
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/snapshot.rs",
+        "src-tauri/src/bin/jan.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -2955,10 +2957,16 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/snapshot.rs::the_text_view_is_what_the_model_saw",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/snapshot.rs::the_text_view_shows_redactions_not_secrets",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/snapshot.rs::a_snapshot_without_a_payload_says_why",
+        "src-tauri/src/bin/jan.rs::agent_prompts_lists_and_prints_a_sessions_requests_only",
+        "src-tauri/src/bin/jan.rs::prompts_is_a_cli_agent_command"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "/context shows category sizes re-derived from disk, omits the date line and memory recall, and offers no text view."
+      "auditNote": "/context shows category sizes re-derived from disk, omits the date line and memory recall, and offers no text view. 2026-09-11 (Phase 2): the CLI now has a text view of exactly what the model received. `jan cli agent prompts <session>` lists every recorded request of a session (id, time, kind, model, message count, hash); `--show last` or `--show <id>` prints one in full from its prompt snapshot: every message in order with role and whole text (system prompt with its date line and any memory block included, since they are in the payload), each tool call with arguments, each tool result, and the tools offered; redactions are counted in the header. The session is required and must match: another session's snapshot id is refused. Real evidence: `jan cli agent run` against vLLM v100:8555 (pxa-27b) in an isolated data folder recorded two requests; `prompts` listed both; `--show last` printed the 4-message request (system, user task, assistant ls call, tool result) and 23 tools, every message text and the hash matching prompts.jsonl; a cross-session read by id was refused. Desktop already had this view (AH-078 Prompt snapshot panel). Remaining, not criteria: /context category sizes are still re-derived from disk; the TUI has no in-session text view (the command works from another terminal); the loop labels every dispatch \"Initial\", including continuations."
     },
     {
       "id": "AH-088",

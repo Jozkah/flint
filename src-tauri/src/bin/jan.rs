@@ -350,6 +350,15 @@ enum AgentCommands {
         #[command(flatten)]
         providers: ProviderArgs,
     },
+    /// List the exact requests a session sent to the model, or print one as
+    /// text (what the model saw: every message, tool call and tool offered)
+    Prompts {
+        /// The session whose requests to list
+        session: String,
+        /// Print one request in full: a snapshot id, or `last`
+        #[arg(long)]
+        show: Option<String>,
+    },
 }
 
 /// Read/write the user-wide `~/.jan/config.toml` provider store. This is the
@@ -825,6 +834,10 @@ async fn handle_agent(cmd: AgentCommands) {
             )
             .await
         }
+        AgentCommands::Prompts { session, show } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            agent_prompts_text(&data, &session, show.as_deref()).map(|text| print!("{text}"))
+        }
         AgentCommands::Status { project, providers } => {
             match cli_agent_status(&project, &providers.into_overrides()) {
                 Ok(status) => {
@@ -839,6 +852,51 @@ async fn handle_agent(cmd: AgentCommands) {
         eprintln!("Error: {e}");
         std::process::exit(1);
     }
+}
+
+/// `jan cli agent prompts`: what a session sent to the model (AH-087).
+///
+/// Without `show`, one line per recorded request. With `show`, that request as
+/// text -- `last` for the most recent. The session is required and must match
+/// the record: a snapshot id alone is not enough to read one.
+fn agent_prompts_text(
+    data_folder: &std::path::Path,
+    session: &str,
+    show: Option<&str>,
+) -> Result<String, String> {
+    use tauri_plugin_agent_tools::snapshot::scoped_lookup;
+    if session.trim().is_empty() {
+        return Err("name the session whose requests to show".to_string());
+    }
+    let one = match show {
+        Some("last") | None => None,
+        Some(id) => Some(id),
+    };
+    let found = scoped_lookup(data_folder, one, None, Some(session))?;
+    if found.is_empty() {
+        return Err(match one {
+            Some(id) => format!("no request {id} is recorded for session {session}"),
+            None => format!("no requests are recorded for session {session}"),
+        });
+    }
+    if show.is_some() {
+        // `last` is the newest record; an id matched exactly one.
+        return Ok(found.last().map(|s| s.render_text()).unwrap_or_default());
+    }
+    let mut out = format!("{} request(s) for session {session}\n", found.len());
+    for s in &found {
+        let _ = writeln!(
+            out,
+            "{}  {}  {:?}  {}  {} message(s)  {}",
+            s.id,
+            s.at,
+            s.kind,
+            if s.model.is_empty() { "unknown" } else { &s.model },
+            s.message_count(),
+            s.hash
+        );
+    }
+    Ok(out)
 }
 
 /// `jan auth` handler: report sign-in state or sign out.
@@ -1198,6 +1256,52 @@ mod tests {
             }) => output_format,
             _ => panic!("expected `cli agent run`"),
         }
+    }
+
+    /// AH-087: a session's requests are listed, the last or a named one is
+    /// printed in full, and another session's request is not readable by id.
+    #[test]
+    fn agent_prompts_lists_and_prints_a_sessions_requests_only() {
+        use tauri_plugin_agent_tools::snapshot::{append, capture, Identity};
+        let data = std::env::temp_dir().join(format!("jan-prompts-cli-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        std::fs::create_dir_all(&data).unwrap();
+        let ident = |session: &str| Identity { session: session.into(), ..Default::default() };
+        let first = capture(
+            &serde_json::json!({ "model": "m", "messages": [{ "role": "user", "content": "first question" }] }),
+            &ident("s1"),
+        );
+        let second = capture(
+            &serde_json::json!({ "model": "m", "messages": [{ "role": "user", "content": "second question" }] }),
+            &ident("s1"),
+        );
+        let other = capture(
+            &serde_json::json!({ "model": "m", "messages": [{ "role": "user", "content": "someone else's" }] }),
+            &ident("s2"),
+        );
+        for s in [&first, &second, &other] {
+            append(&data, s);
+        }
+
+        let list = agent_prompts_text(&data, "s1", None).unwrap();
+        assert!(list.starts_with("2 request(s) for session s1"), "{list}");
+        assert!(list.contains(&first.id) && list.contains(&second.id) && !list.contains(&other.id));
+
+        let last = agent_prompts_text(&data, "s1", Some("last")).unwrap();
+        assert!(last.contains("second question") && !last.contains("first question"), "{last}");
+        let named = agent_prompts_text(&data, "s1", Some(&first.id)).unwrap();
+        assert!(named.contains("first question"), "{named}");
+
+        assert!(agent_prompts_text(&data, "s1", Some(&other.id)).is_err(), "another session's request was readable");
+        assert!(agent_prompts_text(&data, "s3", None).unwrap_err().contains("no requests"));
+        assert!(agent_prompts_text(&data, " ", None).is_err());
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn prompts_is_a_cli_agent_command() {
+        let cli = Cli::try_parse_from(["jan", "cli", "agent", "prompts", "s1", "--show", "last"]);
+        assert!(cli.is_ok(), "`jan cli agent prompts <session> --show last` must parse");
     }
 
     #[test]
