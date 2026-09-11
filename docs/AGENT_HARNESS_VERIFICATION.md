@@ -227,6 +227,26 @@ Run: `cargo test -p tauri-plugin-agent-tools -- --test-threads=4 proposal::`,
 `cargo test --lib --no-default-features --features test-tauri -- team_children proposals subagent`,
 `npx vitest run src/lib/__tests__/coworkTeamScopes.test.ts src/containers/__tests__/CoworkTeam*`.
 
+## Bundle import (AH-169), and the flag review UI (AH-154 / AH-155 / AH-156)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 2 unit tests | `plugins/tauri-plugin-agent-tools/src/patch_export.rs` | whatever the exporter writes reads back to exactly the proposed content (edits, additions, deletions, missing final newlines, emptied files); a patch that does not fit its base, has mismatched names or counts, repeats a file or carries a rename header is refused |
+| 1 unit test + 2 updated | `review_flags.rs`, `proposal.rs` | binary content and deletions are flagged in every proposal; an existing binary and an existing deletion test now also prove the file lands only when acknowledged |
+| 11 integration tests | `src-tauri/src/core/agent/bundle_import_tests.rs` | on real git, an exported bundle imported into a fresh clone: <br>• **Round trip:** every file matches the worktree byte for byte; the clone stays on its branch with nothing staged, and an unrelated dirty file is untouched. <br>• **Acknowledgement:** five flagged files are refused until acknowledged. <br>• **Twice:** importing or applying the same bundle again is `already-applied`. <br>• **Partial:** one hunk of two lands. <br>• **Stale destination:** an edit after review is refused whole, by hunk, with nothing written. <br>• **Binding:** another bundle hash, manifest hash, destination or import is refused. <br>• **Tampered bundle:** 9 kinds (patch, binary, declared hash, unknown field, version, base, extra entry, missing entry, truncated manifest), each typed and leaving no private copy. <br>• **Hostile paths:** 16 kinds (`..`, absolute, drive, UNC, backslash, stream, device, `.git`, nested `.git`, `GIT~1`, `.jan`, trailing dot, decomposed Unicode, case collision, Unicode collision). <br>• **Container:** an archive, a missing folder, and size and count bounds. <br>• **Junction** inside a bundle (Windows). <br>• **Destination:** a repository without the base, and a subfolder, are refused. <br>• **Cancellation:** part-way and before the start, with a dead process's partial swept. <br>• **Abandon:** read back from disk, then refused at apply. |
+| 5 component tests | `web-app/src/containers/__tests__/CoworkBundleImport.test.tsx` | the picked bundle and destination are sent; a typed refusal is shown; a closed picker does nothing; a running import can be stopped; a pending import shows its origin and applies through the import-bound approval, never the plain proposal apply; abandoning |
+| Real WebView scenario, **phase one** | `cowork-smoke --only bundle-import-1` (mock provider, Windows) | through the Changes panel's Import button and its folder picker, against the attached project at the bundle's base:<br>• **Exported first:** a managed worktree with text, binary, dependency, lock-file, migration, deletion and new-file changes, exported through AH-168.<br>• **Refused, typed:** a tampered manifest, a tampered binary, a junction inside the bundle, and paths with `..`, absolute, drive, UNC, `.git`, `GIT~1`, a case collision and a Unicode collision. Each leaves no private copy and no record.<br>• **Stopped:** an import stopped part-way leaves nothing.<br>• **Imported:** the real bundle shows its origin, base and schema.<br>• **Flags in the review:** all five are shown; the dependency is named, the migration labelled irreversible and the lock file listed apart. Apply is held until each is acknowledged, and the acknowledgements are focusable, labelled controls.<br>• **Stale destination:** an edit to the project after review is refused against its hunk, with nothing written.<br>• **Tampered stored flags:** removed from the proposal on disk (re-hashed so it verifies), the review shows none, and Apply is refused by the backend as not acknowledged.<br>• **Applied:** one hunk of two, with one file left out; the rest lands; the unrelated file is byte-identical; HEAD, branch and index are unchanged.<br>• **Double-click:** one apply in the audit.<br>• **Again:** the same bundle is `already-applied`; a second bundle is left pending. **Passed on Windows 2026-09-11** |
+| Real WebView scenario, **phase two after a real restart** | `cowork-smoke --only bundle-import-2` on the kept profile | both imports listed from disk (partially applied, pending); the pending one's review opens with its files; abandoning removes it, records it and writes nothing; the unrelated file is unchanged; no private copy is left. **Passed on Windows 2026-09-11** |
+
+Mutation-checked: turning off the patch hash check, the path authorization,
+the approval's binding to its bundle, the acknowledgement requirement, or the
+rollback each fails a test.
+
+What the scenario does not show: the destination is the attached project at
+the base commit, not a separate clone (the clone round trip is the Rust test
+above). The keyboard check proves each acknowledgement is focusable and
+labelled; it does not send real key presses.
+
 ## Worktree export (AH-168)
 
 | Evidence | Where | Covers |

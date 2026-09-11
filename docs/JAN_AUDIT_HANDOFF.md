@@ -2222,6 +2222,29 @@ bundle to a fresh clone at the base and compares the result byte for byte.
 Applying a bundle inside Jan (AH-169) is the next item in this chain and is not
 implemented.
 
+## 2026-09-11 — AH-169 bundle import, and the flag review exercised in the real UI
+
+The Changes panel can now import a patch bundle that AH-168 exported, into the
+attached project. The backend treats the bundle as hostile. It copies it into
+a private folder, checks every entry, path and hash, rebuilds the changes
+against the project's own base commit, and stores them as an ordinary
+proposal. Nothing is extracted into the repository, and no Git state is
+touched. Applying goes through the proposal's review and atomic apply, with
+the approval also bound to the bundle's hashes and the destination, all
+checked again at apply time. Binary files and deletions are now flagged in
+every proposal and need acknowledging. Details: architecture AHD-009d and the
+verification section.
+
+The `bundle-import-1/2` scenario pair also closes the gap AH-154/155/156 had:
+flags, the separate lock-file list, the Apply hold, and the refusal of
+tampered stored flags are now shown through the real review UI, not only over
+IPC.
+
+First attempts, kept: the first build failed on a helper whose name clashed
+with an existing one. The first run failed making a junction, because
+`mklink` was handed forward slashes. Both were fixed; the next run passed
+both phases.
+
 ## 2026-09-11 — Registry finding: seven "implemented" items name files that are gone; AH-177 blocked
 
 A check over the registry found seven items marked `implemented` whose listed

@@ -458,6 +458,16 @@ fn normalize_path(raw: &str) -> Result<String, ProposalError> {
     Ok(parts.join("/"))
 }
 
+/// A path from outside Jan, checked the way a proposal checks its own:
+/// relative, no `..`, no drive, root, UNC or stream, no device name, not
+/// Git's or Jan's state under any spelling. The normalized form on success.
+pub fn validate_path(raw: &str) -> Result<String, ProposalError> {
+    if raw.starts_with('/') || raw.starts_with('\\') {
+        return Err(ProposalError::InvalidPath(raw.to_string()));
+    }
+    normalize_path(raw)
+}
+
 /// `.git` or `.jan`, however Windows lets it be spelled.
 ///
 /// NTFS gives `.git` an 8.3 short name, `GIT~1`, and opens the directory by
@@ -1477,7 +1487,14 @@ mod tests {
             apply(&data, &dest, &partial),
             Err(ProposalError::WholeFileOnly("img.bin".into()))
         );
-        apply(&data, &dest, &approve(&record, &dest, vec![all("img.bin")])).unwrap();
+        // A binary file is flagged: it lands only once acknowledged (AH-169).
+        assert_eq!(
+            apply(&data, &dest, &approve(&record, &dest, vec![all("img.bin")])),
+            Err(ProposalError::Unacknowledged(vec!["img.bin".into()]))
+        );
+        let mut ok = approve(&record, &dest, vec![all("img.bin")]);
+        ok.acknowledged = vec!["img.bin".into()];
+        apply(&data, &dest, &ok).unwrap();
         assert_eq!(std::fs::read(dest.join("img.bin")).unwrap(), bytes);
     }
 
@@ -1680,12 +1697,20 @@ mod tests {
             }],
         )
         .unwrap();
-        std::fs::write(dest.join("old.txt"), "kept by the user\n").unwrap();
+        // A deletion is flagged: it needs acknowledging (AH-169).
         let err = apply(&data, &dest, &approve(&record, &dest, vec![all("old.txt")])).unwrap_err();
+        assert_eq!(err, ProposalError::Unacknowledged(vec!["old.txt".into()]));
+        let acked = || {
+            let mut a = approve(&record, &dest, vec![all("old.txt")]);
+            a.acknowledged = vec!["old.txt".into()];
+            a
+        };
+        std::fs::write(dest.join("old.txt"), "kept by the user\n").unwrap();
+        let err = apply(&data, &dest, &acked()).unwrap_err();
         assert!(matches!(err, ProposalError::Conflicts(_)));
         assert!(dest.join("old.txt").exists());
         std::fs::write(dest.join("old.txt"), "gone\n").unwrap();
-        apply(&data, &dest, &approve(&record, &dest, vec![all("old.txt")])).unwrap();
+        apply(&data, &dest, &acked()).unwrap();
         assert!(!dest.join("old.txt").exists());
     }
 

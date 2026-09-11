@@ -76,6 +76,237 @@ pub fn unified_patch(inputs: &[FileInput]) -> PatchText {
     out
 }
 
+// ---------------------------------------------------------------------------
+// Reading a patch back (AH-169)
+// ---------------------------------------------------------------------------
+
+/// One file's section of a patch, as read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FilePatch {
+    pub path: String,
+    pub added: bool,
+    pub deleted: bool,
+    hunks: Vec<Hunk>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Hunk {
+    old_start: usize,
+    old_len: usize,
+    /// `(' ' | '-' | '+', text including its newline when it has one)`.
+    lines: Vec<(char, String)>,
+}
+
+fn range(spec: &str) -> Option<(usize, usize)> {
+    let mut parts = spec.splitn(2, ',');
+    let start = parts.next()?.parse().ok()?;
+    let len = match parts.next() {
+        Some(l) => l.parse().ok()?,
+        None => 1,
+    };
+    Some((start, len))
+}
+
+/// Split a patch written by [`unified_patch`] into its files.
+///
+/// Strict on purpose: the text comes from outside Jan. Anything this module
+/// does not itself write -- a rename or mode header, a binary patch, a hunk
+/// whose line counts disagree with its header, a path that differs between
+/// its `a/` and `b/` names -- is an error rather than a guess.
+pub fn split_patch(text: &str) -> Result<Vec<FilePatch>, String> {
+    let lines: Vec<&str> = text.split_inclusive('\n').collect();
+    let mut out: Vec<FilePatch> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        let Some(rest) = line.strip_prefix("diff --git a/") else {
+            return Err(format!("line {}: expected a `diff --git` header", i + 1));
+        };
+        let rest = rest.trim_end_matches('\n');
+        let Some((a, b)) = rest.split_once(" b/") else {
+            return Err(format!("line {}: malformed `diff --git` header", i + 1));
+        };
+        if a != b || a.is_empty() {
+            return Err(format!("line {}: a file's two names differ ({a} / {b})", i + 1));
+        }
+        let path = a.to_string();
+        i += 1;
+        let mut fp = FilePatch { path: path.clone(), added: false, deleted: false, hunks: Vec::new() };
+        match lines.get(i).map(|l| l.trim_end_matches('\n')) {
+            Some("new file mode 100644") => {
+                fp.added = true;
+                i += 1;
+            }
+            Some("deleted file mode 100644") => {
+                fp.deleted = true;
+                i += 1;
+            }
+            _ => {}
+        }
+        let old = lines.get(i).map(|l| l.trim_end_matches('\n'));
+        let new = lines.get(i + 1).map(|l| l.trim_end_matches('\n'));
+        let want_old = if fp.added { "--- /dev/null".to_string() } else { format!("--- a/{path}") };
+        let want_new = if fp.deleted { "+++ /dev/null".to_string() } else { format!("+++ b/{path}") };
+        if old != Some(want_old.as_str()) || new != Some(want_new.as_str()) {
+            return Err(format!("{path}: file header lines do not match the file"));
+        }
+        i += 2;
+        while i < lines.len() && lines[i].starts_with("@@ ") {
+            let header = lines[i].trim_end_matches('\n');
+            let inner = header
+                .strip_prefix("@@ -")
+                .and_then(|h| h.split_once(" @@"))
+                .map(|(r, _)| r)
+                .ok_or_else(|| format!("{path}: malformed hunk header {header:?}"))?;
+            let (old_spec, new_spec) = inner
+                .split_once(" +")
+                .ok_or_else(|| format!("{path}: malformed hunk header {header:?}"))?;
+            let (old_start, old_len) = range(old_spec).ok_or_else(|| format!("{path}: bad range {old_spec}"))?;
+            let (_, new_len) = range(new_spec).ok_or_else(|| format!("{path}: bad range {new_spec}"))?;
+            i += 1;
+            let mut hunk = Hunk { old_start, old_len, lines: Vec::new() };
+            let (mut seen_old, mut seen_new) = (0, 0);
+            while i < lines.len() && (seen_old < old_len || seen_new < new_len) {
+                let l = lines[i];
+                let (sign, body) = l.split_at(l.char_indices().nth(1).map_or(l.len(), |(n, _)| n));
+                let sign = sign.chars().next().unwrap_or(' ');
+                match sign {
+                    ' ' => {
+                        seen_old += 1;
+                        seen_new += 1;
+                    }
+                    '-' => seen_old += 1,
+                    '+' => seen_new += 1,
+                    _ => return Err(format!("{path}: unexpected line in a hunk: {l:?}")),
+                }
+                hunk.lines.push((sign, body.to_string()));
+                i += 1;
+                if lines.get(i).is_some_and(|n| n.starts_with("\\ ")) {
+                    if let Some(last) = hunk.lines.last_mut() {
+                        if let Some(stripped) = last.1.strip_suffix('\n') {
+                            last.1 = stripped.to_string();
+                        }
+                    }
+                    i += 1;
+                }
+            }
+            if seen_old != old_len || seen_new != new_len {
+                return Err(format!("{path}: a hunk is shorter than its header says"));
+            }
+            fp.hunks.push(hunk);
+        }
+        if out.iter().any(|o| o.path == path) {
+            return Err(format!("{path} appears twice in the patch"));
+        }
+        out.push(fp);
+    }
+    Ok(out)
+}
+
+/// Apply one file's section to the exact base it was made from.
+///
+/// Every context and removed line must match the base where the hunk says it
+/// is. `Ok(None)` is a deletion.
+pub fn apply_file_patch(base: Option<&str>, fp: &FilePatch) -> Result<Option<String>, String> {
+    if fp.added && base.is_some() {
+        return Err(format!("{} is added by the patch but exists at the base", fp.path));
+    }
+    if !fp.added && base.is_none() {
+        return Err(format!("{} is changed by the patch but is not at the base", fp.path));
+    }
+    let base_lines: Vec<&str> = base.unwrap_or("").split_inclusive('\n').collect();
+    let mut out = String::new();
+    let mut at = 0usize;
+    for h in &fp.hunks {
+        // `-k,0` inserts after line k; otherwise the hunk starts at line k.
+        let start = if h.old_len == 0 { h.old_start } else { h.old_start.saturating_sub(1) };
+        if start < at || start > base_lines.len() {
+            return Err(format!("{}: a hunk is out of order or past the end", fp.path));
+        }
+        out.extend(base_lines[at..start].iter().copied());
+        at = start;
+        for (sign, text) in &h.lines {
+            match sign {
+                ' ' | '-' => {
+                    if base_lines.get(at).copied() != Some(text.as_str()) {
+                        return Err(format!("{}: the patch does not fit its base at line {}", fp.path, at + 1));
+                    }
+                    if *sign == ' ' {
+                        out.push_str(text);
+                    }
+                    at += 1;
+                }
+                _ => out.push_str(text),
+            }
+        }
+    }
+    out.extend(base_lines[at..].iter().copied());
+    if fp.deleted {
+        if !out.is_empty() {
+            return Err(format!("{}: a deletion leaves content behind", fp.path));
+        }
+        return Ok(None);
+    }
+    Ok(Some(out))
+}
+
+#[cfg(test)]
+mod read_back_tests {
+    use super::*;
+
+    fn case(path: &str, base: Option<&str>, new: Option<&str>) -> FileInput {
+        FileInput {
+            path: path.into(),
+            base: base.map(|s| s.as_bytes().to_vec()),
+            proposed: new.map(|s| s.as_bytes().to_vec()),
+        }
+    }
+
+    /// Whatever [`unified_patch`] writes, [`split_patch`] and
+    /// [`apply_file_patch`] turn back into exactly the proposed content.
+    #[test]
+    fn a_written_patch_reads_back_to_the_same_content() {
+        let long: String = (1..=40).map(|i| format!("line {i}\n")).collect();
+        let edited = long.replace("line 3\n", "LINE 3\n").replace("line 30\n", "").replace("line 39\n", "line 39\nextra\n");
+        let cases = vec![
+            case("a.txt", Some("one\ntwo\n"), Some("one\nTWO\n")),
+            case("b/new.txt", None, Some("fresh\nfile")),
+            case("gone.txt", Some("bye\n"), None),
+            case("long.txt", Some(&long), Some(&edited)),
+            case("nl.txt", Some("a\nb"), Some("a\nb\n")),
+            case("nl2.txt", Some("a\nb\n"), Some("a\nc")),
+            case("empty.txt", Some("x\n"), Some("")),
+        ];
+        let patch = unified_patch(&cases);
+        let files = split_patch(&patch.patch).unwrap();
+        assert_eq!(files.len(), cases.len());
+        for c in &cases {
+            let fp = files.iter().find(|f| f.path == c.path).unwrap();
+            let base = c.base.as_deref().map(|b| std::str::from_utf8(b).unwrap());
+            let got = apply_file_patch(base, fp).unwrap();
+            let want = c.proposed.as_deref().map(|b| std::str::from_utf8(b).unwrap().to_string());
+            assert_eq!(got, want, "{}", c.path);
+        }
+    }
+
+    #[test]
+    fn a_patch_that_does_not_fit_or_is_malformed_is_refused() {
+        let patch = unified_patch(&[case("a.txt", Some("one\ntwo\n"), Some("one\nTWO\n"))]).patch;
+        let fp = &split_patch(&patch).unwrap()[0];
+        assert!(apply_file_patch(Some("one\nthree\n"), fp).is_err(), "a different base");
+        assert!(apply_file_patch(None, fp).is_err(), "a missing base");
+        for bad in [
+            patch.replace("diff --git a/a.txt b/a.txt", "diff --git a/a.txt b/other.txt"),
+            patch.replace("+TWO", "+TWO\n+more"),
+            patch.replace("--- a/a.txt", "--- a/x.txt"),
+            "rename from a\n".to_string(),
+            format!("{patch}{patch}"),
+        ] {
+            assert!(split_patch(&bad).is_err(), "accepted: {bad:?}");
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

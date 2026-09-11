@@ -311,6 +311,60 @@ partial directory, and one left by a stopped process is swept by the next
 export. Nothing in the worktree or the user's checkout is written. Applying a
 bundle elsewhere (AH-169) is not implemented.
 
+### AHD-009d: an exported bundle is imported as a proposal (AH-169)
+
+`bundle_import.rs` reads an AH-168 bundle folder as hostile input.
+
+1. **Private copy.** The folder is walked without following links, and every
+   entry is copied into `<data>/imports/<id>.partial/`. Everything after this
+   reads the copy, so the bundle cannot change between check and use.
+   - A link, junction or reparse point anywhere is `entry-link`.
+   - Archives, single files and links as the container are
+     `unsupported-container`. Nothing is decompressed, so there is no
+     decompression-bomb path.
+   - Entries, total bytes, file size, manifest size, path length, depth and
+     elapsed time are bounded (`too-large`).
+2. **Manifest.** Parsed strictly, with unknown fields refused
+   (`manifest-invalid`). A schema other than 1 is `unsupported-version`.
+   Every path goes through `proposal::validate_path` plus an NFC check, which
+   refuses:
+   - `..`, absolute, drive, UNC and backslash paths;
+   - streams and device names;
+   - `.git` and `.jan` at any depth, with trailing dots or as `GIT~N`;
+   - names not in NFC form.
+
+   Paths that collide by case or Unicode normalization are `path-collision`.
+3. **Entries and hashes.** The bundle must hold exactly the manifest, the
+   patch and the declared `files/` (`entry-missing`, `entry-extra`). The patch
+   and each shipped file must match their SHA-256 (`hash-mismatch`). The
+   patch must hold exactly one section per text file in the manifest
+   (`patch-invalid`).
+4. **Destination.** It must be the top level of a Git repository that holds
+   the base commit (`destination-invalid`, `base-missing`). Each file's base
+   is read from that commit with read-only `git cat-file`/`git show`. The
+   patch is re-applied to it in memory and must fit exactly. The result is
+   stored as an ordinary proposal: nothing is extracted into the repository,
+   and no branch, index, stash, config or hook is touched. The same bundle
+   already imported, or every change already present, is `already-applied`.
+5. **Apply.** The approval is the proposal's own plus the import's bundle and
+   manifest hashes and the destination. `apply` re-resolves the destination
+   and checks its path, root commit and base commit
+   (`destination-changed`, `approval-mismatch`). `proposal::apply` then
+   applies selected files and hunks atomically, with rollback. Before each
+   write it recomputes flags from the stored content, checks acknowledgements,
+   and re-checks links and `.git` aliases. A refusal comes back as `refused`
+   with the conflicts or unacknowledged paths.
+
+Binary files and deletions are flagged in every proposal, not only imported
+ones (a rename reaches review as a deletion and an addition). A flagged file
+lands only when its approval acknowledges it.
+
+Import records live in `<data>/imports/<id>.json` and hold hashes and paths,
+never file content. They survive a restart. A pending import can be abandoned,
+which rejects its proposal. The private copy is removed on every path out,
+including cancellation, and a copy left by a dead process is swept by the next
+import.
+
 ### AHD-010: persistence is versioned
 
 Every on-disk structure carries a schema version and has a migration path.

@@ -36,7 +36,7 @@ export type ProposedHunk = {
 
 /** Mirrors `review_flags::ReviewFlag` (AH-154/155/156). */
 export type ReviewFlag = {
-  kind: 'dependency' | 'lockfile' | 'migration'
+  kind: 'dependency' | 'lockfile' | 'migration' | 'binary' | 'deletion'
   summary: string
   details: string[]
 }
