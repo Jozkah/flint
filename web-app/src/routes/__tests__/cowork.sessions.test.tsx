@@ -218,6 +218,7 @@ import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { Route } from '@/routes/cowork'
 import { getSandboxStatus } from '@/lib/agentTools'
+import { useMessageQueue } from '@/stores/message-queue-store'
 
 const CoworkPage = (Route as any).component as () => React.ReactElement
 
@@ -277,6 +278,7 @@ beforeEach(async () => {
     currentId: 'A',
   })
   useCoworkRun.setState({ runs: {}, outcomes: {}, liveTurns: {}, usage: {} })
+  useMessageQueue.setState({ queues: {} })
   render(<CoworkPage />)
   await act(async () => {
     await Promise.resolve()
@@ -391,6 +393,62 @@ describe('a run belongs to the session that started it', () => {
       await Promise.resolve()
     })
     expect(answered).toBeUndefined()
+  })
+
+  /// janhq/jan#8864. Input typed into a session while its run works is handed
+  /// to that run at a boundary -- only that session's input, marked as
+  /// steering in the transcript -- and never to another session's run.
+  it('hands a running session only its own typed input, marked as steering', async () => {
+    const a = await startRunIn('A')
+    const b = await startRunIn('B')
+    const queue = useMessageQueue.getState()
+    queue.enqueue('A', { id: 'a1', text: 'use pnpm', createdAt: 1 })
+    queue.enqueue('A', { id: 'a2', text: 'then test', createdAt: 2 })
+    queue.enqueue('B', { id: 'b1', text: 'for B only', createdAt: 3 })
+    let taken: any[] = []
+    act(() => {
+      taken = a.opts.deps.takeSteering()
+    })
+    expect(taken.map((m: any) => m.parts[0].text)).toEqual(['use pnpm', 'then test'])
+    expect(taken.every((m: any) => m.role === 'user')).toBe(true)
+    // Delivered: gone from the queue, in A's transcript, marked.
+    expect(useMessageQueue.getState().getQueue('A')).toEqual([])
+    const liveA = useCoworkRun.getState().liveTurns.A ?? []
+    expect(liveA.filter((t: any) => t.steered).map((t: any) => t.content)).toEqual([
+      'use pnpm',
+      'then test',
+    ])
+    expect(JSON.stringify(useCoworkRun.getState().liveTurns.B ?? [])).not.toContain('use pnpm')
+    // B's run gets B's input and nothing of A's.
+    let takenB: any[] = []
+    act(() => {
+      takenB = b.opts.deps.takeSteering()
+    })
+    expect(takenB.map((m: any) => m.parts[0].text)).toEqual(['for B only'])
+  })
+
+  it('holds input a failed run did not take, and does not send it on its own', async () => {
+    const a = await startRunIn('A')
+    useMessageQueue.getState().enqueue('A', { id: 'late', text: 'too late', createdAt: 1 })
+    await settle(a, { stoppedBy: 'error', errorText: 'provider exploded' })
+    await waitFor(() => expect(useCoworkRun.getState().runs.A).toBeUndefined())
+    expect(useMessageQueue.getState().getQueue('A')).toEqual([
+      expect.objectContaining({ id: 'late', held: true }),
+    ])
+    // Idle now, and still no new run for it.
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(h.runs).toHaveLength(1)
+    expect(screen.getByTestId('cowork-held-input')).toHaveTextContent('too late')
+  })
+
+  it('sends input typed after a finished run as the next request', async () => {
+    const a = await startRunIn('A')
+    useMessageQueue.getState().enqueue('A', { id: 'next', text: 'follow up', createdAt: 1 })
+    await settle(a)
+    await waitFor(() => expect(h.runs).toHaveLength(2))
+    expect(h.runs[1].sid).toBe('A')
   })
 
   /// Found by the real-app two-session Stop scenario. A run is claimed before

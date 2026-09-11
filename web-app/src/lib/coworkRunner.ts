@@ -514,6 +514,14 @@ export type RunDeps = {
   }) => void
   /** Monotonic ids for the assistant messages this run appends. */
   nextMessageId: () => string
+  /**
+   * Input the user typed while this run was working, handed over at a safe
+   * boundary: before a model call, after every tool result of the previous
+   * step, and when the model is about to hand back its answer. Returns the
+   * messages taken, in the order they were typed; they are no longer pending
+   * once returned. janhq/jan#8864.
+   */
+  takeSteering?: () => UIMessage[]
 }
 
 export type RunOutcome = {
@@ -600,6 +608,13 @@ export async function runTurn(opts: {
         stoppedBy: 'deadline',
       }
     }
+
+    // The safe boundary (janhq/jan#8864): every tool result of the last step is
+    // in and no model call is under way, so input typed meanwhile reaches the
+    // model now rather than after the run ends. Plain user messages, in the
+    // order typed -- never folded into the model's own turn.
+    const steered = deps.takeSteering?.() ?? []
+    if (steered.length > 0) messages.push(...steered)
 
     // A snapshot, not the live array: the loop pushes to `messages` after the
     // stream is handed over, and the transport rewrites what it is given
@@ -806,6 +821,14 @@ export async function runTurn(opts: {
     }
     // No tool calls means the model answered rather than asked for more work.
     if (result.toolCalls.length === 0) {
+      // Input that arrived while that answer was written continues this run:
+      // the answer is already in the history, the input follows it, and the
+      // model replies to both. The caps are checked again at the top.
+      const late = deps.takeSteering?.() ?? []
+      if (late.length > 0) {
+        messages.push(...late)
+        continue
+      }
       return {
         messages,
         steps: step,

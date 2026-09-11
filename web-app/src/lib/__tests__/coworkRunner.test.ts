@@ -179,6 +179,90 @@ describe('consumeStep', () => {
   })
 })
 
+describe('steering a running turn (janhq/jan#8864)', () => {
+  const userText = (m: UIMessage) =>
+    (m.parts as { type: string; text?: string }[])
+      .filter((p) => p.type === 'text')
+      .map((p) => p.text)
+      .join('')
+
+  it('delivers input after every tool result of the step and before the next model call, in order', async () => {
+    const pending: UIMessage[][] = [
+      [],
+      [
+        { id: 's1', role: 'user', parts: [{ type: 'text', text: 'use pnpm' }] } as UIMessage,
+        { id: 's2', role: 'user', parts: [{ type: 'text', text: 'then test' }] } as UIMessage,
+      ],
+    ]
+    const d = {
+      ...deps([toolStep('read'), textStep('done')]),
+      takeSteering: vi.fn(() => pending.shift() ?? []),
+    }
+    const out = await runTurn({
+      messages: [user('go')],
+      signal: new AbortController().signal,
+      deps: d,
+    } as never)
+    expect(out.stoppedBy).toBe('done')
+    // The second model call is the first to see it: after the tool round.
+    const second = (d.sendStep.mock.calls[1] as unknown as [UIMessage[]])[0]
+    const roles = second.map((m) => m.role)
+    expect(roles).toEqual(['user', 'assistant', 'user', 'user'])
+    expect(userText(second[2])).toBe('use pnpm')
+    expect(userText(second[3])).toBe('then test')
+    const first = (d.sendStep.mock.calls[0] as unknown as [UIMessage[]])[0]
+    expect(first).toHaveLength(1)
+  })
+
+  it('continues the same run when input arrives with the final answer', async () => {
+    let offered = 0
+    const d = {
+      ...deps([textStep('first answer'), textStep('revised answer')]),
+      takeSteering: vi.fn(() => {
+        offered += 1
+        // Nothing at the first boundary; the correction arrives while the
+        // first answer is being written.
+        return offered === 2
+          ? [{ id: 's1', role: 'user', parts: [{ type: 'text', text: 'correction' }] } as UIMessage]
+          : []
+      }),
+    }
+    const out = await runTurn({
+      messages: [user('go')],
+      signal: new AbortController().signal,
+      deps: d,
+    } as never)
+    expect(d.sendStep).toHaveBeenCalledTimes(2)
+    const second = (d.sendStep.mock.calls[1] as unknown as [UIMessage[]])[0]
+    expect(second.map((m) => m.role)).toEqual(['user', 'assistant', 'user'])
+    expect(userText(second[2])).toBe('correction')
+    expect(out.stoppedBy).toBe('done')
+    // Never dressed up as the model's own words.
+    expect(out.messages.filter((m) => m.role === 'assistant').map(userText)).toEqual([
+      'first answer',
+      'revised answer',
+    ])
+  })
+
+  it('takes nothing after a stop', async () => {
+    const controller = new AbortController()
+    const takeSteering = vi.fn(() => [])
+    const d = { ...deps([toolStep('read')]), takeSteering }
+    d.dispatch.mockImplementation(async () => {
+      controller.abort('cancelled')
+      return { output: 'ok' }
+    })
+    const out = await runTurn({
+      messages: [user('go')],
+      signal: controller.signal,
+      deps: d,
+    } as never)
+    expect(out.stoppedBy).toBe('aborted')
+    // Offered once, before the first call; never after the stop.
+    expect(takeSteering).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('an invalid tool call', () => {
   /// The regression. A call to a tool the model was not offered came back as
   /// `tool-input-error` and was ignored, so the step had no tool calls and the

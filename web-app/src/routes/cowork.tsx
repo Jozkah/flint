@@ -179,6 +179,7 @@ import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
+import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
 import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
 import { orphans as orphanWorktrees } from '@/lib/coworkWorktrees'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
@@ -1692,7 +1693,9 @@ function CoworkPage() {
         undefined
       )
       useCoworkRun.getState().finishRun(sid, runId, ending)
-      if (ending.stoppedBy === 'error') useMessageQueue.getState().clearQueue(sid)
+      // Input typed for a run that never ran is held for the user, never
+      // dropped and never sent on its own. janhq/jan#8864.
+      useMessageQueue.getState().holdQueue(sid)
     }
     const STOPPED = Symbol('stopped')
     /** A preparation step, given up the moment Stop is pressed. */
@@ -2757,6 +2760,26 @@ function CoworkPage() {
             let n = baseMessages.length
             return () => `${sid}-asst-${n++}`
           })(),
+          // janhq/jan#8864. What was typed into this session's composer while
+          // the run worked, taken at the runner's safe boundaries. Only this
+          // session's queue: input typed in another session never reaches
+          // this run, whichever session is in view. Shown in the transcript
+          // where it entered the conversation, marked as steering.
+          takeSteering: () => {
+            const taken = useMessageQueue.getState().takeReady(sid)
+            if (taken.length === 0) return []
+            pushLive(
+              taken.map((m) => ({ role: 'user' as const, content: m.text, steered: true }))
+            )
+            return taken.map(
+              (m) =>
+                ({
+                  id: `${sid}-steer-${m.id}`,
+                  role: 'user',
+                  parts: [{ type: 'text', text: m.text }],
+                }) as any
+            )
+          },
         },
       })
     } catch (e) {
@@ -2838,9 +2861,13 @@ function CoworkPage() {
               }
             : null
         )
-      // A failed run drops what was queued behind it. A finished one lets the
-      // next queued message go, from the effect watching the session in view.
-      if (stop === 'error') useMessageQueue.getState().clearQueue(sid)
+      // A finished run lets what was typed after its last boundary go as the
+      // next request, from the effect watching the session in view. Any other
+      // ending -- a failure, Stop, a cap -- holds it for the user to send or
+      // discard: it was typed for a run that did not see it, and neither
+      // dropping it silently nor sending it on its own is right.
+      // janhq/jan#8864.
+      if (stop && stop !== 'done') useMessageQueue.getState().holdQueue(sid)
     }
   }
 
@@ -2884,9 +2911,42 @@ function CoworkPage() {
    * or when the user returns to a session whose run finished while they were
    * elsewhere. Never dispatched into another session.
    */
+  /**
+   * Pending input survives a restart (janhq/jan#8864). Every change to a Cowork
+   * session's queue is mirrored into the persisted session, and what the
+   * session recorded comes back held -- for the user to send or discard, never
+   * sent on its own. Restoring skips what is already queued, so this is
+   * harmless while the app is running.
+   */
+  useEffect(
+    () =>
+      useMessageQueue.subscribe((state, prev) => {
+        const store = useCoworkSessions.getState()
+        for (const s of store.sessions) {
+          const now = state.queues[s.id] ?? []
+          if (now !== (prev.queues[s.id] ?? [])) store.setPendingInput(s.id, now)
+        }
+      }),
+    []
+  )
+  const sessionsWithPending = useCoworkSessions((s) =>
+    s.sessions
+      .filter((x) => (x.pendingInput?.length ?? 0) > 0)
+      .map((x) => x.id)
+      .join(',')
+  )
+  useEffect(() => {
+    for (const s of useCoworkSessions.getState().sessions) {
+      if (s.pendingInput?.length) {
+        useMessageQueue.getState().restoreHeld(s.id, s.pendingInput)
+      }
+    }
+  }, [sessionsWithPending])
+
   useEffect(() => {
     if (running || !session?.id) return
-    const next = useMessageQueue.getState().dequeue(session.id)
+    // Held input waits for the user; only what is ready goes.
+    const next = useMessageQueue.getState().dequeueReady(session.id)
     if (next) void runRequestRef.current(next.text)
   }, [running, session?.id])
 
@@ -3221,6 +3281,9 @@ function CoworkPage() {
                   {stoppedBy === 'aborted' && (
                     <CoworkRunNotice kind="stopped" />
                   )}
+                  {session?.id ? (
+                    <CoworkHeldInput sessionId={session.id} running={running} />
+                  ) : null}
                   {stoppedBy === 'error' && (
                     <CoworkRunNotice
                       kind="error"

@@ -14,6 +14,12 @@ export type CoworkTurn = {
   content: string
   /** User-row only: data URLs of images attached via paste/file picker. */
   images?: string[]
+  /**
+   * User-row only: typed while the agent was working and handed to it at the
+   * next safe point of that run, rather than starting a run of its own.
+   * janhq/jan#8864.
+   */
+  steered?: boolean
   callId?: string
   name?: string
   args?: unknown

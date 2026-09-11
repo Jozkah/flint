@@ -1061,6 +1061,13 @@
       "not-captured": "No starting state recorded yet."
     }
   },
+  "steering": {
+    "delivered": "Sent to the agent while it was working",
+    "held_one": "1 message was not delivered: the run it was typed for did not take it",
+    "held_other": "{{count}} messages were not delivered: the run they were typed for did not take them",
+    "send": "Send",
+    "discard": "Discard"
+  },
   "coworkAccess": {
     "label": "Where changes go",
     "review-only": {

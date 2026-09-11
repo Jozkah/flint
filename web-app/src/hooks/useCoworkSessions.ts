@@ -86,6 +86,12 @@ export type CoworkSession = {
    */
   model?: { provider: string; id: string }
   /**
+   * Input typed for this session that no run has taken yet, kept so a restart
+   * brings it back -- held, for the user to send or discard -- rather than
+   * losing it. janhq/jan#8864.
+   */
+  pendingInput?: { id: string; text: string; createdAt: number }[]
+  /**
    * What this session is allowed to do. Absent on sessions from before modes
    * existed, which `modeOf` reads from `planMode` instead.
    */
@@ -182,6 +188,11 @@ type CoworkSessionsState = {
   setFolder: (id: string, folder: string | null) => void
   /** The session's own provider/model choice (janhq/jan#8905). */
   setModel: (id: string, model: { provider: string; id: string }) => void
+  /** Record the input still pending for the session; empty clears it. */
+  setPendingInput: (
+    id: string,
+    pending: { id: string; text: string; createdAt: number }[]
+  ) => void
   setMode: (id: string, mode: CoworkMode) => void
   /** Record, or clear, where the session is in its opening exchange. */
   setContinuity: (id: string, continuity: ContinuityRecord | null) => void
@@ -325,6 +336,23 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
             x.id === id ? { ...x, model: { ...model } } : x
           ),
         })),
+
+      setPendingInput: (id, pending) =>
+        set((s) => {
+          const current = s.sessions.find((x) => x.id === id)
+          if (!current) return s
+          const next = pending.map(({ id, text, createdAt }) => ({ id, text, createdAt }))
+          if (JSON.stringify(current.pendingInput ?? []) === JSON.stringify(next)) {
+            return s
+          }
+          return {
+            sessions: s.sessions.map((x) =>
+              x.id === id
+                ? { ...x, pendingInput: next.length > 0 ? next : undefined }
+                : x
+            ),
+          }
+        }),
 
       // Attaching, switching and detaching all land here, so the code panel is
       // pruned in the same update: a tab from the old project must never be

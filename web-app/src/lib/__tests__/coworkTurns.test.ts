@@ -23,6 +23,18 @@ describe('coworkTurnsToUIMessages', () => {
     ])
   })
 
+  /// janhq/jan#8864. A message handed to a run mid-way is marked, so the
+  /// transcript can say it steered that run rather than started one.
+  it('marks a steered user turn, and only that one', () => {
+    const messages = coworkTurnsToUIMessages([
+      { role: 'user', content: 'start' },
+      { role: 'assistant', content: 'working' },
+      { role: 'user', content: 'use pnpm', steered: true },
+    ]) as any[]
+    expect(messages[0].metadata).toBeUndefined()
+    expect(messages[2].metadata).toEqual({ steered: true })
+  })
+
   it('maps a tool turn onto a tool-<name> part carrying its input', () => {
     const part = toolPart([
       {
