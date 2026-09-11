@@ -260,6 +260,33 @@ Snapshot ids carry the process's launch stamp. Before this, every launch
 numbered its snapshots from `snap-1` again, so an id could name an earlier
 launch's record.
 
+### AHD-009b: some changes need a closer look than their diff (AH-154/155/156)
+
+A proposal's files can carry flags, which `review_flags.rs` works out from the
+stored before and after of each file:
+
+- `dependency`: a manifest's dependency entries were added, changed or
+  removed. `package.json`, `Cargo.toml` (every dependency table),
+  `pyproject.toml`, `requirements*.txt` and `go.mod` are read and compared
+  entry by entry. Other manifests are flagged whenever they change. A manifest
+  that cannot be read is flagged as unreadable, never passed.
+- `lockfile`: a lock file changed. The review lists lock files apart from
+  source changes.
+- `migration`: a file in a migrations directory, or SQL with schema or data
+  statements. It is described as irreversible: reverting the file does not
+  undo a migration that has run.
+
+A selected file with a flag is applied only when the approval names it in
+`acknowledged`. `plan` works the flags out again from the stored blobs rather
+than trusting the record, so a record whose flags were removed on disk still
+needs the acknowledgement. A refusal is the typed `Unacknowledged(paths)`, and
+nothing is written, including the unflagged files in the same approval. An
+acknowledgement covers only the path it names, with no case folding, and only
+for files that are both selected and flagged.
+
+This is a reading of well-known formats, not a package manager: it does not
+resolve versions or fetch anything.
+
 ### AHD-010: persistence is versioned
 
 Every on-disk structure carries a schema version and has a migration path.

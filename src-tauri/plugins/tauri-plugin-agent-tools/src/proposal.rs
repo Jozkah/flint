@@ -101,6 +101,11 @@ pub struct ProposedFile {
     pub deletions: usize,
     /// Empty for binary and oversized files, which are decided whole.
     pub hunks: Vec<ProposedHunk>,
+    /// A dependency, lock file or migration change (AH-154/155/156). Shown to
+    /// the reviewer; applying the file needs it acknowledged. Worked out again
+    /// from the stored content when the change is applied.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<crate::review_flags::ReviewFlag>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,6 +179,10 @@ pub struct Approval {
     pub base_state_hash: String,
     pub scope: ProposalScope,
     pub files: Vec<FileSelection>,
+    /// Flagged files the person said they reviewed as flagged. A selected
+    /// file with a flag that is not named here is not applied.
+    #[serde(default)]
+    pub acknowledged: Vec<String>,
 }
 
 /// A selected hunk that cannot be applied without overwriting an edit made at
@@ -205,6 +214,9 @@ pub enum ProposalError {
     /// A path at the destination that passes through a symlink, junction or
     /// other reparse point, so writing it would land somewhere else.
     LinkedDestination(String),
+    /// Selected files with a dependency, lock file or migration flag that the
+    /// approval did not acknowledge.
+    Unacknowledged(Vec<String>),
     Conflicts(Vec<Conflict>),
     Io(String),
 }
@@ -240,6 +252,10 @@ impl ProposalError {
             }
             ProposalError::LinkedDestination(p) => format!(
                 "{p} passes through a link in your folder, so writing it would land elsewhere; nothing was written"
+            ),
+            ProposalError::Unacknowledged(paths) => format!(
+                "{} changes a dependency, lock file or migration and was not acknowledged as reviewed; nothing was written",
+                paths.join(", ")
             ),
             ProposalError::Conflicts(c) => format!(
                 "{} selected change(s) overlap edits made since the proposal; nothing was written",
@@ -639,6 +655,11 @@ pub fn create(
             .max(input.proposed.as_ref().map_or(0, Vec::len));
         let oversized = size > OVERSIZED_BYTES;
         let sensitive = is_sensitive(&path, input.proposed.as_deref());
+        let flags = crate::review_flags::flags_for(
+            &path,
+            input.base.as_deref(),
+            input.proposed.as_deref(),
+        );
 
         let (mut additions, mut deletions, mut hunks) = (0, 0, Vec::new());
         if !binary && !oversized {
@@ -674,6 +695,7 @@ pub fn create(
             additions,
             deletions,
             hunks,
+            flags,
         });
     }
 
@@ -915,6 +937,7 @@ pub fn plan(
     let mut seen_paths = BTreeSet::new();
     let mut planned = Vec::new();
     let mut conflicts = Vec::new();
+    let mut unacknowledged = Vec::new();
 
     for sel in &approval.files {
         let Some(file) = by_path.get(sel.path.as_str()).copied() else {
@@ -967,6 +990,15 @@ pub fn plan(
             Some(id) => Some(read_blob(data_folder, id).map_err(ProposalError::Io)?),
             None => None,
         };
+        // From the content, not from the record's `flags`: a record whose
+        // flags were emptied on disk still needs the acknowledgement.
+        let flagged = !file.flags.is_empty()
+            || !crate::review_flags::flags_for(&file.path, base.as_deref(), proposed.as_deref())
+                .is_empty();
+        if flagged && !approval.acknowledged.iter().any(|p| p == &file.path) {
+            unacknowledged.push(file.path.clone());
+            continue;
+        }
         let current = read_current(dest_root, &file.path)?;
 
         // Whole-file changes: the destination must still be the base.
@@ -1040,6 +1072,9 @@ pub fn plan(
         }
     }
 
+    if !unacknowledged.is_empty() {
+        return Err(ProposalError::Unacknowledged(unacknowledged));
+    }
     if !conflicts.is_empty() {
         return Err(ProposalError::Conflicts(conflicts));
     }
@@ -1226,6 +1261,7 @@ mod tests {
             base_state_hash: record.base_state_hash.clone(),
             scope: scope(dest),
             files,
+            acknowledged: Vec::new(),
         }
     }
 
@@ -1813,5 +1849,117 @@ mod tests {
             assert_eq!((&s.path, s.change, s.additions, s.deletions), (&f.path, f.change, f.additions, f.deletions));
         }
         assert_eq!((summary[0].additions, summary[0].deletions), (2, 2));
+    }
+
+    // ---- AH-154/155/156: flagged changes need acknowledging ---------------
+
+    const PKG_BEFORE: &str = "{\n  \"dependencies\": {\n    \"react\": \"^18.0.0\"\n  }\n}\n";
+    const PKG_AFTER: &str =
+        "{\n  \"dependencies\": {\n    \"react\": \"^18.0.0\",\n    \"left-pad\": \"1.3.0\"\n  }\n}\n";
+
+    fn flagged(data: &Path, dest: &Path) -> ProposalRecord {
+        std::fs::write(dest.join("package.json"), PKG_BEFORE).unwrap();
+        std::fs::write(dest.join("a.txt"), BASE).unwrap();
+        create(
+            data,
+            scope(dest),
+            "abc123",
+            vec![
+                FileInput {
+                    path: "package.json".into(),
+                    base: Some(PKG_BEFORE.as_bytes().to_vec()),
+                    proposed: Some(PKG_AFTER.as_bytes().to_vec()),
+                },
+                FileInput {
+                    path: "a.txt".into(),
+                    base: Some(BASE.as_bytes().to_vec()),
+                    proposed: Some(PROPOSED.as_bytes().to_vec()),
+                },
+            ],
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_dependency_change_is_flagged_and_not_applied_unacknowledged() {
+        let (data, dest) = dirs("flag-refused");
+        let record = flagged(&data, &dest);
+        let pkg = record.files.iter().find(|f| f.path == "package.json").unwrap();
+        assert_eq!(pkg.flags[0].kind, crate::review_flags::FlagKind::Dependency);
+        assert!(pkg.flags[0].details.iter().any(|d| d.contains("left-pad")));
+        assert!(record.files.iter().find(|f| f.path == "a.txt").unwrap().flags.is_empty());
+
+        let err = apply(&data, &dest, &approve(&record, &dest, vec![all("package.json"), all("a.txt")]))
+            .unwrap_err();
+        assert_eq!(err, ProposalError::Unacknowledged(vec!["package.json".into()]));
+        // Nothing was written, the unflagged file included.
+        assert_eq!(std::fs::read_to_string(dest.join("package.json")).unwrap(), PKG_BEFORE);
+        assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), BASE);
+        assert_eq!(load(&data, &record.id).unwrap().state, ProposalState::Pending);
+
+        // Acknowledging another file does not cover this one.
+        let mut other = approve(&record, &dest, vec![all("package.json")]);
+        other.acknowledged = vec!["a.txt".into(), "PACKAGE.JSON".into()];
+        assert!(matches!(apply(&data, &dest, &other), Err(ProposalError::Unacknowledged(_))));
+    }
+
+    #[test]
+    fn an_acknowledged_dependency_change_applies() {
+        let (data, dest) = dirs("flag-acked");
+        let record = flagged(&data, &dest);
+        let mut ok = approve(&record, &dest, vec![all("package.json"), all("a.txt")]);
+        ok.acknowledged = vec!["package.json".into()];
+        apply(&data, &dest, &ok).unwrap();
+        assert_eq!(std::fs::read_to_string(dest.join("package.json")).unwrap(), PKG_AFTER);
+        // An unflagged file alone never needed it.
+        let (data2, dest2) = dirs("flag-unflagged");
+        let r2 = flagged(&data2, &dest2);
+        apply(&data2, &dest2, &approve(&r2, &dest2, vec![all("a.txt")])).unwrap();
+        assert_eq!(std::fs::read_to_string(dest2.join("a.txt")).unwrap(), PROPOSED);
+    }
+
+    /// The flag is worked out again from the stored content: emptying it in
+    /// the record on disk, and re-hashing so the record still verifies, does
+    /// not let the change through unacknowledged.
+    #[test]
+    fn a_flag_removed_from_the_stored_record_still_needs_acknowledging() {
+        let (data, dest) = dirs("flag-tampered");
+        let mut record = flagged(&data, &dest);
+        for f in &mut record.files {
+            f.flags.clear();
+        }
+        record.patch_hash = patch_hash_of(&record.files);
+        save(&data, &record).unwrap();
+        let err = apply(&data, &dest, &approve(&record, &dest, vec![all("package.json")])).unwrap_err();
+        assert_eq!(err, ProposalError::Unacknowledged(vec!["package.json".into()]));
+        assert_eq!(std::fs::read_to_string(dest.join("package.json")).unwrap(), PKG_BEFORE);
+    }
+
+    #[test]
+    fn lock_files_and_migrations_need_acknowledging_too() {
+        let (data, dest) = dirs("flag-lock-migration");
+        std::fs::create_dir_all(dest.join("db/migrations")).unwrap();
+        let record = create(
+            &data,
+            scope(&dest),
+            "abc",
+            vec![
+                FileInput { path: "Cargo.lock".into(), base: None, proposed: Some(b"x\n".to_vec()) },
+                FileInput {
+                    path: "db/migrations/0002.sql".into(),
+                    base: None,
+                    proposed: Some(b"DROP TABLE users;\n".to_vec()),
+                },
+            ],
+        )
+        .unwrap();
+        let err = apply(&data, &dest, &approve(&record, &dest, vec![all("Cargo.lock"), all("db/migrations/0002.sql")]))
+            .unwrap_err();
+        assert_eq!(
+            err,
+            ProposalError::Unacknowledged(vec!["Cargo.lock".into(), "db/migrations/0002.sql".into()])
+        );
+        assert!(!dest.join("Cargo.lock").exists());
+        assert!(!dest.join("db/migrations/0002.sql").exists());
     }
 }

@@ -1032,6 +1032,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_proposal_review,
     },
     Scenario {
+        name: "proposal-flags",
+        run: scenario_proposal_flags,
+    },
+    Scenario {
         name: "managed-worktree-review",
         run: scenario_managed_worktree_review,
     },
@@ -3207,6 +3211,126 @@ fn scenario_proposal_review(ctx: &Ctx) -> ScenarioResult {
         &format!("{{ dataFolder: {data:?}, record: {record}, force: true }}"),
     );
     std::fs::write(ctx.project.join(file), &base).map_err(|e| fail(e.to_string()))?;
+    Ok(())
+}
+
+/// A dependency, a lock file and a migration in a worktree's changes are
+/// flagged by the backend, and none of them is applied until the approval
+/// acknowledges it -- over real IPC, into the real backend. AH-154/155/156.
+fn scenario_proposal_flags(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    let read = |p: &Path| std::fs::read_to_string(p).unwrap_or_default();
+    // In a folder of its own: the fixture project has a package.json of its
+    // own at its root, with no dependencies.
+    let manifest = "flags-fixture/package.json";
+    let lock = "flags-fixture/yarn.lock";
+    let migration = "db/migrations/0002_drop_users.sql";
+    std::fs::create_dir_all(ctx.project.join("flags-fixture")).map_err(|e| fail(e.to_string()))?;
+    let before = "{\n  \"name\": \"fixture\",\n  \"dependencies\": {\n    \"react\": \"^18.0.0\"\n  }\n}\n";
+    let after = "{\n  \"name\": \"fixture\",\n  \"dependencies\": {\n    \"react\": \"^19.0.0\",\n    \"left-pad\": \"1.3.0\"\n  }\n}\n";
+
+    if git(&ctx.project, &["ls-files", "--error-unmatch", manifest]).is_err() {
+        std::fs::write(ctx.project.join(manifest), before).map_err(|e| fail(e.to_string()))?;
+        git(&ctx.project, &["add", manifest]).map_err(fail)?;
+        git(&ctx.project, &["commit", "-qm", "flags base"]).map_err(fail)?;
+    }
+    std::fs::write(ctx.project.join(manifest), before).map_err(|e| fail(e.to_string()))?;
+    let _ = std::fs::remove_file(ctx.project.join(lock));
+    let _ = std::fs::remove_dir_all(ctx.project.join("db"));
+
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let project = ctx.project.to_string_lossy().to_string();
+    let session = "smoke-proposal-flags";
+    let (ok, record) = ipc(
+        ctx,
+        "agent_worktree_ensure",
+        &format!("{{ dataFolder: {data:?}, sessionId: {session:?}, project: {project:?} }}"),
+    )?;
+    ensure!(ok, "could not make the worktree: {record}");
+    let worktree = PathBuf::from(record.get("path").and_then(Value::as_str).unwrap_or_default());
+    let _ = git(&worktree, &["checkout", "--", "."]);
+    std::fs::create_dir_all(worktree.join("flags-fixture")).map_err(|e| fail(e.to_string()))?;
+    std::fs::write(worktree.join(manifest), after).map_err(|e| fail(e.to_string()))?;
+    std::fs::write(worktree.join(lock), "left-pad@1.3.0:\n  resolved \"https://registry.example/left-pad\"\n")
+        .map_err(|e| fail(e.to_string()))?;
+    std::fs::create_dir_all(worktree.join("db/migrations")).map_err(|e| fail(e.to_string()))?;
+    std::fs::write(worktree.join(migration), "DROP TABLE users;\n").map_err(|e| fail(e.to_string()))?;
+
+    let (ok, proposal) = ipc(
+        ctx,
+        "agent_proposal_from_worktree",
+        &format!("{{ record: {record}, session: {session:?}, run: null, agent: null }}"),
+    )?;
+    ensure!(ok, "the worktree's changes were not proposed: {proposal}");
+    let kinds = |path: &str| -> Vec<String> {
+        proposal["files"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|f| f["path"] == path)
+            .flat_map(|f| f["flags"].as_array().cloned().unwrap_or_default())
+            .filter_map(|f| f["kind"].as_str().map(str::to_string))
+            .collect()
+    };
+    ensure!(kinds(manifest) == ["dependency"], "package.json flags: {:?}", kinds(manifest));
+    ensure!(kinds(lock) == ["lockfile"], "yarn.lock flags: {:?}", kinds(lock));
+    ensure!(kinds(migration) == ["migration"], "migration flags: {:?}", kinds(migration));
+    ensure!(
+        proposal.to_string().contains("left-pad (dependencies) added at 1.3.0")
+            && proposal.to_string().contains("react (dependencies) changed from ^18.0.0 to ^19.0.0"),
+        "the dependency flag does not say what changed: {}",
+        proposal["files"]
+    );
+
+    let approval = |acknowledged: Value| -> Value {
+        serde_json::json!({
+            "proposalId": proposal["id"],
+            "patchHash": proposal["patchHash"],
+            "baseStateHash": proposal["baseStateHash"],
+            "scope": proposal["scope"],
+            "files": [
+                { "path": manifest, "hunks": { "kind": "all" } },
+                { "path": lock, "hunks": { "kind": "all" } },
+                { "path": migration, "hunks": { "kind": "all" } }
+            ],
+            "acknowledged": acknowledged,
+        })
+    };
+
+    // Refused, typed and whole, without the acknowledgement -- and with one
+    // that names only some of the flagged files.
+    for acknowledged in [serde_json::json!([]), serde_json::json!([manifest])] {
+        let a = approval(acknowledged);
+        let (ok, refusal) = ipc(ctx, "agent_proposal_apply", &format!("{{ approval: {a} }}"))?;
+        ensure!(!ok, "a flagged change was applied without being acknowledged");
+        let named: Vec<&str> = refusal["unacknowledged"]
+            .as_array()
+            .map(|a| a.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        ensure!(
+            named.contains(&lock) && named.contains(&migration),
+            "the refusal did not name the unacknowledged files: {refusal}"
+        );
+        ensure!(read(&ctx.project.join(manifest)) == before, "a refused apply wrote package.json");
+        ensure!(!ctx.project.join(lock).exists(), "a refused apply wrote the lock file");
+        ensure!(!ctx.project.join(migration).exists(), "a refused apply wrote the migration");
+    }
+
+    // Acknowledged: everything lands.
+    let a = approval(serde_json::json!([manifest, lock, migration]));
+    let (ok, report) = ipc(ctx, "agent_proposal_apply", &format!("{{ approval: {a} }}"))?;
+    ensure!(ok, "the acknowledged change was refused: {report}");
+    ensure!(read(&ctx.project.join(manifest)) == after, "package.json did not land");
+    ensure!(ctx.project.join(migration).exists(), "the migration did not land");
+
+    let _ = ipc(
+        ctx,
+        "agent_worktree_discard",
+        &format!("{{ dataFolder: {data:?}, record: {record}, force: true }}"),
+    );
+    std::fs::write(ctx.project.join(manifest), before).map_err(|e| fail(e.to_string()))?;
+    let _ = std::fs::remove_file(ctx.project.join(lock));
+    let _ = std::fs::remove_dir_all(ctx.project.join("db"));
     Ok(())
 }
 

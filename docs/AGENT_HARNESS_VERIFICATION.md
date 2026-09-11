@@ -226,6 +226,22 @@ Run: `cargo test -p tauri-plugin-agent-tools -- --test-threads=4 proposal::`,
 `cargo test --lib --no-default-features --features test-tauri -- team_children proposals subagent`,
 `npx vitest run src/lib/__tests__/coworkTeamScopes.test.ts src/containers/__tests__/CoworkTeam*`.
 
+## Dependency, lock file and migration flags (AH-154 / AH-155 / AH-156)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 7 unit tests | `plugins/tauri-plugin-agent-tools/src/review_flags.rs` | a package added, upgraded, dev-added and removed in `package.json`, each named; a manifest edit that leaves dependencies alone is not flagged; Cargo dependencies in plain, `target.*` and `workspace` tables, including a git source; `requirements.txt`, `go.mod` and `pyproject.toml` entries; an unreadable manifest flagged, not passed; lock files flagged on their own; schema and data migrations, a migration directory, a deleted migration, and SQL without schema or data statements left alone |
+| 4 integration tests | `plugins/tauri-plugin-agent-tools/src/proposal.rs` | a flagged file in an approval without acknowledgement is refused with `Unacknowledged` and nothing is written, the unflagged file included; acknowledging another file, or a differently cased path, does not cover it; acknowledged, it applies, and an unflagged file never needs it; **negative**: flags emptied in the stored record, re-hashed so the record still verifies, are worked out again and the file is still refused; lock files and migrations need it too |
+| 4 component tests | `web-app/src/containers/__tests__/CoworkProposalReview.test.tsx` | flags and their details are shown on the file; lock files listed apart from source changes; Apply held, naming the files, until each selected flagged file is marked reviewed; the approval carries exactly the selected, flagged, acknowledged paths; leaving the flagged files out applies the rest with no acknowledgement |
+| Real app over real IPC | `cowork-smoke --only proposal-flags` (Windows) | a worktree with a dependency upgrade and addition, a lock file and a `DROP TABLE` migration: the stored proposal carries the three flags with what changed; an approval with no acknowledgement, and one acknowledging only the manifest, are refused naming the rest, and the folder is unchanged; fully acknowledged, everything lands |
+
+Mutation-checked: trusting the stored flags only, not checking the
+acknowledgement, not flagging lock files, and not holding Apply each fail a
+test.
+
+The UI's flag display is covered by component tests. The Windows scenario
+drives the backend over IPC; it does not click through the review.
+
 ## Context replay (AH-079)
 
 | Evidence | Where | Covers |

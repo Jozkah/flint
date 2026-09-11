@@ -24,6 +24,7 @@ pub mod project_init;
 pub mod proposal;
 pub mod readiness;
 pub mod resource;
+pub mod review_flags;
 pub mod secrets;
 pub mod skills;
 pub mod snapshot;
