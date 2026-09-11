@@ -2322,6 +2322,14 @@ function CoworkPage() {
         const child = await runSubagent({
           resolved,
           description: req.description,
+          // The same identity the child's dispatched calls carry, for the
+          // calls the runner refuses without dispatching.
+          activity: () => ({
+            session: sid,
+            run: runId,
+            agent: resolved.name,
+            project: workspacePath ?? '',
+          }),
           // The parent's instance: a second one would mean a second
           // llama-server load for the same model.
           model: transport.model,
@@ -2433,6 +2441,8 @@ function CoworkPage() {
                 call: callId,
                 tool: 'task',
                 session: sid,
+                run: runId,
+                agent: 'main',
                 source: 'cowork',
                 phase: 'queued',
                 detail: `waiting for a slot (position ${waiting})`,
@@ -3099,6 +3109,12 @@ function CoworkPage() {
           onResponse: () => {
             stepSnapshot = lastSnapshotRef.current[sid]
           },
+          activity: () => ({
+            session: sid,
+            run: runId,
+            agent: 'main',
+            invocation: stepSnapshot?.invocation,
+          }),
           nextMessageId: (() => {
             let n = baseMessages.length
             return () => `${sid}-asst-${n++}`

@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { recordToolActivity } from '@/lib/toolActivity'
+import {
+  recordToolActivity,
+  type ToolActivityContext,
+} from '@/lib/toolActivity'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import type {
   AskAnswer,
@@ -577,6 +580,13 @@ export type RunDeps = {
    * those calls sends requests of its own.
    */
   onResponse?: () => void
+  /**
+   * Who this run records its calls as: session, run, agent, and the request
+   * the current step answered. Read when a call is recorded here (a call the
+   * runner refuses without dispatching), so the refusal lands in the right
+   * session's record rather than in one with no session at all.
+   */
+  activity?: () => ToolActivityContext
   /** Monotonic ids for the assistant messages this run appends. */
   nextMessageId: () => string
   /**
@@ -812,15 +822,23 @@ export async function runTurn(opts: {
         }
         outcomes.set(call.toolCallId, outcome)
         // On the durable timeline as a refusal, the same as any other call the
-        // run did not carry out, so the record says it was asked for.
-        void recordToolActivity({
+        // run did not carry out, so the record says it was asked for -- in
+        // this run's session, under this agent.
+        const who = deps.activity?.()
+        const identity = {
           call: call.toolCallId,
           tool: call.toolName,
-          phase: 'requested',
-        })
+          session: who?.session ?? '',
+          run: who?.run ?? '',
+          invocation: who?.invocation ?? '',
+          agent: who?.agent ?? '',
+          project: who?.project ?? '',
+          source: who?.source ?? '',
+          parent: who?.parent ?? '',
+        }
+        void recordToolActivity({ ...identity, phase: 'requested' })
         void recordToolActivity({
-          call: call.toolCallId,
-          tool: call.toolName,
+          ...identity,
           phase: 'refused',
           detail: 'not a valid call',
         })

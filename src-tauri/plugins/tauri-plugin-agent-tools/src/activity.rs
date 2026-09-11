@@ -393,10 +393,20 @@ fn phase_name(phase: Phase) -> String {
 
 /// The envelope kind and id one transition is written under. The id is the
 /// same for a retried record, so the log keeps it once.
+///
+/// A provider's call id is not unique within a session: a local server or a
+/// fixture numbers calls from zero in every response, and two subagents of
+/// one run share the parent's session. So a tool transition's id names the
+/// run, the agent and the request (invocation) as well as the call; only a
+/// repeat of all of them is the same event. Lifecycle ids are chosen by the
+/// recorder and are already unique.
 pub fn envelope_identity(event: &ToolActivityEvent) -> (String, String) {
     let phase = phase_name(event.phase);
     match event.event_type {
-        EventType::Tool => (format!("tool.{phase}"), format!("tool:{}:{phase}", event.call)),
+        EventType::Tool => (
+            format!("tool.{phase}"),
+            format!("tool:{}:{}:{}:{}:{phase}", event.run, event.agent, event.invocation, event.call),
+        ),
         EventType::Lifecycle => (format!("lifecycle.{phase}"), format!("life:{}:{phase}", event.call)),
     }
 }
@@ -1015,10 +1025,38 @@ mod tests {
         let envelopes = event_log::read_session(&dir, "s1").unwrap();
         assert_eq!(
             envelopes.iter().map(|e| (e.kind.as_str(), e.id.as_str())).collect::<Vec<_>>(),
-            [("tool.requested", "tool:c1:requested"), ("tool.succeeded", "tool:c1:succeeded")]
+            [("tool.requested", "tool:r1:::c1:requested"), ("tool.succeeded", "tool:r1:::c1:succeeded")]
         );
         assert!(!log_path(&dir).exists(), "nothing is written to the legacy file");
         assert_eq!(items(&dir, Some("s1"))[0].history, [Phase::Requested, Phase::Succeeded]);
+    }
+
+    /// A provider numbers its calls from zero in every response, and two
+    /// subagents share their parent's session: the same call id in another
+    /// run, agent or request is another call, and neither is dropped as a
+    /// repeat of the other.
+    #[test]
+    fn a_reused_provider_call_id_is_not_taken_for_a_repeat() {
+        let dir = scratch();
+        let mut explorer = ev("call_0", "ls", Phase::Succeeded);
+        explorer.agent = "explorer".into();
+        let mut reviewer = ev("call_0", "read", Phase::Succeeded);
+        reviewer.agent = "reviewer".into();
+        let mut next_run = ev("call_0", "grep", Phase::Succeeded);
+        next_run.run = "r2".into();
+        let mut next_request = ev("call_0", "find", Phase::Succeeded);
+        next_request.invocation = "inv-2".into();
+        for e in [&explorer, &reviewer, &next_run, &next_request] {
+            append(&dir, e);
+        }
+        // A retried record of one of them is still one event.
+        append(&dir, &explorer);
+        let tools: Vec<String> = event_log::read_session(&dir, "s1")
+            .unwrap()
+            .into_iter()
+            .map(|e| e.payload["tool"].as_str().unwrap_or_default().to_string())
+            .collect();
+        assert_eq!(tools, ["ls", "read", "grep", "find"]);
     }
 
     /// Older builds wrote every transition to both stores. Loading them counts

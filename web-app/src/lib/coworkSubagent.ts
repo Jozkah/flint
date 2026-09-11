@@ -8,6 +8,7 @@ import {
   type UIMessageChunk,
 } from 'ai'
 import type { Usage } from '@/types/coworkSession'
+import type { ToolActivityContext } from '@/lib/toolActivity'
 import type { SubagentDefinition } from '@/lib/coworkSubagentRegistry'
 import {
   ASK_TOOL_NAME,
@@ -311,6 +312,8 @@ export type RunSubagentOptions = {
   }
   /** Runs one of the child's tool calls. Same sandbox as the parent. */
   dispatch: (call: PendingToolCall, signal: AbortSignal) => Promise<ToolOutcome>
+  /** Who the child's calls are recorded as (see `RunDeps.activity`). */
+  activity?: () => ToolActivityContext
   signal: AbortSignal
   events: SubagentEvents
   /** Session tokens already spent, so a child cannot outrun the session cap. */
@@ -440,6 +443,7 @@ export async function runSubagent(
             signal,
           }),
         dispatch: opts.dispatch,
+        activity: opts.activity,
         sink,
         onStep: ({ result, outcomes }) => {
           if (result.text.trim()) finalText = result.text
