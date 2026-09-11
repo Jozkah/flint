@@ -88,6 +88,7 @@ import { i18n } from '@/i18n/react-i18next-compat'
 import { useAppState } from '@/hooks/useAppState'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { ensureAnthropicHeaders } from '@/lib/anthropicHeaders'
+import { applyCustomHeaders } from '@/lib/customHeaders'
 
 /**
  * Llama.cpp timings structure from the response
@@ -1221,11 +1222,9 @@ export class ModelFactory {
   ): LanguageModel {
     const headers: Record<string, string> = {}
 
-    if (provider.custom_header) {
-      provider.custom_header.forEach((customHeader) => {
-        headers[customHeader.header] = customHeader.value
-      })
-    }
+    // Reserved names (the key's own header among them) are never applied, so
+    // the configured key cannot be replaced. janhq/jan#8208.
+    applyCustomHeaders(headers, provider)
     // Custom Anthropic providers may ship no custom_header; Anthropic rejects
     // browser-context requests (webview Origin) without the opt-in header.
     ensureAnthropicHeaders(provider, headers)
@@ -1262,12 +1261,9 @@ export class ModelFactory {
   ): LanguageModel {
     const headers: Record<string, string> = {}
 
-    // Add custom headers if specified
-    if (provider.custom_header) {
-      provider.custom_header.forEach((customHeader) => {
-        headers[customHeader.header] = customHeader.value
-      })
-    }
+    // Reserved names (the key's own header among them) are never applied, so
+    // the configured key cannot be replaced. janhq/jan#8208.
+    applyCustomHeaders(headers, provider)
 
     const keyChain = providerRemoteApiKeyChain(provider)
     const fetchImpl =
@@ -1307,11 +1303,9 @@ export class ModelFactory {
     parameters: Record<string, unknown> = {}
   ): LanguageModel {
     const headers: Record<string, string> = {}
-    if (provider.custom_header) {
-      provider.custom_header.forEach((customHeader) => {
-        headers[customHeader.header] = customHeader.value
-      })
-    }
+    // Reserved names (the key's own header among them) are never applied, so
+    // the configured key cannot be replaced. janhq/jan#8208.
+    applyCustomHeaders(headers, provider)
 
     const keyChain = providerRemoteApiKeyChain(provider)
     const fetchImpl =
@@ -1344,12 +1338,9 @@ export class ModelFactory {
   ): LanguageModel {
     const headers: Record<string, string> = {}
 
-    // Add custom headers if specified
-    if (provider.custom_header) {
-      provider.custom_header.forEach((customHeader) => {
-        headers[customHeader.header] = customHeader.value
-      })
-    }
+    // Reserved names (the key's own header among them) are never applied, so
+    // the configured key cannot be replaced. janhq/jan#8208.
+    applyCustomHeaders(headers, provider)
 
     const keyChain = providerRemoteApiKeyChain(provider)
     const fetchImpl =
@@ -1383,11 +1374,9 @@ export class ModelFactory {
     parameters: Record<string, unknown> = {}
   ): LanguageModel {
     const headers: Record<string, string> = {}
-    if (provider.custom_header) {
-      provider.custom_header.forEach((customHeader) => {
-        headers[customHeader.header] = customHeader.value
-      })
-    }
+    // Reserved names (the key's own header among them) are never applied, so
+    // the configured key cannot be replaced. janhq/jan#8208.
+    applyCustomHeaders(headers, provider)
 
     const keyChain = providerRemoteApiKeyChain(provider)
     // Rotate over configured keys on 401/403/429 (e.g. exhausted free-tier
@@ -1428,12 +1417,9 @@ export class ModelFactory {
   ): LanguageModel {
     const headers: Record<string, string> = {}
 
-    // Add custom headers if specified
-    if (provider.custom_header) {
-      provider.custom_header.forEach((customHeader) => {
-        headers[customHeader.header] = customHeader.value
-      })
-    }
+    // Reserved names (the key's own header among them) are never applied, so
+    // the configured key cannot be replaced. janhq/jan#8208.
+    applyCustomHeaders(headers, provider)
 
     const keyChain = providerRemoteApiKeyChain(provider)
     if (keyChain.length === 1) {

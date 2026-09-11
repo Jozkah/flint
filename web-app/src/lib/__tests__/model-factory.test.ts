@@ -210,6 +210,61 @@ describe('ModelFactory', () => {
       expect(model).toBeDefined()
       expect(model.type).toBe('openai-compatible')
     })
+
+    /// janhq/jan#8208. A custom header named like the key's header went out
+    /// beside the configured key -- `authorization` and `Authorization` both
+    /// -- and on the SDK providers replaced it outright.
+    it('never lets a custom header stand in for the configured key', async () => {
+      const provider: ProviderObject = {
+        provider: 'custom',
+        api_key: 'test-api-key',
+        base_url: 'https://custom.api.com/v1',
+        models: [],
+        settings: [],
+        active: true,
+        custom_header: [
+          { header: 'authorization', value: 'Bearer spoofed' },
+          { header: 'X-Tenant', value: 'acme' },
+          { header: 'X-Unloaded-Secret', value: '', secret: true },
+        ],
+      }
+
+      await ModelFactory.createModel('custom-model', provider)
+      const headers = mockedCreateOpenAICompatible.mock.calls.at(-1)![0]
+        .headers as Record<string, string>
+      expect(headers).toEqual({
+        'X-Tenant': 'acme',
+        Authorization: 'Bearer test-api-key',
+      })
+    })
+
+    it('never lets a custom header replace the Anthropic key', async () => {
+      const { createAnthropic } = await import('@ai-sdk/anthropic')
+      vi.mocked(createAnthropic).mockClear()
+      await ModelFactory.createModel('claude-3-haiku', {
+        provider: 'anthropic',
+        api_key: 'sk-real',
+        base_url: 'https://api.anthropic.com/v1',
+        models: [],
+        settings: [],
+        active: true,
+        custom_header: [
+          { header: 'X-Api-Key', value: 'spoofed' },
+          { header: 'Anthropic-Version', value: '2024-01-01' },
+        ],
+      })
+      const headers = vi.mocked(createAnthropic).mock.calls.at(-1)![0]!
+        .headers as Record<string, string>
+      expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain(
+        'x-api-key'
+      )
+      // A built-in default the user overrides is replaced, not duplicated.
+      expect(
+        Object.entries(headers).filter(
+          ([h]) => h.toLowerCase() === 'anthropic-version'
+        )
+      ).toEqual([['Anthropic-Version', '2024-01-01']])
+    })
   })
 
 })

@@ -1012,6 +1012,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_stop_is_per_session,
     },
     Scenario {
+        name: "custom-headers-reach-the-provider-and-secrets-stay-secret",
+        run: scenario_custom_headers,
+    },
+    Scenario {
         name: "deleting-a-message-keeps-later-replies",
         run: scenario_delete_keeps_later_replies,
     },
@@ -1075,6 +1079,10 @@ const RESTART_SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "a-deleted-reply-stays-deleted-after-a-restart",
         run: scenario_delete_after_restart,
+    },
+    Scenario {
+        name: "custom-headers-survive-a-restart",
+        run: scenario_custom_headers_after_restart,
     },
 ];
 
@@ -2022,6 +2030,264 @@ fn stop_current(ctx: &Ctx) -> ScenarioResult {
         Duration::from_secs(10),
     )?;
     ctx.eval("document.querySelector('[data-testid=\"stop-current\"]').click(); return true;")?;
+    Ok(())
+}
+
+/// Set a React-controlled field and leave it, so its `onBlur` commits.
+fn fill_and_leave(ctx: &Ctx, selector: &str, text: &str) -> ScenarioResult {
+    ctx.type_into(selector, text)?;
+    ctx.eval(&format!(
+        "document.querySelector({selector:?})?.blur(); return true;"
+    ))?;
+    std::thread::sleep(Duration::from_millis(300));
+    Ok(())
+}
+
+/// The headers of the chat requests the fixture received, names lower-cased.
+fn captured_headers(ctx: &Ctx) -> Result<Vec<serde_json::Map<String, Value>>, Failure> {
+    let raw = ctx.eval_string(&format!(
+        "const r = await fetch('http://127.0.0.1:{}/__headers');
+         return JSON.stringify(await r.json());",
+        ctx.mock_port
+    ))?;
+    let v: Value = serde_json::from_str(&raw).map_err(|e| Failure(e.to_string()))?;
+    Ok(v["headers"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|h| h.as_object().cloned()).collect())
+        .unwrap_or_default())
+}
+
+/// Every file under `dir` whose bytes contain `needle`, by path. Never the
+/// needle itself: the caller's message must not print a secret.
+fn files_containing(dir: &Path, needle: &str) -> Vec<PathBuf> {
+    let mut hits = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&d) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(meta) = entry.metadata() else { continue };
+            if meta.is_dir() {
+                stack.push(path);
+            } else if meta.len() <= 64 * 1024 * 1024 {
+                if let Ok(bytes) = std::fs::read(&path) {
+                    if bytes.windows(needle.len()).any(|w| w == needle.as_bytes()) {
+                        hits.push(path);
+                    }
+                }
+            }
+        }
+    }
+    hits
+}
+
+/// The provider's custom-header editor, open.
+fn open_custom_headers(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto(&format!("/settings/providers/{SMOKE_PROVIDER}"))?;
+    ctx.wait_until(
+        "the custom headers editor",
+        "return !!document.querySelector('[data-testid=\"custom-headers\"]');",
+        Duration::from_secs(30),
+    )
+}
+
+/// Remove every custom header row, through the editor.
+fn clear_custom_headers(ctx: &Ctx) -> ScenarioResult {
+    open_custom_headers(ctx)?;
+    for _ in 0..8 {
+        let removed = ctx.eval_bool(
+            "const b = document.querySelector('[data-testid=\"custom-header-remove-0\"]');
+             if (!b) return false; b.click(); return true;",
+        )?;
+        if !removed {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(400));
+    }
+    Ok(())
+}
+
+/// Send one Cowork request and check the headers the provider received: the
+/// plain and the secret one, and never the refused `Authorization`. Prints
+/// header names only, never the secret.
+fn check_custom_headers_sent(ctx: &Ctx, label: &str, secret: &str) -> ScenarioResult {
+    let before = captured_headers(ctx)?.len();
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.click_matching("button", "New session")?;
+    std::thread::sleep(Duration::from_millis(500));
+    send_and_wait(ctx, &format!("custom headers {label}"), "Hello from the smoke model")?;
+    let all = captured_headers(ctx)?;
+    ensure!(all.len() > before, "{label}: no chat request reached the provider");
+    let last = all.last().unwrap();
+    let value_of = |name: &str| last.get(name).and_then(|v| v.as_str()).unwrap_or("");
+    ensure!(
+        value_of("x-smoke-tenant") == "tenant-8208",
+        "{label}: the plain header did not reach the provider (headers sent: {:?})",
+        last.keys().collect::<Vec<_>>()
+    );
+    ensure!(
+        value_of("x-smoke-key") == secret,
+        "{label}: the secret header did not reach the provider with its value (present: {})",
+        last.contains_key("x-smoke-key")
+    );
+    ensure!(
+        !value_of("authorization").contains("spoofed-8208"),
+        "{label}: the refused Authorization header was sent"
+    );
+    Ok(())
+}
+
+/// The secret value is in no file of the data folder: not settings, not the
+/// log, not a thread or a snapshot. The credential store's file is encrypted.
+fn ensure_secret_not_on_disk(secret: &str) -> ScenarioResult {
+    let leaked = files_containing(&data_folder()?, secret);
+    ensure!(
+        leaked.is_empty(),
+        "the secret header value is on disk in the clear in: {leaked:?}"
+    );
+    Ok(())
+}
+
+fn credential_store_holds_headers() -> Result<bool, Failure> {
+    let index = std::fs::read_to_string(data_folder()?.join("provider_secrets.index.json"))
+        .unwrap_or_default();
+    Ok(index.contains(&format!("provider-headers:{SMOKE_PROVIDER}")))
+}
+
+const CUSTOM_HEADERS_HANDOFF: &str = "custom-headers";
+
+/// janhq/jan#8208, end to end in the real app.
+///
+/// Headers are added in the provider settings page; a plain one and a secret
+/// one reach the provider on a real request; a header Jan owns is refused in
+/// the page and never sent; the secret value is written to the credential
+/// store and to no file in the data folder. With `COWORK_SMOKE_KEEP` the
+/// headers are left in place for `custom-headers-survive-a-restart`.
+fn scenario_custom_headers(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    // Unique per run, so a value left from an earlier run cannot pass this one.
+    let secret = format!(
+        "s8208-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let keep_for_restart = std::env::var_os("COWORK_SMOKE_KEEP").is_some();
+    let row = |what: &str, i: usize| format!("[data-testid=\"custom-header-{what}-{i}\"]");
+
+    let result = (|| -> ScenarioResult {
+        clear_custom_headers(ctx)?;
+
+        // A plain header.
+        ctx.eval("document.querySelector('[data-testid=\"custom-header-add\"]').click(); return true;")?;
+        fill_and_leave(ctx, &row("name", 0), "X-Smoke-Tenant")?;
+        fill_and_leave(ctx, &row("value", 0), "tenant-8208")?;
+
+        // A header Jan owns: refused where it is typed, with the reason.
+        ctx.eval("document.querySelector('[data-testid=\"custom-header-add\"]').click(); return true;")?;
+        fill_and_leave(ctx, &row("name", 1), "Authorization")?;
+        fill_and_leave(ctx, &row("value", 1), "Bearer spoofed-8208")?;
+        ctx.wait_until(
+            "the reserved-name error",
+            "const e = document.querySelector('[data-testid=\"custom-header-error-1\"]');
+             return !!e && /sets this header itself/.test(e.textContent || '');",
+            Duration::from_secs(10),
+        )?;
+        ctx.eval("document.querySelector('[data-testid=\"custom-header-remove-1\"]').click(); return true;")?;
+        std::thread::sleep(Duration::from_millis(400));
+
+        // A secret one: the name alone makes it secret, and its value is masked.
+        ctx.eval("document.querySelector('[data-testid=\"custom-header-add\"]').click(); return true;")?;
+        fill_and_leave(ctx, &row("name", 1), "X-Smoke-Key")?;
+        fill_and_leave(ctx, &row("value", 1), &secret)?;
+        let masked = ctx.eval_bool(&format!(
+            "return document.querySelector({:?})?.getAttribute('data-state') === 'checked'
+               && document.querySelector({:?})?.getAttribute('type') === 'password';",
+            row("secret", 1),
+            row("value", 1)
+        ))?;
+        ensure!(masked, "a key-like header was not treated as secret and masked");
+
+        // Written: the name to settings, the value to the credential store only.
+        let settings = data_folder()?.join("settings.json");
+        let written_by = Instant::now() + Duration::from_secs(20);
+        loop {
+            let written = std::fs::read_to_string(&settings)
+                .map(|t| t.contains("X-Smoke-Key") && t.contains("tenant-8208"))
+                .unwrap_or(false);
+            if written {
+                break;
+            }
+            ensure!(
+                Instant::now() < written_by,
+                "the custom headers never reached settings.json"
+            );
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        ensure!(
+            credential_store_holds_headers()?,
+            "the secret header value was not written to the credential store"
+        );
+
+        check_custom_headers_sent(ctx, "configured", &secret)?;
+        ensure_secret_not_on_disk(&secret)?;
+        if keep_for_restart {
+            // The handoff lives in the kept workspace, outside the data folder
+            // the leak check scans.
+            write_handoff(ctx, CUSTOM_HEADERS_HANDOFF, &serde_json::json!({ "secret": secret }))?;
+        }
+        Ok(())
+    })();
+
+    if keep_for_restart && result.is_ok() {
+        return result;
+    }
+    // Leave the provider as it was, whatever happened above.
+    let cleanup = clear_custom_headers(ctx);
+    result?;
+    cleanup?;
+    std::thread::sleep(Duration::from_secs(1));
+    ensure!(
+        !credential_store_holds_headers()?,
+        "removing the secret header left its value in the credential store"
+    );
+    Ok(())
+}
+
+/// The second half of `custom-headers-reach-the-provider-and-secrets-stay-secret`,
+/// in a new process on the kept profile. The secret value is not in settings,
+/// so a request that still carries it read it back from the credential store.
+fn scenario_custom_headers_after_restart(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    let handoff = read_handoff(
+        ctx,
+        CUSTOM_HEADERS_HANDOFF,
+        "custom-headers-reach-the-provider-and-secrets-stay-secret",
+    )?;
+    let secret = handoff["secret"].as_str().unwrap_or_default().to_string();
+    ensure!(!secret.is_empty(), "the handoff carried no value");
+    let result = (|| -> ScenarioResult {
+        let settings = std::fs::read_to_string(data_folder()?.join("settings.json"))
+            .unwrap_or_default();
+        ensure!(settings.contains("X-Smoke-Key"), "the secret header's name did not survive");
+        check_custom_headers_sent(ctx, "after a restart", &secret)?;
+        ensure_secret_not_on_disk(&secret)
+    })();
+    let cleanup = clear_custom_headers(ctx);
+    result?;
+    cleanup?;
+    std::thread::sleep(Duration::from_secs(1));
+    ensure!(
+        !credential_store_holds_headers()?,
+        "removing the secret header left its value in the credential store"
+    );
     Ok(())
 }
 

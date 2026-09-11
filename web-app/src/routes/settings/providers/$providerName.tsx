@@ -22,6 +22,8 @@ import DeleteProvider from '@/containers/dialogs/DeleteProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { Button } from '@/components/ui/button'
 import { SecretInput } from '@/components/ui/secret-input'
+import { ProviderCustomHeaders } from '@/containers/ProviderCustomHeaders'
+import { applyCustomHeaders } from '@/lib/customHeaders'
 import { Switch } from '@/components/ui/switch'
 import {
   IconCircleCheck,
@@ -433,6 +435,9 @@ function ProviderDetail() {
         if (isLocalEndpoint(provider.base_url)) {
           headers['Origin'] = 'tauri://localhost'
         }
+        // What a real request sends, so a gateway that needs its own header
+        // does not fail the test for want of it. janhq/jan#8208.
+        applyCustomHeaders(headers, provider)
 
         try {
           const response = await fetchImpl(`${provider.base_url}/models`, {
@@ -483,7 +488,7 @@ function ProviderDetail() {
     } finally {
       setIsTestingKeys(false)
     }
-  }, [apiKeysDraft, maskApiKey, provider?.base_url, serviceHub, t])
+  }, [apiKeysDraft, maskApiKey, provider, serviceHub, t])
 
   // Note: settingsChanged event is now handled globally in GlobalEventHandler
   // This ensures all screens receive the event intermediately
@@ -984,6 +989,7 @@ function ProviderDetail() {
                         </div>
                       )}
                     </div>
+                    <ProviderCustomHeaders provider={provider} />
                   </Card>
                 )}
 

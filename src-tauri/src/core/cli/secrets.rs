@@ -113,6 +113,9 @@ impl Redactor {
     /// Replace every match with `<redacted>`; `hits` records per-rule counts.
     pub(crate) fn redact(&self, input: &str, hits: &mut [usize]) -> String {
         let mut out = Cow::Borrowed(input);
+        if let Some(replaced) = apply_exact(&out) {
+            out = Cow::Owned(replaced);
+        }
         for (i, rule) in self.rules.iter().enumerate() {
             if let Some(replaced) = apply(&rule.re, &out, Some(&mut hits[i])) {
                 out = Cow::Owned(replaced);
@@ -127,12 +130,24 @@ impl Redactor {
     /// common case is a clean line, which must not allocate.
     pub(crate) fn scrub<'a>(&self, input: &'a str) -> Cow<'a, str> {
         let mut out = Cow::Borrowed(input);
+        if let Some(replaced) = apply_exact(&out) {
+            out = Cow::Owned(replaced);
+        }
         for rule in &self.rules {
             if let Some(replaced) = apply(&rule.re, &out, None) {
                 out = Cow::Owned(replaced);
             }
         }
         out
+    }
+}
+
+/// Values the user marked secret, whatever their shape, which no rule above
+/// recognises. janhq/jan#8208; see `core::secret_values`.
+fn apply_exact(text: &str) -> Option<String> {
+    match crate::core::secret_values::scrub(text) {
+        Cow::Owned(out) => Some(out),
+        Cow::Borrowed(_) => None,
     }
 }
 
@@ -171,6 +186,22 @@ fn apply(re: &Regex, text: &str, hits: Option<&mut usize>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// janhq/jan#8208. A secret custom header's value has no shape any rule
+    /// knows, under a name no rule knows; once registered it is redacted
+    /// wherever it turns up, by both sinks.
+    #[test]
+    fn a_registered_value_is_redacted_whatever_its_shape() {
+        let value = "q7Zr-exact-8208-value";
+        let line = format!("upstream 401: Ocp-Apim-Subscription-Key {value} rejected");
+        assert!(SHARED.scrub(&line).contains(value), "precondition: no rule knows it");
+        crate::core::secret_values::register(value);
+        let scrubbed = SHARED.scrub(&line);
+        assert!(!scrubbed.contains(value), "{scrubbed}");
+        assert!(scrubbed.contains("Ocp-Apim-Subscription-Key <redacted> rejected"));
+        let mut hits = vec![0; SHARED.rules.len()];
+        assert!(!SHARED.redact(&line, &mut hits).contains(value));
+    }
 
     /// A clean line is the common case on the log path: it comes back
     /// borrowed, with no allocation.

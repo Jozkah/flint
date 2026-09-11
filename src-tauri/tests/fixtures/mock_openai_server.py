@@ -53,6 +53,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ARGS = argparse.Namespace()
 REQUESTS: list = []
 REQUESTS_LOCK = threading.Lock()
+# The request headers of each chat completion, names lower-cased, so a
+# scenario can check what actually reached the provider (janhq/jan#8208).
+HEADERS: list = []
 
 
 def sse(payload: dict) -> bytes:
@@ -129,6 +132,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.rstrip("/").endswith("/__requests"):
             with REQUESTS_LOCK:
                 return self._json(200, {"requests": list(REQUESTS)})
+        if self.path.rstrip("/").endswith("/__headers"):
+            with REQUESTS_LOCK:
+                return self._json(200, {"headers": list(HEADERS)})
         if ARGS.script == "proxy-403":
             return self._forbidden()
         if not self.path.rstrip("/").endswith("/models"):
@@ -173,6 +179,8 @@ class Handler(BaseHTTPRequestHandler):
         with REQUESTS_LOCK:
             REQUESTS.append(body)
             del REQUESTS[:-20]
+            HEADERS.append({k.lower(): v for k, v in self.headers.items()})
+            del HEADERS[:-20]
 
         # A request whose messages already carry tool results is the follow-up
         # turn: answer in words rather than asking for the tools again.

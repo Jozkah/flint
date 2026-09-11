@@ -20,6 +20,7 @@ import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { predefinedProviders } from '@/constants/providers'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
+import { deleteSecretHeaderValues } from '@/lib/providerHeaderSecrets'
 
 type Props = {
   provider?: ProviderObject
@@ -50,6 +51,8 @@ const DeleteProvider = ({ provider }: Props) => {
     // Removing a custom provider is an explicit user action, so purge its
     // stored keyring secret too (boot reconciliation never does this).
     serviceHub.providers().deleteProviderKeys(provider.provider)
+    // And its secret custom header values, kept under a key of their own.
+    deleteSecretHeaderValues(provider.provider).catch(() => {})
     toast.success(t('providers:deleteProvider.title'), {
       id: `delete-provider-${provider.provider}`,
       description: t('providers:deleteProvider.success', {

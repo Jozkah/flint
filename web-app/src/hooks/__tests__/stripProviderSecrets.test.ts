@@ -62,6 +62,27 @@ describe('stripProviderSecrets', () => {
     expect(provider.settings?.[0].controller_props.value).toBe(SECRET)
   })
 
+  /// janhq/jan#8208. A custom header marked secret is a credential like the
+  /// key: its value belongs in the credential store, not in settings.json.
+  it('removes secret custom header values and keeps the rest', () => {
+    const provider = {
+      provider: 'custom',
+      models: [],
+      custom_header: [
+        { header: 'X-Tenant', value: 'acme' },
+        { header: 'Ocp-Apim-Subscription-Key', value: SECRET, secret: true },
+      ],
+    } as unknown as ModelProvider
+    const stripped = stripProviderSecrets(provider)
+    expect(JSON.stringify(stripped)).not.toContain(SECRET)
+    expect(stripped.custom_header).toEqual([
+      { header: 'X-Tenant', value: 'acme' },
+      { header: 'Ocp-Apim-Subscription-Key', value: '', secret: true },
+    ])
+    // The running app keeps the value it sends with.
+    expect(provider.custom_header?.[1].value).toBe(SECRET)
+  })
+
   it('handles a provider with no settings array', () => {
     const provider = {
       provider: 'custom',

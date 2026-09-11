@@ -373,6 +373,26 @@ pub fn build_app() -> tauri::App {
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Debug)
+                    // The plugin's own layout, with values the user marked
+                    // secret (a custom provider header, janhq/jan#8208)
+                    // replaced before any target -- file, stdout, webview --
+                    // sees the line.
+                    .format(|out, message, record| {
+                        let now = tauri_plugin_log::TimezoneStrategy::UseUtc.get_now();
+                        let message = message.to_string();
+                        out.finish(format_args!(
+                            "[{:04}-{:02}-{:02}][{:02}:{:02}:{:02}][{}][{}] {}",
+                            now.year(),
+                            u8::from(now.month()),
+                            now.day(),
+                            now.hour(),
+                            now.minute(),
+                            now.second(),
+                            record.target(),
+                            record.level(),
+                            crate::core::secret_values::scrub(&message)
+                        ))
+                    })
                     .targets([
                         tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
                         tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),

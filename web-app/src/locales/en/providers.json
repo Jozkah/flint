@@ -121,5 +121,26 @@
     "oneKeyHint": "Optional fallback keys are configured in Advanced.",
     "addKey": "Add key",
     "removeKey": "Remove key"
+  },
+  "customHeaders": {
+    "title": "Custom headers",
+    "description": "Extra HTTP headers sent with every request to this provider, such as a gateway tenant or subscription key. They cannot replace the API key.",
+    "namePlaceholder": "Header name",
+    "valuePlaceholder": "Value",
+    "secret": "Secret",
+    "secretHint": "Stored in the system credential store, never in settings, and hidden in logs.",
+    "add": "Add header",
+    "remove": "Remove header",
+    "saveFailed": "The header could not be saved: {{error}}",
+    "errors": {
+      "empty-name": "Enter a header name.",
+      "invalid-name": "A header name can only use letters, digits and ! # $ % & ' * + - . ^ _ ` | ~, with no spaces.",
+      "reserved": "Jan sets this header itself; it cannot be replaced here.",
+      "duplicate": "This header is already set above.",
+      "empty-value": "Enter a value.",
+      "invalid-value": "A value cannot contain line breaks or other control characters.",
+      "too-long": "Too long.",
+      "too-many": "Too many headers."
+    }
   }
 }
