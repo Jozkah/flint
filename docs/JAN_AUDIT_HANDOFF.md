@@ -2222,6 +2222,38 @@ bundle to a fresh clone at the base and compares the result byte for byte.
 Applying a bundle inside Jan (AH-169) is the next item in this chain and is not
 implemented.
 
+## 2026-09-11 — Registry finding: seven "implemented" items name files that are gone; AH-177 blocked
+
+A check over the registry found seven items marked `implemented` whose listed
+files do not exist at `fork/main`:
+
+| Item | Missing file |
+| --- | --- |
+| AH-004 | `src-tauri/harness/src/event.rs` |
+| AH-005 | `src-tauri/harness/src/envelope.rs` |
+| AH-008 | `src-tauri/harness/src/identity.rs` |
+| AH-009 | `src-tauri/harness/src/error.rs` |
+| AH-010 | `src-tauri/harness/src/state.rs` |
+| AH-011 | `src-tauri/harness/src/fixtures.rs` |
+| AH-199 | `web-app/src/containers/analytics/AnalyticConsent.tsx` |
+
+- The six harness files were added by `7c48d71aa` ("feat(harness): add the
+  feature registry and Phase 0 foundation"). That commit is an ancestor of
+  `HEAD`, yet the directory is absent, and no deletion appears on the
+  first-parent history. It was most likely dropped by a merge from a side
+  branch.
+- `AnalyticConsent.tsx` was removed on purpose by `3be88793f` ("remove
+  telemetry and update checking"). AH-199's file list is stale.
+- `validate-registry` does not check that listed files exist, which is why
+  this went unnoticed.
+
+The statuses are left as they are here, because deciding whether the code
+moved or was lost needs its own investigation.
+
+**AH-177 (event export) is blocked on this.** It depends on AH-005, whose
+envelope and log code is not in the tree. An "export of a run's canonical
+events" built on the tool-activity log alone would claim more than exists.
+
 One part of the finding is left open. A tool card in one conversation can
 show another conversation's request only when both conversations' main agents
 wait on the same call id at the same moment. The card shows that request's own
