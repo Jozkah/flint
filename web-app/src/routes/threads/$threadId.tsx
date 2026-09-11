@@ -95,6 +95,11 @@ import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
+import {
+  recordToolActivity,
+  resourceOf,
+  withToolActivity,
+} from '@/lib/toolActivity'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { TemporaryChatBanner } from '@/containers/TemporaryChatBanner'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
@@ -568,8 +573,35 @@ function ThreadDetail() {
 
           try {
             const toolName = toolCall.toolName
+            // The same record Cowork writes (AH-050): Chat's tool calls are
+            // part of what the conversation did, and a timeline or an audit
+            // export that only knew Cowork's would be missing them.
+            const activityCall = {
+              toolCallId: toolCall.toolCallId,
+              toolName,
+              input: toolCall.input,
+            }
+            const activityCtx = {
+              session: threadId,
+              run: '',
+              source: 'chat' as const,
+            }
+            const permissionEvent = {
+              call: toolCall.toolCallId,
+              tool: toolName,
+              session: threadId,
+              source: 'chat',
+              resource: resourceOf(toolCall.input),
+            }
 
-            const approved = isAutoAllowedTool(toolName)
+            const needsApproval = !isAutoAllowedTool(toolName)
+            if (needsApproval) {
+              void recordToolActivity({
+                ...permissionEvent,
+                phase: 'awaiting-permission',
+              })
+            }
+            const approved = !needsApproval
               ? true
               : await (toolApprovalPromises.current.get(toolCall.toolCallId) ??
                   useToolApprovalRequests
@@ -583,6 +615,11 @@ function ThreadDetail() {
             toolApprovalPromises.current.delete(toolCall.toolCallId)
 
             if (!approved) {
+              await recordToolActivity({
+                ...permissionEvent,
+                phase: 'refused',
+                detail: 'denied by the user',
+              })
               await persistToolOutput({
                 state: 'output-error',
                 tool: toolCall.toolName,
@@ -591,11 +628,17 @@ function ThreadDetail() {
               })
               continue
             }
+            if (needsApproval) {
+              void recordToolActivity({ ...permissionEvent, phase: 'allowed' })
+            }
 
             // Timed from here, not from approval, so a long approval wait is
             // not reported as the tool being slow.
             useToolCallRuntime.getState().markRunning(toolCall.toolCallId)
 
+            // The diff is kept for the record as well as shown; see below.
+            let chatDiff: string | undefined
+            const runChatTool = async () => {
             let result
 
             if (isNativeWebTool(toolName)) {
@@ -614,6 +657,7 @@ function ThreadDetail() {
                 useToolCallRuntime
                   .getState()
                   .recordDiff(toolCall.toolCallId, diff)
+                chatDiff = diff
               }
               result = rest
             } else if (ragToolNames.has(toolName)) {
@@ -658,6 +702,24 @@ function ThreadDetail() {
                 error: `Tool '${toolName}' not found in any service`,
               }
             }
+            return result
+            }
+
+            // Recorded around the execution itself: requested, running, and
+            // how it ended, with its (redacted, bounded) output and its diff.
+            const result = await withToolActivity(
+              activityCall,
+              activityCtx,
+              signal,
+              async () => {
+                const raw = await runChatTool()
+                return {
+                  ...raw,
+                  diff: chatDiff,
+                  isError: Boolean(raw.error),
+                }
+              }
+            )
 
             if (result.error) {
               await persistToolOutput({

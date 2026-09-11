@@ -1639,7 +1639,8 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
         "src-tauri/src/core/agent/commands.rs",
         "web-app/src/lib/toolActivity.ts",
-        "web-app/src/lib/coworkDispatch.ts"
+        "web-app/src/lib/coworkDispatch.ts",
+        "web-app/src/routes/threads/$threadId.tsx"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -1654,11 +1655,14 @@
       "tests": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
         "web-app/src/lib/__tests__/toolActivity.test.ts",
-        "src-tauri/examples/cowork_smoke.rs::tool-activity-timeline"
+        "web-app/src/lib/__tests__/toolActivityRecord.test.ts",
+        "src-tauri/examples/cowork_smoke.rs::tool-activity-timeline",
+        "src-tauri/examples/cowork_smoke.rs::execution-record",
+        "src-tauri/examples/cowork_smoke.rs::execution-record-restart"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Canonical lifecycle events for every dispatched tool call, written through the single dispatch chokepoint; append-only JSONL, session-scoped reads, stale settlement at startup."
+      "auditNote": "Canonical lifecycle events for every dispatched tool call; append-only JSONL, session-scoped reads, stale settlement at startup. 2026-09-11: Chat's tool loop now writes the same record as Cowork (it wrote none before), including its approval and refusal phases; schema v2 adds a per-log sequence number, redacted and bounded input and output (unavailable output reads as unavailable, never empty), job/task/parent/supersession ids, lifecycle events (compaction, subagent queue, stops) in the same sequence, and per-call diffs stored beside the log with their own +/- counts; items are keyed by session and call, so two sessions reusing a provider call id no longer merge. Still implemented rather than verified: the Rust agent loop (CLI) does not write this record."
     },
     {
       "id": "AH-051",
@@ -6199,14 +6203,18 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P1",
       "dependencies": [
         "AH-049",
         "AH-177"
       ],
       "owner": "lane-09-ux-observability",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/lib/toolActivity.ts"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "Every permission decision, tool call and run event exports as one reviewable record.",
@@ -6216,10 +6224,12 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "2026-09-11: `audit_export(session)` returns one JSON document joining the session's permission decisions (permissions.jsonl) and its execution record (tool calls and run lifecycle events, tool-activity.jsonl), both redacted when written; an export needs a session. Not complete: its dependency AH-177 is blocked on AH-005, the Rust agent loop (CLI) writes no execution record, and there is no negative authority test beyond session scoping."
     },
     {
       "id": "AH-201",

@@ -81,7 +81,12 @@ import {
   formatChangeSummary,
   janAuthoredChanges,
 } from '@/lib/coworkChangeSummary'
-import { loadToolActivity, type ToolActivityItem } from '@/lib/toolActivity'
+import {
+  loadToolActivity,
+  recordLifecycle,
+  recordToolActivity,
+  type ToolActivityItem,
+} from '@/lib/toolActivity'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { PromptProgress } from '@/components/PromptProgress'
 import { useAppState } from '@/hooks/useAppState'
@@ -1456,6 +1461,31 @@ function CoworkPage() {
     ) => {
       const patch = patchForOutcome(result, Date.now())
       if (patch) useCoworkActivity.getState().patchTask(task.id, patch)
+      // Into the execution record too, in sequence with the calls around it:
+      // a stop is something the run did, and a stop that failed is one the
+      // audit has to show as having failed.
+      if (result.outcome === 'cancelled' || result.outcome === 'failed') {
+        void recordLifecycle(
+          {
+            session: task.sessionId,
+            run: task.workflowId,
+            source: 'cowork',
+            parent: task.callId,
+          },
+          {
+            id: `stop:${task.callId}:${Date.now()}`,
+            lifecycle: task.kind === 'shell' ? 'background-job' : 'subagent',
+            phase: result.outcome === 'cancelled' ? 'cancelled' : 'failed',
+            summary:
+              task.kind === 'shell'
+                ? `Stopped ${task.jobId ?? 'a command'}`
+                : `Stopped ${task.title}`,
+            detail: result.error ?? '',
+            jobId: task.jobId,
+            taskId: task.kind === 'agent' ? task.callId : undefined,
+          }
+        )
+      }
       return patch != null
     },
     []
@@ -2174,6 +2204,16 @@ function CoworkPage() {
             }, toolSignal),
           events: {
             onQueued: (waiting) => {
+              // The dispatching call's item says it is waiting for a slot,
+              // in sequence with everything else the run did.
+              void recordToolActivity({
+                call: callId,
+                tool: 'task',
+                session: sid,
+                source: 'cowork',
+                phase: 'queued',
+                detail: `waiting for a slot (position ${waiting})`,
+              })
               useCoworkRun
                 .getState()
                 .queueSubagent(sid, callId, resolved.name, waiting)

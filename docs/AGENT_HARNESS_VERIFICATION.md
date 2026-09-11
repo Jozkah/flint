@@ -229,6 +229,19 @@ hopeful -- anything left in flight is `interrupted` with the reason
 never be shown as running. No durable worker exists, so AH-101's persistence
 criterion is not met and the item is `in-progress`.
 
+## Execution record v2: one contract for Chat and Cowork (AH-050 / AH-200)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 23 unit tests | `plugins/tauri-plugin-agent-tools/src/activity.rs` | one item per call; request order under interleaved results; refusal, cancellation, failure and interruption distinct; sequence numbers continue across a restart; version-1 lines and lines with fields from a later build (a snapshot id, token usage) still read; a damaged line costs that line only; two sessions reusing a call id stay two items with stable `session|call` ids; an edit keeps its own diff and +/- counts; an oversized diff is counted, not kept; a diff path cannot leave the audit folder; input bounded to its start, output to its end, unrecorded output reads `unavailable`; no credential reaches the log or a stored diff; lifecycle events (compaction, steering) share the sequence; the export joins decisions and activity for one session only |
+| 10 unit tests | `web-app/src/lib/__tests__/toolActivityRecord.test.ts` | Chat and Cowork write the same event keys, each under its own session; input on the request, outcome and diff on the end; a chat-shaped error is a failure; a background job id and exit code are captured; an aborted run is cancelled; the outcome is passed through untouched; a huge input is bounded; lifecycle events; a stored diff is read by session and call, and is unavailable rather than empty when missing |
+| Real Windows app, real IPC | `cowork-smoke --only execution-record` then, in a new process on the same profile, `--only execution-record-restart` | events written through `tool_activity_record` read back from `tool_activity_items` in sequence with the edit's +2/-1 counts, the compaction lifecycle item, the failed command's exit code; no credential in the items or the stored diff; another session cannot read the diff; `audit_export` is scoped to the session and refuses an empty one; after a restart the same items come back in the same order with the same states. **Passed on Windows 2026-09-11** |
+
+Run history for batch 3 (retries disabled): first combined run -- `background-job-isolation` failed because `ping` in the AppContainer reported "Unable to contact IP driver" and ended before the kill (the scenario now sleeps instead); second -- `tool-activity-timeline` failed on a WebView stall (the page stopped answering scripts); third, and `tool-activity-timeline` alone -- all passed. Logs: `.dwi-artifacts/logs/gate-b3final`, `gate-b3scen2`, `gate-b3scen3` in the session worktree.
+
+Steering is represented only as a lifecycle name (`lifecycle: "steering"`); no steering implementation is imported here. Prompt snapshots and token usage attach later through the existing `invocation` join key and optional fields, which older and newer builds both tolerate -- no second event store.
+
+Recommendation for the per-edit timeline diff (not implemented): generate a standard unified diff in the backend from trusted before/after snapshots (the undo journal already captures both), rather than treating the tool's custom display diff as authoritative.
 ## Memory proposals: the approval card (AH-045-adjacent, memory path)
 
 | Evidence | Where | Covers |

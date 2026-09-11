@@ -1016,6 +1016,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_background_job_isolation,
     },
     Scenario {
+        name: "execution-record",
+        run: scenario_execution_record,
+    },
+    Scenario {
         name: "prompt-snapshot-cross-session-refused",
         run: scenario_prompt_snapshot_isolation,
     },
@@ -1224,6 +1228,10 @@ const RESTART_SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "window-chrome-restart",
         run: scenario_window_chrome_restart,
+    },
+    Scenario {
+        name: "execution-record-restart",
+        run: scenario_execution_record_restart,
     },
 ];
 
@@ -9582,7 +9590,7 @@ fn scenario_window_chrome_restart(_ctx: &Ctx) -> ScenarioResult {
 #[cfg(windows)]
 fn processes_matching(needle: &str) -> Option<usize> {
     let script = format!(
-        "@(Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*{needle}*' -and $_.Name -notmatch 'powershell' }}).Count"
+        "@(Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*{needle}*' -and $_.ProcessId -ne $PID }}).Count"
     );
     let out = std::process::Command::new("powershell")
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
@@ -9606,11 +9614,14 @@ fn processes_matching(_needle: &str) -> Option<usize> {
 fn scenario_background_job_isolation(ctx: &Ctx) -> ScenarioResult {
     let data = std::env::var("JAN_DATA_FOLDER").map_err(|_| Failure("JAN_DATA_FOLDER unset".into()))?;
     let (a, b) = ("smoke-bg-owner", "smoke-bg-other");
-    // A unique ping count marks this job's processes on the machine.
-    let marker = "127.0.0.1 -n 67";
+    // A unique sleep marks this job's processes on the machine. Not `ping`:
+    // inside the AppContainer it can fail at once ("Unable to contact IP
+    // driver") when the run has no network, which ends the job before the
+    // kill it exists to test.
+    let marker = "Start-Sleep -Seconds 67";
     // `;`, not `&&`: the confined shell on Windows is PowerShell 5.1, which has
     // no `&&`, and `;` separates statements in every shell the tool may pick.
-    let command = format!("ping {marker}; echo token=sk-live_abcdefghijklmnop0123456789");
+    let command = format!("{marker}; echo token=sk-live_abcdefghijklmnop0123456789");
     let (ok, started) = ipc(
         ctx,
         "plugin:agent-tools|execute_tool",
@@ -9714,5 +9725,113 @@ fn scenario_background_job_isolation(ctx: &Ctx) -> ScenarioResult {
     let second = collect(a)?;
     ensure!(second.contains("unknown or already-collected"), "a second collection returned output again: {second}");
     println!("      job {job}: refused across sessions, killed with its tree, collected once");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// The execution record through the real backend (AH-050 v2 / AH-200)
+// ---------------------------------------------------------------------------
+
+const RECORD_SESSION: &str = "smoke-record-session";
+const RECORD_OTHER: &str = "smoke-record-other";
+
+/// Write the events a Cowork edit and a failed command produce, the way the
+/// renderer does, over real IPC.
+fn record_events(ctx: &Ctx) -> ScenarioResult {
+    let events = serde_json::json!([
+        { "call": "rec-edit", "tool": "edit", "phase": "requested",
+          "input": "{\"path\":\"src/lib.rs\",\"new_string\":\"token=sk-live_abcdefghijklmnop0123\"}" },
+        { "call": "rec-edit", "tool": "edit", "phase": "running" },
+        { "call": "rec-edit", "tool": "edit", "phase": "succeeded", "resource": "src/lib.rs",
+          "output": "Edited src/lib.rs",
+          "diff": "@@ edit 1/1 @@\n-   1 | old line\n+   1 | new line\n+   2 | token=sk-live_abcdefghijklmnop0123\n" },
+        { "call": "rec-compact", "tool": "compaction", "phase": "succeeded",
+          "event_type": "lifecycle", "lifecycle": "compaction", "summary": "Compacted 12 messages into a summary" },
+        { "call": "rec-bash", "tool": "bash", "phase": "requested", "input": "{\"command\":\"cargo test\"}" },
+        { "call": "rec-bash", "tool": "bash", "phase": "failed", "exit_code": 101,
+          "output": "test result: FAILED. 1 failed\n[exit 101]" }
+    ]);
+    for e in events.as_array().unwrap() {
+        let mut e = e.clone();
+        e["v"] = Value::from(2);
+        e["at"] = Value::from("2026-09-11T00:00:00Z");
+        e["session"] = Value::from(RECORD_SESSION);
+        for (k, v) in [("run", ""), ("invocation", ""), ("agent", ""), ("project", ""), ("capability", ""), ("kind", ""), ("resource", ""), ("summary", ""), ("detail", "")] {
+            if e.get(k).is_none() {
+                e[k] = Value::from(v);
+            }
+        }
+        let (ok, v) = ipc(ctx, "tool_activity_record", &format!("{{ event: {e} }}"))?;
+        ensure!(ok, "tool_activity_record refused an event: {v}");
+    }
+    let mut other = serde_json::json!({ "v": 2, "at": "2026-09-11T00:00:00Z", "session": RECORD_OTHER,
+        "call": "rec-other", "tool": "read", "phase": "succeeded" });
+    for k in ["run", "invocation", "agent", "project", "capability", "kind", "resource", "summary", "detail"] {
+        other[k] = Value::from("");
+    }
+    let (ok, v) = ipc(ctx, "tool_activity_record", &format!("{{ event: {other} }}"))?;
+    ensure!(ok, "tool_activity_record refused the other session's event: {v}");
+    Ok(())
+}
+
+/// What a session's timeline reads back, checked the same way before and
+/// after a restart.
+fn check_record(ctx: &Ctx) -> Result<Vec<Value>, Failure> {
+    let (ok, items) = ipc(ctx, "tool_activity_items", &format!("{{ session: {RECORD_SESSION:?} }}"))?;
+    ensure!(ok, "tool_activity_items failed: {items}");
+    let items = items.as_array().cloned().unwrap_or_default();
+    let calls: Vec<&str> = items.iter().filter_map(|i| i["call"].as_str()).collect();
+    ensure!(calls == ["rec-edit", "rec-compact", "rec-bash"], "wrong items or order: {calls:?}");
+    let seqs: Vec<u64> = items.iter().filter_map(|i| i["seq"].as_u64()).collect();
+    ensure!(seqs.len() == 3 && seqs.windows(2).all(|w| w[0] < w[1]), "sequence not increasing: {seqs:?}");
+    let edit = &items[0];
+    ensure!(edit["phase"] == "succeeded", "edit phase: {edit}");
+    ensure!(edit["change"]["added"] == 2 && edit["change"]["removed"] == 1, "edit counts: {}", edit["change"]);
+    ensure!(edit["change"]["diffStored"] == true, "diff not stored: {}", edit["change"]);
+    let raw = items.iter().map(|i| i.to_string()).collect::<String>();
+    ensure!(!raw.contains("sk-live_"), "a credential reached the items: {raw}");
+    ensure!(items[1]["event_type"] == "lifecycle" && items[1]["lifecycle"] == "compaction", "compaction item: {}", items[1]);
+    let bash = &items[2];
+    ensure!(bash["phase"] == "failed" && bash["exit_code"] == 101, "bash item: {bash}");
+    ensure!(bash["output_state"] == "available", "bash output state: {bash}");
+    let (ok, diff) = ipc(ctx, "tool_activity_diff", &format!("{{ session: {RECORD_SESSION:?}, call: 'rec-edit' }}"))?;
+    ensure!(ok && diff.as_str().is_some_and(|d| d.contains("new line")), "stored diff: {diff}");
+    ensure!(!diff.to_string().contains("sk-live_"), "a credential reached the stored diff: {diff}");
+    let (ok, foreign) = ipc(ctx, "tool_activity_diff", &format!("{{ session: {RECORD_OTHER:?}, call: 'rec-edit' }}"))?;
+    ensure!(ok && foreign.is_null(), "another session read this session's diff: {foreign}");
+    Ok(items)
+}
+
+fn scenario_execution_record(ctx: &Ctx) -> ScenarioResult {
+    record_events(ctx)?;
+    let items = check_record(ctx)?;
+    // The export: this session's decisions and record, nobody else's.
+    let (ok, export) = ipc(ctx, "audit_export", &format!("{{ session: {RECORD_SESSION:?} }}"))?;
+    ensure!(ok, "audit_export failed: {export}");
+    let doc: Value = serde_json::from_str(export.as_str().unwrap_or("")).map_err(|e| Failure(format!("export is not JSON: {e}")))?;
+    ensure!(doc["format"] == "jan-audit-export", "export format: {}", doc["format"]);
+    let exported: Vec<&str> = doc["activity"].as_array().into_iter().flatten().filter_map(|i| i["call"].as_str()).collect();
+    ensure!(!exported.contains(&"rec-other"), "the export carries another session's record: {exported:?}");
+    ensure!(exported.len() == items.len(), "export and timeline disagree: {exported:?}");
+    let (ok, refused) = ipc(ctx, "audit_export", "{ session: '' }")?;
+    ensure!(!ok, "an export with no session was not refused: {refused}");
+    let order: Vec<String> = items.iter().filter_map(|i| i["call"].as_str().map(str::to_string)).collect();
+    std::fs::write(ctx.workspace.join("record-expected.json"), serde_json::to_string(&order).unwrap_or_default())
+        .map_err(|e| Failure(format!("could not leave the expectation: {e}")))?;
+    println!("      record: {} items in sequence, diff stored and scoped, export scoped", items.len());
+    Ok(())
+}
+
+/// A new process on the same profile reads back the same items, in the same
+/// order, with the same terminal states.
+fn scenario_execution_record_restart(ctx: &Ctx) -> ScenarioResult {
+    let expected: Vec<String> = std::fs::read(ctx.workspace.join("record-expected.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .ok_or_else(|| Failure("no expectation -- run execution-record first with the same COWORK_SMOKE_KEEP".into()))?;
+    let items = check_record(ctx)?;
+    let order: Vec<String> = items.iter().filter_map(|i| i["call"].as_str().map(str::to_string)).collect();
+    ensure!(order == expected, "after a restart the order is {order:?}, not {expected:?}");
+    println!("      record after restart: same {} items, same order, same states", items.len());
     Ok(())
 }

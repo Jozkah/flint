@@ -7,17 +7,39 @@
 //! result arriving out of order does not reorder anything, because ordering
 //! comes from when the call was requested.
 //!
+//! It is also the one execution-event model the desktop timeline and the
+//! Background Tasks panel read (AH-172): besides tool calls it carries the
+//! run's own lifecycle events -- compaction, steering, subagent dispatch and
+//! end, background jobs starting and stopping -- as items of their own, in the
+//! same sequence.
+//!
 //! Append-only JSONL, flushed per record, with a reader that drops an
 //! unparseable line so a truncated tail costs one event rather than the file.
+//! Every event gets a sequence number when it is written; lines from before
+//! sequence numbers existed keep their file order. Inputs and outputs are
+//! redacted and bounded before they are written; a file change's unified diff
+//! is stored beside the log, one file per call, and never inline.
 
+use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
 use crate::audit::{now, redact};
 
-pub const SCHEMA_VERSION: u32 = 1;
+/// Version 2 adds the sequence, input/output, lifecycle and change fields.
+/// Every one of them is optional on the way in, so version-1 lines still read.
+pub const SCHEMA_VERSION: u32 = 2;
+
+/// Longest input kept on an event: enough to show what was asked.
+pub const MAX_INPUT_BYTES: usize = 4 * 1024;
+/// Longest output kept on an event: the end, where a command says how it went.
+pub const MAX_OUTPUT_BYTES: usize = 16 * 1024;
+/// Largest diff stored for one call. Past this the change is recorded as
+/// oversized, with its counts, and the diff itself is not kept.
+pub const MAX_DIFF_BYTES: usize = 512 * 1024;
 
 /// Where a call has got to.
 ///
@@ -29,6 +51,8 @@ pub const SCHEMA_VERSION: u32 = 1;
 pub enum Phase {
     /// The model asked for the call. Always the first event of an item.
     Requested,
+    /// Queued behind other work (a subagent waiting for a slot).
+    Queued,
     /// Waiting on the user to allow or refuse it.
     AwaitingPermission,
     Allowed,
@@ -64,6 +88,43 @@ impl Phase {
     }
 }
 
+/// A tool call, or something the run itself did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum EventType {
+    #[default]
+    Tool,
+    /// Compaction, steering, a subagent dispatched or ended, a background job
+    /// started or stopped. `lifecycle` names which.
+    Lifecycle,
+}
+
+/// What a call did to one file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileChange {
+    /// As the tool resolved it, relative where possible. Redacted like any
+    /// other resource.
+    pub path: String,
+    /// `created` / `edited` / `deleted` / `renamed` / `binary`.
+    pub kind: String,
+    /// Where a rename came from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    /// Lines added and removed, counted from the diff this call produced --
+    /// not from the repository's state now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub added: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub removed: Option<u32>,
+    /// The unified diff is stored and can be read back (`read_diff`).
+    #[serde(default)]
+    pub diff_stored: bool,
+    /// The diff was larger than `MAX_DIFF_BYTES` and was not kept.
+    #[serde(default)]
+    pub oversized: bool,
+}
+
 /// One lifecycle event of one tool call.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolActivityEvent {
@@ -71,6 +132,14 @@ pub struct ToolActivityEvent {
     pub version: u32,
     /// RFC 3339, UTC.
     pub at: String,
+    /// The same instant in milliseconds, when the writer knew it. Absent on
+    /// older lines, which only had `at` to the second.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at_ms: Option<u64>,
+    /// Position in the log, assigned when the event is written. Absent on
+    /// lines written before sequence numbers existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq: Option<u64>,
 
     // -- identity ---------------------------------------------------------
     #[serde(default)]
@@ -87,8 +156,24 @@ pub struct ToolActivityEvent {
     pub agent: String,
     #[serde(default)]
     pub project: String,
+    /// Which surface recorded it: `cowork`, `chat`, `cli`, `subagent`.
+    #[serde(default)]
+    pub source: String,
+    /// The workflow or task this belongs under (a subagent's dispatching
+    /// call, a background job's starting call).
+    #[serde(default)]
+    pub parent: String,
+    /// A call this one replaces -- a retry of a failed call.
+    #[serde(default)]
+    pub supersedes: String,
 
     // -- what was asked ----------------------------------------------------
+    #[serde(default)]
+    pub event_type: EventType,
+    /// For a lifecycle event: `compaction`, `steering`, `subagent`,
+    /// `background-job`, `approval`, ...
+    #[serde(default)]
+    pub lifecycle: String,
     pub tool: String,
     /// `read` / `write` / `exec` / `net`, from the tool's capability.
     #[serde(default)]
@@ -102,6 +187,9 @@ pub struct ToolActivityEvent {
     /// A short human-readable account of the action, redacted.
     #[serde(default)]
     pub summary: String,
+    /// The call's arguments, redacted and bounded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input: Option<String>,
 
     // -- what happened -----------------------------------------------------
     pub phase: Phase,
@@ -114,6 +202,28 @@ pub struct ToolActivityEvent {
     /// Why it failed or was refused, redacted. Never the tool's whole output.
     #[serde(default)]
     pub detail: String,
+    /// What the call returned: its end, redacted, bounded to
+    /// `MAX_OUTPUT_BYTES`. Absent when nothing was recorded -- which reads as
+    /// "unavailable", never as an empty success.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// `output` is the end of something longer.
+    #[serde(default)]
+    pub output_truncated: bool,
+    /// A background job this call started or collected.
+    #[serde(default)]
+    pub job_id: String,
+    /// A subagent task this call dispatched.
+    #[serde(default)]
+    pub task_id: String,
+    /// The file the call changed, and how.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change: Option<FileChange>,
+    /// The unified diff of `change`, as handed in by the caller. Taken off the
+    /// event on the way to disk and stored beside the log; never written into
+    /// the JSONL line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diff: Option<String>,
 }
 
 impl ToolActivityEvent {
@@ -125,34 +235,138 @@ impl ToolActivityEvent {
         Self {
             version: SCHEMA_VERSION,
             at: now(),
+            at_ms: Some(now_ms()),
+            seq: None,
             session: String::new(),
             run: String::new(),
             call: call.into(),
             invocation: String::new(),
             agent: String::new(),
             project: String::new(),
+            source: String::new(),
+            parent: String::new(),
+            supersedes: String::new(),
+            event_type: EventType::Tool,
+            lifecycle: String::new(),
             tool: tool.into(),
             capability: String::new(),
             kind: String::new(),
             resource: String::new(),
             summary: String::new(),
+            input: None,
             phase,
             elapsed_ms: None,
             exit_code: None,
             detail: String::new(),
+            output: None,
+            output_truncated: false,
+            job_id: String::new(),
+            task_id: String::new(),
+            change: None,
+            diff: None,
         }
     }
 
+    /// Redact every free-text field and bound the large ones. Applied to every
+    /// event before it is written, whoever built it.
     pub fn redacted(mut self) -> Self {
         self.resource = redact(&self.resource);
         self.summary = redact(&self.summary);
         self.detail = redact(&self.detail);
+        self.input = self.input.map(|i| bound_head(&redact(&i), MAX_INPUT_BYTES));
+        if let Some(out) = self.output.take() {
+            let (kept, cut) = bound_tail(&redact(&out), MAX_OUTPUT_BYTES);
+            self.output = Some(kept);
+            self.output_truncated |= cut;
+        }
+        if let Some(change) = self.change.as_mut() {
+            change.path = redact(&change.path);
+            change.from = change.from.as_deref().map(redact);
+        }
+        self.diff = self.diff.map(|d| redact(&d));
         self
     }
 }
 
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// The first `max` bytes, on a character boundary, marked when cut.
+fn bound_head(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        return text.to_string();
+    }
+    let mut end = max;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &text[..end])
+}
+
+/// The last `max` bytes, on a character boundary, and whether anything went.
+fn bound_tail(text: &str, max: usize) -> (String, bool) {
+    if text.len() <= max {
+        return (text.to_string(), false);
+    }
+    let mut start = text.len() - max;
+    while !text.is_char_boundary(start) {
+        start += 1;
+    }
+    (text[start..].to_string(), true)
+}
+
+/// Lines added and removed by a unified diff.
+pub fn diff_counts(diff: &str) -> (u32, u32) {
+    let mut added = 0u32;
+    let mut removed = 0u32;
+    for line in diff.lines() {
+        if line.starts_with("+++") || line.starts_with("---") {
+            continue;
+        }
+        if line.starts_with('+') {
+            added += 1;
+        } else if line.starts_with('-') {
+            removed += 1;
+        }
+    }
+    (added, removed)
+}
+
 pub fn log_path(data_folder: &Path) -> PathBuf {
     data_folder.join("audit").join("tool-activity.jsonl")
+}
+
+/// Where one call's diff is stored. Both parts are reduced to a safe file
+/// name, so a session or call id can never name a path outside the folder.
+pub fn diff_path(data_folder: &Path, session: &str, call: &str) -> PathBuf {
+    let safe = |s: &str| -> String {
+        let cleaned: String = s
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .take(96)
+            .collect();
+        if cleaned.is_empty() { "_".to_string() } else { cleaned }
+    };
+    data_folder
+        .join("audit")
+        .join("diffs")
+        .join(safe(session))
+        .join(format!("{}.diff", safe(call)))
+}
+
+/// A call's stored diff, when one was kept.
+pub fn read_diff(data_folder: &Path, session: &str, call: &str) -> Option<String> {
+    std::fs::read_to_string(diff_path(data_folder, session, call)).ok()
+}
+
+/// The next sequence number for each log, known once per process.
+fn sequences() -> &'static Mutex<HashMap<PathBuf, u64>> {
+    static SEQ: std::sync::OnceLock<Mutex<HashMap<PathBuf, u64>>> = std::sync::OnceLock::new();
+    SEQ.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 /// Record one event. A failure to write is reported, never swallowed into a
@@ -168,7 +382,50 @@ fn try_append(data_folder: &Path, event: &ToolActivityEvent) -> Result<(), Strin
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let line = serde_json::to_string(event).map_err(|e| e.to_string())?;
+    let mut event = event.clone();
+    if event.at_ms.is_none() {
+        event.at_ms = Some(now_ms());
+    }
+
+    // The diff is stored beside the log, never in it. Counted from what this
+    // call produced, so the numbers are the edit's and not the tree's.
+    if let Some(diff) = event.diff.take() {
+        let (added, removed) = diff_counts(&diff);
+        let default_path = event.resource.clone();
+        let change = event.change.get_or_insert_with(|| FileChange {
+            path: default_path,
+            kind: "edited".into(),
+            from: None,
+            added: None,
+            removed: None,
+            diff_stored: false,
+            oversized: false,
+        });
+        change.added.get_or_insert(added);
+        change.removed.get_or_insert(removed);
+        if diff.len() > MAX_DIFF_BYTES {
+            change.oversized = true;
+        } else if !diff.is_empty() {
+            let target = diff_path(data_folder, &event.session, &event.call);
+            if let Some(dir) = target.parent() {
+                std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+            }
+            let tmp = target.with_extension("diff.tmp");
+            std::fs::write(&tmp, diff.as_bytes()).map_err(|e| e.to_string())?;
+            std::fs::rename(&tmp, &target).map_err(|e| e.to_string())?;
+            change.diff_stored = true;
+        }
+    }
+
+    // Numbered and written under one lock, so the order of the numbers is the
+    // order of the lines.
+    let mut seqs = sequences().lock().unwrap_or_else(|e| e.into_inner());
+    let next = match seqs.get(&path) {
+        Some(n) => *n,
+        None => read_all(data_folder).iter().filter_map(|e| e.seq).max().map_or(1, |m| m + 1),
+    };
+    event.seq = Some(next);
+    let line = serde_json::to_string(&event).map_err(|e| e.to_string())?;
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -176,7 +433,9 @@ fn try_append(data_folder: &Path, event: &ToolActivityEvent) -> Result<(), Strin
         .map_err(|e| e.to_string())?;
     writeln!(file, "{line}").map_err(|e| e.to_string())?;
     // Per record: a crash costs the event that was mid-write, not the run.
-    file.flush().map_err(|e| e.to_string())
+    file.flush().map_err(|e| e.to_string())?;
+    seqs.insert(path, next + 1);
+    Ok(())
 }
 
 pub fn read_all(data_folder: &Path) -> Vec<ToolActivityEvent> {
@@ -194,35 +453,154 @@ pub fn read_all(data_folder: &Path) -> Vec<ToolActivityEvent> {
 /// One call, folded from its events.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ToolActivityItem {
+    /// Stable identity: the session and the call together. The provider's
+    /// call id alone is not unique across sessions.
+    pub id: String,
     pub call: String,
     pub tool: String,
     pub session: String,
     pub run: String,
     pub invocation: String,
     pub agent: String,
+    pub source: String,
+    pub parent: String,
+    pub supersedes: String,
+    pub event_type: EventType,
+    pub lifecycle: String,
     pub resource: String,
     pub summary: String,
+    pub input: Option<String>,
     /// The phase the call is in now: its last event.
     pub phase: Phase,
+    /// The sequence number of its first event, when it has one.
+    pub seq: Option<u64>,
     /// When it was requested, which is what the timeline orders by.
     pub requested_at: String,
+    pub requested_at_ms: Option<u64>,
+    /// When it reached a terminal phase.
+    pub finished_at: Option<String>,
+    pub finished_at_ms: Option<u64>,
     pub elapsed_ms: Option<u64>,
     pub exit_code: Option<i32>,
     pub detail: String,
+    pub output: Option<String>,
+    pub output_truncated: bool,
+    /// `available`, `truncated`, `unavailable` (finished with nothing
+    /// recorded), or `pending` (still going).
+    pub output_state: String,
+    pub job_id: String,
+    pub task_id: String,
+    pub change: Option<FileChange>,
     /// Every phase it passed through, in order.
     pub history: Vec<Phase>,
+}
+
+impl ToolActivityItem {
+    fn from_first(event: ToolActivityEvent) -> Self {
+        let finished = event.phase.is_terminal();
+        let mut item = ToolActivityItem {
+            id: item_id(&event.session, &event.call),
+            call: event.call,
+            tool: event.tool,
+            session: event.session,
+            run: event.run,
+            invocation: event.invocation,
+            agent: event.agent,
+            source: event.source,
+            parent: event.parent,
+            supersedes: event.supersedes,
+            event_type: event.event_type,
+            lifecycle: event.lifecycle,
+            resource: event.resource,
+            summary: event.summary,
+            input: event.input,
+            phase: event.phase,
+            seq: event.seq,
+            requested_at: event.at.clone(),
+            requested_at_ms: event.at_ms,
+            finished_at: finished.then(|| event.at.clone()),
+            finished_at_ms: if finished { event.at_ms } else { None },
+            elapsed_ms: event.elapsed_ms,
+            exit_code: event.exit_code,
+            detail: event.detail,
+            output: event.output,
+            output_truncated: event.output_truncated,
+            output_state: String::new(),
+            job_id: event.job_id,
+            task_id: event.task_id,
+            change: event.change,
+            history: vec![event.phase],
+        };
+        item.output_state = output_state(&item);
+        item
+    }
+
+    /// A later event refines the item; it never replaces it, and it never
+    /// moves it in the list.
+    fn refine(&mut self, event: ToolActivityEvent) {
+        self.history.push(event.phase);
+        self.phase = event.phase;
+        if event.phase.is_terminal() {
+            self.finished_at = Some(event.at.clone());
+            self.finished_at_ms = event.at_ms;
+        }
+        if event.elapsed_ms.is_some() {
+            self.elapsed_ms = event.elapsed_ms;
+        }
+        if event.exit_code.is_some() {
+            self.exit_code = event.exit_code;
+        }
+        let mut take = |mine: &mut String, theirs: String| {
+            if !theirs.is_empty() {
+                *mine = theirs;
+            }
+        };
+        take(&mut self.detail, event.detail);
+        take(&mut self.resource, event.resource);
+        take(&mut self.summary, event.summary);
+        take(&mut self.job_id, event.job_id);
+        take(&mut self.task_id, event.task_id);
+        take(&mut self.parent, event.parent);
+        take(&mut self.invocation, event.invocation);
+        if event.input.is_some() {
+            self.input = event.input;
+        }
+        if event.output.is_some() {
+            self.output = event.output;
+            self.output_truncated = event.output_truncated;
+        }
+        if event.change.is_some() {
+            self.change = event.change;
+        }
+        self.output_state = output_state(self);
+    }
+}
+
+fn output_state(item: &ToolActivityItem) -> String {
+    match (&item.output, item.phase.is_terminal()) {
+        (Some(_), _) if item.output_truncated => "truncated",
+        (Some(_), _) => "available",
+        (None, true) => "unavailable",
+        (None, false) => "pending",
+    }
+    .to_string()
+}
+
+pub fn item_id(session: &str, call: &str) -> String {
+    format!("{session}|{call}")
 }
 
 /// Fold the log into one durable item per call, ordered by when each call was
 /// requested.
 ///
 /// Ordering by request time and not by completion is what keeps two concurrent
-/// calls in the order they were made, however their results interleave.
+/// calls in the order they were made, however their results interleave. Items
+/// are keyed by session *and* call, so two sessions that reuse a provider call
+/// id stay two items.
 pub fn items(data_folder: &Path, session: Option<&str>) -> Vec<ToolActivityItem> {
     let events = read_all(data_folder);
     let mut order: Vec<String> = Vec::new();
-    let mut items: std::collections::HashMap<String, ToolActivityItem> =
-        std::collections::HashMap::new();
+    let mut items: HashMap<String, ToolActivityItem> = HashMap::new();
 
     for event in events {
         if let Some(want) = session {
@@ -230,56 +608,19 @@ pub fn items(data_folder: &Path, session: Option<&str>) -> Vec<ToolActivityItem>
                 continue;
             }
         }
-        match items.get_mut(&event.call) {
-            Some(item) => {
-                // A later event refines the item; it never replaces it, and it
-                // never moves it in the list.
-                item.history.push(event.phase);
-                item.phase = event.phase;
-                if event.elapsed_ms.is_some() {
-                    item.elapsed_ms = event.elapsed_ms;
-                }
-                if event.exit_code.is_some() {
-                    item.exit_code = event.exit_code;
-                }
-                if !event.detail.is_empty() {
-                    item.detail = event.detail;
-                }
-                if !event.resource.is_empty() {
-                    item.resource = event.resource;
-                }
-                if !event.summary.is_empty() {
-                    item.summary = event.summary;
-                }
-            }
+        let id = item_id(&event.session, &event.call);
+        match items.get_mut(&id) {
+            Some(item) => item.refine(event),
             None => {
-                order.push(event.call.clone());
-                items.insert(
-                    event.call.clone(),
-                    ToolActivityItem {
-                        call: event.call,
-                        tool: event.tool,
-                        session: event.session,
-                        run: event.run,
-                        invocation: event.invocation,
-                        agent: event.agent,
-                        resource: event.resource,
-                        summary: event.summary,
-                        phase: event.phase,
-                        requested_at: event.at,
-                        elapsed_ms: event.elapsed_ms,
-                        exit_code: event.exit_code,
-                        detail: event.detail,
-                        history: vec![event.phase],
-                    },
-                );
+                order.push(id.clone());
+                items.insert(id, ToolActivityItem::from_first(event));
             }
         }
     }
 
     order
         .into_iter()
-        .filter_map(|call| items.remove(&call))
+        .filter_map(|id| items.remove(&id))
         .collect()
 }
 
@@ -299,10 +640,43 @@ pub fn settle_unfinished(data_folder: &Path) -> usize {
         event.run = item.run.clone();
         event.agent = item.agent.clone();
         event.invocation = item.invocation.clone();
-        event.detail = "the run that owned this call did not survive a restart".into();
+        event.event_type = item.event_type;
+        event.lifecycle = item.lifecycle.clone();
+        event.detail = "interrupted by application exit: the run that owned this did not survive a restart".into();
         append(data_folder, &event);
     }
     stuck.len()
+}
+
+/// Everything the audit holds about one session (or all of them), as one
+/// reviewable record. AH-200.
+///
+/// Permission decisions and the execution record together, both already
+/// redacted when they were written; nothing here re-reads a tool's full output
+/// or a file. Stored diffs are named, not inlined: they are file content.
+#[derive(Debug, Clone, Serialize)]
+pub struct AuditExport {
+    pub format: &'static str,
+    pub version: u32,
+    pub exported_at: String,
+    pub session: Option<String>,
+    pub permissions: Vec<crate::audit::PermissionRecord>,
+    pub activity: Vec<ToolActivityItem>,
+}
+
+pub fn export(data_folder: &Path, session: Option<&str>) -> AuditExport {
+    let q = crate::audit::Query {
+        session: session.map(str::to_string),
+        ..Default::default()
+    };
+    AuditExport {
+        format: "jan-audit-export",
+        version: 1,
+        exported_at: now(),
+        session: session.map(str::to_string),
+        permissions: crate::audit::query(data_folder, &q),
+        activity: items(data_folder, session),
+    }
 }
 
 #[cfg(test)]
@@ -387,6 +761,7 @@ mod tests {
         assert!(Phase::Succeeded.is_hideable());
         for phase in [
             Phase::Requested,
+            Phase::Queued,
             Phase::AwaitingPermission,
             Phase::Allowed,
             Phase::Running,
@@ -423,6 +798,7 @@ mod tests {
         assert_eq!(settle_unfinished(&dir), 1);
         let items = items(&dir, None);
         assert_eq!(items[0].phase, Phase::Stale);
+        assert!(items[0].detail.contains("interrupted by application exit"));
         // The finished one is untouched.
         assert_eq!(items[1].phase, Phase::Succeeded);
         // And settling twice does not invent more work.
@@ -463,9 +839,255 @@ mod tests {
         let mut e = ev("c1", "bash", Phase::Failed);
         e.summary = "curl -H 'Authorization: Bearer sk-not-a-real-key' https://x".into();
         e.detail = "failed with token sk-not-a-real-key".into();
+        e.input = Some("{\"command\":\"PGPASSWORD=hunter2 psql\"}".into());
+        e.output = Some("using token=sk-not-a-real-key\n[exit 1]".into());
+        e.diff = Some("+API_KEY=sk-not-a-real-key\n".into());
         append(&dir, &e.redacted());
 
         let raw = std::fs::read_to_string(log_path(&dir)).unwrap();
         assert!(!raw.contains("sk-not-a-real-key"), "{raw}");
+        assert!(!raw.contains("hunter2"), "{raw}");
+        let diff = read_diff(&dir, "s1", "c1").unwrap();
+        assert!(!diff.contains("sk-not-a-real-key"), "{diff}");
+    }
+
+    #[test]
+    fn every_event_is_numbered_in_the_order_it_was_written() {
+        let dir = scratch();
+        for call in ["a", "b", "c"] {
+            append(&dir, &ev(call, "read", Phase::Requested));
+        }
+        let seqs: Vec<u64> = read_all(&dir).iter().filter_map(|e| e.seq).collect();
+        assert_eq!(seqs, vec![1, 2, 3]);
+        // A new process continues from what is on disk rather than restarting.
+        sequences().lock().unwrap().remove(&log_path(&dir));
+        append(&dir, &ev("d", "read", Phase::Requested));
+        assert_eq!(read_all(&dir).last().unwrap().seq, Some(4));
+        let items = items(&dir, None);
+        assert_eq!(items.iter().map(|i| i.seq).collect::<Vec<_>>(), vec![Some(1), Some(2), Some(3), Some(4)]);
+    }
+
+    #[test]
+    fn a_version_one_line_still_reads() {
+        let dir = scratch();
+        std::fs::create_dir_all(dir.join("audit")).unwrap();
+        std::fs::write(
+            log_path(&dir),
+            "{\"v\":1,\"at\":\"2026-09-01T00:00:00Z\",\"session\":\"s1\",\"call\":\"old\",\"tool\":\"read\",\"phase\":\"succeeded\",\"detail\":\"\"}\n",
+        )
+        .unwrap();
+        let items = items(&dir, None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].seq, None);
+        assert_eq!(items[0].event_type, EventType::Tool);
+        // No output was recorded: that is "unavailable", not an empty success.
+        assert_eq!(items[0].output_state, "unavailable");
+    }
+
+    #[test]
+    fn two_sessions_reusing_a_call_id_stay_two_items() {
+        let dir = scratch();
+        append(&dir, &ev("call_0", "read", Phase::Requested));
+        let mut other = ev("call_0", "bash", Phase::Requested);
+        other.session = "s2".into();
+        append(&dir, &other);
+        append(&dir, &ev("call_0", "read", Phase::Succeeded));
+        let all = items(&dir, None);
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].phase, Phase::Succeeded);
+        assert_eq!(all[1].phase, Phase::Requested);
+        assert_ne!(all[0].id, all[1].id);
+    }
+
+    #[test]
+    fn an_edit_keeps_its_own_diff_and_counts() {
+        let dir = scratch();
+        append(&dir, &ev("e1", "edit", Phase::Requested));
+        let mut done = ev("e1", "edit", Phase::Succeeded);
+        done.resource = "src/lib.rs".into();
+        done.diff = Some("--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1,2 +1,3 @@\n-old\n+new\n+more\n keep\n".into());
+        append(&dir, &done.redacted());
+
+        let item = &items(&dir, None)[0];
+        let change = item.change.as_ref().unwrap();
+        assert_eq!((change.added, change.removed), (Some(2), Some(1)));
+        assert!(change.diff_stored && !change.oversized);
+        assert_eq!(change.path, "src/lib.rs");
+        assert!(read_diff(&dir, "s1", "e1").unwrap().contains("+more"));
+        // The diff lives beside the log, not in it.
+        assert!(!std::fs::read_to_string(log_path(&dir)).unwrap().contains("+more"));
+    }
+
+    #[test]
+    fn an_oversized_diff_is_counted_but_not_kept() {
+        let dir = scratch();
+        let mut done = ev("big", "write", Phase::Succeeded);
+        done.change = Some(FileChange {
+            path: "dump.json".into(),
+            kind: "created".into(),
+            from: None,
+            added: None,
+            removed: None,
+            diff_stored: false,
+            oversized: false,
+        });
+        done.diff = Some(format!("+{}\n", "x".repeat(MAX_DIFF_BYTES + 10)));
+        append(&dir, &done);
+        let change = items(&dir, None)[0].change.clone().unwrap();
+        assert!(change.oversized && !change.diff_stored);
+        assert_eq!(change.kind, "created");
+        assert_eq!(change.added, Some(1));
+        assert!(read_diff(&dir, "s1", "big").is_none());
+    }
+
+    #[test]
+    fn a_diff_path_cannot_leave_the_audit_folder() {
+        let dir = scratch();
+        let p = diff_path(&dir, "..\\..\\evil", "../../../x");
+        assert!(p.starts_with(dir.join("audit").join("diffs")));
+        assert!(!p.to_string_lossy().contains(".."));
+    }
+
+    #[test]
+    fn output_is_bounded_to_its_end_and_input_to_its_start() {
+        let dir = scratch();
+        let mut done = ev("o1", "bash", Phase::Succeeded);
+        done.input = Some(format!("{{\"command\":\"{}\"}}", "y".repeat(MAX_INPUT_BYTES * 2)));
+        done.output = Some(format!("{}\nFAILED at the end\n[exit 1]", "z".repeat(MAX_OUTPUT_BYTES * 2)));
+        append(&dir, &done.redacted());
+        let item = &items(&dir, None)[0];
+        let out = item.output.as_deref().unwrap();
+        assert!(out.len() <= MAX_OUTPUT_BYTES);
+        assert!(out.ends_with("FAILED at the end\n[exit 1]"));
+        assert!(item.output_truncated);
+        assert_eq!(item.output_state, "truncated");
+        assert!(item.input.as_deref().unwrap().len() <= MAX_INPUT_BYTES + 3);
+    }
+
+    #[test]
+    fn lifecycle_events_share_the_one_sequence() {
+        let dir = scratch();
+        append(&dir, &ev("c1", "read", Phase::Requested));
+        let mut compacted = ev("compaction-1", "compaction", Phase::Succeeded);
+        compacted.event_type = EventType::Lifecycle;
+        compacted.lifecycle = "compaction".into();
+        append(&dir, &compacted);
+        append(&dir, &ev("c2", "read", Phase::Requested));
+        let items = items(&dir, None);
+        assert_eq!(items[1].event_type, EventType::Lifecycle);
+        assert_eq!(items[1].lifecycle, "compaction");
+        assert!(items[0].seq < items[1].seq && items[1].seq < items[2].seq);
+    }
+
+    #[test]
+    fn the_export_joins_decisions_and_activity_for_one_session_only() {
+        let dir = scratch();
+        append(&dir, &ev("c1", "bash", Phase::Requested));
+        let mut other = ev("c2", "bash", Phase::Requested);
+        other.session = "s2".into();
+        append(&dir, &other);
+        crate::audit::append(
+            &dir,
+            &crate::audit::PermissionRecord::new(
+                now(),
+                "s1",
+                "bash",
+                "exec",
+                &crate::resource::Resource::command("ls"),
+                crate::audit::Outcome::Granted,
+                "asked",
+            ),
+        );
+        let out = export(&dir, Some("s1"));
+        assert_eq!(out.activity.len(), 1);
+        assert_eq!(out.permissions.len(), 1);
+        assert!(out.activity.iter().all(|i| i.session == "s1"));
+        let json = serde_json::to_string(&out).unwrap();
+        assert!(json.contains("jan-audit-export"));
+    }
+
+    /// Steering is one more lifecycle name, not a schema of its own: a branch
+    /// that records steering needs no second store and no schema change.
+    #[test]
+    fn steering_is_an_optional_lifecycle_event_in_the_same_sequence() {
+        let dir = scratch();
+        append(&dir, &ev("c1", "read", Phase::Requested));
+        let mut steer = ev("steer-1", "steering", Phase::Succeeded);
+        steer.event_type = EventType::Lifecycle;
+        steer.lifecycle = "steering".into();
+        steer.summary = "the user redirected the run".into();
+        append(&dir, &steer);
+        let items = items(&dir, Some("s1"));
+        assert_eq!(items[1].lifecycle, "steering");
+        assert!(items[0].seq < items[1].seq);
+    }
+
+    /// A later build can add fields -- a prompt snapshot id, token usage --
+    /// and this build still reads the line. The invocation id is the join key
+    /// to a snapshot, so nothing about snapshots needs to live here.
+    #[test]
+    fn lines_with_fields_from_a_later_build_still_read() {
+        let dir = scratch();
+        std::fs::create_dir_all(dir.join("audit")).unwrap();
+        std::fs::write(
+            log_path(&dir),
+            "{\"v\":3,\"at\":\"2026-10-01T00:00:00Z\",\"seq\":7,\"session\":\"s1\",\"call\":\"c1\",\"invocation\":\"inv-1\",\"tool\":\"read\",\"phase\":\"succeeded\",\"detail\":\"\",\"snapshot_id\":\"snap-9\",\"usage\":{\"prompt_tokens\":12}}\n",
+        )
+        .unwrap();
+        let items = items(&dir, None);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].invocation, "inv-1");
+        assert_eq!(items[0].seq, Some(7));
+        // And the next event continues the sequence after it.
+        sequences().lock().unwrap().remove(&log_path(&dir));
+        append(&dir, &ev("c2", "read", Phase::Requested));
+        assert_eq!(read_all(&dir).last().unwrap().seq, Some(8));
+    }
+
+    /// A damaged line in the middle costs that line only; everything after it
+    /// still reads, in order.
+    #[test]
+    fn a_damaged_line_in_the_middle_costs_that_line_only() {
+        let dir = scratch();
+        append(&dir, &ev("c1", "read", Phase::Requested));
+        let path = log_path(&dir);
+        let mut raw = std::fs::read_to_string(&path).unwrap();
+        raw.push_str("not json at all\n{\"v\":2,\"call\":\n");
+        std::fs::write(&path, raw).unwrap();
+        append(&dir, &ev("c1", "read", Phase::Succeeded));
+        append(&dir, &ev("c2", "read", Phase::Requested));
+        let items = items(&dir, None);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].phase, Phase::Succeeded);
+    }
+
+    /// Stopped by someone and cut off by an exit are different endings, and
+    /// neither is "succeeded" with no output.
+    #[test]
+    fn cancelled_and_interrupted_stay_apart_and_neither_claims_output() {
+        let dir = scratch();
+        append(&dir, &ev("stop", "bash", Phase::Requested));
+        append(&dir, &ev("stop", "bash", Phase::Cancelled));
+        append(&dir, &ev("cut", "bash", Phase::Requested));
+        append(&dir, &ev("cut", "bash", Phase::Running));
+        settle_unfinished(&dir);
+        let items = items(&dir, None);
+        assert_eq!(items[0].phase, Phase::Cancelled);
+        assert_eq!(items[1].phase, Phase::Stale);
+        assert!(items.iter().all(|i| i.output_state == "unavailable"));
+        assert!(items.iter().all(|i| i.finished_at.is_some()));
+    }
+
+    /// Ids are stable: the same session and call always name the same item,
+    /// before and after a restart.
+    #[test]
+    fn an_item_id_is_its_session_and_call() {
+        let dir = scratch();
+        append(&dir, &ev("c1", "read", Phase::Requested));
+        let first = items(&dir, None)[0].id.clone();
+        sequences().lock().unwrap().remove(&log_path(&dir));
+        append(&dir, &ev("c1", "read", Phase::Succeeded));
+        assert_eq!(items(&dir, None)[0].id, first);
+        assert_eq!(first, "s1|c1");
     }
 }

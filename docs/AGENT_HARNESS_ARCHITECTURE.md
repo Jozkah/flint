@@ -439,17 +439,40 @@ Two logs, deliberately separate:
   `awaiting-permission`, `allowed`, `refused`, `running`, `succeeded`,
   `failed`, `cancelled`, `stale`, `timed-out`.
 
-**One way in.** `web-app/src/lib/coworkDispatch.ts` routes every tool call in
-the app -- the main agent's, a subagent's, a background task's, an MCP
-server's, a skill's -- and `withToolActivity` wraps that one function. A tool
-added later is covered without being told to be, and there is no second path
-that could execute something the record does not show.
+**Two ways in, one wrapper.** Cowork routes every tool call -- the main
+agent's, a subagent's, a background task's, an MCP server's, a skill's --
+through `coworkDispatch.ts`; Chat runs its tool calls in the thread route's
+tool loop (`routes/threads/$threadId.tsx`). Both wrap execution in
+`withToolActivity`, and both record the permission phases around it, so a
+tool added later is covered without being told to be. The Rust agent loop
+(CLI) does not write this record yet.
 
-**Ordering.** `activity::items` folds the log into one item per call, ordered
-by when each was *requested*. Two concurrent calls therefore read in the order
-they were made however their results interleave. Recording is queued rather
-than awaited (`toolActivity.ts`), so a tool never waits on its own audit line,
-and the queue is what stops `running` landing after `succeeded`.
+**What an event carries (schema v2).** Identity (session, run, call,
+invocation, agent, source, the parent task, a call it supersedes), a sequence
+number stamped as the line is written, the call's redacted input (bounded to
+4 KB) on its request, and its redacted output (the last 16 KB, flagged when
+cut) on its end. Output that was never recorded reads as `unavailable`, never
+as an empty success. A background job's id, a subagent's task id, and the file
+a call changed with its own `+added/-removed` counts. The unified diff of that
+change is stored beside the log (`audit/diffs/<session>/<call>.diff`, redacted,
+up to 512 KB; larger is counted and marked oversized) and read back with
+`tool_activity_diff` -- it is that edit's diff, not the repository's current
+one. Lines written before v2 still read.
+
+**Lifecycle events.** The run's own events -- a context compaction or trim, a
+subagent waiting for a slot, a subagent or background job stopped (or a stop
+that failed) -- are items in the same log and the same sequence, marked
+`event_type: lifecycle`. There is no separate store for them.
+
+**Ordering.** `activity::items` folds the log into one item per call, keyed by
+session *and* call (a provider's call id is not unique across sessions),
+ordered by when each was *requested*. Two concurrent calls therefore read in
+the order they were made however their results interleave. Recording is queued
+rather than awaited (`toolActivity.ts`), so a tool never waits on its own audit
+line, and the queue is what stops `running` landing after `succeeded`.
+
+**Export.** `audit_export(session)` returns one JSON document with the
+session's permission decisions and its execution record (AH-200).
 
 **Restart.** `settle_unfinished` runs in `.setup()` before the window opens:
 a call left `running` by a killed process becomes `stale`, since nothing

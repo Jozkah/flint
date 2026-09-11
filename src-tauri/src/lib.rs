@@ -100,6 +100,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_replays_list,
         core::agent::commands::tool_activity_record,
         core::agent::commands::tool_activity_items,
+        core::agent::commands::tool_activity_diff,
+        core::agent::commands::audit_export,
         core::agent::commands::payload_usage_record,
         core::agent::commands::payload_usage_lookup,
         core::agent::commands::utility_agent_record,
