@@ -36646,7 +36646,7 @@
         "src-tauri/src/core/server/remote_provider_commands.rs (configs leave without secrets)",
         "src-tauri/examples/cowork_smoke.rs custom-headers-reach-the-provider-and-secrets-stay-secret + custom-headers-survive-a-restart"
       ],
-      "verification": "Precedence, secret-persistence and startup-load tests fail on the previous code. Rust: default-feature suite for transport/secret_values/remote_provider_commands 25 passed; cli suite incl. secrets 766 passed. Real WebView on Windows 11 with the mock provider recording received headers: headers added in the settings page, a reserved Authorization refused in the page and never sent, plain and secret header both received, secret value in the credential store (file store in the harness) and in no file of the data folder, same after a restart in a second process; removing the header removes the stored value. Mock provider only.",
+      "verification": "Precedence, secret-persistence and startup-load tests fail on the previous code. Completion audit added: per-row on/off switch (disabled header not sent, re-enabled sent again), secret values registered for redaction even for providers without an API key (register_secret_values), error bodies redacted in the transport before the webview sees them (mutation check: disabling it fails an_error_body_echoing_a_secret_header_comes_back_redacted), provider-scoping guard test. Real WebView on Windows 11 with the mock provider recording received headers: add, reserved Authorization refused in the page and never sent, plain+secret received, switch off/on takes effect on the next request, a 401 echoing every header leaves the secret on neither the page nor the disk, value in the credential store and in no file of the data folder, restored after a restart in a second process, removal takes effect on the next request and removes the stored value. Mock provider only.",
       "blockers": [],
       "notes": "Not changed: the Local API Server proxy, the agent upstream and the CLI do not send custom headers (they never read custom_headers). See docs/UPls/8208-custom-request-headers.md."
     },
@@ -43889,8 +43889,10 @@
         "src-tauri/src/core/filesystem/helpers.rs a_model_behind_a_junction_resolves_outside_the_data_folder (Windows, mklink /J)"
       ],
       "verification": "Code read of every listing path (extensions/llamacpp-extension/src/index.ts list() 1443-1545, filesystem commands, choose_data_folder) plus a Windows test: a model.yml reached through a junction under <data>/llamacpp/models resolves outside the data folder and is refused by the read_yaml scope check, so list() skips the model with only a warning. Test passes (pins the current behaviour).",
-      "blockers": [],
-      "notes": "Ranked mechanisms: (1) saved data folder unusable at launch (drive not mounted, locked): choose_data_folder silently falls back to the default folder for the session, empty list, files intact; only notice is in Settings > General (app/commands.rs 298-316). (2) junction/symlink under the data folder, common for moving GGUFs to another drive: read_yaml scope check (filesystem/helpers.rs 90) refuses the path, list() skips it (index.ts 1540); a linked models folder also skews the id slice (join_path vs readdir_sync canonicalisation). Not causes: backslash ids (consistent within listing), stale absolute model_path after a move (listing does not check it; load fails instead), folders without model.yml (ignored, but only once model.yml is lost). Fix needs a decision: trust links that live inside the data folder for model files (read-only), and surface the data-folder fallback in the model list. Ask the reporter for their data_folder config and whether models sit behind a link."
+      "blockers": [
+        "Product/security decision: how models stored outside the data folder are allowed (trusted model roots recommended; per-link grant; or keep refusing and explain). See docs/UPls/8374-models-vanish.md."
+      ],
+      "notes": "Evidence recorded (two confirmed mechanisms). Done without a decision: the llama.cpp/MLX provider pages now explain when this run fell back to the default data folder, naming the configured one, instead of showing an empty list. Open: models behind a junction/symlink are refused by the data-folder scope check; the fix needs a trust policy (docs/UPls/8374-models-vanish.md)."
     },
     {
       "source": "janhq/jan",
@@ -71248,12 +71250,17 @@
         "0a7fa9558"
       ],
       "tests": [
-        "src-tauri/src/core/agent/loop.rs steering_enters_after_all_tool_results_in_submission_order, steering_during_final_response_continues_the_same_run, steering_disconnected_surface_does_not_block_the_loop, steering_is_not_offered_an_empty_final_reply",
-        "src-tauri/src/core/cli/tui.rs ten steering_* handoff tests"
+        "src-tauri/src/core/agent/loop.rs steering_* (4)",
+        "src-tauri/src/core/cli/tui.rs steering_* (10)",
+        "web-app/src/lib/__tests__/coworkRunner.test.ts (steering a running turn)",
+        "web-app/src/stores/__tests__/message-queue-store.steering.test.ts",
+        "web-app/src/containers/__tests__/CoworkHeldInput.test.tsx",
+        "web-app/src/routes/__tests__/cowork.sessions.test.tsx (steering, held input)",
+        "src-tauri/examples/cowork_smoke.rs steering-reaches-the-running-session-at-its-next-boundary"
       ],
-      "verification": "cli-feature suite for the agent loop, TUI and secrets: 766 passed, all 14 steering tests included. Not driven interactively against a real model.",
+      "verification": "TUI: cli suite with the 14 steering tests passed. Cowork (desktop) extended to the same behaviour: real WebView on Windows 11 with the mock provider -- two messages typed during session A first step reach the model after the tool round, in order, as user input, marked as steering in the transcript; session B request carries neither. First two scenario attempts failed on scenario assumptions (typed before the first call, which is also a valid boundary; provider conversion merges consecutive user messages), fixed in the scenario. Mock provider only.",
       "blockers": [],
-      "notes": "Hand port (fork drifted ~1.7k lines); flappy-hamster.html dropped. Fork-specific: final-answer boundary after the #8712 empty-reply retry and only for a non-empty answer, before the todo closeout nudge. See docs/UPls/8864-agent-steering.md."
+      "notes": "Hand port for the TUI; Cowork gets the same semantics through its own runner hook. Input a failed/stopped/capped run did not take is held (Send/Discard) instead of silently cleared or auto-sent; pending input persists across restart as held. See docs/UPls/8864-agent-steering.md."
     },
     {
       "source": "janhq/jan",
