@@ -4570,6 +4570,23 @@ fn scenario_agent_roles(ctx: &Ctx) -> ScenarioResult {
                 && ["running", "succeeded"].contains(&e["phase"].as_str().unwrap_or(""))
         });
         ensure!(!mutating_ran, "the {agent} role ran a write or a command");
+        // Declined by the harness as a typed refusal, recorded under the role
+        // in its run's session -- not an unscoped tool-error string.
+        let refused: Vec<&Value> = activity
+            .iter()
+            .filter(|e| {
+                e["agent"] == agent
+                    && ["write", "bash"].contains(&e["tool"].as_str().unwrap_or(""))
+                    && e["phase"] == "refused"
+            })
+            .collect();
+        ensure!(!refused.is_empty(), "the {agent} role's refused write or bash was not recorded under it");
+        for e in &refused {
+            ensure!(
+                e["refusal"] == "tool-not-offered" && e["session"].as_str().is_some_and(|s| !s.is_empty()),
+                "the {agent} role's refusal was not typed and scoped: {e}"
+            );
+        }
     }
     let explorer_read = activity
         .iter()

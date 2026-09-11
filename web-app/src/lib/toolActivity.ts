@@ -100,6 +100,8 @@ export type ToolActivityEvent = {
   elapsed_ms?: number | null
   exit_code?: number | null
   detail: string
+  /** On a harness refusal: its kind (`tool-not-offered`, `invalid-call`). */
+  refusal?: string | null
   output?: string | null
   output_truncated?: boolean
   job_id?: string
@@ -135,6 +137,7 @@ export type ToolActivityItem = {
   elapsed_ms: number | null
   exit_code: number | null
   detail: string
+  refusal?: string | null
   output?: string | null
   output_truncated?: boolean
   /** `available` / `truncated` / `unavailable` / `pending`. */

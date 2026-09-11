@@ -104,6 +104,35 @@ export type ToolOutcome = {
   isError?: boolean
   /** Display-only unified diff. Never reaches the model. */
   diff?: string
+  /**
+   * Set when the harness declined the call rather than a tool failing, so a
+   * caller branches on the kind instead of parsing `output`.
+   */
+  refusal?: HarnessRefusal
+}
+
+/**
+ * Why the harness declined a call without running anything.
+ *
+ * - `tool-not-offered`: the agent asked for a tool it was never given -- for a
+ *   role, a tool outside its allowlist. Authority is not widened by asking.
+ * - `invalid-call`: the call named an offered tool but its arguments could not
+ *   be used.
+ */
+export type HarnessRefusalKind = 'tool-not-offered' | 'invalid-call'
+
+export type HarnessRefusal = {
+  kind: HarnessRefusalKind
+  tool: string
+  /** The agent that asked (`main`, or a role or custom agent's name). */
+  agent?: string
+}
+
+/** The kind of refusal an invalid call is, from the SDK's own reason. */
+export function refusalKindOf(invalid: string): HarnessRefusalKind {
+  return /unavailable tool|no such tool|not (?:a|an) (?:available|offered) tool/i.test(invalid)
+    ? 'tool-not-offered'
+    : 'invalid-call'
 }
 
 /** One model turn's worth of stream, folded into a shape the loop can act on. */
@@ -813,18 +842,24 @@ export async function runTurn(opts: {
         continue
       }
       if (call.invalid !== undefined) {
+        const who = deps.activity?.()
+        const refusal: HarnessRefusal = {
+          kind: refusalKindOf(call.invalid),
+          tool: call.toolName,
+          ...(who?.agent ? { agent: who.agent } : {}),
+        }
         const outcome: ToolOutcome = {
           output:
             `The call to \`${call.toolName}\` was not run: ${call.invalid} ` +
             'Use one of the tools you were given, with the arguments its ' +
             'schema describes.',
           isError: true,
+          refusal,
         }
         outcomes.set(call.toolCallId, outcome)
         // On the durable timeline as a refusal, the same as any other call the
         // run did not carry out, so the record says it was asked for -- in
-        // this run's session, under this agent.
-        const who = deps.activity?.()
+        // this run's session, under this agent, with the refusal's kind.
         const identity = {
           call: call.toolCallId,
           tool: call.toolName,
@@ -841,6 +876,7 @@ export async function runTurn(opts: {
           ...identity,
           phase: 'refused',
           detail: 'not a valid call',
+          refusal: refusal.kind,
         })
         observed.push({
           tool: call.toolName,

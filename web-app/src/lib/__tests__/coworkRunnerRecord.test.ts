@@ -4,7 +4,7 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 const invoke = vi.hoisted(() => vi.fn(async () => undefined))
 vi.mock('@tauri-apps/api/core', () => ({ invoke }))
 
-import { runTurn } from '../coworkRunner'
+import { refusalKindOf, runTurn } from '../coworkRunner'
 
 const streamOf = (chunks: UIMessageChunk[]): ReadableStream<UIMessageChunk> =>
   new ReadableStream({
@@ -67,5 +67,14 @@ describe('a call the runner refuses without dispatching', () => {
     for (const e of events) {
       expect(e).toMatchObject({ session: 's1', run: 'r1', agent: 'reviewer', invocation: 'inv-1', call: 'call_0' })
     }
+    // A typed harness refusal, not only a tool-error string.
+    expect(events[1].refusal).toBe('tool-not-offered')
+  })
+})
+
+describe('refusalKindOf', () => {
+  it('tells a tool the agent was never offered from a call it could not use', () => {
+    expect(refusalKindOf("Model tried to call unavailable tool 'write'.")).toBe('tool-not-offered')
+    expect(refusalKindOf('Invalid input for tool read: path must be a string')).toBe('invalid-call')
   })
 })

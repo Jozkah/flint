@@ -217,6 +217,12 @@ pub struct ToolActivityEvent {
     /// Why it failed or was refused, redacted. Never the tool's whole output.
     #[serde(default)]
     pub detail: String,
+    /// On a `refused` event the harness chose: the refusal's kind
+    /// (`tool-not-offered`, `invalid-call`, ...), so a reader branches on it
+    /// instead of parsing `detail`. Absent for a person's refusal and on
+    /// older lines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refusal: Option<String>,
     /// What the call returned: its end, redacted, bounded to
     /// `MAX_OUTPUT_BYTES`. Absent when nothing was recorded -- which reads as
     /// "unavailable", never as an empty success.
@@ -273,6 +279,7 @@ impl ToolActivityEvent {
             elapsed_ms: None,
             exit_code: None,
             detail: String::new(),
+            refusal: None,
             output: None,
             output_truncated: false,
             job_id: String::new(),
@@ -668,6 +675,8 @@ pub struct ToolActivityItem {
     pub elapsed_ms: Option<u64>,
     pub exit_code: Option<i32>,
     pub detail: String,
+    /// The harness refusal's kind, when the harness declined the call.
+    pub refusal: Option<String>,
     pub output: Option<String>,
     pub output_truncated: bool,
     /// `available`, `truncated`, `unavailable` (finished with nothing
@@ -708,6 +717,7 @@ impl ToolActivityItem {
             elapsed_ms: event.elapsed_ms,
             exit_code: event.exit_code,
             detail: event.detail,
+            refusal: event.refusal,
             output: event.output,
             output_truncated: event.output_truncated,
             output_state: String::new(),
@@ -756,6 +766,9 @@ impl ToolActivityItem {
         }
         if event.change.is_some() {
             self.change = event.change;
+        }
+        if event.refusal.is_some() {
+            self.refusal = event.refusal;
         }
         self.output_state = output_state(self);
     }
@@ -1122,6 +1135,25 @@ mod tests {
         append(&dir, &e);
         assert_eq!(read_legacy(&dir).len(), 1);
         assert_eq!(items(&dir, None).len(), 1);
+    }
+
+    /// A harness refusal keeps its kind through the log and onto the item,
+    /// and a metadata-only reader can still see it.
+    #[test]
+    fn a_harness_refusal_keeps_its_kind() {
+        let dir = scratch();
+        let mut asked = ev("call_0", "write", Phase::Requested);
+        asked.agent = "reviewer".into();
+        let mut refused = ev("call_0", "write", Phase::Refused);
+        refused.agent = "reviewer".into();
+        refused.detail = "not a valid call".into();
+        refused.refusal = Some("tool-not-offered".into());
+        append(&dir, &asked);
+        append(&dir, &refused);
+        let item = &items(&dir, Some("s1"))[0];
+        assert_eq!(item.phase, Phase::Refused);
+        assert_eq!(item.refusal.as_deref(), Some("tool-not-offered"));
+        assert!(crate::event_export::METADATA_FIELDS.contains(&"refusal"));
     }
 
     /// A lifecycle event is its own kind in the log, and reads back as one.

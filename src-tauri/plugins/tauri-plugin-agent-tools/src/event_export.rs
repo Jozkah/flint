@@ -44,6 +44,7 @@ pub const METADATA_FIELDS: &[&str] = &[
     "exitCode", "index", "max", "count", "model", "decision",
     // The same facts as the tool-activity payload names them (`activity`).
     "kind", "elapsed_ms", "exit_code", "event_type", "lifecycle", "source", "output_truncated",
+    "refusal",
 ];
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
