@@ -3,6 +3,7 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import type { LanguageModel } from 'ai'
 import { getProviderApiType } from '@/lib/providerCaps'
 import { isLocalEndpoint } from '@/lib/endpointDiagnostics'
+import { applyCustomHeaders } from '@/lib/customHeaders'
 
 /**
  * Llama.cpp timings structure from the response
@@ -105,12 +106,7 @@ export function createLanguageModel(
   // need the Anthropic SDK; openai-compatible's schema rejects Messages-API
   // shaped streams.
   if (getProviderApiType(provider) === 'anthropic') {
-    const headers: Record<string, string> = {}
-    if (provider.custom_header) {
-      for (const h of provider.custom_header) {
-        headers[h.header] = h.value
-      }
-    }
+    const headers = applyCustomHeaders({}, provider)
     const anthropic = createAnthropic({
       apiKey: provider.api_key ?? '',
       baseURL: provider.base_url,

@@ -1092,6 +1092,14 @@
     "budgetOver": "over the configured window by ~{{over}} tokens",
     "tokensEstimatedPartial": "at least ~{{count}} tokens ({{method}}); some parts could not be measured",
     "builtinsUnknown": "Tool set not built yet",
+    "tooling": {
+      "label": "Project tooling",
+      "loading": "Reading manifests…",
+      "none": "No framework, build or test manifests recognised",
+      "failed": "Could not be read ({{kind}}); the folder can still be used",
+      "incomplete": "incomplete: {{reason}}",
+      "fact": "{{value}} — {{confidence}}, from {{source}}: {{reason}}"
+    },
     "evidence": {
       "label": "Change attribution",
       "none": "Jan can tell its own changes from existing ones.",
@@ -1100,6 +1108,13 @@
       "incomplete": "The starting state was not fully captured: attribution will be incomplete.",
       "not-captured": "No starting state recorded yet."
     }
+  },
+  "steering": {
+    "delivered": "Sent to the agent while it was working",
+    "held_one": "1 message was not delivered: the run it was typed for did not take it",
+    "held_other": "{{count}} messages were not delivered: the run they were typed for did not take them",
+    "send": "Send",
+    "discard": "Discard"
   },
   "coworkAccess": {
     "label": "Where changes go",

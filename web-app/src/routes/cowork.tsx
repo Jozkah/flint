@@ -63,6 +63,7 @@ import {
 import { CoworkWorkflowCard } from '@/containers/CoworkWorkflowCard'
 import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
+import { useMessageQueue } from '@/stores/message-queue-store'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { MessageItem } from '@/containers/MessageItem'
@@ -194,6 +195,7 @@ import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
 import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
+import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
 import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
 import { orphans as orphanWorktrees } from '@/lib/coworkWorktrees'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
@@ -292,11 +294,12 @@ import {
   isAbortLike,
   answerAsk,
   runTurn,
+  untilStopped,
   type RunOutcome,
   type StreamSink,
   type ToolOutcome,
 } from '@/lib/coworkRunner'
-import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { useCoworkRun, type RunEnding } from '@/hooks/useCoworkRun'
 import {
   listSubagents,
   type SubagentDefinition,
@@ -309,6 +312,7 @@ import {
   type SubagentRequest,
 } from '@/lib/coworkSubagent'
 import { errorText } from '@/lib/errorText'
+import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
 import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
 import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 
@@ -336,6 +340,9 @@ const configuredContextTokens = (
   caps: { contextTokens: number | null } | null | undefined
 ): number | null => caps?.contextTokens ?? null
 
+/** Stable empty lane, so a session with no run does not re-render per write. */
+const NO_LIVE_TURNS: CoworkTurn[] = []
+
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
 const messageOf = errorText
 
@@ -347,7 +354,9 @@ function CoworkPage() {
   // and the run all have to be talking about the same window.
   // The snapshot of the dispatch now in flight, so its reply's usage can be
   // recorded against the payload it actually counted.
-  const lastSnapshotRef = useRef<PromptSnapshotRef | null>(null)
+  // By session: the sink reports which session a dispatch was for, and a
+  // snapshot from one session's run must not be stamped on another's reply.
+  const lastSnapshotRef = useRef<Record<string, PromptSnapshotRef>>({})
   const modelCapabilities = useModelCapabilities(
     selectedModel as never,
     selectedProvider as never
@@ -390,15 +399,31 @@ function CoworkPage() {
     setConfirmDirectEdit(false)
   }, [session?.id, folder])
 
-  const [running, setRunning] = useState(false)
-
-  const [liveTurns, setLiveTurns] = useState<CoworkTurn[]>([])
-  const liveTurnsRef = useRef<CoworkTurn[]>([])
-  const [stoppedBy, setStoppedBy] = useState<RunOutcome['stoppedBy'] | null>(
-    null
+  // Everything about a run is the viewed session's, read from the run store by
+  // session id (janhq/jan#8905). This page used to hold one run for itself:
+  // a run in one session showed as running in every other, Stop aborted
+  // whichever run had started last, and a result arriving after a switch was
+  // drawn under the session in view.
+  const viewedId = session?.id ?? null
+  const running = useCoworkRun((s) => !!(viewedId && s.runs[viewedId]))
+  const liveTurns = useCoworkRun(
+    (s) => (viewedId ? s.liveTurns[viewedId] : undefined) ?? NO_LIVE_TURNS
   )
-  const [runError, setRunError] = useState<string | undefined>(undefined)
+  const runEnding = useCoworkRun((s) =>
+    viewedId ? s.outcomes[viewedId] : undefined
+  )
+  const stoppedBy: RunOutcome['stoppedBy'] | null = runEnding?.stoppedBy ?? null
+  const runError = runEnding?.errorText
   const [gitBranch, setGitBranch] = useState<string | null>(null)
+  /**
+   * The attached folder's detected tooling (AH-068 / AH-069 / AH-070), keyed
+   * by the folder it was read for so a slow read for the previous folder is
+   * never shown for the next. `loaded` is null while the read is in flight.
+   */
+  const [tooling, setTooling] = useState<{
+    folder: string
+    loaded: LoadedTooling | null
+  } | null>(null)
   const [projectInstructions, setProjectInstructions] = useState<string | null>(
     null
   )
@@ -630,6 +655,12 @@ function CoworkPage() {
       // From the run's own snapshot when there is one, so the card and the
       // summary cannot disagree about whether anything is attributable.
       evidence: evidenceLimit(runOrigins?.context.baseline ?? null),
+      // Only the read for this folder: a late answer for another is ignored.
+      tooling: folder
+        ? tooling?.folder === folder && tooling.loaded
+          ? tooling.loaded.readiness
+          : { state: 'loading' }
+        : undefined,
       // From the run's own payload once there is one. Before that the
       // categories that depend on it stay unknown rather than zero: a run that
       // has not been built has not sent nothing, it has sent nothing *yet*.
@@ -652,6 +683,7 @@ function CoworkPage() {
     worktree,
     compat,
     runOrigins?.context.baseline,
+    tooling,
     advertisedToolCount,
     runContext,
     availableSkills,
@@ -676,7 +708,11 @@ function CoworkPage() {
     return readiness.branch ? `${repo} · ${readiness.branch}` : repo
   }, [readiness.folder, readiness.branch])
 
-  const runSkillsRef = useRef<ReturnType<typeof resolveSkills>>([])
+  // A retake re-uses the skills of the turn it takes again -- that session's
+  // turn, not whichever session ran last.
+  const runSkillsRef = useRef<Record<string, ReturnType<typeof resolveSkills>>>(
+    {}
+  )
   const sessionIdRef = useRef<string | null>(null)
   sessionIdRef.current = session?.id ?? null
   const workspacePath = useSessionWorkspacePath(session?.id)
@@ -721,7 +757,9 @@ function CoworkPage() {
 
   // The step just finished, so the counter tracks a run instead of jumping once
   // at the end. Falls back to the committed usage between runs.
-  const [liveUsage, setLiveUsage] = useState<Usage | null>(null)
+  const liveUsage: Usage | null = useCoworkRun(
+    (s) => (viewedId ? s.usage[viewedId] : undefined) ?? null
+  )
   // The rail holds one panel at a time: preview, diff and code all want the
   // width, so showing two together starves the transcript (C7).
   // Held in a store rather than in this component: stepping into Settings
@@ -937,6 +975,23 @@ function CoworkPage() {
     invoke<string | null>('agent_git_branch', { project: folder })
       .then(setGitBranch)
       .catch(() => setGitBranch(null))
+  }, [folder])
+
+  // Read once per attached folder. A failure is a typed state, never a throw,
+  // and never stops the folder from being used.
+  useEffect(() => {
+    if (!folder) {
+      setTooling(null)
+      return
+    }
+    let alive = true
+    setTooling({ folder, loaded: null })
+    void loadProjectTooling(folder).then((loaded) => {
+      if (alive) setTooling({ folder, loaded })
+    })
+    return () => {
+      alive = false
+    }
   }, [folder])
 
   // Every instruction file at the attached root, in one pass.
@@ -1534,60 +1589,6 @@ function CoworkPage() {
     [running, displayedTurns]
   )
 
-  const pushLive = useCallback((turns: CoworkTurn[]) => {
-    // AH-078. Bind each assistant row to the dispatch that produced it, here,
-    // because here is where the row first exists.
-    //
-    // Every previous attempt wrote the reference at snapshot time, from the
-    // sink. Instrumenting the live lane in the running app showed why none of
-    // them worked: at dispatch the lane holds the user turn and nothing else,
-    // so there is no assistant row to write onto and the write silently does
-    // nothing. Unit tests missed it because they hand the mutation an array
-    // that already contains one.
-    //
-    // `lastSnapshotRef` is the dispatch that just went out, so a continuation,
-    // a retry and a compaction each carry their own -- which position-based
-    // matching cannot express, and which is the open part of this item.
-    const stamped = turns.map((turn) =>
-      turn.role === 'assistant' && !turn.promptSnapshot && lastSnapshotRef.current
-        ? { ...turn, promptSnapshot: lastSnapshotRef.current }
-        : turn
-    )
-    liveTurnsRef.current = [...liveTurnsRef.current, ...stamped]
-    setLiveTurns(liveTurnsRef.current)
-    // AH-083: the memories this row's request carried now know the turn and
-    // the exact snapshot they went out in. Here for the same reason as the
-    // stamp above: this is where the row, its memory and its snapshot meet.
-    const store = useCoworkSessions.getState()
-    const session = store.sessions.find((s) => s.id === store.currentId)
-    for (const turn of stamped) {
-      if (turn.role !== 'assistant' || !turn.memory?.injectedIds.length) continue
-      void recordMemoryUses({
-        sessionId: session?.id,
-        projectRoot: session?.folder ?? undefined,
-        memory: turn.memory,
-        turnId: turn.promptSnapshot?.id ? `turn-${turn.promptSnapshot.id}` : undefined,
-        snapshotId: turn.promptSnapshot?.id,
-      })
-    }
-  }, [])
-
-  /**
-   * Change the live turns this route is actually rendering.
-   *
-   * There are two live-turn lanes: the run store's, and this ref-backed copy,
-   * and only this one reaches the screen. A question attached to the store's
-   * lane is recorded correctly and never rendered.
-   */
-  const mutateLive = useCallback(
-    (apply: (turns: CoworkTurn[]) => CoworkTurn[]) => {
-      const next = apply(liveTurnsRef.current)
-      if (next === liveTurnsRef.current) return
-      liveTurnsRef.current = next
-      setLiveTurns(next)
-    },
-    []
-  )
 
   /**
    * Drive one request. `text` is null for a resume — a retry after a failure
@@ -1595,10 +1596,34 @@ function CoworkPage() {
    * would leave the model reading it twice.
    */
   const runRequest = async (text: string | null) => {
-    if (running) return
     const sid = ensureCurrentSession()
+    // This session's run only: another session running is no reason to wait.
+    if (useCoworkRun.getState().runs[sid]) return
     const store = useCoworkSessions.getState()
     const current = store.sessions.find((s) => s.id === sid)
+    /**
+     * The model this run is sent with: the session's own choice, or -- for a
+     * session that has not made one -- the picker's, recorded on the session
+     * so its next run uses the same one (janhq/jan#8905). Shadows the
+     * picker's values for the rest of this function on purpose: nothing in a
+     * run should read the global selection after this point.
+     */
+    const modelState = useModelProvider.getState()
+    const runChoice =
+      current?.model ??
+      (modelState.selectedModel
+        ? {
+            provider: modelState.selectedProvider,
+            id: modelState.selectedModel.id,
+          }
+        : null)
+    const selectedProvider = runChoice?.provider ?? ''
+    const selectedModel = runChoice
+      ? (modelState.providers
+          .find((p) => p.provider === runChoice.provider && p.active !== false)
+          ?.models.find((m) => m.id === runChoice.id) ?? null)
+      : null
+    if (runChoice && !current?.model) store.setModel(sid, runChoice)
     /**
      * Skills asked for by *this* turn, frozen for the whole run.
      *
@@ -1624,9 +1649,9 @@ function CoworkPage() {
     const skillNames = runRegistry.available.map((skill) => skill.name)
     const runSkills =
       text == null
-        ? runSkillsRef.current
+        ? (runSkillsRef.current[sid] ?? [])
         : resolveSkills(parseSkillRequests(text, skillNames), runRegistry)
-    runSkillsRef.current = runSkills
+    runSkillsRef.current[sid] = runSkills
     if (!text && !(current?.messages?.length ?? 0)) return
     if (!selectedModel?.id) {
       toast.error(t('common:selectModel'))
@@ -1665,13 +1690,85 @@ function CoworkPage() {
       }
     }
 
-    setStoppedBy(null)
-    setRunError(undefined)
-    setLiveUsage(null)
-    liveTurnsRef.current = text ? [{ role: 'user', content: text }] : []
-    setLiveTurns(liveTurnsRef.current)
-    useCoworkRun.getState().resetSubagents(sid)
-    setRunning(true)
+    // Claimed before the first await (janhq/jan#8905): the run id, its
+    // cancellation handle and the session's running state all exist from
+    // here, so Stop reaches a run that is still preparing and a second request
+    // in this session waits, while other sessions are untouched. Starting the
+    // run also clears this session's last outcome, usage and subagent lanes.
+    const runId = crypto.randomUUID()
+    const controller = new AbortController()
+    const handle = beginRun(sid, runId, controller)
+    useCoworkRun.getState().startRun(sid, runId)
+    // AH-005: the run's first canonical event, recorded where the run is
+    // claimed so a run stopped during preparation still has a start and an
+    // end. The title is the user's own words, so it is content: a
+    // metadata-only export leaves it out.
+    recordEvents([
+      {
+        id: `run:${runId}:started`,
+        session: sid,
+        run: runId,
+        kind: 'run.started',
+        payload: { model: selectedModel.id, title: text },
+      },
+    ])
+    const recordRunEnded = (ending: RunEnding | null) =>
+      recordEvents([
+        {
+          id: `run:${runId}:ended`,
+          session: sid,
+          run: runId,
+          kind: 'run.ended',
+          payload: {
+            stoppedBy: ending?.stoppedBy ?? 'unknown',
+            detail: ending?.errorText ?? '',
+          },
+        },
+      ])
+    // This run's live lane. Every write names the run, so once the run is
+    // stopped, replaced or its session deleted, a late write is refused
+    // rather than drawn under whatever session is in view.
+    let runTurns: CoworkTurn[] = text ? [{ role: 'user', content: text }] : []
+    const publish = () =>
+      useCoworkRun.getState().setRunTurns(sid, runId, [...runTurns])
+    const pushLive = (turns: CoworkTurn[]) => {
+      // AH-078. Bind each assistant row to the dispatch that produced it,
+      // here, because here is where the row first exists: at dispatch the
+      // lane holds the user turn and nothing else, so a reference written
+      // then has nothing to land on. The snapshot is this session's latest,
+      // so a continuation, a retry and a compaction each carry their own.
+      const snapshot = lastSnapshotRef.current[sid]
+      const stamped = turns.map((turn) =>
+        turn.role === 'assistant' && !turn.promptSnapshot && snapshot
+          ? { ...turn, promptSnapshot: snapshot }
+          : turn
+      )
+      runTurns = [...runTurns, ...stamped]
+      publish()
+      // AH-083: the memories this row's request carried now know the turn and
+      // the exact snapshot they went out in. Here for the same reason as the
+      // stamp above: this is where the row, its memory and its snapshot meet.
+      // Named by this run's session, never the one in view.
+      for (const turn of stamped) {
+        if (turn.role !== 'assistant' || !turn.memory?.injectedIds.length) continue
+        void recordMemoryUses({
+          sessionId: sid,
+          projectRoot: runAuthority.folder ?? undefined,
+          memory: turn.memory,
+          turnId: turn.promptSnapshot?.id
+            ? `turn-${turn.promptSnapshot.id}`
+            : undefined,
+          snapshotId: turn.promptSnapshot?.id,
+        })
+      }
+    }
+    const mutateLive = (apply: (turns: CoworkTurn[]) => CoworkTurn[]) => {
+      const next = apply(runTurns)
+      if (next === runTurns) return
+      runTurns = next
+      publish()
+    }
+    publish()
     /**
      * The authority this run holds, taken once and kept for its lifetime.
      *
@@ -1690,11 +1787,65 @@ function CoworkPage() {
       authority: runAuthority,
     })
 
+    /**
+     * Until the turn's own try/finally takes the run over (below), its
+     * preparation owns it: Stop ends it here, and so does a probe that fails.
+     * Neither did -- the session stayed running for as long as a probe took,
+     * or for good once one threw. janhq/jan#8905.
+     */
+    const abandon = (ending: RunEnding) => {
+      const othersRunning = Object.keys(useCoworkRun.getState().runs).some(
+        (id) => id !== sid
+      )
+      if (!othersRunning) useAppState.getState().updateLoadingModel(false)
+      endRun(sid, runId)
+      runWorkDone()
+      for (const resolve of handle.pendingAsks.values()) resolve(null)
+      handle.pendingAsks.clear()
+      // What the user asked is kept, as it is when a turn stops later on.
+      const prior = current?.messages ?? []
+      useCoworkSessions.getState().commitTurns(
+        sid,
+        runTurns,
+        text
+          ? [
+              ...prior,
+              {
+                id: `${sid}-user-${prior.length}`,
+                role: 'user',
+                parts: [{ type: 'text', text }],
+              } as any,
+            ]
+          : prior,
+        useCoworkRun.getState().subagents[sid] ?? [],
+        undefined
+      )
+      useCoworkRun.getState().finishRun(sid, runId, ending)
+      recordRunEnded(ending)
+      // Input typed for a run that never ran is held for the user, never
+      // dropped and never sent on its own. janhq/jan#8864.
+      useMessageQueue.getState().holdQueue(sid)
+    }
+    const STOPPED = Symbol('stopped')
+    /** A preparation step, given up the moment Stop is pressed. */
+    const prepared = async <T,>(work: Promise<T>): Promise<T | typeof STOPPED> => {
+      try {
+        return await untilStopped(work, controller.signal)
+      } catch (e) {
+        abandon(
+          isAbortLike(e, controller.signal)
+            ? { stoppedBy: 'aborted' }
+            : { stoppedBy: 'error', errorText: errorText(e) }
+        )
+        return STOPPED
+      }
+    }
+
     // Local models load before the first token, but only on a cold start. Probe
     // the engine so the load card shows on a real load, not on every warm run.
     if (selectedProvider === 'llamacpp') {
       try {
-        const loaded = await getLoadedModels()
+        const loaded = await untilStopped(getLoadedModels(), controller.signal)
         if (!loaded.includes(selectedModel.id)) {
           useAppState.getState().updateModelLoadProgress(undefined)
           useAppState.getState().updateLoadingModel(true)
@@ -1702,6 +1853,7 @@ function CoworkPage() {
       } catch {
         // Probe failed; skip the card rather than flash it every run.
       }
+      if (controller.signal.aborted) return abandon({ stoppedBy: 'aborted' })
     }
 
     /**
@@ -1734,7 +1886,10 @@ function CoworkPage() {
       let captured: GitBaseline
       try {
         captured = baselineFromStatus(
-          await loadGitStatus(carried.readRoot, 'all'),
+          await untilStopped(
+            loadGitStatus(carried.readRoot, 'all'),
+            controller.signal
+          ),
           baselineBinding
         )
       } catch {
@@ -1742,6 +1897,7 @@ function CoworkPage() {
         // before-state, nothing found later can be dated at all.
         captured = unavailableBaseline(baselineBinding)
       }
+      if (controller.signal.aborted) return abandon({ stoppedBy: 'aborted' })
       runBaseline = acceptBaseline(captured, bindingRef.current)
     }
 
@@ -1837,7 +1993,7 @@ function CoworkPage() {
 
     // Warm the sandbox probe: the transport's prompt and tool set read it
     // synchronously via sandboxEnforces().
-    await getSandboxStatus()
+    if ((await prepared(getSandboxStatus())) === STOPPED) return
     // Read once per run, not subscribed: the advertised set is frozen for the
     // run anyway, so a mid-run flip in Settings would only desync the prompt.
     const webSearch = useWebSearchConfig.getState().webSearchEnabled
@@ -1917,7 +2073,21 @@ function CoworkPage() {
       ? { sessionId: liveGrant.sessionId, folder: liveGrant.folder }
       : undefined
     const runWorktreePath = worktree?.path ?? null
+    // The same facts the readiness card shows when the run reads the folder
+    // on screen; read afresh for any other root (a managed worktree). Given up
+    // on Stop like the rest of preparation, and never a reason not to run.
+    let runTooling: string | null = null
+    if (runReadRoot) {
+      const cached =
+        tooling?.folder === runReadRoot ? tooling.loaded : null
+      const loaded = cached ?? (await prepared(loadProjectTooling(runReadRoot)))
+      if (loaded === STOPPED) return
+      runTooling = loaded.prompt
+    }
     const transport = new CoworkChatTransport(sid, {
+      // Captured now: every step of this run uses it, whatever the picker
+      // says by then (janhq/jan#8905).
+      model: { provider: selectedProvider, id: selectedModel.id },
       planMode: isReadOnly(runMode),
       subagentNames: runAgents.map((d) => d.name),
       // Always on at depth 0, even with nothing saved: a one-off subagent with
@@ -1935,6 +2105,7 @@ function CoworkPage() {
       // switched on, oversized, or pointing outside the folder contributes
       // nothing here.
       compatInstructions: compatInstructionBlocks(runCompat),
+      projectTooling: runTooling,
       openingInspection: inspecting,
     })
     // Project memory is keyed by the attached folder's own identity file, not
@@ -1944,30 +2115,17 @@ function CoworkPage() {
       projectRoot: current?.folder ?? undefined,
       temporary: false,
     })
-    await transport.refreshTools()
+    if ((await prepared(transport.refreshTools())) === STOPPED) return
     // Now the count is a fact rather than a guess, so the readiness card can
     // stop saying the tool set has not been built.
     const advertised = Object.keys(transport.advertisedTools)
-    setAdvertisedToolCount(advertised.length)
-    setAdvertisedToolNames(advertised)
+    // Describes the session in view only: a background run must not rewrite
+    // the readiness card of the session the user is looking at.
+    if (sid === sessionIdRef.current) {
+      setAdvertisedToolCount(advertised.length)
+      setAdvertisedToolNames(advertised)
+    }
 
-    const controller = new AbortController()
-    abortRef.current = controller
-    // One run, one workflow id. Registering the run is what makes stopping it —
-    // as a whole, or one dispatched child at a time — actually reach anything.
-    const runId = crypto.randomUUID()
-    beginRun(sid, runId, controller)
-    // AH-005: the run's first canonical event. The title is the user's own
-    // words, so it is content: a metadata-only export leaves it out.
-    recordEvents([
-      {
-        id: `run:${runId}:started`,
-        session: sid,
-        run: runId,
-        kind: 'run.started',
-        payload: { model: selectedModel.id, title: text },
-      },
-    ])
     // Missing-path reads this run has seen, shared by the run and its
     // children and dropped with it (janhq/jan#8906).
     const runReadFailures = new Map<string, number>()
@@ -1984,10 +2142,10 @@ function CoworkPage() {
 
     const sink: StreamSink = {
       onText: (delta) => {
-        const last = liveTurnsRef.current[liveTurnsRef.current.length - 1]
+        const last = runTurns[runTurns.length - 1]
         if (last && last.role === 'assistant') {
           last.content += delta
-          setLiveTurns([...liveTurnsRef.current])
+          publish()
         } else {
           pushLive([{ role: 'assistant', content: delta }])
         }
@@ -1998,12 +2156,10 @@ function CoworkPage() {
         ]),
       onToolArgsDelta: () => {},
       onToolCall: (call) => {
-        const row = liveTurnsRef.current.find(
-          (turn) => turn.callId === call.toolCallId
-        )
+        const row = runTurns.find((turn) => turn.callId === call.toolCallId)
         if (row) {
           row.args = call.input
-          setLiveTurns([...liveTurnsRef.current])
+          publish()
         }
         // A shell command is background work the moment it starts, and its
         // arguments are the only place the command line exists.
@@ -2038,7 +2194,7 @@ function CoworkPage() {
         [
           ...(useCoworkSessions.getState().sessions.find((s) => s.id === sid)
             ?.turns ?? []),
-          ...liveTurnsRef.current,
+          ...runTurns,
         ],
         sid
       )
@@ -2219,7 +2375,7 @@ function CoworkPage() {
               // they go through the same prompt rather than around it --
               // shown on its own, because the child's calls are not parts of
               // any message on screen.
-              onApprove: (callId, toolName, _input, preview) =>
+              onApprove: (callId, toolName, _input, preview, signal) =>
                 useToolApprovalRequests
                   .getState()
                   .requestApproval(
@@ -2230,7 +2386,8 @@ function CoworkPage() {
                     preview,
                     destination
                       ? `${resolved.name} (its own checkout)`
-                      : resolved.name
+                      : resolved.name,
+                    signal
                   ),
               trackShell: () =>
                 useCoworkActiveWork.getState().acquire({
@@ -2343,7 +2500,7 @@ function CoworkPage() {
       messages,
       configuredContextTokens(modelCapabilities)
     )
-    setRunContext(measured)
+    if (sid === sessionIdRef.current) setRunContext(measured)
 
     /**
      * Check the window before dispatching, not after the server complains.
@@ -2458,10 +2615,18 @@ function CoworkPage() {
               // The prompt the chat surface already uses for tool approval,
               // not a second one: it honours grants the user has already made
               // and renders in the tool card the call is reported in.
-              onApprove: (callId, toolName, _input, preview) =>
+              onApprove: (callId, toolName, _input, preview, signal) =>
                 useToolApprovalRequests
                   .getState()
-                  .requestApproval(callId, toolName, sid, undefined, preview),
+                  .requestApproval(
+                    callId,
+                    toolName,
+                    sid,
+                    undefined,
+                    preview,
+                    undefined,
+                    signal
+                  ),
               // A shell handed to the backend outlives a cancelled run, so it
               // holds the authority it started with until the process is done.
               trackShell: () =>
@@ -2510,10 +2675,9 @@ function CoworkPage() {
                     at: new Date().toISOString(),
                     state: 'pending' as const,
                   }
-                  useCoworkRun.getState().attachAsk(sid, askRecord)
-                  if (sid === sessionIdRef.current) {
-                    mutateLive((turns) => attachAskToTurns(turns, askRecord))
-                  }
+                  // Into this run's own lane, whichever session is in view:
+                  // that lane is what renders for this session.
+                  mutateLive((turns) => attachAskToTurns(turns, askRecord))
                   // The opening turn ends on a named question. Recording the
                   // wait is what makes a session reopened at this point restore
                   // an unanswered proposal rather than resume into work.
@@ -2527,21 +2691,13 @@ function CoworkPage() {
                       proposal: proposal.question,
                     })
                   }
-                  askResolvers.current.set(callId, (answers) => {
+                  // Held by this run's handle: answered only through this
+                  // session, and settled by stopping this session alone.
+                  handle.pendingAsks.set(callId, (answers) => {
                     const state = answers ? 'answered' : 'cancelled'
-                    useCoworkRun
-                      .getState()
-                      .settleAsk(sid, callId, state, answers ?? undefined)
-                    if (sid === sessionIdRef.current) {
-                      mutateLive((turns) =>
-                        settleAskInTurns(
-                          turns,
-                          callId,
-                          state,
-                          answers ?? undefined
-                        )
-                      )
-                    }
+                    mutateLive((turns) =>
+                      settleAskInTurns(turns, callId, state, answers ?? undefined)
+                    )
                     // An answered proposal is no longer outstanding. Declining
                     // is recorded as a decision, not as work to pick up later.
                     if (proposal && current?.folder) {
@@ -2856,7 +3012,8 @@ function CoworkPage() {
             }, toolSignal),
           sink,
           onStep: ({ step, result, turns, outcomes }) => {
-            if (result.usage) setLiveUsage(result.usage)
+            if (result.usage)
+              useCoworkRun.getState().setUsage(sid, result.usage)
             // Persisted as it goes, not at the end: a run killed mid-flight
             // must not come back with its steps unspent. AH-018.
             useCoworkSessions.getState().setRunBudget(sid, {
@@ -2879,14 +3036,14 @@ function CoworkPage() {
               void recordPayloadUsage({
                 session: sid,
                 run: runId,
-                snapshot: lastSnapshotRef.current,
+                snapshot: lastSnapshotRef.current[sid] ?? null,
                 model: selectedModel?.id,
                 usage: result.usage,
               })
             }
             // Replace the optimistic running rows with the settled ones so the
             // transcript shows results, not spinners.
-            liveTurnsRef.current = liveTurnsRef.current.filter(
+            runTurns = runTurns.filter(
               (turn) =>
                 !(turn.role === 'tool' && outcomes.has(turn.callId ?? '')) &&
                 !(turn.role === 'assistant' && turn.content === result.text)
@@ -2926,6 +3083,26 @@ function CoworkPage() {
             let n = baseMessages.length
             return () => `${sid}-asst-${n++}`
           })(),
+          // janhq/jan#8864. What was typed into this session's composer while
+          // the run worked, taken at the runner's safe boundaries. Only this
+          // session's queue: input typed in another session never reaches
+          // this run, whichever session is in view. Shown in the transcript
+          // where it entered the conversation, marked as steering.
+          takeSteering: () => {
+            const taken = useMessageQueue.getState().takeReady(sid)
+            if (taken.length === 0) return []
+            pushLive(
+              taken.map((m) => ({ role: 'user' as const, content: m.text, steered: true }))
+            )
+            return taken.map(
+              (m) =>
+                ({
+                  id: `${sid}-steer-${m.id}`,
+                  role: 'user',
+                  parts: [{ type: 'text', text: m.text }],
+                }) as any
+            )
+          },
         },
       })
     } catch (e) {
@@ -2944,7 +3121,12 @@ function CoworkPage() {
               errorText: e instanceof Error ? e.message : String(e),
             }
     } finally {
-      useAppState.getState().updateLoadingModel(false)
+      // The load card is shared by every Cowork run: only the last one to
+      // finish takes it down, so this run ending does not hide another's load.
+      const othersRunning = Object.keys(useCoworkRun.getState().runs).some(
+        (id) => id !== sid
+      )
+      if (!othersRunning) useAppState.getState().updateLoadingModel(false)
       endRun(sid, runId)
       // The run is over, so its budget is not outstanding any more. Left
       // behind, it would tell the next run it was resuming this one.
@@ -2962,7 +3144,7 @@ function CoworkPage() {
         .getState()
         .commitTurns(
           sid,
-          liveTurnsRef.current,
+          runTurns,
           outcome?.messages ?? messages,
           useCoworkRun.getState().subagents[sid] ?? [],
           outcome?.usage ?? undefined
@@ -2974,7 +3156,7 @@ function CoworkPage() {
       const settledAt = Date.now()
       const subagentRuns = useCoworkRun.getState().subagents[sid] ?? []
       const fileEvents = [
-        ...deriveFromTurns(liveTurnsRef.current, originOfPath, settledAt),
+        ...deriveFromTurns(runTurns, originOfPath, settledAt),
         ...subagentRuns.flatMap((run) =>
           deriveFromSubagent(run.name, run.turns, originOfPath, settledAt)
         ),
@@ -2983,26 +3165,28 @@ function CoworkPage() {
       // The run's own account of what changed, generated from evidence rather
       // than written by the model that did the changing.
       void recordOrigins({ sessionId: sid, origins, events: fileEvents })
-      liveTurnsRef.current = []
-      setLiveTurns([])
-      setRunning(false)
       runWorkDone()
-      abortRef.current = null
-      askResolvers.current.clear()
-      setStoppedBy(thrown?.stoppedBy ?? outcome?.stoppedBy ?? null)
-      setRunError(thrown?.errorText ?? outcome?.errorText)
-      recordEvents([
-        {
-          id: `run:${runId}:ended`,
-          session: sid,
-          run: runId,
-          kind: 'run.ended',
-          payload: {
-            stoppedBy: thrown?.stoppedBy ?? outcome?.stoppedBy ?? 'unknown',
-            detail: thrown?.errorText ?? outcome?.errorText ?? '',
-          },
-        },
-      ])
+      // Unanswered questions end with the run that asked them.
+      for (const resolve of handle.pendingAsks.values()) resolve(null)
+      handle.pendingAsks.clear()
+      const stop = thrown?.stoppedBy ?? outcome?.stoppedBy ?? null
+      // Refused if this run no longer owns the session -- stopped and
+      // replaced, or the session deleted -- so a late ending lands nowhere.
+      const ending: RunEnding | null = stop
+        ? {
+            stoppedBy: stop,
+            errorText: thrown?.errorText ?? outcome?.errorText,
+          }
+        : null
+      useCoworkRun.getState().finishRun(sid, runId, ending)
+      recordRunEnded(ending)
+      // A finished run lets what was typed after its last boundary go as the
+      // next request, from the effect watching the session in view. Any other
+      // ending -- a failure, Stop, a cap -- holds it for the user to send or
+      // discard: it was typed for a run that did not see it, and neither
+      // dropping it silently nor sending it on its own is right.
+      // janhq/jan#8864.
+      if (stop && stop !== 'done') useMessageQueue.getState().holdQueue(sid)
     }
   }
 
@@ -3024,27 +3208,66 @@ function CoworkPage() {
     void runRequestRef.current(null)
   }, [running, session?.id])
 
-  const abortRef = useRef<AbortController | null>(null)
-  const askResolvers = useRef(
-    new Map<string, (answers: AskAnswer[] | null) => void>()
-  )
-
+  // Stop reaches the viewed session's run and nothing else: its model stream,
+  // its tool loop, its subagents and its open questions (janhq/jan#8905). It
+  // used to abort whichever run had started last, in any session.
   const handleStop = useCallback(() => {
-    abortRef.current?.abort('cancelled')
     if (session?.id) abortRun(session.id)
-    for (const resolve of askResolvers.current.values()) resolve(null)
-    askResolvers.current.clear()
   }, [session?.id])
 
+  // Answered through the session that asked; another session's questions are
+  // not reachable from here.
   const respondAsk = useCallback(
     (requestId: string, answers: AskAnswer[] | null) => {
-      const resolve = askResolvers.current.get(requestId)
-      askResolvers.current.delete(requestId)
-      if (resolve) resolve(answers)
-      else if (session?.id) answerAsk(session.id, requestId, answers)
+      if (session?.id) answerAsk(session.id, requestId, answers)
     },
     [session?.id]
   )
+
+  /**
+   * Queued messages belong to the session they were typed in. When the session
+   * in view is idle and has one waiting it goes -- after its own run finishes,
+   * or when the user returns to a session whose run finished while they were
+   * elsewhere. Never dispatched into another session.
+   */
+  /**
+   * Pending input survives a restart (janhq/jan#8864). Every change to a Cowork
+   * session's queue is mirrored into the persisted session, and what the
+   * session recorded comes back held -- for the user to send or discard, never
+   * sent on its own. Restoring skips what is already queued, so this is
+   * harmless while the app is running.
+   */
+  useEffect(
+    () =>
+      useMessageQueue.subscribe((state, prev) => {
+        const store = useCoworkSessions.getState()
+        for (const s of store.sessions) {
+          const now = state.queues[s.id] ?? []
+          if (now !== (prev.queues[s.id] ?? [])) store.setPendingInput(s.id, now)
+        }
+      }),
+    []
+  )
+  const sessionsWithPending = useCoworkSessions((s) =>
+    s.sessions
+      .filter((x) => (x.pendingInput?.length ?? 0) > 0)
+      .map((x) => x.id)
+      .join(',')
+  )
+  useEffect(() => {
+    for (const s of useCoworkSessions.getState().sessions) {
+      if (s.pendingInput?.length) {
+        useMessageQueue.getState().restoreHeld(s.id, s.pendingInput)
+      }
+    }
+  }, [sessionsWithPending])
+
+  useEffect(() => {
+    if (running || !session?.id) return
+    // Held input waits for the user; only what is ready goes.
+    const next = useMessageQueue.getState().dequeueReady(session.id)
+    if (next) void runRequestRef.current(next.text)
+  }, [running, session?.id])
 
   /**
    * Where the transcript was scrolled to, kept across a trip to Settings.
@@ -3088,7 +3311,7 @@ function CoworkPage() {
     setSnapshotSink((sessionId, ref) => {
       // Kept for the step that follows: the accounting for a dispatch is only
       // known once its reply lands, and by then the sink has moved on.
-      lastSnapshotRef.current = ref
+      lastSnapshotRef.current[sessionId] = ref
       // Beside the turns, not on them: the run rebuilds its live turn array as
       // steps complete, so a reference written onto a turn at dispatch time is
       // gone before it can render.
@@ -3158,7 +3381,20 @@ function CoworkPage() {
         {/* The same row component the chat page uses, so the selector and the
             control beside it match in size, spacing and order. */}
         <PageHeaderRow>
-          <DropdownModelProvider useLastUsedModel />
+          {/* The session's own model (janhq/jan#8905): keyed by session so
+              switching re-reads it, and a choice is written to the session in
+              view only. */}
+          <DropdownModelProvider
+            key={session?.id ?? 'none'}
+            model={session?.model}
+            useLastUsedModel={!session?.model}
+            onModelChange={(model) =>
+              useCoworkSessions.getState().setModel(ensureCurrentSession(), {
+                provider: model.provider,
+                id: model.id,
+              })
+            }
+          />
           {/* Everything about the session that is reference material rather
               than conversation, closed until asked for. */}
           <CoworkSessionDetails summary={sessionDetailsSummary}>
@@ -3391,6 +3627,9 @@ function CoworkPage() {
                   {stoppedBy === 'aborted' && (
                     <CoworkRunNotice kind="stopped" />
                   )}
+                  {session?.id ? (
+                    <CoworkHeldInput sessionId={session.id} running={running} />
+                  ) : null}
                   {stoppedBy === 'error' && (
                     <CoworkRunNotice
                       kind="error"

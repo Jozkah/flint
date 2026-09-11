@@ -9,6 +9,10 @@ import type {
   AskRequestPayload,
 } from '@/types/coworkSession'
 import type { ModelLoadProgress } from '@/hooks/useAppState'
+import type { RunOutcome } from '@/lib/coworkRunner'
+
+/** How a session's run ended, as the route shows it. */
+export type RunEnding = Pick<RunOutcome, 'stoppedBy' | 'errorText'>
 
 // The ask shapes live in the store-free types module; re-exported here because
 // this store is where the pending-ask queue lives.
@@ -307,6 +311,24 @@ type CoworkRunState = {
   // terminal event); untouched by a `null` usage so a provider that doesn't
   // report it on a given turn doesn't blank out the last known value.
   usage: Record<string, Usage>
+  /**
+   * The run each session has in flight, by session (janhq/jan#8905).
+   *
+   * What makes a session "running" -- not the page. Two sessions can each have
+   * one, and a write that names a run the session no longer has is refused, so
+   * a late event from a cancelled or replaced run cannot land anywhere.
+   */
+  runs: Record<string, { runId: string; startedAt: number }>
+  /** How each session's last run ended, until it starts another. */
+  outcomes: Record<string, RunEnding>
+  /** Claim a session for a run: clears its last outcome, usage and lanes. */
+  startRun: (sid: string, runId: string) => void
+  /** Replace a run's live turns, if that run still owns the session. */
+  setRunTurns: (sid: string, runId: string, turns: CoworkTurn[]) => void
+  /** End a run and record how, if that run still owns the session. */
+  finishRun: (sid: string, runId: string, ending: RunEnding | null) => void
+  /** Drop everything held for a session, e.g. once it is deleted. */
+  forgetSession: (sid: string) => void
   /** Set by the artifacts library so Cowork opens that file on mount. */
   pendingPreview: { sessionId: string; path: string } | null
   /**
@@ -432,6 +454,52 @@ export const useCoworkRun = create<CoworkRunState>()((set, get) => ({
   pendingAsks: {},
   promptSnapshots: {},
   usage: {},
+  runs: {},
+  outcomes: {},
+
+  startRun: (sid, runId) =>
+    set((s) => ({
+      runs: { ...s.runs, [sid]: { runId, startedAt: Date.now() } },
+      outcomes: omitKey(s.outcomes, sid),
+      usage: omitKey(s.usage, sid),
+      liveTurns: { ...s.liveTurns, [sid]: [] },
+      subagents: { ...s.subagents, [sid]: [] },
+    })),
+
+  setRunTurns: (sid, runId, turns) =>
+    set((s) =>
+      s.runs[sid]?.runId === runId
+        ? { liveTurns: { ...s.liveTurns, [sid]: turns } }
+        : {}
+    ),
+
+  finishRun: (sid, runId, ending) =>
+    set((s) => {
+      if (s.runs[sid]?.runId !== runId) return {}
+      return {
+        runs: omitKey(s.runs, sid),
+        outcomes: ending
+          ? { ...s.outcomes, [sid]: ending }
+          : omitKey(s.outcomes, sid),
+        liveTurns: omitKey(s.liveTurns, sid),
+      }
+    }),
+
+  forgetSession: (sid) =>
+    set((s) => ({
+      runs: omitKey(s.runs, sid),
+      outcomes: omitKey(s.outcomes, sid),
+      liveTurns: omitKey(s.liveTurns, sid),
+      usage: omitKey(s.usage, sid),
+      subagents: omitKey(s.subagents, sid),
+      pendingAsks: omitKey(s.pendingAsks, sid),
+      promptSnapshots: omitKey(s.promptSnapshots, sid),
+      llamacppRuns: omitKey(s.llamacppRuns, sid),
+      pendingLlamacppError: omitKey(s.pendingLlamacppError, sid),
+      loadingModels: omitKey(s.loadingModels, sid),
+      modelLoadProgress: omitKey(s.modelLoadProgress, sid),
+    })),
+
   pendingPreview: null,
   pendingCodeOpen: null,
   attachFolderRequested: false,

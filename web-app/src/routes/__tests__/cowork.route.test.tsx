@@ -145,16 +145,24 @@ vi.mock('@/hooks/useServiceHub', () => {
   return { useServiceHub: () => hub, getServiceHub: () => hub }
 })
 
-vi.mock('@/hooks/useModelProvider', () => ({
-  useModelProvider: () => ({
-    selectedModel: {
-      id: 'local/qwen',
-      capabilities: ['tools'],
-      settings: { ctx_len: { controller_props: { value: 8192 } } },
-    },
+vi.mock('@/hooks/useModelProvider', () => {
+  const selectedModel = {
+    id: 'local/qwen',
+    capabilities: ['tools'],
+    settings: { ctx_len: { controller_props: { value: 8192 } } },
+  }
+  const state = {
+    selectedModel,
     selectedProvider: 'llamacpp',
-  }),
-}))
+    // A run resolves its model from the providers (janhq/jan#8905), not
+    // from the bare selection.
+    providers: [{ provider: 'llamacpp', active: true, models: [selectedModel] }],
+    selectModelProvider: () => {},
+  }
+  const useModelProvider: any = () => state
+  useModelProvider.getState = () => state
+  return { useModelProvider }
+})
 
 /** The model, replaced. Everything between the composer and the gate is real. */
 vi.mock('@/lib/coworkTransport', () => ({

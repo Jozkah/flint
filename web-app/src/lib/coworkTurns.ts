@@ -105,6 +105,8 @@ export function coworkTurnsToUIMessages(
         id: `${idPrefix}-user-${i}`,
         role: 'user',
         parts: [{ type: 'text', text: turn.content }],
+        // janhq/jan#8864: marked where it entered a run as steering.
+        ...(turn.steered ? { metadata: { steered: true } } : {}),
       } as any)
       return
     }

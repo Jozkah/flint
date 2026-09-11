@@ -2167,13 +2167,22 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "verified",
       "priority": "P2",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/tooling.rs",
+        "src-tauri/src/core/agent/context.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/lib/projectTooling.ts",
+        "web-app/src/lib/coworkPrompt.ts",
+        "web-app/src/lib/coworkReadiness.ts",
+        "web-app/src/containers/CoworkReadinessCard.tsx",
+        "web-app/src/routes/cowork.tsx"
+      ],
       "securityImpact": "none",
       "acceptanceCriteria": [
         "The harness recognises the project's frameworks and tells the model.",
@@ -2182,10 +2191,17 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/tooling.rs (tests)",
+        "src-tauri/src/core/agent/context.rs (build_system_prompt_names_the_project_tooling)",
+        "web-app/src/lib/__tests__/projectTooling.test.ts",
+        "web-app/src/containers/__tests__/CoworkReadinessCard.test.tsx",
+        "web-app/src/lib/__tests__/coworkPrompt.test.ts",
+        "src-tauri/examples/cowork_smoke.rs (project-tooling-is-detected-and-told-to-the-model)"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Frameworks from dependencies (high) or config files without the dependency (medium), across JS/TS, Rust, Python, Go, JVM (Android, Spring Boot), .NET (ASP.NET Core, MAUI), Flutter, Rails; each fact carries confidence, source and reason. Surfaced in the CLI prompt and in Cowork (readiness card and prompt) from one backend rendering."
     },
     {
       "id": "AH-069",
@@ -2193,13 +2209,22 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "verified",
       "priority": "P1",
       "dependencies": [
         "AH-068"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/tooling.rs",
+        "src-tauri/src/core/agent/context.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/lib/projectTooling.ts",
+        "web-app/src/lib/coworkPrompt.ts",
+        "web-app/src/lib/coworkReadiness.ts",
+        "web-app/src/containers/CoworkReadinessCard.tsx",
+        "web-app/src/routes/cowork.tsx"
+      ],
       "securityImpact": "none",
       "acceptanceCriteria": [
         "The harness recognises how the project builds and tells the model.",
@@ -2208,10 +2233,17 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/tooling.rs (tests)",
+        "src-tauri/src/core/agent/context.rs (build_system_prompt_names_the_project_tooling)",
+        "web-app/src/lib/__tests__/projectTooling.test.ts",
+        "web-app/src/containers/__tests__/CoworkReadinessCard.test.tsx",
+        "web-app/src/lib/__tests__/coworkPrompt.test.ts",
+        "src-tauri/examples/cowork_smoke.rs (project-tooling-is-detected-and-told-to-the-model)"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Build systems and package managers with lockfile/packageManager precedence, conflict reporting, workspace orchestrators, and no invented command where the manifest does not say how. Surfaced in the CLI prompt and in Cowork (readiness card and prompt) from one backend rendering."
     },
     {
       "id": "AH-070",
@@ -2219,13 +2251,22 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "verified",
       "priority": "P1",
       "dependencies": [
         "AH-068"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/tooling.rs",
+        "src-tauri/src/core/agent/context.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/lib/projectTooling.ts",
+        "web-app/src/lib/coworkPrompt.ts",
+        "web-app/src/lib/coworkReadiness.ts",
+        "web-app/src/containers/CoworkReadinessCard.tsx",
+        "web-app/src/routes/cowork.tsx"
+      ],
       "securityImpact": "none",
       "acceptanceCriteria": [
         "The harness recognises how the project tests and tells the model.",
@@ -2234,10 +2275,17 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/tooling.rs (tests)",
+        "src-tauri/src/core/agent/context.rs (build_system_prompt_names_the_project_tooling)",
+        "web-app/src/lib/__tests__/projectTooling.test.ts",
+        "web-app/src/containers/__tests__/CoworkReadinessCard.test.tsx",
+        "web-app/src/lib/__tests__/coworkPrompt.test.ts",
+        "src-tauri/examples/cowork_smoke.rs (project-tooling-is-detected-and-told-to-the-model)"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Test runners from scripts and configuration, unit vs integration vs e2e, wrapped scripts followed, absent dependencies and unsafe scripts marked; nothing is ever run. Surfaced in the CLI prompt and in Cowork (readiness card and prompt) from one backend rendering."
     },
     {
       "id": "AH-071",

@@ -31,14 +31,14 @@
     },
     "byStatus": {
       "not-applicable": 22,
-      "untriaged": 1075,
+      "untriaged": 1074,
       "rejected": 31,
       "already-fixed": 84,
       "needs-user-hardware": 16,
-      "fixed": 29,
-      "adapted": 15,
-      "implementation-ready": 3,
-      "cannot-reproduce": 3
+      "fixed": 32,
+      "adapted": 16,
+      "cannot-reproduce": 2,
+      "implementation-ready": 1
     }
   },
   "items": [
@@ -36630,12 +36630,25 @@
       "registryIds": [],
       "decision": "adapt",
       "decisionReason": "batch-3 P0 triage: custom request headers: plumbing exists (model-factory, custom_header), no UI to edit them. Feature, reimplement.",
-      "implementationStatus": "implementation-ready",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "f6e66afc9"
+      ],
+      "tests": [
+        "web-app/src/lib/__tests__/customHeaders.test.ts",
+        "web-app/src/lib/__tests__/model-factory.test.ts (custom header cannot stand in for the key; default replaced not duplicated)",
+        "web-app/src/hooks/__tests__/stripProviderSecrets.test.ts",
+        "web-app/src/lib/__tests__/providerHeaderSecrets.test.ts",
+        "web-app/src/providers/__tests__/DataProvider.test.tsx",
+        "web-app/src/containers/__tests__/ProviderCustomHeaders.test.tsx",
+        "src-tauri/src/core/net/transport.rs (cross-origin redirect refused on send and send_stream; same-server followed)",
+        "src-tauri/src/core/secret_values.rs, src-tauri/src/core/cli/secrets.rs (exact-value redaction)",
+        "src-tauri/src/core/server/remote_provider_commands.rs (configs leave without secrets)",
+        "src-tauri/examples/cowork_smoke.rs custom-headers-reach-the-provider-and-secrets-stay-secret + custom-headers-survive-a-restart"
+      ],
+      "verification": "Precedence, secret-persistence and startup-load tests fail on the previous code. Completion audit added: per-row on/off switch (disabled header not sent, re-enabled sent again), secret values registered for redaction even for providers without an API key (register_secret_values), error bodies redacted in the transport before the webview sees them (mutation check: disabling it fails an_error_body_echoing_a_secret_header_comes_back_redacted), provider-scoping guard test. Real WebView on Windows 11 with the mock provider recording received headers: add, reserved Authorization refused in the page and never sent, plain+secret received, switch off/on takes effect on the next request, a 401 echoing every header leaves the secret on neither the page nor the disk, value in the credential store and in no file of the data folder, restored after a restart in a second process, removal takes effect on the next request and removes the stored value. Mock provider only.",
       "blockers": [],
-      "notes": null
+      "notes": "Not changed: the Local API Server proxy, the agent upstream and the CLI do not send custom headers (they never read custom_headers). See docs/UPls/8208-custom-request-headers.md."
     },
     {
       "source": "janhq/jan",
@@ -43868,14 +43881,18 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": "Fork scans <data>/llamacpp/models; no vanish path found by reading.",
-      "implementationStatus": "cannot-reproduce",
+      "decision": "fix",
+      "decisionReason": "Two confirmed ways the model list loses GGUF models whose files are intact; neither is the reporter theory or the backslash id slice.",
+      "implementationStatus": "implementation-ready",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
-      "blockers": [],
-      "notes": "batch-3 P0 triage: unsure. The models path follows the data folder, which contradicts the reporter theory; folders without model.yml are skipped silently and the model id slice is not backslash-aware. Needs a Windows repro with a moved data folder and nested ids."
+      "tests": [
+        "src-tauri/src/core/filesystem/helpers.rs a_model_behind_a_junction_resolves_outside_the_data_folder (Windows, mklink /J)"
+      ],
+      "verification": "Code read of every listing path (extensions/llamacpp-extension/src/index.ts list() 1443-1545, filesystem commands, choose_data_folder) plus a Windows test: a model.yml reached through a junction under <data>/llamacpp/models resolves outside the data folder and is refused by the read_yaml scope check, so list() skips the model with only a warning. Test passes (pins the current behaviour).",
+      "blockers": [
+        "Product/security decision: how models stored outside the data folder are allowed (trusted model roots recommended; per-link grant; or keep refusing and explain). See docs/UPls/8374-models-vanish.md."
+      ],
+      "notes": "Evidence recorded (two confirmed mechanisms). Done without a decision: the llama.cpp/MLX provider pages now explain when this run fell back to the default data folder, naming the configured one, instead of showing an empty list. Open: models behind a junction/symlink are refused by the data-folder scope check; the fix needs a trust policy (docs/UPls/8374-models-vanish.md)."
     },
     {
       "source": "janhq/jan",
@@ -62446,14 +62463,18 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
+      "decision": "fix",
       "decisionReason": null,
-      "implementationStatus": "untriaged",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "bee129d"
+      ],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs (a_reasoning_only_reply_is_retried_rather_than_accepted, a_second_empty_reply_ends_the_turn_instead_of_looping)"
+      ],
+      "verification": "Reproduced first: both tests fail on the previous loop (empty reply returned after 2 requests). With the fix: agent suite 464 passed (cli feature). Not run against a real model returning reasoning-only output.",
       "blockers": [],
-      "notes": "batch-3 P1 triage: unsure, leaning needs-fix. The Rust agent loop may accept an empty or reasoning-only final answer as success; needs a test first."
+      "notes": "Upstream PR #8711 closed unmerged; fork had no guard. Reimplemented: one corrective retry per cycle with a stated reason, bounded."
     },
     {
       "source": "janhq/jan",
@@ -71224,12 +71245,22 @@
       "registryIds": [],
       "decision": "adapt",
       "decisionReason": "Mid-run steering absent; port by hand (fork drifted ~1.7k lines), drop unrelated flappy-hamster.html, port its three tests.",
-      "implementationStatus": "implementation-ready",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "implementationStatus": "adapted",
+      "forkCommits": [
+        "0a7fa9558"
+      ],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs steering_* (4)",
+        "src-tauri/src/core/cli/tui.rs steering_* (10)",
+        "web-app/src/lib/__tests__/coworkRunner.test.ts (steering a running turn)",
+        "web-app/src/stores/__tests__/message-queue-store.steering.test.ts",
+        "web-app/src/containers/__tests__/CoworkHeldInput.test.tsx",
+        "web-app/src/routes/__tests__/cowork.sessions.test.tsx (steering, held input)",
+        "src-tauri/examples/cowork_smoke.rs steering-reaches-the-running-session-at-its-next-boundary"
+      ],
+      "verification": "TUI: cli suite with the 14 steering tests passed. Cowork (desktop) extended to the same behaviour: real WebView on Windows 11 with the mock provider -- two messages typed during session A first step reach the model after the tool round, in order, as user input, marked as steering in the transcript; session B request carries neither. First two scenario attempts failed on scenario assumptions (typed before the first call, which is also a valid boundary; provider conversion merges consecutive user messages), fixed in the scenario. Mock provider only.",
       "blockers": [],
-      "notes": null
+      "notes": "Hand port for the TUI; Cowork gets the same semantics through its own runner hook. Input a failed/stopped/capped run did not take is held (Send/Discard) instead of silently cleared or auto-sent; pending input persists across restart as held. See docs/UPls/8864-agent-steering.md."
     },
     {
       "source": "janhq/jan",
@@ -73606,12 +73637,22 @@
       "registryIds": [],
       "decision": "fix",
       "decisionReason": "batch-3 P1 triage: cowork.tsx keeps one running state and one abort ref for the page, so Stop in session B aborts session A, and the model is global. Reimplement per session.",
-      "implementationStatus": "implementation-ready",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "90de4da",
+        "b87b62b46"
+      ],
+      "tests": [
+        "web-app/src/hooks/__tests__/useCoworkRun.sessions.test.ts",
+        "web-app/src/routes/__tests__/cowork.sessions.test.tsx (two sessions through the real route; Stop while preparing / preparation failing)",
+        "web-app/src/lib/__tests__/coworkRunner.test.ts (Stop with an endless stream / a request not yet streaming)",
+        "web-app/src/lib/__tests__/coworkSessionLifecycle.test.ts",
+        "web-app/src/hooks/__tests__/useCoworkSessions.model.test.ts",
+        "src-tauri/examples/cowork_smoke.rs stop-cancels-only-the-selected-session"
+      ],
+      "verification": "Unit and route tests fail on the old code (mutation checks for a page-wide running flag, Stop aborting every run, a run not bound to its model; each new Stop test fails on the code before its fix). Real WebView on Windows 11 with the mock provider: two sessions streaming, Stop in B ends B within the wait, A still running 3 s later, both sessions record their model in settings.json; model-round-trip and tool-activity-timeline still pass. Mock provider only, not a real model.",
       "blockers": [],
-      "notes": null
+      "notes": "Attributed reimplementation on the fork architecture; see docs/UPls/8905-cowork-per-session-runs.md. The real-app scenario found three pre-existing waits Stop did not reach (preparation outside try/finally, sendMessages, stream reads)."
     },
     {
       "source": "janhq/jan",
@@ -73991,5 +74032,6 @@
   "forkMainAtIntake": "d9ef24bc37548e64e345065136067fa36bd182e4",
   "forkBranch": "feat/windows-agent-completion",
   "forkMainAfterBatch2": "9a4cfe2",
-  "lastBatch": "batch-2 (2026-09-10): 8067, 8007, 7939, 8894, 8096"
+  "lastBatch": "batch-3 (2026-09-10): 8806/8780/8804, 8713/8709, 8906, 8183, 8081, 7703, 8855, 7871, 8836, 7534, 8589; P0 and P1 backlog triaged",
+  "forkMainAfterBatch3": "9ab3062"
 }

@@ -56,10 +56,9 @@ import {
 } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { usePrompt } from '@/hooks/usePrompt'
-import { useCoworkActivity } from '@/hooks/useCoworkActivity'
+import { deleteCoworkSession } from '@/lib/coworkSessionLifecycle'
 import { memo, useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useCoworkActiveWork } from '@/hooks/useCoworkActiveWork'
 import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { FileActivityDialog } from '@/containers/dialogs/FileActivityDialog'
@@ -105,6 +104,7 @@ const SessionItem = memo(function SessionItem({
   // before last.
   const ledger = useCoworkOrigins((state) => state.bySession[session.id])
   const activity = useFileActivity((s) => s.byConversation[session.id])
+  const running = useCoworkRun((s) => !!s.runs[session.id])
 
   /**
    * Open this row's own menu from right-click or the keyboard — the same
@@ -132,6 +132,16 @@ const SessionItem = memo(function SessionItem({
         data-current={isCurrent ? 'true' : 'false'}
       >
         <span className="truncate">{session.title}</span>
+        {running && (
+          // A session running in the background shows here, without the
+          // session in view being treated as busy (janhq/jan#8905).
+          <span
+            role="status"
+            aria-label={t('common:tasks.running', { count: 1 })}
+            data-testid={`cowork-session-running-${session.id}`}
+            className="ml-auto size-1.5 shrink-0 animate-pulse rounded-full bg-primary"
+          />
+        )}
       </SidebarMenuButton>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
@@ -309,8 +319,7 @@ export function NavCowork() {
     const store = useCoworkSessions.getState()
     const id = store.startSession({
       running: Boolean(
-        store.currentId &&
-          useCoworkRun.getState().liveTurns[store.currentId]?.length
+        store.currentId && useCoworkRun.getState().runs[store.currentId]
       ),
       hasDraft: usePrompt.getState().prompt.trim().length > 0,
     })
@@ -391,20 +400,9 @@ export function NavCowork() {
 
   const confirmDelete = () => {
     if (pendingDelete) {
-      useCoworkSessions.getState().deleteSession(pendingDelete.id)
-      // The activity record is keyed by session; leaving it behind would keep
-      // a deleted session's workflows in the store forever.
-      useCoworkActivity.getState().dropSession(pendingDelete.id)
-      // The file record is keyed by session too; leaving it behind would keep
-      // a deleted session's paths in storage indefinitely.
-      useFileActivity.getState().forget(pendingDelete.id)
-      // Teardown, not completion: the session is gone, so nothing is left to
-      // hold its authority in place. Its work items would otherwise keep a
-      // deleted session marked busy for the life of the app session.
-      useCoworkActiveWork.getState().clearSession(pendingDelete.id)
-      // The origin ledger is keyed by session too, and describes a run whose
-      // transcript is about to be gone.
-      useCoworkOrigins.getState().forget(pendingDelete.id)
+      // Stops the session's run -- only that one -- and drops everything held
+      // for it (janhq/jan#8905).
+      deleteCoworkSession(pendingDelete.id)
     }
     setPendingDelete(null)
   }

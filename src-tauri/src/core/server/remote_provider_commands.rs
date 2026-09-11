@@ -10,6 +10,9 @@ use crate::core::state::{AppState, ProviderConfig};
 pub struct ProviderCustomHeader {
     pub header: String,
     pub value: String,
+    /// A credential: its value is redacted from every log line from here on.
+    #[serde(default)]
+    pub secret: bool,
 }
 
 /// Request to register/update a remote provider config
@@ -57,6 +60,11 @@ pub async fn register_provider_config(
 ) -> Result<(), String> {
     let key_chain = merge_register_api_keys(request.api_key.clone(), request.api_keys.clone());
     let api_key = key_chain.first().cloned();
+    // Before anything can log them: an upstream error that echoes the request
+    // back must not put a secret header's value in the log. janhq/jan#8208.
+    for h in request.custom_headers.iter().filter(|h| h.secret) {
+        crate::core::secret_values::register(&h.value);
+    }
 
     let config = ProviderConfig {
         provider: request.provider.clone(),
@@ -69,6 +77,7 @@ pub async fn register_provider_config(
             .map(|h| crate::core::state::ProviderCustomHeader {
                 header: h.header,
                 value: h.value,
+                secret: h.secret,
             })
             .collect(),
         models: request.models, // Models will be added when they are configured
@@ -101,6 +110,20 @@ pub async fn register_provider_config(
     configs.insert(provider_name.clone(), config);
     log::debug!("Registered provider config: {provider_name}");
     Ok(())
+}
+
+/// Register values the user marked secret for exact-value redaction in every
+/// log from now on. janhq/jan#8208.
+///
+/// Separate from `register_provider_config`, which only runs for a provider
+/// with an API key: a provider needing none can still carry a secret custom
+/// header, and its value must be redacted all the same. Values only, never
+/// names or providers, and nothing is returned.
+#[tauri::command]
+pub fn register_secret_values(values: Vec<String>) {
+    for value in &values {
+        crate::core::secret_values::register(value);
+    }
 }
 
 /// Replace the per-model sampling defaults the API server injects for MLX
@@ -177,7 +200,9 @@ pub async fn get_provider_config(
     let provider_configs = state.provider_configs.clone();
     let configs = provider_configs.lock().await;
 
-    Ok(configs.get(&provider).cloned())
+    // Without its keys or secret header values: the webview never needs them
+    // back, and this is how they would leak into it. janhq/jan#8208.
+    Ok(configs.get(&provider).map(ProviderConfig::without_secrets))
 }
 
 /// List all registered provider configurations (without sensitive keys)
@@ -188,7 +213,9 @@ pub async fn list_provider_configs(
     let provider_configs = state.provider_configs.clone();
     let configs = provider_configs.lock().await;
 
-    Ok(configs.values().cloned().collect())
+    // The comment above promised this; the configs came back whole, keys and
+    // all. janhq/jan#8208.
+    Ok(configs.values().map(ProviderConfig::without_secrets).collect())
 }
 
 #[cfg(test)]
@@ -231,5 +258,40 @@ mod tests {
         assert!(configs.contains_key("anthropic"));
         // Removing a missing provider is a no-op reported as false.
         assert!(!remove_provider_config(&mut configs, "openai"));
+    }
+
+    /// janhq/jan#8208. What the config commands hand back to the webview: the
+    /// keys and the secret header values are gone, everything else is there.
+    #[test]
+    fn a_config_leaves_the_backend_without_its_secrets() {
+        let mut c = config("gateway", "sk-live-key");
+        c.api_keys.push("sk-fallback-key".into());
+        c.custom_headers = vec![
+            crate::core::state::ProviderCustomHeader {
+                header: "X-Tenant".into(),
+                value: "acme".into(),
+                secret: false,
+            },
+            crate::core::state::ProviderCustomHeader {
+                header: "Ocp-Apim-Subscription-Key".into(),
+                value: "header-secret-value".into(),
+                secret: true,
+            },
+        ];
+        let out = serde_json::to_string(&c.without_secrets()).unwrap();
+        for secret in ["sk-live-key", "sk-fallback-key", "header-secret-value"] {
+            assert!(!out.contains(secret), "{secret} left the backend: {out}");
+        }
+        assert!(out.contains("acme") && out.contains("Ocp-Apim-Subscription-Key"), "{out}");
+        // The original still holds what requests are sent with.
+        assert_eq!(c.custom_headers[1].value, "header-secret-value");
+    }
+
+    /// A header saved before `secret` existed still deserializes, as plain.
+    #[test]
+    fn a_header_without_the_secret_flag_is_plain() {
+        let h: ProviderCustomHeader =
+            serde_json::from_str(r#"{"header":"X-A","value":"b"}"#).unwrap();
+        assert!(!h.secret);
     }
 }

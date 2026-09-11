@@ -12,6 +12,7 @@ vi.mock('@/lib/coworkTools', async (orig) => ({
 
 import { CoworkChatTransport } from '../coworkTransport'
 import { CHAT_SLOT_ID, COWORK_SLOT_ID } from '@/constants/models'
+import { useModelProvider } from '@/hooks/useModelProvider'
 
 const config = (over = {}) => ({
   planMode: false,
@@ -29,6 +30,58 @@ const slotParamsOf = (t: CoworkChatTransport, id: string) =>
   (t as unknown as {
     slotParams: (s?: string) => Record<string, unknown>
   }).slotParams(id)
+
+// janhq/jan#8905: a run is sent with the model its session chose when the run
+// started -- not whatever the global picker says by the time a step goes out.
+describe('the model a Cowork run is sent with', () => {
+  const selectionOf = (t: CoworkChatTransport) =>
+    (t as unknown as {
+      getModelSelection: () => {
+        selectedProvider: string
+        selectedModel: { id: string } | null
+      }
+    }).getModelSelection()
+
+  beforeEach(() => {
+    useModelProvider.setState({
+      providers: [
+        {
+          provider: 'llamacpp',
+          active: true,
+          models: [{ id: 'model-a' }, { id: 'model-b' }],
+        },
+      ] as never,
+      selectedProvider: 'llamacpp',
+      selectedModel: { id: 'model-b' } as never,
+    })
+  })
+
+  it('is the model captured for the run, not the global selection', () => {
+    const t = new CoworkChatTransport(
+      's1',
+      config({ model: { provider: 'llamacpp', id: 'model-a' } })
+    )
+    expect(selectionOf(t).selectedProvider).toBe('llamacpp')
+    expect(selectionOf(t).selectedModel?.id).toBe('model-a')
+  })
+
+  it('does not follow the picker when it changes mid-run', () => {
+    const t = new CoworkChatTransport(
+      's1',
+      config({ model: { provider: 'llamacpp', id: 'model-a' } })
+    )
+    useModelProvider.setState({ selectedModel: { id: 'model-b' } as never })
+    expect(selectionOf(t).selectedModel?.id).toBe('model-a')
+  })
+
+  it('refuses a model its provider no longer offers rather than substituting one', () => {
+    const t = new CoworkChatTransport(
+      's1',
+      config({ model: { provider: 'llamacpp', id: 'gone' } })
+    )
+    expect(selectionOf(t).selectedModel).toBeNull()
+  })
+})
 
 describe('CoworkChatTransport', () => {
   beforeEach(() => {

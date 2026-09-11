@@ -896,3 +896,95 @@ own.
 An unknown session, or a divergence point outside the conversation, is refused
 and returns null -- not clamped to the nearest turn, because a fork silently
 taken somewhere else is not the fork that was asked for.
+
+## Project tooling: frameworks, build systems, test runners (AH-068 / AH-069 / AH-070)
+
+`core::agent::tooling::detect` reads a project's manifests and returns
+evidence, not prose.
+
+**What each fact holds.** Every `Fact` has:
+- a kind: framework, package manager, workspace, build system or test runner;
+- a value from a fixed vocabulary;
+- a confidence: high, medium or low;
+- a source file, relative and `/`-separated;
+- the directory it applies to;
+- a reason built from the manifest's structure;
+- a command, only where the evidence is unambiguous;
+- for test runners, whether they are unit, integration or end-to-end.
+
+A report also carries conflicts, skipped files with reasons, and a truncation
+note.
+
+**Where it is used.**
+- **CLI and TUI.** `context::build_system_prompt_for` renders the facts as a
+  `# Project Tooling` block after the runtime environment.
+- **Desktop.** The `project_tooling` IPC command returns the facts and that
+  same rendered block. Cowork shows the facts on the readiness card and hands
+  the model the block verbatim for the run's read root. The desktop never
+  re-renders it, so the CLI and the desktop cannot describe one project
+  differently.
+- **Failure.** A failure comes back typed (`not-a-directory`, `unreadable`,
+  `cancelled`) and never stops a folder being attached or used. The card says
+  it could not be read, and the prompt goes without the block.
+
+**Precedence and ambiguity.**
+- Package manager: the `packageManager` field first, then a single lockfile,
+  then the workspace root's (medium). Two lockfiles in one place are a
+  conflict: each is reported low and no command is proposed there. A bare
+  `package.json` names no manager and gets no command.
+- Frameworks: a dependency is high. A framework config file with no dependency
+  behind it is medium.
+- Scripts are classified and never copied:
+  - a script that only calls another is followed one level;
+  - a runner the script names but no dependency provides is medium;
+  - a script that downloads, deletes, escalates or pipes into a shell, or
+    runs `npx`/`dlx`, is reported with no command.
+- No command where the manifest does not say how:
+  - Gradle without its wrapper;
+  - CMake and Meson (no known build directory);
+  - Flutter builds (no target platform);
+  - Xcode (no scheme).
+
+**Recognised.**
+- **JavaScript/TypeScript:** npm, yarn, pnpm and bun.
+  - Workspaces: the workspaces field, pnpm, Turborepo, Nx, Lerna.
+  - Frameworks: Next.js, Nuxt, Angular, Astro, SvelteKit, React Native, Expo,
+    React, Vue, Svelte, Electron, Tauri, NestJS, Express, Vite.
+  - Test runners: Vitest, Jest, Mocha, AVA, Playwright and Cypress (e2e),
+    Karma, node:test.
+- **Rust:** Cargo, workspaces, integration tests in `tests/`, and Tauri, Axum,
+  Actix, Rocket, Bevy, Leptos, Yew, Dioxus.
+- **Python:** uv, Poetry, PDM, Pipenv; the build backend from
+  `[build-system]`; pytest (from a declared dependency, or medium from config
+  alone), tox, nox; Django, Flask, FastAPI, Streamlit.
+- **Go:** modules and workspaces; Gin, Echo, Fiber, chi.
+- **JVM:** Maven and Gradle, including multi-project builds; Android and
+  Spring Boot.
+- **.NET:** solutions, SDK projects, xUnit, NUnit, MSTest, ASP.NET Core, MAUI.
+- **Other:** Flutter/Dart, Xcode, CMake/CTest, Ninja, Meson, Make, Bundler,
+  Rails, RSpec.
+
+**Security.** Repository contents are untrusted.
+- **Canonical root.** The scan starts from the canonical root.
+- **Links.** No symlink, junction or other reparse point is followed, and each
+  one is reported. A manifest that resolves outside the root is refused.
+- **Nothing is executed.** No script is run, nothing is fetched or installed,
+  and no registry is contacted.
+- **Bounded.**
+  - 64 directories.
+  - Depth 2, and depth 2 only under package containers such as `packages/` and
+    `apps/`.
+  - 200 files, 8 MiB in total, 1 MiB per manifest.
+  - 3 s.
+
+  A bound that stops the scan is stated in the report, never passed off as a
+  complete answer.
+- **Prompt safety.** Script text and manifest contents never reach the prompt
+  or the log. Paths and script names in the block are stripped of backticks
+  and control characters, so repository text cannot break out of it.
+- **Cancellation.** `detect` checks a cancel flag between directories and
+  returns `ToolingError::Cancelled`. It writes nothing, holds no lock and starts
+  no process.
+
+Nothing is persisted: the registry does not ask for it, and a stale record
+would be worse than a 3 s scan.

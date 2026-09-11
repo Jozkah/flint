@@ -59,7 +59,9 @@ export type DispatchContext = {
     toolName: string,
     input: unknown,
     /** The diff the call would make, when it changes a file. AH-146. */
-    preview?: string
+    preview?: string,
+    /** The run's signal: stopping the run withdraws the prompt. */
+    signal?: AbortSignal
   ) => Promise<boolean>
   /**
    * Is the folder this run was bound to still the session's folder?
@@ -275,8 +277,37 @@ export async function dispatchCoworkTool(
     call,
     { session: ctx.sessionId, run: '', ...(ctx.activity ?? {}) },
     signal,
-    () => routeCoworkTool(call, ctx)
+    () => routeCoworkTool(call, ctx, signal)
   )
+}
+
+/** Resolves `false` as soon as `signal` aborts, whatever `answer` does. */
+function unlessStopped(
+  answer: Promise<boolean>,
+  signal?: AbortSignal
+): Promise<boolean> {
+  if (!signal) return answer
+  if (signal.aborted) return Promise.resolve(false)
+  return new Promise<boolean>((resolve, reject) => {
+    const stop = () => resolve(false)
+    signal.addEventListener('abort', stop, { once: true })
+    answer.then(
+      (value) => {
+        signal.removeEventListener('abort', stop)
+        resolve(value)
+      },
+      (error) => {
+        signal.removeEventListener('abort', stop)
+        reject(error)
+      }
+    )
+  })
+}
+
+/** Why a run's signal aborted, in words for the record. */
+function stopReason(signal: AbortSignal): string {
+  const reason = signal.reason
+  return typeof reason === 'string' && reason ? reason : 'cancelled'
 }
 
 /**
@@ -285,7 +316,8 @@ export async function dispatchCoworkTool(
  */
 async function routeCoworkTool(
   call: PendingToolCall,
-  ctx: DispatchContext
+  ctx: DispatchContext,
+  signal?: AbortSignal
 ): Promise<ToolOutcome> {
   const { toolName } = call
 
@@ -370,14 +402,34 @@ async function routeCoworkTool(
                 writeGrant: ctx.writeGrant,
               })
             : undefined
-        allowed = await ctx.onApprove(
-          call.toolCallId,
-          toolName,
-          call.input,
-          preview
+        allowed = await unlessStopped(
+          ctx.onApprove(
+            call.toolCallId,
+            toolName,
+            call.input,
+            preview,
+            signal
+          ),
+          signal
         )
       } catch {
         allowed = false
+      }
+      // Stopped while asking, or answered only after the stop: nobody's yes
+      // or no. The prompt has been withdrawn, and the call never runs -- an
+      // approval that arrives late must not act for a run that is over.
+      if (signal?.aborted) {
+        await recordToolActivity({
+          ...permission,
+          phase: 'cancelled',
+          detail: `approval withdrawn: ${stopReason(signal)}`,
+        })
+        return {
+          output:
+            `\`${toolName}\` was not run: the run was stopped while it was ` +
+            'waiting for approval, and nothing was changed.',
+          isError: true,
+        }
       }
       await recordToolActivity({
         ...permission,

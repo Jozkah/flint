@@ -386,6 +386,18 @@ pub(crate) fn build_system_prompt_for(
         project_root.display()
     ));
     blocks.push(runtime_environment_block(project_root, scratch));
+    // How the project builds and tests, so the model does not rediscover it
+    // with `ls` every run, or guess. AH-068 / AH-069 / AH-070. A detection
+    // that cannot run is logged with its reason; the prompt goes without.
+    let no_cancel = std::sync::atomic::AtomicBool::new(false);
+    match crate::core::agent::tooling::detect(project_root, &no_cancel) {
+        Ok(tooling) => {
+            if let Some(block) = tooling.render() {
+                blocks.push(block);
+            }
+        }
+        Err(e) => log::warn!("{e}"),
+    }
     if subagents_enabled {
         blocks.push(SUBAGENT_GUIDE.to_string());
     }
@@ -876,6 +888,31 @@ We build with make.")
         assert!(with_base.starts_with("base"));
         assert!(with_base.contains("Skills and Project Memory"));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AH-068 / AH-069 / AH-070. The model is told how the project builds and
+    /// tests, from its manifests, and a project with none gets no block.
+    #[test]
+    fn build_system_prompt_names_the_project_tooling() {
+        let root = scratch_project("tooling");
+        std::fs::create_dir_all(root.join("web")).unwrap();
+        std::fs::write(root.join("web").join("pnpm-lock.yaml"), "").unwrap();
+        std::fs::write(
+            root.join("web").join("package.json"),
+            r#"{"scripts":{"build":"vite build","test":"vitest"},"devDependencies":{"vitest":"3"}}"#,
+        )
+        .unwrap();
+        let out = build_system_prompt(None, &root, None, false).expect("prompt");
+        assert!(out.contains("# Project Tooling"), "{out}");
+        assert!(out.contains("- Vitest [unit] `pnpm test` in `web/` -- high; web/package.json"), "{out}");
+        assert!(out.contains("`pnpm run build` in `web/`"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+
+        let bare = scratch_project("tooling-none");
+        std::fs::create_dir_all(&bare).unwrap();
+        let out = build_system_prompt(None, &bare, None, false).expect("prompt");
+        assert!(!out.contains("# Project Tooling"), "{out}");
+        let _ = std::fs::remove_dir_all(&bare);
     }
 
     #[test]

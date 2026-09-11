@@ -37,6 +37,7 @@ pub mod skills;
 pub mod subagent;
 pub mod team_children;
 pub mod todo;
+pub mod tooling;
 pub mod upstream;
 pub mod worktree;
 pub mod worktree_export;

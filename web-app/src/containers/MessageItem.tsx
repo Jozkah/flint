@@ -375,6 +375,16 @@ export const MessageItem = memo(
                       )
                 )}
               >
+                {/* janhq/jan#8864: typed while the agent worked and handed to
+                    it mid-run, not the start of a run of its own. */}
+                {metadata?.steered === true && partIndex === 0 && (
+                  <div
+                    data-testid="steered-label"
+                    className="mb-1 text-[11px] opacity-70"
+                  >
+                    {t('common:steering.delivered')}
+                  </div>
+                )}
                 {/* Show attached files if any */}
                 {attachedFiles.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-3">
