@@ -77,6 +77,15 @@ export type CoworkSession = {
    */
   planMode?: boolean
   /**
+   * The provider/model this session runs on (janhq/jan#8905).
+   *
+   * The session's own, not the global picker's: changing the model while
+   * viewing one session no longer changes another's, and it survives a
+   * restart with the rest of the session. Absent on a session that has not
+   * chosen one yet; its first run records the model it used.
+   */
+  model?: { provider: string; id: string }
+  /**
    * What this session is allowed to do. Absent on sessions from before modes
    * existed, which `modeOf` reads from `planMode` instead.
    */
@@ -171,6 +180,8 @@ type CoworkSessionsState = {
    */
   forkSession: (id: string, throughTurn?: number) => string | null
   setFolder: (id: string, folder: string | null) => void
+  /** The session's own provider/model choice (janhq/jan#8905). */
+  setModel: (id: string, model: { provider: string; id: string }) => void
   setMode: (id: string, mode: CoworkMode) => void
   /** Record, or clear, where the session is in its opening exchange. */
   setContinuity: (id: string, continuity: ContinuityRecord | null) => void
@@ -307,6 +318,13 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
             s.currentId === id ? (sessions[0]?.id ?? null) : s.currentId
           return { sessions, currentId }
         }),
+
+      setModel: (id, model) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id ? { ...x, model: { ...model } } : x
+          ),
+        })),
 
       // Attaching, switching and detaching all land here, so the code panel is
       // pruned in the same update: a tab from the old project must never be

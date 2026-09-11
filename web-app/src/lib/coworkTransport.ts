@@ -10,8 +10,15 @@ import {
 import { buildCoworkSystemPrompt } from '@/lib/coworkPrompt'
 import { measureContextPack } from '@/lib/coworkContext'
 import type { ContextAccounting } from '@/lib/coworkReadiness'
+import { useModelProvider } from '@/hooks/useModelProvider'
 
 export type CoworkRunConfig = CoworkToolOptions & {
+  /**
+   * The model this run is sent with, captured from its session when the run
+   * started (janhq/jan#8905). Every step of the run uses it, whatever the
+   * global picker says by then; absent, the global selection is used.
+   */
+  model?: { provider: string; id: string }
   workspacePath: string | null
   readOnlyFolder: string | null
   /**
@@ -67,6 +74,27 @@ export class CoworkChatTransport extends CustomChatTransport {
   constructor(sessionId: string, config: CoworkRunConfig) {
     super(undefined, sessionId)
     this.config = config
+  }
+
+  /**
+   * The run's own model, not the global selection.
+   *
+   * The parent read the global picker on every step, so choosing a model in
+   * another session -- or in this one mid-run -- changed the model of a run
+   * already under way. A model its provider no longer offers is reported as
+   * none rather than silently replaced by whatever is selected.
+   */
+  protected override getModelSelection() {
+    const chosen = this.config.model
+    if (!chosen) return super.getModelSelection()
+    const provider = useModelProvider.getState().getProviderByName(chosen.provider)
+    return {
+      selectedProvider: chosen.provider,
+      selectedModel:
+        (provider?.active === false
+          ? undefined
+          : provider?.models.find((model) => model.id === chosen.id)) ?? null,
+    }
   }
 
   /** Applied at the next run: changing it mid-run would invalidate the prefix. */
