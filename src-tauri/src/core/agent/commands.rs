@@ -1021,8 +1021,117 @@ pub async fn tool_activity_record(
     let data_folder = get_jan_data_folder_path(app);
     // Redacted here rather than trusting the caller: the caller is renderer
     // code, and the file outlives the window.
-    tauri_plugin_agent_tools::activity::append(&data_folder, &event.redacted());
+    let event = event.redacted();
+    tauri_plugin_agent_tools::activity::append(&data_folder, &event);
+    // AH-005: the same transition in the session's canonical event log. One
+    // id per call and phase, so a retried record is not a second event.
+    if !event.session.is_empty() {
+        let phase = serde_json::to_value(event.phase)
+            .ok()
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default();
+        let _ = tauri_plugin_agent_tools::event_log::append(
+            &data_folder,
+            tauri_plugin_agent_tools::event_log::NewEvent {
+                id: format!("tool:{}:{phase}", event.call),
+                session: event.session.clone(),
+                run: event.run.clone(),
+                invocation: event.invocation.clone(),
+                kind: format!("tool.{phase}"),
+                payload: serde_json::json!({
+                    "tool": event.tool,
+                    "phase": phase,
+                    "capability": event.capability,
+                    "resourceKind": event.kind,
+                    "agent": event.agent,
+                    "elapsedMs": event.elapsed_ms,
+                    "exitCode": event.exit_code,
+                    "call": event.call,
+                    "resource": event.resource,
+                    "summary": event.summary,
+                    "detail": event.detail,
+                }),
+            },
+        );
+    }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// AH-005 / AH-177: the canonical event log, and exporting it
+// ---------------------------------------------------------------------------
+
+/// Record run-level events the renderer owns: a run starting and ending, an
+/// agent dispatched, a background job. Tool phases arrive through
+/// `tool_activity_record`. Payloads are redacted and bounded in the backend.
+#[tauri::command]
+pub async fn agent_events_record(
+    app: tauri::AppHandle,
+    events: Vec<tauri_plugin_agent_tools::event_log::NewEvent>,
+) -> Result<usize, String> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        let mut written = 0;
+        for event in events.into_iter().take(256) {
+            tauri_plugin_agent_tools::event_log::append(&data_folder, event).map_err(|e| e.message())?;
+            written += 1;
+        }
+        Ok(written)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn event_export_cancels(
+) -> &'static std::sync::Mutex<std::collections::BTreeMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>> {
+    static MAP: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::BTreeMap<String, std::sync::Arc<std::sync::atomic::AtomicBool>>>,
+    > = std::sync::OnceLock::new();
+    MAP.get_or_init(Default::default)
+}
+
+/// Export a session's (or one run's) events under `<data>/exports`. Metadata
+/// only unless `include_content` is set. Nothing is sent anywhere.
+#[tauri::command]
+pub async fn agent_events_export(
+    app: tauri::AppHandle,
+    token: String,
+    session: String,
+    run: Option<String>,
+    include_content: bool,
+) -> Result<tauri_plugin_agent_tools::event_export::ExportReport, tauri_plugin_agent_tools::event_export::ExportError> {
+    use tauri_plugin_agent_tools::event_export::{export, ExportError, ExportErrorKind};
+    let data_folder = get_jan_data_folder_path(app);
+    let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    event_export_cancels().lock().unwrap_or_else(|p| p.into_inner()).insert(token.clone(), flag.clone());
+    let out = tokio::task::spawn_blocking(move || export(&data_folder, &session, run.as_deref(), include_content, &flag))
+        .await
+        .map_err(|e| ExportError::new(ExportErrorKind::Io, e.to_string()));
+    event_export_cancels().lock().unwrap_or_else(|p| p.into_inner()).remove(&token);
+    out?
+}
+
+#[tauri::command]
+pub fn agent_events_export_cancel(token: String) -> bool {
+    match event_export_cancels().lock().unwrap_or_else(|p| p.into_inner()).get(&token) {
+        Some(flag) => {
+            flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            true
+        }
+        None => false,
+    }
+}
+
+/// Read an export back as untrusted input and summarize it. Nothing in it is
+/// run or replayed.
+#[tauri::command]
+pub async fn agent_events_inspect(
+    path: String,
+) -> Result<tauri_plugin_agent_tools::event_export::InspectReport, tauri_plugin_agent_tools::event_export::ExportError> {
+    use tauri_plugin_agent_tools::event_export::{inspect, ExportError, ExportErrorKind};
+    tokio::task::spawn_blocking(move || inspect(std::path::Path::new(&path)))
+        .await
+        .map_err(|e| ExportError::new(ExportErrorKind::Io, e.to_string()))?
 }
 
 /// The activity timeline: one durable item per tool call, in the order the

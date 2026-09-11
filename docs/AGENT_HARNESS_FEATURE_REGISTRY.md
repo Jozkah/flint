@@ -25,7 +25,7 @@ and the latter two require a recorded `blockedReason`.
 
 | Phase | Name | `missing` | `planned` | `in-progress` | `implemented` | `verified` | `platform-blocked` | `rejected-with-decision` | Total |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 0 | Foundation | 5 | 0 | 1 | 6 | 0 | 0 | 0 | 12 |
+| 0 | Foundation | 4 | 0 | 1 | 7 | 0 | 0 | 0 | 12 |
 | 1 | Core execution | 0 | 0 | 2 | 18 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 1 | 0 | 1 | 18 | 0 | 0 | 0 | 20 |
 | 3 | Repository intelligence | 18 | 0 | 2 | 0 | 0 | 0 | 0 | 20 |
@@ -33,9 +33,9 @@ and the latter two require a recorded `blockedReason`.
 | 5 | Agent orchestration | 8 | 0 | 4 | 13 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 15 | 0 | 1 | 10 | 0 | 0 | 0 | 26 |
-| 8 | UX, automation and operations | 17 | 0 | 6 | 5 | 0 | 0 | 1 | 29 |
+| 8 | UX, automation and operations | 16 | 0 | 6 | 6 | 0 | 0 | 1 | 29 |
 | 9 | Approved additions | 0 | 0 | 0 | 10 | 0 | 0 | 0 | 10 |
-| **all** | | **76** | **0** | **31** | **102** | **0** | **0** | **1** | **210** |
+| **all** | | **74** | **0** | **31** | **104** | **0** | **0** | **1** | **210** |
 
 ## Ownership lanes
 
@@ -74,7 +74,7 @@ per-OS evidence log rather than backlog items.
 | `AH-002` | Registry schema validation | 0 | foundation | P0 | `implemented` | none | `AH-001` |
 | `AH-003` | Architecture decision records | 0 | foundation | P0 | `implemented` | none | `AH-001` |
 | `AH-004` | Canonical harness event model | 0 | foundation | P0 | `in-progress` | low | `AH-003` |
-| `AH-005` | Event serialization and schema versioning | 0 | foundation | P0 | `missing` | low | `AH-004` |
+| `AH-005` | Event serialization and schema versioning | 0 | foundation | P0 | `implemented` | low | `AH-004` |
 | `AH-006` | Tool capability model | 0 | foundation | P0 | `implemented` | high | `AH-003` |
 | `AH-007` | Permission model core types | 0 | foundation | P0 | `implemented` | critical | `AH-006` |
 | `AH-008` | Run and session identity | 0 | foundation | P0 | `missing` | low | `AH-003` |
@@ -246,7 +246,7 @@ per-OS evidence log rather than backlog items.
 | `AH-174` | Resource usage monitor | 8 | ux-operations | P2 | `in-progress` | low | `AH-173` |
 | `AH-175` | Token and cost dashboard | 8 | ux-operations | P1 | `in-progress` | low | `AH-073` |
 | `AH-176` | Event replay UI | 8 | ux-operations | P2 | `in-progress` | low | `AH-032` |
-| `AH-177` | Event export | 8 | ux-operations | P1 | `missing` | medium | `AH-005` |
+| `AH-177` | Event export | 8 | ux-operations | P1 | `implemented` | medium | `AH-005` |
 | `AH-178` | Searchable transcripts | 8 | ux-operations | P2 | `in-progress` | low | `AH-010` |
 | `AH-179` | Screen-reader accessibility | 8 | ux-operations | P1 | `missing` | none | - |
 | `AH-180` | Keyboard navigation | 8 | ux-operations | P1 | `missing` | none | `AH-179` |
@@ -286,8 +286,8 @@ per-OS evidence log rather than backlog items.
 Recorded during the Phase 0 audit of `main`. Each note says why an item is not already
 `implemented`, so later phases start from evidence rather than a re-audit.
 
-- **`AH-004` Canonical harness event model** - The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (HarnessEvent, EventPayload, ToolOutcome) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/event.rs` if it is to be restored.
-- **`AH-005` Event serialization and schema versioning** - The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (Envelope, ENVELOPE_VERSION, EventLog) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/envelope.rs` if it is to be restored.
+- **`AH-004` Canonical harness event model** - The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (HarnessEvent, EventPayload, ToolOutcome) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/event.rs` if it is to be restored. Update: AH-005 now provides a persisted versioned envelope (event_log.rs); tool phases and the renderer's run lifecycle are written to it, but the Rust loop's StreamEvents, steering and compaction are not, so it is not yet the sole source for streaming, journalling, audit and replay.
+- **`AH-005` Event serialization and schema versioning** - Rebuilt on current interfaces (not restored from the lost src-tauri/harness crate, see 16ae36728): event_log.rs in the agent-tools plugin. One append-only JSON-lines log per session under <data>/events/. Envelope {v, id, session, run, invocation, seq, at, kind, payload, redactions}: v=1 and a newer version is a typed UnsupportedVersion; an unknown kind is kept and read back verbatim; ids are stable and a repeated id is one event (also after a restart); seq is assigned by the backend and strictly increasing per session; payloads are redacted with the plugin's redactor before writing and bounded to 64 KiB. A torn last line is skipped by readers and cut off before the next append; any other bad line is a typed Corrupt, never a silent gap. Each session log is bounded at 32 MiB (TooLarge) and the oldest of more than 500 logs are pruned. Writers: every tool phase through tool_activity_record, and run.started/run.ended/agent.dispatched/job.started/job.ended from the renderer through agent_events_record. Windows: event-export-1/2 read the log back through an export with an independent reader, in the durable tool-activity order, with the same ids after a real restart. Mutation-checked (dedup, torn-tail repair, version refusal, redaction). The Rust CLI/subagent loop's StreamEvents, steering and compaction are not yet written to it, which is why AH-004 remains in progress. macOS and Linux not run.
 - **`AH-006` Tool capability model** - Capability{Read,Write,Exec,Net} now pairs with a canonical Resource (path, command, mcp, net, process, unknown) derived per call inside resolve_decision and consumed by the production gate. An argument that is present but unreadable becomes Resource::Unknown, which no allow rule matches and every deny rule does; the gate refuses it as DenyReason::Resource, and the production call site in commands.rs returns a message naming what could not be resolved. An absent argument stays the handler's schema business. MCP tools still carry no capability -- that remains AH-041.
 - **`AH-007` Permission model core types** - Subject, capability and canonical resource are all matched, and all three reach production. `resolve_decision` takes the subject; `is_denied`/`is_allowed`/`advertises_mcp` take it too, so a rule naming one subagent no longer removes the tool from every agent's advertised toolset; `intersect_allowed_tools` reads the parent's rules for the child by the name it is dispatched under. A run's subject is decided once in `orchestrate_inner` from `OrchestrationArgs::agent_name`, which `run_subagent` sets on the child's cloned args, so the advertising pass, the MCP prune and the dispatcher cannot disagree about who is asking. An unqualified rule still covers every subject; an unknown subject matches no rule and is permitted by none. Documented in AGENT_HARNESS_ARCHITECTURE.md (AHD-005) and AGENT_HARNESS_VERIFICATION.md. Not `verified`: the generic cancellation criterion has no test on this path, and the dispatcher-level test in loop.rs runs under --features test-tauri (the 0xc0000139 seen earlier was the cowork-smoke feature combination, documented in build.rs, not the host); an earlier version of that test hung on an unanswered prompt and was fixed.
 - **`AH-008` Run and session identity** - The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (RunIdentity, RunId, ThreadId, SessionId, AgentId) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/identity.rs` if it is to be restored.
@@ -378,7 +378,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-174` Resource usage monitor** - Only host-level CPU and RAM; nothing is attributed per run or per agent.
 - **`AH-175` Token and cost dashboard** - Tokens are tracked; there is no pricing model or cost figure anywhere in the product.
 - **`AH-176` Event replay UI** - The CLI replays a rendering journal; there is no event-level replay UI.
-- **`AH-177` Event export** - Blocked on AH-005: the versioned envelope and JSONL event log it would export were lost with src-tauri/harness (see AH-005), so AH-005 is missing, not implemented. An export built on the tool-activity log alone would not be an export of canonical run events.
+- **`AH-177` Event export** - Session details export a session's (or one run's) canonical events (AH-005) to <data>/exports/events-*/ (events.jsonl + manifest.json with schema, session, run, count, first/last seq, metadataOnly and SHA-256), assembled under .partial, stoppable, never sent anywhere. Metadata only by default: payloads cut to an allowlist of scalar fields (status, phase, tool, agent, times, exit codes); prompts, tool inputs/outputs and paths only when the person ticks it beside a warning, and then the stored redacted payloads. The inspector reads an export as untrusted input and only reports it: exactly the two files, no links, strict manifest, matching hash, one session, strictly increasing order; typed not-an-export, unsupported-version, manifest-invalid, hash-mismatch, truncated, cross-session, out-of-order. Windows: event-export-1 (metadata-only export checked by an independent reader, no content leaked, durable order, content export only after the warning, inspector read-back, tampered export refused) and event-export-2 after a real restart (same ids, same order). Mutation-checked (metadata filter, partial removal, inspector hash and order checks). Mock provider only; macOS and Linux not run. Covers the events AH-005 records today; the Rust loop's own StreamEvents are not in them yet (AH-004).
 - **`AH-178` Searchable transcripts** - Search exists in the desktop app; there is no transcript export or CLI search.
 - **`AH-179` Screen-reader accessibility** - Not audited in depth during Phase 0; status to be confirmed by an accessibility pass in Phase 8.
 - **`AH-180` Keyboard navigation** - Not audited in depth during Phase 0; the CLI is keyboard-driven by nature, the desktop surfaces are unverified.

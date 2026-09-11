@@ -311,6 +311,60 @@ partial directory, and one left by a stopped process is swept by the next
 export. Nothing in the worktree or the user's checkout is written. Applying a
 bundle elsewhere (AH-169) is not implemented.
 
+### AHD-009e: one versioned envelope for a session's events (AH-005), exported (AH-177)
+
+The Phase 0 harness crate that first carried an event envelope never reached
+the main line (see the handoff for 16ae36728). It is rebuilt here on current
+interfaces rather than restored, as `event_log.rs` in the agent-tools plugin.
+
+**The log.** Each session has one append-only JSON-lines log,
+`<data>/events/<sha256(session)>.jsonl`. One envelope per line carries:
+
+- `v`: the envelope version, currently 1. A reader meeting a newer version
+  fails with a typed error rather than guessing.
+- `id`: stable, chosen by the writer. The same id is one event, even across a
+  restart.
+- `session`, `run`, `invocation`.
+- `seq`: assigned by the log, strictly increasing within the session.
+- `at`: RFC 3339, UTC.
+- `kind`: a dotted name. A kind this build does not know is kept and read back
+  verbatim.
+- `payload`: redacted before it is written, with `redactions` naming what was
+  removed. It is bounded to 64 KiB, and above that replaced by a note.
+
+**Recovery and limits.** A torn last line from a crash is skipped by readers
+and cut off before the next append. Any other bad line is a typed error, never
+a silent gap. A session log is bounded at 32 MiB, and the oldest of more than
+500 session logs are removed.
+
+**Writers.** Two paths write events, both in the backend:
+
+- `tool_activity_record` appends every tool phase (`tool.requested` …
+  `tool.timed-out`, one per `activity::Phase`).
+- `agent_events_record` takes the run-level events the renderer owns:
+  `run.started`, `run.ended` (with `stoppedBy`), `agent.dispatched`,
+  `job.started` and `job.ended`.
+
+Not yet written: the Rust CLI and subagent loop's own `StreamEvent`s, and
+steering and compaction. So AH-004 ("sole source for streaming, journalling,
+audit and replay") stays in progress.
+
+**Export (`event_export.rs`).** An export writes `events.jsonl` and
+`manifest.json` (schema, session, run, count, first and last `seq`,
+`metadataOnly`, SHA-256) under `<data>/exports/`. It is assembled under
+`.partial`, can be stopped, and is never sent anywhere.
+
+- **Metadata only by default.** Each payload is cut to a short allowlist of
+  scalar fields: status, phase, tool, agent, times, exit codes.
+- **Content only when asked.** Prompts, tool inputs and outputs and paths are
+  included only when the person ticks it, beside a warning.
+- **Inspection.** `inspect` reads an export as untrusted input and reports
+  counts by kind; it runs and replays nothing. It requires exactly the two
+  files, no links, a strict manifest, a matching hash, a single session and
+  strictly increasing order. Failures are typed: `not-an-export`,
+  `unsupported-version`, `manifest-invalid`, `hash-mismatch`, `truncated`,
+  `cross-session`, `out-of-order`.
+
 ### AHD-009d: an exported bundle is imported as a proposal (AH-169)
 
 `bundle_import.rs` reads an AH-168 bundle folder as hostile input.

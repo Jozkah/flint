@@ -143,7 +143,7 @@
       "tests": [],
       "platformRequirements": [],
       "blockedReason": "Only the in-memory StreamEvent exists. The canonical, persisted HarnessEvent model (src-tauri/harness/src/event.rs) is not in the tree, so replay, audit and export still have no source.",
-      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (HarnessEvent, EventPayload, ToolOutcome) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/event.rs` if it is to be restored."
+      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (HarnessEvent, EventPayload, ToolOutcome) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/event.rs` if it is to be restored. Update: AH-005 now provides a persisted versioned envelope (event_log.rs); tool phases and the renderer's run lifecycle are written to it, but the Rust loop's StreamEvents, steering and compaction are not, so it is not yet the sole source for streaming, journalling, audit and replay."
     },
     {
       "id": "AH-005",
@@ -151,13 +151,18 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-004"
       ],
       "owner": "lane-01-architecture-registry",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/event_log.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/lib/eventLog.ts",
+        "web-app/src/routes/cowork.tsx"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Events serialize to a stable versioned envelope with a forward-compatible reader that tolerates unknown variants.",
@@ -167,10 +172,20 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::event_log::tests::events_come_back_in_order_with_their_envelope",
+        "tauri-plugin-agent-tools::event_log::tests::the_same_id_is_one_event_even_across_a_restart",
+        "tauri-plugin-agent-tools::event_log::tests::a_torn_last_line_is_skipped_and_cut_off_by_the_next_write",
+        "tauri-plugin-agent-tools::event_log::tests::an_unknown_kind_is_kept_and_a_newer_envelope_is_refused",
+        "tauri-plugin-agent-tools::event_log::tests::what_is_written_is_redacted_bounded_and_refused_when_malformed",
+        "tauri-plugin-agent-tools::event_log::tests::every_tool_phase_is_a_known_kind",
+        "web-app::eventLog.test.ts",
+        "cowork-smoke::event-export-1",
+        "cowork-smoke::event-export-2"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (Envelope, ENVELOPE_VERSION, EventLog) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/envelope.rs` if it is to be restored."
+      "auditNote": "Rebuilt on current interfaces (not restored from the lost src-tauri/harness crate, see 16ae36728): event_log.rs in the agent-tools plugin. One append-only JSON-lines log per session under <data>/events/. Envelope {v, id, session, run, invocation, seq, at, kind, payload, redactions}: v=1 and a newer version is a typed UnsupportedVersion; an unknown kind is kept and read back verbatim; ids are stable and a repeated id is one event (also after a restart); seq is assigned by the backend and strictly increasing per session; payloads are redacted with the plugin's redactor before writing and bounded to 64 KiB. A torn last line is skipped by readers and cut off before the next append; any other bad line is a typed Corrupt, never a silent gap. Each session log is bounded at 32 MiB (TooLarge) and the oldest of more than 500 logs are pruned. Writers: every tool phase through tool_activity_record, and run.started/run.ended/agent.dispatched/job.started/job.ended from the renderer through agent_events_record. Windows: event-export-1/2 read the log back through an export with an independent reader, in the durable tool-activity order, with the same ids after a real restart. Mutation-checked (dedup, torn-tail repair, version refusal, redaction). The Rust CLI/subagent loop's StreamEvents, steering and compaction are not yet written to it, which is why AH-004 remains in progress. macOS and Linux not run."
     },
     {
       "id": "AH-006",
@@ -5572,13 +5587,20 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-005"
       ],
       "owner": "lane-09-ux-observability",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/event_log.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/lib/eventLog.ts",
+        "web-app/src/routes/cowork.tsx",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/event_export.rs",
+        "web-app/src/containers/CoworkEventExport.tsx"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A run's canonical events export to a file for external analysis.",
@@ -5587,10 +5609,18 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::event_export::tests::a_metadata_only_export_keeps_order_and_leaves_content_out",
+        "tauri-plugin-agent-tools::event_export::tests::content_is_exported_only_when_asked_and_one_run_can_be_chosen",
+        "tauri-plugin-agent-tools::event_export::tests::nothing_to_export_and_a_stopped_export_leave_nothing",
+        "tauri-plugin-agent-tools::event_export::tests::a_damaged_or_foreign_export_is_a_typed_refusal",
+        "web-app::CoworkEventExport.test.tsx",
+        "cowork-smoke::event-export-1",
+        "cowork-smoke::event-export-2"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Blocked on AH-005: the versioned envelope and JSONL event log it would export were lost with src-tauri/harness (see AH-005), so AH-005 is missing, not implemented. An export built on the tool-activity log alone would not be an export of canonical run events."
+      "auditNote": "Session details export a session's (or one run's) canonical events (AH-005) to <data>/exports/events-*/ (events.jsonl + manifest.json with schema, session, run, count, first/last seq, metadataOnly and SHA-256), assembled under .partial, stoppable, never sent anywhere. Metadata only by default: payloads cut to an allowlist of scalar fields (status, phase, tool, agent, times, exit codes); prompts, tool inputs/outputs and paths only when the person ticks it beside a warning, and then the stored redacted payloads. The inspector reads an export as untrusted input and only reports it: exactly the two files, no links, strict manifest, matching hash, one session, strictly increasing order; typed not-an-export, unsupported-version, manifest-invalid, hash-mismatch, truncated, cross-session, out-of-order. Windows: event-export-1 (metadata-only export checked by an independent reader, no content leaked, durable order, content export only after the warning, inspector read-back, tampered export refused) and event-export-2 after a real restart (same ids, same order). Mutation-checked (metadata filter, partial removal, inspector hash and order checks). Mock provider only; macOS and Linux not run. Covers the events AH-005 records today; the Rust loop's own StreamEvents are not in them yet (AH-004)."
     },
     {
       "id": "AH-178",

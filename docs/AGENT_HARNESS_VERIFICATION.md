@@ -226,6 +226,25 @@ Run: `cargo test -p tauri-plugin-agent-tools -- --test-threads=4 proposal::`,
 `cargo test --lib --no-default-features --features test-tauri -- team_children proposals subagent`,
 `npx vitest run src/lib/__tests__/coworkTeamScopes.test.ts src/containers/__tests__/CoworkTeam*`.
 
+## Canonical event log (AH-005) and event export (AH-177)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 6 unit tests | `plugins/tauri-plugin-agent-tools/src/event_log.rs` | events come back in `seq` order with their envelope, per session; the same id is one event, also after a simulated restart, and the sequence continues; a torn last line is skipped and cut off by the next write with every earlier line intact; an unknown kind is kept verbatim, a newer envelope version and a corrupt middle line are typed errors; payloads are redacted and bounded, and malformed ids, sessions and kinds are refused; every `activity::Phase` is a known kind |
+| 4 unit tests | `plugins/tauri-plugin-agent-tools/src/event_export.rs` | a metadata-only export keeps order and drops prompts, paths and summaries, and holds no other session's events; content only when asked, and one run can be chosen; nothing to export and a stopped export leave nothing; a tampered, truncated, cross-session, reordered, newer-schema, extra-file or unknown-field export is a typed refusal |
+| 4 + 2 component tests | `CoworkEventExport.test.tsx`, `eventLog.test.ts` | metadata only unless ticked, with the warning shown when it is; a typed refusal; stopping a running export; the inspector's summary and a damaged export's typed refusal; recording never throws into the run |
+| Real WebView scenario, **phase one** | `cowork-smoke --only event-export-1` (mock provider, Windows) | a run with a tool call; the session details export its events metadata-only; a reader written in the harness, not the app's, checks every line is envelope 1 of that session in strictly increasing order and the manifest hash and count; the export starts with `run.started`, ends with `run.ended`, holds the tool's requested, running and terminal phases in the durable tool-activity record's order, and holds no prompt, `resource`, `summary`, `title` or project path; the content export appears only once ticked, after the warning, and holds the run's title; the inspector reads the export back; a tampered copy is refused (`hash-mismatch`). **Passed on Windows 2026-09-11, first attempt** |
+| Real WebView scenario, **phase two after a real restart** | `cowork-smoke --only event-export-2` on the kept profile | a new process exports the same session's events with exactly the same ids in the same order, and phase one's export still reads back. **Passed on Windows 2026-09-11** |
+
+Mutation-checked: keeping content in a metadata-only export, no
+deduplication, no torn-tail repair, accepting a newer envelope, no redaction,
+keeping a partial export, an inspector that trusts the hash, and one that
+skips the order check each fail a test.
+
+Not covered: the Rust CLI and subagent loop's `StreamEvent`s, and steering
+and compaction, are not yet in the log (AH-004 stays in progress). Mock
+provider only; macOS and Linux were not run.
+
 ## Bundle import (AH-169), and the flag review UI (AH-154 / AH-155 / AH-156)
 
 | Evidence | Where | Covers |

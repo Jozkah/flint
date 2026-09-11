@@ -244,6 +244,8 @@ import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 import { CoworkTeamConflicts } from '@/containers/CoworkTeamConflicts'
 import { CoworkTeamReviews } from '@/containers/CoworkTeamReviews'
 import { CoworkBundleImport } from '@/containers/CoworkBundleImport'
+import { CoworkEventExport } from '@/containers/CoworkEventExport'
+import { recordEvents } from '@/lib/eventLog'
 import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
 import {
   beginTeamChild,
@@ -1888,6 +1890,17 @@ function CoworkPage() {
     // as a whole, or one dispatched child at a time — actually reach anything.
     const runId = crypto.randomUUID()
     beginRun(sid, runId, controller)
+    // AH-005: the run's first canonical event. The title is the user's own
+    // words, so it is content: a metadata-only export leaves it out.
+    recordEvents([
+      {
+        id: `run:${runId}:started`,
+        session: sid,
+        run: runId,
+        kind: 'run.started',
+        payload: { model: selectedModel.id, title: text },
+      },
+    ])
     // Missing-path reads this run has seen, shared by the run and its
     // children and dropped with it (janhq/jan#8906).
     const runReadFailures = new Map<string, number>()
@@ -1934,6 +1947,15 @@ function CoworkPage() {
             command,
             anchorMessageId: anchorMessageId(),
           })
+          recordEvents([
+            {
+              id: `job:${call.toolCallId}:started`,
+              session: run.sessionId,
+              run: run.runId,
+              kind: 'job.started',
+              payload: { tool: 'bash', command },
+            },
+          ])
         }
       },
     }
@@ -2004,6 +2026,15 @@ function CoworkPage() {
       // moment the agent name, description and model are known
       // together, and the record has to exist for the queue position
       // that arrives next to land on something.
+      recordEvents([
+        {
+          id: `agent:${run.runId}:${callId}:dispatched`,
+          session: run.sessionId,
+          run: run.runId,
+          kind: 'agent.dispatched',
+          payload: { agent: resolved.name, model: selectedModel.id, description: req.description },
+        },
+      ])
       recordAgentDispatch(run, {
         callId,
         agentName: resolved.name,
@@ -2803,6 +2834,15 @@ function CoworkPage() {
               const collecting = collectedJobId(turn.args)
               if (collecting) recordJobCollected(collecting, outcome)
               else recordShellOutcome(run, callId, outcome)
+              recordEvents([
+                {
+                  id: `job:${collecting ?? callId}:ended:${callId}`,
+                  session: sid,
+                  run: runId,
+                  kind: 'job.ended',
+                  payload: { tool: 'bash', status: outcome.isError ? 'failed' : 'succeeded' },
+                },
+              ])
             }
           },
           nextMessageId: (() => {
@@ -2874,6 +2914,18 @@ function CoworkPage() {
       askResolvers.current.clear()
       setStoppedBy(thrown?.stoppedBy ?? outcome?.stoppedBy ?? null)
       setRunError(thrown?.errorText ?? outcome?.errorText)
+      recordEvents([
+        {
+          id: `run:${runId}:ended`,
+          session: sid,
+          run: runId,
+          kind: 'run.ended',
+          payload: {
+            stoppedBy: thrown?.stoppedBy ?? outcome?.stoppedBy ?? 'unknown',
+            detail: thrown?.errorText ?? outcome?.errorText ?? '',
+          },
+        },
+      ])
     }
   }
 
@@ -3034,6 +3086,14 @@ function CoworkPage() {
               than conversation, closed until asked for. */}
           <CoworkSessionDetails summary={sessionDetailsSummary}>
             <CoworkReadinessCard manifest={readiness} />
+            {/* AH-177: this session's canonical events, written to a file. */}
+            <CoworkEventExport
+              sessionId={session?.id}
+              pickFolder={async () => {
+                const picked = await serviceHub.dialog().open({ directory: true })
+                return typeof picked === 'string' ? picked : null
+              }}
+            />
             {/* Collapsed, and inside session details rather than above the
                 composer: someone whose session works should never read it. */}
             <CoworkEnvironmentReadiness projectRoot={folder ?? undefined} />

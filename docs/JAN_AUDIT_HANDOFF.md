@@ -2222,6 +2222,58 @@ bundle to a fresh clone at the base and compares the result byte for byte.
 Applying a bundle inside Jan (AH-169) is the next item in this chain and is not
 implemented.
 
+## 2026-09-11 — The composer/apply "stall": diagnosed elsewhere, fix not yet on main
+
+The intermittent eval timeouts at apply clicks (r39, r43) were proved by
+another session, in `2bd94407a` on `claude/token-usage-integration`, to be the
+harness losing its own results, not the page stalling.
+
+- **The cause.** Results came back over the Tauri event bus.
+  `Listeners::emit_filter` only `try_lock`s its handler table. When another
+  thread holds it, the emit is parked in a pending queue, and that queue is
+  flushed only by a later emit that reaches a handler.
+- **Why it stalled.** While the app was busy, the page's result sat in that
+  queue with nothing to flush it. Checked over DevTools: the script had run
+  and its emit had resolved.
+- **Their fix.** Results are left in the page and collected with
+  `eval_with_callback`.
+
+That commit has not reached `fork/main`, so this branch does not duplicate it
+with a transport workaround of its own. It keeps its complementary harness
+changes: a script that does not parse is reported as an error, not a stall;
+there is no desktop-wide screenshot; the window's own state is reported. The
+two changes touch the same function, `Ctx::eval_with_timeout`, and will need
+merging when that branch lands. Retries stay off by default. Rounds f1 and f2
+ran 14 and 16 scenarios with no eval timeout.
+
+## 2026-09-11 — AH-005 rebuilt on current code, and AH-177 event export
+
+Another session (16ae36728) established that the Phase 0 harness crate was
+lost in merge 5534adb8e, not moved. It marked AH-004 in progress, and AH-005,
+008, 009, 010 and 011 missing. This entry rebuilds only AH-005, the one AH-177
+depends on, as `event_log.rs` in the agent-tools plugin. It uses the plugin's
+existing redactor and the identities the app already has (session, run,
+invocation); nothing from the old crate was resurrected.
+
+- **The log.** One JSON-lines log per session. The envelope is versioned; a
+  newer version is refused and an unknown kind is kept. Ids are stable, so a
+  retried write stays one event. `seq` is assigned by the backend. Payloads
+  are redacted and bounded, and a crash leaves at most a torn tail, which is
+  repaired.
+- **Writers.** The backend writes every tool phase from `tool_activity_record`.
+  The renderer records `run.started`, `run.ended`, `agent.dispatched`,
+  `job.started` and `job.ended`. The Rust loop's `StreamEvent`s, steering
+  and compaction are not in the log yet, so AH-004 stays in progress.
+- **AH-177.** Session details can export the log, metadata only by default,
+  with content only when ticked beside a warning. The export is written under
+  Jan's data folder, never uploaded. The inspector reads an export back as
+  untrusted input and refuses a damaged one with a typed error.
+- **Evidence.** The `event-export-1/2` scenario pair checks the export with a
+  reader written in the harness, not the app's. It checks order against the
+  durable tool-activity record, finds no content leaked, and gets the same ids
+  in the same order after a real restart. Both phases passed on the first
+  attempt.
+
 ## 2026-09-11 — AH-169 bundle import, and the flag review exercised in the real UI
 
 The Changes panel can now import a patch bundle that AH-168 exported, into the

@@ -1039,6 +1039,15 @@ const SCENARIOS: &[Scenario] = &[
         name: "worktree-export",
         run: scenario_worktree_export,
     },
+    // A pair (AH-005/AH-177).
+    Scenario {
+        name: "event-export-1",
+        run: scenario_event_export_first,
+    },
+    Scenario {
+        name: "event-export-2",
+        run: scenario_event_export_second,
+    },
     // A pair (AH-169, and the AH-154/155/156 review UI).
     Scenario {
         name: "bundle-import-1",
@@ -1211,6 +1220,10 @@ const RESTART_SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "bundle-import-2",
         run: scenario_bundle_import_second,
+    },
+    Scenario {
+        name: "event-export-2",
+        run: scenario_event_export_second,
     },
     Scenario {
         name: "tool-activity-survives-a-restart",
@@ -3989,6 +4002,255 @@ fn scenario_bundle_import_second(ctx: &Ctx) -> ScenarioResult {
         "the person's unrelated file changed across the restart"
     );
     ensure!(partial_imports().is_empty(), "a private import copy was left");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// AH-005 / AH-177: the canonical event log, exported through the UI
+// ---------------------------------------------------------------------------
+
+const EVENTS_MARKER: &str = "event-export-phase-1.json";
+
+/// The newest session that sent `needle`, from the transport's own record.
+fn session_of_message(needle: &str) -> Option<String> {
+    recorded_dispatch(needle).and_then(|s| s["session"].as_str().map(str::to_string))
+}
+
+fn open_session_details(ctx: &Ctx) -> ScenarioResult {
+    ctx.wait_until(
+        "the session details with the event export",
+        r#"const t = document.querySelector('[data-testid="session-details-trigger"]');
+           if (t && !document.querySelector('[data-testid="event-export"]')) t.click();
+           return !!document.querySelector('[data-testid="event-export"]');"#,
+        Duration::from_secs(30),
+    )
+}
+
+/// Export through the UI; the folder written.
+fn export_events_ui(ctx: &Ctx, content: bool) -> Result<PathBuf, Failure> {
+    ctx.eval(&format!(
+        r#"const box = document.querySelector('[data-testid="event-export-content"]');
+           if (box.checked !== {content}) box.click();
+           return true;"#
+    ))?;
+    ctx.settle();
+    ctx.eval(r#"document.querySelector('[data-testid="event-export-run"]').click(); return true;"#)?;
+    ctx.wait_until(
+        "the export to be written",
+        r#"return !!document.querySelector('[data-testid="event-export-path"]')
+             || !!document.querySelector('[data-testid="event-export-error"]');"#,
+        Duration::from_secs(30),
+    )?;
+    let text = ctx.eval_string(
+        r#"const p = document.querySelector('[data-testid="event-export-path"]');
+           const e = document.querySelector('[data-testid="event-export-error"]');
+           return p ? p.textContent : 'ERROR ' + (e ? e.textContent : '');"#,
+    )?;
+    let path = text
+        .split("written to ")
+        .nth(1)
+        .map(str::trim)
+        .ok_or_else(|| Failure(format!("the export did not say where it went: {text}")))?;
+    Ok(PathBuf::from(path))
+}
+
+/// A reader written here, not the app's: every line an envelope of version 1
+/// for `session`, sequence strictly increasing; returns the lines as JSON.
+fn read_export_independently(dir: &Path, session: &str) -> Result<Vec<Value>, Failure> {
+    let fail = |m: String| Failure(m);
+    let manifest: Value = serde_json::from_slice(&std::fs::read(dir.join("manifest.json")).map_err(|e| fail(e.to_string()))?)
+        .map_err(|e| fail(format!("manifest: {e}")))?;
+    let body = std::fs::read(dir.join("events.jsonl")).map_err(|e| fail(e.to_string()))?;
+    ensure!(manifest["eventsSha256"] == sha256_hex(&body), "the manifest hash does not match the events");
+    let mut out = Vec::new();
+    let mut last = 0u64;
+    for line in String::from_utf8_lossy(&body).lines().filter(|l| !l.trim().is_empty()) {
+        let e: Value = serde_json::from_str(line).map_err(|e| fail(format!("a line is not JSON: {e}")))?;
+        ensure!(e["v"] == 1, "an event is not envelope version 1: {line}");
+        ensure!(e["session"] == session, "an event of another session: {line}");
+        let seq = e["seq"].as_u64().unwrap_or(0);
+        ensure!(seq > last, "the events are not in log order at seq {seq}");
+        last = seq;
+        out.push(e);
+    }
+    ensure!(manifest["count"] == out.len(), "the manifest count disagrees with the file");
+    Ok(out)
+}
+
+/// AH-005/AH-177, phase one. A run with a tool call records its canonical
+/// events; the session details export them through the UI, metadata only by
+/// default (no prompt, path or tool output in the file, checked by a reader
+/// of its own), in the same order as the durable tool-activity record; with
+/// content only when ticked, with the warning shown; and an export read back
+/// through the inspector, a tampered one refused as typed.
+fn scenario_event_export_first(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    let ioe = |e: std::io::Error| Failure(e.to_string());
+    ctx.script_model("tools", &["ls:{\"path\":\".\"}"])?;
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.wait_until(
+        "the previous run to finish",
+        "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    let probe = "event export probe: list the folder";
+    ctx.type_into("[data-testid=\"chat-input\"]", probe)?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]'); return !!b && !b.disabled;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval("document.querySelector('[data-test-id=\"send-message-button\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the tool call and the end of the run",
+        "return !!document.querySelector('[data-testid=\"tool-activity-item\"]')
+           && document.body.innerText.includes('Done. I used the tools')
+           && !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(120),
+    )?;
+    let session = session_of_message("event export probe").ok_or_else(|| fail("the run's session was not recorded".into()))?;
+    ctx.settle();
+
+    // Metadata only, by default.
+    open_session_details(ctx)?;
+    let warned = ctx.eval_bool("return !!document.querySelector('[data-testid=\"event-export-warning\"]');")?;
+    ensure!(!warned, "the content warning shows before content was asked for");
+    let meta = export_events_ui(ctx, false)?;
+    let events = read_export_independently(&meta, &session)?;
+    let kinds: Vec<String> = events.iter().filter_map(|e| e["kind"].as_str().map(str::to_string)).collect();
+    ensure!(kinds.first().map(String::as_str) == Some("run.started"), "the export does not start with the run: {kinds:?}");
+    ensure!(kinds.last().map(String::as_str) == Some("run.ended"), "the export does not end with the run: {kinds:?}");
+    for want in ["tool.requested", "tool.running"] {
+        ensure!(kinds.iter().any(|k| k == want), "the export has no {want}: {kinds:?}");
+    }
+    ensure!(
+        kinds.iter().any(|k| k == "tool.succeeded" || k == "tool.failed"),
+        "the tool call never reached an end in the export: {kinds:?}"
+    );
+    let body = std::fs::read_to_string(meta.join("events.jsonl")).map_err(ioe)?;
+    let project = ctx.project.to_string_lossy().replace('\\', "\\\\");
+    for leaked in ["event export probe", "\"resource\"", "\"summary\"", "\"title\"", project.as_str()] {
+        ensure!(!body.contains(leaked), "the metadata-only export holds {leaked:?}");
+    }
+    // The same order as the durable tool-activity record.
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let activity: Vec<String> = std::fs::read_to_string(Path::new(&data).join("audit/tool-activity.jsonl"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .filter(|e| e["session"] == session.as_str())
+        .filter_map(|e| e["phase"].as_str().map(|p| format!("tool.{p}")))
+        .collect();
+    let exported_tools: Vec<String> = kinds.iter().filter(|k| k.starts_with("tool.")).cloned().collect();
+    let mut deduped = Vec::new();
+    for k in &activity {
+        if !deduped.contains(k) {
+            deduped.push(k.clone());
+        }
+    }
+    ensure!(
+        exported_tools == deduped,
+        "the export's tool events {exported_tools:?} are not the durable record's {deduped:?}"
+    );
+
+    // With content, only when asked, with the warning.
+    ctx.eval("const b = document.querySelector('[data-testid=\"event-export-content\"]'); if (!b.checked) b.click(); return true;")?;
+    ctx.settle();
+    ensure!(
+        ctx.eval_bool("return /share it with care/i.test(document.querySelector('[data-testid=\"event-export-warning\"]')?.textContent || '');")?,
+        "no warning before a content export"
+    );
+    let full = export_events_ui(ctx, true)?;
+    let full_body = std::fs::read_to_string(full.join("events.jsonl")).map_err(ioe)?;
+    ensure!(full_body.contains("event export probe"), "the content export does not hold the run's title");
+    read_export_independently(&full, &session)?;
+
+    // Read back through the inspector; a tampered copy refused, typed.
+    ctx.script_dialog(Some(&meta));
+    ctx.eval("document.querySelector('[data-testid=\"event-inspect\"]').click(); return true;")?;
+    let inspected = ctx.wait_until(
+        "the inspector's summary",
+        &format!(
+            r#"const s = document.querySelector('[data-testid="event-inspect-summary"]');
+               return !!s && s.getAttribute('data-count') === '{}' && s.getAttribute('data-session') === {session:?};"#,
+            events.len()
+        ),
+        Duration::from_secs(30),
+    );
+    ctx.clear_dialog_script();
+    inspected?;
+    let tampered = ctx.workspace.join("event-export-tampered");
+    let _ = std::fs::remove_dir_all(&tampered);
+    std::fs::create_dir_all(&tampered).map_err(ioe)?;
+    std::fs::copy(meta.join("manifest.json"), tampered.join("manifest.json")).map_err(ioe)?;
+    std::fs::write(tampered.join("events.jsonl"), body.replace("run.ended", "run.hacked")).map_err(ioe)?;
+    ctx.script_dialog(Some(&tampered));
+    ctx.eval("document.querySelector('[data-testid=\"event-inspect\"]').click(); return true;")?;
+    let refused = ctx.wait_until(
+        "the tampered export's refusal",
+        r#"const e = document.querySelector('[data-testid="event-export-error"]');
+           return !!e && e.getAttribute('data-kind') === 'hash-mismatch';"#,
+        Duration::from_secs(30),
+    );
+    ctx.clear_dialog_script();
+    refused?;
+    let _ = std::fs::remove_dir_all(&tampered);
+
+    std::fs::write(
+        ctx.workspace.join(EVENTS_MARKER),
+        serde_json::json!({
+            "session": session,
+            "export": meta.to_string_lossy(),
+            "ids": events.iter().map(|e| e["id"].clone()).collect::<Vec<_>>(),
+        })
+        .to_string(),
+    )
+    .map_err(ioe)
+}
+
+/// Phase two, a new process: the session's events export again in the same
+/// order with the same ids, and phase one's export still reads back.
+fn scenario_event_export_second(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    let marker: Value = serde_json::from_str(
+        &std::fs::read_to_string(ctx.workspace.join(EVENTS_MARKER))
+            .map_err(|_| fail("phase one did not run against this workspace".into()))?,
+    )
+    .map_err(|e| fail(e.to_string()))?;
+    let session = marker["session"].as_str().unwrap_or_default().to_string();
+    let before: Vec<Value> = marker["ids"].as_array().cloned().unwrap_or_default();
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    // The restored session is the one that ran.
+    ctx.wait_until(
+        "the probe's session after a restart",
+        "return document.body.innerText.includes('event export probe');",
+        Duration::from_secs(45),
+    )?;
+    open_session_details(ctx)?;
+    let again = export_events_ui(ctx, false)?;
+    let events = read_export_independently(&again, &session)?;
+    let ids: Vec<Value> = events.iter().map(|e| e["id"].clone()).collect();
+    ensure!(ids == before, "after a restart the events are {ids:?}, not {before:?}");
+    let first = PathBuf::from(marker["export"].as_str().unwrap_or_default());
+    read_export_independently(&first, &session)?;
     Ok(())
 }
 
