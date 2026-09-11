@@ -401,6 +401,15 @@ pub fn build_app() -> tauri::App {
                     ])
                     .build(),
             )?;
+            // The Windows window is created hidden and shown here, at the place
+            // it was last left, so it never paints at the default spot and then
+            // jumps. See core::window_state.
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                core::window_state::restore_and_show(&window, &data_folder);
+                core::window_state::install(&window, data_folder);
+            }
             // Start migration
             let mut store_path = get_jan_data_folder_path(app.handle().clone());
             store_path.push("store.json");

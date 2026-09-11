@@ -6,7 +6,13 @@ import {
 import { ReactNode, memo, useMemo } from 'react'
 import { Button } from "@/components/ui/button"
 import { useTitlebarLayout } from '@/stores/titlebar-layout-store'
-import { detectMacOverlay, resolveHeaderInset } from '@/lib/titlebar'
+import {
+  appDrawnButtonCounts,
+  detectMacOverlay,
+  detectWindowChrome,
+  headerDragsWindow,
+  resolveHeaderInset,
+} from '@/lib/titlebar'
 
 type HeaderPageProps = {
   children?: ReactNode
@@ -17,24 +23,34 @@ const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
   // controls. The reservation is resolved centrally (see lib/titlebar) so the
   // sidebar and this header can never disagree, and so the macOS traffic-light
   // indent survives a web bundle built without TAURI_ENV_PLATFORM.
-  const leftButtons = useTitlebarLayout((s) => s.layout.left.length)
-  const rightButtons = useTitlebarLayout((s) => s.layout.right.length)
+  const layoutLeft = useTitlebarLayout((s) => s.layout.left.length)
+  const layoutRight = useTitlebarLayout((s) => s.layout.right.length)
   const macOverlay = useMemo(() => detectMacOverlay(), [])
+  const chrome = useMemo(() => detectWindowChrome({ macOverlay }), [macOverlay])
+  const buttons = appDrawnButtonCounts(chrome, {
+    left: layoutLeft,
+    right: layoutRight,
+  })
   const inset = resolveHeaderInset({
     macOverlay,
     sidebarOpen: open,
-    leftButtonCount: leftButtons,
-    rightButtonCount: rightButtons,
+    leftButtonCount: buttons.left,
+    rightButtonCount: buttons.right,
   })
+  // With a native title bar the operating system owns dragging; a drag region
+  // down here would only turn presses on the page into window moves.
+  const drags = headerDragsWindow(chrome)
+  const dragRegion = drags ? { 'data-tauri-drag-region': true } : {}
 
   return (
     <div
-      // The window drags from the header's empty space. Tauri drags only when
-      // the pressed element *is* the drag region, so the controls inside this
-      // bar keep working -- which the previous full-width overlay prevented.
-      data-tauri-drag-region
+      // Where the app draws its own chrome, the window drags from the header's
+      // empty space. Tauri drags only when the pressed element *is* the drag
+      // region, so the controls inside this bar keep working.
+      {...dragRegion}
       className={cn(
-        'h-15 flex items-center shrink-0 cursor-grab active:cursor-grabbing',
+        'h-15 flex items-center shrink-0',
+        drags && 'cursor-grab active:cursor-grabbing',
         inset.macLeftPad ? 'pl-24' : ' pl-4',
         children === undefined && 'border-none'
       )}
@@ -47,11 +63,9 @@ const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
         // Also a drag region. Tauri drags only when the pressed element *is*
         // one, and this row is `w-full`, so it covered the header end to end
         // and swallowed every press the outer div was supposed to receive.
-        // The only draggable strip left was the outer padding, which is why
-        // the window would move only when the pointer was near the edge.
         // Buttons inside remain unaffected: they are their own elements and do
         // not carry the attribute.
-        data-tauri-drag-region
+        {...dragRegion}
         className={cn(
           'flex items-center w-full gap-1',
         )}
@@ -74,7 +88,7 @@ const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
         <div
           // The stretch that fills the rest of the bar. Whatever a page puts
           // in `children` keeps its own hit area; the empty remainder drags.
-          data-tauri-drag-region
+          {...dragRegion}
           className={cn(
             'flex-1 min-w-0'
           )}

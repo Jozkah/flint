@@ -1005,6 +1005,12 @@ const SCENARIOS: &[Scenario] = &[
         name: "macos-title-bar",
         run: scenario_macos_title_bar,
     },
+    // Real mouse input against the native Windows title bar. Opt-in
+    // (`COWORK_SMOKE_REAL_INPUT=1`): it moves the desktop's actual pointer.
+    Scenario {
+        name: "window-chrome",
+        run: scenario_window_chrome,
+    },
     Scenario {
         name: "prompt-snapshot-cross-session-refused",
         run: scenario_prompt_snapshot_isolation,
@@ -1210,6 +1216,10 @@ const RESTART_SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "a-deleted-reply-stays-deleted-after-a-restart",
         run: scenario_delete_after_restart,
+    },
+    Scenario {
+        name: "window-chrome-restart",
+        run: scenario_window_chrome_restart,
     },
 ];
 
@@ -6940,8 +6950,18 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
     };
     // Layout assertions compare real geometry, so the window must be the same
     // size on every run rather than whatever the platform last remembered.
-    if let Err(e) = window.set_size(LogicalSize::new(1440.0, 900.0)) {
-        eprintln!("WARN: could not fix the window size: {e}");
+    // Except when the run is about exactly that memory: the window-chrome
+    // scenarios judge the placement a restart restored, which this would
+    // overwrite before they could look at it.
+    let only_window_chrome = std::env::args()
+        .collect::<Vec<_>>()
+        .windows(2)
+        .find(|w| w[0] == "--only")
+        .is_some_and(|w| w[1].split(',').all(|n| n.trim().starts_with("window-chrome")));
+    if !only_window_chrome {
+        if let Err(e) = window.set_size(LogicalSize::new(1440.0, 900.0)) {
+            eprintln!("WARN: could not fix the window size: {e}");
+        }
     }
     std::thread::sleep(Duration::from_millis(800));
 
@@ -8802,5 +8822,748 @@ fn lane_contained(ctx: &Ctx) -> ScenarioResult {
         page_foreign.is_empty(),
         "the page fetched from elsewhere: {page_foreign:?}"
     );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Native Windows title bar, driven with real input
+// ---------------------------------------------------------------------------
+
+/// Just enough of user32 to press the real title bar the way a person does.
+///
+/// Declared by hand rather than through `windows-sys` features so the harness
+/// adds nothing to the app's dependency graph.
+#[cfg(windows)]
+mod win32 {
+    #![allow(non_snake_case, clippy::upper_case_acronyms)]
+
+    #[repr(C)]
+    #[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct RECT {
+        pub left: i32,
+        pub top: i32,
+        pub right: i32,
+        pub bottom: i32,
+    }
+
+    #[repr(C)]
+    #[derive(Default, Clone, Copy)]
+    pub struct POINT {
+        pub x: i32,
+        pub y: i32,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct MOUSEINPUT {
+        dx: i32,
+        dy: i32,
+        mouse_data: u32,
+        flags: u32,
+        time: u32,
+        extra: usize,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct INPUT {
+        kind: u32,
+        mi: MOUSEINPUT,
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn GetWindowRect(hwnd: isize, r: *mut RECT) -> i32;
+        fn IsZoomed(hwnd: isize) -> i32;
+        fn IsIconic(hwnd: isize) -> i32;
+        fn IsWindowVisible(hwnd: isize) -> i32;
+        fn ShowWindow(hwnd: isize, cmd: i32) -> i32;
+        fn SendInput(n: u32, inputs: *const INPUT, size: i32) -> u32;
+        fn SendMessageW(hwnd: isize, msg: u32, w: usize, l: isize) -> isize;
+        fn ClientToScreen(hwnd: isize, p: *mut POINT) -> i32;
+        fn GetSystemMetrics(index: i32) -> i32;
+        fn MonitorFromWindow(hwnd: isize, flags: u32) -> isize;
+        fn GetDoubleClickTime() -> u32;
+        fn GetForegroundWindow() -> isize;
+        fn GetCursorPos(p: *mut POINT) -> i32;
+    }
+
+    #[link(name = "dwmapi")]
+    extern "system" {
+        fn DwmGetWindowAttribute(hwnd: isize, attr: u32, out: *mut RECT, size: u32) -> i32;
+    }
+
+    /// The caption buttons as DWM draws them, in screen coordinates.
+    ///
+    /// Not what `WM_NCHITTEST` reports: that answers with the legacy button
+    /// geometry, which on Windows 11 is narrower than the buttons on screen,
+    /// so the centre of its "minimise" lands on the visible maximise button
+    /// and a press there maximises. A person aims at what is drawn, and so
+    /// does this.
+    pub fn caption_button_band(hwnd: isize) -> Option<RECT> {
+        // DWMWA_CAPTION_BUTTON_BOUNDS, relative to the window's top-left.
+        let mut band = RECT::default();
+        let hr = unsafe {
+            DwmGetWindowAttribute(hwnd, 5, &mut band, std::mem::size_of::<RECT>() as u32)
+        };
+        if hr != 0 || band.right <= band.left {
+            return None;
+        }
+        let w = rect(hwnd);
+        Some(RECT {
+            left: w.left + band.left,
+            top: w.top + band.top,
+            right: w.left + band.right,
+            bottom: w.top + band.bottom,
+        })
+    }
+
+    pub const HTCLIENT: isize = 1;
+    pub const HTCAPTION: isize = 2;
+    pub const HTMINBUTTON: isize = 8;
+    pub const HTMAXBUTTON: isize = 9;
+    pub const HTCLOSE: isize = 20;
+
+    const WM_NCHITTEST: u32 = 0x0084;
+    const INPUT_MOUSE: u32 = 0;
+    const MOUSEEVENTF_MOVE: u32 = 0x0001;
+    const MOUSEEVENTF_LEFTDOWN: u32 = 0x0002;
+    const MOUSEEVENTF_LEFTUP: u32 = 0x0004;
+    const MOUSEEVENTF_ABSOLUTE: u32 = 0x8000;
+    const MOUSEEVENTF_VIRTUALDESK: u32 = 0x4000;
+    const SW_RESTORE: i32 = 9;
+
+    pub fn rect(hwnd: isize) -> RECT {
+        let mut r = RECT::default();
+        unsafe { GetWindowRect(hwnd, &mut r) };
+        r
+    }
+    pub fn zoomed(hwnd: isize) -> bool {
+        unsafe { IsZoomed(hwnd) != 0 }
+    }
+    pub fn iconic(hwnd: isize) -> bool {
+        unsafe { IsIconic(hwnd) != 0 }
+    }
+    pub fn visible(hwnd: isize) -> bool {
+        unsafe { IsWindowVisible(hwnd) != 0 }
+    }
+    /// What the taskbar does when the user clicks a minimised window's button.
+    pub fn restore(hwnd: isize) {
+        unsafe { ShowWindow(hwnd, SW_RESTORE) };
+    }
+    /// Whether the window lands on any monitor at all.
+    pub fn on_a_monitor(hwnd: isize) -> bool {
+        // MONITOR_DEFAULTTONULL
+        unsafe { MonitorFromWindow(hwnd, 0) != 0 }
+    }
+    /// What a failed wait needs to be read: whether this window still had
+    /// the foreground (a person using the desktop takes it), where the pointer
+    /// was, and the window's state.
+    pub fn input_context(hwnd: isize) -> String {
+        let mut p = POINT::default();
+        unsafe { GetCursorPos(&mut p) };
+        format!(
+            "foreground is this window: {}, cursor ({},{}), iconic {}, zoomed {}, rect {:?}",
+            unsafe { GetForegroundWindow() } == hwnd,
+            p.x,
+            p.y,
+            iconic(hwnd),
+            zoomed(hwnd),
+            rect(hwnd)
+        )
+    }
+    pub fn double_click_ms() -> u64 {
+        unsafe { GetDoubleClickTime() as u64 }
+    }
+
+    /// Ask the window what the point is: caption, button, client area...
+    pub fn hit_test(hwnd: isize, x: i32, y: i32) -> isize {
+        let l = (((y as u16) as u32) << 16 | ((x as u16) as u32)) as i32 as isize;
+        unsafe { SendMessageW(hwnd, WM_NCHITTEST, 0, l) }
+    }
+
+    pub fn client_to_screen(hwnd: isize, x: i32, y: i32) -> (i32, i32) {
+        let mut p = POINT { x, y };
+        unsafe { ClientToScreen(hwnd, &mut p) };
+        (p.x, p.y)
+    }
+
+    fn send(flags: u32, x: i32, y: i32) -> bool {
+        // Absolute coordinates are normalised over the whole virtual desktop,
+        // so the pointer lands on the right pixel on any monitor.
+        let (vx, vy, vw, vh) = unsafe {
+            (
+                GetSystemMetrics(76),
+                GetSystemMetrics(77),
+                GetSystemMetrics(78).max(1),
+                GetSystemMetrics(79).max(1),
+            )
+        };
+        let nx = (((x - vx) as i64 * 65535) / (vw as i64 - 1).max(1)) as i32;
+        let ny = (((y - vy) as i64 * 65535) / (vh as i64 - 1).max(1)) as i32;
+        let input = INPUT {
+            kind: INPUT_MOUSE,
+            mi: MOUSEINPUT {
+                dx: nx,
+                dy: ny,
+                mouse_data: 0,
+                flags: flags | MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+                time: 0,
+                extra: 0,
+            },
+        };
+        unsafe { SendInput(1, &input, std::mem::size_of::<INPUT>() as i32) == 1 }
+    }
+
+    pub fn move_to(x: i32, y: i32) -> bool {
+        send(0, x, y)
+    }
+    pub fn down(x: i32, y: i32) -> bool {
+        send(MOUSEEVENTF_LEFTDOWN, x, y)
+    }
+    pub fn up(x: i32, y: i32) -> bool {
+        send(MOUSEEVENTF_LEFTUP, x, y)
+    }
+}
+
+#[cfg(windows)]
+fn window_chrome_hwnd(ctx: &Ctx) -> Result<isize, Failure> {
+    ctx.window
+        .hwnd()
+        .map(|h| h.0 as isize)
+        .map_err(|e| Failure(format!("no native window handle: {e}")))
+}
+
+/// A point on the native caption, found by asking the window rather than by
+/// assuming a title-bar height, and away from the caption buttons.
+#[cfg(windows)]
+fn caption_point(hwnd: isize) -> Result<(i32, i32), Failure> {
+    let r = win32::rect(hwnd);
+    let x = r.left + (r.right - r.left) / 3;
+    for dy in 1..80 {
+        if win32::hit_test(hwnd, x, r.top + dy) == win32::HTCAPTION {
+            // Aim at the middle of the caption band rather than its top edge.
+            let mut last = r.top + dy;
+            while last < r.top + 80 && win32::hit_test(hwnd, x, last + 1) == win32::HTCAPTION {
+                last += 1;
+            }
+            return Ok((x, (r.top + dy + last) / 2));
+        }
+    }
+    bail!("the window reports no native caption in its top 80px (rect {r:?})")
+}
+
+/// The centre of a caption button as it is drawn: DWM's button band split
+/// into minimise, maximise and close. The hit-test code only confirms the
+/// window has such a button at all (see [`win32::caption_button_band`] for why
+/// its geometry is not used to aim).
+#[cfg(windows)]
+fn caption_button(hwnd: isize, code: isize, _y: i32) -> Option<(i32, i32)> {
+    let r = win32::rect(hwnd);
+    let row = (r.top + 1..r.top + 80).find(|&y| {
+        (r.left..r.right)
+            .step_by(4)
+            .any(|x| win32::hit_test(hwnd, x, y) == code)
+    })?;
+    let band = win32::caption_button_band(hwnd)?;
+    let third = (band.right - band.left) / 3;
+    let slot = match code {
+        win32::HTMINBUTTON => 0,
+        win32::HTMAXBUTTON => 1,
+        win32::HTCLOSE => 2,
+        _ => return None,
+    };
+    let x = band.left + third * slot + third / 2;
+    let y = (band.top.max(row) + band.bottom) / 2;
+    Some((x, y))
+}
+
+#[cfg(windows)]
+fn real_click(x: i32, y: i32) -> bool {
+    let ok = win32::move_to(x, y);
+    std::thread::sleep(Duration::from_millis(60));
+    let ok = ok && win32::down(x, y);
+    std::thread::sleep(Duration::from_millis(40));
+    ok && win32::up(x, y)
+}
+
+#[cfg(windows)]
+fn real_double_click(x: i32, y: i32) -> bool {
+    let gap = (win32::double_click_ms() / 4).clamp(30, 120);
+    let mut ok = win32::move_to(x, y);
+    std::thread::sleep(Duration::from_millis(80));
+    for _ in 0..2 {
+        ok = ok && win32::down(x, y);
+        std::thread::sleep(Duration::from_millis(20));
+        ok = ok && win32::up(x, y);
+        std::thread::sleep(Duration::from_millis(gap));
+    }
+    ok
+}
+
+#[cfg(windows)]
+fn wait_for<F: Fn() -> bool>(hwnd: isize, what: &str, f: F) -> ScenarioResult {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline {
+        if f() {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    bail!("timed out waiting for: {what} ({})", win32::input_context(hwnd))
+}
+
+/// Where the first run leaves its expectation for the restarted process.
+#[cfg(windows)]
+fn window_chrome_expectation(ctx: &Ctx) -> PathBuf {
+    ctx.workspace.join("window-chrome-expected.json")
+}
+
+#[cfg(windows)]
+fn real_input_allowed() -> bool {
+    std::env::var("COWORK_SMOKE_REAL_INPUT").is_ok_and(|v| v == "1")
+}
+
+/// The native title bar, pressed with the real mouse.
+///
+/// Starts unmaximised, drags the window by its title bar, double-clicks to
+/// maximise and restore, uses the maximise and minimise caption buttons, then
+/// clicks a page control right under the title bar and checks it received a
+/// trusted click while the window stayed put. Leaves the window maximised over
+/// a known normal frame, which the restarted process must bring back.
+#[cfg(windows)]
+fn scenario_window_chrome(ctx: &Ctx) -> ScenarioResult {
+    if !real_input_allowed() {
+        println!("      skipped: set COWORK_SMOKE_REAL_INPUT=1 (moves the real pointer)");
+        return Ok(());
+    }
+    let hwnd = window_chrome_hwnd(ctx)?;
+    ctx.goto("/")?;
+    ctx.wait_until(
+        "the header",
+        "return document.querySelectorAll('button').length > 2;",
+        Duration::from_secs(30),
+    )?;
+
+    // Real input goes to whatever is under the pointer, so keep this window
+    // on top while it is being pressed.
+    let _ = ctx.window.set_always_on_top(true);
+    struct Unpin<'a>(&'a WebviewWindow);
+    impl Drop for Unpin<'_> {
+        fn drop(&mut self) {
+            let _ = self.0.set_always_on_top(false);
+        }
+    }
+    let _unpin = Unpin(&ctx.window);
+
+    // 1. Unmaximised, at a known place.
+    let _ = ctx.window.unmaximize();
+    let _ = ctx.window.set_position(tauri::PhysicalPosition::new(120, 90));
+    let _ = ctx.window.set_size(LogicalSize::new(1280.0, 860.0));
+    let _ = ctx.window.set_focus();
+    std::thread::sleep(Duration::from_millis(500));
+    ensure!(!win32::zoomed(hwnd), "the window did not start unmaximised");
+    let start = win32::rect(hwnd);
+    println!("      start rect {start:?}");
+
+    // The window has a native caption, with the platform's own buttons.
+    let (cx, cy) = caption_point(hwnd)?;
+    let min_btn = caption_button(hwnd, win32::HTMINBUTTON, cy);
+    let max_btn = caption_button(hwnd, win32::HTMAXBUTTON, cy);
+    let close_btn = caption_button(hwnd, win32::HTCLOSE, cy);
+    println!("      caption at ({cx},{cy}); min {min_btn:?} max {max_btn:?} close {close_btn:?}");
+    ensure!(
+        min_btn.is_some() && max_btn.is_some() && close_btn.is_some(),
+        "the native caption is missing a button: min {min_btn:?} max {max_btn:?} close {close_btn:?}"
+    );
+
+    // Nothing of the page's may pretend to be a title bar any more.
+    let drag_regions = ctx.eval(
+        "return [...document.querySelectorAll('[data-tauri-drag-region]')]
+           .filter(e => e.id !== 'initial-loader' && !e.closest('#initial-loader')).length;",
+    )?;
+    ensure!(
+        drag_regions.as_u64() == Some(0),
+        "the page still declares {drag_regions} drag region(s) under a native title bar"
+    );
+
+    // 2-3. Drag by the title bar; the frame moves by the pointer's travel and
+    // keeps its size.
+    let (dx, dy) = (180, 110);
+    ensure!(win32::move_to(cx, cy), "SendInput refused the pointer move");
+    std::thread::sleep(Duration::from_millis(120));
+    ensure!(win32::down(cx, cy), "SendInput refused the button press");
+    for i in 1..=12 {
+        std::thread::sleep(Duration::from_millis(25));
+        win32::move_to(cx + dx * i / 12, cy + dy * i / 12);
+    }
+    std::thread::sleep(Duration::from_millis(80));
+    win32::up(cx + dx, cy + dy);
+    wait_for(hwnd, "the dragged window to settle", || win32::rect(hwnd) != start)?;
+    std::thread::sleep(Duration::from_millis(300));
+    let moved = win32::rect(hwnd);
+    println!("      after drag {moved:?}");
+    let (mx, my) = (moved.left - start.left, moved.top - start.top);
+    ensure!(
+        (mx - dx).abs() <= 4 && (my - dy).abs() <= 4,
+        "dragging the title bar by ({dx},{dy}) moved the window by ({mx},{my}); expected the \
+         pointer at ({},{}) ({})",
+        cx + dx,
+        cy + dy,
+        win32::input_context(hwnd)
+    );
+    ensure!(
+        moved.right - moved.left == start.right - start.left
+            && moved.bottom - moved.top == start.bottom - start.top,
+        "dragging resized the window: {start:?} -> {moved:?}"
+    );
+
+    // 5. Minimise with the caption button; restore as the taskbar would.
+    let (_, cy4) = caption_point(hwnd)?;
+    let (bx, by) = caption_button(hwnd, win32::HTMINBUTTON, cy4)
+        .ok_or_else(|| Failure("no minimise button".into()))?;
+    let code = win32::hit_test(hwnd, bx, by);
+    println!(
+        "      minimise button at ({bx},{by}) hit-tests {code}; rect {:?}",
+        win32::rect(hwnd)
+    );
+    // Pressed in three visible steps -- arrive, press, release -- with the
+    // window's state read after each, so a failure says which of them did it.
+    let state_now = || {
+        format!(
+            "hit {} iconic {} zoomed {} {:?}",
+            win32::hit_test(hwnd, bx, by),
+            win32::iconic(hwnd),
+            win32::zoomed(hwnd),
+            win32::rect(hwnd)
+        )
+    };
+    ensure!(win32::move_to(bx, by), "SendInput refused the pointer move");
+    std::thread::sleep(Duration::from_millis(300));
+    let arrived = state_now();
+    ensure!(win32::down(bx, by), "SendInput refused the press");
+    std::thread::sleep(Duration::from_millis(150));
+    let pressed = state_now();
+    ensure!(win32::up(bx, by), "SendInput refused the release");
+    println!("      minimise press: arrived [{arrived}] pressed [{pressed}]");
+    // Every state the window passes through, so a failure says whether it
+    // never minimised or minimised and came back as something else.
+    let mut trace: Vec<String> = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let started = Instant::now();
+    let mut minimised = false;
+    while Instant::now() < deadline {
+        let state = format!(
+            "iconic={} zoomed={} {:?}",
+            win32::iconic(hwnd),
+            win32::zoomed(hwnd),
+            win32::rect(hwnd)
+        );
+        if trace.last().map(|l| !l.ends_with(&state)).unwrap_or(true) {
+            trace.push(format!("+{}ms {state}", started.elapsed().as_millis()));
+        }
+        if win32::iconic(hwnd) {
+            minimised = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    ensure!(
+        minimised,
+        "the minimise button did not minimise; states after the click: {}",
+        trace.join(" | ")
+    );
+    std::thread::sleep(Duration::from_millis(300));
+    win32::restore(hwnd);
+    wait_for(hwnd, "the minimised window to restore", || !win32::iconic(hwnd))?;
+    std::thread::sleep(Duration::from_millis(500));
+    let back = win32::rect(hwnd);
+    ensure!(back == moved, "minimise and restore came back to {back:?}, not {moved:?}");
+
+    // 4. Double-click the title bar: maximise, then restore to the same frame.
+    let (cx, cy) = caption_point(hwnd)?;
+    ensure!(real_double_click(cx, cy), "SendInput refused the double-click");
+    wait_for(hwnd, "a double-click on the title bar to maximise", || win32::zoomed(hwnd))?;
+    std::thread::sleep(Duration::from_millis(400));
+    let (cx2, cy2) = caption_point(hwnd)?;
+    ensure!(real_double_click(cx2, cy2), "SendInput refused the double-click");
+    wait_for(hwnd, "a second double-click to restore", || !win32::zoomed(hwnd))?;
+    std::thread::sleep(Duration::from_millis(400));
+    let restored = win32::rect(hwnd);
+    ensure!(
+        restored == moved,
+        "restoring from maximised came back to {restored:?}, not {moved:?}"
+    );
+
+
+    // Minimise again straight after a double-click restore: the window must
+    // not be left in a state where its next caption press means something
+    // else, and the restored frame must survive a second round trip.
+    {
+        let (_, cyd) = caption_point(hwnd)?;
+        let (mx2, my2) = caption_button(hwnd, win32::HTMINBUTTON, cyd)
+            .ok_or_else(|| Failure("no minimise button after the restore".into()))?;
+        ensure!(real_click(mx2, my2), "SendInput refused the click");
+        wait_for(hwnd, "minimise after a double-click restore", || win32::iconic(hwnd))?;
+        ensure!(
+            !win32::zoomed(hwnd),
+            "minimising after a double-click restore left the window maximised"
+        );
+        win32::restore(hwnd);
+        wait_for(hwnd, "the window to come back", || !win32::iconic(hwnd))?;
+        std::thread::sleep(Duration::from_millis(500));
+        let again = win32::rect(hwnd);
+        ensure!(again == moved, "the second round trip came back to {again:?}, not {moved:?}");
+    }
+
+    // The maximise caption button maximises and restores too. Last among the
+    // caption buttons: hovering it opens the Windows 11 Snap Layouts flyout,
+    // which outlives the click, so the pointer is parked over the page
+    // afterwards rather than left where the flyout can catch the next press.
+    let (_, cy2) = caption_point(hwnd)?;
+    let (bx, by) = caption_button(hwnd, win32::HTMAXBUTTON, cy2)
+        .ok_or_else(|| Failure("no maximise button".into()))?;
+    ensure!(real_click(bx, by), "SendInput refused the click");
+    wait_for(hwnd, "the maximise button to maximise", || win32::zoomed(hwnd))?;
+    std::thread::sleep(Duration::from_millis(400));
+    let (_, cy3) = caption_point(hwnd)?;
+    let (bx, by) = caption_button(hwnd, win32::HTMAXBUTTON, cy3)
+        .ok_or_else(|| Failure("no restore button".into()))?;
+    ensure!(real_click(bx, by), "SendInput refused the click");
+    wait_for(hwnd, "the restore button to restore", || !win32::zoomed(hwnd))?;
+    let r = win32::rect(hwnd);
+    win32::move_to((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+    std::thread::sleep(Duration::from_millis(900));
+    let back = win32::rect(hwnd);
+    ensure!(back == moved, "the restore button came back to {back:?}, not {moved:?}");
+
+    // 6. A page control just under the title bar takes a real, trusted click,
+    // and pressing it does not move the window.
+    let target = ctx.eval_string(
+        r#"window.__chromeClicks = [];
+           const hits = [...document.querySelectorAll('button')].filter(b => {
+             const r = b.getBoundingClientRect();
+             return r.width > 0 && r.height > 0 && r.top < 60;
+           });
+           const b = hits[0];
+           if (!b) return JSON.stringify(null);
+           b.setAttribute('data-chrome-target', '1');
+           // Capture on window: runs before React's root listener, so the
+           // click is recorded and goes no further.
+           if (!window.__chromeTrap) {
+             window.__chromeTrap = true;
+             window.addEventListener('click', (e) => {
+               const t = e.target.closest && e.target.closest('[data-chrome-target]');
+               if (!t) return;
+               window.__chromeClicks.push({ trusted: e.isTrusted });
+               e.stopPropagation(); e.preventDefault();
+             }, true);
+           }
+           const r = b.getBoundingClientRect();
+           const s = window.devicePixelRatio;
+           const x = Math.round((r.left + r.width / 2) * s);
+           const y = Math.round((r.top + r.height / 2) * s);
+           const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+           return JSON.stringify({ x, y,
+             label: (b.getAttribute('aria-label') || b.textContent || '').trim().slice(0, 40),
+             reachable: !!hit && (hit === b || b.contains(hit)) });"#,
+    )?;
+    let t: Value = serde_json::from_str(&target).unwrap_or(Value::Null);
+    ensure!(!t.is_null(), "no button in the band under the title bar to click");
+    let (tx, ty) = (
+        t["x"].as_i64().unwrap_or(0) as i32,
+        t["y"].as_i64().unwrap_or(0) as i32,
+    );
+    ensure!(
+        t["reachable"].as_bool() == Some(true),
+        "the control under the title bar is covered: {target}"
+    );
+    let (sx, sy) = win32::client_to_screen(hwnd, tx, ty);
+    ensure!(
+        win32::hit_test(hwnd, sx, sy) == win32::HTCLIENT,
+        "the control at ({sx},{sy}) is not in the client area: the title bar covers it ({target})"
+    );
+    let before_click = win32::rect(hwnd);
+    ensure!(real_click(sx, sy), "SendInput refused the click");
+    ctx.wait_until(
+        "the control to receive a trusted click",
+        "return (window.__chromeClicks || []).some(c => c.trusted);",
+        Duration::from_secs(5),
+    )?;
+    ensure!(
+        win32::rect(hwnd) == before_click,
+        "clicking a page control moved the window"
+    );
+    println!("      trusted click reached {}", t["label"]);
+
+    // 8. The band under the title bar is client area end to end: no overlay
+    // can be answering for it.
+    let r = win32::rect(hwnd);
+    let (_, top_client) = win32::client_to_screen(hwnd, 0, 4);
+    for x in (r.left + 40..r.right - 40).step_by(60) {
+        let code = win32::hit_test(hwnd, x, top_client);
+        ensure!(
+            code == win32::HTCLIENT,
+            "({x},{top_client}) under the title bar hit-tests as {code}, not client"
+        );
+    }
+
+    // Across monitors, by the title bar, when there is another one: the frame
+    // lands on it with the same logical size (so a different scale would not
+    // shrink or grow it), and comes back the same way.
+    let monitors = ctx.window.available_monitors().unwrap_or_default();
+    let here = ctx.window.current_monitor().ok().flatten();
+    let other = monitors.iter().find(|m| {
+        here.as_ref()
+            .map(|h| h.position() != m.position())
+            .unwrap_or(false)
+    });
+    match other {
+        None => println!("      one monitor: moving between monitors not exercised"),
+        Some(target) => {
+            let before_logical = ctx
+                .window
+                .inner_size()
+                .ok()
+                .zip(ctx.window.scale_factor().ok())
+                .map(|(s, f)| ((s.width as f64 / f).round(), (s.height as f64 / f).round()));
+            let area = target.work_area();
+            let (cx6, cy6) = caption_point(hwnd)?;
+            let tx = area.position.x + area.size.width as i32 / 3;
+            let ty = area.position.y + 120;
+            ensure!(win32::move_to(cx6, cy6), "SendInput refused the pointer move");
+            std::thread::sleep(Duration::from_millis(120));
+            ensure!(win32::down(cx6, cy6), "SendInput refused the press");
+            for i in 1..=20 {
+                std::thread::sleep(Duration::from_millis(25));
+                win32::move_to(cx6 + (tx - cx6) * i / 20, cy6 + (ty - cy6) * i / 20);
+            }
+            std::thread::sleep(Duration::from_millis(120));
+            win32::up(tx, ty);
+            std::thread::sleep(Duration::from_millis(800));
+            let now_on = ctx.window.current_monitor().ok().flatten();
+            let landed = now_on
+                .as_ref()
+                .is_some_and(|m| m.position() == target.position());
+            let after_logical = ctx
+                .window
+                .inner_size()
+                .ok()
+                .zip(ctx.window.scale_factor().ok())
+                .map(|(s, f)| ((s.width as f64 / f).round(), (s.height as f64 / f).round()));
+            println!(
+                "      across monitors: target scale {} landed {landed}; logical size {before_logical:?} -> {after_logical:?}",
+                target.scale_factor()
+            );
+            ensure!(
+                landed,
+                "dragging the title bar to another monitor left the window on {:?} ({})",
+                now_on.map(|m| *m.position()),
+                win32::input_context(hwnd)
+            );
+            ensure!(
+                before_logical == after_logical,
+                "moving to another monitor changed the logical size: {before_logical:?} -> {after_logical:?}"
+            );
+            // And back, to the frame the rest of the scenario expects.
+            let _ = ctx.window.set_position(tauri::PhysicalPosition::new(moved.left, moved.top));
+            wait_for(hwnd, "the window to come back to its frame", || win32::rect(hwnd) == moved)?;
+        }
+    }
+
+    // 7 (first half). Leave a known normal frame, maximised over it, and wait
+    // for the record to be written.
+    let (cx5, cy5) = caption_point(hwnd)?;
+    ensure!(real_double_click(cx5, cy5), "SendInput refused the double-click");
+    wait_for(hwnd, "the final maximise", || win32::zoomed(hwnd))?;
+    std::thread::sleep(Duration::from_millis(1500));
+    let data =
+        std::env::var("JAN_DATA_FOLDER").map_err(|_| Failure("JAN_DATA_FOLDER unset".into()))?;
+    let record: Value = std::fs::read(Path::new(&data).join("window-state.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .ok_or_else(|| Failure("window-state.json was not written".into()))?;
+    let main = &record["main"];
+    println!("      recorded {main}");
+    ensure!(
+        main["maximized"].as_bool() == Some(true),
+        "the record does not say maximised: {main}"
+    );
+    ensure!(
+        main["x"].as_i64() == Some(moved.left as i64) && main["y"].as_i64() == Some(moved.top as i64),
+        "the record kept {main}, not the normal frame at ({}, {})",
+        moved.left,
+        moved.top
+    );
+    let expected = serde_json::json!({
+        "left": moved.left, "top": moved.top, "right": moved.right, "bottom": moved.bottom,
+        "maximized": true,
+    });
+    std::fs::write(window_chrome_expectation(ctx), expected.to_string())
+        .map_err(|e| Failure(format!("could not leave the expectation: {e}")))?;
+    Ok(())
+}
+
+/// The restarted process: a new process, the same profile. The window comes
+/// back maximised, on a monitor, and restoring it returns the normal frame the
+/// first process left.
+#[cfg(windows)]
+fn scenario_window_chrome_restart(ctx: &Ctx) -> ScenarioResult {
+    if !real_input_allowed() {
+        println!("      skipped: set COWORK_SMOKE_REAL_INPUT=1 (moves the real pointer)");
+        return Ok(());
+    }
+    let path = window_chrome_expectation(ctx);
+    let Some(expected) = std::fs::read(&path)
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+    else {
+        bail!(
+            "no expectation at {} -- run `window-chrome` first with the same COWORK_SMOKE_KEEP",
+            path.display()
+        );
+    };
+    let hwnd = window_chrome_hwnd(ctx)?;
+    let _ = ctx.window.set_always_on_top(true);
+    std::thread::sleep(Duration::from_millis(800));
+    let checks = (|| -> ScenarioResult {
+        ensure!(win32::visible(hwnd), "the restarted window is not visible");
+        ensure!(win32::on_a_monitor(hwnd), "the restarted window is on no monitor");
+        ensure!(win32::zoomed(hwnd), "the restarted window did not come back maximised");
+        let (cx, cy) = caption_point(hwnd)?;
+        ensure!(real_double_click(cx, cy), "SendInput refused the double-click");
+        wait_for(hwnd, "the restarted window to restore", || !win32::zoomed(hwnd))?;
+        std::thread::sleep(Duration::from_millis(500));
+        Ok(())
+    })();
+    let _ = ctx.window.set_always_on_top(false);
+    checks?;
+    let r = win32::rect(hwnd);
+    let want = win32::RECT {
+        left: expected["left"].as_i64().unwrap_or(0) as i32,
+        top: expected["top"].as_i64().unwrap_or(0) as i32,
+        right: expected["right"].as_i64().unwrap_or(0) as i32,
+        bottom: expected["bottom"].as_i64().unwrap_or(0) as i32,
+    };
+    println!("      restored normal frame {r:?}, expected {want:?}");
+    ensure!(
+        (r.left - want.left).abs() <= 2
+            && (r.top - want.top).abs() <= 2
+            && (r.right - want.right).abs() <= 2
+            && (r.bottom - want.bottom).abs() <= 2,
+        "the restarted window's normal frame is {r:?}, not {want:?}"
+    );
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn scenario_window_chrome(_ctx: &Ctx) -> ScenarioResult {
+    println!("      skipped: the native title-bar scenario is Windows-only");
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn scenario_window_chrome_restart(_ctx: &Ctx) -> ScenarioResult {
+    println!("      skipped: the native title-bar scenario is Windows-only");
     Ok(())
 }

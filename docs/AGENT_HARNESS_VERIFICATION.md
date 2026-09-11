@@ -116,6 +116,7 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 | Per-agent worktrees | not run | not run | passed (managed worktree through the UI, mock provider) | passed |
 | Desktop agent surfaces | not run | not run | not run | not run |
 | Tool activity record and timeline (AH-050/AH-172) | not run | passed | passed (mock provider) | passed |
+| Native title bar and window placement | not run (config unchanged: borderless, app-drawn controls) | not run (config unchanged: overlay title bar) | passed (real mouse input, restart in a new process) | passed |
 
 ## Known blockers
 
@@ -148,6 +149,58 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 Run: `cargo test --lib activity::` and
 `cargo run --example cowork-smoke --features cowork-smoke -- --only tool-activity-timeline`.
 
+
+## Native Windows title bar and window placement
+
+The Windows window uses the operating system's own title bar
+(`decorations: true` in `tauri.windows.conf.json`). The app no longer draws
+caption buttons there, declares no `data-tauri-drag-region` under a native
+bar, and has no full-width strip over the top of the page. macOS keeps its
+overlay title bar and Linux its borderless window; neither configuration
+changed, and neither was run.
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 14 unit tests | `src-tauri/src/core/window_state.rs` | a frame on screen comes back exactly; logical size survives a monitor with different scaling; a record for an unplugged monitor, or with its title bar off every screen, falls back to the default; a frame hanging off an edge is pulled back inside; oversize and undersize frames are clamped; nonsense sizes fall back; maximised survives restore and fallback; the normal frame is the OS placement's, whether the window is maximised or minimised (Windows parks a minimised one at -32000); sizes are logical; corrupt and older records load safely |
+| 10 unit tests | `web-app/src/containers/__tests__/HeaderPage.test.tsx` | no drag region and no reserved caption-button room under a native title bar; the drag region and its clickable controls where the app draws its own chrome. The three native-bar tests fail against the previous header |
+| 3 unit tests | `web-app/src/routes/__tests__/__root.test.tsx` | no app-drawn caption buttons, grips or top strip under a native title bar; drawn only for the borderless window |
+| 5 + 9 unit tests | `web-app/src/lib/__tests__/titlebar.test.ts`, `windowTitle.test.ts` | who draws the chrome per platform; the window title names the chat or Cowork session and project folder without any path |
+| Real Windows scenario, real mouse input | `cowork-smoke --only window-chrome` with `COWORK_SMOKE_REAL_INPUT=1` and `COWORK_SMOKE_KEEP=<dir>` | starts unmaximised; drags by the native caption and the frame moves by exactly the pointer's travel with no resize; minimise button, then restore; double-click maximises and restores to the same frame; minimise again after that restore; maximise/restore caption button; a button just under the title bar receives a trusted click and the window does not move; the band under the title bar hit-tests as client area end to end; no drag region in the page; the record is written with the normal frame and `maximized: true` |
+| Restart in a new process | `cowork-smoke --only window-chrome-restart`, same `COWORK_SMOKE_KEEP` | the window comes back visible, on a monitor, maximised, and restoring it returns exactly the normal frame the first process left |
+
+Aim at what is drawn. On Windows 11 `WM_NCHITTEST` still answers with the
+legacy caption-button geometry, which is narrower than the buttons DWM draws;
+its "minimise" centre sits on the visible maximise button, and a real press
+there maximises -- a plain WinForms window does the same. The scenario aims
+through `DWMWA_CAPTION_BUTTON_BOUNDS`, as a person aims at the drawn button.
+Its first six runs aimed through the hit test and failed at the minimise step
+for that reason; the logs are kept in `C:\tmp\jan-dwi\logs\wc-1..6-first.log`.
+
+The scenario also drags the window by its title bar onto the second monitor
+and checks it lands there with the same logical size. That step found a real
+defect: the first implementation rebuilt the normal frame from debounced move
+and resize events, so a move made just before a maximise was lost and the
+record kept the other monitor's position (`FIRST-FAILURE-mm1-first.log`, 3 of
+3 runs). The normal frame is now read from `GetWindowPlacement` and restored
+with `SetWindowPlacement` while the window is hidden. The same change removed
+a restart race in which tao's queued move landed after the maximise
+(`FIRST-FAILURE-rep2-restart.log`, 1 of 4 restarts).
+
+Run history on this host (two 100% monitors), every run a new pair of
+processes:
+
+| Build | Runs | Result |
+| --- | --- | --- |
+| hit-test aiming | 6 | failed at the minimise step (harness aim, see above) |
+| DWM aiming, event-built record | 1 + 3 + 5 | 7 passed; 1 restart came back unmaximised (race); 2 failed under concurrent desktop use (foreground lost, pointer on the other monitor mid-drag) |
+| + cross-monitor step | 3 | 3 failed: record kept the other monitor (defect, fixed) |
+| placement record | 3 | 3 passed, first run and restart |
+
+Not verified: monitors with different scaling (both monitors here are 100%;
+the placement logic is unit-tested for it), Snap Layouts flyout selection,
+macOS and Linux. The real-input scenario moves the desktop's actual pointer,
+so a person using the machine at the same time can fail it; the failure
+message then says whether the window still had the foreground.
 
 ## Memory proposals: the approval card (AH-045-adjacent, memory path)
 
