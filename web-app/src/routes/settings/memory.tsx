@@ -28,6 +28,7 @@ import {
 } from '@/lib/settingsSearch'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
+import { useMemoryConversations } from '@/hooks/useMemoryConversations'
 import {
   memoryRecordEdit,
   memoryRecordForget,
@@ -143,16 +144,38 @@ function MemorySettings() {
     }
   }, [])
 
+  /**
+   * Which conversation and which project the chat/project tabs are about.
+   *
+   * This read `window.core.api.activeSessionId` and `.projectRoot`, which
+   * nothing in the application ever assigns, so "This chat" and "This
+   * project" always answered "no chat is open". The user picks them here from
+   * the conversations and project folders that exist; the backend still
+   * derives the project's identity from the folder itself and never trusts an
+   * id the page sends.
+   */
+  const conversations = useMemoryConversations()
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined)
+  const [projectRoot, setProjectRoot] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    if (sessionId === undefined && conversations.sessions[0]) {
+      setSessionId(conversations.sessions[0].id)
+    }
+    if (projectRoot === undefined && conversations.projects[0]) {
+      setProjectRoot(conversations.projects[0])
+    }
+  }, [conversations, sessionId, projectRoot])
+
   const location: MemoryLocation | null = useMemo(
     () =>
       dataFolder == null
         ? null
         : {
             dataFolder,
-            projectRoot: window.core?.api?.projectRoot ?? undefined,
-            sessionId: window.core?.api?.activeSessionId ?? undefined,
+            projectRoot,
+            sessionId,
           },
-    [dataFolder]
+    [dataFolder, projectRoot, sessionId]
   )
 
   /**
@@ -416,6 +439,56 @@ function MemorySettings() {
                 </div>
                 <p className="text-xs text-muted-foreground">{activeTab.blurb}</p>
 
+                {scope === 'chat' && (
+                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    Conversation
+                    <select
+                      className="h-8 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                      aria-label="Conversation whose memory to show"
+                      data-testid="memory-session-picker"
+                      value={sessionId ?? ''}
+                      onChange={(e) => {
+                        setSessionId(e.target.value || undefined)
+                        setOffset(0)
+                      }}
+                    >
+                      {conversations.sessions.length === 0 && (
+                        <option value="">No conversations yet</option>
+                      )}
+                      {conversations.sessions.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.kind === 'cowork' ? 'Cowork · ' : 'Chat · '}
+                          {s.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {scope === 'project' && (
+                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    Project folder
+                    <select
+                      className="h-8 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                      aria-label="Project whose memory to show"
+                      data-testid="memory-project-picker"
+                      value={projectRoot ?? ''}
+                      onChange={(e) => {
+                        setProjectRoot(e.target.value || undefined)
+                        setOffset(0)
+                      }}
+                    >
+                      {conversations.projects.length === 0 && (
+                        <option value="">No project attached to any session</option>
+                      )}
+                      {conversations.projects.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
                 <Input
                   value={query}
                   aria-label="Search memories"
@@ -455,6 +528,56 @@ function MemorySettings() {
                             {' · last used '}
                             {formatWhen(memory.lastUsedAt)}
                           </p>
+                          <details className="mt-1 text-xs" data-testid="memory-provenance">
+                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                              Why Jan remembers this
+                            </summary>
+                            <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-muted-foreground">
+                              <dt>ID</dt>
+                              <dd className="font-mono break-all">{memory.id}</dd>
+                              <dt>Scope</dt>
+                              <dd>{memory.scope}</dd>
+                              <dt>Written by</dt>
+                              <dd>
+                                {memory.creator} ({memory.origin})
+                              </dd>
+                              <dt>Created</dt>
+                              <dd>{formatWhen(memory.createdAt)}</dd>
+                              <dt>Updated</dt>
+                              <dd>{formatWhen(memory.updatedAt)}</dd>
+                              <dt>From conversation</dt>
+                              <dd className="font-mono break-all">
+                                {memory.sourceSessionId ?? 'not recorded'}
+                                {memory.sourceDeleted && ' (deleted since)'}
+                              </dd>
+                              {memory.sourceMessageId && (
+                                <>
+                                  <dt>From message</dt>
+                                  <dd className="font-mono break-all">{memory.sourceMessageId}</dd>
+                                </>
+                              )}
+                              {memory.projectId && (
+                                <>
+                                  <dt>Project identity</dt>
+                                  <dd className="font-mono break-all">{memory.projectId}</dd>
+                                </>
+                              )}
+                              {memory.supersedes && (
+                                <>
+                                  <dt>Replaces</dt>
+                                  <dd className="font-mono break-all">{memory.supersedes}</dd>
+                                </>
+                              )}
+                              <dt>Redacted</dt>
+                              <dd>{memory.redacted ? 'yes' : 'no'}</dd>
+                              {memory.expiresAt && (
+                                <>
+                                  <dt>Expires</dt>
+                                  <dd>{formatWhen(memory.expiresAt)}</dd>
+                                </>
+                              )}
+                            </dl>
+                          </details>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <Button

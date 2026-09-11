@@ -115,8 +115,14 @@ export class CoworkChatTransport extends CustomChatTransport {
       subagentNames: this.config.allowSubagents ? this.config.subagentNames : [],
       webSearch: this.config.webSearch,
     })
-    const files = this.buildFilesSystemInstruction(messages)
-    return files.trim().length > 0 ? `${base}\n\n${files}` : base
+    // Remembered facts come after everything that states policy -- the run's
+    // own rules, `JAN.md`, the compatibility instructions -- and the block
+    // labels itself as data rather than instructions. Omitting it, as this
+    // override used to, meant Cowork retrieved memory on every turn and then
+    // never sent any of it.
+    return [base, this.memorySelection?.block, this.buildFilesSystemInstruction(messages)]
+      .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+      .join('\n\n')
   }
 
   /**

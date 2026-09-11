@@ -1,7 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { recordToolActivity } from '@/lib/toolActivity'
 import type { UIMessage, UIMessageChunk } from 'ai'
-import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
+import type {
+  AskAnswer,
+  CoworkTurn,
+  TurnMemory,
+  Usage,
+} from '@/types/coworkSession'
 import {
   MAX_AGENT_STEPS,
   budgetExceeded,
@@ -100,6 +105,11 @@ export type ToolOutcome = {
 
 /** One model turn's worth of stream, folded into a shape the loop can act on. */
 export type StepResult = {
+  /**
+   * Memory ids the request carried and withheld, as the transport reported
+   * them. Absent when the transport retrieved nothing.
+   */
+  memory?: TurnMemory
   text: string
   toolCalls: PendingToolCall[]
   usage: Usage | null
@@ -275,6 +285,16 @@ export function answerAsk(
 
 // The cache counts ride along: dropping them here was where a provider's
 // cache report used to stop on its way to the Cowork counter.
+const idList = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+
+const memoryOf = (meta: unknown): TurnMemory | undefined => {
+  const m = (meta as { memory?: unknown } | undefined)?.memory
+  if (!m || typeof m !== 'object') return undefined
+  const r = m as Record<string, unknown>
+  return { injectedIds: idList(r.injectedIds), conflictIds: idList(r.conflictIds) }
+}
+
 const usageOf = (meta: unknown): Usage | null => {
   const usage = readTokenUsage(
     (meta as { usage?: unknown } | undefined)?.usage
@@ -369,6 +389,7 @@ export async function consumeStep(
           break
         case 'finish':
           result.usage = usageOf(chunk.messageMetadata) ?? result.usage
+          result.memory = memoryOf(chunk.messageMetadata) ?? result.memory
           break
         default:
           break
@@ -415,7 +436,17 @@ export function turnsFor(
   outcomes: Map<string, ToolOutcome>
 ): CoworkTurn[] {
   const turns: CoworkTurn[] = []
-  if (step.text) turns.push({ role: 'assistant', content: step.text })
+  // The request's own usage and memory ride on the turn it produced, so an
+  // earlier turn's breakdown -- and which memories it carried -- can be shown
+  // for that turn rather than only the session's latest.
+  if (step.text) {
+    turns.push({
+      role: 'assistant',
+      content: step.text,
+      ...(step.usage ? { usage: step.usage } : {}),
+      ...(step.memory ? { memory: step.memory } : {}),
+    })
+  }
   for (const call of step.toolCalls) {
     const outcome = outcomes.get(call.toolCallId)
     turns.push({

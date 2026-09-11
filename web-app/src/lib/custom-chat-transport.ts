@@ -1721,6 +1721,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           return {
             finishReason: finishPart.finishReason,
             usage,
+            // Which remembered records this request carried, and which were
+            // withheld as conflicting: ids only, never their text.
+            ...(this.memorySelection
+              ? {
+                  memory: {
+                    injectedIds: this.memorySelection.injectedIds,
+                    conflictIds: this.memorySelection.conflictIds,
+                  },
+                }
+              : {}),
             tokenSpeed: {
               tokenSpeed: Math.round(tokenSpeed * 100) / 100,
               promptSpeed: promptPerSecond

@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useCallback } from 'react'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useAppState } from '@/hooks/useAppState'
 import type { TokenUsage } from '@/lib/tokenUsage'
+import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 
 type CustomChatOptions = Omit<ChatInit<UIMessage>, 'transport'> &
   Pick<UseChatOptions<UIMessage>, 'experimental_throttle' | 'resume'> & {
@@ -52,6 +53,11 @@ export function useChat(
   if (!transportRef.current) {
     transportRef.current =
       existingSessionTransport ?? new CustomChatTransport(systemMessage, sessionId)
+    // A temporary chat neither reads nor records memory. Chats have no project
+    // folder, so project memory never applies here; session and user memory do.
+    transportRef.current.setMemoryBinding({
+      temporary: sessionId === TEMPORARY_CHAT_ID,
+    })
   } else if (
     existingSessionTransport &&
     transportRef.current !== existingSessionTransport

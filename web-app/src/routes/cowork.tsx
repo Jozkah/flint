@@ -127,6 +127,8 @@ import { usePrompt } from '@/hooks/usePrompt'
 import { setSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
 import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { fromCoworkUsage } from '@/lib/tokenUsage'
+import { TurnUsageDetails } from '@/components/TurnUsageDetails'
+import type { TurnMemory } from '@/types/coworkSession'
 import { attachAskToTurns, settleAskInTurns } from '@/hooks/useCoworkRun'
 import {
   NO_SESSION,
@@ -1857,6 +1859,13 @@ function CoworkPage() {
       compatInstructions: compatInstructionBlocks(runCompat),
       openingInspection: inspecting,
     })
+    // Project memory is keyed by the attached folder's own identity file, not
+    // by the tree this run reads: a managed worktree is the same project, and
+    // a session with no folder has no project memory at all. Never temporary.
+    transport.setMemoryBinding({
+      projectRoot: current?.folder ?? undefined,
+      temporary: false,
+    })
     await transport.refreshTools()
     // Now the count is a fact rather than a guess, so the readiness card can
     // stop saying the tool set has not been built.
@@ -3031,6 +3040,22 @@ function CoworkPage() {
                             <PromptSnapshotView
                               snapshotId={ref.id}
                               sessionId={session?.id}
+                            />
+                          ) : null
+                        })()}
+                        {/* This turn's own token breakdown and the memory ids
+                        its request carried (AH-211, AH-083). */}
+                        {(() => {
+                          const data = (
+                            message.parts as { type: string; data?: unknown }[]
+                          ).find((part) => part.type === 'data-turn-usage')
+                            ?.data as
+                            | { usage?: Usage; memory?: TurnMemory }
+                            | undefined
+                          return data ? (
+                            <TurnUsageDetails
+                              usage={fromCoworkUsage(data.usage)}
+                              memory={data.memory}
                             />
                           ) : null
                         })()}

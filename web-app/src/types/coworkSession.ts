@@ -61,6 +61,18 @@ export type CoworkTurn = {
    */
   promptSnapshot?: { id: string; hash: string; redactions: number }
   /**
+   * The memories the request behind this turn actually carried, by id, and
+   * the ones withheld because they conflicted. What "which memories were used
+   * in this turn" answers from; never the memory text itself.
+   */
+  memory?: TurnMemory
+  /**
+   * The provider's usage for the request behind this assistant turn. Absent
+   * on turns saved before per-turn usage existed, and on turns whose provider
+   * reported none.
+   */
+  usage?: Usage
+  /**
    * Questions the run asked at this point in the conversation.
    *
    * Attached to the turn, not held in a single "current question" slot beside
@@ -70,6 +82,12 @@ export type CoworkTurn = {
    * vanished when it was given.
    */
   asks?: AskRecord[]
+}
+
+/** Memory ids placed in (and withheld from) one dispatched request. */
+export type TurnMemory = {
+  injectedIds: string[]
+  conflictIds: string[]
 }
 
 /**

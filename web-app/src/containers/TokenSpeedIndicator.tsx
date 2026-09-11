@@ -43,12 +43,26 @@ export const TokenSpeedIndicator = memo(
     const usage = readTokenUsage(metadata?.usage)
     const hasBreakdown =
       !!usage && (usage.totalTokens ?? 0) > 0
+    // Which remembered records this message's request carried (AH-083).
+    const memory = metadata?.memory as
+      | { injectedIds?: unknown; conflictIds?: unknown }
+      | undefined
+    const ids = (v: unknown) =>
+      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+    const memoryIds = ids(memory?.injectedIds)
+    const withheldIds = ids(memory?.conflictIds)
     const rawSpeed = toNumber(persisted?.tokenSpeed ?? 0)
     const displaySpeed = Math.round(rawSpeed)
     const displayTokenCount = usage?.outputTokens ?? persisted?.tokenCount ?? 0
     const promptSpeed = persisted?.promptSpeed
 
-    if (displaySpeed === 0 && displayTokenCount === 0 && !hasBreakdown) {
+    if (
+      displaySpeed === 0 &&
+      displayTokenCount === 0 &&
+      !hasBreakdown &&
+      memoryIds.length === 0 &&
+      withheldIds.length === 0
+    ) {
       return null
     }
 
@@ -91,6 +105,26 @@ export const TokenSpeedIndicator = memo(
                 <span className="font-mono">{displayTokenCount}</span>
               </div>
             )
+          )}
+          {(memoryIds.length > 0 || withheldIds.length > 0) && (
+            <div
+              className="mt-1.5 border-t border-border pt-2"
+              data-testid="message-memory"
+            >
+              <div className="font-medium text-foreground">Memory in this request</div>
+              <ul className="mt-1 space-y-0.5" aria-label="Memories sent">
+                {memoryIds.map((id) => (
+                  <li key={id} className="font-mono break-all" data-memory-id={id}>
+                    {id}
+                  </li>
+                ))}
+              </ul>
+              {withheldIds.length > 0 && (
+                <p className="mt-1 text-amber-600">
+                  Withheld as conflicting: {withheldIds.join(', ')}
+                </p>
+              )}
+            </div>
           )}
         </div>
       </PopoverContent>

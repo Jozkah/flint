@@ -20,7 +20,7 @@ vi.mock('@/lib/backendStorage', () => ({
   },
 }))
 
-import { consumeStep, runTurn, type ToolOutcome } from '../coworkRunner'
+import { consumeStep, runTurn, turnsFor, type ToolOutcome } from '../coworkRunner'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { localStorageKey } from '@/constants/localStorage'
 import { fromCoworkUsage } from '@/lib/tokenUsage'
@@ -209,5 +209,37 @@ describe('Cowork session persistence', () => {
     const usage = fromCoworkUsage(s.lastUsage)
     expect(usage?.cachedInputTokens).toBeUndefined()
     expect(usage?.uncachedInputTokens).toBeUndefined()
+  })
+})
+
+describe('Cowork per-turn usage and memory', () => {
+  it('puts the request usage and the memory ids it carried on the assistant turn', async () => {
+    const step = await consumeStep(
+      streamOf([
+        { type: 'text-delta', id: 't', delta: 'done' },
+        {
+          type: 'finish',
+          messageMetadata: {
+            usage: { inputTokens: 900, outputTokens: 4, totalTokens: 904, cachedInputTokens: 850 },
+            memory: { injectedIds: ['mem-1', 42, 'mem-2'], conflictIds: ['mem-9'] },
+          },
+        },
+      ]),
+      sink()
+    )
+    expect(step.memory).toEqual({ injectedIds: ['mem-1', 'mem-2'], conflictIds: ['mem-9'] })
+    const [turn] = turnsFor(step, new Map())
+    expect(turn.usage).toMatchObject({ prompt_tokens: 900, cached_prompt_tokens: 850 })
+    expect(turn.memory?.injectedIds).toEqual(['mem-1', 'mem-2'])
+  })
+
+  it('leaves both off a turn whose request reported neither', async () => {
+    const step = await consumeStep(
+      streamOf([{ type: 'text-delta', id: 't', delta: 'hi' }, { type: 'finish' }]),
+      sink()
+    )
+    const [turn] = turnsFor(step, new Map())
+    expect(turn).not.toHaveProperty('usage')
+    expect(turn).not.toHaveProperty('memory')
   })
 })

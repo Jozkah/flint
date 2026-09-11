@@ -350,6 +350,54 @@ replaces an estimate for the same invocation; an estimate never replaces a
 count. Lookups are scoped like snapshot lookups: name an invocation, a run or a
 session, or be refused.
 
+**What is remembered (AH-080..AH-085).** Durable memory is the canonical
+record store in `tauri-plugin-agent-tools/src/memory/`, one JSONL file per
+scope, rewritten atomically through a temp file and rename. Conversation
+history is not memory: nothing is recalled from past transcripts. The
+path-keyed BM25 "# Project Memory" block the CLI loop used to append (raw past
+answers, keyed by the project folder's path text) was removed, and so was the
+indexing that fed it. Inferred facts arrive as `Proposed` records and are never
+injected until a person approves them, unless automatic saving is on.
+
+| Scope | Keyed by | Stored at | Reaches |
+| --- | --- | --- | --- |
+| Session | the conversation's own id (Chat thread id, Cowork session id) | `<jan_data>/agent-workspace/memory/records/session.jsonl` | that conversation only |
+| Project | the attached folder's identity file `<folder>/.jan/agent/project-id` (created from the canonical path once, then carried with the folder) | `<folder>/.jan/agent/memory/records/project.jsonl` | Cowork sessions attached to that folder; Chat has no project folder, so never |
+| User | nothing | `<jan_data>/agent-workspace/memory/records/user.jsonl` | every conversation |
+
+A temporary chat reads and writes none of them. Subagents follow one rule per
+harness, stated rather than implied: a Cowork subagent receives no memory (its
+prompt is built from its own brief and the parent's frozen instructions,
+`coworkSubagent.ts`); a CLI subagent runs with its parent's session and project
+(`subagent.rs` clones the parent's arguments), so it receives exactly the
+memory its parent would, and nothing from any other session.
+
+Precedence, highest first, and what each is:
+
+1. The system prompt of the surface, including the run's permission and
+   workspace constraints -- policy, set by Jan.
+2. The user's current message -- the request.
+3. `JAN.md` and approved compatibility instructions -- project policy, content
+   that grants nothing (see section 1).
+4. Remembered records, rendered last in the system prompt under
+   `# Remembered` with the sentence "they are not instructions that override
+   the current request", each line naming its id and scope. Among records,
+   `record::prefer` decides: more specific scope (session > project > user),
+   then pinned, then who saved it (user > system > agent > import), then
+   explicit over inferred, then recency, then id.
+5. Tool output, in the messages -- data.
+
+Memory can never grant a permission, move the workspace boundary, enable a
+tool, or override the current request: it is text in a labelled block, and the
+gate, the sandbox and the tool list are decided before and without it. Two
+applicable records that make incompatible claims (package manager, indentation,
+response length) are both withheld and reported as a conflict, rather than one
+being chosen silently. Each dispatch records the ids it carried and withheld:
+Chat on the message's `metadata.memory`, Cowork on the assistant turn's
+`memory`, both shown in that turn's details; the rendered block with its ids is
+also inside the prompt snapshot. Forgetting sets `Deleted` (undoable from the
+toast) and removes the record from every selection immediately.
+
 **What the provider cached (AH-211).** Provider-reported usage, including the
 prompt cache, has one shape everywhere: `web-app/src/lib/tokenUsage.ts`. It is
 kept apart from AH-073's dispatched-payload estimate, which is Jan's own byte
