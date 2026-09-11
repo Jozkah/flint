@@ -76,6 +76,9 @@ vi.mock('@janhq/tauri-plugin-llamacpp-api', () => ({
 }))
 vi.mock('@/lib/agentTools', () => ({
   executeAgentTool: h.executeAgentTool,
+  // Main's approval prompt asks for the diff first (AH-146); the real one
+  // never throws and resolves to nothing when there is no diff.
+  previewAgentChange: vi.fn(async () => undefined),
   sandboxEnforces: () => true,
   getSandboxStatus: vi.fn(async () => ({ backend: 'bubblewrap', enforces: true })),
 }))

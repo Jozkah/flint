@@ -3821,7 +3821,7 @@ fn clear_custom_headers(ctx: &Ctx) -> ScenarioResult {
 
 /// Send one Cowork request and return the headers the provider received,
 /// names lower-cased.
-fn send_and_capture(
+fn send_and_capture_headers(
     ctx: &Ctx,
     label: &str,
 ) -> Result<serde_json::Map<String, Value>, Failure> {
@@ -3851,7 +3851,7 @@ fn check_custom_headers_sent_as(
     tenant: bool,
     key: bool,
 ) -> ScenarioResult {
-    let last = send_and_capture(ctx, label)?;
+    let last = send_and_capture_headers(ctx, label)?;
     let value_of = |name: &str| last.get(name).and_then(|v| v.as_str()).unwrap_or("");
     if tenant {
         ensure!(
