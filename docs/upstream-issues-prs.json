@@ -36,9 +36,9 @@
       "already-fixed": 84,
       "needs-user-hardware": 16,
       "fixed": 32,
-      "adapted": 15,
+      "adapted": 16,
       "cannot-reproduce": 2,
-      "implementation-ready": 2
+      "implementation-ready": 1
     }
   },
   "items": [
@@ -36632,7 +36632,7 @@
       "decisionReason": "batch-3 P0 triage: custom request headers: plumbing exists (model-factory, custom_header), no UI to edit them. Feature, reimplement.",
       "implementationStatus": "fixed",
       "forkCommits": [
-        "93b8b84fb"
+        "f6e66afc9"
       ],
       "tests": [
         "web-app/src/lib/__tests__/customHeaders.test.ts",
@@ -71243,12 +71243,17 @@
       "registryIds": [],
       "decision": "adapt",
       "decisionReason": "Mid-run steering absent; port by hand (fork drifted ~1.7k lines), drop unrelated flappy-hamster.html, port its three tests.",
-      "implementationStatus": "implementation-ready",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "implementationStatus": "adapted",
+      "forkCommits": [
+        "0a7fa9558"
+      ],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs steering_enters_after_all_tool_results_in_submission_order, steering_during_final_response_continues_the_same_run, steering_disconnected_surface_does_not_block_the_loop, steering_is_not_offered_an_empty_final_reply",
+        "src-tauri/src/core/cli/tui.rs ten steering_* handoff tests"
+      ],
+      "verification": "cli-feature suite for the agent loop, TUI and secrets: 766 passed, all 14 steering tests included. Not driven interactively against a real model.",
       "blockers": [],
-      "notes": null
+      "notes": "Hand port (fork drifted ~1.7k lines); flappy-hamster.html dropped. Fork-specific: final-answer boundary after the #8712 empty-reply retry and only for a non-empty answer, before the todo closeout nudge. See docs/UPls/8864-agent-steering.md."
     },
     {
       "source": "janhq/jan",
