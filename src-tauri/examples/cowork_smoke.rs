@@ -1008,6 +1008,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_malformed_tool_call,
     },
     Scenario {
+        name: "stop-cancels-only-the-selected-session",
+        run: scenario_stop_is_per_session,
+    },
+    Scenario {
         name: "deleting-a-message-keeps-later-replies",
         run: scenario_delete_keeps_later_replies,
     },
@@ -1977,6 +1981,147 @@ fn scenario_session_isolation(ctx: &Ctx) -> ScenarioResult {
         "a new session inherited the previous session's attached project"
     );
     Ok(())
+}
+
+/// Session ids of the sidebar rows showing a run in progress.
+fn running_sessions(ctx: &Ctx) -> Result<Vec<String>, Failure> {
+    let raw = ctx.eval_string(
+        "return JSON.stringify([...document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]')]
+           .map(e => e.getAttribute('data-testid').slice('cowork-session-running-'.length)));",
+    )?;
+    serde_json::from_str(&raw).map_err(|e| Failure(e.to_string()))
+}
+
+/// Type a request into the composer and send it without waiting for a reply.
+fn send_without_waiting(ctx: &Ctx, text: &str) -> ScenarioResult {
+    ctx.type_into("[data-testid=\"chat-input\"]", text)?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+         return !!b && b.disabled !== true;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval(
+        "document.querySelector('[data-test-id=\"send-message-button\"]').click();
+         return true;",
+    )?;
+    Ok(())
+}
+
+/// Stop the run of the session in view through the composer's stop menu.
+fn stop_current(ctx: &Ctx) -> ScenarioResult {
+    ctx.wait_until(
+        "the stop control",
+        "return !!document.querySelector('[data-testid=\"cowork-stop\"]');",
+        Duration::from_secs(20),
+    )?;
+    ctx.eval("document.querySelector('[data-testid=\"cowork-stop\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the stop menu",
+        "return !!document.querySelector('[data-testid=\"stop-current\"]');",
+        Duration::from_secs(10),
+    )?;
+    ctx.eval("document.querySelector('[data-testid=\"stop-current\"]').click(); return true;")?;
+    Ok(())
+}
+
+/// janhq/jan#8905. Two sessions running at once; Stop in the one in view ends
+/// that run only, and the other keeps streaming. Each session records the
+/// model it ran on, on disk, so it survives a restart.
+fn scenario_stop_is_per_session(ctx: &Ctx) -> ScenarioResult {
+    // A reply that never ends, so both runs are genuinely in flight.
+    ctx.script_model("slow", &[])?;
+    let result = (|| {
+        ctx.goto("/cowork")?;
+        ctx.wait_until(
+            "the cowork composer",
+            "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+            Duration::from_secs(30),
+        )?;
+        ctx.ensure_model_selected()?;
+        ctx.click_matching("button", "New session")?;
+        std::thread::sleep(Duration::from_millis(500));
+        send_without_waiting(ctx, "long task in session A")?;
+        ctx.wait_until(
+            "session A to be running",
+            "return document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]').length === 1;",
+            Duration::from_secs(60),
+        )?;
+        let first = running_sessions(ctx)?;
+        let a = first.first().cloned().ok_or_else(|| Failure("no running session".into()))?;
+
+        // A new session while A runs: A must not make it look busy.
+        ctx.click_matching("button", "New session")?;
+        ctx.wait_until(
+            "a fresh, idle session in view",
+            "return !document.querySelector('[data-testid=\"cowork-stop\"]');",
+            Duration::from_secs(20),
+        )?;
+        send_without_waiting(ctx, "long task in session B")?;
+        ctx.wait_until(
+            "both sessions running",
+            "return document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]').length === 2;",
+            Duration::from_secs(60),
+        )?;
+        let both = running_sessions(ctx)?;
+        let b = both
+            .iter()
+            .find(|id| **id != a)
+            .cloned()
+            .ok_or_else(|| Failure(format!("no second running session in {both:?}")))?;
+
+        // Stop in B, the session in view.
+        stop_current(ctx)?;
+        ctx.wait_until(
+            "B to stop",
+            &format!(
+                "return !document.querySelector('[data-testid=\"cowork-session-running-{b}\"]');"
+            ),
+            Duration::from_secs(30),
+        )?;
+        // A is still going, and keeps going.
+        std::thread::sleep(Duration::from_secs(3));
+        let after = running_sessions(ctx)?;
+        ensure!(
+            after == vec![a.clone()],
+            "Stop in session B changed other runs: running after stop = {after:?} (A = {a}, B = {b})"
+        );
+
+        // Each session recorded the model it ran on, and it reached disk.
+        let settings = data_folder()?.join("settings.json");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let needle = format!(r#""model":{{"provider":"{SMOKE_PROVIDER}","id":"{SMOKE_MODEL}"}}"#);
+        loop {
+            let text = std::fs::read_to_string(&settings)
+                .unwrap_or_default()
+                .replace('\\', "");
+            let count = text.matches(&needle).count();
+            if count >= 2 {
+                break;
+            }
+            ensure!(
+                Instant::now() < deadline,
+                "the sessions' models were not persisted ({count} of 2 found in settings.json)"
+            );
+            std::thread::sleep(Duration::from_millis(500));
+        }
+
+        // Clean up: select A and stop it too.
+        ctx.eval_bool(&format!(
+            "const dot = document.querySelector('[data-testid=\"cowork-session-running-{a}\"]');
+             const row = dot && dot.closest('button');
+             if (row) row.click();
+             return !!row;"
+        ))?;
+        stop_current(ctx)?;
+        ctx.wait_until(
+            "no session running",
+            "return document.querySelectorAll('[data-testid^=\"cowork-session-running-\"]').length === 0;",
+            Duration::from_secs(30),
+        )
+    })();
+    let _ = ctx.script_model("plain", &[]);
+    result
 }
 
 /// Settings search narrows the list, and a result navigates to its own page.

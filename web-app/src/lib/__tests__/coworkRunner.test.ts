@@ -99,6 +99,77 @@ describe('consumeStep', () => {
     expect(sink.onToolStart).toHaveBeenCalledWith('c1', 'read')
   })
 
+  /// janhq/jan#8905, found by the real-app two-session Stop scenario. The run
+  /// read the model stream without watching its signal, so Stop only ended a
+  /// run whose transport closed the stream in response. The desktop transport
+  /// does not always: a provider still streaming kept the session running
+  /// after Stop, however long it was waited on.
+  it('ends a run on Stop even when the stream itself never ends', async () => {
+    const controller = new AbortController()
+    let sent = 0
+    const endless = (): ReadableStream<UIMessageChunk> =>
+      new ReadableStream({
+        start(c) {
+          c.enqueue({ type: 'text-delta', id: 't', delta: 'thinking ' } as UIMessageChunk)
+          // Never closed, never errored: only the run's own signal can end it.
+        },
+      })
+    const d = {
+      ...deps([]),
+      sendStep: vi.fn(async () => {
+        sent += 1
+        return endless()
+      }),
+    }
+    d.sink.onText.mockImplementation(() => controller.abort('cancelled'))
+    const out = await Promise.race([
+      runTurn({
+        messages: [user('go')],
+        signal: controller.signal,
+        deps: d,
+      } as never),
+      new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 2000)),
+    ])
+    expect(out).not.toBe('hung')
+    expect((out as { stoppedBy: string }).stoppedBy).toBe('aborted')
+    expect(sent).toBe(1)
+  })
+
+  /// The same, one step earlier, found by the same scenario: the request was
+  /// still waiting for its response to start -- a busy server, a queue -- and
+  /// the transport only gave up on it 40 s after Stop.
+  it('ends a run on Stop while the request has not started streaming', async () => {
+    const controller = new AbortController()
+    const cancelled = vi.fn()
+    let answer: (s: ReadableStream<UIMessageChunk>) => void = () => {}
+    const d = {
+      ...deps([]),
+      sendStep: vi.fn(
+        () =>
+          new Promise<ReadableStream<UIMessageChunk>>((resolve) => {
+            answer = resolve
+          })
+      ),
+    }
+    const run = runTurn({
+      messages: [user('go')],
+      signal: controller.signal,
+      deps: d,
+    } as never)
+    await Promise.resolve()
+    controller.abort('cancelled')
+    const out = await Promise.race([
+      run,
+      new Promise<'hung'>((resolve) => setTimeout(() => resolve('hung'), 2000)),
+    ])
+    expect(out).not.toBe('hung')
+    expect((out as { stoppedBy: string }).stoppedBy).toBe('aborted')
+    // A stream that turns up after Stop is released, not left streaming.
+    answer(new ReadableStream({ cancel: cancelled }))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(cancelled).toHaveBeenCalled()
+  })
+
   it('surfaces an error chunk without throwing', async () => {
     const r = await consumeStep(
       streamOf([{ type: 'error', errorText: 'boom' } as UIMessageChunk]),

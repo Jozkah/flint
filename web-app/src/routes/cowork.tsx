@@ -257,11 +257,12 @@ import {
   isAbortLike,
   answerAsk,
   runTurn,
+  untilStopped,
   type RunOutcome,
   type StreamSink,
   type ToolOutcome,
 } from '@/lib/coworkRunner'
-import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { useCoworkRun, type RunEnding } from '@/hooks/useCoworkRun'
 import {
   listSubagents,
   type SubagentDefinition,
@@ -1623,11 +1624,62 @@ function CoworkPage() {
       authority: runAuthority,
     })
 
+    /**
+     * Until the turn's own try/finally takes the run over (below), its
+     * preparation owns it: Stop ends it here, and so does a probe that fails.
+     * Neither did -- the session stayed running for as long as a probe took,
+     * or for good once one threw. janhq/jan#8905.
+     */
+    const abandon = (ending: RunEnding) => {
+      const othersRunning = Object.keys(useCoworkRun.getState().runs).some(
+        (id) => id !== sid
+      )
+      if (!othersRunning) useAppState.getState().updateLoadingModel(false)
+      endRun(sid, runId)
+      runWorkDone()
+      for (const resolve of handle.pendingAsks.values()) resolve(null)
+      handle.pendingAsks.clear()
+      // What the user asked is kept, as it is when a turn stops later on.
+      const prior = current?.messages ?? []
+      useCoworkSessions.getState().commitTurns(
+        sid,
+        runTurns,
+        text
+          ? [
+              ...prior,
+              {
+                id: `${sid}-user-${prior.length}`,
+                role: 'user',
+                parts: [{ type: 'text', text }],
+              } as any,
+            ]
+          : prior,
+        useCoworkRun.getState().subagents[sid] ?? [],
+        undefined
+      )
+      useCoworkRun.getState().finishRun(sid, runId, ending)
+      if (ending.stoppedBy === 'error') useMessageQueue.getState().clearQueue(sid)
+    }
+    const STOPPED = Symbol('stopped')
+    /** A preparation step, given up the moment Stop is pressed. */
+    const prepared = async <T,>(work: Promise<T>): Promise<T | typeof STOPPED> => {
+      try {
+        return await untilStopped(work, controller.signal)
+      } catch (e) {
+        abandon(
+          isAbortLike(e, controller.signal)
+            ? { stoppedBy: 'aborted' }
+            : { stoppedBy: 'error', errorText: errorText(e) }
+        )
+        return STOPPED
+      }
+    }
+
     // Local models load before the first token, but only on a cold start. Probe
     // the engine so the load card shows on a real load, not on every warm run.
     if (selectedProvider === 'llamacpp') {
       try {
-        const loaded = await getLoadedModels()
+        const loaded = await untilStopped(getLoadedModels(), controller.signal)
         if (!loaded.includes(selectedModel.id)) {
           useAppState.getState().updateModelLoadProgress(undefined)
           useAppState.getState().updateLoadingModel(true)
@@ -1635,6 +1687,7 @@ function CoworkPage() {
       } catch {
         // Probe failed; skip the card rather than flash it every run.
       }
+      if (controller.signal.aborted) return abandon({ stoppedBy: 'aborted' })
     }
 
     /**
@@ -1667,7 +1720,10 @@ function CoworkPage() {
       let captured: GitBaseline
       try {
         captured = baselineFromStatus(
-          await loadGitStatus(carried.readRoot, 'all'),
+          await untilStopped(
+            loadGitStatus(carried.readRoot, 'all'),
+            controller.signal
+          ),
           baselineBinding
         )
       } catch {
@@ -1675,6 +1731,7 @@ function CoworkPage() {
         // before-state, nothing found later can be dated at all.
         captured = unavailableBaseline(baselineBinding)
       }
+      if (controller.signal.aborted) return abandon({ stoppedBy: 'aborted' })
       runBaseline = acceptBaseline(captured, bindingRef.current)
     }
 
@@ -1770,7 +1827,7 @@ function CoworkPage() {
 
     // Warm the sandbox probe: the transport's prompt and tool set read it
     // synchronously via sandboxEnforces().
-    await getSandboxStatus()
+    if ((await prepared(getSandboxStatus())) === STOPPED) return
     // Read once per run, not subscribed: the advertised set is frozen for the
     // run anyway, so a mid-run flip in Settings would only desync the prompt.
     const webSearch = useWebSearchConfig.getState().webSearchEnabled
@@ -1871,7 +1928,7 @@ function CoworkPage() {
       compatInstructions: compatInstructionBlocks(runCompat),
       openingInspection: inspecting,
     })
-    await transport.refreshTools()
+    if ((await prepared(transport.refreshTools())) === STOPPED) return
     // Now the count is a fact rather than a guess, so the readiness card can
     // stop saying the tool set has not been built.
     const advertised = Object.keys(transport.advertisedTools)

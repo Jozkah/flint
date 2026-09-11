@@ -217,6 +217,7 @@ vi.mock('@/containers/CoworkTasksPanel', () => ({
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { Route } from '@/routes/cowork'
+import { getSandboxStatus } from '@/lib/agentTools'
 
 const CoworkPage = (Route as any).component as () => React.ReactElement
 
@@ -390,6 +391,40 @@ describe('a run belongs to the session that started it', () => {
       await Promise.resolve()
     })
     expect(answered).toBeUndefined()
+  })
+
+  /// Found by the real-app two-session Stop scenario. A run is claimed before
+  /// it prepares -- probes, the tool list -- and none of that preparation
+  /// watched Stop or ended the run: the session stayed running for as long as
+  /// a probe took (40 s there), and a probe that failed left it running for
+  /// good.
+  it('ends a run stopped while it is still preparing', async () => {
+    let probed = false
+    vi.mocked(getSandboxStatus).mockImplementationOnce(() => {
+      probed = true
+      return new Promise(() => {})
+    })
+    await userEvent.click(screen.getByTestId('submit'))
+    await waitFor(() => expect(probed).toBe(true))
+    expect(useCoworkRun.getState().runs.A).toBeDefined()
+    await userEvent.click(screen.getByTestId('stop'))
+    await waitFor(() => expect(useCoworkRun.getState().runs.A).toBeUndefined())
+    expect(useCoworkRun.getState().outcomes.A?.stoppedBy).toBe('aborted')
+    expect(status()).toBe('ready')
+    expect(h.runs).toHaveLength(0)
+    // What the user asked is kept, as it is for any other ending.
+    const [sa] = useCoworkSessions.getState().sessions
+    expect(JSON.stringify(sa.turns)).toContain(h.text)
+  })
+
+  it('ends a run whose preparation fails, and says why', async () => {
+    vi.mocked(getSandboxStatus).mockRejectedValueOnce(new Error('probe exploded'))
+    await userEvent.click(screen.getByTestId('submit'))
+    await waitFor(() => expect(useCoworkRun.getState().runs.A).toBeUndefined())
+    expect(useCoworkRun.getState().outcomes.A).toEqual(
+      expect.objectContaining({ stoppedBy: 'error', errorText: 'probe exploded' })
+    )
+    expect(h.runs).toHaveLength(0)
   })
 })
 

@@ -292,6 +292,55 @@ export type StreamSink = {
   onToolCall: (call: PendingToolCall) => void
 }
 
+function stopReason(signal: AbortSignal): unknown {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new DOMException(String(signal.reason ?? 'aborted'), 'AbortError')
+}
+
+/**
+ * `work`, or a rejection the moment `signal` fires, whichever comes first.
+ * janhq/jan#8905.
+ *
+ * Stop has to end a run at once, whatever the run is waiting on. The transport
+ * is handed the signal too, but does not always act on it -- a request still
+ * waiting for its response to start, a stream it does not close -- and a run
+ * that waited for it stayed running long after Stop. Whatever `work` produces
+ * after that is handed to `release`, so it is not left open.
+ */
+export function untilStopped<T>(
+  work: Promise<T>,
+  signal: AbortSignal,
+  release?: (late: T) => void
+): Promise<T> {
+  const settleLate = () =>
+    work.then(
+      (late) => release?.(late),
+      () => {}
+    )
+  if (signal.aborted) {
+    settleLate()
+    return Promise.reject(stopReason(signal))
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      settleLate()
+      reject(stopReason(signal))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    work.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      }
+    )
+  })
+}
+
 /**
  * Fold one `sendMessages` stream into a `StepResult`, reporting progress as it
  * goes. Reading to completion is what makes tool dispatch safe: results land on
@@ -299,7 +348,8 @@ export type StreamSink = {
  */
 export async function consumeStep(
   stream: ReadableStream<UIMessageChunk>,
-  sink: StreamSink
+  sink: StreamSink,
+  signal?: AbortSignal
 ): Promise<StepResult> {
   const reader = stream.getReader()
   const result: StepResult = {
@@ -310,7 +360,12 @@ export async function consumeStep(
   }
   try {
     for (;;) {
-      const { done, value } = await reader.read()
+      // The read watches the signal itself. Leaving it to the transport to
+      // close the stream on abort meant a stream it did not close -- a
+      // provider still streaming -- kept the run going after Stop.
+      const { done, value } = await (signal
+        ? untilStopped(reader.read(), signal)
+        : reader.read())
       if (done) break
       const chunk = value as any
       switch (chunk.type) {
@@ -377,6 +432,11 @@ export async function consumeStep(
           break
       }
     }
+  } catch (e) {
+    // Stopped mid-read: cancel the stream so the request underneath is
+    // released rather than left streaming into nothing.
+    if (signal?.aborted) void reader.cancel(signal.reason).catch(() => {})
+    throw e
   } finally {
     reader.releaseLock()
   }
@@ -560,8 +620,17 @@ export async function runTurn(opts: {
       while (true) {
         const operation = operationSignal(signal, opts.operationTimeoutMs)
         try {
-          const stream = await deps.sendStep([...messages], operation.signal)
-          result = await consumeStep(stream, deps.sink)
+          // Not left to the transport to notice Stop: see `untilStopped`.
+          const stream = await untilStopped(
+
+            deps.sendStep([...messages], operation.signal),
+
+            operation.signal,
+
+            (late) => void late.cancel().catch(() => {})
+
+          )
+          result = await consumeStep(stream, deps.sink, operation.signal)
           break
         } catch (failure) {
           timedOut = operation.timedOut()

@@ -49,6 +49,27 @@ Not changed: the stop menu still sends the backend stop with the session id
 as its run filter; that request is scoped by session, so it cannot reach
 another session's tools.
 
+## Found by the real-app scenario
+
+The two-session Stop scenario failed on the first build: B stayed marked as
+running for 30 s after Stop. Instrumented, the abort reached B's controller at
+once, but B's run only ended 40 s later. Three places waited on something that
+did not watch Stop:
+
+- The run is claimed before it prepares (sandbox probe, tool list, Git
+  baseline, engine probe), and that preparation sat outside the turn's
+  try/finally. Stop during it did nothing until the preparation finished;
+  a probe that threw left the session running for good. Preparation steps now
+  give up the moment Stop is pressed and end the run, keeping the user's
+  message, and a failing one ends it with the error.
+- `runTurn` awaited the transport's `sendMessages` and the stream's reads
+  without watching the signal, so a request still waiting for its response to
+  start, or a stream the transport did not close, outlived Stop.
+  `untilStopped` races both against the signal and releases a stream that
+  arrives late.
+
+These are pre-existing: the old page-wide Stop had the same waits.
+
 ## Tests
 
 - `hooks/__tests__/useCoworkRun.sessions.test.ts`: per-session runs, refused
@@ -61,4 +82,7 @@ another session's tools.
   bound to its model each make a test fail.
 - `lib/__tests__/coworkSessionLifecycle.test.ts`, `coworkTransport.test.ts`,
   `hooks/__tests__/useCoworkSessions.model.test.ts`.
+- Stop while preparing / preparation failing (`cowork.sessions.test.tsx`),
+  and Stop with a stream that never ends or a request that never starts
+  streaming (`coworkRunner.test.ts`). Each failed on the code before its fix.
 - Real-WebView scenario `stop-cancels-only-the-selected-session`.
