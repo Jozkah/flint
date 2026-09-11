@@ -631,6 +631,26 @@ pub fn probe_sandbox(now_ms: i64) -> ComponentReport {
 /// The report says which shell was chosen, where it came from, and -- when the
 /// chosen one is not POSIX -- why the POSIX one was not used, in that shell's
 /// own words rather than a guess.
+/// Where a shell is probed when no folder is attached: an empty directory of
+/// Jan's own under the temporary directory, never the temporary directory
+/// itself.
+///
+/// On Windows the sandbox grants the container its workspace by rewriting that
+/// directory's ACL. For all of `%TEMP%` (thousands of entries, some held open
+/// by other programs) that took longer than the probe is given, so every shell
+/// "failed to start" and `bash` was withheld from every run asked about with no
+/// project root. That includes every Cowork run, whose tool list is built that
+/// way. A folder-scoped probe on the same machine found PowerShell in a third
+/// of a second. Falls back to the temporary directory only if the empty one
+/// cannot be made.
+fn unattached_probe_root() -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join("jan-shell-probe");
+    match std::fs::create_dir_all(&dir) {
+        Ok(()) => dir,
+        Err(_) => std::env::temp_dir(),
+    }
+}
+
 pub fn probe_shell(project_root: Option<&Path>, now_ms: i64) -> ComponentReport {
     use crate::tools::jail;
     use crate::tools::proc::{ProbeOutcome, ShellFlavor};
@@ -641,7 +661,7 @@ pub fn probe_shell(project_root: Option<&Path>, now_ms: i64) -> ComponentReport 
     // than refused -- refusing withheld `bash` from every session without a
     // folder.
     let Some(root) = project_root else {
-        return probe_shell(Some(&std::env::temp_dir()), now_ms);
+        return probe_shell(Some(&unattached_probe_root()), now_ms);
     };
     if !root.is_dir() {
         return ComponentReport::new(
@@ -1210,6 +1230,42 @@ mod tests {
     fn an_unattached_session_probes_a_shell_instead_of_refusing_one() {
         let shell = probe_shell(None, 5);
         assert_ne!(shell.reason, Reason::WorkspaceUnattached);
+    }
+
+    /// Without a folder, the shell is found exactly as it is with one.
+    ///
+    /// The regression: with no folder the probe used the temporary directory
+    /// itself as the sandbox's workspace, and on Windows the sandbox grants its
+    /// workspace by rewriting that directory's ACL -- all of `%TEMP%`, which on
+    /// a machine in use is far more than the probe's ten seconds. Every shell
+    /// "timed out", and `bash` was withheld from every Cowork run (whose tool
+    /// list is asked for with no project root) while a folder-scoped probe on
+    /// the same machine found PowerShell in a third of a second.
+    #[test]
+    fn an_unattached_session_finds_the_shell_a_folder_would() {
+        let dir = std::env::temp_dir().join(format!("jan-readiness-shell-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        crate::tools::jail::invalidate_probe_cache();
+        let with_folder = probe_shell(Some(&dir), 5);
+        crate::tools::jail::invalidate_probe_cache();
+        let started = std::time::Instant::now();
+        let without = probe_shell(None, 5);
+        assert_eq!(
+            without.state, with_folder.state,
+            "no folder: {} / folder: {}",
+            without.message, with_folder.message
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(8),
+            "the unattached probe took {:?}",
+            started.elapsed()
+        );
+        assert_ne!(
+            unattached_probe_root(),
+            std::env::temp_dir(),
+            "the whole temporary directory must never be the probe's workspace"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

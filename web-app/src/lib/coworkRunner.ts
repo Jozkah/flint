@@ -372,6 +372,14 @@ export async function consumeStep(
           break
         case 'finish':
           result.usage = usageOf(chunk.messageMetadata) ?? result.usage
+          // A reply the provider never finished -- the connection dropped
+          // mid-stream -- still ends with a `finish` chunk, carrying whatever
+          // text arrived. Read as an answer, a child cut off after one word
+          // was reported as a completed task. See `streamCutOff`.
+          if (chunk.messageMetadata?.streamCutOff && !result.errorText) {
+            result.errorText =
+              "the model's reply ended before it finished: the stream was cut off"
+          }
           break
         default:
           break

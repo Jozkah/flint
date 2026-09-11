@@ -22,6 +22,7 @@ import {
   proposeFromWorktree,
   rejectProposal,
   type Conflict,
+  type Outcome,
   type ProposalRecord,
   type ProposedFile,
 } from '@/lib/proposals'
@@ -166,12 +167,21 @@ export function CoworkProposalReview({
   session,
   run,
   onApplied,
+  propose,
+  title,
 }: {
-  worktree: WorktreeRecord
+  /** A run's own record, or just where a team child worked and where to. */
+  worktree: WorktreeRecord | Pick<WorktreeRecord, 'path' | 'sourceRoot'>
   session: string
   run?: string
   /** The checkout changed; whatever describes it should be re-read. */
   onApplied?: () => void
+  /**
+   * How to make the proposal, when it is not a run's own worktree: a team
+   * child's is made from its backend record, never from a path sent here.
+   */
+  propose?: () => Promise<Outcome<{ proposal: ProposalRecord }>>
+  title?: string
 }) {
   const [proposal, setProposal] = useState<ProposalRecord | null>(null)
   const [selected, setSelected] = useState<Record<string, string[]>>({})
@@ -199,7 +209,15 @@ export function CoworkProposalReview({
     setBusy('create')
     setError(null)
     setMessage(null)
-    const out = await proposeFromWorktree({ record: worktree, session, run })
+    const out = propose
+      ? await propose()
+      : 'branch' in worktree
+        ? await proposeFromWorktree({ record: worktree, session, run })
+        : ({
+            ok: false,
+            message: 'there is no worktree record to propose from',
+            conflicts: [],
+          } as const)
     setBusy(null)
     if (!out.ok) {
       setError(out.message)
@@ -265,8 +283,9 @@ export function CoworkProposalReview({
         <GitPullRequestArrow size={14} className="text-main-view-fg/60" />
         <p className="flex-1 text-xs font-medium text-main-view-fg/80">
           {proposal
-            ? `Proposed changes to ${worktree.sourceRoot}`
-            : 'This run works in its own copy. Nothing reaches your folder until you apply it.'}
+            ? `${title ?? 'Proposed changes'} to ${worktree.sourceRoot}`
+            : (title ??
+              'This run works in its own copy. Nothing reaches your folder until you apply it.')}
         </p>
         {!proposal ? (
           <Button
@@ -300,6 +319,14 @@ export function CoworkProposalReview({
       ) : null}
       {proposal ? (
         <>
+          {proposal.scope.subject ? (
+            <p
+              className="mt-1 text-[11px] text-main-view-fg/60"
+              data-testid="proposal-subject"
+            >
+              {proposal.scope.subject}
+            </p>
+          ) : null}
           <ul className="mt-2 flex flex-col gap-1">
             {proposal.files.map((file) => (
               <FileReview

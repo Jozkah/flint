@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
+import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 
 /**
  * The Cowork route, driven end to end.
@@ -370,6 +371,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   installInvoke()
   h.deps = null
+  useTeamConflictRequests.setState({ bySession: {} })
   h.directEditCapability.mockResolvedValue(true)
   h.managedWorktreeCapability.mockResolvedValue(true)
   h.directEditAuthorize.mockResolvedValue('grant-1')
@@ -714,25 +716,59 @@ describe('a team, dispatched by the route', () => {
     )
   })
 
-  it('refuses a graph that could not finish, before anything is provisioned', async () => {
+  it('asks about overlapping tasks before anything is provisioned, and runs nothing when declined', async () => {
     await renderRoute()
     const deps = await runOneTurn()
 
-    const result = await deps.dispatch(
+    const pending = deps.dispatch(
       call('team', {
         tasks: [
-          { id: 'a', description: 'do a', writes: ['src/x.ts'] },
-          { id: 'b', description: 'do b', writes: ['src/x.ts'] },
+          { id: 'a', description: 'do a', writes: ['src/x.ts'], isolate: true },
+          { id: 'b', description: 'do b', writes: ['SRC\\x.ts'], isolate: true },
         ],
       })
     )
 
-    expect(result.isError).toBe(true)
-    expect(result.output).toContain('same files')
+    // AH-109: the overlap goes to the person, named by both tasks and the
+    // path, while nothing has been provisioned or dispatched.
+    await waitFor(() =>
+      expect(
+        Object.values(useTeamConflictRequests.getState().bySession)
+      ).toHaveLength(1)
+    )
+    const request = Object.values(useTeamConflictRequests.getState().bySession)[0]
+    expect(request.conflicts[0].tasks).toEqual(['a', 'b'])
+    expect(await screen.findByTestId('team-conflicts')).toBeInTheDocument()
     expect(h.invoke).not.toHaveBeenCalledWith(
       'agent_worktree_ensure',
       expect.anything()
     )
+
+    act(() =>
+      useTeamConflictRequests
+        .getState()
+        .answer(request.sessionId, { kind: 'cancel' })
+    )
+    const result = await pending
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('chose not to run')
+    expect(h.invoke).not.toHaveBeenCalledWith(
+      'agent_worktree_ensure',
+      expect.anything()
+    )
+  })
+
+  it('still refuses a graph that could not finish, without asking anyone', async () => {
+    await renderRoute()
+    const deps = await runOneTurn()
+    const result = await deps.dispatch(
+      call('team', {
+        tasks: [{ id: 'a', description: 'do a', dependsOn: [], depends_on: ['ghost'] }],
+      })
+    )
+    expect(result.isError).toBe(true)
+    expect(result.output).toContain('ghost')
+    expect(useTeamConflictRequests.getState().bySession).toEqual({})
   })
 
   it('shows the team as one unit of work with its children under it', async () => {

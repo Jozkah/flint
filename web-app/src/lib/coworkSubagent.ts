@@ -23,6 +23,7 @@ import {
   type ToolOutcome,
 } from '@/lib/coworkRunner'
 import { buildSubagentSystemPrompt } from '@/lib/coworkPrompt'
+import { streamCutOff } from '@/lib/streamFinish'
 import type { StreamEvent } from '@/hooks/useCoworkRun'
 
 /**
@@ -354,6 +355,7 @@ function childStep(opts: {
             outputTokens: usage?.outputTokens,
             totalTokens: usage?.totalTokens,
           },
+          streamCutOff: streamCutOff(part),
         }
       },
       onError: (error) =>

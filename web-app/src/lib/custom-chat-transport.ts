@@ -12,6 +12,7 @@ import {
   InvalidToolInputError,
 } from 'ai'
 import { repairToolArgs } from './toolCallRepair'
+import { streamCutOff } from './streamFinish'
 import { getServiceHub, useServiceStore } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import { DISPATCH_PARAM_KEY, ModelFactory } from './model-factory'
@@ -1709,6 +1710,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
           return {
             finishReason: finishPart.finishReason,
+            streamCutOff: streamCutOff(part),
             usage: {
               inputTokens: inputTokens,
               outputTokens: outputTokens,

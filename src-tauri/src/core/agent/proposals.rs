@@ -16,10 +16,40 @@ use tauri_plugin_agent_tools::proposal::FileInput;
 
 use crate::core::agent::worktree::WorktreeRecord;
 
-/// Jan's own state is never part of a proposal.
+/// Jan's own state and Git's are never part of a proposal, at any depth: a
+/// nested `.git` is another repository's hooks and config.
 fn is_jan_state(path: &str) -> bool {
-    let first = path.split('/').next().unwrap_or("");
-    first.eq_ignore_ascii_case(".jan") || first.eq_ignore_ascii_case(".git")
+    path.split('/').any(|part| {
+        let bare = part.trim_end_matches(['.', ' ']);
+        bare.eq_ignore_ascii_case(".jan") || bare.eq_ignore_ascii_case(".git")
+    })
+}
+
+/// Why a worktree's changes could not be read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChangesError {
+    /// A changed path passes through a symlink, junction or other reparse
+    /// point, so what it names is not inside the worktree.
+    LinkEscape(String),
+    Other(String),
+}
+
+impl std::fmt::Display for ChangesError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChangesError::LinkEscape(p) => write!(
+                f,
+                "{p} in the worktree is a link, or sits under one, so it could name a file outside the worktree; nothing was proposed"
+            ),
+            ChangesError::Other(e) => f.write_str(e),
+        }
+    }
+}
+
+impl From<String> for ChangesError {
+    fn from(e: String) -> Self {
+        ChangesError::Other(e)
+    }
 }
 
 fn git_bytes(repo: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
@@ -60,12 +90,23 @@ fn exists_at(repo: &Path, commit: &str, path: &str) -> Result<bool, String> {
 /// Everything the worktree changed relative to the commit it was created from:
 /// commits made on its branch, uncommitted edits and untracked files alike.
 /// The base of each file is read from that commit, the proposal from disk.
-pub fn changes_in_worktree(record: &WorktreeRecord) -> Result<Vec<FileInput>, String> {
+///
+/// Every changed path is read without following links. A symlink or junction
+/// the worktree gained -- made by a shell the run started, or by anything else
+/// with access to the directory -- would otherwise have the proposal carry the
+/// content of whatever it points at, from anywhere on the machine, into the
+/// user's checkout. Such a path refuses the whole proposal and is named.
+pub fn changes_in_worktree(record: &WorktreeRecord) -> Result<Vec<FileInput>, ChangesError> {
     let wt = Path::new(&record.path);
     let base = record.base_sha.as_str();
     if base.is_empty() || !base.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err("the worktree has no base commit to compare against".into());
+        return Err(ChangesError::Other(
+            "the worktree has no base commit to compare against".into(),
+        ));
     }
+    let wt_canonical = wt
+        .canonicalize()
+        .map_err(|e| ChangesError::Other(format!("could not resolve the worktree: {e}")))?;
 
     let mut paths = nul_paths(&git_bytes(
         wt,
@@ -80,15 +121,30 @@ pub fn changes_in_worktree(record: &WorktreeRecord) -> Result<Vec<FileInput>, St
 
     let mut inputs = Vec::with_capacity(paths.len());
     for path in paths.into_iter().filter(|p| !is_jan_state(p)) {
+        if tauri_plugin_agent_tools::proposal::passes_through_link(wt, &path) {
+            return Err(ChangesError::LinkEscape(path));
+        }
         let base_bytes = if exists_at(wt, base, &path)? {
             Some(git_bytes(wt, &["cat-file", "blob", &format!("{base}:{path}")])?)
         } else {
             None
         };
-        let proposed = match std::fs::read(wt.join(&path)) {
+        let on_disk = wt.join(&path);
+        // Belt and braces for what the walk cannot see, such as a parent
+        // directory swapped between the walk and this read.
+        if let Ok(resolved) = on_disk.canonicalize() {
+            if !resolved.starts_with(&wt_canonical) {
+                return Err(ChangesError::LinkEscape(path));
+            }
+        }
+        let proposed = match std::fs::read(&on_disk) {
             Ok(b) => Some(b),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(e) => return Err(format!("could not read {path} in the worktree: {e}")),
+            Err(e) => {
+                return Err(ChangesError::Other(format!(
+                    "could not read {path} in the worktree: {e}"
+                )))
+            }
         };
         inputs.push(FileInput {
             path,
@@ -100,7 +156,7 @@ pub fn changes_in_worktree(record: &WorktreeRecord) -> Result<Vec<FileInput>, St
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::core::agent::worktree;
 
@@ -178,5 +234,79 @@ mod tests {
         let (src, roots) = repo("empty");
         let record = worktree::ensure(&src, &roots, "sess-2").unwrap();
         assert!(changes_in_worktree(&record).unwrap().is_empty());
+    }
+
+    /// Make `link` point at the directory `target`: a junction on Windows,
+    /// which needs no privilege, and a symlink elsewhere.
+    pub(crate) fn link_dir(link: &Path, target: &Path) {
+        #[cfg(windows)]
+        {
+            let ok = Command::new("cmd")
+                .args(["/C", "mklink", "/J"])
+                .arg(link)
+                .arg(target)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            assert!(ok, "could not make a junction at {}", link.display());
+        }
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(target, link).unwrap();
+    }
+
+    /// A link the worktree gained, pointing outside it, never carries what it
+    /// points at into a proposal -- whether it links a directory or a file.
+    #[test]
+    fn a_link_out_of_the_worktree_refuses_the_proposal() {
+        let (src, roots) = repo("escape");
+        let record = worktree::ensure(&src, &roots, "sess-esc").unwrap();
+        let wt = Path::new(&record.path);
+        let outside = src.parent().unwrap().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret.txt"), "not yours\n").unwrap();
+        std::fs::write(wt.join("fine.txt"), "fine\n").unwrap();
+        link_dir(&wt.join("escape"), &outside);
+
+        match changes_in_worktree(&record) {
+            Err(ChangesError::LinkEscape(path)) => assert!(path.starts_with("escape"), "{path}"),
+            // Git may decline to list a link's target at all, in which case
+            // nothing outside was offered either -- but then the listing must
+            // not contain the secret.
+            Ok(inputs) => {
+                for input in &inputs {
+                    assert!(
+                        input.proposed.as_deref() != Some(&b"not yours\n"[..]),
+                        "the proposal carried a file from outside the worktree"
+                    );
+                }
+                panic!("the link at escape/ was not refused: {:?}", inputs.iter().map(|i| &i.path).collect::<Vec<_>>());
+            }
+            Err(other) => panic!("unexpected error: {other}"),
+        }
+    }
+
+    /// A link that points somewhere inside the worktree is refused too. The
+    /// walk refuses any link rather than judging where it points: a target
+    /// inside today can be swapped for one outside between the check and
+    /// the read.
+    #[test]
+    fn a_link_that_stays_inside_the_worktree_is_still_refused() {
+        let (src, roots) = repo("inner-link");
+        let record = worktree::ensure(&src, &roots, "sess-inner").unwrap();
+        let wt = Path::new(&record.path);
+        std::fs::create_dir_all(wt.join("real")).unwrap();
+        std::fs::write(wt.join("real").join("x.txt"), "x\n").unwrap();
+        link_dir(&wt.join("alias"), &wt.join("real"));
+        match changes_in_worktree(&record) {
+            Err(ChangesError::LinkEscape(path)) => assert!(path.starts_with("alias"), "{path}"),
+            other => panic!("an inner link was not refused: {:?}", other.map(|i| i.len())),
+        }
+    }
+
+    #[test]
+    fn a_nested_git_directory_is_never_proposed() {
+        assert!(is_jan_state("vendor/lib/.git/config"));
+        assert!(is_jan_state(".GIT./hooks/pre-commit"));
+        assert!(!is_jan_state("src/.gitignore"));
     }
 }

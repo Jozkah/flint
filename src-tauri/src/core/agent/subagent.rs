@@ -58,6 +58,10 @@ pub enum SubagentError {
     PermissionDenied(String),
     Upstream(String),
     Cancelled,
+    /// A checkout of its own was wanted and could not be made or recorded.
+    /// The child does not run: running it in the shared tree instead is the
+    /// silent fallback isolation exists to prevent. AH-107.
+    Isolation(String),
 }
 
 impl std::fmt::Display for SubagentError {
@@ -75,6 +79,10 @@ impl std::fmt::Display for SubagentError {
             SubagentError::PermissionDenied(m) => write!(f, "permission denied: {m}"),
             SubagentError::Upstream(m) => write!(f, "{m}"),
             SubagentError::Cancelled => write!(f, "subagent run cancelled"),
+            SubagentError::Isolation(m) => write!(
+                f,
+                "the subagent was not started, because it could not be given a checkout of its own: {m}"
+            ),
         }
     }
 }
@@ -510,6 +518,10 @@ pub struct SubagentRequest {
     pub description: String,
     pub allowed_tools: Option<Vec<String>>,
     pub system_prompt: Option<String>,
+    /// Whether the child works in a Jan-owned worktree of its own. `None`
+    /// means the default: yes, when the project is a git repository and the
+    /// child can change files. See [`isolation_for`].
+    pub isolate: Option<bool>,
 }
 
 /// The resolved plan for a dispatch: the winning definition plus the effective
@@ -639,6 +651,146 @@ pub(crate) struct BackgroundSubagents {
     /// Used to report each queued child's 1-based position; decremented by the
     /// task itself the moment it acquires its permit.
     queued: std::sync::atomic::AtomicUsize,
+    /// Where each isolated child works, by `run_id`. Kept after the child is
+    /// collected, so the parent can still be told where the work is.
+    checkouts: std::sync::Mutex<std::collections::HashMap<String, ChildCheckout>>,
+}
+
+/// A child's own checkout. AH-107.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ChildCheckout {
+    pub path: String,
+    pub branch: String,
+    pub parent_session: String,
+    /// The id the child is recorded under in `team_children`, unique per
+    /// dispatch so a new run never inherits an earlier run's worktree.
+    pub task_id: String,
+    pub data_folder: String,
+}
+
+/// Whether a child with this toolset can change files: any write or exec
+/// tool, or no allowlist at all.
+fn can_change_files(allowed: Option<&[String]>) -> bool {
+    use tauri_plugin_agent_tools::tools::{lookup, Capability};
+    match allowed {
+        None => true,
+        Some(list) => list.iter().any(|name| {
+            lookup(name).is_some_and(|t| matches!(t.capability, Capability::Write | Capability::Exec))
+        }),
+    }
+}
+
+/// Give a child a Jan-owned worktree of its own, when it should have one.
+/// AH-107.
+///
+/// The default is isolation whenever it is possible and matters: the project
+/// is a git repository and the child can change files. That is what keeps
+/// several children dispatched at once from editing one tree. A request for
+/// isolation that cannot be met is refused, never quietly run in the shared
+/// tree; `isolate: false` is the only way a writing child shares it.
+///
+/// The checkout is made and recorded (`team_children::begin`) before the child
+/// starts, so its work is listed for review whatever becomes of the run.
+pub(crate) fn isolation_for(
+    project_root: Option<&Path>,
+    jan_data_folder: &str,
+    session_id: Option<&str>,
+    allowed_tools: Option<&[String]>,
+    req: &SubagentRequest,
+    agent: &str,
+    run_id: &str,
+) -> Result<Option<ChildCheckout>, SubagentError> {
+    use crate::core::agent::{team_children, worktree};
+    let Some(root) = project_root else {
+        return Ok(None);
+    };
+    let repo = worktree::identity(root).is_ok();
+    let wanted = req.isolate.unwrap_or(repo && can_change_files(allowed_tools));
+    if !wanted {
+        return Ok(None);
+    }
+    if !repo {
+        return Err(SubagentError::Isolation(format!(
+            "{} is not a git repository, so there is nothing to make a checkout from",
+            root.display()
+        )));
+    }
+    let data = PathBuf::from(jan_data_folder);
+    let roots = worktree::absolute(&tauri_plugin_agent_tools::workspace::worktrees_dir(&data))
+        .map_err(SubagentError::Isolation)?;
+    let parent_session = session_id.unwrap_or("jan-run").to_string();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    // The unique part first: owner ids keep only a bounded prefix.
+    let task_id = format!("{nanos:x}-{run_id}");
+    let owner = tauri_plugin_agent_tools::child_session_id(&parent_session, &task_id);
+    let made = worktree::ensure(root, &roots, &owner).map_err(SubagentError::Isolation)?;
+    team_children::begin(
+        &data,
+        &roots,
+        team_children::BeginInput {
+            parent_session: parent_session.clone(),
+            task_id: task_id.clone(),
+            run: run_id.to_string(),
+            call: String::new(),
+            description: req.description.clone(),
+            agent: agent.to_string(),
+            project: root.to_string_lossy().to_string(),
+            declared_writes: Vec::new(),
+            overrides: Vec::new(),
+        },
+    )
+    .map_err(|e| SubagentError::Isolation(e.message))?;
+    Ok(Some(ChildCheckout {
+        path: made.path,
+        branch: made.branch,
+        parent_session,
+        task_id,
+        data_folder: jan_data_folder.to_string(),
+    }))
+}
+
+/// Record how an isolated child ended. Blocking: settling reads the worktree
+/// through git.
+fn settle_checkout_now(
+    checkout: &ChildCheckout,
+    status: crate::core::agent::team_children::ChildStatus,
+    detail: &str,
+) -> Result<(), String> {
+    let data = PathBuf::from(&checkout.data_folder);
+    let roots = crate::core::agent::worktree::absolute(
+        &tauri_plugin_agent_tools::workspace::worktrees_dir(&data),
+    )?;
+    crate::core::agent::team_children::settle(
+        &data,
+        &roots,
+        &checkout.parent_session,
+        &checkout.task_id,
+        status,
+        detail,
+    )
+    .map(|_| ())
+    .map_err(|e| e.message)
+}
+
+/// How a child's result reads in its review record.
+fn ending_of(
+    result: &Result<String, SubagentError>,
+) -> (crate::core::agent::team_children::ChildStatus, String) {
+    use crate::core::agent::team_children::ChildStatus;
+    match result {
+        Ok(text) => (ChildStatus::Completed, text.chars().take(500).collect()),
+        Err(SubagentError::Cancelled) => (ChildStatus::Cancelled, String::new()),
+        Err(e) => (ChildStatus::Failed, e.to_string()),
+    }
+}
+
+async fn settle_checkout(checkout: ChildCheckout, result: &Result<String, SubagentError>) {
+    let (status, detail) = ending_of(result);
+    let _ = tokio::task::spawn_blocking(move || settle_checkout_now(&checkout, status, &detail))
+        .await;
 }
 
 /// Default cap on concurrently *running* subagents per parent run when
@@ -660,7 +812,13 @@ impl BackgroundSubagents {
             inner: std::sync::Mutex::new(std::collections::HashMap::new()),
             semaphore: std::sync::Arc::new(tokio::sync::Semaphore::new(cap.max(1) as usize)),
             queued: std::sync::atomic::AtomicUsize::new(0),
+            checkouts: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
+    }
+
+    /// Where an isolated child works, if it was isolated.
+    pub(crate) fn checkout_of(&self, run_id: &str) -> Option<ChildCheckout> {
+        self.checkouts.lock().ok()?.get(run_id).cloned()
     }
     /// Abort and forget every registered child. Called on parent teardown when
     /// the run is cancelled. Emits a closing `SubagentEnd` for each aborted
@@ -671,6 +829,19 @@ impl BackgroundSubagents {
         let mut guard = self.inner.lock().unwrap();
         for (_, entry) in guard.drain() {
             entry.abort.abort();
+            // An aborted task never reaches its own settle, so an isolated
+            // child would stay "running" in its review record for the life of
+            // the process. Recorded here instead, on a thread of its own:
+            // this runs from `Drop`, and settling reads the worktree.
+            if let Some(c) = self.checkout_of(&entry.run_id) {
+                std::thread::spawn(move || {
+                    let _ = settle_checkout_now(
+                        &c,
+                        crate::core::agent::team_children::ChildStatus::Cancelled,
+                        "the run that dispatched it was stopped",
+                    );
+                });
+            }
             let _ = entry.events.send(StreamEvent::SubagentEnd {
                 run_id: entry.run_id,
                 name: entry.name,
@@ -855,6 +1026,22 @@ pub(crate) fn spawn_subagent(
 
     let name = resolved.definition.name.clone();
     let run_id = next_subagent_run_id(&name);
+    // Before anything is admitted or queued: a child that cannot be isolated
+    // as asked is refused here, with nothing started and nothing to clean up.
+    let checkout = isolation_for(
+        parent_args.project_root.as_deref(),
+        &parent_args.jan_data_folder,
+        parent_args.session_id.as_deref(),
+        resolved.allowed_tools.as_deref(),
+        &req,
+        &name,
+        &run_id,
+    )?;
+    if let Some(c) = &checkout {
+        if let Ok(mut map) = bg.checkouts.lock() {
+            map.insert(run_id.clone(), c.clone());
+        }
+    }
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     // Try to grab a permit at dispatch time. On success the child is admitted
@@ -878,7 +1065,12 @@ pub(crate) fn spawn_subagent(
         });
     }
 
-    let parent_args = parent_args.clone();
+    let mut parent_args = parent_args.clone();
+    // The child's whole world is its checkout: the root its tools resolve,
+    // the root its writes are confined to, the root its shell starts in.
+    if let Some(c) = &checkout {
+        parent_args.project_root = Some(PathBuf::from(&c.path));
+    }
     let task_events = events.clone();
     let entry_events = events.clone();
     let inherited = parent.clone();
@@ -943,6 +1135,11 @@ pub(crate) fn spawn_subagent(
                 .await
             }
         };
+        // Recorded before the result is handed over, so a parent that reads
+        // the review list right after collecting sees how the child ended.
+        if let Some(c) = checkout {
+            settle_checkout(c, &result).await;
+        }
         let _ = tx.send(result);
     });
 
@@ -1054,7 +1251,8 @@ pub fn subagent_tool_schemas(
                             "type": "array",
                             "items": { "type": "string" },
                             "description": "Tool allowlist. For a saved subagent this further narrows its own allowed_tools (never widens); for a one-off it is the subagent's toolset."
-                        }
+                        },
+                        "isolate": { "type": "boolean", "description": "Whether the subagent works in a checkout of its own. Default: yes when the project is a git repository and the subagent can change files, so concurrent subagents never edit the same tree. Its changes then wait for the user's review instead of landing in the project. Pass false only for work that must change the project directly." }
                     },
                     "required": ["subagent_name", "description"]
                 }
@@ -1137,6 +1335,8 @@ pub fn parse_dispatch_args(args: &serde_json::Value) -> Result<SubagentRequest, 
             .and_then(|v| v.as_str())
             .map(str::to_string)
             .filter(|s| !s.trim().is_empty()),
+        // Only a real boolean is a choice; anything else is the default.
+        isolate: args.get("isolate").and_then(|v| v.as_bool()),
     })
 }
 
@@ -1540,12 +1740,147 @@ mod tests {
         }
     }
 
+    fn git_repo(tag: &str) -> PathBuf {
+        let root = unique_root(tag);
+        let git = |args: &[&str]| {
+            let ok = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(args)
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@example.invalid")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@example.invalid")
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok, "git {args:?}");
+        };
+        git(&["init", "-q", "-b", "main"]);
+        std::fs::write(root.join("a.txt"), "a\n").unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-q", "-m", "base"]);
+        root.canonicalize().unwrap()
+    }
+
+    fn isolate(
+        root: &Path,
+        data: &Path,
+        allowed: Option<Vec<String>>,
+        choice: Option<bool>,
+        run_id: &str,
+    ) -> Result<Option<ChildCheckout>, SubagentError> {
+        let mut request = req("worker", allowed.clone());
+        request.isolate = choice;
+        isolation_for(
+            Some(root),
+            &data.to_string_lossy(),
+            Some("sess-iso"),
+            allowed.as_deref(),
+            &request,
+            "worker",
+            run_id,
+        )
+    }
+
+    /// AH-107: two writing children dispatched at once each get a worktree of
+    /// their own under Jan's folder, recorded for review before they start.
+    #[test]
+    fn concurrent_writing_children_each_get_their_own_worktree() {
+        let root = git_repo("iso-write");
+        let data = unique_root("iso-write-data");
+        let a = isolate(&root, &data, None, None, "sub-worker-1").unwrap().expect("isolated");
+        let b = isolate(&root, &data, None, None, "sub-worker-2").unwrap().expect("isolated");
+        assert_ne!(a.path, b.path, "two children share a checkout");
+        assert_ne!(a.branch, b.branch);
+        let roots = crate::core::agent::worktree::absolute(&workspace::worktrees_dir(&data))
+            .unwrap()
+            .canonicalize()
+            .unwrap();
+        for c in [&a, &b] {
+            let p = Path::new(&c.path).canonicalize().unwrap();
+            assert!(p.starts_with(&roots), "{} is outside Jan's worktrees", c.path);
+            assert!(!p.starts_with(&root), "the checkout is inside the project");
+            assert!(c.branch.starts_with(crate::core::agent::worktree::BRANCH_PREFIX));
+        }
+        let listed = crate::core::agent::team_children::list(
+            &data,
+            &roots,
+            &root.to_string_lossy(),
+            Some("sess-iso"),
+        );
+        assert_eq!(listed.len(), 2, "both children are recorded for review");
+        assert!(listed
+            .iter()
+            .all(|v| v.state == crate::core::agent::team_children::ChildState::Running));
+        // The same run id in a later dispatch never lands in an earlier checkout.
+        let again = isolate(&root, &data, None, None, "sub-worker-1").unwrap().unwrap();
+        assert_ne!(again.path, a.path);
+    }
+
+    /// A child that cannot change files gains nothing from a checkout and
+    /// works where it is; `isolate: false` is an explicit choice.
+    #[test]
+    fn a_reading_child_and_an_explicit_opt_out_share_the_tree() {
+        let root = git_repo("iso-read");
+        let data = unique_root("iso-read-data");
+        assert_eq!(
+            isolate(&root, &data, Some(vec!["read".into(), "grep".into()]), None, "r1").unwrap(),
+            None
+        );
+        assert_eq!(isolate(&root, &data, None, Some(false), "r2").unwrap(), None);
+        assert!(isolate(&root, &data, Some(vec!["write".into()]), None, "r3")
+            .unwrap()
+            .is_some());
+    }
+
+    /// Asking for isolation where it cannot be had is refused with a typed
+    /// error, never run in the shared tree.
+    #[test]
+    fn isolation_that_cannot_be_had_is_refused_not_skipped() {
+        let plain = unique_root("iso-plain");
+        let data = unique_root("iso-plain-data");
+        assert_eq!(isolate(&plain, &data, None, None, "p1").unwrap(), None);
+        let err = isolate(&plain, &data, None, Some(true), "p2").unwrap_err();
+        assert!(matches!(err, SubagentError::Isolation(ref m) if m.contains("not a git repository")), "{err}");
+    }
+
+    /// How a child ended is recorded once: a late cancellation from tearing
+    /// the run down does not relabel a child that already completed.
+    #[test]
+    fn the_first_ending_of_an_isolated_child_is_the_one_kept() {
+        use crate::core::agent::team_children::{ChildState, ChildStatus};
+        let root = git_repo("iso-end");
+        let data = unique_root("iso-end-data");
+        let c = isolate(&root, &data, None, None, "e1").unwrap().unwrap();
+        std::fs::write(Path::new(&c.path).join("a.txt"), "changed\n").unwrap();
+        let (status, detail) = ending_of(&Ok("done".into()));
+        settle_checkout_now(&c, status, &detail).unwrap();
+        settle_checkout_now(&c, ChildStatus::Cancelled, "late").unwrap();
+        let roots = crate::core::agent::worktree::absolute(&workspace::worktrees_dir(&data))
+            .unwrap()
+            .canonicalize()
+            .unwrap();
+        let v = crate::core::agent::team_children::list(&data, &roots, &root.to_string_lossy(), None);
+        assert_eq!(v[0].state, ChildState::Completed);
+        assert_eq!(v[0].files.len(), 1);
+        assert_eq!(
+            ending_of(&Err(SubagentError::Cancelled)).0,
+            ChildStatus::Cancelled
+        );
+        assert_eq!(
+            ending_of(&Err(SubagentError::Upstream("boom".into()))).0,
+            ChildStatus::Failed
+        );
+    }
+
     fn req(name: &str, allowed: Option<Vec<String>>) -> SubagentRequest {
         SubagentRequest {
             subagent_name: name.to_string(),
             description: "do the thing".to_string(),
             allowed_tools: allowed,
             system_prompt: None,
+            isolate: None,
         }
     }
 
@@ -1601,6 +1936,7 @@ mod tests {
             description: "task".to_string(),
             allowed_tools: Some(vec!["read".to_string()]),
             system_prompt: Some("You are a one-off.".to_string()),
+            isolate: None,
         };
         let resolved = resolve_dispatch(&reg, &request, &p).unwrap();
         assert_eq!(resolved.definition.system_prompt, "You are a one-off.");

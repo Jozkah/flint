@@ -47,6 +47,8 @@ pub use tools::appcontainer::run_helper_if_requested as run_sandbox_helper_if_re
 
 #[cfg(feature = "tauri")]
 pub use commands::{AgentToolsError, ToolResult};
+/// The owner id a team's isolated child holds its grant and worktree under.
+pub use grants::child_session_id;
 
 /// Initializes the agent tools plugin.
 #[cfg(feature = "tauri")]

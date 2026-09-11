@@ -544,6 +544,33 @@ fn confine_limits(cmd: &mut Command) {
     }
 }
 
+/// The command as the shell should receive it, starting where it is meant to.
+///
+/// Windows PowerShell inside an AppContainer does not take its location from
+/// the process's working directory: measured on Windows 11, it starts at a
+/// drive root the container can see (`G:\` on the development machine) while
+/// `cmd` in the same container starts in the workspace. A command with a
+/// relative path then read or wrote somewhere other than the workspace the
+/// model was told about.
+///
+/// `Set-Location` straight into the workspace is refused there ("Access is
+/// denied"): PowerShell checks each ancestor of the path, and the container
+/// may not look at its parents. So the workspace is mounted as a drive of its
+/// own, whose root is the one directory the container can see, and the shell
+/// moves to it. The path is quoted the way PowerShell quotes a literal (`'`
+/// doubled). The process's own working directory is already the workspace, so
+/// native programs the command runs are unaffected.
+pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String {
+    match flavor {
+        ShellFlavor::PowerShell => format!(
+            "$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{}' -Scope Global; \
+             Set-Location JanWorkspace:\\; {command}",
+            cwd.to_string_lossy().replace('\'', "''")
+        ),
+        _ => command.to_string(),
+    }
+}
+
 pub async fn spawn(
     cfg: &ShellConfig,
     command: &str,
@@ -553,7 +580,7 @@ pub async fn spawn(
     let mut cmd = Command::new(&cfg.program);
     cmd.args(&cfg.args);
     if !cfg.via_stdin {
-        cmd.arg(command);
+        cmd.arg(located(cfg.flavor, command, cwd));
     }
     // Strip every inherited variable, then re-add only the allowlist so the
     // sandboxed process holds no host secrets regardless of which backend wraps

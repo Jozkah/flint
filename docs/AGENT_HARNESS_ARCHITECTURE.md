@@ -177,12 +177,46 @@ Cowork run is bound to one. That convention is the harness's convention; nothing
 else may introduce a second naming scheme, because cleanup (`AH-170`) can only
 distinguish an abandoned agent worktree from a developer's own by its name.
 
-The remaining gap is scope, not machinery. Worktrees are bound per *session*;
-the Rust subagent runner still fans out up to ten concurrent children against
-one `project_root`, with no per-agent tree, no merge step and no per-file
-provenance. Every orchestration item that increases concurrency
-(`AH-101`..`AH-112`) is gated behind extending the existing module to per-agent
-worktrees (`AH-107`), not behind building a new one.
+Per-agent worktrees (`AH-107`) extend that module rather than adding a
+second one. Both runners use it:
+
+* **Cowork teams** (`web-app/src/lib/coworkTeam*.ts`): a task that sets
+  `isolate` gets its own worktree and write grant before any child starts.
+* **The Rust subagent runner** (`subagent.rs`, `isolation_for`): a child that
+  can change files, dispatched in a git repository, works in a worktree of its
+  own by default. `project_root` is re-pointed there, so its tools, write
+  roots and shell all start in it. `isolate: false` is the only way for a
+  writing child to share the project tree. A request for isolation that
+  cannot be met (not a repository, a worktree that cannot be made) is a typed
+  `SubagentError::Isolation`, and the child does not run.
+
+Either way the child is recorded in `core/agent/team_children.rs` before it
+starts and settled when it ends, with the first ending kept. The record
+holds only its identity (parent session and task id); its worktree, branch
+and base commit are found from Git. When it settles, a fingerprint of what it
+changed is stored. The review list (`CoworkTeamReviews`) reads these records
+back from disk after a restart. It proposes a child's changes through the
+ordinary proposal store (`AH-146`), so there is no second apply path. Several
+cases are typed refusals, never an empty or partial review:
+
+* a worktree that is gone, is not a Jan-owned worktree, or has moved off its
+  branch;
+* a worktree that holds a link out of itself;
+* a worktree that changed after its child finished;
+* a child that failed, was cancelled or was interrupted. Its changes can be
+  reviewed only after an explicit acknowledgement, and the proposal's
+  subject then says so.
+
+Conflicts between team tasks are checked before dispatch, on declared scopes:
+the same file, a folder and something inside it, either end of a move, a
+delete, and the lock file a manifest change regenerates beside it. Paths are
+compared normalised and case-folded, and reads never conflict. An overlap is
+the user's to resolve: run one task after the other (an ordering-only edge
+that implies no data dependency), narrow a scope, or let them run side by
+side. The last choice is recorded on both children and is never a waiver.
+The apply-time check still compares each proposal's base and the folder as
+it is now. This is overlap of declared paths, not semantic conflict
+detection, and the UI says so.
 
 ### AHD-009: what the model saw is a record, not a re-derivation
 

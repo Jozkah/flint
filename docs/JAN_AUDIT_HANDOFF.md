@@ -1918,3 +1918,161 @@ tree-kill tests were mutation-checked: with descendants skipped, they fail.
 not build the `jan-sandbox-helper` binary, so the sandboxed-shell probe
 re-executes the test binary, which exits with code 101. Seven `bash` tests then
 fail with "no shell could be started". Run the suite without `--lib`.
+
+## 2026-09-11 — AH-109 team-child review, AH-107 per-agent worktrees, and four defects the Windows scenario found
+
+**What changed.**
+
+- **Team children are recorded, listed and reviewed.** `core/agent/team_children.rs`
+  records each isolated team child before it runs and settles it when it ends.
+  The record names the child by parent session and task id. Its worktree,
+  branch and base commit are found from Git. When the child settles, the
+  record stores a fingerprint of what the child changed. The first ending is
+  the one kept, and a record still `running` from another process reads as
+  `interrupted`. The Changes panel lists the children (`CoworkTeamReviews`)
+  with task, branch, base, worktree, files, counts and ending. A child's
+  review is the ordinary proposal review, made by `agent_team_child_propose`
+  from the backend record, so there is no second apply path. These are typed
+  refusals, never an empty review:
+  - a deleted, corrupt or moved worktree;
+  - a worktree that holds a link out of itself;
+  - a worktree that changed after its child finished;
+  - a child that did not finish. Its changes can be reviewed only after the
+    user acknowledges this, and the proposal's subject then says so.
+- **Overlaps are decided before anything runs.** Team tasks declare `writes`,
+  `deletes`, `renames` and `reads`. `scopeConflicts` finds these overlaps
+  between tasks that could run at once:
+  - the same file, compared normalised and case-folded;
+  - a folder and something inside it;
+  - either end of a move;
+  - a delete;
+  - a lock file both tasks would regenerate.
+
+  Reads never conflict, and neither do ordered tasks. The user sees each
+  overlap (`CoworkTeamConflicts`) before any worktree is provisioned. They can
+  run the tasks one after the other, which adds an ordering-only `after` edge,
+  narrow a scope, or let the tasks run side by side. The side-by-side choice
+  is recorded on both children's records, and the apply-time check still runs.
+  `runTeam` refuses any overlap nobody decided. This is declared-path overlap,
+  not semantic conflict detection, and the dialog says so.
+- **Paths are hardened on both ends of a proposal.**
+  - A changed path in any worktree that passes through a symlink, junction or
+    other reparse point refuses the proposal.
+  - Nested `.git` and `.jan` directories are never proposed.
+  - Windows spellings are refused on every platform: `.git.`, device names,
+    streams, and trailing dots or spaces.
+  - Immediately before writing, each destination path is re-checked for a link
+    anywhere along it, so a directory swapped for a junction after review is
+    refused with nothing written.
+- **AH-107: the Rust subagent runner isolates writing children.** In a git
+  project, a child that can change files works in a Jan-owned worktree by
+  default. Its `project_root` is re-pointed there, so its tools, write roots
+  and shell all start in the worktree. `isolate: false` is the only way for a
+  writing child to share the project tree. Isolation that cannot be had is
+  `SubagentError::Isolation`, and the child does not start. The parent is told
+  where the work is.
+
+**Defects found by the Windows scenario, each fixed with a test that fails on
+the old code:**
+
+1. **A child's approval prompt could never appear.** The prompt is drawn under
+   a tool card in the transcript, and a child's calls are not message parts.
+   Before the fix, a child's prompt showed only when its call id happened to
+   match a parent card: the mock numbers calls per response, so the first call
+   matched and the second did not. Otherwise the child waited forever. Child
+   requests now carry their origin and are shown on their own
+   (`CoworkChildApprovals`).
+2. **Two requests with one call id overwrote each other.** The earlier promise
+   never resolved. Requests now queue by id and are shown in turn
+   (`useToolApprovalRequests.sameId.test.ts`, which hangs on the old code).
+3. **A reply cut off mid-stream counted as a success.** The AI SDK ends a
+   dropped stream with a normal `finish` part: `finishReason: 'other'` and no
+   `rawFinishReason`, measured against the mock. A team child cut off after
+   one word was recorded as completed. `streamCutOff` flags this case, and
+   `consumeStep` turns it into an error, for the parent and for children
+   (`coworkStreamCutOff.test.ts`).
+4. **A first message that only describes work** gets a read-only proposal, by
+   design. This is not a defect. The scenario now sends an imperative.
+
+**The sandboxed shell on this host.** The diagnosis comes from
+`examples/shell_report.rs` in the plugin, which calls the production
+`shell_reports` and `select_shell` and prints what each returns.
+
+- Git Bash and MSYS2 bash fail with `STATUS_DLL_INIT_FAILED`. Their runtime
+  cannot initialise in an AppContainer, whatever the install location. This is
+  external and has no repository-side fix that keeps confinement.
+- PowerShell starts inside the sandbox, probed in about 0.3 s, and is
+  selected. The result is the same with the full app binary as the helper.
+- **The defect was in the repository.** A Cowork run builds its tool list by
+  asking readiness with no project root. With no root, the shell probe used
+  the temporary directory itself as the sandbox's workspace. The AppContainer
+  grants a workspace by rewriting its ACL, and for all of `%TEMP%` that takes
+  longer than the probe's ten seconds. Every candidate therefore "failed to
+  start", and `bash` was withheld from every Cowork run, while the same probe
+  scoped to a folder found PowerShell in a third of a second. The in-app
+  evidence, from `cowork-smoke`: with the project root, `bash` is advertised;
+  with no root, it is withheld with "No shell on this machine could be started
+  inside the sandbox".
+- **The fix** makes the unattached probe run in an empty `jan-shell-probe`
+  directory of Jan's own under the temporary directory. Confinement is
+  unchanged. The regression test
+  `readiness::tests::an_unattached_session_finds_the_shell_a_folder_would`
+  failed on the old code on this host: no-folder unavailable versus folder
+  Degraded, with the readiness suite taking 81 s. It passes with the fix, in
+  1.6 s for the suite.
+
+- **Two more defects appeared once a shell started in the app.** Each is fixed
+  with a test that fails on the old code:
+  - *Relative sandbox paths.* Jan's data folder defaults to the relative
+    `./data`. The confined helper starts in the workspace, so a relative
+    workspace named somewhere else, and every command failed in setup with
+    "workspace does not exist". `bash` now makes every path it hands the
+    sandbox absolute:
+    `handlers::tests::a_sandboxed_command_runs_in_a_relatively_spelled_workspace`.
+  - *PowerShell's starting location.* Inside an AppContainer, Windows
+    PowerShell starts at a drive root the container can see (`G:\` here),
+    not the workspace, so a relative path in a command landed elsewhere.
+    `Set-Location` into the workspace is refused with "Access is denied",
+    because PowerShell checks each ancestor. The command now mounts the
+    workspace as its own drive and starts there:
+    `handlers::tests::a_sandboxed_command_starts_in_its_workspace`.
+
+New Windows integration tests in `tests/windows_sandbox.rs`:
+
+- the selected shell writes a Jan-owned worktree granted as a write root, and
+  is refused on the user's checkout beside it;
+- a sandboxed command stopped part-way leaves no helper, shell or grandchild
+  running.
+
+**The composer-busy stall.** The harness now asks the app's main thread
+directly when an eval times out:
+
+- Before the change, two stalls (r29, r31) read "the app's main thread is
+  answering; the page is not". The renderer had stopped running scripts while
+  the app, with idle CPU, was fine.
+- That fits Chromium backgrounding an occluded WebView, which throttles its
+  timers.
+
+The harness now starts WebView2 with occlusion and background throttling
+disabled (`COWORK_SMOKE_THROTTLE=1` keeps the default). Runs r32 to r36 had no
+eval timeouts. Retries are off by default (`COWORK_SMOKE_RETRIES=<n>` to
+allow them), so a flaky pass cannot hide.
+
+**The stall is not closed.** It came back twice with throttling disabled: in
+r39 (`managed-worktree-review`) and r43 (`team-review-persist-1`), both at
+the click that applies a proposal. Each time the main thread answered, and
+WebView2's renderer used 0.00 s of CPU across the sample, so the page was
+idle rather than busy: it was not running a script loop. No app state was
+found that stays busy, so there is no race to fix yet and no deterministic
+test. The harness now saves a screen capture (PNG) when an eval times out,
+for the next occurrence. Round r44 passed every scenario on the first
+attempt with retries off. Whether the cause is external is not proven, so
+the defect stays open.
+
+**Other harness changes.**
+
+- `cowork-smoke` builds now run at idle priority with one cargo job, and
+  vitest runs with one or two workers.
+- The mock provider gained per-request `routes`. Each child's first user
+  message selects its behaviour, and `{{FOLDER}}` becomes the folder named in
+  its system prompt.

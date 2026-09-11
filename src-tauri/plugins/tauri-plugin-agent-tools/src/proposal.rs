@@ -202,6 +202,9 @@ pub enum ProposalError {
     DuplicateSelection(String),
     WholeFileOnly(String),
     Sensitive(String),
+    /// A path at the destination that passes through a symlink, junction or
+    /// other reparse point, so writing it would land somewhere else.
+    LinkedDestination(String),
     Conflicts(Vec<Conflict>),
     Io(String),
 }
@@ -235,6 +238,9 @@ impl ProposalError {
             ProposalError::Sensitive(p) => {
                 format!("{p} looks like it holds a credential, so it is never applied")
             }
+            ProposalError::LinkedDestination(p) => format!(
+                "{p} passes through a link in your folder, so writing it would land elsewhere; nothing was written"
+            ),
             ProposalError::Conflicts(c) => format!(
                 "{} selected change(s) overlap edits made since the proposal; nothing was written",
                 c.len()
@@ -407,22 +413,94 @@ fn audit(data_folder: &Path, record: &ProposalRecord, event: &str, detail: Strin
 // ---------------------------------------------------------------------------
 
 /// A path the change may name: relative, no `..`, no drive or root, and not
-/// Jan's own state directory.
+/// Jan's own state directory or Git's.
+///
+/// Judged by what Windows would open, not by the spelling: `.git.` and
+/// `.GIT ` name `.git` there, `a.txt:stream` names a stream of `a.txt`, and
+/// `NUL` or `con.txt` name a device. Each is refused on every platform, so a
+/// proposal made on one machine cannot mean something else on another.
 fn normalize_path(raw: &str) -> Result<String, ProposalError> {
     let raw = raw.replace('\\', "/");
     let path = Path::new(&raw);
     let mut parts = Vec::new();
     for c in path.components() {
         match c {
-            Component::Normal(p) => parts.push(p.to_string_lossy().to_string()),
+            Component::Normal(p) => {
+                let part = p.to_string_lossy().to_string();
+                if !portable_component(&part) {
+                    return Err(ProposalError::InvalidPath(raw.clone()));
+                }
+                parts.push(part)
+            }
             Component::CurDir => {}
             _ => return Err(ProposalError::InvalidPath(raw.clone())),
         }
     }
-    if parts.is_empty() || parts[0].eq_ignore_ascii_case(".jan") {
+    let reserved = |part: &str| {
+        let bare = part.to_ascii_lowercase();
+        bare == ".jan" || bare == ".git"
+    };
+    if parts.is_empty() || parts.iter().any(|p| reserved(p)) {
         return Err(ProposalError::InvalidPath(raw));
     }
     Ok(parts.join("/"))
+}
+
+/// One path component that names the same file on every platform Jan runs on.
+fn portable_component(part: &str) -> bool {
+    const DEVICES: &[&str] = &[
+        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7",
+        "com8", "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    ];
+    if part.is_empty() || part.ends_with('.') || part.ends_with(' ') {
+        return false;
+    }
+    if part
+        .chars()
+        .any(|c| c.is_control() || matches!(c, ':' | '<' | '>' | '"' | '|' | '?' | '*'))
+    {
+        return false;
+    }
+    let stem = part.split('.').next().unwrap_or(part).to_ascii_lowercase();
+    !DEVICES.contains(&stem.trim_end())
+}
+
+/// Whether anything between `root` and `root/rel` is a link.
+///
+/// Every existing component is looked at without following it. A symlink, a
+/// junction or any other reparse point part-way down means the path names
+/// something other than what its spelling says, and a write through it lands
+/// wherever the link points. Components that do not exist yet end the walk:
+/// nothing beneath a missing directory can be a link.
+pub fn passes_through_link(root: &Path, rel: &str) -> bool {
+    let mut at = root.to_path_buf();
+    for part in rel.split('/').filter(|p| !p.is_empty()) {
+        at.push(part);
+        match std::fs::symlink_metadata(&at) {
+            Ok(meta) => {
+                if is_link(&meta) {
+                    return true;
+                }
+            }
+            Err(_) => return false,
+        }
+    }
+    false
+}
+
+fn is_link(meta: &std::fs::Metadata) -> bool {
+    if meta.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        if meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return true;
+        }
+    }
+    false
 }
 
 fn is_binary(bytes: &[u8]) -> bool {
@@ -579,6 +657,66 @@ pub fn create(
         format!("{} file(s)", record.files.len()),
     );
     Ok(record)
+}
+
+/// One file of a change, counted the way a proposal would count it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileSummary {
+    pub path: String,
+    pub change: Change,
+    pub additions: usize,
+    pub deletions: usize,
+    pub binary: bool,
+}
+
+/// What a set of changes amounts to, without storing anything.
+///
+/// For a list of work waiting for review: the counts are staged exactly as
+/// [`create`] stages them, so the number beside a file in the list is the
+/// number the review shows when it is opened.
+pub fn summarize(inputs: &[FileInput]) -> Result<Vec<FileSummary>, ProposalError> {
+    let mut out = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        if input.base == input.proposed {
+            continue;
+        }
+        let path = normalize_path(&input.path)?;
+        let change = match (&input.base, &input.proposed) {
+            (None, Some(_)) => Change::Added,
+            (Some(_), None) => Change::Deleted,
+            _ => Change::Modified,
+        };
+        let binary = input.base.as_deref().is_some_and(is_binary)
+            || input.proposed.as_deref().is_some_and(is_binary);
+        let size = input
+            .base
+            .as_ref()
+            .map_or(0, Vec::len)
+            .max(input.proposed.as_ref().map_or(0, Vec::len));
+        let (mut additions, mut deletions) = (0, 0);
+        if !binary && size <= OVERSIZED_BYTES {
+            let base_text = input.base.as_deref().map(|b| String::from_utf8_lossy(b).to_string());
+            let new_text = input
+                .proposed
+                .as_deref()
+                .map(|b| String::from_utf8_lossy(b).to_string())
+                .unwrap_or_default();
+            for h in crate::patch::StagedPatch::stage(base_text.as_deref(), &new_text).hunks() {
+                additions += h.added.len();
+                deletions += h.removed.len();
+            }
+        }
+        out.push(FileSummary {
+            path,
+            change,
+            additions,
+            deletions,
+            binary,
+        });
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -743,6 +881,12 @@ pub fn plan(
         }
         if file.sensitive {
             return Err(ProposalError::Sensitive(file.path.clone()));
+        }
+        // Looked at now, immediately before anything is written, rather than
+        // when the proposal was made: a directory replaced by a junction
+        // after the review was shown is exactly the substitution this stops.
+        if passes_through_link(dest_root, &file.path) {
+            return Err(ProposalError::LinkedDestination(file.path.clone()));
         }
         let chosen: Vec<&ProposedHunk> = match &sel.hunks {
             HunkChoice::All => file.hunks.iter().collect(),
@@ -1484,5 +1628,110 @@ mod tests {
             Err(ProposalError::NotPending(ProposalState::Rejected))
         );
         assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), BASE);
+    }
+
+    /// Spellings that Windows resolves to Git's directory, a device or an
+    /// alternate stream are refused, on every platform.
+    #[test]
+    fn a_path_windows_would_read_differently_is_refused() {
+        for bad in [
+            ".git/config",
+            ".GIT/hooks/pre-commit",
+            ".git./config",
+            ".git /config",
+            "sub/.git/config",
+            ".Jan/state",
+            "notes.txt:hidden",
+            "NUL",
+            "src/con.txt",
+            "Lpt1.log",
+            "trailing.",
+            "trailing ",
+            "../outside.txt",
+            "/abs.txt",
+            "C:/abs.txt",
+            "a/../../b.txt",
+        ] {
+            assert!(
+                matches!(normalize_path(bad), Err(ProposalError::InvalidPath(_))),
+                "{bad} was accepted"
+            );
+        }
+        for good in ["a.txt", "src/a.rs", "./b.txt", "console.txt", "com10.txt", ".gitignore"] {
+            assert!(normalize_path(good).is_ok(), "{good} was refused");
+        }
+    }
+
+    fn link_dir(link: &Path, target: &Path) -> bool {
+        #[cfg(windows)]
+        {
+            // A junction needs no privilege, which is why it is the link a
+            // user's folder is most likely to hold.
+            std::process::Command::new("cmd")
+                .args(["/C", "mklink", "/J"])
+                .arg(link)
+                .arg(target)
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(target, link).is_ok()
+        }
+    }
+
+    /// A directory in the folder replaced by a link after the review was shown
+    /// is refused at apply time, with nothing written anywhere.
+    #[test]
+    fn a_destination_path_through_a_link_is_refused_and_nothing_is_written() {
+        let (data, dest) = dirs("linked");
+        let outside = dest.parent().unwrap().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::create_dir_all(dest.join("sub")).unwrap();
+        std::fs::write(dest.join("sub").join("a.txt"), BASE).unwrap();
+        std::fs::write(outside.join("a.txt"), BASE).unwrap();
+        let record = create(
+            &data,
+            scope(&dest),
+            "abc123",
+            vec![FileInput {
+                path: "sub/a.txt".into(),
+                base: Some(BASE.as_bytes().to_vec()),
+                proposed: Some(PROPOSED.as_bytes().to_vec()),
+            }],
+        )
+        .unwrap();
+        // The swap: the reviewed directory becomes a link to somewhere else.
+        std::fs::remove_dir_all(dest.join("sub")).unwrap();
+        assert!(link_dir(&dest.join("sub"), &outside), "could not make a link");
+        let err = apply(&data, &dest, &approve(&record, &dest, vec![all("sub/a.txt")])).unwrap_err();
+        assert_eq!(err, ProposalError::LinkedDestination("sub/a.txt".into()));
+        assert_eq!(std::fs::read_to_string(outside.join("a.txt")).unwrap(), BASE);
+        assert_eq!(load(&data, &record.id).unwrap().state, ProposalState::Pending);
+    }
+
+    #[test]
+    fn a_summary_counts_what_the_proposal_would_show() {
+        let (data, dest) = dirs("summary");
+        let inputs = vec![
+            FileInput {
+                path: "a.txt".into(),
+                base: Some(BASE.as_bytes().to_vec()),
+                proposed: Some(PROPOSED.as_bytes().to_vec()),
+            },
+            FileInput {
+                path: "new.txt".into(),
+                base: None,
+                proposed: Some(b"x\ny\n".to_vec()),
+            },
+        ];
+        let summary = summarize(&inputs).unwrap();
+        let record = create(&data, scope(&dest), "abc", inputs).unwrap();
+        assert_eq!(summary.len(), record.files.len());
+        for (s, f) in summary.iter().zip(&record.files) {
+            assert_eq!((&s.path, s.change, s.additions, s.deletions), (&f.path, f.change, f.additions, f.deletions));
+        }
+        assert_eq!((summary[0].additions, summary[0].deletions), (2, 2));
     }
 }

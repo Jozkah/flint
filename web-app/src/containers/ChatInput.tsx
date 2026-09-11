@@ -3071,6 +3071,12 @@ const ChatInput = memo(function ChatInput({
                       variant="destructive"
                       size="icon-sm"
                       className="rounded-full mr-1 mb-1"
+                      data-test-id="stop-button"
+                      aria-label={
+                        queueLength > 0
+                          ? `Clear ${queueLength} queued message(s)`
+                          : 'Stop generating'
+                      }
                       onClick={() => {
                         // Stopping with messages queued clears the queue —
                         // there is nothing to interrupt yet. The old

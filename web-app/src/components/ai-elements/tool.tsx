@@ -346,7 +346,11 @@ export const ToolApprovalActions = memo(() => {
   )
   const resolveApproval = useToolApprovalRequests((s) => s.resolveApproval)
 
-  if (!pending || !toolCallId) return null
+  // A subagent's request is not this card's: its call id is only unique inside
+  // the child's own conversation, so it can coincide with a card here and would
+  // be answered from the wrong place. It is shown on its own (see
+  // `CoworkChildApprovals`).
+  if (!pending || !toolCallId || pending.origin) return null
 
   return (
     <div className="mt-4 space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
