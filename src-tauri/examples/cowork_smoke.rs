@@ -5636,10 +5636,14 @@ fn materialize_tooling_fixture(workspace: &Path) -> Result<(PathBuf, PathBuf), F
     write(&outside.join("package.json"), r#"{"dependencies":{"express":"4.21.0"}}"#)?;
     #[cfg(windows)]
     {
+        // `cmd` reads a forward slash as a switch ("C:/tmp" is "/tmp"), and a
+        // kept workspace can be spelled with them, so hand over backslashes as
+        // the other junction fixtures do.
+        let native = |p: &Path| p.to_string_lossy().replace('/', "\\");
         let made = std::process::Command::new("cmd")
             .args(["/C", "mklink", "/J"])
-            .arg(root.join("linked"))
-            .arg(&outside)
+            .arg(native(&root.join("linked")))
+            .arg(native(&outside))
             .output()
             .map_err(|e| Failure(e.to_string()))?;
         ensure!(made.status.success(), "could not make the fixture junction: {made:?}");
