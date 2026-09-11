@@ -135,6 +135,26 @@ describe('ProviderCustomHeaders', () => {
     )
   })
 
+  it('disables and re-enables a header without losing it', async () => {
+    render(
+      <ProviderCustomHeaders
+        provider={provider([{ header: 'X-Tenant', value: 'acme' }])}
+      />
+    )
+    fireEvent.click(screen.getByTestId('custom-header-enabled-0'))
+    await waitFor(() =>
+      expect(h.updateProvider).toHaveBeenLastCalledWith('gateway', {
+        custom_header: [{ header: 'X-Tenant', value: 'acme', enabled: false }],
+      })
+    )
+    fireEvent.click(screen.getByTestId('custom-header-enabled-0'))
+    await waitFor(() =>
+      expect(h.updateProvider).toHaveBeenLastCalledWith('gateway', {
+        custom_header: [{ header: 'X-Tenant', value: 'acme' }],
+      })
+    )
+  })
+
   it('saves without a row once it is removed', async () => {
     render(
       <ProviderCustomHeaders

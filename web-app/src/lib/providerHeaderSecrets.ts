@@ -35,6 +35,22 @@ export async function storeSecretHeaderValues(
     key: headerSecretsKey(provider),
     value: Object.keys(values).length > 0 ? JSON.stringify(values) : '',
   })
+  await registerForRedaction(Object.values(values))
+}
+
+/**
+ * Have the backend redact these values from every log from now on. Separate
+ * from provider registration, which only happens for a provider with an API
+ * key: a keyless provider's secret header must be redacted too. Best effort:
+ * a failure here never stops a header from being saved or sent.
+ */
+export async function registerForRedaction(values: string[]): Promise<void> {
+  if (values.length === 0) return
+  try {
+    await invoke('register_secret_values', { values })
+  } catch {
+    // Not a desktop build, or an older backend without the command.
+  }
 }
 
 /** The provider's stored secret values by lower-case name; empty on failure. */
@@ -53,6 +69,7 @@ export async function loadSecretHeaderValues(
       if (typeof value !== 'string') return {}
       out[name] = value
     }
+    await registerForRedaction(Object.values(out))
     return out
   } catch {
     return {}

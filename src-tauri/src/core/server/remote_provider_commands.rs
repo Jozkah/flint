@@ -112,6 +112,20 @@ pub async fn register_provider_config(
     Ok(())
 }
 
+/// Register values the user marked secret for exact-value redaction in every
+/// log from now on. janhq/jan#8208.
+///
+/// Separate from `register_provider_config`, which only runs for a provider
+/// with an API key: a provider needing none can still carry a secret custom
+/// header, and its value must be redacted all the same. Values only, never
+/// names or providers, and nothing is returned.
+#[tauri::command]
+pub fn register_secret_values(values: Vec<String>) {
+    for value in &values {
+        crate::core::secret_values::register(value);
+    }
+}
+
 /// Replace the per-model sampling defaults the API server injects for MLX
 /// requests. The frontend pushes the full map (model id → request-body object),
 /// so this overwrites wholesale rather than merging.

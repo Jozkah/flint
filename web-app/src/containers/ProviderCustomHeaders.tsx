@@ -45,7 +45,12 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
 
   // Another provider, or the startup load filling in secret values.
   const saved = JSON.stringify(provider.custom_header ?? [])
+  // What was last committed, not what the store has echoed back yet: a
+  // second change made before the round-trip (switching a header off and on
+  // again) must be compared with the first, or it is dropped as "unchanged".
+  const lastSaved = useRef(saved)
   useEffect(() => {
+    lastSaved.current = saved
     setDrafts(toDrafts(provider.custom_header))
     setErrors(new Map())
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -55,10 +60,11 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
     (next: Draft[]) => {
       const rows = next
         .filter((h) => !blank(h))
-        .map(({ header, value, secret }) => ({
+        .map(({ header, value, secret, enabled }) => ({
           header: header.trim(),
           value: value.trim(),
           ...(secret ? { secret: true } : {}),
+          ...(enabled === false ? { enabled: false } : {}),
         }))
       const problems = validateCustomHeaders(rows)
       // Map each problem back to the row on screen, blanks included.
@@ -72,13 +78,18 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
       })
       setErrors(shown)
       if (problems.length > 0) return
-      if (JSON.stringify(rows) === saved) return
+      const serialized = JSON.stringify(rows)
+      if (serialized === lastSaved.current) return
+      const previous = lastSaved.current
+      lastSaved.current = serialized
       const providerName = provider.provider
       saving.current = saving.current.then(async () => {
         try {
           await storeSecretHeaderValues(providerName, rows)
           updateProvider(providerName, { custom_header: rows })
         } catch (e) {
+          // Not saved: the next attempt must not be skipped as unchanged.
+          if (lastSaved.current === serialized) lastSaved.current = previous
           toast.error(t('providers:customHeaders.title'), {
             description: t('providers:customHeaders.saveFailed', {
               error: redactCustomHeaderValues(errorText(e), {
@@ -89,7 +100,7 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
         }
       })
     },
-    [provider.provider, saved, t, updateProvider]
+    [provider.provider, t, updateProvider]
   )
 
   const edit = (index: number, patch: Partial<Draft>) =>
@@ -121,7 +132,20 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
         const ValueInput = h.secret ? SecretInput : Input
         return (
           <div key={i} className="space-y-1">
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto_auto] items-center gap-2">
+            <div className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1.4fr)_auto_auto] items-center gap-2">
+              <Switch
+                data-testid={`custom-header-enabled-${i}`}
+                aria-label={t('providers:customHeaders.enabled')}
+                title={t('providers:customHeaders.enabledHint')}
+                checked={h.enabled !== false}
+                onCheckedChange={(checked) => {
+                  const next = drafts.map((d, j) =>
+                    j === i ? { ...d, enabled: checked ? undefined : false } : d
+                  )
+                  setDrafts(next)
+                  commit(next)
+                }}
+              />
               <Input
                 className="font-mono"
                 placeholder={t('providers:customHeaders.namePlaceholder')}

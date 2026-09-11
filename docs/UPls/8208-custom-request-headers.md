@@ -67,6 +67,28 @@ Found while mapping the existing plumbing, before adding a UI:
     them whatever their shape.
   - The editor redacts them from the save-failure message.
 
+## Completion audit (second pass)
+
+- **Switch a header off without removing it.** Each row has an on/off switch.
+  An off header keeps its name, value and secrecy but is not sent. It still
+  takes its name for the duplicate check, so switching it back on cannot
+  collide with a later row.
+- **Error bodies are redacted in the transport.** A gateway that rejects the
+  request and echoes it back would otherwise put a secret header's value in
+  the UI and the thread. `core/net/transport.rs` redacts registered secret
+  values from every non-success body before the webview sees it: whole on
+  `send`, and read whole on `send_stream` so a value cannot be split across
+  chunks. Success bodies (model output) are left alone.
+- **Secret values are registered for redaction on their own.** Before, they
+  were registered only through `register_provider_config`, which is skipped
+  for a provider with no API key. `register_secret_values` is now called
+  whenever secret values are saved or loaded.
+- **Headers stay with their provider.** A guard test covers this; it passed
+  on the earlier code too.
+- A second change made before the store echoes the first back (off, then on
+  again) used to be dropped as "unchanged". It is now compared with the last
+  committed rows.
+
 ## Precedence
 
 In increasing order of priority:
@@ -111,7 +133,14 @@ Those requests go without the custom headers, as before.
   - Both the plain and the secret header reach the provider on a real request.
   - The secret value is in the credential store and in no file of the data
     folder.
+  - Switching the plain header off takes it out of the next request;
+    switching it back on puts it back.
+  - A gateway that answers 401 and echoes every request header in its error:
+    the error is shown, and the secret value is on neither the page nor the
+    disk.
   - `custom-headers-survive-a-restart` runs in a second process on the kept
     profile. The value is not in settings, so a request that still carries it
-    read it back from the credential store. Removing the header removes the
-    stored value.
+    read it back from the credential store. Removing the headers takes them
+    out of the very next request and removes the stored value.
+  - The secret is typed into the page base64-encoded, so a failing script
+    printed to the log does not show it.

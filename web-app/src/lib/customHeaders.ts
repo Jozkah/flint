@@ -128,12 +128,17 @@ export function validateCustomHeaders(
   return errors
 }
 
-/** The rows that may be sent: sound, and with a value to send. */
+/** The rows that may be sent: sound, switched on, and with a value to send. */
 function sendable(provider: WithHeaders): ProviderCustomHeader[] {
   const rows = provider.custom_header ?? []
   const seen = new Set<string>()
+  // Validated before the enabled check, so a disabled row still takes its
+  // name: re-enabling it cannot make a later duplicate start being sent.
   return rows.filter(
-    (h, index) => problemWith(h, index, seen) === null && h.value.trim() !== ''
+    (h, index) =>
+      problemWith(h, index, seen) === null &&
+      h.enabled !== false &&
+      h.value.trim() !== ''
   )
 }
 

@@ -132,6 +132,7 @@ macro_rules! invoke_commands_with_extras {
         core::server::remote_provider_commands::get_provider_config,
         core::server::remote_provider_commands::get_provider_keys,
         core::server::remote_provider_commands::list_provider_configs,
+        core::server::remote_provider_commands::register_secret_values,
         // MCP commands
         core::mcp::commands::get_tools,
         core::mcp::commands::get_tools_for_servers,

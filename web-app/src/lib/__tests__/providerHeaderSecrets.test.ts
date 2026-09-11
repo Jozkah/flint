@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const store = new Map<string, string>()
+const redacted: string[] = []
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(async (cmd: string, args: { key: string; value?: string }) => {
+  invoke: vi.fn(async (cmd: string, args: { key: string; value?: string; values?: string[] }) => {
+    if (cmd === 'register_secret_values') {
+      redacted.push(...(args.values ?? []))
+      return null
+    }
     if (cmd === 'set_secret') {
       if (args.value) store.set(args.key, args.value)
       else store.delete(args.key)
@@ -24,7 +29,23 @@ import {
 const SECRET = 'value-that-must-stay-secret'
 
 describe('provider header secrets', () => {
-  beforeEach(() => store.clear())
+  beforeEach(() => {
+    store.clear()
+    redacted.length = 0
+  })
+
+  /// A keyless provider is never registered with the backend, so its secret
+  /// header values would otherwise never reach the log redactor.
+  it('registers secret values for redaction when saved and when loaded', async () => {
+    await storeSecretHeaderValues('keyless', [
+      { header: 'X-Tenant', value: 'acme' },
+      { header: 'X-Key', value: SECRET, secret: true },
+    ])
+    expect(redacted).toEqual([SECRET])
+    redacted.length = 0
+    await loadSecretHeaderValues('keyless')
+    expect(redacted).toEqual([SECRET])
+  })
 
   it('keeps only the secret values, keyed apart from provider key chains', async () => {
     await storeSecretHeaderValues('custom', [

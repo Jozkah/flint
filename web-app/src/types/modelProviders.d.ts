@@ -107,4 +107,6 @@ type ProviderCustomHeader = {
    * in settings, and is blank here until loaded at startup. janhq/jan#8208.
    */
   secret?: boolean
+  /** `false` keeps the header configured but stops sending it. */
+  enabled?: boolean
 }

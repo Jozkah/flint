@@ -495,6 +495,18 @@ pub fn describe(host: &str, port: u16) -> Option<String> {
     Some(format!("resolved {candidates}; selected {selected}"))
 }
 
+/// An error response's body with every value the user marked secret replaced.
+/// janhq/jan#8208. A success body is the model's output and is left alone.
+fn redact_error_body(status: reqwest::StatusCode, body: String) -> String {
+    if status.is_success() {
+        return body;
+    }
+    match crate::core::secret_values::scrub(&body) {
+        std::borrow::Cow::Owned(redacted) => redacted,
+        std::borrow::Cow::Borrowed(_) => body,
+    }
+}
+
 /// Send a provider request and read the whole response.
 pub async fn send(req: ProviderRequest) -> Result<ProviderResponse, String> {
     let (host, port) = endpoint_of(&req.url)?;
@@ -515,6 +527,7 @@ pub async fn send(req: ProviderRequest) -> Result<ProviderResponse, String> {
         .text()
         .await
         .map_err(|e| format!("{host}:{port} answered but the body could not be read: {e}"))?;
+    let body = redact_error_body(status, body);
 
     Ok(ProviderResponse {
         status: status.as_u16(),
@@ -558,6 +571,29 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
         peer: peer.map(|p| p.to_string()),
         snapshot,
     });
+
+    // An error body is read whole and redacted before the webview sees it:
+    // it is shown to the user and kept in the thread, and a gateway that
+    // echoes the request back would otherwise put a secret header's value in
+    // both. Error bodies are small; a chunk-by-chunk redaction could miss a
+    // value split across two chunks.
+    if !status.is_success() {
+        let body = match response.text().await {
+            Ok(body) => redact_error_body(status, body),
+            Err(e) => {
+                let message = transport_failed(&host, port, &e);
+                sink.send(StreamChunk::Error {
+                    message: message.clone(),
+                });
+                return Err(message);
+            }
+        };
+        sink.send(StreamChunk::Data {
+            b64: base64::engine::general_purpose::STANDARD.encode(body.as_bytes()),
+        });
+        sink.send(StreamChunk::End);
+        return Ok(());
+    }
 
     let mut stream = response.bytes_stream();
     loop {
@@ -1262,6 +1298,53 @@ mod tests {
         assert_eq!(response.status, 200);
         requests.recv().unwrap();
         assert!(requests.recv().unwrap().starts_with("GET /v1/models-moved"));
+    }
+
+    /// janhq/jan#8208. A gateway that echoes the request in its error body
+    /// would put a secret header's value in the UI and the thread; the body is
+    /// redacted before it leaves the transport, on both paths.
+    #[tokio::test]
+    async fn an_error_body_echoing_a_secret_header_comes_back_redacted() {
+        let secret = "transport-8208-echoed-secret";
+        crate::core::secret_values::register(secret);
+        let body = format!("{{\"error\":\"bad key {secret}\"}}");
+        let reply = format!(
+            "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n\
+             Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let (port, _requests) = serve_each(vec![reply.clone(), reply]);
+        let _guard = pin(vec![ip("127.0.0.1")]);
+        let request = || ProviderRequest {
+            url: format!("http://v100:{port}/v1/chat/completions"),
+            method: "POST".into(),
+            body: Some("{}".into()),
+            timeout_secs: Some(10),
+            ..Default::default()
+        };
+
+        let whole = send(request()).await.unwrap();
+        assert_eq!(whole.status, 401);
+        assert!(!whole.body.contains(secret), "{}", whole.body);
+        assert!(whole.body.contains("bad key <redacted>"), "{}", whole.body);
+
+        struct Collect(mpsc::Sender<StreamChunk>);
+        impl ChunkSink for Collect {
+            fn send(&self, chunk: StreamChunk) {
+                let _ = self.0.send(chunk);
+            }
+        }
+        let (tx, chunks) = mpsc::channel();
+        send_stream(request(), Collect(tx)).await.unwrap();
+        let mut streamed = String::new();
+        for chunk in chunks.try_iter() {
+            if let StreamChunk::Data { b64 } = chunk {
+                let bytes = base64::engine::general_purpose::STANDARD.decode(b64).unwrap();
+                streamed.push_str(&String::from_utf8_lossy(&bytes));
+            }
+        }
+        assert!(!streamed.contains(secret), "{streamed}");
+        assert!(streamed.contains("bad key <redacted>"), "{streamed}");
     }
 
     #[test]

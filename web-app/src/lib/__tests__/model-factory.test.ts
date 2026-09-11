@@ -238,6 +238,31 @@ describe('ModelFactory', () => {
       })
     })
 
+    /// A header belongs to the provider it is configured on: another
+    /// provider's requests never carry it.
+    it('sends a provider’s custom headers only with that provider’s requests', async () => {
+      const base = { models: [], settings: [], active: true }
+      await ModelFactory.createModel('m', {
+        ...base,
+        provider: 'gateway-a',
+        api_key: 'key-a',
+        base_url: 'https://a.example/v1',
+        custom_header: [{ header: 'X-Tenant', value: 'tenant-a' }],
+      } as ProviderObject)
+      await ModelFactory.createModel('m', {
+        ...base,
+        provider: 'gateway-b',
+        api_key: 'key-b',
+        base_url: 'https://b.example/v1',
+      } as ProviderObject)
+      const calls = mockedCreateOpenAICompatible.mock.calls
+      const a = calls.at(-2)![0].headers as Record<string, string>
+      const b = calls.at(-1)![0].headers as Record<string, string>
+      expect(a['X-Tenant']).toBe('tenant-a')
+      expect(Object.keys(b)).not.toContain('X-Tenant')
+      expect(JSON.stringify(b)).not.toContain('tenant-a')
+    })
+
     it('never lets a custom header replace the Anthropic key', async () => {
       const { createAnthropic } = await import('@ai-sdk/anthropic')
       vi.mocked(createAnthropic).mockClear()

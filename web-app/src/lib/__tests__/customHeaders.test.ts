@@ -116,6 +116,21 @@ describe('applyCustomHeaders', () => {
     expect(headers).toEqual({})
   })
 
+  it('does not send a disabled header, and sends it again once re-enabled', () => {
+    const rows = [
+      { header: 'X-Tenant', value: 'acme', enabled: false },
+      row('X-Region', 'eu'),
+    ] as ProviderCustomHeader[]
+    expect(applyCustomHeaders({}, { custom_header: rows })).toEqual({
+      'X-Region': 'eu',
+    })
+    rows[0] = { ...rows[0], enabled: true }
+    expect(applyCustomHeaders({}, { custom_header: rows })).toEqual({
+      'X-Tenant': 'acme',
+      'X-Region': 'eu',
+    })
+  })
+
   it('trims surrounding whitespace from values', () => {
     const headers: Record<string, string> = {}
     applyCustomHeaders(headers, { custom_header: [row('X-A', '  v  ')] })

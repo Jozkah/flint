@@ -127,6 +127,8 @@
     "description": "Extra HTTP headers sent with every request to this provider, such as a gateway tenant or subscription key. They cannot replace the API key.",
     "namePlaceholder": "Header name",
     "valuePlaceholder": "Value",
+    "enabled": "Send this header",
+    "enabledHint": "Switch off to stop sending the header without removing it.",
     "secret": "Secret",
     "secretHint": "Stored in the system credential store, never in settings, and hidden in logs.",
     "add": "Add header",
