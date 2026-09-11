@@ -35,10 +35,10 @@
       "rejected": 31,
       "already-fixed": 84,
       "needs-user-hardware": 16,
-      "fixed": 31,
+      "fixed": 32,
       "adapted": 15,
-      "implementation-ready": 2,
-      "cannot-reproduce": 3
+      "cannot-reproduce": 3,
+      "implementation-ready": 1
     }
   },
   "items": [
@@ -36630,12 +36630,25 @@
       "registryIds": [],
       "decision": "adapt",
       "decisionReason": "batch-3 P0 triage: custom request headers: plumbing exists (model-factory, custom_header), no UI to edit them. Feature, reimplement.",
-      "implementationStatus": "implementation-ready",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "93b8b84fb"
+      ],
+      "tests": [
+        "web-app/src/lib/__tests__/customHeaders.test.ts",
+        "web-app/src/lib/__tests__/model-factory.test.ts (custom header cannot stand in for the key; default replaced not duplicated)",
+        "web-app/src/hooks/__tests__/stripProviderSecrets.test.ts",
+        "web-app/src/lib/__tests__/providerHeaderSecrets.test.ts",
+        "web-app/src/providers/__tests__/DataProvider.test.tsx",
+        "web-app/src/containers/__tests__/ProviderCustomHeaders.test.tsx",
+        "src-tauri/src/core/net/transport.rs (cross-origin redirect refused on send and send_stream; same-server followed)",
+        "src-tauri/src/core/secret_values.rs, src-tauri/src/core/cli/secrets.rs (exact-value redaction)",
+        "src-tauri/src/core/server/remote_provider_commands.rs (configs leave without secrets)",
+        "src-tauri/examples/cowork_smoke.rs custom-headers-reach-the-provider-and-secrets-stay-secret + custom-headers-survive-a-restart"
+      ],
+      "verification": "Precedence, secret-persistence and startup-load tests fail on the previous code. Rust: default-feature suite for transport/secret_values/remote_provider_commands 25 passed; cli suite incl. secrets 766 passed. Real WebView on Windows 11 with the mock provider recording received headers: headers added in the settings page, a reserved Authorization refused in the page and never sent, plain and secret header both received, secret value in the credential store (file store in the harness) and in no file of the data folder, same after a restart in a second process; removing the header removes the stored value. Mock provider only.",
       "blockers": [],
-      "notes": null
+      "notes": "Not changed: the Local API Server proxy, the agent upstream and the CLI do not send custom headers (they never read custom_headers). See docs/UPls/8208-custom-request-headers.md."
     },
     {
       "source": "janhq/jan",
