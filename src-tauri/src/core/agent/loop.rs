@@ -1488,6 +1488,22 @@ pub(crate) async fn run_server_side_openai_orchestration(
 #[cfg(not(feature = "cli"))]
 const PROXY_DEFAULT_MAX_TURNS: u64 = 8;
 
+/// A safe-boundary handoff of input the user typed while the run was working.
+/// janhq/jan#8864 (ported by hand).
+///
+/// The loop sends its history at each boundary -- after every tool result of a
+/// turn is in, before the next model call, and when it is about to hand back a
+/// final answer -- and waits for the surface to reply with zero or more user
+/// messages. The surface keeps pending input until it replies, so a cancelled
+/// run or a message typed too late goes out by the ordinary next-run path.
+// Only the CLI consumes handoffs; other callers always pass no channel.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
+pub(crate) struct SteeringRequest {
+    pub run_mode: crate::core::agent::plan::RunMode,
+    pub messages: Vec<serde_json::Value>,
+    pub reply: tokio::sync::oneshot::Sender<Vec<serde_json::Value>>,
+}
+
 /// Streaming entry point. Emits `Step`/`ToolCall`/`ToolResult` progress events
 /// and exactly one terminal `Done`/`Error` derived from the final result, while
 /// still returning the completion JSON (or error) to the caller.
@@ -1496,8 +1512,18 @@ pub(crate) async fn run_orchestration_streamed(
     json_body: &serde_json::Value,
     args: &OrchestrationArgs,
 ) -> Result<serde_json::Value, String> {
+    run_orchestration_steered(events, json_body, args, None).await
+}
+
+/// [`run_orchestration_streamed`], with a surface that can steer the run.
+pub(crate) async fn run_orchestration_steered(
+    events: &mpsc::UnboundedSender<StreamEvent>,
+    json_body: &serde_json::Value,
+    args: &OrchestrationArgs,
+    steering: Option<&mpsc::UnboundedSender<SteeringRequest>>,
+) -> Result<serde_json::Value, String> {
     let started = std::time::Instant::now();
-    let result = orchestrate_inner(events, json_body, args).await;
+    let result = orchestrate_inner(events, json_body, args, steering).await;
     match &result {
         Ok(completion) => {
             log::info!(
@@ -1873,6 +1899,7 @@ async fn orchestrate_inner(
     events: &mpsc::UnboundedSender<StreamEvent>,
     json_body: &serde_json::Value,
     args: &OrchestrationArgs,
+    steering: Option<&mpsc::UnboundedSender<SteeringRequest>>,
 ) -> Result<serde_json::Value, String> {
     let OrchestrationArgs {
         client,
@@ -2236,6 +2263,7 @@ async fn orchestrate_inner(
                 run_mode,
                 todo_registry.as_ref(),
                 force_first_tool,
+                steering,
             ),
         )
         .await;
@@ -2271,6 +2299,7 @@ async fn orchestrate_inner(
             run_mode,
             todo_registry.as_ref(),
             force_first_tool,
+            steering,
         )
         .await
     }
@@ -2495,6 +2524,36 @@ fn body_session_budget(json_body: &serde_json::Value) -> Option<u64> {
         .filter(|v| *v > 0)
 }
 
+/// Offer the surface a boundary to hand over what the user typed meanwhile.
+/// Appends whatever comes back as ordinary user messages and says whether
+/// anything did. Never blocks without a surface: none, or one that has gone
+/// away, is no input.
+async fn receive_steering(
+    steering: Option<&mpsc::UnboundedSender<SteeringRequest>>,
+    messages: &mut Vec<serde_json::Value>,
+    run_mode: crate::core::agent::plan::RunMode,
+) -> bool {
+    let Some(steering) = steering else {
+        return false;
+    };
+    let (reply, response) = tokio::sync::oneshot::channel();
+    if steering
+        .send(SteeringRequest {
+            messages: messages.clone(),
+            reply,
+            run_mode,
+        })
+        .is_err()
+    {
+        return false;
+    }
+    // A reply dropped unanswered is no input, not an error.
+    let incoming = response.await.unwrap_or_default();
+    let received = !incoming.is_empty();
+    messages.extend(incoming);
+    received
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_turn_cycle(
     events: &mpsc::UnboundedSender<StreamEvent>,
@@ -2512,6 +2571,10 @@ async fn run_turn_cycle(
     // named tool -- used to make the eager-todo nudge actually reliable
     // instead of an easily-ignored suggestion. `None` for every later turn.
     force_first_tool: Option<&str>,
+    // The surface the user is typing into, when it can hand input over mid-run
+    // (the TUI). `None` everywhere else: the API server, headless runs and
+    // subagents never wait on a handoff.
+    steering: Option<&mpsc::UnboundedSender<SteeringRequest>>,
 ) -> Result<serde_json::Value, String> {
     // `max_turns == 0` is the normal case: the session token budget and user
     // cancellation are the real guards, so a run isn't cut off mid-task by a
@@ -2539,6 +2602,10 @@ async fn run_turn_cycle(
     let mut empty_retried = false;
 
     while unlimited || turn < max_turns {
+        // The safe boundary: every tool result of the last turn is in and the
+        // next model call has not been made, so anything the user typed
+        // meanwhile reaches the model now rather than after the run ends.
+        receive_steering(steering, &mut conversation_messages, run_mode).await;
         let _ = events.send(StreamEvent::Step {
             index: (turn as u32) + 1,
             max: max_turns as u32,
@@ -2668,6 +2735,27 @@ async fn run_turn_cycle(
                 );
                 turn += 1;
                 continue;
+            }
+            // Input typed while the final answer was being written continues
+            // this run: the answer goes into the history, then the input, and
+            // the model replies to both. After the empty-reply retry, so an
+            // empty assistant turn is never sent; before the closeout nudge,
+            // so the correction is not buried under a todo reminder.
+            if steering.is_some()
+                && !final_text.trim().is_empty()
+                && (unlimited || turn + 1 < max_turns)
+            {
+                let mut continued = conversation_messages.clone();
+                let mut assistant = extract_choice_message(&completion)
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({ "content": final_text }));
+                assistant["role"] = serde_json::json!("assistant");
+                continued.push(assistant);
+                if receive_steering(steering, &mut continued, run_mode).await {
+                    conversation_messages = continued;
+                    turn += 1;
+                    continue;
+                }
             }
             if !closeout_nudged
                 && run_mode == crate::core::agent::plan::RunMode::Normal
@@ -3190,6 +3278,200 @@ mod tests {
         })
     }
 
+    /// janhq/jan#8864. Input typed during a turn reaches the model at the next
+    /// safe boundary: after every tool result of that turn, in the order it was
+    /// submitted, and before the next model call -- not after the run ends.
+    #[tokio::test]
+    async fn steering_enters_after_all_tool_results_in_submission_order() {
+        let (events, _rx) = mpsc::unbounded_channel();
+        let (steering, mut requests) = mpsc::unbounded_channel::<SteeringRequest>();
+        let mut completion = tool_call_completion();
+        let mut second = completion["choices"][0]["message"]["tool_calls"][0].clone();
+        second["id"] = json!("call_2");
+        completion["choices"][0]["message"]["tool_calls"]
+            .as_array_mut()
+            .unwrap()
+            .push(second);
+        let first_id = completion["choices"][0]["message"]["tool_calls"][0]["id"].clone();
+        let model = MockModel::new(vec![
+            completion,
+            json!({"choices": [{"message": {"content": "done"}, "finish_reason": "stop"}]}),
+        ]);
+        let consumer = tokio::spawn(async move {
+            let first = requests.recv().await.unwrap();
+            first.reply.send(vec![]).unwrap();
+            let boundary = requests.recv().await.unwrap();
+            let roles: Vec<_> = boundary
+                .messages
+                .iter()
+                .map(|m| m["role"].as_str().unwrap().to_string())
+                .collect();
+            assert_eq!(roles, ["user", "assistant", "tool", "tool"]);
+            assert_eq!(boundary.messages[2]["tool_call_id"], first_id);
+            assert_eq!(boundary.messages[3]["tool_call_id"], "call_2");
+            boundary
+                .reply
+                .send(vec![
+                    json!({"role": "user", "content": "use pnpm"}),
+                    json!({"role": "user", "content": "then test"}),
+                ])
+                .unwrap();
+            while let Some(request) = requests.recv().await {
+                request.reply.send(vec![]).unwrap();
+            }
+        });
+        let mut budget = SessionBudget::new(None);
+        run_turn_cycle(
+            &events,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({"role": "user", "content": "start"})],
+            8,
+            &mut budget,
+            &model,
+            &MockTool::default(),
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            Some(&steering),
+        )
+        .await
+        .unwrap();
+        {
+            let sent = model.requests.lock().unwrap();
+            let messages = sent[1]["messages"].as_array().unwrap();
+            assert_eq!(messages[4]["content"], "use pnpm");
+            assert_eq!(messages[5]["content"], "then test");
+            assert_eq!(sent.len(), 2);
+        }
+        drop(steering);
+        consumer.await.unwrap();
+    }
+
+    /// Input typed while the final answer was being written continues the same
+    /// run: the answer, reasoning kept, goes into the history before it.
+    #[tokio::test]
+    async fn steering_during_final_response_continues_the_same_run() {
+        let (events, _rx) = mpsc::unbounded_channel();
+        let (steering, mut requests) = mpsc::unbounded_channel::<SteeringRequest>();
+        let model = MockModel::new(vec![
+            json!({"choices": [{"message": {"content": "first answer", "reasoning_content": "considered options"}, "finish_reason": "stop"}]}),
+            json!({"choices": [{"message": {"content": "revised answer"}, "finish_reason": "stop"}]}),
+        ]);
+        let consumer = tokio::spawn(async move {
+            requests.recv().await.unwrap().reply.send(vec![]).unwrap();
+            let final_boundary = requests.recv().await.unwrap();
+            assert_eq!(
+                final_boundary.messages.last().unwrap()["content"],
+                "first answer"
+            );
+            final_boundary
+                .reply
+                .send(vec![json!({"role": "user", "content": "correction"})])
+                .unwrap();
+            while let Some(request) = requests.recv().await {
+                request.reply.send(vec![]).unwrap();
+            }
+        });
+        let mut budget = SessionBudget::new(None);
+        let result = run_turn_cycle(
+            &events,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({"role": "user", "content": "start"})],
+            8,
+            &mut budget,
+            &model,
+            &MockTool::default(),
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            Some(&steering),
+        )
+        .await
+        .unwrap();
+        assert_eq!(result["choices"][0]["message"]["content"], "revised answer");
+        {
+            let sent = model.requests.lock().unwrap();
+            assert_eq!(sent[1]["messages"][1]["content"], "first answer");
+            assert_eq!(
+                sent[1]["messages"][1]["reasoning_content"],
+                "considered options"
+            );
+            assert_eq!(sent[1]["messages"][2]["content"], "correction");
+        }
+        drop(steering);
+        consumer.await.unwrap();
+    }
+
+    /// A surface that has gone away is no input: the loop never waits on it.
+    #[tokio::test]
+    async fn steering_disconnected_surface_does_not_block_the_loop() {
+        let (steering, receiver) = mpsc::unbounded_channel();
+        drop(receiver);
+        let mut messages = vec![json!({"role": "user", "content": "start"})];
+        assert!(
+            !receive_steering(
+                Some(&steering),
+                &mut messages,
+                crate::core::agent::plan::RunMode::Normal
+            )
+            .await
+        );
+        assert_eq!(messages.len(), 1);
+    }
+
+    /// The fork's empty-reply retry (janhq/jan#8712) sits where upstream put the
+    /// final boundary. An empty reply must not be offered as an assistant turn
+    /// for input to follow: strict providers reject an empty assistant message.
+    #[tokio::test]
+    async fn steering_is_not_offered_an_empty_final_reply() {
+        let (events, _rx) = mpsc::unbounded_channel();
+        let (steering, mut requests) = mpsc::unbounded_channel::<SteeringRequest>();
+        let model = MockModel::new(vec![
+            reasoning_only_completion(),
+            json!({"choices": [{"message": {"content": "answer"}, "finish_reason": "stop"}]}),
+        ]);
+        let consumer = tokio::spawn(async move {
+            let mut seen = Vec::new();
+            while let Some(request) = requests.recv().await {
+                seen.push(request.messages.clone());
+                request.reply.send(vec![]).unwrap();
+            }
+            seen
+        });
+        let mut budget = SessionBudget::new(None);
+        run_turn_cycle(
+            &events,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({"role": "user", "content": "start"})],
+            8,
+            &mut budget,
+            &model,
+            &MockTool::default(),
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            Some(&steering),
+        )
+        .await
+        .unwrap();
+        drop(steering);
+        for offered in consumer.await.unwrap() {
+            for m in &offered {
+                assert!(
+                    !(m["role"] == "assistant"
+                        && m["content"].as_str().is_some_and(|c| c.trim().is_empty())),
+                    "an empty assistant turn was offered: {offered:?}"
+                );
+            }
+        }
+    }
+
     /// janhq/jan#8712. A reasoning-only reply is not a finished turn. It used to
     /// be returned as the turn's successful result, so a long tool-heavy run
     /// could end with no answer at all while reporting success.
@@ -3216,6 +3498,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -3256,6 +3539,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -3324,6 +3608,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3380,6 +3665,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3411,6 +3697,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -3496,6 +3783,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3553,6 +3841,7 @@ mod tests {
             &tool,
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
+            None,
             None,
         )
         .await
@@ -3669,6 +3958,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .expect("sanitized history must be accepted so the session can continue");
@@ -3704,6 +3994,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             Some("todo"),
+            None,
         )
         .await
         .unwrap();
@@ -3898,6 +4189,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3974,6 +4266,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4018,6 +4311,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4052,6 +4346,7 @@ mod tests {
             &tool,
             crate::core::agent::plan::RunMode::Plan,
             Some(&registry),
+            None,
             None,
         )
         .await
@@ -4103,6 +4398,7 @@ mod tests {
             &tool,
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
+            None,
             None,
         )
         .await
@@ -4180,6 +4476,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4232,6 +4529,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -4299,6 +4597,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .expect("run completes");
@@ -4363,6 +4662,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -4443,6 +4743,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4488,6 +4789,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -4540,6 +4842,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -4605,6 +4908,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await;
 
@@ -4661,6 +4965,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await;
 
@@ -4711,6 +5016,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4746,6 +5052,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
         )
@@ -5789,6 +6096,7 @@ mod tests {
                     model.as_ref(),
                     invoker.as_ref(),
                     crate::core::agent::plan::RunMode::Normal,
+                    None,
                     None,
                     None,
                 )
