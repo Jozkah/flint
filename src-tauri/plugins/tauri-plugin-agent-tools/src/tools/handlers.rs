@@ -1204,7 +1204,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
 
     tokio::select! {
         res = &mut rx => res.unwrap_or_else(|_| "ERROR: background command ended without producing output".to_string()),
-        _ = tokio::time::sleep(std::time::Duration::from_secs(timeout_secs)) => {
+        _ = deadline(root, timeout_secs) => {
             // AH-020. A timeout used to *background* the command: it kept
             // running, unowned, after the call that started it had returned,
             // so "the timeout expired" and "the work stopped" were different
@@ -1273,6 +1273,47 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             out
         }
     }
+}
+
+/// When a foreground command's deadline passes: `timeout_secs` from now.
+///
+/// A test can stand in its own moment for a project root (see
+/// [`test_deadline`]), so a deadline test is decided by the event it is about
+/// -- the command having printed -- rather than by how fast a sandboxed shell
+/// happened to start on a busy machine.
+#[cfg_attr(not(test), allow(unused_variables))]
+async fn deadline(root: &Path, timeout_secs: u64) {
+    #[cfg(test)]
+    {
+        let injected = test_deadlines().lock().unwrap().get(root).cloned();
+        if let Some(fire) = injected {
+            fire.notified().await;
+            return;
+        }
+    }
+    tokio::time::sleep(std::time::Duration::from_secs(timeout_secs)).await
+}
+
+#[cfg(test)]
+fn test_deadlines(
+) -> &'static Mutex<HashMap<PathBuf, std::sync::Arc<tokio::sync::Notify>>> {
+    static DEADLINES: std::sync::OnceLock<
+        Mutex<HashMap<PathBuf, std::sync::Arc<tokio::sync::Notify>>>,
+    > = std::sync::OnceLock::new();
+    DEADLINES.get_or_init(Default::default)
+}
+
+/// Replace the deadline of every `bash` call made in `root` with the returned
+/// trigger. Keyed by root, which every test owns alone, so parallel tests keep
+/// their real deadlines.
+#[cfg(test)]
+pub(crate) fn test_deadline(root: &Path) -> std::sync::Arc<tokio::sync::Notify> {
+    let fire = std::sync::Arc::new(tokio::sync::Notify::new());
+    test_deadlines()
+        .lock()
+        .unwrap()
+        .insert(root.to_path_buf(), fire.clone());
+    fire
 }
 
 /// Wait for a previously backgrounded command to finish and return its
@@ -2577,6 +2618,10 @@ mod tests {
         PrintThenSleep { text: &'static str, seconds: u32 },
         /// Wait, then print a line.
         SleepThenPrint { seconds: u32, text: &'static str },
+        /// Start a child that waits, print `pid=<shell>` and `child=<child>`
+        /// (OS process ids), then a line, then wait for the child. The ids let
+        /// a test check that the whole tree is gone, not just the shell.
+        PrintPidThenSleep { text: &'static str, seconds: u32 },
     }
 
     /// The command language the sandboxed shell for `root` actually speaks.
@@ -2619,6 +2664,14 @@ mod tests {
                 Shape::SleepThenPrint { seconds, text } => {
                     format!("sleep {seconds}; printf '{text}\\n'")
                 }
+                // Under MSYS `$$` is not a Windows pid; `/proc/$$/winpid` is.
+                Shape::PrintPidThenSleep { text, seconds } => format!(
+                    "sleep {seconds} & \
+                     printf 'pid=%s\\nchild=%s\\n' \
+                       \"$(cat /proc/$$/winpid 2>/dev/null || echo $$)\" \
+                       \"$(cat /proc/$!/winpid 2>/dev/null || echo $!)\"; \
+                     printf '{text}\\n'; wait"
+                ),
             }),
             proc::ShellFlavor::PowerShell => Some(match shape {
                 Shape::Lines { count } => {
@@ -2651,6 +2704,18 @@ mod tests {
                 ),
                 Shape::SleepThenPrint { seconds, text } => format!(
                     "Start-Sleep -Seconds {seconds}; [Console]::Out.WriteLine('{text}')"
+                ),
+                // Concatenation, not `"$(...)"`: the handler reads `$(` as POSIX
+                // command substitution and refuses the command under PowerShell.
+                Shape::PrintPidThenSleep { text, seconds } => format!(
+                    // The working directory is the project root, named: inside
+                    // the AppContainer the inherited one is not accessible to a
+                    // new process ("The directory name is invalid") and `$PWD`
+                    // is unset.
+                    "$c = Start-Process -FilePath powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds {seconds}' -WorkingDirectory '{root}' -NoNewWindow -PassThru; \
+                     [Console]::Out.WriteLine('pid=' + $PID); [Console]::Out.WriteLine('child=' + $c.Id); \
+                     [Console]::Out.WriteLine('{text}'); [Console]::Out.Flush(); $c.WaitForExit()",
+                    root = root.display()
                 ),
             }),
             proc::ShellFlavor::Cmd => None,
@@ -3988,27 +4053,106 @@ mod tests {
     #[tokio::test]
     async fn a_timeout_keeps_whatever_the_command_printed_first() {
         // Partial output survives the kill: the run still gets to see what the
-        // command managed to say before its deadline.
+        // command managed to say before its deadline, and the command is gone.
+        //
+        // The deadline fires the moment the output has been read, not after a
+        // guessed second. With a one-second timeout, a sandboxed shell that
+        // started slowly on a busy machine was killed before it had printed
+        // anything -- the output read only `[exit 1]` -- and the test failed
+        // without any output having been lost.
         let root = unique_root();
         let command = command_or_skip!(
             &root,
-            Shape::PrintThenSleep {
+            Shape::PrintPidThenSleep {
                 text: "partial",
-                seconds: 5,
+                seconds: 60,
             }
         );
-        let out = execute_builtin(
-            lookup("bash").unwrap(),
-            &json!({ "command": command, "timeout": 1 }),
-            &root,
+        let fire = test_deadline(&root);
+        let streamed = std::sync::Arc::new(Mutex::new(String::new()));
+        let sink: crate::tools::OutputSink = {
+            let streamed = streamed.clone();
+            let fire = fire.clone();
+            std::sync::Arc::new(move |chunk: String| {
+                let mut all = streamed.lock().unwrap();
+                all.push_str(&chunk);
+                if all.contains("partial") {
+                    fire.notify_one();
+                }
+            })
+        };
+        let store = crate::workspace::project_store(&root);
+        let ctx = ToolContext::new(&root, &store, &[]).with_output_sink(sink);
+        // The real deadline is far away: only the injected one can fire. The
+        // outer bound only turns "never printed" into a failure, not a hang.
+        let out = tokio::time::timeout(
+            std::time::Duration::from_secs(180),
+            super::execute_builtin(
+                lookup("bash").unwrap(),
+                &json!({ "command": command, "timeout": 600 }),
+                &ctx,
+            ),
         )
-        .await;
+        .await
+        .unwrap_or_else(|_| panic!("the command never printed: {:?}", streamed.lock().unwrap()))
+        .0;
+
         assert!(out.starts_with("ERROR"), "{out}");
+        assert!(out.contains("timed out"), "{out}");
         assert!(
             out.contains("partial"),
-            "partial output must survive: {out}"
+            "output printed before the deadline must survive: {out}"
         );
+        assert!(
+            !out.contains("may not have terminated cleanly"),
+            "the kill must be reported as clean: {out}"
+        );
+
+        // And the tree is gone: the shell and the child it started, neither
+        // left running behind the call that owned them.
+        let printed = streamed.lock().unwrap().clone();
+        let id_of = |key: &str| -> u32 {
+            printed
+                .lines()
+                .find_map(|line| line.trim().strip_prefix(key))
+                .and_then(|pid| pid.trim().parse().ok())
+                .unwrap_or_else(|| panic!("the command did not report {key}: {printed:?}"))
+        };
+        for (what, pid) in [("the shell", id_of("pid=")), ("its child", id_of("child="))] {
+            let mut gone = false;
+            for _ in 0..100 {
+                if !process_alive(pid) {
+                    gone = true;
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            assert!(gone, "{what} (pid {pid}) outlived the timeout");
+        }
+        test_deadlines().lock().unwrap().remove(&root);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Whether `pid` still names a running process.
+    #[cfg(windows)]
+    fn process_alive(pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if handle.is_null() {
+            return false;
+        }
+        let mut code = 0u32;
+        let ok = unsafe { GetExitCodeProcess(handle, &mut code) } != 0;
+        unsafe { CloseHandle(handle) };
+        ok && code == 259
+    }
+
+    #[cfg(unix)]
+    fn process_alive(pid: u32) -> bool {
+        nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid as i32), None).is_ok()
     }
 
     #[tokio::test]
