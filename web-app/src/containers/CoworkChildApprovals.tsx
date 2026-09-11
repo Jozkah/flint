@@ -10,13 +10,20 @@
  * screen. Found by the AH-109 Windows scenario.
  *
  * Every request here is the same request a card would show: the same diff,
- * the same answers, resolved through the same store.
+ * the same answers, resolved through the same store. Each answer names the
+ * request it is for, and the buttons pause after the list changes, so a click
+ * meant for one request cannot land on the one that takes its place.
  */
+import { useMemo } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ShieldAlertIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ChangeDiff } from '@/components/ChangeDiff'
-import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import {
+  allApprovalRequests,
+  useToolApprovalRequests,
+} from '@/hooks/useToolApprovalRequests'
+import { useArmedAfterChange } from '@/hooks/useArmedAfterChange'
 
 export function CoworkChildApprovals({
   sessionId,
@@ -25,10 +32,19 @@ export function CoworkChildApprovals({
 }) {
   const { t } = useTranslation()
   const pending = useToolApprovalRequests((s) => s.pending)
+  const queued = useToolApprovalRequests((s) => s.queued)
   const resolveApproval = useToolApprovalRequests((s) => s.resolveApproval)
-  const mine = Object.values(pending).filter(
-    (entry) => entry.origin && entry.threadId === sessionId
+  // Queued ones too: a child's request can wait behind another session's
+  // request under the same call id, and it is answerable here on its own.
+  const mine = useMemo(
+    () =>
+      allApprovalRequests({ pending, queued }).filter(
+        (entry) => entry.origin && entry.threadId === sessionId
+      ),
+    [pending, queued, sessionId]
   )
+  const shown = mine.map((entry) => entry.requestId).join('|')
+  const armed = useArmedAfterChange(shown || undefined)
   if (!sessionId || mine.length === 0) return null
   return (
     <section
@@ -38,7 +54,7 @@ export function CoworkChildApprovals({
     >
       {mine.map((entry) => (
         <div
-          key={entry.toolCallId}
+          key={entry.requestId}
           className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3"
           data-testid="child-approval"
           data-origin={entry.origin}
@@ -62,14 +78,20 @@ export function CoworkChildApprovals({
             <Button
               size="sm"
               variant="destructive"
-              onClick={() => resolveApproval(entry.toolCallId, 'deny')}
+              disabled={!armed}
+              onClick={() =>
+                resolveApproval(entry.toolCallId, 'deny', entry.requestId)
+              }
             >
               {t('tools:toolApproval.deny')}
             </Button>
             <Button
               size="sm"
               variant="outline"
-              onClick={() => resolveApproval(entry.toolCallId, 'allow-once')}
+              disabled={!armed}
+              onClick={() =>
+                resolveApproval(entry.toolCallId, 'allow-once', entry.requestId)
+              }
             >
               {t('tools:toolApproval.allowOnce')}
             </Button>

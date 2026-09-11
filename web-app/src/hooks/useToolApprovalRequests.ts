@@ -5,6 +5,12 @@ import { toast } from 'sonner'
 import { errorText } from '@/lib/errorText'
 
 export type PendingApproval = {
+  /**
+   * This request, as distinct from any other under the same call id. An
+   * answer names it, so a click meant for one request can never land on the
+   * next one shown in its place.
+   */
+  requestId: string
   toolCallId: string
   toolName: string
   threadId: string
@@ -56,8 +62,32 @@ type ToolApprovalRequestsState = {
     preview?: string,
     origin?: string
   ) => Promise<boolean>
-  resolveApproval: (toolCallId: string, decision: ApprovalDecision) => void
+  /**
+   * Answer a request. With `requestId`, exactly that request is answered,
+   * shown or still queued, and an answer for one already gone does nothing;
+   * without it, the one shown under the call id.
+   */
+  resolveApproval: (
+    toolCallId: string,
+    decision: ApprovalDecision,
+    requestId?: string
+  ) => void
   clearPendingForThread: (threadId: string) => void
+}
+
+let nextRequest = 0
+const newRequestId = () => `req-${Date.now().toString(36)}-${++nextRequest}`
+
+/** Every request waiting for an answer, shown or queued, in the order asked. */
+export function allApprovalRequests(state: {
+  pending: Record<string, PendingApproval>
+  queued: Record<string, PendingApproval[]>
+}): PendingApproval[] {
+  const out: PendingApproval[] = []
+  for (const [id, head] of Object.entries(state.pending)) {
+    out.push(head, ...(state.queued[id] ?? []))
+  }
+  return out
 }
 
 export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
@@ -84,6 +114,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           return
         }
         const entry: PendingApproval = {
+          requestId: newRequestId(),
           toolCallId,
           toolName,
           threadId,
@@ -105,8 +136,14 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       })
     },
 
-    resolveApproval: (toolCallId, decision) => {
-      const entry = get().pending[toolCallId]
+    resolveApproval: (toolCallId, decision, requestId) => {
+      const head = get().pending[toolCallId]
+      const entry =
+        requestId === undefined
+          ? head
+          : [head, ...(get().queued[toolCallId] ?? [])].find(
+              (e) => e?.requestId === requestId
+            )
       if (!entry) return
       const approval = useToolApproval.getState()
       if (decision === 'allow-thread') {
@@ -133,10 +170,12 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       }
       set((s) => {
         const next = { ...s.pending }
-        const waiting = [...(s.queued[toolCallId] ?? [])]
-        const promoted = waiting.shift()
-        if (promoted) next[toolCallId] = promoted
-        else delete next[toolCallId]
+        const waiting = (s.queued[toolCallId] ?? []).filter((e) => e !== entry)
+        if (next[toolCallId] === entry) {
+          const promoted = waiting.shift()
+          if (promoted) next[toolCallId] = promoted
+          else delete next[toolCallId]
+        }
         const queued = { ...s.queued }
         if (waiting.length > 0) queued[toolCallId] = waiting
         else delete queued[toolCallId]

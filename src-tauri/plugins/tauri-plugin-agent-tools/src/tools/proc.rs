@@ -557,17 +557,86 @@ fn confine_limits(cmd: &mut Command) {
 /// denied"): PowerShell checks each ancestor of the path, and the container
 /// may not look at its parents. So the workspace is mounted as a drive of its
 /// own, whose root is the one directory the container can see, and the shell
-/// moves to it. The path is quoted the way PowerShell quotes a literal (`'`
-/// doubled). The process's own working directory is already the workspace, so
-/// native programs the command runs are unaffected.
+/// moves to it. The path is quoted as a PowerShell literal (see
+/// [`ps_literal`]). The process's own working directory is already the
+/// workspace, so native programs the command runs are unaffected.
 pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String {
     match flavor {
         ShellFlavor::PowerShell => format!(
             "$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{}' -Scope Global; \
              Set-Location JanWorkspace:\\; {command}",
-            cwd.to_string_lossy().replace('\'', "''")
+            ps_literal(&cwd.to_string_lossy())
         ),
         _ => command.to_string(),
+    }
+}
+
+/// Text to put between single quotes in a PowerShell command.
+///
+/// PowerShell ends a single-quoted string on `'` and also on the typographic
+/// quotes U+2018 to U+201B, so a folder named `Bob’s project` ended the
+/// literal early -- every command failed to parse, and a folder named to do
+/// so could run a command nobody approved. Each of them is doubled, which is
+/// how PowerShell escapes any of the five inside a literal.
+pub(crate) fn ps_literal(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    for c in text.chars() {
+        out.push(c);
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            out.push(c);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod located_tests {
+    use super::*;
+
+    #[test]
+    fn every_quote_powershell_honours_is_doubled() {
+        assert_eq!(ps_literal("a'b"), "a''b");
+        for q in ['\u{2018}', '\u{2019}', '\u{201A}', '\u{201B}'] {
+            assert_eq!(ps_literal(&format!("x{q}y")), format!("x{q}{q}y"));
+        }
+        assert_eq!(ps_literal("plain \"text\""), "plain \"text\"");
+    }
+
+    /// A workspace whose name closes a PowerShell literal runs nothing, and
+    /// the command still starts inside it. Unsandboxed PowerShell parses the
+    /// prefix exactly as the sandboxed one does.
+    #[cfg(windows)]
+    #[test]
+    fn a_folder_named_to_close_the_literal_runs_nothing() {
+        let root = std::env::temp_dir().join(format!(
+            "jan-located-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let ws = root.join("Bob\u{2019}; Write-Output INJECTED; \u{2019}x");
+        std::fs::create_dir_all(&ws).unwrap();
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command"])
+            .arg(located(
+                ShellFlavor::PowerShell,
+                "Write-Output ('at:' + (Get-Item .).FullName)",
+                &ws,
+            ))
+            .current_dir(&ws)
+            .output()
+            .expect("powershell runs");
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            !text.lines().any(|l| l.trim() == "INJECTED"),
+            "the folder name ran a command: {text}"
+        );
+        assert!(
+            text.contains("at:") && text.contains("Write-Output INJECTED"),
+            "the command did not start in the workspace: {text} / {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 }
 

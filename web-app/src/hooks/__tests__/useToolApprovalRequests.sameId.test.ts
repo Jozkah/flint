@@ -40,6 +40,43 @@ describe('approval requests that share a call id', () => {
     expect(useToolApprovalRequests.getState().queued).toEqual({})
   })
 
+  // A double-click on "Allow once": the second click arrives after the first
+  // request is gone and the next one is shown under the same call id.
+  it('an answer names its request, so a repeated answer cannot reach the next one', async () => {
+    const store = useToolApprovalRequests.getState()
+    const first = store.requestApproval('call_0', 'write', 's1', undefined, 'first diff')
+    const second = store.requestApproval('call_0', 'write', 's1', undefined, 'second diff')
+    const firstId = useToolApprovalRequests.getState().pending.call_0.requestId
+
+    useToolApprovalRequests.getState().resolveApproval('call_0', 'allow-once', firstId)
+    useToolApprovalRequests.getState().resolveApproval('call_0', 'allow-once', firstId)
+    expect(await first).toBe(true)
+    const shown = useToolApprovalRequests.getState().pending.call_0
+    expect(shown.preview).toBe('second diff')
+    expect(shown.requestId).not.toBe(firstId)
+
+    let settled = false
+    void second.then(() => (settled = true))
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    useToolApprovalRequests.getState().resolveApproval('call_0', 'deny', shown.requestId)
+    expect(await second).toBe(false)
+  })
+
+  it('a request still queued can be answered by its id, and the one shown stays', async () => {
+    const store = useToolApprovalRequests.getState()
+    const shown = store.requestApproval('call_0', 'write', 's2', undefined, 'other session')
+    const waiting = store.requestApproval('call_0', 'write', 's1', undefined, 'mine', 'worker')
+    const queuedId = useToolApprovalRequests.getState().queued.call_0[0].requestId
+
+    useToolApprovalRequests.getState().resolveApproval('call_0', 'allow-once', queuedId)
+    expect(await waiting).toBe(true)
+    expect(useToolApprovalRequests.getState().pending.call_0.preview).toBe('other session')
+    expect(useToolApprovalRequests.getState().queued).toEqual({})
+    useToolApprovalRequests.getState().resolveApproval('call_0', 'deny')
+    expect(await shown).toBe(false)
+  })
+
   it('clearing a session answers what was waiting too, and leaves other sessions’ requests', async () => {
     const store = useToolApprovalRequests.getState()
     const a = store.requestApproval('call_0', 'write', 's1')

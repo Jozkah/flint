@@ -436,14 +436,58 @@ fn normalize_path(raw: &str) -> Result<String, ProposalError> {
             _ => return Err(ProposalError::InvalidPath(raw.clone())),
         }
     }
-    let reserved = |part: &str| {
-        let bare = part.to_ascii_lowercase();
-        bare == ".jan" || bare == ".git"
-    };
-    if parts.is_empty() || parts.iter().any(|p| reserved(p)) {
+    if parts.is_empty() || parts.iter().any(|p| is_reserved_name(p)) {
         return Err(ProposalError::InvalidPath(raw));
     }
     Ok(parts.join("/"))
+}
+
+/// `.git` or `.jan`, however Windows lets it be spelled.
+///
+/// NTFS gives `.git` an 8.3 short name, `GIT~1`, and opens the directory by
+/// either. A proposal naming `GIT~1/hooks/pre-commit` would write the user's
+/// Git hooks. The number is not always 1 -- it depends on what else was named
+/// alike first -- so every `git~N` and `jan~N` is refused, as Git itself does.
+pub fn is_reserved_name(part: &str) -> bool {
+    let lower = part.trim_end_matches(['.', ' ']).to_ascii_lowercase();
+    if lower == ".git" || lower == ".jan" {
+        return true;
+    }
+    ["git~", "jan~"].iter().any(|prefix| {
+        lower
+            .strip_prefix(prefix)
+            .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+    })
+}
+
+/// Whether `root/rel` resolves into `root/.git` or `root/.jan`, whatever it
+/// is spelled as.
+///
+/// The spelling rules above know the aliases Windows has today; this asks the
+/// file system. The deepest part of the path that exists is resolved, and a
+/// write whose real location is inside Git's or Jan's state is refused. It is
+/// the check that still holds if a new alias turns up.
+pub fn resolves_into_reserved(root: &Path, rel: &str) -> bool {
+    let Ok(root) = root.canonicalize() else {
+        return false;
+    };
+    let reserved: Vec<PathBuf> = [".git", ".jan"]
+        .iter()
+        .filter_map(|name| root.join(name).canonicalize().ok())
+        .collect();
+    if reserved.is_empty() {
+        return false;
+    }
+    let mut deepest = root.clone();
+    let mut probe = root.clone();
+    for part in rel.split('/').filter(|p| !p.is_empty()) {
+        probe.push(part);
+        match probe.canonicalize() {
+            Ok(real) => deepest = real,
+            Err(_) => break,
+        }
+    }
+    reserved.iter().any(|r| deepest.starts_with(r))
 }
 
 /// One path component that names the same file on every platform Jan runs on.
@@ -887,6 +931,9 @@ pub fn plan(
         // after the review was shown is exactly the substitution this stops.
         if passes_through_link(dest_root, &file.path) {
             return Err(ProposalError::LinkedDestination(file.path.clone()));
+        }
+        if resolves_into_reserved(dest_root, &file.path) {
+            return Err(ProposalError::InvalidPath(file.path.clone()));
         }
         let chosen: Vec<&ProposedHunk> = match &sel.hunks {
             HunkChoice::All => file.hunks.iter().collect(),
@@ -1651,15 +1698,48 @@ mod tests {
             "/abs.txt",
             "C:/abs.txt",
             "a/../../b.txt",
+            // 8.3 short names of `.git` and `.jan`.
+            "GIT~1/hooks/pre-commit",
+            "git~2/config",
+            "sub/Git~13/HEAD",
+            "JAN~1/state",
         ] {
             assert!(
                 matches!(normalize_path(bad), Err(ProposalError::InvalidPath(_))),
                 "{bad} was accepted"
             );
         }
-        for good in ["a.txt", "src/a.rs", "./b.txt", "console.txt", "com10.txt", ".gitignore"] {
+        for good in [
+            "a.txt",
+            "src/a.rs",
+            "./b.txt",
+            "console.txt",
+            "com10.txt",
+            ".gitignore",
+            "git~notes.txt",
+            "git~",
+        ] {
             assert!(normalize_path(good).is_ok(), "{good} was refused");
         }
+    }
+
+    /// Whatever it is spelled as, a destination that resolves into the
+    /// folder's `.git` is refused at apply time. Measured with the short name
+    /// NTFS gives `.git`, where the volume has short names at all.
+    #[cfg(windows)]
+    #[test]
+    fn a_short_name_for_git_is_refused_by_where_it_resolves() {
+        let (_data, dest) = dirs("shortname");
+        std::fs::create_dir_all(dest.join(".git").join("hooks")).unwrap();
+        let alias = dest.join("GIT~1");
+        if !alias.exists() {
+            eprintln!("short names are off on this volume; nothing to measure");
+            return;
+        }
+        assert!(resolves_into_reserved(&dest, "GIT~1/hooks/pre-commit"));
+        assert!(resolves_into_reserved(&dest, "GIT~1"));
+        assert!(!resolves_into_reserved(&dest, "src/GIT~1.txt"));
+        assert!(!resolves_into_reserved(&dest, "a.txt"));
     }
 
     fn link_dir(link: &Path, target: &Path) -> bool {

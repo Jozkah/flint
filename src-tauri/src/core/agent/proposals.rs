@@ -17,12 +17,11 @@ use tauri_plugin_agent_tools::proposal::FileInput;
 use crate::core::agent::worktree::WorktreeRecord;
 
 /// Jan's own state and Git's are never part of a proposal, at any depth: a
-/// nested `.git` is another repository's hooks and config.
+/// nested `.git` is another repository's hooks and config. Short names such as
+/// `GIT~1` count, since Windows opens `.git` by them.
 fn is_jan_state(path: &str) -> bool {
-    path.split('/').any(|part| {
-        let bare = part.trim_end_matches(['.', ' ']);
-        bare.eq_ignore_ascii_case(".jan") || bare.eq_ignore_ascii_case(".git")
-    })
+    path.split('/')
+        .any(tauri_plugin_agent_tools::proposal::is_reserved_name)
 }
 
 /// Why a worktree's changes could not be read.
@@ -307,6 +306,10 @@ pub(crate) mod tests {
     fn a_nested_git_directory_is_never_proposed() {
         assert!(is_jan_state("vendor/lib/.git/config"));
         assert!(is_jan_state(".GIT./hooks/pre-commit"));
+        // Windows' short name for `.git`, and the number after it varies.
+        assert!(is_jan_state("GIT~1/hooks/pre-commit"));
+        assert!(is_jan_state("vendor/git~2/config"));
         assert!(!is_jan_state("src/.gitignore"));
+        assert!(!is_jan_state("docs/git~notes.md"));
     }
 }

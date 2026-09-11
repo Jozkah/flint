@@ -29,7 +29,11 @@ import {
   summarizeToolInput,
 } from '@/lib/toolInputSummary'
 import { summarizeToolOutput } from '@/lib/toolOutputSummary'
-import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import {
+  useToolApprovalRequests,
+  type ApprovalDecision,
+} from '@/hooks/useToolApprovalRequests'
+import { useArmedAfterChange } from '@/hooks/useArmedAfterChange'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { ToolElapsed } from './tool-runtime'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -345,12 +349,18 @@ export const ToolApprovalActions = memo(() => {
     toolCallId ? s.pending[toolCallId] : undefined
   )
   const resolveApproval = useToolApprovalRequests((s) => s.resolveApproval)
+  // When this request is answered, the next one under the same call id takes
+  // its place under the same buttons. They pause first, so a double-click or a
+  // repeated key cannot answer a request that was never read.
+  const armed = useArmedAfterChange(pending?.requestId)
 
   // A subagent's request is not this card's: its call id is only unique inside
   // the child's own conversation, so it can coincide with a card here and would
   // be answered from the wrong place. It is shown on its own (see
   // `CoworkChildApprovals`).
   if (!pending || !toolCallId || pending.origin) return null
+  const answer = (decision: ApprovalDecision) =>
+    resolveApproval(toolCallId, decision, pending.requestId)
 
   return (
     <div className="mt-4 space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
@@ -370,28 +380,32 @@ export const ToolApprovalActions = memo(() => {
         <Button
           size="sm"
           variant="destructive"
-          onClick={() => resolveApproval(toolCallId, 'deny')}
+          disabled={!armed}
+          onClick={() => answer('deny')}
         >
           {t('tools:toolApproval.deny')}
         </Button>
         <Button
           size="sm"
           variant="outline"
-          onClick={() => resolveApproval(toolCallId, 'allow-once')}
+          disabled={!armed}
+          onClick={() => answer('allow-once')}
         >
           {t('tools:toolApproval.allowOnce')}
         </Button>
         <Button
           size="sm"
           variant="outline"
-          onClick={() => resolveApproval(toolCallId, 'allow-thread')}
+          disabled={!armed}
+          onClick={() => answer('allow-thread')}
         >
           {t('tools:toolApproval.allowInThread')}
         </Button>
         <Button
           size="sm"
           autoFocus
-          onClick={() => resolveApproval(toolCallId, 'allow-always')}
+          disabled={!armed}
+          onClick={() => answer('allow-always')}
         >
           {/* Trusting a server tool-by-tool is the same decision repeated. */}
           {pending.serverName

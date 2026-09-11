@@ -2076,3 +2076,57 @@ the defect stays open.
 - The mock provider gained per-request `routes`. Each child's first user
   message selects its behaviour, and `{{FOLDER}}` becomes the folder named in
   its system prompt.
+
+## 2026-09-11 — Review of `1e925e397`: four defects in the AH-109 batch, fixed
+
+An adversarial review of the AH-109/AH-107 commit found four defects. Each was
+reproduced, then fixed with a test, and each test fails with its fix reverted.
+
+1. **`GIT~1` got past the `.git` refusal (high).** NTFS gives `.git` the
+   8.3 short name `GIT~1`, and opens the directory by either name. A child
+   could create `GIT~1/hooks/pre-commit` in its worktree. The proposal
+   refused `.git` only by its long spelling, so applying it would have
+   written the user's Git hook. Two fixes:
+   - `proposal::is_reserved_name` refuses every `git~N` and `jan~N`, the rule
+     Git itself uses. `proposals::is_jan_state` uses the same function.
+   - At apply time, `plan` resolves the deepest existing part of each
+     destination and refuses any write whose real location is inside the
+     folder's `.git` or `.jan` (`proposal::resolves_into_reserved`). This
+     still holds if a new alias turns up.
+
+   Tests: `a_path_windows_would_read_differently_is_refused` (spellings) and
+   `a_short_name_for_git_is_refused_by_where_it_resolves` (Windows, measured
+   against a real `GIT~1`).
+2. **Typographic quotes broke out of the PowerShell prefix (medium).**
+   PowerShell also ends a single-quoted string on U+2018 to U+201B. With a
+   workspace named `Bob’s project`, every command failed to parse, and a
+   folder named to close the literal could run a command nobody approved.
+   `proc::ps_literal` now doubles all five. Tests:
+   `every_quote_powershell_honours_is_doubled`, and
+   `a_folder_named_to_close_the_literal_runs_nothing`, which runs real
+   PowerShell in a folder named `Bob’; Write-Output INJECTED; ’x`.
+3. **A second click could answer the next approval unread (medium).** When
+   two requests shared a call id, answering the first put the second under the
+   same buttons, so a double-click approved a diff that was never on screen.
+   Three fixes:
+   - Every request has its own `requestId`, and an answer names it. A second
+     answer for a request that is already gone does nothing.
+   - Answer buttons pause for 600 ms when the request under them changes
+     (`useArmedAfterChange`).
+   - `CoworkChildApprovals` also shows a child's request that waits, queued,
+     behind another session's request under the same id.
+
+   Tests: `useToolApprovalRequests.sameId.test.ts` and
+   `CoworkChildApprovals.test.tsx`.
+4. **Racing settles could relabel a child (low).** A run's teardown settles
+   its children as cancelled on a thread of its own. With no lock between a
+   settle's read and its write, the later write won, and a completed child
+   could become cancelled. The temporary file name was shared too. Reads and
+   writes of a child's record are now serialised, and each temporary file
+   name is unique. Test: `racing_settles_agree_on_one_ending`, which failed
+   three runs out of three without the lock.
+
+One part of the finding is left open. A tool card in one conversation can
+show another conversation's request only when both conversations' main agents
+wait on the same call id at the same moment. The card shows that request's own
+diff, and the answer names that request.

@@ -197,7 +197,7 @@ fn save(data_folder: &Path, record: &ChildRecord) -> Result<(), ChildError> {
     std::fs::create_dir_all(store_dir(data_folder)).map_err(io)?;
     let body = serde_json::to_vec_pretty(record)
         .map_err(|e| ChildError::new(ChildErrorKind::Io, e.to_string()))?;
-    let temp = path.with_extension(format!("tmp-{}", std::process::id()));
+    let temp = path.with_extension(format!("tmp-{}-{}", std::process::id(), unique()));
     std::fs::write(&temp, body).map_err(io)?;
     std::fs::rename(&temp, &path).map_err(|e| {
         let _ = std::fs::remove_file(&temp);
@@ -222,6 +222,18 @@ pub fn load(data_folder: &Path, owner_id: &str) -> Result<ChildRecord, ChildErro
     }
     Ok(record)
 }
+
+fn unique() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Starting and settling read a child's record, decide, and write it back.
+/// A run's teardown settles children as cancelled on a thread of its own
+/// while a child may be settling itself; without this the later write won,
+/// and a completed child could be relabelled cancelled.
+static RECORDS: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// This process, as distinct from the one that ran before a restart.
 fn instance() -> &'static str {
@@ -397,6 +409,7 @@ pub fn begin(data_folder: &Path, roots: &Path, input: BeginInput) -> Result<Chil
         declared_writes: input.declared_writes,
         overrides: input.overrides,
     };
+    let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
     save(data_folder, &record)?;
     Ok(record)
 }
@@ -417,6 +430,9 @@ pub fn settle(
         ));
     }
     let owner_id = tauri_plugin_agent_tools::child_session_id(parent_session, task_id);
+    // Held from the read to the write, so the check below sees any ending
+    // written by a settle racing this one.
+    let _held = RECORDS.lock().unwrap_or_else(|p| p.into_inner());
     let mut record = load(data_folder, &owner_id)?;
     // The first ending wins. A late "cancelled" from tearing down a run whose
     // child had already finished must not relabel a completed child, and a
@@ -704,6 +720,30 @@ mod tests {
         assert_eq!(p.files[0].hunks.len(), 2);
         // Nothing was written to the checkout by listing or proposing.
         assert!(std::fs::read_to_string(f.src.join("shared.txt")).unwrap().starts_with("1\n"));
+    }
+
+    /// A run's teardown settles its children as cancelled while a child may be
+    /// settling itself. Whichever lands first is the ending every caller sees
+    /// and the one on disk; the other is not a second ending.
+    #[test]
+    fn racing_settles_agree_on_one_ending() {
+        let f = fixture("race");
+        start(&f, "alpha");
+        let gate = std::sync::Arc::new(std::sync::Barrier::new(6));
+        let handles: Vec<_> = (0..6)
+            .map(|i| {
+                let (data, roots, gate) = (f.data.clone(), f.roots.clone(), gate.clone());
+                std::thread::spawn(move || {
+                    let status = if i % 2 == 0 { ChildStatus::Completed } else { ChildStatus::Cancelled };
+                    gate.wait();
+                    settle(&data, &roots, "sess", "alpha", status, "").unwrap().status
+                })
+            })
+            .collect();
+        let seen: Vec<ChildStatus> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        let owner = tauri_plugin_agent_tools::child_session_id("sess", "alpha");
+        let kept = load(&f.data, &owner).unwrap().status;
+        assert!(seen.iter().all(|s| *s == kept), "callers saw {seen:?}, disk holds {kept:?}");
     }
 
     /// Failed and cancelled children are refused as clean proposals; the
