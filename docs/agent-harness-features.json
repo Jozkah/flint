@@ -2882,13 +2882,16 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-078"
       ],
       "owner": "lane-05-context-memory",
-      "files": [],
+      "files": [
+        "web-app/src/lib/contextDiff.ts",
+        "web-app/src/containers/PromptSnapshotView.tsx"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Two turns' payloads can be diffed to show what entered and left the window.",
@@ -2898,10 +2901,15 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app::contextDiff.test.ts",
+        "web-app::PromptSnapshotView.test.tsx",
+        "cowork-smoke::context-diff",
+        "cowork-smoke::context-diff-restart"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "2026-09-11 (feat/integrated-phase-2) -- implemented. \"What the model received\" gains \"Compare with the previous request\": it lists the session's stored snapshots (agent_prompt_snapshots by session; another session's never counts as previous), takes the one sent just before, and diffs the two dispatched payloads (lib/contextDiff.ts): messages matched as a longest common subsequence by role, call and text, so what entered (the new request, the model's previous answer or tool call, a tool result, steering) and what left the window (trimmed or compacted) are each named with the reason; system blocks that appeared or went are classed as recalled/withdrawn memory (<remembered_facts>), instruction changes or other prompt text; tools offered and no longer offered. The first request of a session and an unreadable list are stated, not shown as empty. Real app (Windows, mock provider, retries off): context-diff compares a second Cowork turn with the first (entered: the previous answer and the new request; nothing left) and context-diff-restart shows the same comparison from disk after a restart with nothing sent. The trim/compaction \"left\" path is covered by unit tests, not a real-app window that overflowed."
     },
     {
       "id": "AH-087",

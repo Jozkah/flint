@@ -459,6 +459,17 @@ Run: `cargo test --lib --no-default-features --features test-tauri -- replay::`,
 `cargo test -p tauri-plugin-agent-tools --lib snapshot::`,
 `npx vitest run src/lib/__tests__/contextReplay.test.ts src/containers/__tests__/PromptSnapshotView.test.tsx`.
 
+## Context diff between turns (AH-086)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 7 unit tests | `web-app/src/lib/__tests__/contextDiff.test.ts` | what a follow-up adds and why (tool call, tool result, new request, tool offered); what left the window when older turns were trimmed; recalled memory and instruction changes told apart in the system prompt; same text answering a different call counts as different; empty payloads; bounded previews; the previous snapshot found in time order |
+| 3 view tests | `web-app/src/containers/__tests__/PromptSnapshotView.test.tsx` | comparing against the request just before, never another session's; the first request says there is nothing earlier; an unreadable list is shown as an error |
+| Windows `context-diff` then `context-diff-restart` (mock provider, retries off) | `cowork_smoke.rs` | a second Cowork turn compared with the first names the previous answer and the new request as entered and nothing as left; after a restart the same comparison comes from disk with nothing sent |
+
+Not exercised in the real app: a window that actually overflowed, so the
+"left the window" path is shown by unit tests only.
+
 ## Prompt snapshots bound to their turn (AH-078)
 
 | Evidence | Where | Covers |

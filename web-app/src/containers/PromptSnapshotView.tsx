@@ -3,6 +3,12 @@ import { invoke } from '@tauri-apps/api/core'
 import { Button } from '@/components/ui/button'
 import { errorText } from '@/lib/errorText'
 import {
+  diffContext,
+  previousSnapshot,
+  type ContextDiff,
+  type ContextItem,
+} from '@/lib/contextDiff'
+import {
   cancelReplay,
   isReplaying,
   listReplays,
@@ -58,6 +64,8 @@ export type PromptSnapshotViewProps = {
   }) => Promise<PromptSnapshot[]>
   /** Injectable for tests; defaults to the real replay path (AH-079). */
   replayDeps?: ReplayDeps
+  /** Injectable for tests: every snapshot of a session (AH-086). */
+  onList?: (session: string) => Promise<PromptSnapshot[]>
 }
 
 const STATE_LABEL: Record<ReplayView['state'], string> = {
@@ -67,6 +75,106 @@ const STATE_LABEL: Record<ReplayView['state'], string> = {
   failed: 'Failed',
   cancelled: 'Stopped',
   refused: 'Refused',
+}
+
+/**
+ * What changed since the request sent just before this one, in the same
+ * session (AH-086): each message, system block and tool that entered or left
+ * the window, and why. Both sides are stored snapshots of what was actually
+ * sent; nothing is re-derived.
+ */
+function ContextDiffSection({
+  snapshot,
+  sessionId,
+  onList,
+}: {
+  snapshot: PromptSnapshot
+  sessionId?: string
+  onList?: (session: string) => Promise<PromptSnapshot[]>
+}) {
+  const [state, setState] = useState<
+    | { kind: 'idle' }
+    | { kind: 'loading' }
+    | { kind: 'first' }
+    | { kind: 'error'; message: string }
+    | { kind: 'ready'; previous: PromptSnapshot; diff: ContextDiff }
+  >({ kind: 'idle' })
+  if (!sessionId) return null
+
+  const compare = async () => {
+    setState({ kind: 'loading' })
+    try {
+      const list = await (onList
+        ? onList(sessionId)
+        : invoke<PromptSnapshot[]>('agent_prompt_snapshots', { session: sessionId }))
+      const previous = previousSnapshot(
+        list.filter((s) => s.session === sessionId),
+        snapshot.id
+      )
+      if (!previous) {
+        setState({ kind: 'first' })
+        return
+      }
+      setState({ kind: 'ready', previous, diff: diffContext(previous.payload, snapshot.payload) })
+    } catch (e) {
+      setState({ kind: 'error', message: errorText(e) })
+    }
+  }
+
+  const list = (items: ContextItem[], testId: string, empty: string) =>
+    items.length === 0 ? (
+      <p className="text-main-view-fg/50">{empty}</p>
+    ) : (
+      <ul className="flex flex-col gap-1" data-testid={testId}>
+        {items.map((item, i) => (
+          <li key={`${testId}-${i}`} data-part={item.part} data-reason={item.reason}>
+            <span className="font-medium">{item.label}</span>{' '}
+            <span className="text-main-view-fg/60">— {item.reason}</span>
+            <span className="block truncate font-mono text-main-view-fg/50">{item.preview}</span>
+          </li>
+        ))}
+      </ul>
+    )
+
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="context-diff">
+      <Button
+        type="button"
+        size="sm"
+        variant="link"
+        className="self-start px-0"
+        onClick={() => void compare()}
+        data-testid="context-diff-run"
+      >
+        Compare with the previous request
+      </Button>
+      {state.kind === 'loading' && <p>Comparing…</p>}
+      {state.kind === 'first' && (
+        <p data-testid="context-diff-first">
+          This is the session's first stored request; there is nothing earlier to compare it with.
+        </p>
+      )}
+      {state.kind === 'error' && (
+        <p className="text-destructive" data-testid="context-diff-error">
+          {state.message}
+        </p>
+      )}
+      {state.kind === 'ready' && (
+        <div className="flex flex-col gap-1.5" data-testid="context-diff-result" data-previous={state.previous.id}>
+          <p className="text-main-view-fg/60" data-testid="context-diff-summary">
+            Against {state.previous.id}: {state.diff.entered.length} entered,{' '}
+            {state.diff.left.length} left, {state.diff.keptMessages} message(s) kept,{' '}
+            {state.diff.keptTools} tool(s) kept
+            {state.diff.systemChanged ? ', system prompt changed' : ''}.
+          </p>
+          <div className="font-medium">Entered</div>
+          {list(state.diff.entered, 'context-diff-entered', 'Nothing new.')}
+          <div className="font-medium">Left</div>
+          {list(state.diff.left, 'context-diff-left', 'Nothing left the window.')}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -390,6 +498,12 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
                       .join(', ')}`}
               </dd>
             </dl>
+
+            <ContextDiffSection
+              snapshot={snapshot}
+              sessionId={props.sessionId}
+              onList={props.onList}
+            />
 
             <div className="flex items-center gap-2">
               <div role="group" aria-label="View as" className="flex gap-1">

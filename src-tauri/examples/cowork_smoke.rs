@@ -1094,6 +1094,10 @@ const SCENARIOS: &[Scenario] = &[
         name: "execution-timeline",
         run: scenario_execution_timeline,
     },
+    Scenario {
+        name: "context-diff",
+        run: scenario_context_diff,
+    },
     // A pair (AH-005/AH-177).
     Scenario {
         name: "event-export-1",
@@ -1339,6 +1343,10 @@ const RESTART_SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "execution-timeline-restart",
         run: scenario_execution_timeline_restart,
+    },
+    Scenario {
+        name: "context-diff-restart",
+        run: scenario_context_diff_restart,
     },
 ];
 
@@ -4692,6 +4700,124 @@ fn scenario_agent_roles(ctx: &Ctx) -> ScenarioResult {
         ensure!(text.contains(role), "the run does not name the {role} child by role");
     }
     println!("      NOTE: explorer's ls {}", if explorer_read { "succeeded" } else { "was not recorded" });
+    Ok(())
+}
+
+const CONTEXT_DIFF_HANDOFF: &str = "context-diff";
+
+/// Open the last "What the model received" panel and compare it with the
+/// request before it. Returns (previous snapshot id, entered reasons, entered
+/// previews, left count).
+fn compare_last_snapshot(ctx: &Ctx) -> Result<(String, Vec<String>, Vec<String>, usize), Failure> {
+    ctx.wait_until(
+        "two stored requests on screen",
+        "return document.querySelectorAll('[data-testid=\"prompt-snapshot\"]').length >= 2;",
+        Duration::from_secs(30),
+    )?;
+    ctx.eval(
+        "const all = [...document.querySelectorAll('[data-testid=\"prompt-snapshot\"]')];
+         const last = all[all.length - 1];
+         if (!last.open) last.querySelector('[data-testid=\"prompt-snapshot-toggle\"]').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the compare control",
+        "const all = [...document.querySelectorAll('[data-testid=\"prompt-snapshot\"]')];
+         return !!all[all.length - 1].querySelector('[data-testid=\"context-diff-run\"]');",
+        Duration::from_secs(20),
+    )?;
+    ctx.eval(
+        "const all = [...document.querySelectorAll('[data-testid=\"prompt-snapshot\"]')];
+         all[all.length - 1].querySelector('[data-testid=\"context-diff-run\"]').click();
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the comparison",
+        "const all = [...document.querySelectorAll('[data-testid=\"prompt-snapshot\"]')];
+         const last = all[all.length - 1];
+         return !!last.querySelector('[data-testid=\"context-diff-result\"], [data-testid=\"context-diff-first\"], [data-testid=\"context-diff-error\"]');",
+        Duration::from_secs(20),
+    )?;
+    let v = ctx.eval(
+        "const all = [...document.querySelectorAll('[data-testid=\"prompt-snapshot\"]')];
+         const last = all[all.length - 1];
+         const r = last.querySelector('[data-testid=\"context-diff-result\"]');
+         if (!r) return { error: (last.querySelector('[data-testid=\"context-diff-first\"], [data-testid=\"context-diff-error\"]') || {}).innerText || 'no result' };
+         const entered = [...r.querySelectorAll('[data-testid=\"context-diff-entered\"] li')];
+         return {
+           previous: r.dataset.previous,
+           reasons: entered.map(li => li.dataset.reason),
+           previews: entered.map(li => li.innerText),
+           left: r.querySelectorAll('[data-testid=\"context-diff-left\"] li').length,
+         };",
+    )?;
+    if let Some(e) = v.get("error").and_then(Value::as_str) {
+        bail!("the comparison did not produce a result: {e}");
+    }
+    let strings = |k: &str| -> Vec<String> {
+        v[k].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default()
+    };
+    Ok((
+        v["previous"].as_str().unwrap_or_default().to_string(),
+        strings("reasons"),
+        strings("previews"),
+        v["left"].as_u64().unwrap_or(0) as usize,
+    ))
+}
+
+/// AH-086: two requests' context, diffed through the real UI. Two Cowork
+/// turns; the second turn's stored request is compared with the first's, and
+/// the panel names what entered and why -- the model's previous answer and
+/// the new request -- with nothing leaving the window. The second half does
+/// the same after a restart, from the snapshots on disk, with nothing sent.
+fn scenario_context_diff(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    new_cowork_session(ctx)?;
+    send_cowork(ctx, "context diff first probe")?;
+    send_cowork(ctx, "context diff second probe")?;
+    let session = current_cowork_session(ctx)?;
+    let (previous, reasons, previews, left) = compare_last_snapshot(ctx)?;
+    println!("      against {previous}: entered {reasons:?}, left {left}");
+    ensure!(!previous.is_empty(), "the comparison names no previous request");
+    ensure!(
+        reasons.iter().any(|r| r == "the new request")
+            && reasons.iter().any(|r| r == "the model's previous answer"),
+        "the comparison does not say the new request and the previous answer entered: {reasons:?}"
+    );
+    ensure!(
+        previews.iter().any(|p| p.contains("context diff second probe")),
+        "the new request is not what entered: {previews:?}"
+    );
+    ensure!(
+        !previews.iter().any(|p| p.contains("context diff first probe")),
+        "the first request, already in the window, is reported as entering: {previews:?}"
+    );
+    ensure!(left == 0, "{left} item(s) reported leaving a window that only grew");
+    write_handoff(
+        ctx,
+        CONTEXT_DIFF_HANDOFF,
+        &serde_json::json!({ "session": session, "previous": previous, "reasons": reasons }),
+    )
+}
+
+fn scenario_context_diff_restart(ctx: &Ctx) -> ScenarioResult {
+    let handoff = read_handoff(ctx, CONTEXT_DIFF_HANDOFF, "context-diff")?;
+    let session = handoff["session"].as_str().unwrap_or_default().to_string();
+    ensure!(mock_requests(ctx)?.is_empty(), "a request went out before the check started");
+    open_cowork_session(ctx, &session)?;
+    let (previous, reasons, _, left) = compare_last_snapshot(ctx)?;
+    ensure!(
+        previous == handoff["previous"].as_str().unwrap_or_default(),
+        "after a restart the comparison is against {previous}, not {}",
+        handoff["previous"]
+    );
+    let want: Vec<String> = handoff["reasons"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    ensure!(reasons == want && left == 0, "after a restart: entered {reasons:?}, left {left}; before: {want:?}");
+    ensure!(mock_requests(ctx)?.is_empty(), "comparing sent a request");
+    println!("      same comparison after the restart");
     Ok(())
 }
 

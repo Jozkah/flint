@@ -221,7 +221,18 @@ detection, and the UI says so.
 ### AHD-009: what the model saw is a record, not a re-derivation
 
 The dispatched payload is persisted (`AH-078`). Token accounting, replay,
-diffing and the inspector read that record. The current `/context` report
+diffing and the inspector read that record.
+
+**Context diff (AH-086).** "Compare with the previous request" in the
+snapshot panel diffs a stored payload against the one the same session sent
+just before it (`lib/contextDiff.ts`). Messages are matched as a longest
+common subsequence keyed by role, answered call and text, so a window that
+drops its oldest turns and appends new ones keeps its middle. Each item that
+entered or left carries a reason read from the payloads alone: the new
+request, the model's previous answer or tool call, a tool result, steering;
+left the window (trimmed or compacted); memory recalled or withdrawn
+(`<remembered_facts>`); project instructions changed; a tool offered or no
+longer offered. It never re-derives a payload. The current `/context` report
 re-derives the prompt from present-day disk state and admits in its own docstring
 that it omits parts of what was sent; a resumed thread therefore cannot be shown
 the context it actually ran under.

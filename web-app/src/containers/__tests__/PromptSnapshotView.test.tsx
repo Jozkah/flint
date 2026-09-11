@@ -318,3 +318,79 @@ describe('PromptSnapshotView', () => {
     expect(onFetch).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('comparing with the previous request (AH-086)', () => {
+  const first = snap({
+    id: 'snap-a',
+    at: '2026-09-07T12:00:00Z',
+    redactions: [],
+    payload: { messages: [{ role: 'system', content: 'You are Jan.' }, { role: 'user', content: 'list files' }], tools: [] },
+  })
+  const second = snap({
+    id: 'snap-b',
+    at: '2026-09-07T12:00:05Z',
+    redactions: [],
+    payload: {
+      messages: [
+        { role: 'system', content: 'You are Jan.' },
+        { role: 'user', content: 'list files' },
+        { role: 'assistant', content: 'a.txt b.txt' },
+        { role: 'user', content: 'now read a.txt' },
+      ],
+      tools: [{ type: 'function', function: { name: 'read', parameters: {} } }],
+    },
+  })
+  const other = snap({ id: 'snap-x', session: 's2', at: '2026-09-07T12:00:03Z' })
+
+  it('shows what entered, with why, against the request just before', async () => {
+    const user = userEvent.setup()
+    render(
+      <PromptSnapshotView
+        snapshotId="snap-b"
+        sessionId="s1"
+        onFetch={vi.fn().mockResolvedValue([second])}
+        onList={vi.fn().mockResolvedValue([second, other, first])}
+      />
+    )
+    await openIt(user)
+    await user.click(await screen.findByTestId('context-diff-run'))
+    const result = await screen.findByTestId('context-diff-result')
+    // Another session's snapshot is never the "previous" one.
+    expect(result.dataset.previous).toBe('snap-a')
+    const reasons = [...screen.getByTestId('context-diff-entered').querySelectorAll('li')].map(
+      (li) => li.dataset.reason
+    )
+    expect(reasons).toEqual(["the model's previous answer", 'the new request', 'offered to the model'])
+    expect(screen.getByTestId('context-diff-summary')).toHaveTextContent('3 entered, 0 left, 1 message(s) kept')
+  })
+
+  it('says so for the session\'s first request', async () => {
+    const user = userEvent.setup()
+    render(
+      <PromptSnapshotView
+        snapshotId="snap-a"
+        sessionId="s1"
+        onFetch={vi.fn().mockResolvedValue([first])}
+        onList={vi.fn().mockResolvedValue([first, second])}
+      />
+    )
+    await openIt(user)
+    await user.click(await screen.findByTestId('context-diff-run'))
+    expect(await screen.findByTestId('context-diff-first')).toBeInTheDocument()
+  })
+
+  it('reports a list that cannot be read', async () => {
+    const user = userEvent.setup()
+    render(
+      <PromptSnapshotView
+        snapshotId="snap-b"
+        sessionId="s1"
+        onFetch={vi.fn().mockResolvedValue([second])}
+        onList={vi.fn().mockRejectedValue(new Error('no snapshots file'))}
+      />
+    )
+    await openIt(user)
+    await user.click(await screen.findByTestId('context-diff-run'))
+    expect(await screen.findByTestId('context-diff-error')).toHaveTextContent('no snapshots file')
+  })
+})
