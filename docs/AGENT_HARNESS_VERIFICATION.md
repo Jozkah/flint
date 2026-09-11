@@ -384,9 +384,49 @@ values follow it.
 | Rust tests | `tools/handlers.rs::memory_propose_project_scope_is_saved_where_it_is_read_back`, `snapshot.rs` retention tests | project proposals land in the store readers open; snapshot deletion by session, retention by count, torn lines kept |
 
 Last run 2026-09-11, Windows WebView2, scripted provider: both passed on the
-first attempt, with retries disabled for these scenarios. Not run live yet:
-project memory, user memory across projects, conflicting memory in the
-WebView, Chat (rather than Cowork) session recall.
+first attempt, with retries disabled for these scenarios.
+
+## Project and user memory through the app (AH-080 / AH-082)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView pair | `cowork-smoke --only memory-project-scope`, then `--only memory-project-after-restart` on the same `COWORK_SMOKE_KEEP` | a folder is attached through the real pill and picker; a project memory committed for it reaches that session's request as `[id] (project)`; a second checkout with the **same folder name** under another parent gets a different project id and never receives it; a user-scope memory reaches that other project as `[id] (user)` and stops being sent once forgotten; after a restart in a new process the project memory is still recalled in its project, still absent from the same-named one, and absent once forgotten |
+
+Last run 2026-09-11, Windows WebView2, scripted provider: three fresh
+scope/restart pairs, all six runs passed on the first attempt, retries
+disabled for `memory-project-*`. Not run live: user memory across a restart,
+conflicting memory in the WebView, Chat (rather than Cowork) recall.
+
+### Harness defect found on the way: eval results lost on the event bus
+
+Before the fix above, these scenarios failed about half the time with
+`eval timed out after 60s` on a trivial DOM query, always during the first
+send in a folder session. Diagnosis over the WebView's DevTools protocol
+(`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=...`):
+
+- the page stayed responsive the whole time; no dialog, crash or long task;
+- the timed-out script had started, and its `plugin:event|emit` had resolved
+  in the page -- the result reached Tauri and was not delivered;
+- Tauri's `Listeners::emit_filter` (tauri 2.11.5, `event/listener.rs`) only
+  `try_lock`s its handler table. When another thread holds it, the emit is
+  parked in a pending queue that is flushed only by a later emit that reaches
+  a handler. The harness was blocked waiting, so nothing flushed it;
+- the window is widest during the first folder-session send, when
+  `advertised_tool_schemas` spends ~40 s in the sandboxed shell probe
+  (`PROBE_TIMEOUT` is 10 s per candidate) while the app's own events flow.
+
+Fix: `Ctx::eval` no longer returns results over the event bus. The script
+stores its result in the page and the harness collects it with
+`WebviewWindow::eval_with_callback`. No retry was added. The ~40 s first-send
+probe is a real product latency, recorded separately and not fixed here.
+
+### Prompt snapshot ids were reused after a restart (AH-078)
+
+The same runs showed `prompts.jsonl` holding two records with id `snap-1`:
+the id was a process-local counter, so the first snapshot after a restart took
+an old record's id, and a lookup by id could return the wrong request. Ids are
+now `snap-<process start>-<pid>-<n>`; regression test
+`snapshot.rs::ids_carry_the_process_so_a_restart_cannot_reuse_one`.
 
 
 ## Run reliability (AH-018 / AH-019 / AH-021 / AH-024 / AH-025 / AH-029 / AH-030)

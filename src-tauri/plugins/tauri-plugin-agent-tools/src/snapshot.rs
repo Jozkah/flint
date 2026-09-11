@@ -316,10 +316,24 @@ fn canonical_string(value: &Value) -> String {
     }
 }
 
+/// Unique across restarts, not just within one process: the log outlives the
+/// process, and a counter alone restarted at `snap-1` and handed a new
+/// snapshot the id of an old one, so a lookup by id could return the wrong
+/// request. Start time and pid separate processes; the counter separates
+/// snapshots inside one.
 fn next_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::OnceLock;
     static NEXT: AtomicU64 = AtomicU64::new(1);
-    format!("snap-{}", NEXT.fetch_add(1, Ordering::Relaxed))
+    static PROCESS: OnceLock<String> = OnceLock::new();
+    let process = PROCESS.get_or_init(|| {
+        let started = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        format!("{started:x}-{:x}", std::process::id())
+    });
+    format!("snap-{process}-{}", NEXT.fetch_add(1, Ordering::Relaxed))
 }
 
 /// Identity to attach to a snapshot. Separate from the payload so the caller
@@ -956,6 +970,21 @@ mod scope_tests {
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].id, mine.id);
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn ids_carry_the_process_so_a_restart_cannot_reuse_one() {
+        // A bare counter restarts at 1 in every process, so the first
+        // snapshot after a restart used to be `snap-1` again, the same id as
+        // an older record in the same log.
+        let a = next_id();
+        let b = next_id();
+        assert_ne!(a, b);
+        let parts: Vec<&str> = a.split('-').collect();
+        assert_eq!(parts.len(), 4, "snap-<start>-<pid>-<n>, got {a}");
+        assert_eq!(parts[0], "snap");
+        assert_eq!(parts[2], format!("{:x}", std::process::id()));
+        assert_ne!(a, "snap-1");
     }
 
     #[test]

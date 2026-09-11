@@ -25,7 +25,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use tauri::{AppHandle, Listener, LogicalSize, Manager, WebviewWindow};
+use tauri::{AppHandle, LogicalSize, Manager, WebviewWindow};
 
 /// Compile-time crate root. Fixtures live under this, never under the CWD.
 const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
@@ -145,16 +145,20 @@ impl Ctx {
 
     fn eval_with_timeout(&self, js: &str, timeout: Duration) -> Result<Value, Failure> {
         let id = EVAL_SEQ.fetch_add(1, Ordering::SeqCst);
-        let channel = format!("cowork-smoke-eval-{id}");
-        let (tx, rx) = mpsc::channel::<String>();
-        let handler_id = self.window.listen(channel.clone(), move |event| {
-            let _ = tx.send(event.payload().to_string());
-        });
 
-        // `payload` is emitted as a JSON string so the value survives the event
-        // bus regardless of shape; the Rust side unwraps one level below.
+        // The result is left in the page and read back with
+        // `eval_with_callback`, never sent over the Tauri event bus. The bus
+        // drops events here: `Listeners::emit_filter` only `try_lock`s its
+        // handler table, parks the emit in a pending queue when another thread
+        // holds it, and flushes that queue only on a later emit that reaches a
+        // handler. While the app was busy -- the first send in a folder session
+        // runs a readiness probe for tens of seconds -- the harness's result
+        // sat in that queue with nothing left to flush it, and a page that had
+        // answered was reported as a timeout. Seen with the page's own marker
+        // set after the emit resolved and the harness still waiting.
         let script = format!(
             r#"(async () => {{
+  const results = (window.__smokeResults = window.__smokeResults || {{}});
   let out;
   try {{
     const v = await (async () => {{ {js} }})();
@@ -162,38 +166,48 @@ impl Ctx {
   }} catch (e) {{
     out = {{ err: (e && e.stack) ? String(e.stack) : String(e) }};
   }}
-  try {{
-    await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {{
-      event: {channel:?},
-      payload: JSON.stringify(out),
-    }});
-  }} catch (e) {{
-    console.error('cowork-smoke transport failure', e);
-  }}
+  results[{id}] = JSON.stringify(out);
 }})();"#
         );
 
         note_step(&format!("dispatching: {}", js.trim()));
         if let Err(e) = self.window.eval(&script) {
-            self.window.unlisten(handler_id);
             bail!("eval dispatch failed: {e}");
         }
 
         note_step(&format!("awaiting the page: {}", js.trim()));
-        let received = rx.recv_timeout(timeout);
-        self.window.unlisten(handler_id);
-
-        let raw = match received {
-            Ok(raw) => raw,
-            Err(_) => bail!("eval timed out after {timeout:?}; script was:\n{js}"),
+        let collect = format!(
+            "(() => {{ const r = window.__smokeResults || {{}}; const v = r[{id}];
+                 if (v === undefined) return null; delete r[{id}]; return v; }})()"
+        );
+        let deadline = Instant::now() + timeout;
+        let raw = loop {
+            let (tx, rx) = mpsc::channel::<String>();
+            if let Err(e) = self.window.eval_with_callback(&collect, move |v| {
+                let _ = tx.send(v);
+            }) {
+                bail!("eval {id} could not be collected: {e}");
+            }
+            let left = deadline.saturating_duration_since(Instant::now());
+            // `eval_with_callback` hands back the expression's value as JSON:
+            // `null` while the script is still running, else the result string.
+            match rx.recv_timeout(left.max(Duration::from_millis(1))) {
+                Ok(v) if v != "null" && !v.is_empty() => break v,
+                Ok(_) => {}
+                Err(_) => bail!("eval {id} timed out after {timeout:?}; script was:\n{js}"),
+            }
+            if Instant::now() >= deadline {
+                bail!("eval {id} timed out after {timeout:?}; script was:\n{js}");
+            }
+            std::thread::sleep(Duration::from_millis(40));
         };
 
-        // The event payload is a JSON document containing a JSON string.
+        // The callback value is a JSON string holding the JSON result.
         let outer: Value = serde_json::from_str(&raw)
-            .map_err(|e| Failure(format!("event payload was not JSON ({e}): {raw}")))?;
+            .map_err(|e| Failure(format!("eval result was not JSON ({e}): {raw}")))?;
         let inner = match outer.as_str() {
             Some(s) => serde_json::from_str::<Value>(s)
-                .map_err(|e| Failure(format!("inner payload was not JSON ({e}): {s}")))?,
+                .map_err(|e| Failure(format!("inner result was not JSON ({e}): {s}")))?,
             None => outer,
         };
 
@@ -6084,9 +6098,173 @@ fn scenario_memory_session_after_restart(ctx: &Ctx) -> ScenarioResult {
     Ok(())
 }
 
+// Project and user memory (AH-080 / AH-082). Same shape as the session pair.
+
+const PROJECT_EXPECTED: &str = "memory-project-expected.json";
+const PROJECT_FACT: &str = "Smoke project fact: this repository deploys on Fridays.";
+const USER_FACT: &str = "Smoke user fact: the user signs off as Quill.";
+
+/// Commit a memory in `scope` ('project' or 'user') the way the memory page
+/// does. For project scope the backend derives the project's identity from
+/// the folder; the page never sends one.
+fn commit_memory(ctx: &Ctx, scope: &str, project: Option<&Path>, content: &str) -> Result<String, Failure> {
+    let project = serde_json::to_string(&project.map(|p| p.to_string_lossy().to_string())).unwrap_or_else(|_| "null".into());
+    let id = ctx.eval_string(&format!(
+        r#"const c = await window.__TAURI_INTERNALS__.invoke('get_app_configurations');
+           const location = {{ dataFolder: c.data_folder, projectRoot: {project} ?? undefined }};
+           const p = await window.__TAURI_INTERNALS__.invoke('plugin:agent-tools|memory_record_propose', {{
+             location, scope: {scope:?}, content: {content:?}, sourceSessionId: null, sourceMessageId: null,
+           }});
+           const m = await window.__TAURI_INTERNALS__.invoke('plugin:agent-tools|memory_record_commit', {{
+             location, scope: {scope:?}, content: {content:?}, expectedHash: p.contentHash,
+             sourceSessionId: null, sourceMessageId: null,
+           }});
+           return m.id;"#
+    ))?;
+    ensure!(!id.is_empty(), "committing the {scope} memory returned no id");
+    Ok(id)
+}
+
+fn forget_memory(ctx: &Ctx, scope: &str, project: Option<&Path>, id: &str) -> ScenarioResult {
+    let project = serde_json::to_string(&project.map(|p| p.to_string_lossy().to_string())).unwrap_or_else(|_| "null".into());
+    let ok = ctx.eval_bool(&format!(
+        r#"const c = await window.__TAURI_INTERNALS__.invoke('get_app_configurations');
+           return await window.__TAURI_INTERNALS__.invoke('plugin:agent-tools|memory_record_forget', {{
+             location: {{ dataFolder: c.data_folder, projectRoot: {project} ?? undefined }},
+             scope: {scope:?}, id: {id:?},
+           }});"#
+    ))?;
+    ensure!(ok, "forgetting {id} reported nothing forgotten");
+    Ok(())
+}
+
+/// Attach `folder` to the current Cowork session through the real pill and
+/// the real picker command; only the OS dialog is scripted.
+fn attach_folder(ctx: &Ctx, folder: &Path) -> ScenarioResult {
+    ctx.script_dialog(Some(folder));
+    let opened = open_picker_through_the_pill(ctx);
+    let landed = opened.and_then(|()| {
+        ctx.wait_until(
+            "the folder to attach",
+            &format!("return !({PILL_JS});"),
+            Duration::from_secs(45),
+        )
+    });
+    ctx.clear_dialog_script();
+    landed?;
+    ctx.settle();
+    Ok(())
+}
+
+/// A second checkout with the same folder name as the fixture, somewhere else.
+fn twin_folder(ctx: &Ctx) -> Result<PathBuf, Failure> {
+    let name = ctx.project.file_name().map(|n| n.to_owned()).unwrap_or_default();
+    let twin = ctx.workspace.join("twin").join(name);
+    std::fs::create_dir_all(&twin).map_err(|e| Failure(e.to_string()))?;
+    std::fs::write(twin.join("README.md"), "# A different repository, same folder name\n")
+        .map_err(|e| Failure(e.to_string()))?;
+    Ok(twin)
+}
+
+fn scenario_memory_project_scope(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    new_cowork_session(ctx)?;
+    attach_folder(ctx, &ctx.project)?;
+    send_cowork(ctx, "project probe one")?;
+    let first = current_cowork_session(ctx)?;
+    let project = commit_memory(ctx, "project", Some(&ctx.project), PROJECT_FACT)?;
+    send_cowork(ctx, "project probe one, again")?;
+    let system = last_system_prompt(ctx)?;
+    ensure!(
+        system.contains(&format!("[{project}] (project)")),
+        "the project memory did not reach a session attached to its project: {system}"
+    );
+
+    // Same folder name, different repository: a different project.
+    let twin = twin_folder(ctx)?;
+    new_cowork_session(ctx)?;
+    attach_folder(ctx, &twin)?;
+    send_cowork(ctx, "twin probe")?;
+    let second = current_cowork_session(ctx)?;
+    let twin_prompt = last_system_prompt(ctx)?;
+    ensure!(
+        !twin_prompt.contains(&project) && !twin_prompt.contains("deploys on Fridays"),
+        "a same-named but different repository received the project memory: {twin_prompt}"
+    );
+
+    // User memory is available in another project when stored at user scope.
+    let user = commit_memory(ctx, "user", None, USER_FACT)?;
+    send_cowork(ctx, "twin probe, with user memory")?;
+    let with_user = last_system_prompt(ctx)?;
+    ensure!(
+        with_user.contains(&format!("[{user}] (user)")),
+        "a user-scope memory did not reach another project: {with_user}"
+    );
+    forget_memory(ctx, "user", None, &user)?;
+    send_cowork(ctx, "twin probe, user memory forgotten")?;
+    ensure!(
+        !last_system_prompt(ctx)?.contains(&user),
+        "a forgotten user memory was still sent"
+    );
+
+    std::fs::write(
+        data_folder()?.join(PROJECT_EXPECTED),
+        serde_json::json!({
+            "first": first, "second": second, "memory": project,
+            "project": ctx.project.to_string_lossy(),
+        })
+        .to_string(),
+    )
+    .map_err(|e| Failure(format!("could not record the project memory: {e}")))?;
+    Ok(())
+}
+
+fn scenario_memory_project_after_restart(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    let raw = std::fs::read_to_string(data_folder()?.join(PROJECT_EXPECTED)).map_err(|e| {
+        Failure(format!(
+            "no recorded project memory ({e}); run memory-project-scope first with the same COWORK_SMOKE_KEEP"
+        ))
+    })?;
+    let expected: Value = serde_json::from_str(&raw).map_err(|e| Failure(e.to_string()))?;
+    let first = expected["first"].as_str().unwrap_or_default().to_string();
+    let second = expected["second"].as_str().unwrap_or_default().to_string();
+    let memory = expected["memory"].as_str().unwrap_or_default().to_string();
+    let project = PathBuf::from(expected["project"].as_str().unwrap_or_default());
+
+    open_cowork_session(ctx, &first)?;
+    send_cowork(ctx, "after restart, project session")?;
+    ensure!(
+        last_system_prompt(ctx)?.contains(&format!("[{memory}] (project)")),
+        "the project memory did not survive the restart"
+    );
+    open_cowork_session(ctx, &second)?;
+    send_cowork(ctx, "after restart, twin session")?;
+    ensure!(
+        !last_system_prompt(ctx)?.contains(&memory),
+        "after the restart the project memory reached the other repository"
+    );
+    forget_memory(ctx, "project", Some(&project), &memory)?;
+    open_cowork_session(ctx, &first)?;
+    send_cowork(ctx, "after forgetting the project memory")?;
+    ensure!(
+        !last_system_prompt(ctx)?.contains(&memory),
+        "a forgotten project memory was still sent"
+    );
+    Ok(())
+}
+
 /// Scenarios that run only when named with `--only`: they need something the
 /// default run does not have, such as a real provider.
 const OPT_IN_SCENARIOS: &[Scenario] = &[
+    Scenario {
+        name: "memory-project-scope",
+        run: scenario_memory_project_scope,
+    },
+    Scenario {
+        name: "memory-project-after-restart",
+        run: scenario_memory_project_after_restart,
+    },
     Scenario {
         name: "memory-session-scope",
         run: scenario_memory_session_scope,
@@ -6432,7 +6610,8 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
                     let last = attempt >= 3
                         || scenario.name == SELF_TEST_FAIL.name
                         || scenario.name.starts_with("token-usage-")
-                        || scenario.name.starts_with("memory-session-");
+                        || scenario.name.starts_with("memory-session-")
+                        || scenario.name.starts_with("memory-project-");
                     if last {
                         break Err(Failure(match first_err {
                             Some(ref f) if f != &e => {
