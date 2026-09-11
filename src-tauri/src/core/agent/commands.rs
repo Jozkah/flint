@@ -705,6 +705,21 @@ pub async fn agent_prompt_snapshots(
     )
 }
 
+/// Delete every prompt snapshot of one session. AH-078.
+///
+/// What the model was sent is kept only as long as the conversation it
+/// belongs to: deleting a Chat thread or a Cowork session calls this, and it
+/// is how a user removes that record on purpose. Scoped to the one session it
+/// names; an empty name is refused rather than read as "all".
+#[tauri::command]
+pub async fn agent_prompt_snapshots_delete(
+    app: tauri::AppHandle,
+    session: String,
+) -> Result<usize, String> {
+    let data_folder = crate::core::app::commands::get_jan_data_folder_path(app);
+    tauri_plugin_agent_tools::snapshot::delete_session(&data_folder, &session)
+}
+
 /// Record one tool lifecycle event. AH-050.
 ///
 /// Every tool execution reaches this, whatever ran it -- a built-in, a file

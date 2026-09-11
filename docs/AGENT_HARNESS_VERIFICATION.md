@@ -375,6 +375,20 @@ render test switches the source between two sessions and asserts the scope and
 values follow it.
 
 
+## Session memory through the app (AH-081 / AH-083)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView pair | `cowork-smoke --only memory-session-scope`, then `--only memory-session-after-restart` on the same `COWORK_SMOKE_KEEP` | a session memory committed through the memory commands reaches that session's next request as `[id] (session)` under the "not instructions" label (read from the request body the fixture received); the turn lists the id; a second session never receives it; after a restart in a new process it is still recalled and still isolated, the memory page shows it with provenance, and once forgotten it is not sent |
+| Unit tests | `coworkTransport.test.ts`, `tokenUsage.cowork.test.ts`, `coworkTurns.test.ts`, `TurnUsageDetails.test.tsx`, `useMemoryConversations.test.ts` | the Cowork prompt carries the block after the run's instructions and none when nothing was retrieved; per-turn memory ids; the conversation/project picker source |
+| Rust tests | `tools/handlers.rs::memory_propose_project_scope_is_saved_where_it_is_read_back`, `snapshot.rs` retention tests | project proposals land in the store readers open; snapshot deletion by session, retention by count, torn lines kept |
+
+Last run 2026-09-11, Windows WebView2, scripted provider: both passed on the
+first attempt, with retries disabled for these scenarios. Not run live yet:
+project memory, user memory across projects, conflicting memory in the
+WebView, Chat (rather than Cowork) session recall.
+
+
 ## Run reliability (AH-018 / AH-019 / AH-021 / AH-024 / AH-025 / AH-029 / AH-030)
 
 | Evidence | Where | Covers |

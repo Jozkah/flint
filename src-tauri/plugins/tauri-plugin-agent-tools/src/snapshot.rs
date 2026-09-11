@@ -405,6 +405,17 @@ pub fn log_path(data_folder: &Path) -> PathBuf {
 pub fn append(data_folder: &Path, snapshot: &PromptSnapshot) {
     if let Err(e) = try_append(data_folder, snapshot) {
         eprintln!("prompt snapshot: could not record a dispatch: {e}");
+        return;
+    }
+    // Bounded by count, checked cheaply: only a log big enough to possibly
+    // hold more than the cap is read back and counted.
+    let big = std::fs::metadata(log_path(data_folder))
+        .map(|m| m.len() > 8 * 1024 * 1024)
+        .unwrap_or(false);
+    if big {
+        if let Err(e) = prune(data_folder, MAX_SNAPSHOTS) {
+            eprintln!("prompt snapshot: could not apply retention: {e}");
+        }
     }
 }
 
@@ -436,6 +447,67 @@ pub fn read_all(data_folder: &Path) -> Vec<PromptSnapshot> {
         .filter(|l| !l.trim().is_empty())
         .filter_map(|l| serde_json::from_str(&l).ok())
         .collect()
+}
+
+/// How many snapshots the log keeps. Older ones are dropped first when an
+/// append takes it over this, so the log is bounded without a timer.
+pub const MAX_SNAPSHOTS: usize = 2_000;
+
+/// Rewrite the log keeping only the lines `keep` accepts, atomically: a temp
+/// file beside it, then a rename. A crash mid-rewrite leaves the old log whole.
+/// Lines that no longer parse cannot be attributed to anyone and are kept.
+fn rewrite(data_folder: &Path, keep: impl Fn(usize, &PromptSnapshot) -> bool) -> Result<usize, String> {
+    let path = log_path(data_folder);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(0);
+    };
+    let mut out = String::with_capacity(text.len());
+    let mut removed = 0;
+    let mut index = 0;
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<PromptSnapshot>(line) {
+            Ok(s) => {
+                let kept = keep(index, &s);
+                index += 1;
+                if !kept {
+                    removed += 1;
+                    continue;
+                }
+            }
+            Err(_) => {}
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if removed == 0 {
+        return Ok(0);
+    }
+    let temp = path.with_extension(format!("jsonl.tmp-{}", std::process::id()));
+    std::fs::write(&temp, out).map_err(|e| e.to_string())?;
+    std::fs::rename(&temp, &path).map_err(|e| {
+        let _ = std::fs::remove_file(&temp);
+        e.to_string()
+    })?;
+    Ok(removed)
+}
+
+/// Forget every snapshot of one session. The user's way to delete what the
+/// model was sent, and what deleting the session does to its snapshots.
+pub fn delete_session(data_folder: &Path, session: &str) -> Result<usize, String> {
+    if session.trim().is_empty() {
+        return Err("name the session whose snapshots to delete".into());
+    }
+    rewrite(data_folder, |_, s| s.session != session)
+}
+
+/// Keep only the newest `max` snapshots.
+pub fn prune(data_folder: &Path, max: usize) -> Result<usize, String> {
+    let total = read_all(data_folder).len();
+    if total <= max {
+        return Ok(0);
+    }
+    let cut = total - max;
+    rewrite(data_folder, move |index, _| index >= cut)
 }
 
 pub fn find(data_folder: &Path, id: &str) -> Option<PromptSnapshot> {
@@ -496,6 +568,61 @@ mod tests {
                 { "type": "function", "function": { "name": "bash", "parameters": {} } }
             ]
         })
+    }
+
+    // ---- retention and deletion (AH-078) ---------------------------------
+
+    fn seeded(tag: &str, sessions: &[&str]) -> PathBuf {
+        let d = dir(tag);
+        for (i, s) in sessions.iter().enumerate() {
+            let mut id = ident();
+            id.session = (*s).into();
+            id.run = format!("r{i}");
+            append(&d, &capture(&payload(), &id));
+        }
+        d
+    }
+
+    #[test]
+    fn deleting_a_session_removes_only_its_snapshots() {
+        let d = seeded("del", &["a", "b", "a", "c"]);
+        assert_eq!(delete_session(&d, "a").unwrap(), 2);
+        let left: Vec<String> = read_all(&d).into_iter().map(|s| s.session).collect();
+        assert_eq!(left, vec!["b", "c"]);
+        assert!(by_session(&d, "a").is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn deleting_needs_a_session() {
+        let d = seeded("del-empty", &["a"]);
+        assert!(delete_session(&d, "  ").is_err());
+        assert_eq!(read_all(&d).len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn retention_keeps_the_newest() {
+        let d = seeded("prune", &["s0", "s1", "s2", "s3", "s4"]);
+        assert_eq!(prune(&d, 2).unwrap(), 3);
+        let left: Vec<String> = read_all(&d).into_iter().map(|s| s.session).collect();
+        assert_eq!(left, vec!["s3", "s4"]);
+        assert_eq!(prune(&d, 2).unwrap(), 0, "nothing more to drop");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_torn_line_survives_a_rewrite() {
+        let d = seeded("torn", &["a", "b"]);
+        let path = log_path(&d);
+        let mut raw = std::fs::read_to_string(&path).unwrap();
+        raw.push_str("{\"v\":1,\"id\":\"half\n");
+        std::fs::write(&path, raw).unwrap();
+        delete_session(&d, "a").unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"half"), "an unattributable line was dropped");
+        assert_eq!(read_all(&d).len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     // ---- the snapshot is the dispatch -----------------------------------

@@ -248,6 +248,7 @@ import {
   type SessionBundle,
 } from '@/lib/sessionBundle'
 import { fromCoworkUsage, toCoworkUsage } from '@/lib/tokenUsage'
+import { deletePromptSnapshots } from '@/lib/promptSnapshotRetention'
 
 const now = () => Date.now()
 
@@ -401,6 +402,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
 
       deleteSession: (id) =>
         set((s) => {
+          void deletePromptSnapshots(id)
           const sessions = s.sessions.filter((x) => x.id !== id)
           const currentId =
             s.currentId === id ? (sessions[0]?.id ?? null) : s.currentId
