@@ -323,7 +323,6 @@ fn canonical_string(value: &Value) -> String {
 /// the older record. The process's start time keeps each launch's ids apart.
 fn next_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::OnceLock;
     static NEXT: AtomicU64 = AtomicU64::new(1);
     static LAUNCH: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     let launch = LAUNCH.get_or_init(|| {

@@ -492,7 +492,17 @@ the disagreements a dispatch from a given conversation and project would
 withhold -- the same entitled records and applicability rule as
 `memory_retrieve`, so another chat's disagreement is never listed -- and
 Settings > Memory shows each pair in full with "Keep this one", which forgets
-the other side (undoable) so the survivor reaches the next request. Each
+the other side (undoable) so the survivor reaches the next request.
+Recall is switched per scope (`settings.json` `recall.{session,project,user}`,
+on by default): a scope switched off is not read for retrieval or conflicts,
+and its records stay stored. Settings that exist but cannot be parsed fail
+closed -- recall off, automatic saving off -- and say so; unreadable or
+partly damaged stores are reported to the page and to each turn rather than
+read as empty. Forgetting removes the text from the store in the same write
+and keeps a tombstone (id, provenance, content hash); undo must hand back the
+exact text, checked against that hash. "Forget all" does the same for one
+scope. Nothing moves a chat or project memory to user scope except an
+explicit move. Each
 dispatch records the ids it carried and withheld:
 Chat on the message's `metadata.memory`, Cowork on the assistant turn's
 `memory`, both shown in that turn's details; the rendered block with its ids is

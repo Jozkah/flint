@@ -20,8 +20,59 @@ pub struct Settings {
     /// permission to skip the question, not permission to store a credential.
     #[serde(default)]
     pub automatically_save: bool,
+    /// Which scopes are recalled into requests. Stored records are kept either
+    /// way; turning a scope off only stops it being sent.
+    #[serde(default)]
+    pub recall: Recall,
     #[serde(default = "default_schema")]
     pub schema_version: u32,
+}
+
+/// Per-scope recall switches. On by default, matching behaviour before they
+/// existed, so an upgrade changes nothing a user already relies on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Recall {
+    #[serde(default = "on")]
+    pub session: bool,
+    #[serde(default = "on")]
+    pub project: bool,
+    #[serde(default = "on")]
+    pub user: bool,
+}
+
+fn on() -> bool {
+    true
+}
+
+impl Default for Recall {
+    fn default() -> Self {
+        Self {
+            session: true,
+            project: true,
+            user: true,
+        }
+    }
+}
+
+impl Recall {
+    /// Every scope off: the answer when the settings cannot be read, because
+    /// a user who turned recall off must not have it silently turned back on.
+    pub fn none() -> Self {
+        Self {
+            session: false,
+            project: false,
+            user: false,
+        }
+    }
+
+    pub fn allows(&self, scope: super::record::Scope) -> bool {
+        match scope {
+            super::record::Scope::Session => self.session,
+            super::record::Scope::Project => self.project,
+            super::record::Scope::User => self.user,
+        }
+    }
 }
 
 fn default_schema() -> u32 {
@@ -32,8 +83,38 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             automatically_save: false,
+            recall: Recall::default(),
             schema_version: default_schema(),
         }
+    }
+}
+
+/// Settings, and why they are not the stored ones when they are not.
+///
+/// A missing file is the defaults with no complaint. A file that exists but
+/// cannot be read or parsed is reported, and fails closed: nothing saved
+/// without asking, and nothing recalled, until the user looks.
+pub fn load_report(store_root: &Path) -> (Settings, Option<String>) {
+    let path = settings_path(store_root);
+    match std::fs::read_to_string(&path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (Settings::default(), None),
+        Err(e) => (
+            Settings {
+                recall: Recall::none(),
+                ..Settings::default()
+            },
+            Some(format!("memory settings could not be read ({e}); recall is off until they are saved again")),
+        ),
+        Ok(raw) => match serde_json::from_str::<Settings>(&raw) {
+            Ok(s) => (s, None),
+            Err(e) => (
+                Settings {
+                    recall: Recall::none(),
+                    ..Settings::default()
+                },
+                Some(format!("memory settings are damaged ({e}); recall is off until they are saved again")),
+            ),
+        },
     }
 }
 
@@ -135,6 +216,46 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().contains(".tmp-"))
             .collect();
         assert!(leftovers.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn recall_is_on_by_default_and_old_files_keep_it_on() {
+        let root = unique_root();
+        assert_eq!(load_report(&root), (Settings::default(), None));
+        assert!(Settings::default().recall.user);
+        std::fs::create_dir_all(super::super::memory_dir(&root)).unwrap();
+        // Written before recall switches existed.
+        std::fs::write(settings_path(&root), r#"{"automaticallySave":false}"#).unwrap();
+        let (s, issue) = load_report(&root);
+        assert_eq!(s.recall, Recall::default());
+        assert!(issue.is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_turned_off_scope_survives_a_restart() {
+        let root = unique_root();
+        let mut s = Settings::default();
+        s.recall.user = false;
+        save(&root, &s).unwrap();
+        let (back, issue) = load_report(&root);
+        assert!(!back.recall.user && back.recall.project && back.recall.session);
+        assert!(issue.is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Damaged settings must not quietly turn recall back on for someone who
+    /// switched it off, and must say so.
+    #[test]
+    fn damaged_settings_turn_recall_off_and_report_it() {
+        let root = unique_root();
+        std::fs::create_dir_all(super::super::memory_dir(&root)).unwrap();
+        std::fs::write(settings_path(&root), "{ not json").unwrap();
+        let (s, issue) = load_report(&root);
+        assert_eq!(s.recall, Recall::none());
+        assert!(!s.automatically_save);
+        assert!(issue.expect("reported").contains("damaged"));
         let _ = std::fs::remove_dir_all(&root);
     }
 

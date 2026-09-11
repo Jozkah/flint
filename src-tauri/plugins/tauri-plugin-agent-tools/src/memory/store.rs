@@ -30,6 +30,28 @@ pub struct Loaded {
     /// Records written by a newer Jan. Kept out of use rather than guessed at,
     /// and never rewritten, so downgrading does not destroy them.
     pub skipped_newer_schema: usize,
+    /// The store exists but could not be read at all (locked, a directory
+    /// where the file should be, permissions). Distinct from "empty": an
+    /// unreadable store that looked empty would silently lose every memory.
+    pub unavailable: Option<String>,
+}
+
+impl Loaded {
+    /// A sentence for the UI when anything was not loaded, `None` when all was.
+    pub fn issue(&self, scope: Scope) -> Option<String> {
+        let what = file_name(scope);
+        if let Some(e) = &self.unavailable {
+            return Some(format!("{what} could not be read: {e}"));
+        }
+        match (self.skipped_unreadable, self.skipped_newer_schema) {
+            (0, 0) => None,
+            (bad, 0) => Some(format!("{what}: {bad} damaged record(s) were skipped")),
+            (0, newer) => Some(format!("{what}: {newer} record(s) from a newer Jan were left untouched")),
+            (bad, newer) => Some(format!(
+                "{what}: {bad} damaged record(s) skipped, {newer} from a newer Jan left untouched"
+            )),
+        }
+    }
 }
 
 fn file_name(scope: Scope) -> &'static str {
@@ -57,8 +79,15 @@ pub fn records_path(store_root: &Path, scope: Scope) -> PathBuf {
 /// line that will not parse is skipped and counted.
 pub fn load(store_root: &Path, scope: Scope) -> Loaded {
     let path = records_path(store_root, scope);
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        return Loaded::default();
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Loaded::default(),
+        Err(e) => {
+            return Loaded {
+                unavailable: Some(e.to_string()),
+                ..Loaded::default()
+            }
+        }
     };
 
     let mut out = Loaded::default();

@@ -23,7 +23,11 @@ export function TurnUsageDetails({
   const hasUsage = !!usage && (usage.totalTokens ?? 0) > 0
   const injected = memory?.injectedIds ?? []
   const withheld = memory?.conflictIds ?? []
-  if (!hasUsage && injected.length === 0 && withheld.length === 0) return null
+  const issues = memory?.storageIssues ?? []
+  const recallOff = memory?.recallOff ?? []
+  const hasMemoryNote =
+    injected.length > 0 || withheld.length > 0 || issues.length > 0 || recallOff.length > 0
+  if (!hasUsage && !hasMemoryNote) return null
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -50,7 +54,7 @@ export function TurnUsageDetails({
         {hasUsage && (
           <TokenUsageBreakdown usage={usage} testIdPrefix="turn-token-usage" />
         )}
-        {(injected.length > 0 || withheld.length > 0) && (
+        {hasMemoryNote && (
           <div
             className={hasUsage ? 'mt-2 border-t border-border pt-2' : undefined}
             data-testid="turn-memory"
@@ -71,6 +75,18 @@ export function TurnUsageDetails({
               <p className="mt-1 text-amber-600" data-testid="turn-memory-withheld">
                 Withheld as conflicting: {withheld.join(', ')}
               </p>
+            )}
+            {recallOff.length > 0 && (
+              <p className="mt-1 text-muted-foreground" data-testid="turn-memory-recall-off">
+                Recall off for: {recallOff.join(', ')}
+              </p>
+            )}
+            {issues.length > 0 && (
+              <div role="alert" className="mt-1 text-destructive" data-testid="turn-memory-storage-error">
+                {issues.map((issue) => (
+                  <p key={issue}>{issue}</p>
+                ))}
+              </div>
             )}
           </div>
         )}

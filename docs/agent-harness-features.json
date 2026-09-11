@@ -2635,7 +2635,7 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-081"
@@ -2649,7 +2649,11 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
         "src-tauri/src/core/agent/context.rs",
-        "web-app/src/lib/custom-chat-transport.ts"
+        "web-app/src/lib/custom-chat-transport.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/settings.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+        "web-app/src/routes/settings/memory.tsx",
+        "web-app/src/components/TurnUsageDetails.tsx"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -2665,11 +2669,16 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
         "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
-        "scripts/memory-e2e.mjs"
+        "scripts/memory-e2e.mjs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs::user_memory_tests",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/settings.rs",
+        "web-app/src/routes/settings/__tests__/memory.user.test.tsx",
+        "src-tauri/examples/cowork_smoke.rs::memory-user-scope",
+        "src-tauri/examples/cowork_smoke.rs::memory-user-after-restart"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "User scope resolves to the permanent store and reaches the model. The gap this closes was not storage but dispatch: retrieval was wired into the Rust agent loop only, so the desktop -- which drives its own tool loop -- never carried a remembered fact. Proved against a real server: a marker saved in one chat is present by memory id and by content in a different chat's serialized request body, and absent from a third chat's after forget. Not promoted: the evidence is Rust unit tests plus an end-to-end that drives a probe binary and real HTTP. There is no memory UI, no restart evidence and no scenario driven through the real Tauri application, which is what this registry requires before implemented. Re-audit 2026-09-11: the Cowork prompt now carries the selection (it previously dropped it). Live in the WebView (cowork-smoke memory-project-scope): a user-scope memory committed through the memory commands reaches a session attached to a different project as [id] (user), and is not sent once forgotten. Still in-progress: user memory has not been exercised across a restart through the app, and precedence against a conflicting project memory has no WebView scenario."
+      "auditNote": "User scope resolves to the permanent store and reaches the model. The gap this closes was not storage but dispatch: retrieval was wired into the Rust agent loop only, so the desktop -- which drives its own tool loop -- never carried a remembered fact. Proved against a real server: a marker saved in one chat is present by memory id and by content in a different chat's serialized request body, and absent from a third chat's after forget. Not promoted: the evidence is Rust unit tests plus an end-to-end that drives a probe binary and real HTTP. There is no memory UI, no restart evidence and no scenario driven through the real Tauri application, which is what this registry requires before implemented. Re-audit 2026-09-11: the Cowork prompt now carries the selection (it previously dropped it). Live in the WebView (cowork-smoke memory-project-scope): a user-scope memory committed through the memory commands reaches a session attached to a different project as [id] (user), and is not sent once forgotten. Still in-progress: user memory has not been exercised across a restart through the app, and precedence against a conflicting project memory has no WebView scenario. Implemented 2026-09-11 after the restart, enable/disable, deletion and cross-project paths passed in the real Windows WebView (memory-user-scope / memory-user-after-restart, retries off): written, edited and pinned on Settings > Memory; recalled with its exact id in two unrelated projects (same folder name, different repository); per-scope recall switches (off: not sent, still stored; on after a restart: the same record returns); forget removes the text from user.jsonl (tombstone keeps id and hash; undo must hand back the exact text); Forget all after confirmation; chat/project saves never create user memories; damaged or unreadable storage and damaged settings are reported on the page and per turn, settings failing closed. First attempt of the restart scenario failed on a real defect (forgotten records stayed listed as empty rows), fixed with a regression test and re-run on a fresh profile. Mutation checks: removing each fix fails its test. Not done: past prompt snapshots keep text a memory contributed to requests already sent."
     },
     {
       "id": "AH-083",

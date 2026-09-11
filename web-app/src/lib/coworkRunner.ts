@@ -292,7 +292,14 @@ const memoryOf = (meta: unknown): TurnMemory | undefined => {
   const m = (meta as { memory?: unknown } | undefined)?.memory
   if (!m || typeof m !== 'object') return undefined
   const r = m as Record<string, unknown>
-  return { injectedIds: idList(r.injectedIds), conflictIds: idList(r.conflictIds) }
+  const issues = idList(r.storageIssues)
+  const off = idList(r.recallOff)
+  return {
+    injectedIds: idList(r.injectedIds),
+    conflictIds: idList(r.conflictIds),
+    ...(issues.length > 0 ? { storageIssues: issues } : {}),
+    ...(off.length > 0 ? { recallOff: off } : {}),
+  }
 }
 
 const usageOf = (meta: unknown): Usage | null => {

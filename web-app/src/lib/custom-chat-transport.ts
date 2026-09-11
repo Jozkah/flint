@@ -1730,6 +1730,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
                   memory: {
                     injectedIds: this.memorySelection.injectedIds,
                     conflictIds: this.memorySelection.conflictIds,
+                    storageIssues: this.memorySelection.storageIssues ?? [],
+                    recallOff: this.memorySelection.recallOff ?? [],
                   },
                 }
               : {}),

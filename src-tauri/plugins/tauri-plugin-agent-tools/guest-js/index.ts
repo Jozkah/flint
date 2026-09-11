@@ -346,11 +346,24 @@ export type MemoryStorageSummary = {
   deletedCount: number
   conflictedCount: number
   bytes: number
+  /** Stores that could not be read in full, in words for the UI. */
+  issues: string[]
+}
+
+/** Which scopes are recalled into requests. Stored records are kept either way. */
+export type MemoryRecall = {
+  session: boolean
+  project: boolean
+  user: boolean
 }
 
 export type MemorySettings = {
   automaticallySave: boolean
+  recall: MemoryRecall
   schemaVersion: number
+  /** Set when the settings file exists but could not be read; recall is then
+   * off until the settings are saved again. */
+  issue?: string | null
 }
 
 /**
@@ -369,6 +382,10 @@ export type MemoryRetrieved = {
   /** Applicable records the budget had no room for. */
   droppedIds: string[]
   charsUsed: number
+  /** Storage or settings that could not be read, in words for the UI. */
+  storageIssues?: string[]
+  /** Scopes whose recall the user switched off ("chat", "project", "user"). */
+  recallOff?: string[]
 }
 
 /**
@@ -566,17 +583,32 @@ export async function memoryRecordForget(
   })
 }
 
-/** Undo a forget, restoring the same record rather than a copy of its text. */
+/**
+ * Undo a forget, restoring the same record rather than a copy of its text.
+ *
+ * Forgetting removes the text from disk, so the caller hands back the text it
+ * showed; it must be exactly what was forgotten.
+ */
 export async function memoryRecordRestore(
   location: MemoryLocation,
   scope: MemoryScope,
-  id: string
+  id: string,
+  content: string
 ): Promise<boolean> {
   return await invoke('plugin:agent-tools|memory_record_restore', {
     location,
     scope,
     id,
+    content,
   })
+}
+
+/** Forget every memory in one scope that `location` may see. Returns how many. */
+export async function memoryScopeClear(
+  location: MemoryLocation,
+  scope: MemoryScope
+): Promise<number> {
+  return await invoke('plugin:agent-tools|memory_scope_clear', { location, scope })
 }
 
 export async function memoryRecordPin(
@@ -636,13 +668,19 @@ export async function memorySettingsGet(
   return await invoke('plugin:agent-tools|memory_settings_get', { location })
 }
 
+/**
+ * Change memory settings. A boolean is the automatic-save switch (the original
+ * form); an object changes only the fields it names.
+ */
 export async function memorySettingsUpdate(
   location: MemoryLocation,
-  automaticallySave: boolean
+  change: boolean | { automaticallySave?: boolean; recall?: MemoryRecall }
 ): Promise<MemorySettings> {
+  const patch = typeof change === 'boolean' ? { automaticallySave: change } : change
   return await invoke('plugin:agent-tools|memory_settings_update', {
     location,
-    automaticallySave,
+    automaticallySave: patch.automaticallySave,
+    recall: patch.recall,
   })
 }
 

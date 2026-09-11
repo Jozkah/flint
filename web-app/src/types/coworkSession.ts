@@ -88,6 +88,10 @@ export type CoworkTurn = {
 export type TurnMemory = {
   injectedIds: string[]
   conflictIds: string[]
+  /** Memory storage that could not be read for this request, in words. */
+  storageIssues?: string[]
+  /** Scopes whose recall was switched off for this request. */
+  recallOff?: string[]
 }
 
 /**

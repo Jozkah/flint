@@ -518,11 +518,14 @@ pub async fn memory_record_forget(
         .map_err(AgentToolsError::from)
 }
 
+/// Undo a forget. `content` is the text the caller showed before forgetting:
+/// the store no longer holds it, and it must match the forgotten record's hash.
 #[tauri::command]
 pub async fn memory_record_restore(
     location: Where,
     scope: String,
     id: String,
+    content: String,
 ) -> Result<bool, AgentToolsError> {
     let scope = parse_scope(&scope)?;
     let access = location.access();
@@ -532,7 +535,34 @@ pub async fn memory_record_restore(
         _ => access.permanent_store.clone(),
     }
     .ok_or_else(|| AgentToolsError::from("no store for that scope here".to_string()))?;
-    super::create::restore(&store_root, scope, &MemoryId::new(id), now())
+    super::create::restore(&store_root, scope, &MemoryId::new(id), &content, now())
+        .map_err(AgentToolsError::from)
+}
+
+/// Forget every memory in one scope that this place may see. Returns how many.
+///
+/// "Across chats" forgets all user memories; "this project" only the open
+/// project's; "this chat" only the named chat's. Same forget as one at a time:
+/// the text leaves the store, a tombstone stays.
+#[tauri::command]
+pub async fn memory_scope_clear(location: Where, scope: String) -> Result<usize, AgentToolsError> {
+    let scope = parse_scope(&scope)?;
+    let access = location.access();
+    match scope {
+        Scope::Project if access.project_id.is_none() => {
+            return Err(AgentToolsError::from("no project is open to clear".to_string()))
+        }
+        Scope::Session if access.session_id.is_none() => {
+            return Err(AgentToolsError::from("no chat is open to clear".to_string()))
+        }
+        _ => {}
+    }
+    let store_root = match scope {
+        Scope::Project => access.project_store.clone(),
+        _ => access.permanent_store.clone(),
+    }
+    .ok_or_else(|| AgentToolsError::from("no store for that scope here".to_string()))?;
+    super::create::forget_all(&store_root, scope, |r| access.may_see(r), now())
         .map_err(AgentToolsError::from)
 }
 
@@ -584,27 +614,46 @@ pub async fn memory_storage_summary(location: Where) -> Result<StorageSummary, A
 }
 
 #[tauri::command]
-pub async fn memory_settings_get(location: Where) -> Result<Settings, AgentToolsError> {
-    Ok(location
+pub async fn memory_settings_get(location: Where) -> Result<SettingsView, AgentToolsError> {
+    let (settings, issue) = location
         .settings_root()
-        .map(|root| settings::load(&root))
-        .unwrap_or_default())
+        .map(|root| settings::load_report(&root))
+        .unwrap_or_default();
+    Ok(SettingsView { settings, issue })
 }
 
+/// The settings, and why they are not the stored ones when they are not.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsView {
+    #[serde(flatten)]
+    pub settings: Settings,
+    /// Set when the settings file exists but could not be read. Recall is off
+    /// until the user saves them again.
+    pub issue: Option<String>,
+}
+
+/// Change any of the settings; fields left out keep their stored value.
 #[tauri::command]
 pub async fn memory_settings_update(
     location: Where,
-    automatically_save: bool,
-) -> Result<Settings, AgentToolsError> {
+    automatically_save: Option<bool>,
+    recall: Option<settings::Recall>,
+) -> Result<SettingsView, AgentToolsError> {
     let root = location
         .settings_root()
         .ok_or_else(|| AgentToolsError::from("no data folder to store settings in".to_string()))?;
+    let (current, _) = settings::load_report(&root);
     let next = Settings {
-        automatically_save,
-        ..settings::load(&root)
+        automatically_save: automatically_save.unwrap_or(current.automatically_save),
+        recall: recall.unwrap_or(current.recall),
+        ..current
     };
     settings::save(&root, &next).map_err(AgentToolsError::from)?;
-    Ok(next)
+    Ok(SettingsView {
+        settings: next,
+        issue: None,
+    })
 }
 
 /// A proposal as the review surface sees it.
@@ -689,6 +738,11 @@ pub struct Retrieved {
     pub dropped_ids: Vec<String>,
     /// Characters injected, for context accounting.
     pub chars_used: usize,
+    /// Storage that could not be read, or settings that were damaged, in
+    /// words for the UI. Empty when everything loaded.
+    pub storage_issues: Vec<String>,
+    /// Scopes the user switched recall off for ("chat", "project", "user").
+    pub recall_off: Vec<String>,
 }
 
 impl Retrieved {
@@ -701,6 +755,8 @@ impl Retrieved {
             conflict_ids: Vec::new(),
             dropped_ids: Vec::new(),
             chars_used: 0,
+            storage_issues: Vec::new(),
+            recall_off: Vec::new(),
         }
     }
 }
@@ -712,14 +768,43 @@ impl Retrieved {
 /// records. Shared by retrieval and the conflict list so the page shows exactly
 /// the disagreements a dispatch from the same place would withhold.
 fn entitled_records(location: &Where, access: &Access) -> Vec<super::record::MemoryRecord> {
+    recalled_records(location, access).0
+}
+
+/// The entitled records of every scope the user has recall on for, with any
+/// storage problem met on the way, phrased for the UI.
+///
+/// A scope switched off is not read at all, so its records can neither be
+/// injected nor take part in a conflict or a duplicate check. They stay on
+/// disk: switching recall back on brings them back unchanged.
+fn recalled_records(
+    location: &Where,
+    access: &Access,
+) -> (Vec<super::record::MemoryRecord>, Vec<String>, settings::Recall) {
+    let (settings, settings_issue) = location
+        .settings_root()
+        .map(|root| settings::load_report(&root))
+        .unwrap_or_default();
+    let recall = settings.recall;
     let mut records = Vec::new();
+    let mut issues: Vec<String> = settings_issue.into_iter().collect();
+    let mut take = |root: &Path, scope: Scope| {
+        if !recall.allows(scope) {
+            return;
+        }
+        let loaded = super::store::load(root, scope);
+        if let Some(issue) = loaded.issue(scope) {
+            issues.push(issue);
+        }
+        records.extend(loaded.records);
+    };
     if let Some(store) = access.project_store.as_deref() {
-        records.extend(super::store::load(store, Scope::Project).records);
+        take(store, Scope::Project);
     }
     let permanent = crate::workspace::permanent_store(Path::new(&location.data_folder));
-    records.extend(super::store::load(&permanent, Scope::User).records);
-    records.extend(super::store::load(&permanent, Scope::Session).records);
-    records
+    take(&permanent, Scope::User);
+    take(&permanent, Scope::Session);
+    (records, issues, recall)
 }
 
 /// Two remembered records that cannot both be followed, with both in full.
@@ -784,7 +869,7 @@ pub async fn memory_retrieve(
 
     let access = location.access();
     let now = now();
-    let records = entitled_records(&location, &access);
+    let (records, storage_issues, recall) = recalled_records(&location, &access);
 
     let selection = super::retrieve::select(
         &records,
@@ -820,6 +905,12 @@ pub async fn memory_retrieve(
             .map(|id| id.as_str().to_string())
             .collect(),
         chars_used: selection.chars_used,
+        storage_issues,
+        recall_off: [Scope::Session, Scope::Project, Scope::User]
+            .into_iter()
+            .filter(|s| !recall.allows(*s))
+            .map(|s| service::scope_word(s).to_string())
+            .collect(),
     })
 }
 
@@ -1163,6 +1254,177 @@ mod inferred_tests {
             }
             other => panic!("expected approval after turning it off, got {other:?}"),
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// AH-082: user memory, recall switches, clearing, and storage that fails.
+#[cfg(test)]
+mod user_memory_tests {
+    use super::*;
+    use crate::memory::record::{Creator, MemoryRecord, Origin};
+
+    fn root(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("jan-usermem-{name}-{}-{}", std::process::id(), now()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("root");
+        dir
+    }
+
+    fn at(dir: &Path, session: &str) -> Where {
+        Where {
+            data_folder: dir.to_string_lossy().to_string(),
+            project_root: None,
+            session_id: Some(session.to_string()),
+        }
+    }
+
+    fn put(dir: &Path, content: &str, scope: Scope, session: Option<&str>) -> String {
+        let store = crate::workspace::permanent_store(dir);
+        let id = MemoryId::new(format!("mem-{}", crate::memory::record::content_hash(&format!("{content}|{session:?}"))));
+        let mut r = MemoryRecord::new(id.clone(), content, scope, Creator::User, Origin::Explicit, now());
+        r.session_id = session.map(str::to_string);
+        crate::memory::store::upsert(&store, &r).expect("upsert");
+        id.to_string()
+    }
+
+    #[tokio::test]
+    async fn user_memory_reaches_any_chat_and_recall_off_withholds_it_without_deleting() {
+        let dir = root("recall");
+        let user = put(&dir, "The user signs off as Quill.", Scope::User, None);
+        let a = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        let b = memory_retrieve(at(&dir, "chat-b"), None, None).await.unwrap();
+        assert_eq!(a.injected_ids, vec![user.clone()]);
+        assert_eq!(b.injected_ids, vec![user.clone()], "user memory is for every chat");
+
+        let mut recall = settings::Recall::default();
+        recall.user = false;
+        memory_settings_update(at(&dir, "a"), None, Some(recall)).await.unwrap();
+        let off = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        assert!(off.injected_ids.is_empty(), "recall off still sent {:?}", off.injected_ids);
+        assert!(off.block.is_none());
+        assert_eq!(off.recall_off, vec!["user".to_string()]);
+        // Still stored, and still listed for the user to see.
+        let listed = memory_records_list(at(&dir, "chat-a"), "user".into(), None, None, None)
+            .await
+            .unwrap();
+        assert_eq!(listed.items.len(), 1);
+
+        // Switching back on brings the same record back.
+        memory_settings_update(at(&dir, "a"), None, Some(settings::Recall::default())).await.unwrap();
+        let on = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        assert_eq!(on.injected_ids, vec![user]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_scope_switched_off_takes_no_part_in_conflicts() {
+        let dir = root("recall-conflict");
+        put(&dir, "Use npm for installs.", Scope::User, None);
+        let mine = put(&dir, "Use yarn for installs.", Scope::Session, Some("chat-a"));
+        assert_eq!(memory_conflicts(at(&dir, "chat-a"), None).await.unwrap().len(), 1);
+        user_off_async(&dir).await;
+        assert!(memory_conflicts(at(&dir, "chat-a"), None).await.unwrap().is_empty());
+        let r = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        assert_eq!(r.injected_ids, vec![mine], "the session memory is no longer contested");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    async fn user_off_async(dir: &Path) {
+        let mut recall = settings::Recall::default();
+        recall.user = false;
+        memory_settings_update(at(dir, "a"), None, Some(recall)).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn clearing_a_scope_forgets_all_of_it_and_leaves_no_text_on_disk() {
+        let dir = root("clear");
+        put(&dir, "Fact one about the user.", Scope::User, None);
+        put(&dir, "Fact two about the user.", Scope::User, None);
+        let chat = put(&dir, "A chat-only fact.", Scope::Session, Some("chat-a"));
+        let n = memory_scope_clear(at(&dir, "chat-a"), "user".into()).await.unwrap();
+        assert_eq!(n, 2);
+        let r = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        assert_eq!(r.injected_ids, vec![chat], "clearing user memory touched another scope");
+        let raw = std::fs::read_to_string(crate::memory::store::records_path(
+            &crate::workspace::permanent_store(&dir),
+            Scope::User,
+        ))
+        .unwrap();
+        assert!(!raw.contains("Fact one") && !raw.contains("Fact two"), "{raw}");
+        // Another chat's session memory is not this chat's to clear.
+        let other = put(&dir, "Another chat's fact.", Scope::Session, Some("chat-b"));
+        memory_scope_clear(at(&dir, "chat-a"), "chat".into()).await.unwrap();
+        let b = memory_retrieve(at(&dir, "chat-b"), None, None).await.unwrap();
+        assert_eq!(b.injected_ids, vec![other]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Found by the WebView restart scenario: a forgotten memory stayed on the
+    /// page as an empty "deleted" row. Forgotten means gone from the list too.
+    #[tokio::test]
+    async fn a_forgotten_memory_leaves_the_list() {
+        let dir = root("list-forgotten");
+        let id = put(&dir, "Soon forgotten.", Scope::User, None);
+        let keep = put(&dir, "Still remembered.", Scope::User, None);
+        assert!(memory_record_forget(at(&dir, "a"), "user".into(), id.clone()).await.unwrap());
+        let page = memory_records_list(at(&dir, "a"), "user".into(), None, None, None).await.unwrap();
+        let ids: Vec<String> = page.items.iter().map(|m| m.id.clone()).collect();
+        assert_eq!(ids, vec![keep]);
+        assert_eq!(page.total, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Saving to a chat or a project never produces a user memory on its own.
+    #[tokio::test]
+    async fn session_and_project_memory_are_never_promoted_to_user_scope() {
+        let dir = root("promote");
+        for scope in ["chat", "project"] {
+            let w = Where {
+                data_folder: dir.to_string_lossy().to_string(),
+                project_root: None,
+                session_id: Some("chat-a".into()),
+            };
+            let p = memory_record_propose(w.clone(), scope.into(), "Keep it local.".into(), Some("chat-a".into()), None).await;
+            if let Ok(p) = p {
+                let _ = memory_record_commit(w, scope.into(), "Keep it local.".into(), p.content_hash, Some("chat-a".into()), None).await;
+            }
+        }
+        let user = crate::memory::store::load(&crate::workspace::permanent_store(&dir), Scope::User);
+        assert!(user.records.is_empty(), "a chat or project save created a user memory");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Damage is reported, not mistaken for an empty store, and what can be
+    /// read still is.
+    #[tokio::test]
+    async fn damaged_or_unreadable_storage_is_reported_to_the_caller() {
+        let dir = root("damaged");
+        let good = put(&dir, "A readable fact.", Scope::User, None);
+        let path = crate::memory::store::records_path(&crate::workspace::permanent_store(&dir), Scope::User);
+        let mut raw = std::fs::read_to_string(&path).unwrap();
+        raw.push_str("{\"schema_version\":1,\"id\":\"torn\n");
+        std::fs::write(&path, raw).unwrap();
+        let r = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        assert_eq!(r.injected_ids, vec![good]);
+        assert!(r.storage_issues.iter().any(|i| i.contains("damaged")), "{:?}", r.storage_issues);
+
+        // A directory where the session store should be cannot be read at all.
+        let session = crate::memory::store::records_path(&crate::workspace::permanent_store(&dir), Scope::Session);
+        std::fs::create_dir_all(&session).unwrap();
+        let r = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        assert!(r.storage_issues.iter().any(|i| i.contains("could not be read")), "{:?}", r.storage_issues);
+        let summary = memory_storage_summary(at(&dir, "chat-a")).await.unwrap();
+        assert!(!summary.issues.is_empty());
+
+        // Damaged settings: reported, and recall off rather than silently on.
+        let settings_file = settings::settings_path(&crate::workspace::permanent_store(&dir));
+        std::fs::write(&settings_file, "{ nope").unwrap();
+        let s = memory_settings_get(at(&dir, "chat-a")).await.unwrap();
+        assert!(s.issue.is_some());
+        assert!(!s.settings.recall.user);
+        let r = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        assert!(r.injected_ids.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

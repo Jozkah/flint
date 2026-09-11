@@ -7715,9 +7715,283 @@ fn scenario_memory_conflict_after_restart(ctx: &Ctx) -> ScenarioResult {
     Ok(())
 }
 
+// User-level memory (AH-082), driven through Settings > Memory the way a person
+// would: written, edited, pinned, recalled across two unrelated projects,
+// switched off and on across a restart, forgotten and cleared.
+
+const USER_EXPECTED: &str = "memory-user-expected.json";
+const USER_TEXT: &str = "Smoke user fact: the user signs off as Quill.";
+const USER_EDITED: &str = "Smoke user fact: the user signs off as Quill, always.";
+
+fn goto_memory_page(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/settings/memory")?;
+    ctx.wait_until(
+        "the memory page",
+        "return !!document.querySelector('[data-testid=\"memory-recall-user\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.settle();
+    Ok(())
+}
+
+/// The id of the listed user memory whose text contains `needle`.
+fn listed_user_memory(ctx: &Ctx, needle: &str) -> Result<String, Failure> {
+    ctx.eval_string(&format!(
+        r#"const c = await window.__TAURI_INTERNALS__.invoke('get_app_configurations');
+           const page = await window.__TAURI_INTERNALS__.invoke('plugin:agent-tools|memory_records_list', {{
+             location: {{ dataFolder: c.data_folder }}, scope: 'user', query: null, offset: 0, limit: 50,
+           }});
+           const hit = page.items.find(m => m.content.includes({needle:?}) && m.status === 'active');
+           return hit ? hit.id : '';"#
+    ))
+}
+
+fn set_user_recall(ctx: &Ctx, on: bool) -> ScenarioResult {
+    goto_memory_page(ctx)?;
+    let now = ctx.eval_string(
+        "return document.querySelector('[data-testid=\"memory-recall-user\"]').dataset.checked;",
+    )?;
+    if (now == "true") != on {
+        ctx.eval("document.querySelector('[data-testid=\"memory-recall-user\"]').click(); return true;")?;
+    }
+    ctx.wait_until(
+        "the user recall switch to settle",
+        &format!(
+            "return document.querySelector('[data-testid=\"memory-recall-user\"]').dataset.checked === {:?};",
+            if on { "true" } else { "false" }
+        ),
+        Duration::from_secs(15),
+    )
+}
+
+fn user_store_text(ctx: &Ctx) -> Result<String, Failure> {
+    let path = data_folder()?.join("agent-workspace/memory/records/user.jsonl");
+    Ok(std::fs::read_to_string(path).unwrap_or_default())
+}
+
+fn scenario_memory_user_scope(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    // Two unrelated projects: the fixture, and a different repository with
+    // the same folder name, each with its own session.
+    new_cowork_session(ctx)?;
+    attach_folder(ctx, &ctx.project)?;
+    send_cowork(ctx, "user memory probe, project one")?;
+    let a = current_cowork_session(ctx)?;
+    let twin = twin_folder(ctx)?;
+    new_cowork_session(ctx)?;
+    attach_folder(ctx, &twin)?;
+    send_cowork(ctx, "user memory probe, project two")?;
+    let b = current_cowork_session(ctx)?;
+
+    // Written on the page, in the "Across chats" tab.
+    goto_memory_page(ctx)?;
+    ctx.type_into("[data-testid=\"memory-new-content\"]", USER_TEXT)?;
+    ctx.wait_until(
+        "the save button to arm",
+        "const b = document.querySelector('[data-testid=\"memory-new-save\"]'); return !!b && !b.disabled;",
+        Duration::from_secs(10),
+    )?;
+    ctx.eval("document.querySelector('[data-testid=\"memory-new-save\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the new memory in the list",
+        &format!(
+            "return [...document.querySelectorAll('[data-testid=\"memory-row\"]')].some(r => r.textContent.includes({:?}));",
+            "signs off as Quill"
+        ),
+        Duration::from_secs(20),
+    )?;
+    let id = listed_user_memory(ctx, "signs off as Quill")?;
+    ensure!(!id.is_empty(), "the memory written on the page was not stored");
+
+    // Edited and pinned on the page.
+    ctx.eval(&format!(
+        "document.querySelector('[data-testid=\"memory-row\"][data-memory-id={id:?}] [aria-label=\"Edit memory\"]').click(); return true;"
+    ))?;
+    ctx.wait_until(
+        "the edit dialog",
+        "return !!document.querySelector('[role=\"dialog\"] textarea');",
+        Duration::from_secs(10),
+    )?;
+    ctx.type_into("[role=\"dialog\"] textarea", USER_EDITED)?;
+    ctx.eval("document.querySelector('[data-testid=\"memory-edit-save\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the edit to land",
+        &format!(
+            "return [...document.querySelectorAll('[data-testid=\"memory-row\"]')].some(r => r.textContent.includes({:?}));",
+            "Quill, always"
+        ),
+        Duration::from_secs(15),
+    )?;
+    ctx.eval(&format!(
+        "document.querySelector('[data-testid=\"memory-row\"][data-memory-id={id:?}] [aria-label=\"Pin memory\"]').click(); return true;"
+    ))?;
+    ctx.wait_until(
+        "the memory to be pinned",
+        &format!("return document.querySelector('[data-testid=\"memory-row\"][data-memory-id={id:?}]')?.dataset.pinned === 'true';"),
+        Duration::from_secs(15),
+    )?;
+
+    // Recalled in both unrelated projects, with the exact id on the turn.
+    for (session, label) in [(&a, "project one"), (&b, "project two")] {
+        open_cowork_session(ctx, session)?;
+        send_cowork(ctx, &format!("user memory in {label}"))?;
+        let system = last_system_prompt(ctx)?;
+        ensure!(
+            system.contains(&format!("[{id}] (user)")) && system.contains("Quill, always"),
+            "the user memory did not reach {label}: {system}"
+        );
+        ctx.eval(
+            "const t = [...document.querySelectorAll('[data-testid=\"turn-usage-trigger\"]')].pop(); t.click(); return true;",
+        )?;
+        ctx.wait_until(
+            "the turn to list the user memory id",
+            &format!("return !!document.querySelector('[data-memory-id={id:?}]');"),
+            Duration::from_secs(15),
+        )?;
+        ctx.eval("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true;")?;
+    }
+
+    // Recall off: not sent, still stored and listed.
+    set_user_recall(ctx, false)?;
+    ensure!(
+        !listed_user_memory(ctx, "Quill, always")?.is_empty(),
+        "turning recall off removed the stored memory"
+    );
+    open_cowork_session(ctx, &b)?;
+    send_cowork(ctx, "user recall off")?;
+    let off = last_system_prompt(ctx)?;
+    ensure!(
+        !off.contains(&id) && !off.contains("Quill, always"),
+        "user memory was sent with recall off: {off}"
+    );
+
+    std::fs::write(
+        data_folder()?.join(USER_EXPECTED),
+        serde_json::json!({ "a": a, "b": b, "id": id }).to_string(),
+    )
+    .map_err(|e| Failure(format!("could not record the user memory: {e}")))?;
+    Ok(())
+}
+
+fn scenario_memory_user_after_restart(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    let raw = std::fs::read_to_string(data_folder()?.join(USER_EXPECTED)).map_err(|e| {
+        Failure(format!(
+            "no recorded user memory ({e}); run memory-user-scope first with the same COWORK_SMOKE_KEEP"
+        ))
+    })?;
+    let expected: Value = serde_json::from_str(&raw).map_err(|e| Failure(e.to_string()))?;
+    let field = |k: &str| expected[k].as_str().unwrap_or_default().to_string();
+    let (a, b, id) = (field("a"), field("b"), field("id"));
+
+    // The switch and the record both survived the restart, as left.
+    goto_memory_page(ctx)?;
+    ensure!(
+        ctx.eval_string("return document.querySelector('[data-testid=\"memory-recall-user\"]').dataset.checked;")? == "false",
+        "user recall came back on after the restart"
+    );
+    ctx.wait_until(
+        "the edited, pinned memory after the restart",
+        &format!(
+            "const r = document.querySelector('[data-testid=\"memory-row\"][data-memory-id={id:?}]');
+             return !!r && r.dataset.pinned === 'true' && r.textContent.includes('Quill, always');"
+        ),
+        Duration::from_secs(20),
+    )?;
+    open_cowork_session(ctx, &a)?;
+    send_cowork(ctx, "after restart, recall still off")?;
+    ensure!(!last_system_prompt(ctx)?.contains(&id), "sent with recall off after the restart");
+
+    // Back on: the same record returns, in both projects.
+    set_user_recall(ctx, true)?;
+    for session in [&a, &b] {
+        open_cowork_session(ctx, session)?;
+        send_cowork(ctx, "after restart, recall back on")?;
+        ensure!(
+            last_system_prompt(ctx)?.contains(&format!("[{id}] (user)")),
+            "re-enabling recall did not bring the user memory back"
+        );
+    }
+
+    // Forgotten on the page: gone from the next request and from the disk.
+    goto_memory_page(ctx)?;
+    ctx.eval(&format!(
+        "document.querySelector('[data-testid=\"memory-row\"][data-memory-id={id:?}] [aria-label=\"Forget memory\"]').click(); return true;"
+    ))?;
+    ctx.wait_until(
+        "the memory to leave the list",
+        &format!("return !document.querySelector('[data-testid=\"memory-row\"][data-memory-id={id:?}]');"),
+        Duration::from_secs(15),
+    )?;
+    open_cowork_session(ctx, &a)?;
+    send_cowork(ctx, "after forgetting the user memory")?;
+    let after = last_system_prompt(ctx)?;
+    ensure!(!after.contains(&id) && !after.contains("Quill"), "a forgotten memory was sent: {after}");
+    ensure!(!user_store_text(ctx)?.contains("Quill"), "the forgotten text is still in user.jsonl");
+
+    // Two more, cleared together after confirmation.
+    goto_memory_page(ctx)?;
+    for text in ["Smoke clear one: prefers dark mode.", "Smoke clear two: prefers short replies."] {
+        ctx.type_into("[data-testid=\"memory-new-content\"]", text)?;
+        ctx.wait_until(
+            "the save button to arm",
+            "const b = document.querySelector('[data-testid=\"memory-new-save\"]'); return !!b && !b.disabled;",
+            Duration::from_secs(10),
+        )?;
+        ctx.eval("document.querySelector('[data-testid=\"memory-new-save\"]').click(); return true;")?;
+        ctx.wait_until(
+            "the memory in the list",
+            &format!(
+                "return [...document.querySelectorAll('[data-testid=\"memory-row\"]')].some(r => r.textContent.includes({:?}));",
+                &text[..18]
+            ),
+            Duration::from_secs(15),
+        )?;
+    }
+    ctx.eval("document.querySelector('[data-testid=\"memory-clear-scope\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the clear confirmation",
+        "return !!document.querySelector('[data-testid=\"memory-clear-confirm\"]');",
+        Duration::from_secs(10),
+    )?;
+    ctx.eval("document.querySelector('[data-testid=\"memory-clear-confirm\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the scope to be empty",
+        "return !document.querySelector('[data-testid=\"memory-row\"]');",
+        Duration::from_secs(15),
+    )?;
+    open_cowork_session(ctx, &b)?;
+    send_cowork(ctx, "after clearing user memory")?;
+    let cleared = last_system_prompt(ctx)?;
+    ensure!(!cleared.contains("Smoke clear"), "a cleared memory was sent: {cleared}");
+    let disk = user_store_text(ctx)?;
+    ensure!(!disk.contains("dark mode") && !disk.contains("short replies"), "cleared text is still on disk");
+
+    // Damaged storage is shown as an error, not as an empty store.
+    let path = data_folder()?.join("agent-workspace/memory/records/user.jsonl");
+    let mut damaged = std::fs::read_to_string(&path).unwrap_or_default();
+    damaged.push_str("{\"schema_version\":1,\"id\":\"torn\n");
+    std::fs::write(&path, damaged).map_err(|e| Failure(e.to_string()))?;
+    goto_memory_page(ctx)?;
+    ctx.wait_until(
+        "the storage error on the memory page",
+        "const e = document.querySelector('[data-testid=\"memory-storage-error\"]'); return !!e && e.textContent.includes('damaged');",
+        Duration::from_secs(20),
+    )?;
+    Ok(())
+}
+
 /// Scenarios that run only when named with `--only`: they need something the
 /// default run does not have, such as a real provider.
 const OPT_IN_SCENARIOS: &[Scenario] = &[
+    Scenario {
+        name: "memory-user-scope",
+        run: scenario_memory_user_scope,
+    },
+    Scenario {
+        name: "memory-user-after-restart",
+        run: scenario_memory_user_after_restart,
+    },
     Scenario {
         name: "memory-conflict-settle",
         run: scenario_memory_conflict_settle,

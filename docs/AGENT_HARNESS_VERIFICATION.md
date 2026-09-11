@@ -464,6 +464,24 @@ scope/restart pairs, all six runs passed on the first attempt, retries
 disabled for `memory-project-*`. Not run live: user memory across a restart,
 conflicting memory in the WebView, Chat (rather than Cowork) recall.
 
+## User-level memory through the app (AH-082)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView pair | `cowork-smoke --only memory-user-scope`, then `--only memory-user-after-restart` on the same `COWORK_SMOKE_KEEP` | written, edited and pinned on Settings > Memory; recalled as `[id] (user)` in two unrelated projects (the fixture and a different checkout with the same folder name), each turn listing that exact id; "Across chats" recall switched off: not sent, still stored and listed; **after a restart in a new process** the switch is still off, the record still edited and pinned, and nothing is sent; switched back on, the same record returns in both projects; forgotten on the page: gone from the next request and its text gone from `user.jsonl`; two more cleared with "Forget all" after confirmation: neither sent, neither on disk; a damaged line in `user.jsonl` shows as an error on the page, not as an empty store |
+| Rust tests | `memory/commands.rs::user_memory_tests` (recall off withholds without deleting and on restores; a switched-off scope takes no part in conflicts; clearing forgets one scope only and leaves no text; chat/project saves never create a user memory; damaged or unreadable storage and damaged settings reported, settings fail closed with recall off; a forgotten memory leaves the list), `memory/create.rs` (forget removes the text from the file, restore needs the exact forgotten text, forget-all respects visibility), `memory/settings.rs` (recall defaults on, survives a restart, damaged file turns it off and says so) | |
+| Mutation checks | each fix removed in turn, the test that guards it run | forget keeping text, forgotten rows listed, recall filter removed, damaged settings recalling: all four fail their test |
+| Render tests | `routes/settings/__tests__/memory.user.test.tsx` | recall switches, rollback on failure, storage error banner, add, clear only after confirmation, undo hands back the text |
+
+Last run 2026-09-11, Windows WebView2, scripted provider, retries off.
+First attempt of the restart scenario **failed**: after "Forget memory" the
+row stayed on the page as an empty "deleted" entry, because the list showed
+tombstones. Fixed (`service::list` excludes forgotten records, regression
+test `a_forgotten_memory_leaves_the_list`) and the pair re-run on a fresh
+profile: both passed on the first attempt. Earlier prompt snapshots keep the
+text a forgotten memory contributed to requests already sent; forgetting does
+not rewrite what was sent.
+
 ## Conflicting memory, surfaced and settled (AH-085)
 
 | Evidence | Where | Covers |

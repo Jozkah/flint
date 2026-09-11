@@ -55,7 +55,7 @@ impl Access {
     /// The same containment the prompt path applies, enforced again here
     /// because a management surface is a second way to read memory and must not
     /// be a weaker one.
-    fn may_see(&self, record: &MemoryRecord) -> bool {
+    pub(crate) fn may_see(&self, record: &MemoryRecord) -> bool {
         match record.scope {
             Scope::User => true,
             Scope::Project => match (&record.project_id, &self.project_id) {
@@ -243,6 +243,10 @@ pub fn list(
         // own card; showing it here would put something nobody has agreed to
         // among the things Jan says it remembers.
         .filter(|r| !matches!(r.status, super::record::Status::Proposed { .. }))
+        // A forgotten memory is a tombstone with no text left. Listing it
+        // among "what Jan remembers" would contradict the forget; undo is the
+        // toast's job, holding the text the tombstone no longer has.
+        .filter(|r| !matches!(r.status, super::record::Status::Deleted))
         .filter(|r| match &needle {
             Some(q) => r.content.to_lowercase().contains(q),
             None => true,
@@ -425,6 +429,8 @@ pub struct StorageSummary {
     pub deleted_count: usize,
     pub conflicted_count: usize,
     pub bytes: u64,
+    /// Stores that could not be read in full, in words for the UI.
+    pub issues: Vec<String>,
 }
 
 pub fn storage_summary(access: &Access) -> StorageSummary {
@@ -434,6 +440,9 @@ pub fn storage_summary(access: &Access) -> StorageSummary {
             continue;
         };
         let loaded = store::load(root, scope);
+        if let Some(issue) = loaded.issue(scope) {
+            out.issues.push(issue);
+        }
         let visible: Vec<&MemoryRecord> = loaded
             .records
             .iter()

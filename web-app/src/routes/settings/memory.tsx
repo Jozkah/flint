@@ -31,6 +31,10 @@ import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 import { useMemoryConversations } from '@/hooks/useMemoryConversations'
 import {
   memoryConflicts,
+  memoryRecordCommit,
+  memoryRecordPropose,
+  memoryScopeClear,
+  type MemoryRecall,
   memoryRecordEdit,
   memoryRecordForget,
   memoryRecordPin,
@@ -77,6 +81,12 @@ const TABS: { scope: MemoryScope; label: string; blurb: string }[] = [
   },
 ]
 
+const ALL_RECALLED: MemoryRecall = { session: true, project: true, user: true }
+
+/** The recall switch a tab's scope is governed by. */
+const recallKey = (scope: MemoryScope): keyof MemoryRecall =>
+  scope === 'chat' ? 'session' : scope === 'project' ? 'project' : 'user'
+
 /** Where a memory applies, in the words the tabs use. */
 function scopeLabel(scope: MemoryScope): string {
   return TABS.find((tab) => tab.scope === scope)?.label ?? scope
@@ -114,6 +124,14 @@ function MemorySettings() {
   const [editing, setEditing] = useState<MemoryView | null>(null)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
+  /** Which scopes are recalled into requests (AH-082). */
+  const [recall, setRecall] = useState<MemoryRecall>(ALL_RECALLED)
+  /** Damaged settings: recall is off until they are saved again. */
+  const [settingsIssue, setSettingsIssue] = useState<string | null>(null)
+  /** A new memory being written on this page. */
+  const [newMemory, setNewMemory] = useState('')
+  /** The scope a "forget all" is waiting for confirmation on. */
+  const [clearing, setClearing] = useState<MemoryScope | null>(null)
 
   /**
    * Where the settings page is. Deliberately not a project or session the page
@@ -245,7 +263,10 @@ function MemorySettings() {
     void (async () => {
       try {
         setSummary(await memoryStorageSummary(location))
-        setAutoSave((await memorySettingsGet(location)).automaticallySave)
+        const stored = await memorySettingsGet(location)
+        setAutoSave(stored.automaticallySave)
+        setRecall(stored.recall ?? ALL_RECALLED)
+        setSettingsIssue(stored.issue ?? null)
       } catch {
         // Storage and settings are informational here; the list is the page.
       }
@@ -280,7 +301,7 @@ function MemorySettings() {
             label: 'Undo',
             onClick: () => {
               void (async () => {
-                await memoryRecordRestore(location, drop.scope, drop.id)
+                await memoryRecordRestore(location, drop.scope, drop.id, drop.content)
                 await reload()
               })()
             },
@@ -313,7 +334,7 @@ function MemorySettings() {
             onClick: () => {
               if (!location) return
               void (async () => {
-                await memoryRecordRestore(location, scope, memory.id)
+                await memoryRecordRestore(location, scope, memory.id, memory.content)
                 await reload()
               })()
             },
@@ -407,6 +428,65 @@ function MemorySettings() {
     [location, autoSave]
   )
 
+  /**
+   * Switch one scope's recall. Optimistic like the autosave switch, and the
+   * stored value is whatever the backend returns. Stored memories are kept.
+   */
+  const onToggleRecall = useCallback(
+    async (key: keyof MemoryRecall, next: boolean) => {
+      if (!location) return
+      const previous = recall
+      const wanted = { ...recall, [key]: next }
+      setRecall(wanted)
+      try {
+        const saved = await memorySettingsUpdate(location, { recall: wanted })
+        setRecall(saved.recall ?? wanted)
+        setSettingsIssue(saved.issue ?? null)
+      } catch (error) {
+        setRecall(previous)
+        toast.error('Recall could not be changed', { description: errorText(error) })
+      }
+    },
+    [location, recall]
+  )
+
+  /** Save a memory the user wrote here, in the tab's scope. */
+  const onAdd = useCallback(async () => {
+    if (!location) return
+    const content = newMemory.trim()
+    if (!content) return
+    setBusy(true)
+    try {
+      const source = scope === 'chat' ? { sessionId } : undefined
+      const proposal = await memoryRecordPropose(location, scope, content, source)
+      await memoryRecordCommit(location, scope, proposal.content, proposal.contentHash, source)
+      setNewMemory('')
+      await reload()
+      toast.success('Memory saved')
+    } catch (error) {
+      // A credential, an empty text, a scope with no chat or project open.
+      toast.error('Could not save that memory', { description: errorText(error) })
+    } finally {
+      setBusy(false)
+    }
+  }, [location, newMemory, scope, sessionId, reload])
+
+  /** Forget everything in one scope, after the user confirmed. */
+  const onClear = useCallback(async () => {
+    if (!location || !clearing) return
+    setBusy(true)
+    try {
+      const n = await memoryScopeClear(location, clearing)
+      setClearing(null)
+      await reload()
+      toast.success(n === 1 ? 'Forgot 1 memory' : `Forgot ${n} memories`)
+    } catch (error) {
+      toast.error('Could not forget those memories', { description: errorText(error) })
+    } finally {
+      setBusy(false)
+    }
+  }, [location, clearing, reload])
+
   const activeTab = TABS.find((tab) => tab.scope === scope) ?? TABS[2]
 
   return (
@@ -436,6 +516,44 @@ function MemorySettings() {
                   />
                 }
               />
+              <div className="px-4 py-3 flex flex-col gap-2" data-testid="memory-recall">
+                <p className="text-sm font-medium">Use remembered facts in requests</p>
+                <p className="text-xs text-muted-foreground">
+                  Turning a scope off stops it being sent. Nothing is deleted; turning it back on uses it again.
+                </p>
+                {(
+                  [
+                    ['session', 'This chat'],
+                    ['project', 'This project'],
+                    ['user', 'Across chats'],
+                  ] as Array<[keyof MemoryRecall, string]>
+                ).map(([key, label]) => (
+                  <label key={key} className="flex items-center justify-between gap-3 text-sm">
+                    <span>{label}</span>
+                    <Switch
+                      checked={recall[key]}
+                      disabled={location == null}
+                      aria-label={`Use ${label.toLowerCase()} memories`}
+                      data-testid={`memory-recall-${key}`}
+                      data-checked={recall[key] ? 'true' : 'false'}
+                      onCheckedChange={(checked) => void onToggleRecall(key, checked)}
+                    />
+                  </label>
+                ))}
+              </div>
+              {(settingsIssue || (summary?.issues?.length ?? 0) > 0) && (
+                <div
+                  role="alert"
+                  data-testid="memory-storage-error"
+                  className="mx-4 mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
+                >
+                  {[settingsIssue, ...(summary?.issues ?? [])]
+                    .filter(Boolean)
+                    .map((issue) => (
+                      <p key={issue as string}>{issue}</p>
+                    ))}
+                </div>
+              )}
               {summary && (
                 <CardItem
                   anchor={MEMORY_STORAGE_ANCHOR}
@@ -549,6 +667,48 @@ function MemorySettings() {
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground">{activeTab.blurb}</p>
+                {!recall[recallKey(scope)] && (
+                  <p className="text-xs text-amber-600" data-testid="memory-recall-off-note">
+                    Recall is off for this scope: these are kept, but not sent.
+                  </p>
+                )}
+
+                <form
+                  className="flex flex-col gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    void onAdd()
+                  }}
+                >
+                  <Textarea
+                    value={newMemory}
+                    aria-label={`New memory for ${activeTab.label.toLowerCase()}`}
+                    data-testid="memory-new-content"
+                    placeholder="Something Jan should remember"
+                    onChange={(e) => setNewMemory(e.target.value)}
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={busy || !newMemory.trim() || location == null}
+                      data-testid="memory-new-save"
+                    >
+                      Remember
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="ml-auto text-destructive"
+                      disabled={busy || total === 0 || location == null}
+                      data-testid="memory-clear-scope"
+                      onClick={() => setClearing(scope)}
+                    >
+                      Forget all in {activeTab.label.toLowerCase()}
+                    </Button>
+                  </div>
+                </form>
 
                 {scope === 'chat' && (
                   <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -626,6 +786,9 @@ function MemorySettings() {
                       <li
                         key={memory.id}
                         className="py-2 flex items-start justify-between gap-3"
+                        data-testid="memory-row"
+                        data-memory-id={memory.id}
+                        data-pinned={memory.pinned ? 'true' : 'false'}
                       >
                         <div className="min-w-0">
                           <p className="text-sm break-words">{memory.preview}</p>
@@ -784,8 +947,38 @@ function MemorySettings() {
             <Button variant="ghost" onClick={() => setEditing(null)}>
               Cancel
             </Button>
-            <Button disabled={busy || !draft.trim()} onClick={() => void onSaveEdit()}>
+            <Button
+              disabled={busy || !draft.trim()}
+              data-testid="memory-edit-save"
+              onClick={() => void onSaveEdit()}
+            >
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={clearing !== null} onOpenChange={(open) => !open && setClearing(null)}>
+        <DialogContent data-testid="memory-clear-dialog">
+          <DialogHeader>
+            <DialogTitle>Forget every memory here?</DialogTitle>
+            <DialogDescription>
+              {clearing
+                ? `Everything remembered for ${scopeLabel(clearing).toLowerCase()} stops being used and its text is removed from this machine. This cannot be undone in one step.`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setClearing(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={busy}
+              data-testid="memory-clear-confirm"
+              onClick={() => void onClear()}
+            >
+              Forget all
             </Button>
           </DialogFooter>
         </DialogContent>
