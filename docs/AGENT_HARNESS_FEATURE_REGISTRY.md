@@ -32,10 +32,10 @@ and the latter two require a recorded `blockedReason`.
 | 4 | Context and memory | 1 | 0 | 8 | 7 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 8 | 0 | 4 | 13 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
-| 7 | Coding and Git workflows | 17 | 0 | 1 | 8 | 0 | 0 | 0 | 26 |
+| 7 | Coding and Git workflows | 16 | 0 | 1 | 9 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 17 | 0 | 6 | 6 | 0 | 0 | 0 | 29 |
 | 9 | Approved additions | 0 | 0 | 0 | 10 | 0 | 0 | 0 | 10 |
-| **all** | | **73** | **0** | **30** | **107** | **0** | **0** | **0** | **210** |
+| **all** | | **72** | **0** | **30** | **108** | **0** | **0** | **0** | **210** |
 
 ## Ownership lanes
 
@@ -237,7 +237,7 @@ per-OS evidence log rather than backlog items.
 | `AH-165` | Merge conflict resolution assistance | 7 | git-workflows | P1 | `missing` | high | `AH-109` |
 | `AH-166` | Rebase assistance | 7 | git-workflows | P2 | `missing` | high | `AH-165` |
 | `AH-167` | Cherry-pick assistance | 7 | git-workflows | P2 | `missing` | medium | `AH-165` |
-| `AH-168` | Worktree export | 7 | git-workflows | P1 | `missing` | medium | `AH-108` |
+| `AH-168` | Worktree export | 7 | git-workflows | P1 | `implemented` | medium | `AH-108` |
 | `AH-169` | Worktree apply | 7 | git-workflows | P1 | `missing` | high | `AH-168` |
 | `AH-170` | Worktree cleanup | 7 | git-workflows | P1 | `implemented` | medium | `AH-108` |
 | `AH-171` | Remote divergence handling | 7 | git-workflows | P1 | `missing` | high | `AH-161` |
@@ -370,6 +370,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-157` Secret scanning on diffs** - Proposed diffs are scanned before they are written; a change that adds a credential is refused with the file, line and kind and never the value. Removals are ignored, so the warning does not fire on the fix.
 - **`AH-159` Commit message generation** - No git tool exists; git is reachable only through bash, and git.rs commits are internal snapshots.
 - **`AH-161` Branch management** - The harness creates and deletes its own jan/cowork/* branches. There is no agent-facing git tool: the model reaches git only through bash, under per-base-command grants.
+- **`AH-168` Worktree export** - agent_worktree_export writes a managed worktree's changes since its base commit (committed or not, tracked or not, read through proposals::changes_in_worktree, so a link out of the worktree refuses and .git/.jan are never included) to <data>/exports/<stamp>-<worktree>/: changes.patch (one unified diff git apply reads, built by patch_export.rs), files/<path> for anything that is not text, and manifest.json (repository, branch, base, head, per-file change/counts/review flags, SHA-256 of the patch and of each shipped file). The record from IPC must lie inside Jan's worktrees folder and be Ready; refusals are typed (not-managed, not-ready, link-escape, no-changes, io). Assembled under .partial and renamed only when complete; a failure removes the partial, and a partial left by a stopped process is swept by the next export. Nothing in the worktree or the checkout is written. Verified by applying a bundle with git apply to a fresh clone at the base and comparing byte for byte. 'Export as patch' in the review for a run's own worktree. Windows: worktree-export over real IPC. macOS and Linux were not run; applying a bundle (AH-169) is not implemented.
 - **`AH-170` Worktree cleanup** - discard refuses while uncommitted changes exist unless forced, and names the files; prune and list recover strays.
 - **`AH-172` Live tool timeline** - Timeline built on the AH-050 record: one durable item per call, ordered by request time, restored after a restart, and never folded away behind an answer.
 - **`AH-174` Resource usage monitor** - Only host-level CPU and RAM; nothing is attributed per run or per agent.

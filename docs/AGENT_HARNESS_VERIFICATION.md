@@ -226,6 +226,20 @@ Run: `cargo test -p tauri-plugin-agent-tools -- --test-threads=4 proposal::`,
 `cargo test --lib --no-default-features --features test-tauri -- team_children proposals subagent`,
 `npx vitest run src/lib/__tests__/coworkTeamScopes.test.ts src/containers/__tests__/CoworkTeam*`.
 
+## Worktree export (AH-168)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 3 unit tests | `plugins/tauri-plugin-agent-tools/src/patch_export.rs` | text changes become one git-style patch in path order, with new and deleted markers; an unchanged file is left out; a missing final newline is marked; a file that is not text ships whole |
+| 5 integration tests | `src-tauri/src/core/agent/worktree_export.rs` | on real git: a bundle applied with `git apply --check` and `git apply` to a fresh clone at the base, plus the files shipped whole, reproduces the worktree byte for byte (committed, uncommitted, deleted, new and binary files), the manifest and patch hash agree, and nothing in the worktree or checkout changed; no changes, the user's checkout, and a worktree moved off its branch are typed refusals with no bundle; a junction out of the worktree refuses the export (Windows); an export stopped part-way leaves nothing, and a partial bundle from a dead process is swept; a bundle path cannot leave the bundle |
+| 2 component tests | `web-app/src/containers/__tests__/CoworkProposalReview.test.tsx` | Export as patch sends the run's own worktree record and shows where the bundle went; a refusal is shown; a team child's review, which has no record, offers no export |
+| Real app over real IPC | `cowork-smoke --only worktree-export` (Windows) | an unchanged worktree is refused (`no-changes`); after a change, the bundle is written under Jan's exports folder with the change in its patch and the base in its manifest, and the user's checkout is unchanged; the checkout presented as a worktree record is refused (`not-managed`) |
+
+Mutation-checked: keeping the partial bundle on failure, dropping the
+managed-folder check, and not sweeping dead partial bundles each fail a test.
+
+Not run: macOS and Linux. AH-169 (applying a bundle) is not implemented.
+
 ## Dependency, lock file and migration flags (AH-154 / AH-155 / AH-156)
 
 | Evidence | Where | Covers |

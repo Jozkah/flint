@@ -2210,6 +2210,18 @@ checkout was changed. Gates after the install:
   `team-review-persist-1/2`, `context-replay-1/2`, `managed-worktree-review`
   and `prompt-snapshot-panel`.
 
+## 2026-09-11 — AH-168 worktree export
+
+"Export as patch" in a run's review, and `agent_worktree_export` over IPC, write
+the worktree's changes as a bundle under `<data>/exports/`. The bundle holds a
+unified patch that `git apply` reads, the new content of any file that is not
+text, and a manifest with hashes. The export reads the worktree the way a
+proposal does, so links refuse it. It writes nothing to the worktree or the
+checkout, and a half-made bundle never survives. The round-trip test applies a
+bundle to a fresh clone at the base and compares the result byte for byte.
+Applying a bundle inside Jan (AH-169) is the next item in this chain and is not
+implemented.
+
 One part of the finding is left open. A tool card in one conversation can
 show another conversation's request only when both conversations' main agents
 wait on the same call id at the same moment. The card shows that request's own

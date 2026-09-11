@@ -287,6 +287,30 @@ for files that are both selected and flagged.
 This is a reading of well-known formats, not a package manager: it does not
 resolve versions or fetch anything.
 
+### AHD-009c: a worktree exports as a patch bundle (AH-168)
+
+`agent_worktree_export` writes a managed worktree's changes since its base
+commit to `<data>/exports/<stamp>-<worktree>/`. The changes are committed or
+not, tracked or not, and read exactly the way a proposal reads them, so links
+out of the worktree refuse the export and `.git`/`.jan` are never included.
+The bundle holds three things:
+
+- `changes.patch`: one unified diff that `git apply` reads
+  (`patch_export.rs`), with new and deleted file markers and the missing-newline
+  note.
+- `files/<path>`: the new content of any file that is not text.
+- `manifest.json`: repository, branch, base and head, and for each file its
+  change, counts and review flags. It also holds SHA-256 hashes of the patch
+  and of each shipped file.
+
+The record arrives over IPC, so it must lie inside Jan's worktrees folder and
+still be in the state it was recorded in. Refusals are typed: `not-managed`,
+`not-ready`, `link-escape`, `no-changes`, `io`. The bundle is assembled under
+a `.partial` name and renamed only when complete. A failure removes the
+partial directory, and one left by a stopped process is swept by the next
+export. Nothing in the worktree or the user's checkout is written. Applying a
+bundle elsewhere (AH-169) is not implemented.
+
 ### AHD-010: persistence is versioned
 
 Every on-disk structure carries a schema version and has a migration path.

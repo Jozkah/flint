@@ -15,6 +15,7 @@ pub mod audit;
 pub mod mcp_trust;
 /// A proposed change held as reviewable hunks (AH-146/147/148).
 pub mod patch;
+pub mod patch_export;
 pub mod lifecycle;
 pub mod memory;
 pub mod permissions;

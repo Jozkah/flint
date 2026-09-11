@@ -18,6 +18,7 @@ import {
   applyProposal,
   approvalFor,
   defaultSelection,
+  exportWorktree,
   flagsOf,
   listProposals,
   proposeFromWorktree,
@@ -264,7 +265,27 @@ export function CoworkProposalReview({
   const [conflicts, setConflicts] = useState<Conflict[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState<'create' | 'apply' | 'reject' | null>(null)
+  const [busy, setBusy] = useState<
+    'create' | 'apply' | 'reject' | 'export' | null
+  >(null)
+  const [exported, setExported] = useState<string | null>(null)
+
+  // AH-168. Only a run's own worktree record can be exported; a team child's
+  // review is made from its backend record and has no record here.
+  const exportBundle =
+    'branch' in worktree
+      ? async () => {
+          setBusy('export')
+          setError(null)
+          const out = await exportWorktree(worktree)
+          setBusy(null)
+          if (!out.ok) {
+            setError(out.message)
+            return
+          }
+          setExported(out.path)
+        }
+      : null
 
   const load = useCallback(async () => {
     const all = await listProposals(worktree.sourceRoot)
@@ -380,7 +401,26 @@ export function CoworkProposalReview({
             {busy === 'create' ? 'Collecting…' : 'Review changes'}
           </Button>
         ) : null}
+        {exportBundle ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy != null}
+            onClick={() => void exportBundle()}
+            data-testid="worktree-export"
+          >
+            {busy === 'export' ? 'Exporting…' : 'Export as patch'}
+          </Button>
+        ) : null}
       </div>
+      {exported ? (
+        <p
+          className="mt-1 break-all text-xs text-main-view-fg/70"
+          data-testid="worktree-export-path"
+        >
+          Patch bundle written to {exported}
+        </p>
+      ) : null}
       {error ? (
         <p
           className="mt-1 text-xs text-destructive"

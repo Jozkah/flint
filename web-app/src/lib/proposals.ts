@@ -240,6 +240,38 @@ export async function applyProposal(
   }
 }
 
+/** Mirrors `worktree_export::ExportErrorKind` (AH-168). */
+export type ExportErrorKind =
+  | 'not-managed'
+  | 'not-ready'
+  | 'link-escape'
+  | 'no-changes'
+  | 'io'
+
+export type ExportOutcome =
+  | { ok: true; path: string; files: number }
+  | { ok: false; kind: ExportErrorKind; message: string }
+
+/** Write the worktree's changes as a patch bundle under Jan's data folder. */
+export async function exportWorktree(
+  record: WorktreeRecord
+): Promise<ExportOutcome> {
+  try {
+    const report = await invoke<{
+      path: string
+      manifest: { files: unknown[] }
+    }>('agent_worktree_export', { record })
+    return { ok: true, path: report.path, files: report.manifest.files.length }
+  } catch (e) {
+    const f = (e ?? {}) as { kind?: ExportErrorKind; message?: unknown }
+    return {
+      ok: false,
+      kind: f.kind ?? 'io',
+      message: typeof f.message === 'string' ? f.message : errorText(e),
+    }
+  }
+}
+
 export async function rejectProposal(
   record: ProposalRecord
 ): Promise<Outcome<Record<never, never>>> {

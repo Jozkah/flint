@@ -38,3 +38,4 @@ pub mod team_children;
 pub mod todo;
 pub mod upstream;
 pub mod worktree;
+pub mod worktree_export;
