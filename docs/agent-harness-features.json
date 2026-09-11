@@ -2713,7 +2713,7 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-083"
@@ -2727,7 +2727,10 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
         "src-tauri/src/core/agent/context.rs",
-        "web-app/src/lib/custom-chat-transport.ts"
+        "web-app/src/lib/custom-chat-transport.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/precedence.rs",
+        "web-app/src/lib/coworkTransport.ts",
+        "web-app/src/components/TurnUsageDetails.tsx"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -2743,11 +2746,15 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
         "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
-        "scripts/memory-e2e.mjs"
+        "scripts/memory-e2e.mjs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/precedence.rs::tests",
+        "src-tauri/src/core/agent/context.rs::a_skill_outranks_a_contradicting_memory_in_the_prompt",
+        "web-app/src/lib/__tests__/coworkTransport.test.ts",
+        "src-tauri/examples/cowork_smoke.rs::memory-precedence"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "record::prefer applies a deterministic order -- scope specificity, then creator trust, then recency -- and records why, so a displaced record can say what displaced it. Applied inside retrieve::select, which is the only path either surface reaches, and covered by the focused memory tests. Not promoted: the evidence is Rust unit tests plus an end-to-end that drives a probe binary and real HTTP. There is no memory UI, no restart evidence and no scenario driven through the real Tauri application, which is what this registry requires before implemented. Re-audit 2026-09-11: unchanged status; the Cowork prompt now carries the selection (it previously dropped it), but this scope/rule was not exercised live in the WebView."
+      "auditNote": "record::prefer applies a deterministic order -- scope specificity, then creator trust, then recency -- and records why, so a displaced record can say what displaced it. Applied inside retrieve::select, which is the only path either surface reaches, and covered by the focused memory tests. Not promoted: the evidence is Rust unit tests plus an end-to-end that drives a probe binary and real HTTP. There is no memory UI, no restart evidence and no scenario driven through the real Tauri application, which is what this registry requires before implemented. Re-audit 2026-09-11: unchanged status; the Cowork prompt now carries the selection (it previously dropped it), but this scope/rule was not exercised live in the WebView. Implemented 2026-09-11: one ten-level chain (system/security, current request, workspace/permissions, JAN.md, approved compatibility, skills, user, project, session memory, transcript/tool output) in memory/precedence.rs, stated verbatim in CLI, Chat and Cowork prompts ahead of the remembered facts. Memories contradicting JAN.md, compatibility files or skills are withheld with both values, both sources and the winner reported per turn; memories claiming authority are refused; the memory block is sealed. Memory-vs-memory precedence changed to user > project > session to match the chain (old tests rewritten). Evidence: WebView memory-precedence (JAN.md over user memory, refusal, chain before facts) first attempt, retries off; CLI real prompt test with a project skill; unit tests; three mutation checks. Limits: lexical contradiction table only; Cowork sends no skill text, so level-6 enforcement is on the CLI path."
     },
     {
       "id": "AH-085",

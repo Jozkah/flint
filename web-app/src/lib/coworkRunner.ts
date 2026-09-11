@@ -308,6 +308,12 @@ const memoryOf = (meta: unknown): TurnMemory | undefined => {
     ...(issues.length > 0 ? { storageIssues: issues } : {}),
     ...(off.length > 0 ? { recallOff: off } : {}),
     ...(recall.length > 0 ? { recall } : {}),
+    ...(Array.isArray(r.overridden) && r.overridden.length > 0
+      ? { overridden: r.overridden as NonNullable<TurnMemory['overridden']> }
+      : {}),
+    ...(Array.isArray(r.refused) && r.refused.length > 0
+      ? { refused: r.refused as NonNullable<TurnMemory['refused']> }
+      : {}),
   }
 }
 

@@ -60,6 +60,37 @@ describe('TurnUsageDetails', () => {
     expect(screen.getByTestId('turn-memory-storage-error')).toHaveTextContent('damaged')
   })
 
+  it('shows a memory held back by a higher source with both sides, and a refused one (AH-084)', async () => {
+    render(
+      <TurnUsageDetails
+        memory={{
+          injectedIds: [],
+          conflictIds: [],
+          overridden: [
+            {
+              memoryId: 'mem-npm',
+              subject: 'package manager',
+              memorySays: 'Install dependencies with npm',
+              winner: 'jan-md',
+              winnerName: 'JAN.md',
+              winnerSays: 'Install dependencies with pnpm',
+            },
+          ],
+          refused: [{ memoryId: 'mem-evil', reason: 'tries to override earlier instructions' }],
+        }}
+      />
+    )
+    await userEvent.click(screen.getByTestId('turn-usage-trigger'))
+    const o = await screen.findByTestId('turn-memory-overridden')
+    expect(o).toHaveAttribute('data-memory-id', 'mem-npm')
+    expect(o).toHaveTextContent('disagrees with JAN.md about the package manager')
+    expect(o).toHaveTextContent('with npm')
+    expect(o).toHaveTextContent('with pnpm')
+    expect(screen.getByTestId('turn-memory-refused')).toHaveTextContent(
+      'mem-evil tries to override earlier instructions'
+    )
+  })
+
   it('renders nothing when the turn reported neither usage nor memory', () => {
     const { container } = render(<TurnUsageDetails />)
     expect(container.firstChild).toBeNull()

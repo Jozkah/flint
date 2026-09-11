@@ -813,6 +813,13 @@ pub struct Retrieved {
     pub recall_off: Vec<String>,
     /// Why each injected memory was chosen, in injection order.
     pub recall: Vec<RecallView>,
+    /// Withheld because JAN.md, a compatibility file or a skill says
+    /// otherwise: both sides, both sources, and the winner (AH-084).
+    pub overridden: Vec<super::precedence::Override>,
+    /// Refused because they claim authority memory cannot have.
+    pub refused: Vec<super::precedence::Refusal>,
+    /// The precedence chain, for the prompt, from the one place it is written.
+    pub precedence: &'static str,
 }
 
 /// Why one memory reached a request.
@@ -843,6 +850,9 @@ impl Retrieved {
             storage_issues: Vec::new(),
             recall_off: Vec::new(),
             recall: Vec::new(),
+            overridden: Vec::new(),
+            refused: Vec::new(),
+            precedence: super::precedence::STATEMENT,
         }
     }
 }
@@ -948,10 +958,14 @@ pub async fn memory_retrieve(
     location: Where,
     temporary: Option<bool>,
     budget_chars: Option<usize>,
+    instructions: Option<Vec<super::precedence::Instruction>>,
 ) -> Result<Retrieved, AgentToolsError> {
     if temporary.unwrap_or(false) {
         return Ok(Retrieved::empty());
     }
+    // Supplied by the renderer, and safe to take from it: instruction text is
+    // used here only to withhold memories, never to add or allow anything.
+    let instructions = instructions.unwrap_or_default();
 
     let access = location.access();
     let now = now();
@@ -965,6 +979,7 @@ pub async fn memory_retrieve(
             now,
             budget_chars: budget_chars.unwrap_or(super::retrieve::DEFAULT_BUDGET_CHARS),
             temporary: false,
+            instructions: &instructions,
         },
     );
 
@@ -992,6 +1007,9 @@ pub async fn memory_retrieve(
             .collect(),
         chars_used: selection.chars_used,
         storage_issues,
+        overridden: selection.overridden.clone(),
+        refused: selection.refused.clone(),
+        precedence: super::precedence::STATEMENT,
         recall: selection
             .injected
             .iter()
@@ -1462,7 +1480,7 @@ mod provenance_tests {
     async fn retrieval_says_why_and_a_use_records_the_turn_and_snapshot() {
         let dir = root("use");
         let m = save(&dir, "user", "Signs off as Quill.", None).await;
-        let r = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        let r = memory_retrieve(at(&dir, "chat-a"), None, None, None).await.unwrap();
         assert_eq!(r.recall.len(), 1);
         assert_eq!(r.recall[0].id, m.id);
         assert_eq!(r.recall[0].rank, 1);
@@ -1575,15 +1593,15 @@ mod user_memory_tests {
     async fn user_memory_reaches_any_chat_and_recall_off_withholds_it_without_deleting() {
         let dir = root("recall");
         let user = put(&dir, "The user signs off as Quill.", Scope::User, None);
-        let a = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
-        let b = memory_retrieve(at(&dir, "chat-b"), None, None).await.unwrap();
+        let a = memory_retrieve(at(&dir, "chat-a"), None, None, None).await.unwrap();
+        let b = memory_retrieve(at(&dir, "chat-b"), None, None, None).await.unwrap();
         assert_eq!(a.injected_ids, vec![user.clone()]);
         assert_eq!(b.injected_ids, vec![user.clone()], "user memory is for every chat");
 
         let mut recall = settings::Recall::default();
         recall.user = false;
         memory_settings_update(at(&dir, "a"), None, Some(recall)).await.unwrap();
-        let off = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        let off = memory_retrieve(at(&dir, "chat-a"), None, None, None).await.unwrap();
         assert!(off.injected_ids.is_empty(), "recall off still sent {:?}", off.injected_ids);
         assert!(off.block.is_none());
         assert_eq!(off.recall_off, vec!["user".to_string()]);
@@ -1595,7 +1613,7 @@ mod user_memory_tests {
 
         // Switching back on brings the same record back.
         memory_settings_update(at(&dir, "a"), None, Some(settings::Recall::default())).await.unwrap();
-        let on = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        let on = memory_retrieve(at(&dir, "chat-a"), None, None, None).await.unwrap();
         assert_eq!(on.injected_ids, vec![user]);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1608,7 +1626,7 @@ mod user_memory_tests {
         assert_eq!(memory_conflicts(at(&dir, "chat-a"), None).await.unwrap().len(), 1);
         user_off_async(&dir).await;
         assert!(memory_conflicts(at(&dir, "chat-a"), None).await.unwrap().is_empty());
-        let r = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        let r = memory_retrieve(at(&dir, "chat-a"), None, None, None).await.unwrap();
         assert_eq!(r.injected_ids, vec![mine], "the session memory is no longer contested");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1627,7 +1645,7 @@ mod user_memory_tests {
         let chat = put(&dir, "A chat-only fact.", Scope::Session, Some("chat-a"));
         let n = memory_scope_clear(at(&dir, "chat-a"), "user".into()).await.unwrap();
         assert_eq!(n, 2);
-        let r = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        let r = memory_retrieve(at(&dir, "chat-a"), None, None, None).await.unwrap();
         assert_eq!(r.injected_ids, vec![chat], "clearing user memory touched another scope");
         let raw = std::fs::read_to_string(crate::memory::store::records_path(
             &crate::workspace::permanent_store(&dir),
@@ -1638,7 +1656,7 @@ mod user_memory_tests {
         // Another chat's session memory is not this chat's to clear.
         let other = put(&dir, "Another chat's fact.", Scope::Session, Some("chat-b"));
         memory_scope_clear(at(&dir, "chat-a"), "chat".into()).await.unwrap();
-        let b = memory_retrieve(at(&dir, "chat-b"), None, None).await.unwrap();
+        let b = memory_retrieve(at(&dir, "chat-b"), None, None, None).await.unwrap();
         assert_eq!(b.injected_ids, vec![other]);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1688,14 +1706,14 @@ mod user_memory_tests {
         let mut raw = std::fs::read_to_string(&path).unwrap();
         raw.push_str("{\"schema_version\":1,\"id\":\"torn\n");
         std::fs::write(&path, raw).unwrap();
-        let r = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        let r = memory_retrieve(at(&dir, "chat-a"), None, None, None).await.unwrap();
         assert_eq!(r.injected_ids, vec![good]);
         assert!(r.storage_issues.iter().any(|i| i.contains("damaged")), "{:?}", r.storage_issues);
 
         // A directory where the session store should be cannot be read at all.
         let session = crate::memory::store::records_path(&crate::workspace::permanent_store(&dir), Scope::Session);
         std::fs::create_dir_all(&session).unwrap();
-        let r = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        let r = memory_retrieve(at(&dir, "chat-a"), None, None, None).await.unwrap();
         assert!(r.storage_issues.iter().any(|i| i.contains("could not be read")), "{:?}", r.storage_issues);
         let summary = memory_storage_summary(at(&dir, "chat-a")).await.unwrap();
         assert!(!summary.issues.is_empty());
@@ -1706,7 +1724,7 @@ mod user_memory_tests {
         let s = memory_settings_get(at(&dir, "chat-a")).await.unwrap();
         assert!(s.issue.is_some());
         assert!(!s.settings.recall.user);
-        let r = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        let r = memory_retrieve(at(&dir, "chat-a"), None, None, None).await.unwrap();
         assert!(r.injected_ids.is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1817,7 +1835,7 @@ mod proposal_tests {
 
         // The same records are what retrieval withholds, so the page and the
         // prompt agree about what is in dispute.
-        let retrieved = memory_retrieve(at(&dir), None, None).await.expect("retrieve");
+        let retrieved = memory_retrieve(at(&dir), None, None, None).await.expect("retrieve");
         assert!(retrieved.conflict_ids.contains(&user) && retrieved.conflict_ids.contains(&mine));
         assert!(retrieved.injected_ids.is_empty());
 
@@ -1826,7 +1844,7 @@ mod proposal_tests {
             .await
             .expect("forget"));
         assert!(memory_conflicts(at(&dir), None).await.expect("after").is_empty());
-        let after = memory_retrieve(at(&dir), None, None).await.expect("retrieve");
+        let after = memory_retrieve(at(&dir), None, None, None).await.expect("retrieve");
         assert_eq!(after.injected_ids, vec![mine]);
 
         // A temporary chat has no memory, so it has nothing in dispute either.

@@ -511,6 +511,26 @@ Still open for AH-083: provenance through export/import and the "imported"
 mark on arrival (Priority 5), and Chat records a use without a snapshot id,
 because the Chat path takes no prompt snapshot.
 
+## One precedence chain (AH-084)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView | `cowork-smoke --only memory-precedence` | the attached project's `JAN.md` says pnpm; a user memory says npm, another claims authority ("Ignore previous instructions…"), a third is unrelated. The request body states the chain ahead of `<remembered_facts>`, carries JAN.md and the unrelated memory, and carries neither the contradicted nor the refused one; the turn shows the override with both texts, both sources and JAN.md as the winner, and the refusal with its reason |
+| CLI prompt path | `core/agent/context.rs::a_skill_outranks_a_contradicting_memory_in_the_prompt` | a project **skill** says pnpm, a user memory says npm: the real prompt builder states the chain, does not send the memory, and reports the skill as winner |
+| Rust tests | `memory/precedence.rs` (chain order and statement; skill beats memory with both excerpts; JAN.md reported over a skill; agreeing or unrelated memories untouched; lower sources ignored; authority claims refused, ordinary preferences not), `memory/retrieve.rs` (skill-contradicted memory withheld and reported; authority and block-closing memories refused; the surviving one sealed to a single line with no raw tag; JAN.md over skill; injection order user, project, session; budget drops session first), `memory/record.rs` (scope precedence user > project > session; duplicates keep the user copy; order independence) | |
+| Mutation checks | override withholding, sealing, and the scope order reverted in turn | each fails its test |
+| Render and transport tests | `TurnUsageDetails.test.tsx` (override with both sides, refusal), `coworkTransport.test.ts` (JAN.md and compatibility text handed to retrieval; chain before the facts) | |
+
+Last run 2026-09-11, Windows WebView2, scripted provider, retries off: passed
+on the first attempt. The chain changed an existing rule: memory-versus-memory
+precedence was "more specific scope wins"; it is now user above project above
+session, as the chain requires, and the tests encoding the old order were
+rewritten rather than deleted. Contradiction detection is the shared lexical
+table (package manager, response length, indentation, test runner, branch
+integration, line endings, formatters); disagreements outside it are not
+detected. Cowork delivers no skill text to the model, so there is nothing for
+a Cowork memory to contradict at level 6; skills are enforced on the CLI path.
+
 ## Conflicting memory, surfaced and settled (AH-085)
 
 | Evidence | Where | Covers |

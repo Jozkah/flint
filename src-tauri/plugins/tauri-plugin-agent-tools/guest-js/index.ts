@@ -406,6 +406,43 @@ export type MemoryRetrieved = {
   /** Why each injected memory was chosen, in injection order. `rank` is its
    * precedence position, not a relevance score. */
   recall?: MemoryRecallReason[]
+  /** Withheld because JAN.md, a compatibility file or a skill says otherwise
+   * (AH-084): both values, both sources, and the winner. */
+  overridden?: MemoryOverride[]
+  /** Refused because they claim authority memory cannot have. */
+  refused?: { memoryId: string; reason: string }[]
+  /** The precedence chain, as the prompt states it. */
+  precedence?: string
+}
+
+export type InstructionSource =
+  | 'system'
+  | 'current-request'
+  | 'workspace'
+  | 'jan-md'
+  | 'compat'
+  | 'skill'
+  | 'user-memory'
+  | 'project-memory'
+  | 'session-memory'
+  | 'transcript'
+
+/** Instruction text above memory, handed to retrieval so a memory that
+ * contradicts it is withheld. Used only to withhold, never to allow. */
+export type MemoryInstruction = {
+  source: 'jan-md' | 'compat' | 'skill'
+  name: string
+  text: string
+}
+
+export type MemoryOverride = {
+  memoryId: string
+  memorySource: InstructionSource
+  memorySays: string
+  subject: string
+  winner: InstructionSource
+  winnerName: string
+  winnerSays: string
 }
 
 export type MemoryRecallReason = {
@@ -445,12 +482,17 @@ export async function memoryRecordUses(
  */
 export async function memoryRetrieve(
   location: MemoryLocation,
-  options?: { temporary?: boolean; budgetChars?: number }
+  options?: {
+    temporary?: boolean
+    budgetChars?: number
+    instructions?: MemoryInstruction[]
+  }
 ): Promise<MemoryRetrieved> {
   return await invoke('plugin:agent-tools|memory_retrieve', {
     location,
     temporary: options?.temporary,
     budgetChars: options?.budgetChars,
+    instructions: options?.instructions,
   })
 }
 

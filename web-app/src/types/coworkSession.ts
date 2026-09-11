@@ -94,6 +94,17 @@ export type TurnMemory = {
   recallOff?: string[]
   /** Why each sent memory was chosen: precedence rank and reason. */
   recall?: { id: string; rank: number; reason: string }[]
+  /** Withheld because a higher source says otherwise, with both sides. */
+  overridden?: {
+    memoryId: string
+    subject: string
+    memorySays: string
+    winner: string
+    winnerName: string
+    winnerSays: string
+  }[]
+  /** Refused for claiming authority memory cannot have. */
+  refused?: { memoryId: string; reason: string }[]
 }
 
 /**

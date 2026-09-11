@@ -34,6 +34,7 @@ import { getAgentToolSchemas, sandboxEnforces } from '@/lib/agentTools'
 import { errorText } from '@/lib/errorText'
 import {
   memoryRetrieve,
+  type MemoryInstruction,
   type MemoryRetrieved,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { useAppState } from '@/hooks/useAppState'
@@ -953,9 +954,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const raw =
       [
         this.systemMessage,
-        // Remembered facts are data the model may use, not instructions it must
-        // follow. The block arrives already delimited from the backend, which
-        // is what keeps that distinction visible in the prompt itself.
+        // The precedence chain (AH-084), stated by the backend so every surface
+        // says the same thing, then the remembered facts it ranks. Remembered
+        // facts are data the model may use, not instructions it must follow;
+        // the block arrives delimited and sealed from the backend.
+        this.memorySelection?.block ? this.memorySelection.precedence : undefined,
         this.memorySelection?.block ?? undefined,
         this.buildFilesSystemInstruction(messages),
         this.buildWebSearchSystemInstruction(),
@@ -1009,11 +1012,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           projectRoot: this.projectRoot,
           sessionId: this.threadId,
         },
-        { temporary: this.temporary }
+        { temporary: this.temporary, instructions: this.memoryInstructions() }
       )
     } catch (e) {
       console.warn('[memory] retrieval failed:', errorText(e))
     }
+  }
+
+  /**
+   * Instruction text above memory for this request (AH-084): a memory that
+   * contradicts it is withheld and reported. Chat has none of its own; Cowork
+   * supplies its project's JAN.md and approved compatibility files.
+   */
+  protected memoryInstructions(): MemoryInstruction[] {
+    return []
   }
 
   /** The memories the last dispatch carried, for the snapshot and accounting. */
@@ -1755,6 +1767,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
                       rank: r.rank,
                       reason: r.reason,
                     })),
+                    overridden: this.memorySelection.overridden ?? [],
+                    refused: this.memorySelection.refused ?? [],
                   },
                 }
               : {}),

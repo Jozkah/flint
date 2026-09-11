@@ -25,8 +25,15 @@ export function TurnUsageDetails({
   const withheld = memory?.conflictIds ?? []
   const issues = memory?.storageIssues ?? []
   const recallOff = memory?.recallOff ?? []
+  const overridden = memory?.overridden ?? []
+  const refused = memory?.refused ?? []
   const hasMemoryNote =
-    injected.length > 0 || withheld.length > 0 || issues.length > 0 || recallOff.length > 0
+    injected.length > 0 ||
+    withheld.length > 0 ||
+    issues.length > 0 ||
+    recallOff.length > 0 ||
+    overridden.length > 0 ||
+    refused.length > 0
   if (!hasUsage && !hasMemoryNote) return null
   return (
     <Popover>
@@ -84,6 +91,32 @@ export function TurnUsageDetails({
                 Withheld as conflicting: {withheld.join(', ')}
               </p>
             )}
+            {overridden.map((o) => (
+              <div
+                key={`o-${o.memoryId}`}
+                className="mt-1 text-amber-600"
+                data-testid="turn-memory-overridden"
+                data-memory-id={o.memoryId}
+              >
+                <p>
+                  Not sent: <span className="font-mono">{o.memoryId}</span> disagrees with{' '}
+                  {o.winnerName} about the {o.subject}, and {o.winnerName} ranks higher.
+                </p>
+                <p className="text-muted-foreground">Memory: “{o.memorySays}”</p>
+                <p className="text-muted-foreground">
+                  {o.winnerName}: “{o.winnerSays}”
+                </p>
+              </div>
+            ))}
+            {refused.map((r) => (
+              <p
+                key={`r-${r.memoryId}`}
+                className="mt-1 text-destructive"
+                data-testid="turn-memory-refused"
+              >
+                Refused: <span className="font-mono">{r.memoryId}</span> {r.reason}.
+              </p>
+            ))}
             {recallOff.length > 0 && (
               <p className="mt-1 text-muted-foreground" data-testid="turn-memory-recall-off">
                 Recall off for: {recallOff.join(', ')}

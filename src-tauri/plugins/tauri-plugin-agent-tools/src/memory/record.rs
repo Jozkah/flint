@@ -432,8 +432,9 @@ impl MemoryRecord {
 /// rather than merely made.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrecedenceReason {
-    /// Different scopes: the more specific one wins.
-    MoreSpecificScope,
+    /// Different scopes: the one higher in the precedence chain wins
+    /// (user above project above session, AH-084).
+    HigherPrecedenceScope,
     /// Same scope, one is pinned.
     Pinned,
     /// The user said it; the other was inferred or imported.
@@ -450,7 +451,7 @@ pub enum PrecedenceReason {
 impl PrecedenceReason {
     pub fn as_str(&self) -> &'static str {
         match self {
-            PrecedenceReason::MoreSpecificScope => "more specific scope",
+            PrecedenceReason::HigherPrecedenceScope => "higher-precedence scope (user > project > session)",
             PrecedenceReason::Pinned => "pinned",
             PrecedenceReason::MoreTrustedCreator => "saved by the user",
             PrecedenceReason::ExplicitOverInferred => "explicitly saved rather than inferred",
@@ -470,10 +471,11 @@ pub fn prefer<'a>(
     a: &'a MemoryRecord,
     b: &'a MemoryRecord,
 ) -> (&'a MemoryRecord, PrecedenceReason) {
-    // 1. Scope. A session memory beats a project memory beats a user memory.
+    // 1. Scope, in the precedence chain's order (AH-084): user memory above
+    //    project memory above session memory. Lower specificity ranks higher.
     match a.scope.specificity().cmp(&b.scope.specificity()) {
-        std::cmp::Ordering::Greater => return (a, PrecedenceReason::MoreSpecificScope),
-        std::cmp::Ordering::Less => return (b, PrecedenceReason::MoreSpecificScope),
+        std::cmp::Ordering::Less => return (a, PrecedenceReason::HigherPrecedenceScope),
+        std::cmp::Ordering::Greater => return (b, PrecedenceReason::HigherPrecedenceScope),
         std::cmp::Ordering::Equal => {}
     }
 
@@ -535,7 +537,38 @@ const INCOMPATIBLE: &[(&str, &str, &str)] = &[
     ("brief", "verbose", "response length"),
     ("concise", "verbose", "response length"),
     ("tabs", "spaces", "indentation"),
+    ("jest", "vitest", "test runner"),
+    ("jest", "mocha", "test runner"),
+    ("vitest", "mocha", "test runner"),
+    ("rebase", "merge", "branch integration"),
+    ("lf", "crlf", "line endings"),
+    ("black", "ruff", "Python formatter"),
+    ("prettier", "biome", "formatter"),
 ];
+
+/// The subject two texts disagree about, and the word each used, if they do.
+///
+/// Shared by conflicts between memories and by memory checked against the
+/// instructions above it, so both disagree about exactly the same things.
+pub fn incompatible_subject(
+    a: &str,
+    b: &str,
+) -> Option<(&'static str, &'static str, &'static str)> {
+    let (ta, tb) = (a.to_lowercase(), b.to_lowercase());
+    for (left, right, subject) in INCOMPATIBLE {
+        let a_left = mentions(&ta, left) && !mentions(&ta, right);
+        let b_right = mentions(&tb, right) && !mentions(&tb, left);
+        let a_right = mentions(&ta, right) && !mentions(&ta, left);
+        let b_left = mentions(&tb, left) && !mentions(&tb, right);
+        if a_left && b_right {
+            return Some((subject, left, right));
+        }
+        if a_right && b_left {
+            return Some((subject, right, left));
+        }
+    }
+    None
+}
 
 /// Find conflicts among applicable records.
 ///
@@ -552,20 +585,12 @@ pub fn detect_conflicts(records: &[MemoryRecord]) -> Vec<Conflict> {
             if a.scope != b.scope && a.project_id != b.project_id && a.session_id != b.session_id {
                 continue;
             }
-            let (ta, tb) = (a.content.to_lowercase(), b.content.to_lowercase());
-            for (left, right, subject) in INCOMPATIBLE {
-                let a_left = mentions(&ta, left) && !mentions(&ta, right);
-                let b_right = mentions(&tb, right) && !mentions(&tb, left);
-                let a_right = mentions(&ta, right) && !mentions(&ta, left);
-                let b_left = mentions(&tb, left) && !mentions(&tb, right);
-                if (a_left && b_right) || (a_right && b_left) {
-                    out.push(Conflict {
-                        left: a.id.clone(),
-                        right: b.id.clone(),
-                        subject: (*subject).to_string(),
-                    });
-                    break;
-                }
+            if let Some((subject, _, _)) = incompatible_subject(&a.content, &b.content) {
+                out.push(Conflict {
+                    left: a.id.clone(),
+                    right: b.id.clone(),
+                    subject: subject.to_string(),
+                });
             }
         }
     }
@@ -705,26 +730,31 @@ mod tests {
     }
 
     #[test]
-    fn scope_specificity_orders_session_over_project_over_user() {
+    fn scope_precedence_orders_user_over_project_over_session() {
         let session = rec("a", "x", Scope::Session);
         let project = rec("b", "x", Scope::Project);
         let user = rec("c", "x", Scope::User);
         assert_eq!(
             prefer(&session, &project).1,
-            PrecedenceReason::MoreSpecificScope
+            PrecedenceReason::HigherPrecedenceScope
         );
-        assert_eq!(prefer(&session, &project).0.id, session.id);
-        assert_eq!(prefer(&project, &user).0.id, project.id);
-        assert_eq!(prefer(&user, &session).0.id, session.id);
+        assert_eq!(prefer(&session, &project).0.id, project.id);
+        assert_eq!(prefer(&project, &user).0.id, user.id);
+        assert_eq!(prefer(&user, &session).0.id, user.id);
     }
 
     #[test]
     fn pinning_ranks_within_a_scope_and_does_not_widen_reach() {
-        let mut pinned_user = rec("a", "x", Scope::User);
-        pinned_user.pinned = true;
+        let mut pinned_session = rec("a", "x", Scope::Session);
+        pinned_session.pinned = true;
         let project = rec("b", "x", Scope::Project);
-        // Pinning does not lift a user memory above a project one.
-        assert_eq!(prefer(&pinned_user, &project).0.id, project.id);
+        // Pinning does not lift a session memory above a project one.
+        assert_eq!(prefer(&pinned_session, &project).0.id, project.id);
+        let pinned_user = {
+            let mut u = rec("d", "x", Scope::User);
+            u.pinned = true;
+            u
+        };
 
         let plain_user = rec("c", "x", Scope::User);
         assert_eq!(prefer(&pinned_user, &plain_user).0.id, pinned_user.id);
@@ -795,7 +825,7 @@ mod tests {
 
         assert_eq!(forward, reversed);
         assert_eq!(forward, swapped);
-        assert_eq!(forward, MemoryId::new("c"), "session memory should win");
+        assert_eq!(forward, MemoryId::new("a"), "user memory should win (AH-084 chain)");
     }
 
     /// `prefer` must be symmetric, or a fold over a set could produce different
@@ -858,7 +888,7 @@ mod tests {
 
         let kept = deduplicate(vec![user, project]);
         assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].id, MemoryId::new("b"), "kept the broader record");
+        assert_eq!(kept[0].id, MemoryId::new("a"), "kept the higher-precedence (user) record");
     }
 
     #[test]
