@@ -93,6 +93,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             memory::commands::memory_retrieve,
             memory::commands::memory_conflicts,
             memory::commands::memory_scope_clear,
+            memory::commands::memory_record_uses,
             commands::memory_list,
             commands::memory_read,
             commands::memory_write,

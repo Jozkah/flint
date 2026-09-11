@@ -50,6 +50,8 @@ export type CoworkRunConfig = CoworkToolOptions & {
  * parent.
  */
 export class CoworkChatTransport extends CustomChatTransport {
+  /** The route records uses where the turn meets its snapshot (AH-083). */
+  protected override recordsMemoryUsesOnFinish = false
   private config: CoworkRunConfig
   /**
    * The advertised tool set, frozen for a run's lifetime.

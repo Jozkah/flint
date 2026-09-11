@@ -310,6 +310,23 @@ export type MemoryView = {
   sourceMessageId: string | null
   sourceDeleted: boolean
   supersedes: string | null
+  /** 1 when created, +1 per edit; null for a record saved before versions. */
+  version?: number | null
+  contentHash?: string
+  /** 'user-authored' | 'agent-authored' | 'imported' | 'extracted' | 'system' */
+  sourceType?: string
+  sourceRunId?: string | null
+  sourceProjectId?: string | null
+  /** Earlier versions, as hashes and times only. */
+  history?: { version: number; content_hash: string; replaced_at: number }[]
+  /** The most recent dispatches that carried it, newest last. */
+  uses?: {
+    session_id: string
+    turn_id?: string
+    snapshot_id?: string
+    reason?: string
+    at: number
+  }[]
   /** A single-line preview, already truncated by the backend so a redaction
    * marker is never cut in half. */
   preview: string
@@ -386,6 +403,34 @@ export type MemoryRetrieved = {
   storageIssues?: string[]
   /** Scopes whose recall the user switched off ("chat", "project", "user"). */
   recallOff?: string[]
+  /** Why each injected memory was chosen, in injection order. `rank` is its
+   * precedence position, not a relevance score. */
+  recall?: MemoryRecallReason[]
+}
+
+export type MemoryRecallReason = {
+  id: string
+  scope: string
+  rank: number
+  reason: string
+}
+
+/**
+ * Record that one dispatch carried these memories: the turn it produced and,
+ * when one was taken, its prompt snapshot. Returns how many were recorded;
+ * records this place may not see, or already forgotten, are left alone.
+ */
+export async function memoryRecordUses(
+  location: MemoryLocation,
+  used: { id: string; reason?: string }[],
+  where: { turnId?: string; snapshotId?: string }
+): Promise<number> {
+  return await invoke('plugin:agent-tools|memory_record_uses', {
+    location,
+    used,
+    turnId: where.turnId,
+    snapshotId: where.snapshotId,
+  })
 }
 
 /**
@@ -558,7 +603,7 @@ export async function memoryRecordCommit(
   scope: MemoryScope,
   content: string,
   expectedHash: string,
-  source?: { sessionId?: string; messageId?: string }
+  source?: { sessionId?: string; messageId?: string; runId?: string }
 ): Promise<MemoryView> {
   return await invoke('plugin:agent-tools|memory_record_commit', {
     location,
@@ -567,6 +612,7 @@ export async function memoryRecordCommit(
     expectedHash,
     sourceSessionId: source?.sessionId,
     sourceMessageId: source?.messageId,
+    sourceRunId: source?.runId,
   })
 }
 

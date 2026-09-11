@@ -294,11 +294,20 @@ const memoryOf = (meta: unknown): TurnMemory | undefined => {
   const r = m as Record<string, unknown>
   const issues = idList(r.storageIssues)
   const off = idList(r.recallOff)
+  const recall = Array.isArray(r.recall)
+    ? r.recall.flatMap((x) => {
+        const v = x as Record<string, unknown>
+        return typeof v?.id === 'string' && typeof v.reason === 'string'
+          ? [{ id: v.id, rank: typeof v.rank === 'number' ? v.rank : 0, reason: v.reason }]
+          : []
+      })
+    : []
   return {
     injectedIds: idList(r.injectedIds),
     conflictIds: idList(r.conflictIds),
     ...(issues.length > 0 ? { storageIssues: issues } : {}),
     ...(off.length > 0 ? { recallOff: off } : {}),
+    ...(recall.length > 0 ? { recall } : {}),
   }
 }
 

@@ -2676,7 +2676,12 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/service.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
-        "web-app/src/lib/custom-chat-transport.ts"
+        "web-app/src/lib/custom-chat-transport.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+        "web-app/src/routes/settings/memory.tsx",
+        "web-app/src/components/TurnUsageDetails.tsx",
+        "web-app/src/lib/memoryUses.ts",
+        "web-app/src/routes/cowork.tsx"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -2692,11 +2697,15 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
         "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
-        "scripts/memory-e2e.mjs"
+        "scripts/memory-e2e.mjs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs::provenance_tests",
+        "web-app/src/lib/__tests__/memoryUses.test.ts",
+        "src-tauri/examples/cowork_smoke.rs::memory-provenance",
+        "src-tauri/examples/cowork_smoke.rs::memory-provenance-after-restart"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Every record carries a Provenance -- creator, origin, source session and message, timestamps -- written at creation and preserved through edits and supersession. What is missing is the user-facing half: 'Why does Jan remember this?' does not navigate to the source message, and there is no unavailable-source state for a deleted origin. 2026-09-11: the memory page shows each record's provenance (id, scope, creator, origin, created/updated, source conversation and message, project identity, supersedes, redaction) and each Chat message and Cowork turn lists the memory ids its request carried and withheld; seen live in memory-session-after-restart. Still missing: the injected line names id and scope but not its source, and provenance does not navigate to the source message."
+      "auditNote": "Every record carries a Provenance -- creator, origin, source session and message, timestamps -- written at creation and preserved through edits and supersession. What is missing is the user-facing half: 'Why does Jan remember this?' does not navigate to the source message, and there is no unavailable-source state for a deleted origin. 2026-09-11: the memory page shows each record's provenance (id, scope, creator, origin, created/updated, source conversation and message, project identity, supersedes, redaction) and each Chat message and Cowork turn lists the memory ids its request carried and withheld; seen live in memory-session-after-restart. Still missing: the injected line names id and scope but not its source, and provenance does not navigate to the source message. 2026-09-11: version + hash-only revision history, source run and project, derived source type (user-authored/agent-authored/imported/extracted), bounded per-dispatch uses with session, turn, prompt-snapshot id and recall reason, and per-memory rank and reason from retrieval -- all persisted, shown on Settings > Memory and in turn details, and proven through a WebView restart pair with the snapshot id checked against prompts.jsonl. Kept in-progress: provenance through export/import and imported marking on arrival are not built yet (Priority 5)."
     },
     {
       "id": "AH-084",

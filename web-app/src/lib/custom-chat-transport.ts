@@ -13,6 +13,7 @@ import {
 } from 'ai'
 import { repairToolArgs } from './toolCallRepair'
 import { streamCutOff } from './streamFinish'
+import { recordMemoryUses } from './memoryUses'
 import { getServiceHub, useServiceStore } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import { DISPATCH_PARAM_KEY, ModelFactory } from './model-factory'
@@ -803,6 +804,8 @@ function prependContinuationToUIStream(
 }
 
 export class CustomChatTransport implements ChatTransport<UIMessage> {
+  /** Record memory uses when a reply finishes. Cowork records its own. */
+  protected recordsMemoryUsesOnFinish = true
   public model: LanguageModel | null = null
   private routerModel: LanguageModel | null = null
   private routerModelKey = ''
@@ -1719,6 +1722,21 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             tokenSpeed = 0
           }
 
+          // AH-083: where each carried memory was used. Chat has no prompt
+          // snapshot on this path, so the use names the chat and nothing it
+          // cannot prove. Cowork records its own, with the snapshot, where the
+          // turn row is built.
+          if (this.recordsMemoryUsesOnFinish && this.memorySelection?.injectedIds.length) {
+            void recordMemoryUses({
+              sessionId: this.threadId,
+              projectRoot: this.projectRoot,
+              memory: {
+                injectedIds: this.memorySelection.injectedIds,
+                conflictIds: this.memorySelection.conflictIds,
+                recall: this.memorySelection.recall ?? [],
+              },
+            })
+          }
           return {
             finishReason: finishPart.finishReason,
             streamCutOff: streamCutOff(part),
@@ -1732,6 +1750,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
                     conflictIds: this.memorySelection.conflictIds,
                     storageIssues: this.memorySelection.storageIssues ?? [],
                     recallOff: this.memorySelection.recallOff ?? [],
+                    recall: (this.memorySelection.recall ?? []).map((r) => ({
+                      id: r.id,
+                      rank: r.rank,
+                      reason: r.reason,
+                    })),
                   },
                 }
               : {}),

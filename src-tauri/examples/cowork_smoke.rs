@@ -8053,9 +8053,157 @@ fn scenario_memory_user_after_restart(ctx: &Ctx) -> ScenarioResult {
     Ok(())
 }
 
+// Provenance (AH-083): a memory says who wrote it, which version it is, why a
+// request carried it and exactly which snapshot that request was -- and all of
+// it is still true after a restart.
+
+const PROVENANCE_EXPECTED: &str = "memory-provenance-expected.json";
+
+fn memory_view(ctx: &Ctx, id: &str) -> Result<Value, Failure> {
+    let raw = ctx.eval_string(&format!(
+        r#"const c = await window.__TAURI_INTERNALS__.invoke('get_app_configurations');
+           const m = await window.__TAURI_INTERNALS__.invoke('plugin:agent-tools|memory_record_get', {{
+             location: {{ dataFolder: c.data_folder }}, scope: 'user', id: {id:?},
+           }});
+           return JSON.stringify(m);"#
+    ))?;
+    serde_json::from_str(&raw).map_err(|e| Failure(e.to_string()))
+}
+
+fn scenario_memory_provenance(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    new_cowork_session(ctx)?;
+    send_cowork(ctx, "provenance probe one")?;
+    let session = current_cowork_session(ctx)?;
+
+    goto_memory_page(ctx)?;
+    ctx.type_into("[data-testid=\"memory-new-content\"]", "Smoke provenance: reviews happen on Tuesdays.")?;
+    ctx.wait_until(
+        "the save button to arm",
+        "const b = document.querySelector('[data-testid=\"memory-new-save\"]'); return !!b && !b.disabled;",
+        Duration::from_secs(10),
+    )?;
+    ctx.eval("document.querySelector('[data-testid=\"memory-new-save\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the memory in the list",
+        "return [...document.querySelectorAll('[data-testid=\"memory-row\"]')].some(r => r.textContent.includes('Tuesdays'));",
+        Duration::from_secs(20),
+    )?;
+    let id = listed_user_memory(ctx, "Tuesdays")?;
+    ensure!(!id.is_empty(), "the memory was not stored");
+    let fresh = memory_view(ctx, &id)?;
+    ensure!(fresh["version"] == 1, "a new memory is not version 1: {fresh}");
+    ensure!(fresh["sourceType"] == "user-authored", "wrong source type: {fresh}");
+
+    // Carried by a request: the turn says why, and the memory records the
+    // turn's exact snapshot.
+    open_cowork_session(ctx, &session)?;
+    send_cowork(ctx, "provenance probe two")?;
+    ensure!(
+        last_system_prompt(ctx)?.contains(&format!("[{id}] (user)")),
+        "the memory was not sent"
+    );
+    ctx.eval(
+        "const t = [...document.querySelectorAll('[data-testid=\"turn-usage-trigger\"]')].pop(); t.click(); return true;",
+    )?;
+    ctx.wait_until(
+        "the turn to say why the memory was sent",
+        &format!(
+            "const li = document.querySelector('[data-memory-id={id:?}]');
+             const r = li && li.querySelector('[data-testid=\"turn-memory-reason\"]');
+             return !!r && r.textContent.includes('applies to this user');"
+        ),
+        Duration::from_secs(15),
+    )?;
+    ctx.eval("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true;")?;
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let used = loop {
+        let v = memory_view(ctx, &id)?;
+        if v["uses"].as_array().map(|u| !u.is_empty()).unwrap_or(false) {
+            break v;
+        }
+        ensure!(Instant::now() < deadline, "no use was recorded for the turn: {v}");
+        std::thread::sleep(Duration::from_millis(300));
+    };
+    let snapshot = used["uses"][0]["snapshot_id"].as_str().unwrap_or_default().to_string();
+    ensure!(!snapshot.is_empty(), "the use did not name its snapshot: {used}");
+    ensure!(used["uses"][0]["session_id"] == session.as_str(), "the use named another session: {used}");
+    let prompts = std::fs::read_to_string(data_folder()?.join("audit/prompts.jsonl")).unwrap_or_default();
+    let record = prompts
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .find(|r| r["id"] == snapshot.as_str())
+        .ok_or_else(|| Failure(format!("snapshot {snapshot} is not in prompts.jsonl")))?;
+    ensure!(
+        record.to_string().contains(&id),
+        "snapshot {snapshot} did not carry memory {id}"
+    );
+
+    // Edited: a new version, the old one on record by hash only.
+    goto_memory_page(ctx)?;
+    ctx.eval(&format!(
+        "document.querySelector('[data-testid=\"memory-row\"][data-memory-id={id:?}] [aria-label=\"Edit memory\"]').click(); return true;"
+    ))?;
+    ctx.wait_until("the edit dialog", "return !!document.querySelector('[role=\"dialog\"] textarea');", Duration::from_secs(10))?;
+    ctx.type_into("[role=\"dialog\"] textarea", "Smoke provenance: reviews happen on Wednesdays.")?;
+    ctx.eval("document.querySelector('[data-testid=\"memory-edit-save\"]').click(); return true;")?;
+    ctx.wait_until(
+        "the edit to land",
+        "return [...document.querySelectorAll('[data-testid=\"memory-row\"]')].some(r => r.textContent.includes('Wednesdays'));",
+        Duration::from_secs(15),
+    )?;
+    let edited = memory_view(ctx, &id)?;
+    ensure!(edited["version"] == 2, "an edit did not make version 2: {edited}");
+    ensure!(
+        edited["history"][0]["content_hash"] == fresh["contentHash"],
+        "the replaced version is not on record: {edited}"
+    );
+    ensure!(!user_store_text(ctx)?.contains("Tuesdays"), "the replaced text was kept on disk");
+
+    std::fs::write(
+        data_folder()?.join(PROVENANCE_EXPECTED),
+        serde_json::json!({ "id": id, "session": session, "snapshot": snapshot }).to_string(),
+    )
+    .map_err(|e| Failure(format!("could not record the provenance: {e}")))?;
+    Ok(())
+}
+
+fn scenario_memory_provenance_after_restart(ctx: &Ctx) -> ScenarioResult {
+    let raw = std::fs::read_to_string(data_folder()?.join(PROVENANCE_EXPECTED)).map_err(|e| {
+        Failure(format!("no recorded provenance ({e}); run memory-provenance first with the same COWORK_SMOKE_KEEP"))
+    })?;
+    let expected: Value = serde_json::from_str(&raw).map_err(|e| Failure(e.to_string()))?;
+    let id = expected["id"].as_str().unwrap_or_default().to_string();
+    let snapshot = expected["snapshot"].as_str().unwrap_or_default().to_string();
+    let v = memory_view(ctx, &id)?;
+    ensure!(v["version"] == 2 && v["history"].as_array().map(|h| h.len()) == Some(1), "versions lost in the restart: {v}");
+    ensure!(v["uses"][0]["snapshot_id"] == snapshot.as_str(), "the recorded snapshot changed in the restart: {v}");
+    ensure!(v["sourceType"] == "user-authored", "source type lost: {v}");
+    // And the page shows it.
+    goto_memory_page(ctx)?;
+    ctx.wait_until(
+        "the provenance on the page after the restart",
+        &format!(
+            "const r = document.querySelector('[data-testid=\"memory-row\"][data-memory-id={id:?}]');
+             return !!r && r.querySelector('[data-testid=\"memory-provenance-version\"]').textContent.trim() === '2'
+               && !!r.querySelector('[data-snapshot-id={snapshot:?}]');"
+        ),
+        Duration::from_secs(20),
+    )?;
+    Ok(())
+}
+
 /// Scenarios that run only when named with `--only`: they need something the
 /// default run does not have, such as a real provider.
 const OPT_IN_SCENARIOS: &[Scenario] = &[
+    Scenario {
+        name: "memory-provenance",
+        run: scenario_memory_provenance,
+    },
+    Scenario {
+        name: "memory-provenance-after-restart",
+        run: scenario_memory_provenance_after_restart,
+    },
     Scenario {
         name: "memory-user-scope",
         run: scenario_memory_user_scope,

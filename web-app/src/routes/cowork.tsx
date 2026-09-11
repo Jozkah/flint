@@ -128,6 +128,7 @@ import { setSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
 import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { fromCoworkUsage } from '@/lib/tokenUsage'
 import { TurnUsageDetails } from '@/components/TurnUsageDetails'
+import { recordMemoryUses } from '@/lib/memoryUses'
 import type { TurnMemory } from '@/types/coworkSession'
 import { attachAskToTurns, settleAskInTurns } from '@/hooks/useCoworkRun'
 import {
@@ -1506,6 +1507,21 @@ function CoworkPage() {
     )
     liveTurnsRef.current = [...liveTurnsRef.current, ...stamped]
     setLiveTurns(liveTurnsRef.current)
+    // AH-083: the memories this row's request carried now know the turn and
+    // the exact snapshot they went out in. Here for the same reason as the
+    // stamp above: this is where the row, its memory and its snapshot meet.
+    const store = useCoworkSessions.getState()
+    const session = store.sessions.find((s) => s.id === store.currentId)
+    for (const turn of stamped) {
+      if (turn.role !== 'assistant' || !turn.memory?.injectedIds.length) continue
+      void recordMemoryUses({
+        sessionId: session?.id,
+        projectRoot: session?.folder ?? undefined,
+        memory: turn.memory,
+        turnId: turn.promptSnapshot?.id ? `turn-${turn.promptSnapshot.id}` : undefined,
+        snapshotId: turn.promptSnapshot?.id,
+      })
+    }
   }, [])
 
   /**

@@ -526,7 +526,20 @@ read as empty. Forgetting removes the text from the store in the same write
 and keeps a tombstone (id, provenance, content hash); undo must hand back the
 exact text, checked against that hash. "Forget all" does the same for one
 scope. Nothing moves a chat or project memory to user scope except an
-explicit move. Each
+explicit move.
+
+Provenance (AH-083) is on the record and survives restart: `version` (1 when
+created, +1 per edit; absent -- shown as unknown -- for records older than
+versions), `history` (each replaced version as version, content hash and
+time; never its text), `provenance.run_id` and `source_project_id` (the run
+and project it was saved from, when known), a source type derived from
+creator and origin (user-authored, agent-authored, imported, extracted), and
+`provenance.uses`: the last 20 dispatches that carried it, each with session,
+turn, prompt-snapshot id and the recall reason. Retrieval returns, per
+injected record, its precedence rank and why it applied (`rank` is position,
+not a relevance score -- there is no scoring model). Cowork records uses where
+an assistant row meets its prompt snapshot; Chat records the chat only, having
+no snapshot on that path. Each
 dispatch records the ids it carried and withheld:
 Chat on the message's `metadata.memory`, Cowork on the assistant turn's
 `memory`, both shown in that turn's details; the rendered block with its ids is

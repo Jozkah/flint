@@ -850,6 +850,51 @@ function MemorySettings() {
                                   <dd>{formatWhen(memory.expiresAt)}</dd>
                                 </>
                               )}
+                              <dt>Version</dt>
+                              <dd data-testid="memory-provenance-version">
+                                {memory.version == null ? 'unknown (saved before versions were kept)' : memory.version}
+                              </dd>
+                              <dt>Source</dt>
+                              <dd data-testid="memory-provenance-source">{memory.sourceType ?? 'unknown'}</dd>
+                              <dt>From run</dt>
+                              <dd className="font-mono break-all">{memory.sourceRunId ?? 'not recorded'}</dd>
+                              <dt>Saved in project</dt>
+                              <dd className="font-mono break-all">{memory.sourceProjectId ?? 'not recorded'}</dd>
+                              {memory.contentHash && (
+                                <>
+                                  <dt>Content hash</dt>
+                                  <dd className="font-mono break-all">{memory.contentHash}</dd>
+                                </>
+                              )}
+                              {(memory.history?.length ?? 0) > 0 && (
+                                <>
+                                  <dt>Earlier versions</dt>
+                                  <dd data-testid="memory-provenance-history">
+                                    {memory.history!.map((h) => (
+                                      <span key={`${h.version}-${h.content_hash}`} className="block font-mono break-all">
+                                        v{h.version} · {h.content_hash} · replaced {formatWhen(h.replaced_at)}
+                                      </span>
+                                    ))}
+                                  </dd>
+                                </>
+                              )}
+                              <dt>Used in</dt>
+                              <dd data-testid="memory-provenance-uses">
+                                {(memory.uses?.length ?? 0) === 0
+                                  ? 'no recorded request yet'
+                                  : memory.uses!.map((u, i) => (
+                                      <span
+                                        key={`${u.at}-${i}`}
+                                        className="block font-mono break-all"
+                                        data-snapshot-id={u.snapshot_id ?? ''}
+                                      >
+                                        {formatWhen(u.at)} · {u.session_id}
+                                        {u.turn_id ? ` · turn ${u.turn_id}` : ''}
+                                        {u.snapshot_id ? ` · snapshot ${u.snapshot_id}` : ''}
+                                        {u.reason ? ` · ${u.reason}` : ''}
+                                      </span>
+                                    ))}
+                              </dd>
                             </dl>
                           </details>
                         </div>

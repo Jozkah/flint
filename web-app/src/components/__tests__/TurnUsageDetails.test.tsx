@@ -42,6 +42,24 @@ describe('TurnUsageDetails', () => {
     expect(screen.getByTestId('turn-usage-details')).toBeTruthy()
   })
 
+  it('says why each memory was sent, and shows storage problems and recall that was off', async () => {
+    render(
+      <TurnUsageDetails
+        memory={{
+          injectedIds: ['mem-a'],
+          conflictIds: [],
+          recall: [{ id: 'mem-a', rank: 1, reason: 'applies to this user' }],
+          recallOff: ['project'],
+          storageIssues: ['user.jsonl: 1 damaged record(s) were skipped'],
+        }}
+      />
+    )
+    await userEvent.click(screen.getByTestId('turn-usage-trigger'))
+    expect(await screen.findByTestId('turn-memory-reason')).toHaveTextContent('#1 · applies to this user')
+    expect(screen.getByTestId('turn-memory-recall-off')).toHaveTextContent('project')
+    expect(screen.getByTestId('turn-memory-storage-error')).toHaveTextContent('damaged')
+  })
+
   it('renders nothing when the turn reported neither usage nor memory', () => {
     const { container } = render(<TurnUsageDetails />)
     expect(container.firstChild).toBeNull()

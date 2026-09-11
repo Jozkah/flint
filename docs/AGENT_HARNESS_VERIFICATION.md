@@ -496,6 +496,21 @@ profile: both passed on the first attempt. Earlier prompt snapshots keep the
 text a forgotten memory contributed to requests already sent; forgetting does
 not rewrite what was sent.
 
+## Memory provenance (AH-083, in progress)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView pair | `cowork-smoke --only memory-provenance`, then `--only memory-provenance-after-restart` on the same `COWORK_SMOKE_KEEP` | a memory written on Settings > Memory is version 1, user-authored; a Cowork turn that carried it says why ("applies to this user", rank 1); the memory then records that use with the session and the exact prompt-snapshot id, and that snapshot in `prompts.jsonl` contains the memory id; an edit on the page makes version 2 with version 1 on record by hash, and the old text is not on disk; **after a restart in a new process** the version, history, source type and recorded snapshot are unchanged and the page shows version 2 and the snapshot |
+| Rust tests | `memory/commands.rs::provenance_tests` | new record's version, source type, run, session, message, hash; editing bumps the version and keeps only the replaced hash; saving the same text is not a version; a record from before provenance loads with version, run and session unknown, and its first edit starts at version 0 rather than inventing one; retrieval gives rank and reason; a use records turn and snapshot; uses are refused on another chat's or a forgotten memory; the use list is bounded while the count is not; source type from creator and origin |
+| Mutation checks | revision history and the visibility check on uses removed in turn | both fail their tests |
+| Render tests | `memory.user.test.tsx` (provenance panel: known and unknown version, history, uses with snapshot ids), `TurnUsageDetails.test.tsx` (reason per memory, recall off, storage error), `memoryUses.test.ts` (exact ids, reasons, turn and snapshot; nothing without a session or memory; failure never reaches the turn) | |
+
+Last run 2026-09-11, Windows WebView2, scripted provider, retries off: both
+passed on the first attempt, and the AH-082 pair re-run alongside also passed.
+Still open for AH-083: provenance through export/import and the "imported"
+mark on arrival (Priority 5), and Chat records a use without a snapshot id,
+because the Chat path takes no prompt snapshot.
+
 ## Conflicting memory, surfaced and settled (AH-085)
 
 | Evidence | Where | Covers |

@@ -201,6 +201,57 @@ describe('Settings > Memory: user memory controls (AH-082)', () => {
     await waitFor(() => expect(api.memoryScopeClear).toHaveBeenCalledWith(LOCATION, 'user'))
   })
 
+  it('shows provenance: version or unknown, source, history and the snapshots it was used in (AH-083)', async () => {
+    const base = {
+      content: 'x',
+      preview: 'x',
+      scope: 'user',
+      creator: 'user',
+      origin: 'explicit',
+      status: 'active',
+      pinned: false,
+      redacted: false,
+      createdAt: 1,
+      updatedAt: 1,
+      lastUsedAt: 5,
+      useCount: 1,
+      expiresAt: null,
+      category: null,
+      projectId: null,
+      sessionId: null,
+      sourceSessionId: 's1',
+      sourceMessageId: null,
+      sourceDeleted: false,
+      supersedes: null,
+    }
+    api.memoryRecordsList.mockResolvedValue({
+      items: [
+        {
+          ...base,
+          id: 'mem-new',
+          version: 2,
+          contentHash: 'h2',
+          sourceType: 'user-authored',
+          sourceRunId: 'run-9',
+          sourceProjectId: 'proj-1',
+          history: [{ version: 1, content_hash: 'h1', replaced_at: 3 }],
+          uses: [{ session_id: 's1', turn_id: 'turn-snap-7', snapshot_id: 'snap-7', reason: 'applies to this user', at: 5 }],
+        },
+        { ...base, id: 'mem-old', version: null, history: [], uses: [] },
+      ],
+      total: 2,
+    })
+    render(<Page />)
+    const versions = await screen.findAllByTestId('memory-provenance-version')
+    expect(versions[0]).toHaveTextContent('2')
+    expect(versions[1]).toHaveTextContent('unknown')
+    expect(screen.getAllByTestId('memory-provenance-source')[0]).toHaveTextContent('user-authored')
+    expect(screen.getByTestId('memory-provenance-history')).toHaveTextContent('v1 · h1')
+    const uses = screen.getAllByTestId('memory-provenance-uses')
+    expect(uses[0].querySelector('[data-snapshot-id="snap-7"]')).not.toBeNull()
+    expect(uses[1]).toHaveTextContent('no recorded request yet')
+  })
+
   it('undo of a settled conflict hands the forgotten text back, which the store now needs', async () => {
     const view = (id: string, content: string, scope: string) => ({
       id,

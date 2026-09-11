@@ -62,11 +62,19 @@ export function TurnUsageDetails({
             <div className="font-medium text-foreground">Memory in this request</div>
             {injected.length > 0 ? (
               <ul className="mt-1 space-y-0.5" aria-label="Memories sent">
-                {injected.map((id) => (
-                  <li key={id} className="font-mono break-all" data-memory-id={id}>
-                    {id}
-                  </li>
-                ))}
+                {injected.map((id) => {
+                  const why = memory?.recall?.find((r) => r.id === id)
+                  return (
+                    <li key={id} data-memory-id={id}>
+                      <span className="font-mono break-all">{id}</span>
+                      {why && (
+                        <span className="block text-muted-foreground" data-testid="turn-memory-reason">
+                          #{why.rank} · {why.reason}
+                        </span>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             ) : (
               <p className="mt-1 text-muted-foreground">No memory was sent.</p>

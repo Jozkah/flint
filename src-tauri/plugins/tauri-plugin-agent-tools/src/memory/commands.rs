@@ -457,6 +457,7 @@ pub async fn memory_record_commit(
     expected_hash: String,
     source_session_id: Option<String>,
     source_message_id: Option<String>,
+    source_run_id: Option<String>,
 ) -> Result<MemoryView, AgentToolsError> {
     use super::create;
     use super::record::{content_hash, Creator, Origin};
@@ -493,9 +494,76 @@ pub async fn memory_record_commit(
     .map_err(|r| AgentToolsError::from(r.message()))?;
     proposal.record.provenance.session_id = source_session_id;
     proposal.record.provenance.message_id = source_message_id;
+    proposal.record.provenance.run_id = source_run_id.filter(|r| !r.trim().is_empty());
+    // Derived from the folder, like every project identity here -- never an
+    // id the renderer names.
+    proposal.record.provenance.source_project_id = access.project_id.clone();
 
     create::commit(&store_root, &proposal).map_err(AgentToolsError::from)?;
     Ok(service::get(&access, scope, &proposal.record.id)?)
+}
+
+/// One memory a dispatch carried, as the renderer reports it after the fact.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UseReport {
+    pub id: String,
+    pub reason: Option<String>,
+}
+
+/// Record that one dispatch carried these memories (AH-083).
+///
+/// Called once per assistant turn with the ids that turn's request carried,
+/// the turn and, when one was taken, the prompt snapshot. Only records this
+/// place may see are touched, and only if they are still in the scope that
+/// was used: a memory forgotten in the meantime is left alone. Returns how
+/// many were recorded.
+#[tauri::command]
+pub async fn memory_record_uses(
+    location: Where,
+    used: Vec<UseReport>,
+    turn_id: Option<String>,
+    snapshot_id: Option<String>,
+) -> Result<usize, AgentToolsError> {
+    use super::record::{MemoryUse, Status};
+    let access = location.access();
+    let session = access
+        .session_id
+        .clone()
+        .ok_or_else(|| AgentToolsError::from("a use is recorded against a chat".to_string()))?;
+    let at = now();
+    let mut recorded = 0;
+    for scope in [Scope::Session, Scope::Project, Scope::User] {
+        let Some(root) = (match scope {
+            Scope::Project => access.project_store.clone(),
+            _ => access.permanent_store.clone(),
+        }) else {
+            continue;
+        };
+        let mut records = super::store::load(&root, scope).records;
+        let mut touched = false;
+        for record in records.iter_mut() {
+            let Some(report) = used.iter().find(|u| u.id == record.id.as_str()) else {
+                continue;
+            };
+            if !access.may_see(record) || !matches!(record.status, Status::Active) {
+                continue;
+            }
+            record.record_use(MemoryUse {
+                session_id: session.clone(),
+                turn_id: turn_id.clone(),
+                snapshot_id: snapshot_id.clone(),
+                reason: report.reason.clone(),
+                at,
+            });
+            touched = true;
+            recorded += 1;
+        }
+        if touched {
+            super::store::save(&root, scope, &records).map_err(AgentToolsError::from)?;
+        }
+    }
+    Ok(recorded)
 }
 
 #[tauri::command]
@@ -743,6 +811,23 @@ pub struct Retrieved {
     pub storage_issues: Vec<String>,
     /// Scopes the user switched recall off for ("chat", "project", "user").
     pub recall_off: Vec<String>,
+    /// Why each injected memory was chosen, in injection order.
+    pub recall: Vec<RecallView>,
+}
+
+/// Why one memory reached a request.
+///
+/// `rank` is its position in precedence order, not a relevance score: this
+/// retrieval has no scoring model, and a number that looked like one would be
+/// invented. `reason` says what made it apply and, when it displaced another
+/// record saying the same thing, why it won.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecallView {
+    pub id: String,
+    pub scope: String,
+    pub rank: usize,
+    pub reason: String,
 }
 
 impl Retrieved {
@@ -757,6 +842,7 @@ impl Retrieved {
             chars_used: 0,
             storage_issues: Vec::new(),
             recall_off: Vec::new(),
+            recall: Vec::new(),
         }
     }
 }
@@ -906,6 +992,24 @@ pub async fn memory_retrieve(
             .collect(),
         chars_used: selection.chars_used,
         storage_issues,
+        recall: selection
+            .injected
+            .iter()
+            .enumerate()
+            .map(|(rank, item)| {
+                let scope = service::scope_word(item.scope).to_string();
+                let applies = format!("applies to this {scope}");
+                RecallView {
+                    id: item.id.as_str().to_string(),
+                    reason: match &item.reason {
+                        Some(r) => format!("{applies}; preferred: {}", r.as_str()),
+                        None => applies,
+                    },
+                    scope,
+                    rank: rank + 1,
+                }
+            })
+            .collect(),
         recall_off: [Scope::Session, Scope::Project, Scope::User]
             .into_iter()
             .filter(|s| !recall.allows(*s))
@@ -1258,6 +1362,185 @@ mod inferred_tests {
     }
 }
 
+/// AH-083: what a memory says about itself, and where it was used.
+#[cfg(test)]
+mod provenance_tests {
+    use super::*;
+    use crate::memory::record::{Creator, MemoryRecord, Origin};
+
+    fn root(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("jan-prov-{name}-{}-{}", std::process::id(), now()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("root");
+        dir
+    }
+
+    fn at(dir: &Path, session: &str) -> Where {
+        Where {
+            data_folder: dir.to_string_lossy().to_string(),
+            project_root: None,
+            session_id: Some(session.to_string()),
+        }
+    }
+
+    async fn save(dir: &Path, scope: &str, text: &str, run: Option<&str>) -> MemoryView {
+        let w = at(dir, "chat-a");
+        let p = memory_record_propose(w.clone(), scope.into(), text.into(), Some("chat-a".into()), None)
+            .await
+            .expect("propose");
+        memory_record_commit(w, scope.into(), text.into(), p.content_hash, Some("chat-a".into()), Some("msg-1".into()), run.map(str::to_string))
+            .await
+            .expect("commit")
+    }
+
+    #[tokio::test]
+    async fn a_new_memory_says_who_wrote_it_from_where_and_which_version_it_is() {
+        let dir = root("new");
+        let m = save(&dir, "user", "Prefers British spelling.", Some("run-42")).await;
+        assert_eq!(m.version, Some(1));
+        assert_eq!(m.source_type, "user-authored");
+        assert_eq!(m.source_run_id.as_deref(), Some("run-42"));
+        assert_eq!(m.source_session_id.as_deref(), Some("chat-a"));
+        assert_eq!(m.source_message_id.as_deref(), Some("msg-1"));
+        assert_eq!(m.content_hash, crate::memory::record::content_hash("Prefers British spelling."));
+        assert!(m.history.is_empty() && m.uses.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Editing is a new version with the old one on record, not a silent
+    /// overwrite; the old words are not kept.
+    #[tokio::test]
+    async fn editing_bumps_the_version_and_records_the_replaced_one_by_hash() {
+        let dir = root("edit");
+        let m = save(&dir, "user", "Uses two-space indents.", None).await;
+        let old_hash = m.content_hash.clone();
+        let e = memory_record_edit(at(&dir, "chat-a"), "user".into(), m.id.clone(), "Uses four-space indents.".into(), Some(old_hash.clone()))
+            .await
+            .expect("edit");
+        assert_eq!(e.version, Some(2));
+        assert_eq!(e.history.len(), 1);
+        assert_eq!(e.history[0].version, 1);
+        assert_eq!(e.history[0].content_hash, old_hash);
+        let raw = std::fs::read_to_string(crate::memory::store::records_path(&crate::workspace::permanent_store(&dir), Scope::User)).unwrap();
+        assert!(!raw.contains("two-space"), "the replaced text was kept: {raw}");
+        // Saving the same text again is not a new version.
+        let same = memory_record_edit(at(&dir, "chat-a"), "user".into(), m.id, "Uses four-space indents.".into(), None).await.unwrap();
+        assert_eq!(same.version, Some(2));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A record written before any of this existed reads as unknown, and its
+    /// first edit starts the history without inventing a count.
+    #[tokio::test]
+    async fn an_old_record_without_provenance_loads_as_unknown() {
+        let dir = root("legacy");
+        let store = crate::workspace::permanent_store(&dir);
+        let path = crate::memory::store::records_path(&store, Scope::User);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let hash = crate::memory::record::content_hash("An old fact.");
+        std::fs::write(
+            &path,
+            format!(
+                r#"{{"schema_version":1,"id":"mem-old","content":"An old fact.","content_hash":"{hash}","scope":"user","creator":"user","origin":"explicit","status":{{"state":"active"}},"provenance":{{}},"created_at":5,"updated_at":5}}
+"#
+            ),
+        )
+        .unwrap();
+        let page = memory_records_list(at(&dir, "chat-a"), "user".into(), None, None, None).await.unwrap();
+        let m = &page.items[0];
+        assert_eq!(m.version, None, "a version was invented for a legacy record");
+        assert_eq!(m.source_run_id, None);
+        assert_eq!(m.source_session_id, None);
+        assert!(m.history.is_empty() && m.uses.is_empty());
+        let e = memory_record_edit(at(&dir, "chat-a"), "user".into(), "mem-old".into(), "An old fact, revised.".into(), None).await.unwrap();
+        assert_eq!(e.version, Some(1));
+        assert_eq!(e.history[0].version, 0, "the pre-version state must read as version 0, not 1");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn retrieval_says_why_and_a_use_records_the_turn_and_snapshot() {
+        let dir = root("use");
+        let m = save(&dir, "user", "Signs off as Quill.", None).await;
+        let r = memory_retrieve(at(&dir, "chat-a"), None, None).await.unwrap();
+        assert_eq!(r.recall.len(), 1);
+        assert_eq!(r.recall[0].id, m.id);
+        assert_eq!(r.recall[0].rank, 1);
+        assert!(r.recall[0].reason.contains("applies to this user"), "{:?}", r.recall);
+
+        let n = memory_record_uses(
+            at(&dir, "chat-a"),
+            vec![UseReport { id: m.id.clone(), reason: Some(r.recall[0].reason.clone()) }],
+            Some("turn-7".into()),
+            Some("snap-abc-1".into()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 1);
+        let after = memory_record_get(at(&dir, "chat-a"), "user".into(), m.id.clone()).await.unwrap();
+        assert_eq!(after.use_count, 1);
+        assert!(after.last_used_at.is_some());
+        assert_eq!(after.uses[0].session_id, "chat-a");
+        assert_eq!(after.uses[0].turn_id.as_deref(), Some("turn-7"));
+        assert_eq!(after.uses[0].snapshot_id.as_deref(), Some("snap-abc-1"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A caller cannot stamp uses onto another chat's memory, nor onto one
+    /// already forgotten.
+    #[tokio::test]
+    async fn uses_are_only_recorded_on_records_this_place_may_see() {
+        let dir = root("use-scope");
+        let store = crate::workspace::permanent_store(&dir);
+        let mut theirs = MemoryRecord::new(MemoryId::new("mem-b"), "Chat B only.", Scope::Session, Creator::User, Origin::Explicit, 1);
+        theirs.session_id = Some("chat-b".into());
+        crate::memory::store::upsert(&store, &theirs).unwrap();
+        let mine = save(&dir, "user", "Mine to use.", None).await;
+        memory_record_forget(at(&dir, "chat-a"), "user".into(), mine.id.clone()).await.unwrap();
+        let n = memory_record_uses(
+            at(&dir, "chat-a"),
+            vec![
+                UseReport { id: "mem-b".into(), reason: None },
+                UseReport { id: mine.id.clone(), reason: None },
+            ],
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 0);
+        let b = crate::memory::store::load(&store, Scope::Session).records;
+        assert_eq!(b[0].use_count, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_use_list_is_bounded_but_the_count_is_not() {
+        let mut r = MemoryRecord::new(MemoryId::new("m"), "x", Scope::User, Creator::User, Origin::Explicit, 1);
+        for i in 0..(crate::memory::record::MAX_USES + 5) {
+            r.record_use(crate::memory::record::MemoryUse {
+                session_id: "s".into(),
+                turn_id: Some(format!("t{i}")),
+                at: i as i64,
+                ..Default::default()
+            });
+        }
+        assert_eq!(r.use_count as usize, crate::memory::record::MAX_USES + 5);
+        assert_eq!(r.provenance.uses.len(), crate::memory::record::MAX_USES);
+        assert_eq!(r.provenance.uses.last().unwrap().turn_id.as_deref(), Some("t24"));
+        assert_eq!(r.provenance.used_by_sessions, vec!["s".to_string()]);
+    }
+
+    #[test]
+    fn the_source_type_follows_who_wrote_it_and_how() {
+        let mk = |c, o| MemoryRecord::new(MemoryId::new("m"), "x", Scope::User, c, o, 1);
+        assert_eq!(mk(Creator::User, Origin::Explicit).source_type(), "user-authored");
+        assert_eq!(mk(Creator::Agent, Origin::Explicit).source_type(), "agent-authored");
+        assert_eq!(mk(Creator::Agent, Origin::Inferred).source_type(), "extracted");
+        assert_eq!(mk(Creator::Import, Origin::Explicit).source_type(), "imported");
+    }
+}
+
 /// AH-082: user memory, recall switches, clearing, and storage that fails.
 #[cfg(test)]
 mod user_memory_tests {
@@ -1387,7 +1670,7 @@ mod user_memory_tests {
             };
             let p = memory_record_propose(w.clone(), scope.into(), "Keep it local.".into(), Some("chat-a".into()), None).await;
             if let Ok(p) = p {
-                let _ = memory_record_commit(w, scope.into(), "Keep it local.".into(), p.content_hash, Some("chat-a".into()), None).await;
+                let _ = memory_record_commit(w, scope.into(), "Keep it local.".into(), p.content_hash, Some("chat-a".into()), None, None).await;
             }
         }
         let user = crate::memory::store::load(&crate::workspace::permanent_store(&dir), Scope::User);

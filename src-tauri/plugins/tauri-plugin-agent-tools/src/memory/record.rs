@@ -170,6 +170,51 @@ pub struct Provenance {
     /// Sessions that have used this memory, for "which chats used it".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub used_by_sessions: Vec<String>,
+    /// The run that created it, when one did. `None` for a memory written on
+    /// the settings page and for records saved before this was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    /// The project the creator was in, whatever scope the memory has. A user
+    /// memory saved while working in a project keeps that fact here, though it
+    /// applies everywhere.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_project_id: Option<String>,
+    /// The most recent dispatches that carried this memory, newest last.
+    /// Bounded: this is "where was it used", not an audit log.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub uses: Vec<MemoryUse>,
+}
+
+/// How many uses a record keeps. Older ones fall off; the count keeps going.
+pub const MAX_USES: usize = 20;
+
+/// One dispatch that carried a memory.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryUse {
+    pub session_id: String,
+    /// The turn or message it went out with, when the caller knows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+    /// The prompt snapshot of that dispatch (AH-078), when one was taken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot_id: Option<String>,
+    /// Why retrieval chose it, e.g. "applies to this chat" or a precedence
+    /// reason when it displaced another record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// Unix seconds.
+    pub at: i64,
+}
+
+/// One earlier state of a memory's text. The text itself is not kept: a
+/// revision is evidence that it changed and when, and keeping old words would
+/// undo what forgetting and editing a secret out are for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Revision {
+    pub version: u32,
+    pub content_hash: String,
+    /// Unix seconds when this revision was replaced.
+    pub replaced_at: i64,
 }
 
 /// One remembered thing.
@@ -224,6 +269,58 @@ pub struct MemoryRecord {
     /// True when the redactor changed the content on the way in.
     #[serde(default)]
     pub redacted: bool,
+    /// 1 when created, +1 on every edit. `None` for a record saved before
+    /// versions were kept: unknown, not assumed to be 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<u32>,
+    /// Earlier versions, oldest first, as hashes and times only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub history: Vec<Revision>,
+}
+
+impl MemoryRecord {
+    /// Replace the text, recording the version it replaces.
+    ///
+    /// A record with no known version (saved before versions existed) starts
+    /// its history at the edit: the replaced state is recorded as version 0,
+    /// meaning "whatever it was before versions were kept", and the edit
+    /// becomes version 1 -- honest about what is not known rather than
+    /// inventing a count.
+    pub fn revise(&mut self, content: String, now: i64) {
+        let previous = self.version.unwrap_or(0);
+        self.history.push(Revision {
+            version: previous,
+            content_hash: self.content_hash.clone(),
+            replaced_at: now,
+        });
+        self.content_hash = content_hash(&content);
+        self.content = content;
+        self.version = Some(previous + 1);
+        self.updated_at = now;
+    }
+
+    /// Record that a dispatch carried this memory.
+    pub fn record_use(&mut self, used: MemoryUse) {
+        self.use_count = self.use_count.saturating_add(1);
+        self.last_used_at = Some(used.at);
+        if !self.provenance.used_by_sessions.contains(&used.session_id) {
+            self.provenance.used_by_sessions.push(used.session_id.clone());
+        }
+        self.provenance.uses.push(used);
+        let over = self.provenance.uses.len().saturating_sub(MAX_USES);
+        self.provenance.uses.drain(..over);
+    }
+
+    /// Where the record came from, in the four words the UI and export use.
+    pub fn source_type(&self) -> &'static str {
+        match (&self.creator, &self.origin) {
+            (Creator::Import, _) => "imported",
+            (_, Origin::Inferred) => "extracted",
+            (Creator::Agent, _) => "agent-authored",
+            (Creator::System, _) => "system",
+            (Creator::User, Origin::Explicit) => "user-authored",
+        }
+    }
 }
 
 /// Normalise content so two spellings of the same thing hash alike.
@@ -290,6 +387,8 @@ impl MemoryRecord {
             expires_at: None,
             supersedes: None,
             redacted: false,
+            version: Some(1),
+            history: Vec::new(),
         }
     }
 

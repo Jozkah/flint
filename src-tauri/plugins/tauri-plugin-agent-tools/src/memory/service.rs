@@ -137,6 +137,16 @@ pub struct MemoryView {
     /// A short preview for a dense list, so the renderer never has to truncate
     /// content itself and accidentally cut a redaction marker in half.
     pub preview: String,
+    /// `None` when the record predates versions: shown as unknown.
+    pub version: Option<u32>,
+    pub content_hash: String,
+    /// "user-authored", "agent-authored", "imported", "extracted" or "system".
+    pub source_type: String,
+    pub source_run_id: Option<String>,
+    pub source_project_id: Option<String>,
+    pub history: Vec<super::record::Revision>,
+    /// The most recent dispatches that carried it, newest last.
+    pub uses: Vec<super::record::MemoryUse>,
 }
 
 fn preview_of(content: &str) -> String {
@@ -183,6 +193,13 @@ impl MemoryView {
             source_deleted: record.provenance.source_deleted,
             supersedes: record.supersedes.as_ref().map(MemoryId::to_string),
             preview: preview_of(&record.content),
+            version: record.version,
+            content_hash: record.content_hash.clone(),
+            source_type: record.source_type().to_string(),
+            source_run_id: record.provenance.run_id.clone(),
+            source_project_id: record.provenance.source_project_id.clone(),
+            history: record.history.clone(),
+            uses: record.provenance.uses.clone(),
         }
     }
 }
@@ -325,9 +342,10 @@ pub fn edit(
         ));
     }
 
-    record.content = normalised;
-    record.content_hash = super::record::content_hash(&record.content);
-    record.updated_at = now;
+    if normalised == record.content {
+        return Ok(MemoryView::from_record(&record));
+    }
+    record.revise(normalised, now);
     record.last_confirmed_at = Some(now);
 
     let store_root = access.store_for(scope).expect("checked in find");

@@ -92,6 +92,8 @@ export type TurnMemory = {
   storageIssues?: string[]
   /** Scopes whose recall was switched off for this request. */
   recallOff?: string[]
+  /** Why each sent memory was chosen: precedence rank and reason. */
+  recall?: { id: string; rank: number; reason: string }[]
 }
 
 /**
