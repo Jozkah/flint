@@ -37,7 +37,12 @@ import {
   recordShellOutcome,
   type RunContext,
 } from '@/lib/coworkActivityRecorder'
-import { collectedJobId, commandOf, countToolCalls } from '@/lib/coworkTasks'
+import {
+  collectedJobId,
+  commandOf,
+  countToolCalls,
+  finishedJobPatch,
+} from '@/lib/coworkTasks'
 import {
   INTERRUPTED_BY_RUN_END,
   findTaskByJob,
@@ -76,7 +81,12 @@ import {
   formatChangeSummary,
   janAuthoredChanges,
 } from '@/lib/coworkChangeSummary'
-import { loadToolActivity, type ToolActivityItem } from '@/lib/toolActivity'
+import {
+  loadToolActivity,
+  recordLifecycle,
+  recordToolActivity,
+  type ToolActivityItem,
+} from '@/lib/toolActivity'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { PromptProgress } from '@/components/PromptProgress'
 import { useAppState } from '@/hooks/useAppState'
@@ -1323,11 +1333,17 @@ function CoworkPage() {
   // the chip derives its counts from the same list, and polling only while the
   // panel was open let the two disagree — a collected job still spinning in the
   // chip while the panel showed it finished.
+  // Scoped to the session on screen: the backend lists only that
+  // conversation's jobs, and the list is dropped the moment the session
+  // changes, so one session's jobs can never settle -- or block -- another's.
   const [liveJobs, setLiveJobs] = useState<LiveJob[]>([])
+  const liveJobsSession = session?.id
   useEffect(() => {
+    setLiveJobs([])
+    if (!liveJobsSession) return
     let alive = true
     const poll = () => {
-      void bashJobsList()
+      void bashJobsList(liveJobsSession)
         .then((jobs) => {
           if (alive) setLiveJobs(jobs)
         })
@@ -1342,7 +1358,7 @@ function CoworkPage() {
       alive = false
       clearInterval(id)
     }
-  }, [])
+  }, [liveJobsSession])
 
   /**
    * What is holding this session's authority in place, if anything.
@@ -1392,16 +1408,20 @@ function CoworkPage() {
   // The backend is the authority on whether a backgrounded shell is still
   // running: the agent may not collect a job for many turns, and until it does
   // nothing else would ever settle that row.
+  // It also says how the command ended -- exit code, signal, or a stop request
+  // -- so an uncollected failure reads as a failure, not a success.
   useEffect(() => {
+    if (!liveJobsSession) return
     const state = useCoworkActivity.getState()
     for (const job of liveJobs) {
       if (!job.finished) continue
-      const task = findTaskByJob(state, job.jobId)
+      const task = findTaskByJob(state, job.jobId, liveJobsSession)
       if (task && task.status === 'running') {
-        state.patchTask(task.id, { status: 'done', endedAt: Date.now() })
+        const patch = finishedJobPatch(job)
+        state.patchTask(task.id, { ...patch, endedAt: patch.endedAt ?? Date.now() })
       }
     }
-  }, [liveJobs])
+  }, [liveJobs, liveJobsSession])
 
   // Advances the cards' elapsed labels. Only while work is live: an idle
   // conversation must not re-render every second.
@@ -1444,6 +1464,31 @@ function CoworkPage() {
     ) => {
       const patch = patchForOutcome(result, Date.now())
       if (patch) useCoworkActivity.getState().patchTask(task.id, patch)
+      // Into the execution record too, in sequence with the calls around it:
+      // a stop is something the run did, and a stop that failed is one the
+      // audit has to show as having failed.
+      if (result.outcome === 'cancelled' || result.outcome === 'failed') {
+        void recordLifecycle(
+          {
+            session: task.sessionId,
+            run: task.workflowId,
+            source: 'cowork',
+            parent: task.callId,
+          },
+          {
+            id: `stop:${task.callId}:${Date.now()}`,
+            lifecycle: task.kind === 'shell' ? 'background-job' : 'subagent',
+            phase: result.outcome === 'cancelled' ? 'cancelled' : 'failed',
+            summary:
+              task.kind === 'shell'
+                ? `Stopped ${task.jobId ?? 'a command'}`
+                : `Stopped ${task.title}`,
+            detail: result.error ?? '',
+            jobId: task.jobId,
+            taskId: task.kind === 'agent' ? task.callId : undefined,
+          }
+        )
+      }
       return patch != null
     },
     []
@@ -2191,6 +2236,16 @@ function CoworkPage() {
             }, toolSignal),
           events: {
             onQueued: (waiting) => {
+              // The dispatching call's item says it is waiting for a slot,
+              // in sequence with everything else the run did.
+              void recordToolActivity({
+                call: callId,
+                tool: 'task',
+                session: sid,
+                source: 'cowork',
+                phase: 'queued',
+                detail: `waiting for a slot (position ${waiting})`,
+              })
               useCoworkRun
                 .getState()
                 .queueSubagent(sid, callId, resolved.name, waiting)
@@ -2832,7 +2887,7 @@ function CoworkPage() {
               // A collecting call settles the command it collects, which is a
               // different row; a plain call settles its own.
               const collecting = collectedJobId(turn.args)
-              if (collecting) recordJobCollected(collecting, outcome)
+              if (collecting) recordJobCollected(sid, collecting, outcome)
               else recordShellOutcome(run, callId, outcome)
               recordEvents([
                 {

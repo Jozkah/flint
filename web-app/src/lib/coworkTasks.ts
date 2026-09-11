@@ -41,20 +41,64 @@ export const commandOf = (args: unknown): string | undefined => {
   return undefined
 }
 
-/** The `job_id` a `bash` call passed to collect a backgrounded command. */
+/**
+ * The `job_id` a `bash` call passed to collect a backgrounded command.
+ *
+ * Only a collection: a `status` check returns a snapshot and a `cancel`
+ * returns what the stop did, and neither is the command's output, so neither
+ * may settle its row.
+ */
 export const collectedJobId = (args: unknown): string | undefined => {
   if (args && typeof args === 'object' && 'job_id' in args) {
-    const value = (args as Record<string, unknown>).job_id
+    const record = args as Record<string, unknown>
+    const action = typeof record.action === 'string' ? record.action.trim() : ''
+    if (action !== '' && action !== 'await') return undefined
+    const value = record.job_id
     return typeof value === 'string' && value ? value : undefined
   }
   return undefined
 }
 
-/** A live background job, as the backend reports it. */
+/** A live background job, as the backend reports it for one session. */
 export type LiveJob = {
   jobId: string
+  /** Redacted by the backend. */
   command: string
   elapsedMs: number
   finished: boolean
   callId?: string | null
+  startedAtMs?: number
+  finishedAtMs?: number | null
+  exitCode?: number | null
+  signalled?: boolean
+  stoppedByRequest?: boolean
+  outputAvailable?: boolean
+}
+
+/**
+ * How a finished job's row should read, from what the backend observed.
+ *
+ * A job the agent has not collected yet still says how it ended: the exit
+ * marker decides success or failure, and a stop request is a cancellation.
+ * With no marker and no signal the command is simply done -- the backend saw
+ * it finish and that is all anyone knows.
+ */
+export function finishedJobPatch(job: LiveJob): {
+  status: 'done' | 'error' | 'cancelled'
+  endedAt?: number
+  exitCode?: number
+  signalled?: boolean
+} {
+  const endedAt = job.finishedAtMs ?? undefined
+  if (job.stoppedByRequest) {
+    return { status: 'cancelled', endedAt, signalled: job.signalled || undefined }
+  }
+  const exitCode = job.exitCode ?? undefined
+  const failed = (exitCode != null && exitCode !== 0) || !!job.signalled
+  return {
+    status: failed ? 'error' : 'done',
+    endedAt,
+    exitCode,
+    signalled: job.signalled || undefined,
+  }
 }

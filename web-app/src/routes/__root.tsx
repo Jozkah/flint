@@ -29,6 +29,8 @@ import LlamacppBusyOnExitDialog from '@/containers/dialogs/LlamacppBusyOnExitDia
 import LlamacppOomListener from '@/containers/dialogs/LlamacppOomListener'
 import MissingDependenciesDialog from '@/containers/dialogs/MissingDependenciesDialog'
 import { TemporaryChatGuard } from '@/containers/TemporaryChatGuard'
+import { useWindowTitle } from '@/hooks/useWindowTitle'
+import { detectWindowChrome } from '@/lib/titlebar'
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -39,6 +41,8 @@ const AppLayout = () => {
   // The settings-search query outlives each settings page on purpose; it must
   // not outlive the section. Mounted here because this layout stays put.
   useClearSettingsSearchOnExit()
+  useWindowTitle()
+  const appDrawsChrome = detectWindowChrome() === 'custom'
   const {
     open: isLeftPanelOpen,
     setLeftPanel,
@@ -56,22 +60,12 @@ const AppLayout = () => {
       >
         <KeyboardShortcutsProvider />
         <TemporaryChatGuard />
-        {/* Fake absolute panel top to enable window drag */}
-        {(IS_WINDOWS || IS_LINUX) && <WindowControls />}
-        {IS_LINUX && <WindowResizeGrips />}
-        {IS_TAURI && (
-          // `pointer-events-none`: this strip spans the top 48px of the window,
-          // which is exactly where the header's own controls sit. While it
-          // accepted pointer events every one of them was unclickable -- the
-          // press became a window drag, cursor and all. Dragging now comes from
-          // the header itself (see HeaderPage), where Tauri's own rule that the
-          // drag target must carry the attribute means a button on top of it
-          // still behaves like a button.
-          <div
-            className="pointer-events-none fixed w-full h-12 z-20 top-0"
-            aria-hidden
-          />
-        )}
+        {/* Only a borderless window draws its own caption buttons and resize
+            grips. Windows has a native title bar, which owns dragging, snap,
+            double-click maximise and the caption buttons; nothing here may sit
+            over the page pretending to be one (see lib/titlebar). */}
+        {appDrawsChrome && <WindowControls />}
+        {appDrawsChrome && <WindowResizeGrips />}
         <LeftSidebar />
         <SidebarInset>
           <div className="bg-neutral-50 dark:bg-background size-full">

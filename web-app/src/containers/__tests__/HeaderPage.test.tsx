@@ -1,63 +1,127 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import HeaderPage from '../HeaderPage'
+import type { WindowChrome } from '@/lib/titlebar'
 
 /**
- * The window has no native decorations, so it is dragged by the header.
+ * Who drags the window depends on who draws its title bar.
  *
- * Tauri drags only when the element actually pressed carries
- * `data-tauri-drag-region`; the attribute does not pass down to children. The
- * header's inner row is `w-full`, so it covered the bar end to end and
- * swallowed every press the outer element was meant to receive. The only
- * draggable strip left was the outer padding -- the window moved only when the
- * pointer was within a few pixels of the edge.
+ * With native chrome (Windows) the operating system draws a real title bar and
+ * owns dragging, double-click maximise and Snap Layouts. The header must then
+ * declare no drag region at all: one would only turn presses on the page into
+ * window moves, which is the fragile behaviour the native bar replaced.
  *
- * These assert the property rather than the markup: every element that spans
- * the bar and holds no control of its own has to be draggable, or the bar has
+ * Where the app draws its own chrome (the macOS overlay, the borderless Linux
+ * window) the header is the drag handle. Tauri drags only when the element
+ * actually pressed carries `data-tauri-drag-region`, so every element that
+ * spans the bar and holds no control of its own has to carry it, or the bar has
  * dead space again.
  */
+
+let chrome: WindowChrome = 'native'
+let layout = { left: [] as string[], right: [] as string[] }
 
 vi.mock('@/hooks/useLeftPanel', () => ({
   useLeftPanel: () => ({ open: false, setLeftPanel: vi.fn() }),
 }))
 
 vi.mock('@/stores/titlebar-layout-store', () => ({
-  useTitlebarLayout: (select: (s: unknown) => unknown) =>
-    select({ layout: { left: [], right: [] } }),
+  useTitlebarLayout: (select: (s: unknown) => unknown) => select({ layout }),
 }))
 
-describe('HeaderPage drag region', () => {
-  it('makes the full-width row draggable, not just the padding', () => {
-    const { container } = render(<HeaderPage />)
+vi.mock('@/lib/titlebar', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/titlebar')>()
+  return {
+    ...actual,
+    detectMacOverlay: () => chrome === 'mac-overlay',
+    detectWindowChrome: () => chrome,
+  }
+})
 
+beforeEach(() => {
+  chrome = 'native'
+  layout = { left: [], right: [] }
+})
+
+describe('HeaderPage with a native title bar', () => {
+  it('declares no drag region anywhere in the header', () => {
+    const { container } = render(
+      <HeaderPage>
+        <span>page title</span>
+      </HeaderPage>
+    )
     const outer = container.firstElementChild as HTMLElement
-    expect(outer).toBeTruthy()
-    expect(outer.hasAttribute('data-tauri-drag-region')).toBe(true)
-
-    // The row that spans the header. Before the fix this had no attribute and
-    // covered the whole bar.
-    const row = outer.querySelector(':scope > div') as HTMLElement
-    expect(row).toBeTruthy()
-    expect(row.className).toContain('w-full')
-    expect(row.hasAttribute('data-tauri-drag-region')).toBe(true)
+    expect(outer.hasAttribute('data-tauri-drag-region')).toBe(false)
+    expect(outer.querySelectorAll('[data-tauri-drag-region]')).toHaveLength(0)
+    expect(outer.className).not.toContain('cursor-grab')
   })
 
-  it('makes the stretch that fills the bar draggable', () => {
+  it('reserves no room for app-drawn window buttons', () => {
+    // The layout store still carries its min/max/close default; with a native
+    // title bar none of those are drawn by the app.
+    layout = { left: [], right: ['minimize', 'maximize', 'close'] }
     const { container } = render(<HeaderPage />)
-    const stretch = container.querySelector('.flex-1') as HTMLElement
-    expect(stretch).toBeTruthy()
-    expect(stretch.hasAttribute('data-tauri-drag-region')).toBe(true)
+    const outer = container.firstElementChild as HTMLElement
+    expect(outer.style.paddingRight).toBe('')
+    expect(outer.style.paddingLeft).toBe('')
   })
 
-  /**
-   * The other half of the bargain: controls must stay clickable. An element
-   * that is itself a drag region cannot be pressed for its own sake, so the
-   * sidebar toggle must NOT carry the attribute.
-   */
-  it('leaves controls clickable rather than draggable', () => {
+  it('keeps the sidebar toggle a plain button', () => {
     render(<HeaderPage />)
     const toggle = screen.getByLabelText('Toggle sidebar')
-    expect(toggle.hasAttribute('data-tauri-drag-region')).toBe(false)
-    expect(toggle.closest('[data-tauri-drag-region]')).not.toBe(toggle)
+    expect(toggle.closest('[data-tauri-drag-region]')).toBeNull()
+  })
+})
+
+describe.each<WindowChrome>(['custom', 'mac-overlay'])(
+  'HeaderPage drag region with %s chrome',
+  (kind) => {
+    beforeEach(() => {
+      chrome = kind
+    })
+
+    it('makes the full-width row draggable, not just the padding', () => {
+      const { container } = render(<HeaderPage />)
+
+      const outer = container.firstElementChild as HTMLElement
+      expect(outer).toBeTruthy()
+      expect(outer.hasAttribute('data-tauri-drag-region')).toBe(true)
+
+      // The row that spans the header. Without the attribute it covers the
+      // whole bar and swallows every press.
+      const row = outer.querySelector(':scope > div') as HTMLElement
+      expect(row).toBeTruthy()
+      expect(row.className).toContain('w-full')
+      expect(row.hasAttribute('data-tauri-drag-region')).toBe(true)
+    })
+
+    it('makes the stretch that fills the bar draggable', () => {
+      const { container } = render(<HeaderPage />)
+      const stretch = container.querySelector('.flex-1') as HTMLElement
+      expect(stretch).toBeTruthy()
+      expect(stretch.hasAttribute('data-tauri-drag-region')).toBe(true)
+    })
+
+    /**
+     * Controls must stay clickable. An element that is itself a drag region
+     * cannot be pressed for its own sake, so the sidebar toggle must NOT carry
+     * the attribute.
+     */
+    it('leaves controls clickable rather than draggable', () => {
+      render(<HeaderPage />)
+      const toggle = screen.getByLabelText('Toggle sidebar')
+      expect(toggle.hasAttribute('data-tauri-drag-region')).toBe(false)
+      expect(toggle.closest('[data-tauri-drag-region]')).not.toBe(toggle)
+    })
+  }
+)
+
+describe('HeaderPage with app-drawn Linux buttons', () => {
+  it('reserves exactly the room the drawn buttons take', () => {
+    chrome = 'custom'
+    layout = { left: [], right: ['minimize', 'maximize', 'close'] }
+    const { container } = render(<HeaderPage />)
+    const outer = container.firstElementChild as HTMLElement
+    expect(outer.style.paddingRight).toBe(`${3 * 32 + 24}px`)
   })
 })

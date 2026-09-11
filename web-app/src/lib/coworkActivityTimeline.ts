@@ -22,6 +22,9 @@ function turnStateFor(phase: ToolActivityPhase): CoworkTurn['toolState'] {
     case 'timed-out':
       // Shown as a failure, but the detail still says it timed out.
       return 'failed'
+    case 'queued':
+      // Waiting for a slot: asked for, not yet running.
+      return 'requested'
     default:
       return phase
   }

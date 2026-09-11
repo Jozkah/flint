@@ -648,6 +648,74 @@ struct BackgroundEntry {
     run_id: String,
     name: String,
     events: tokio::sync::mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
+    /// The task the parent gave it, for a listing.
+    description: String,
+    dispatched: std::time::Instant,
+    /// Where the child is in its life. Shared with its task, which moves it
+    /// forward; a cancel moves it to `CANCELLED`, after which nothing moves it.
+    phase: Arc<std::sync::atomic::AtomicU8>,
+}
+
+/// A child's life, as one atomic so a cancel and the child's own progress can
+/// never both win: every transition is a compare-and-swap from the state it
+/// expects.
+const PHASE_QUEUED: u8 = 0;
+const PHASE_RUNNING: u8 = 1;
+const PHASE_FINISHED: u8 = 2;
+const PHASE_CANCELLED: u8 = 3;
+
+/// Where a background subagent is, as a listing reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SubagentRunState {
+    Queued,
+    Running,
+    Finished,
+    Cancelled,
+}
+
+impl SubagentRunState {
+    fn from_phase(phase: u8) -> Self {
+        match phase {
+            PHASE_QUEUED => Self::Queued,
+            PHASE_RUNNING => Self::Running,
+            PHASE_FINISHED => Self::Finished,
+            _ => Self::Cancelled,
+        }
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Running => "running",
+            Self::Finished => "finished, not yet collected",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+/// One background subagent, for `list_subagent_runs`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SubagentRunInfo {
+    pub run_id: String,
+    pub name: String,
+    pub description: String,
+    pub state: SubagentRunState,
+    pub elapsed_ms: u64,
+}
+
+/// What a request to cancel one background subagent did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SubagentCancelOutcome {
+    /// It was waiting for a slot and will never start.
+    CancelledQueued,
+    /// It was running and has been stopped.
+    CancelledRunning,
+    /// It had already finished; its result is still collectable.
+    AlreadyFinished,
+    /// It had already been cancelled.
+    AlreadyCancelled,
+    /// No such run in this parent, or already collected.
+    Unknown,
 }
 
 /// Registry of a single parent run's background subagents, keyed by `run_id`.
@@ -835,6 +903,95 @@ impl BackgroundSubagents {
     pub(crate) fn checkout_of(&self, run_id: &str) -> Option<ChildCheckout> {
         self.checkouts.lock().ok()?.get(run_id).cloned()
     }
+
+    /// Every child this parent dispatched and has not yet collected, oldest
+    /// first. AH-102. A listing reads each child's phase; it changes nothing.
+    pub(crate) fn list(&self) -> Vec<SubagentRunInfo> {
+        let guard = self.inner.lock().unwrap();
+        let mut out: Vec<(std::time::Instant, SubagentRunInfo)> = guard
+            .values()
+            .map(|entry| {
+                (
+                    entry.dispatched,
+                    SubagentRunInfo {
+                        run_id: entry.run_id.clone(),
+                        name: entry.name.clone(),
+                        description: entry.description.clone(),
+                        state: SubagentRunState::from_phase(
+                            entry.phase.load(std::sync::atomic::Ordering::SeqCst),
+                        ),
+                        elapsed_ms: entry.dispatched.elapsed().as_millis() as u64,
+                    },
+                )
+            })
+            .collect();
+        out.sort_by_key(|(at, _)| *at);
+        out.into_iter().map(|(_, info)| info).collect()
+    }
+
+    /// One child, by run id.
+    pub(crate) fn inspect(&self, run_id: &str) -> Option<SubagentRunInfo> {
+        self.list().into_iter().find(|info| info.run_id == run_id)
+    }
+
+    /// Cancel one child, leaving its siblings alone. AH-102.
+    ///
+    /// A queued child is taken out of the queue before it ever starts; a
+    /// running one is aborted where it stands, which drops its future and
+    /// every tool call it had in flight. Either way its checkout (if it had
+    /// one) is settled as cancelled and its `SubagentEnd` is announced, as
+    /// parent teardown does for all of them. The entry stays, so the parent's
+    /// `await_subagent` still gets one answer -- `Cancelled` -- rather than an
+    /// unknown id. A finished child is not touched: its result is real.
+    pub(crate) fn cancel(&self, run_id: &str) -> SubagentCancelOutcome {
+        use crate::core::agent::events::StreamEvent;
+        use std::sync::atomic::Ordering;
+        let guard = self.inner.lock().unwrap();
+        let Some(entry) = guard.get(run_id) else {
+            return SubagentCancelOutcome::Unknown;
+        };
+        let outcome = match entry.phase.compare_exchange(
+            PHASE_QUEUED,
+            PHASE_CANCELLED,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            Ok(_) => {
+                // It never took its slot, so it never took itself off the
+                // queue count either.
+                self.queued.fetch_sub(1, Ordering::SeqCst);
+                SubagentCancelOutcome::CancelledQueued
+            }
+            Err(PHASE_RUNNING) => match entry.phase.compare_exchange(
+                PHASE_RUNNING,
+                PHASE_CANCELLED,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => SubagentCancelOutcome::CancelledRunning,
+                // Finished between the two reads.
+                Err(PHASE_FINISHED) => return SubagentCancelOutcome::AlreadyFinished,
+                Err(_) => return SubagentCancelOutcome::AlreadyCancelled,
+            },
+            Err(PHASE_FINISHED) => return SubagentCancelOutcome::AlreadyFinished,
+            Err(_) => return SubagentCancelOutcome::AlreadyCancelled,
+        };
+        entry.abort.abort();
+        if let Some(c) = self.checkout_of(run_id) {
+            std::thread::spawn(move || {
+                let _ = settle_checkout_now(
+                    &c,
+                    crate::core::agent::team_children::ChildStatus::Cancelled,
+                    "cancelled on its own by the run that dispatched it",
+                );
+            });
+        }
+        let _ = entry.events.send(StreamEvent::SubagentEnd {
+            run_id: entry.run_id.clone(),
+            name: entry.name.clone(),
+        });
+        outcome
+    }
     /// Abort and forget every registered child. Called on parent teardown when
     /// the run is cancelled. Emits a closing `SubagentEnd` for each aborted
     /// child (its own task is cancelled inside its await and never reaches its
@@ -844,6 +1001,14 @@ impl BackgroundSubagents {
         let mut guard = self.inner.lock().unwrap();
         for (_, entry) in guard.drain() {
             entry.abort.abort();
+            // Cancelled on its own already: its end was announced and its
+            // checkout settled then, and announcing either twice would tell a
+            // consumer two different stories about the same child.
+            if entry.phase.swap(PHASE_CANCELLED, std::sync::atomic::Ordering::SeqCst)
+                == PHASE_CANCELLED
+            {
+                continue;
+            }
             // An aborted task never reaches its own settle, so an isolated
             // child would stay "running" in its review record for the life of
             // the process. Recorded here instead, on a thread of its own:
@@ -1071,6 +1236,15 @@ pub(crate) fn spawn_subagent(
     } else {
         0
     };
+    // Shared with the task, which moves it to running and then finished;
+    // `BackgroundSubagents::cancel` moves it to cancelled from either.
+    let phase = Arc::new(std::sync::atomic::AtomicU8::new(if waiting > 0 {
+        PHASE_QUEUED
+    } else {
+        PHASE_RUNNING
+    }));
+    let task_phase = phase.clone();
+    let entry_description = req.description.clone();
     if waiting > 0 {
         let _ = events.send(StreamEvent::SubagentQueued {
             run_id: run_id.clone(),
@@ -1114,6 +1288,15 @@ pub(crate) fn spawn_subagent(
                     .acquire_owned()
                     .await
                     .expect("subagent semaphore is never closed");
+                // Cancelled while it waited: the cancel took it off the queue
+                // count and announced its end, and it must not start now. The
+                // permit goes straight back to the next child in line.
+                if task_phase
+                    .compare_exchange(PHASE_QUEUED, PHASE_RUNNING, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_err()
+                {
+                    return;
+                }
                 queued_counter.queued.fetch_sub(1, Ordering::SeqCst);
                 p
             }
@@ -1150,11 +1333,24 @@ pub(crate) fn spawn_subagent(
                 .await
             }
         };
-        // Recorded before the result is handed over, so a parent that reads
-        // the review list right after collecting sees how the child ended.
-        if let Some(c) = checkout {
-            settle_checkout(c, &result).await;
-        }
+        // A child cancelled on its own after it had already produced an answer
+        // still reports cancelled: the cancel was announced first, and a late
+        // result must not bring it back. Its checkout was settled by the
+        // cancel, so it is not settled a second time here.
+        let result = if task_phase
+            .compare_exchange(PHASE_RUNNING, PHASE_FINISHED, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            // Recorded before the result is handed over, so a parent that
+            // reads the review list right after collecting sees how the child
+            // ended.
+            if let Some(c) = checkout {
+                settle_checkout(c, &result).await;
+            }
+            result
+        } else {
+            Err(SubagentError::Cancelled)
+        };
         let _ = tx.send(result);
     });
 
@@ -1166,6 +1362,9 @@ pub(crate) fn spawn_subagent(
             run_id: run_id.clone(),
             name,
             events: entry_events,
+            description: entry_description,
+            dispatched: std::time::Instant::now(),
+            phase,
         },
     );
     Ok(run_id)
@@ -1203,8 +1402,54 @@ pub(crate) async fn await_subagent(
 pub fn is_subagent_tool(name: &str) -> bool {
     matches!(
         name,
-        "dispatch_subagent" | "await_subagent" | "create_subagent" | "list_subagents"
+        "dispatch_subagent"
+            | "await_subagent"
+            | "create_subagent"
+            | "list_subagents"
+            | "list_subagent_runs"
+            | "cancel_subagent"
     )
+}
+
+/// `list_subagent_runs`, for the model: this run's dispatched children and
+/// where each one is.
+pub fn format_subagent_runs(runs: &[SubagentRunInfo]) -> String {
+    if runs.is_empty() {
+        return "No background subagents are waiting to be collected in this run.".to_string();
+    }
+    let mut out = String::from("Background subagents in this run (oldest first):");
+    for run in runs {
+        out.push_str(&format!(
+            "\n- {} [{}] {}, {}s: {}",
+            run.run_id,
+            run.name,
+            run.state.as_str(),
+            run.elapsed_ms / 1000,
+            run.description.chars().take(160).collect::<String>()
+        ));
+    }
+    out
+}
+
+/// `cancel_subagent`, for the model: exactly what the cancel did.
+pub fn format_subagent_cancel(run_id: &str, outcome: SubagentCancelOutcome) -> String {
+    match outcome {
+        SubagentCancelOutcome::CancelledQueued => format!(
+            "Cancelled {run_id} before it started; it will not run. await_subagent on it returns Cancelled."
+        ),
+        SubagentCancelOutcome::CancelledRunning => format!(
+            "Cancelled {run_id}; it was stopped mid-run and its partial work is discarded. await_subagent on it returns Cancelled."
+        ),
+        SubagentCancelOutcome::AlreadyFinished => format!(
+            "{run_id} had already finished, so nothing was cancelled. Collect its result with await_subagent."
+        ),
+        SubagentCancelOutcome::AlreadyCancelled => {
+            format!("{run_id} was already cancelled; nothing more to do.")
+        }
+        SubagentCancelOutcome::Unknown => {
+            format!("ERROR: unknown or already-collected subagent run '{run_id}'")
+        }
+    }
 }
 
 /// One-line "name [scope]: description" per definition; shadowed user-scope
@@ -1317,6 +1562,28 @@ pub fn subagent_tool_schemas(
                 "name": "list_subagents",
                 "description": "List the subagents available to dispatch, with their scope (user or project) and description. No arguments.",
                 "parameters": { "type": "object", "properties": {}, "required": [] }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_subagent_runs",
+                "description": "List the subagents this run has dispatched and not yet collected, with each one's run_id and state (queued, running, finished, cancelled). Does not wait and does not collect. No arguments.",
+                "parameters": { "type": "object", "properties": {}, "required": [] }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "cancel_subagent",
+                "description": "Cancel one background subagent by run_id, leaving the others running. A queued one never starts; a running one is stopped and its partial work discarded. A finished one is left alone. await_subagent on a cancelled run returns Cancelled.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "run_id": { "type": "string", "description": "The run_id dispatch_subagent returned." }
+                    },
+                    "required": ["run_id"]
+                }
             }
         }),
     ]
@@ -2148,6 +2415,9 @@ mod tests {
                 run_id: "r1".to_string(),
                 name: "reviewer".to_string(),
                 events: ev_tx,
+                description: String::new(),
+                dispatched: std::time::Instant::now(),
+                phase: Arc::new(std::sync::atomic::AtomicU8::new(PHASE_RUNNING)),
             },
         );
         tx.send(Ok("done".to_string())).unwrap();
@@ -2170,6 +2440,9 @@ mod tests {
                 run_id: "r1".to_string(),
                 name: "reviewer".to_string(),
                 events: ev_tx,
+                description: String::new(),
+                dispatched: std::time::Instant::now(),
+                phase: Arc::new(std::sync::atomic::AtomicU8::new(PHASE_RUNNING)),
             },
         );
         let guard = AbortOnDrop(bg.clone());
@@ -2209,6 +2482,9 @@ mod tests {
                 run_id: "r1".to_string(),
                 name: "reviewer".to_string(),
                 events: ev_tx,
+                description: String::new(),
+                dispatched: std::time::Instant::now(),
+                phase: Arc::new(std::sync::atomic::AtomicU8::new(PHASE_RUNNING)),
             },
         );
 
@@ -2246,6 +2522,9 @@ mod tests {
                 run_id: "r1".to_string(),
                 name: "reviewer".to_string(),
                 events: ev_tx,
+                description: String::new(),
+                dispatched: std::time::Instant::now(),
+                phase: Arc::new(std::sync::atomic::AtomicU8::new(PHASE_RUNNING)),
             },
         );
         bg.join_all().await;
@@ -2281,6 +2560,9 @@ mod tests {
                 run_id: "r1".to_string(),
                 name: "reviewer".to_string(),
                 events: ev_tx,
+                description: String::new(),
+                dispatched: std::time::Instant::now(),
+                phase: Arc::new(std::sync::atomic::AtomicU8::new(PHASE_RUNNING)),
             },
         );
 
@@ -2346,6 +2628,194 @@ mod tests {
             subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
             sandbox: None,
         }
+    }
+
+    /// A child registered the way `spawn_subagent` registers one, whose body
+    /// is `work`: it waits for a slot like a real child, then runs `work` and
+    /// reports through the same phase transitions.
+    fn register_child(
+        bg: &Arc<BackgroundSubagents>,
+        run_id: &str,
+        events: &tokio::sync::mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
+        work: tokio::sync::oneshot::Receiver<()>,
+    ) {
+        use std::sync::atomic::Ordering;
+        let admitted = bg.semaphore.clone().try_acquire_owned();
+        if admitted.is_err() {
+            bg.queued.fetch_add(1, Ordering::SeqCst);
+        }
+        let phase = Arc::new(std::sync::atomic::AtomicU8::new(if admitted.is_err() {
+            PHASE_QUEUED
+        } else {
+            PHASE_RUNNING
+        }));
+        let task_phase = phase.clone();
+        let sem = bg.semaphore.clone();
+        let counter = bg.clone();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let handle = tokio::spawn(async move {
+            let _permit = match admitted {
+                Ok(p) => p,
+                Err(_) => {
+                    let p = sem.acquire_owned().await.unwrap();
+                    if task_phase
+                        .compare_exchange(PHASE_QUEUED, PHASE_RUNNING, Ordering::SeqCst, Ordering::SeqCst)
+                        .is_err()
+                    {
+                        return;
+                    }
+                    counter.queued.fetch_sub(1, Ordering::SeqCst);
+                    p
+                }
+            };
+            let _ = work.await;
+            let result = if task_phase
+                .compare_exchange(PHASE_RUNNING, PHASE_FINISHED, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                Ok("the answer".to_string())
+            } else {
+                Err(SubagentError::Cancelled)
+            };
+            let _ = tx.send(result);
+        });
+        bg.inner.lock().unwrap().insert(
+            run_id.to_string(),
+            BackgroundEntry {
+                result: Some(rx),
+                abort: handle.abort_handle(),
+                run_id: run_id.to_string(),
+                name: "reviewer".to_string(),
+                events: events.clone(),
+                description: format!("task for {run_id}"),
+                dispatched: std::time::Instant::now(),
+                phase,
+            },
+        );
+    }
+
+    fn ends(
+        rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::core::agent::events::StreamEvent>,
+    ) -> Vec<String> {
+        let mut out = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            if let crate::core::agent::events::StreamEvent::SubagentEnd { run_id, .. } = ev {
+                out.push(run_id);
+            }
+        }
+        out
+    }
+
+    /// AH-102: one child is cancelled while it runs; its sibling carries on
+    /// and still delivers, and the cancelled one answers `Cancelled` once.
+    #[tokio::test]
+    async fn one_running_child_is_cancelled_and_its_sibling_is_not() {
+        let bg = Arc::new(BackgroundSubagents::new(2));
+        let (events, mut events_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_hold_a, work_a) = tokio::sync::oneshot::channel();
+        let (release_b, work_b) = tokio::sync::oneshot::channel();
+        register_child(&bg, "sub-a", &events, work_a);
+        register_child(&bg, "sub-b", &events, work_b);
+        tokio::task::yield_now().await;
+
+        let states: Vec<_> = bg.list().iter().map(|r| (r.run_id.clone(), r.state)).collect();
+        assert_eq!(
+            states,
+            vec![
+                ("sub-a".to_string(), SubagentRunState::Running),
+                ("sub-b".to_string(), SubagentRunState::Running)
+            ]
+        );
+
+        assert_eq!(bg.cancel("sub-a"), SubagentCancelOutcome::CancelledRunning);
+        assert_eq!(bg.inspect("sub-a").unwrap().state, SubagentRunState::Cancelled);
+        assert_eq!(ends(&mut events_rx), vec!["sub-a".to_string()]);
+        assert!(matches!(
+            await_subagent(&bg, "sub-a").await,
+            Err(SubagentError::Cancelled)
+        ));
+        // Collected: a second await names nothing.
+        assert!(await_subagent(&bg, "sub-a").await.is_err());
+
+        // The sibling is untouched and still finishes.
+        release_b.send(()).unwrap();
+        assert_eq!(await_subagent(&bg, "sub-b").await.unwrap(), "the answer");
+    }
+
+    /// A queued child cancelled before it gets a slot never starts, and the
+    /// queue count it held is released exactly once.
+    #[tokio::test]
+    async fn a_queued_child_is_cancelled_before_it_starts() {
+        let bg = Arc::new(BackgroundSubagents::new(1));
+        let (events, mut events_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (release_a, work_a) = tokio::sync::oneshot::channel();
+        let (_hold_b, work_b) = tokio::sync::oneshot::channel::<()>();
+        register_child(&bg, "sub-a", &events, work_a);
+        register_child(&bg, "sub-b", &events, work_b);
+        tokio::task::yield_now().await;
+        assert_eq!(bg.inspect("sub-b").unwrap().state, SubagentRunState::Queued);
+        assert_eq!(bg.queued.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        assert_eq!(bg.cancel("sub-b"), SubagentCancelOutcome::CancelledQueued);
+        assert_eq!(bg.queued.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(ends(&mut events_rx), vec!["sub-b".to_string()]);
+
+        // The running child finishes and its slot is not taken by the
+        // cancelled one.
+        release_a.send(()).unwrap();
+        assert_eq!(await_subagent(&bg, "sub-a").await.unwrap(), "the answer");
+        assert!(matches!(
+            await_subagent(&bg, "sub-b").await,
+            Err(SubagentError::Cancelled)
+        ));
+        assert_eq!(bg.queued.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(bg.semaphore.available_permits(), 1, "the slot came back");
+    }
+
+    /// A finished child's result is real: cancelling it changes nothing, and
+    /// cancelling twice or cancelling an unknown id says so.
+    #[tokio::test]
+    async fn finished_unknown_and_repeated_cancels_are_reported_as_such() {
+        let bg = Arc::new(BackgroundSubagents::new(1));
+        let (events, mut events_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (release, work) = tokio::sync::oneshot::channel();
+        register_child(&bg, "sub-a", &events, work);
+        release.send(()).unwrap();
+        for _ in 0..50 {
+            if bg.inspect("sub-a").unwrap().state == SubagentRunState::Finished {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(bg.cancel("sub-a"), SubagentCancelOutcome::AlreadyFinished);
+        assert_eq!(await_subagent(&bg, "sub-a").await.unwrap(), "the answer");
+        assert_eq!(bg.cancel("sub-nope"), SubagentCancelOutcome::Unknown);
+
+        let (_hold, work2) = tokio::sync::oneshot::channel::<()>();
+        register_child(&bg, "sub-c", &events, work2);
+        tokio::task::yield_now().await;
+        assert_eq!(bg.cancel("sub-c"), SubagentCancelOutcome::CancelledRunning);
+        assert_eq!(bg.cancel("sub-c"), SubagentCancelOutcome::AlreadyCancelled);
+        // Parent teardown after a cancel announces nothing twice.
+        bg.abort_all();
+        assert_eq!(ends(&mut events_rx), vec!["sub-c".to_string()]);
+    }
+
+    #[test]
+    fn listings_and_cancel_replies_read_for_the_model() {
+        let runs = vec![SubagentRunInfo {
+            run_id: "sub-reviewer-3".into(),
+            name: "reviewer".into(),
+            description: "review the parser".into(),
+            state: SubagentRunState::Queued,
+            elapsed_ms: 2_500,
+        }];
+        let text = format_subagent_runs(&runs);
+        assert!(text.contains("sub-reviewer-3 [reviewer] queued, 2s: review the parser"), "{text}");
+        assert!(format_subagent_runs(&[]).starts_with("No background subagents"));
+        assert!(format_subagent_cancel("x", SubagentCancelOutcome::Unknown).starts_with("ERROR"));
+        assert!(format_subagent_cancel("x", SubagentCancelOutcome::CancelledQueued)
+            .contains("will not run"));
     }
 
     #[test]
@@ -2561,7 +3031,7 @@ mod tests {
     fn schemas_list_available_names_in_dispatch_description() {
         let reg = registry_with("reviewer", None);
         let schemas = subagent_tool_schemas(&reg, DEFAULT_MAX_PARALLEL_SUBAGENTS);
-        assert_eq!(schemas.len(), 4);
+        assert_eq!(schemas.len(), 6);
         let names: Vec<&str> = schemas
             .iter()
             .map(|s| s["function"]["name"].as_str().unwrap())
@@ -2572,9 +3042,14 @@ mod tests {
                 "dispatch_subagent",
                 "await_subagent",
                 "create_subagent",
-                "list_subagents"
+                "list_subagents",
+                "list_subagent_runs",
+                "cancel_subagent"
             ]
         );
+        for name in &names {
+            assert!(is_subagent_tool(name), "{name} is routed to the subagent handler");
+        }
         let dispatch = &schemas[0]["function"]["description"].as_str().unwrap();
         assert!(dispatch.contains("reviewer"), "got: {dispatch}");
         assert!(

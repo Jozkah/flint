@@ -58,6 +58,7 @@ import {
   estimateTokens,
   type ContextManagerConfig,
 } from './context-manager'
+import { recordLifecycle } from '@/lib/toolActivity'
 import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import { encodeAudioSentinel, parseAudioDataUrl } from '@/lib/audio-sentinel'
@@ -1534,6 +1535,19 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             `[context-manager] Compacted ${compactResult.trimmedCount} messages` +
               (compactResult.compactedSummary ? ' with summary' : ' (trim fallback)')
           )
+          // A compaction changes what the model sees from here on, so it is
+          // part of what the conversation did and goes in its record.
+          void recordLifecycle(
+            { session: options.chatId ?? '', run: '', source: 'chat' },
+            {
+              id: `compaction:${Date.now()}`,
+              lifecycle: 'compaction',
+              phase: 'succeeded',
+              summary: compactResult.compactedSummary
+                ? `Compacted ${compactResult.trimmedCount} messages into a summary`
+                : `Dropped ${compactResult.trimmedCount} oldest messages (summary unavailable)`,
+            }
+          )
         }
       } else {
         const trimResult = trimMessages(
@@ -1545,6 +1559,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         if (trimResult.trimmedCount > 0) {
           console.debug(
             `[context-manager] Trimmed ${trimResult.trimmedCount} oldest messages to fit context budget`
+          )
+          void recordLifecycle(
+            { session: options.chatId ?? '', run: '', source: 'chat' },
+            {
+              id: `context-trim:${Date.now()}`,
+              lifecycle: 'compaction',
+              phase: 'succeeded',
+              summary: `Left out ${trimResult.trimmedCount} oldest messages to fit the context window`,
+            }
           )
         }
       }

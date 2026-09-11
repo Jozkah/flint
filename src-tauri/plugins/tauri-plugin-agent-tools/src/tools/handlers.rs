@@ -44,6 +44,67 @@ const DEFAULT_BASH_TIMEOUT_SECS: u64 = 30;
 static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 /// Counter for unique bash background job ids.
 static BASH_JOB_COUNTER: AtomicUsize = AtomicUsize::new(0);
+/// Background jobs one owner may hold at once. Past this the oldest finished,
+/// uncollected job is dropped; with none finished, a new command is refused a
+/// place in the background rather than growing the registry without bound.
+const MAX_JOBS_PER_OWNER: usize = 32;
+/// How much of a running job's recent output a status check can show.
+const JOB_TAIL_BYTES: usize = 8 * 1024;
+
+/// A per-process prefix for job ids.
+///
+/// The counter restarts at zero every launch while the records that name job
+/// ids are persisted, so `bash-0` alone would name a different command after
+/// every restart. The prefix makes an id from a previous run never match one
+/// minted now.
+fn job_id_prefix() -> &'static str {
+    static PREFIX: OnceLock<String> = OnceLock::new();
+    PREFIX.get_or_init(|| {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let mixed = (nanos as u64) ^ ((std::process::id() as u64) << 20);
+        format!("{:05x}", mixed & 0xf_ffff)
+    })
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// The most recent output of a running job, bounded, for status checks.
+#[derive(Default)]
+struct LiveTail {
+    text: String,
+    /// Bytes dropped from the front to stay within the bound.
+    dropped: usize,
+}
+
+impl LiveTail {
+    fn push(&mut self, chunk: &str) {
+        self.text.push_str(chunk);
+        if self.text.len() > JOB_TAIL_BYTES {
+            let mut cut = self.text.len() - JOB_TAIL_BYTES;
+            while !self.text.is_char_boundary(cut) {
+                cut += 1;
+            }
+            self.dropped += cut;
+            self.text.drain(..cut);
+        }
+    }
+}
+
+/// The exit code a formatted `bash` result reports on its final marker line.
+fn exit_code_of(output: &str) -> Option<i32> {
+    output
+        .lines()
+        .rev()
+        .find_map(|line| line.trim().strip_prefix("[exit ")?.strip_suffix(']')?.parse().ok())
+}
 
 /// One command still running past its `bash` call's timeout.
 ///
@@ -76,12 +137,32 @@ pub struct BashJob {
     /// Without this the whole of a long collection was invisible: the panel
     /// dropped the row and its Stop button reported "unknown job".
     collecting: bool,
+    /// The conversation that started the command. Listing, inspecting,
+    /// collecting and stopping are all confined to it, so one session cannot
+    /// read or kill another's work. `None` is a surface with no conversation
+    /// (a one-shot CLI run), and only another `None` caller matches it.
+    owner: Option<String>,
+    /// Wall-clock start and end, for a surface that shows when it ran.
+    started_at_ms: u64,
+    finished_at_ms: Option<u64>,
+    /// Stopped on request rather than by exiting.
+    stopped_by_request: bool,
+    /// Recent output, fed by the same stream the live view reads.
+    tail: std::sync::Arc<Mutex<LiveTail>>,
 }
 
 impl BashJob {
     /// Has the command finished? Non-destructive from the caller's point of
     /// view: anything received is retained for collection.
     fn poll_finished(&mut self) -> bool {
+        let finished = self.poll_finished_inner();
+        if finished && self.finished_at_ms.is_none() {
+            self.finished_at_ms = Some(now_ms());
+        }
+        finished
+    }
+
+    fn poll_finished_inner(&mut self) -> bool {
         if self.output.is_some() {
             return true;
         }
@@ -111,6 +192,10 @@ impl BashJob {
 }
 
 /// A job as reported to a caller that is listing, not collecting.
+///
+/// The command is redacted (see [`crate::audit::redact`]): this is metadata a
+/// panel shows and a store may keep, and a command line is where a credential
+/// most often appears.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BashJobStatus {
@@ -119,6 +204,41 @@ pub struct BashJobStatus {
     pub elapsed_ms: u64,
     pub finished: bool,
     pub call_id: Option<String>,
+    pub started_at_ms: u64,
+    pub finished_at_ms: Option<u64>,
+    /// From the finished output's `[exit N]` marker, when it has one.
+    pub exit_code: Option<i32>,
+    /// Killed by a signal rather than exiting (including a stop request).
+    pub signalled: bool,
+    /// Someone asked for it to be stopped, and it was.
+    pub stopped_by_request: bool,
+    /// Its output is waiting to be collected. False while running.
+    pub output_available: bool,
+}
+
+impl BashJob {
+    fn status(&mut self, job_id: &str) -> BashJobStatus {
+        let finished = self.poll_finished();
+        let output = self.output.as_deref();
+        BashJobStatus {
+            job_id: job_id.to_string(),
+            command: crate::audit::redact(&self.command),
+            elapsed_ms: match self.finished_at_ms {
+                Some(end) => end.saturating_sub(self.started_at_ms),
+                None => self.started.elapsed().as_millis() as u64,
+            },
+            finished,
+            call_id: self.call_id.clone(),
+            started_at_ms: self.started_at_ms,
+            finished_at_ms: self.finished_at_ms,
+            exit_code: output.and_then(exit_code_of),
+            signalled: output.is_some_and(|o| {
+                o.lines().any(|l| l.trim() == "[terminated by signal]")
+            }),
+            stopped_by_request: self.stopped_by_request,
+            output_available: output.is_some(),
+        }
+    }
 }
 
 /// Why a kill request ended the way it did. Reported rather than inferred so a
@@ -160,28 +280,71 @@ fn bash_jobs() -> &'static Mutex<HashMap<String, BashJob>> {
     JOBS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// Every backgrounded command, newest first. Listing never consumes a result:
-/// see [`BashJob::poll_finished`].
-pub fn list_bash_jobs() -> Vec<BashJobStatus> {
+/// Every backgrounded command `owner` started, newest first. Listing never
+/// consumes a result: see [`BashJob::poll_finished`].
+///
+/// Another owner's jobs are not listed at all -- not even as a count -- so a
+/// session can learn nothing about work it did not start.
+pub fn list_bash_jobs(owner: Option<&str>) -> Vec<BashJobStatus> {
     let mut jobs = bash_jobs().lock().unwrap();
     let mut out: Vec<BashJobStatus> = jobs
         .iter_mut()
-        .map(|(job_id, job)| BashJobStatus {
-            job_id: job_id.clone(),
-            command: job.command.clone(),
-            elapsed_ms: job.started.elapsed().as_millis() as u64,
-            finished: job.poll_finished(),
-            call_id: job.call_id.clone(),
-        })
+        .filter(|(_, job)| job.owner.as_deref() == owner)
+        .map(|(job_id, job)| job.status(job_id))
         .collect();
-    // Newest first: job ids are a monotonic `bash-N`.
+    // Newest first, by when it started; the id breaks ties.
     out.sort_by(|a, b| {
-        b.job_id
-            .len()
-            .cmp(&a.job_id.len())
+        b.started_at_ms
+            .cmp(&a.started_at_ms)
+            .then(b.job_id.len().cmp(&a.job_id.len()))
             .then(b.job_id.cmp(&a.job_id))
     });
     out
+}
+
+/// One job's status, if `owner` may see it.
+pub fn inspect_bash_job(job_id: &str, owner: Option<&str>) -> Option<BashJobStatus> {
+    let mut jobs = bash_jobs().lock().unwrap();
+    let job = jobs.get_mut(job_id)?;
+    if job.owner.as_deref() != owner {
+        return None;
+    }
+    Some(job.status(job_id))
+}
+
+/// A job's recent output, redacted, for a status check. Never consumes the
+/// result the collector is waiting for.
+fn peek_tail(job_id: &str, owner: Option<&str>) -> Option<(String, usize)> {
+    let jobs = bash_jobs().lock().unwrap();
+    let job = jobs.get(job_id)?;
+    if job.owner.as_deref() != owner {
+        return None;
+    }
+    let tail = job.tail.lock().ok()?;
+    Some((crate::audit::redact(&tail.text), tail.dropped))
+}
+
+/// Make room for one more job under `owner`. Drops the oldest *finished*
+/// uncollected job when the owner is at its limit; returns false when every
+/// job it holds is still running, so the caller refuses rather than grows.
+fn make_room_for(owner: Option<&str>) -> bool {
+    let mut jobs = bash_jobs().lock().unwrap();
+    let mut mine: Vec<(String, u64, bool)> = jobs
+        .iter_mut()
+        .filter(|(_, job)| job.owner.as_deref() == owner)
+        .map(|(id, job)| (id.clone(), job.started_at_ms, job.poll_finished() && !job.collecting))
+        .collect();
+    if mine.len() < MAX_JOBS_PER_OWNER {
+        return true;
+    }
+    mine.sort_by_key(|(_, started, _)| *started);
+    match mine.iter().find(|(_, _, done)| *done) {
+        Some((oldest, _, _)) => {
+            jobs.remove(oldest);
+            true
+        }
+        None => false,
+    }
 }
 
 /// Kill one backgrounded command and every process it spawned.
@@ -191,9 +354,12 @@ pub fn list_bash_jobs() -> Vec<BashJobStatus> {
 /// the command printed before it was killed instead of `unknown job_id`. A job
 /// that has already finished is left alone — killing it would signal a pid the
 /// OS may since have reused.
-pub fn kill_bash_job(job_id: &str) -> BashJobKill {
+pub fn kill_bash_job(job_id: &str, owner: Option<&str>) -> BashJobKill {
     let mut jobs = bash_jobs().lock().unwrap();
     let (outcome, error) = match jobs.get_mut(job_id) {
+        // Someone else's job reads exactly like no job: saying "not yours"
+        // would confirm that it exists.
+        Some(job) if job.owner.as_deref() != owner => (BashJobKillOutcome::Unknown, None),
         None => (BashJobKillOutcome::Unknown, None),
         Some(job) => {
             if job.poll_finished() {
@@ -212,6 +378,7 @@ pub fn kill_bash_job(job_id: &str) -> BashJobKill {
                         // collectable because the entry is kept.
                         outcome if outcome.stopped() => {
                             job.pid = None;
+                            job.stopped_by_request = true;
                             super::proc::unregister(pid);
                             (BashJobKillOutcome::Killed, None)
                         }
@@ -1071,18 +1238,38 @@ fn anchored(path: &Path) -> PathBuf {
 }
 
 async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
+    let owner = ctx.job_owner;
     let Some(command) = arg_str(args, "command").filter(|command| !command.trim().is_empty())
     else {
-        if let Some(job_id) = arg_str(args, "job_id").filter(|job_id| !job_id.trim().is_empty()) {
-            return await_bash_job(job_id).await;
-        }
-        return "ERROR: missing required argument 'command' (or 'job_id' to poll a backgrounded job)"
-            .to_string();
+        let action = arg_str(args, "action").map(str::trim).unwrap_or("");
+        let job_id = arg_str(args, "job_id").map(str::trim).filter(|id| !id.is_empty());
+        return match (action, job_id) {
+            ("" | "await", Some(job_id)) => await_bash_job(job_id, owner).await,
+            ("status", Some(job_id)) => bash_job_status_text(job_id, owner),
+            ("cancel", Some(job_id)) => bash_job_cancel_text(job_id, owner),
+            ("list", _) => bash_job_list_text(owner),
+            (other, _) if !other.is_empty() && !matches!(other, "await" | "status" | "cancel") => {
+                format!(
+                    "ERROR: unknown action '{other}'. Use \"list\", or \"await\", \"status\" or \
+                     \"cancel\" with a job_id."
+                )
+            }
+            _ => "ERROR: missing required argument 'command' (or 'job_id' to collect a \
+                  backgrounded job, or {\"action\": \"list\"})"
+                .to_string(),
+        };
     };
-    let timeout_secs = arg_u64(args, "timeout").unwrap_or(DEFAULT_BASH_TIMEOUT_SECS);
     // Opt-in: a command that outlives its deadline is terminated unless the
     // caller explicitly asked for it to keep running and be polled by job_id.
     let background = arg_bool(args, "background");
+    // A command the caller *asked* to run in the background is backgrounded
+    // straight away rather than after an arbitrary wait. A timeout given with
+    // it still means "wait this long first".
+    let timeout_secs = arg_u64(args, "timeout").unwrap_or(if background {
+        0
+    } else {
+        DEFAULT_BASH_TIMEOUT_SECS
+    });
 
     // Every path the sandbox is given is made absolute first. The confined
     // helper runs with its working directory set to the workspace, so a
@@ -1199,8 +1386,22 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let (tx, mut rx) = oneshot::channel();
     let spill_scratch = ctx.scratch_root.map(Path::to_path_buf);
     // Cloned into the detached task, which is what keeps a backgrounded command
-    // reporting after this call has already returned its `job_id`.
-    let sink = ctx.on_output.clone();
+    // reporting after this call has already returned its `job_id`. Every chunk
+    // also lands in a bounded tail, which is what a status check shows while
+    // the command is still running.
+    let tail = std::sync::Arc::new(Mutex::new(LiveTail::default()));
+    let sink: Option<crate::tools::OutputSink> = {
+        let tail = tail.clone();
+        let live = ctx.on_output.clone();
+        Some(std::sync::Arc::new(move |chunk: String| {
+            if let Ok(mut t) = tail.lock() {
+                t.push(&chunk);
+            }
+            if let Some(live) = live.as_ref() {
+                live(chunk);
+            }
+        }))
+    };
     let sandboxed = ctx.sandbox;
     // The model writes POSIX commands by default, which `cmd` rejects. Surface
     // the resolved shell so it can adapt when the only shell on a Windows box
@@ -1243,8 +1444,27 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             // for it -- see the `background` argument below. A command the
             // model did not ask to background does not get to survive its
             // deadline.
+            if background && !make_room_for(owner) {
+                // Every job this conversation holds is still running. Refused
+                // rather than let the registry grow without bound -- and the
+                // command is stopped, since nothing would own it.
+                let stopped = match pid {
+                    Some(pid) => proc::kill_tree(pid).stopped(),
+                    None => true,
+                };
+                return format!(
+                    "ERROR: this conversation already has {MAX_JOBS_PER_OWNER} background commands \
+                     running, so this one was not backgrounded and was stopped{}. Collect or \
+                     cancel one first ({{\"action\": \"list\"}} shows them).",
+                    if stopped { "" } else { " (the process tree may not have terminated cleanly)" }
+                );
+            }
             if background {
-                let job_id = format!("bash-{}", BASH_JOB_COUNTER.fetch_add(1, Ordering::SeqCst));
+                let job_id = format!(
+                    "bash-{}-{}",
+                    job_id_prefix(),
+                    BASH_JOB_COUNTER.fetch_add(1, Ordering::SeqCst)
+                );
                 bash_jobs().lock().unwrap().insert(
                     job_id.clone(),
                     BashJob {
@@ -1255,12 +1475,26 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                         call_id: ctx.call_id.map(str::to_string),
                         pid,
                         collecting: false,
+                        owner: owner.map(str::to_string),
+                        started_at_ms: now_ms().saturating_sub(job_started.elapsed().as_millis() as u64),
+                        finished_at_ms: None,
+                        stopped_by_request: false,
+                        tail,
                     },
                 );
+                // Both forms end in the same fixed sentence, which is what the
+                // desktop reads the job id from (`backgroundJobId`).
+                let waited = if timeout_secs == 0 {
+                    "Command was started as a background job and".to_string()
+                } else {
+                    format!("Command exceeded {timeout_secs}s and")
+                };
                 return format!(
-                    "Command exceeded {timeout_secs}s and is continuing in the background \
+                    "{waited} is continuing in the background \
                      (job_id={job_id}). Call bash again with {{\"job_id\": \"{job_id}\"}} (no \
-                     command) to wait for and collect its output once it finishes."
+                     command) to wait for and collect its output once it finishes, \
+                     {{\"job_id\": \"{job_id}\", \"action\": \"status\"}} to check on it without \
+                     waiting, or {{\"job_id\": \"{job_id}\", \"action\": \"cancel\"}} to stop it."
                 );
             }
 
@@ -1303,10 +1537,103 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     }
 }
 
+/// A job's state, for the model, without waiting and without collecting.
+fn bash_job_status_text(job_id: &str, owner: Option<&str>) -> String {
+    let Some(status) = inspect_bash_job(job_id, owner) else {
+        return format!("ERROR: unknown or already-collected job_id '{job_id}'");
+    };
+    let state = if !status.finished {
+        "running".to_string()
+    } else if status.stopped_by_request {
+        "stopped (cancelled)".to_string()
+    } else {
+        match (status.exit_code, status.signalled) {
+            (Some(code), _) => format!("finished (exit {code})"),
+            (None, true) => "finished (terminated by signal)".to_string(),
+            (None, false) => "finished".to_string(),
+        }
+    };
+    let mut out = format!(
+        "job_id={job_id} state={state} elapsed={}s\ncommand: {}",
+        status.elapsed_ms / 1000,
+        status.command
+    );
+    if let Some((tail, dropped)) = peek_tail(job_id, owner) {
+        if !tail.trim().is_empty() {
+            let note = if dropped > 0 {
+                format!(" (last {} bytes; {dropped} earlier bytes not shown)", tail.len())
+            } else {
+                String::new()
+            };
+            out.push_str(&format!("\n--- recent output{note} ---\n{tail}"));
+        }
+    }
+    if status.finished {
+        out.push_str(&format!(
+            "\nIts full output is waiting: call bash with {{\"job_id\": \"{job_id}\"}} to collect it."
+        ));
+    }
+    out
+}
+
+/// Stop a job on the model's behalf, and say exactly what happened.
+fn bash_job_cancel_text(job_id: &str, owner: Option<&str>) -> String {
+    let killed = kill_bash_job(job_id, owner);
+    match killed.outcome {
+        BashJobKillOutcome::Killed => format!(
+            "Stopped job {job_id} and every process it started. Call bash with \
+             {{\"job_id\": \"{job_id}\"}} to collect what it printed before it stopped."
+        ),
+        BashJobKillOutcome::AlreadyFinished => format!(
+            "Job {job_id} had already finished; nothing was stopped. Its output is still \
+             collectable."
+        ),
+        BashJobKillOutcome::Unknown => {
+            format!("ERROR: unknown or already-collected job_id '{job_id}'")
+        }
+        BashJobKillOutcome::NoPid => format!(
+            "ERROR: job {job_id} has no process to stop (it never reported one); nothing was \
+             signalled."
+        ),
+        BashJobKillOutcome::Failed => format!(
+            "ERROR: could not stop job {job_id}: {}. It is still running; try again.",
+            killed.error.unwrap_or_default()
+        ),
+    }
+}
+
+/// This conversation's background commands, for the model.
+fn bash_job_list_text(owner: Option<&str>) -> String {
+    let jobs = list_bash_jobs(owner);
+    if jobs.is_empty() {
+        return "No background commands.".to_string();
+    }
+    let mut out = String::from("Background commands (newest first):");
+    for job in jobs {
+        let state = if !job.finished {
+            "running".to_string()
+        } else if job.stopped_by_request {
+            "stopped".to_string()
+        } else {
+            match job.exit_code {
+                Some(code) => format!("finished, exit {code}, not yet collected"),
+                None => "finished, not yet collected".to_string(),
+            }
+        };
+        out.push_str(&format!(
+            "\n- {} [{state}, {}s] {}",
+            job.job_id,
+            job.elapsed_ms / 1000,
+            job.command
+        ));
+    }
+    out
+}
+
 /// Wait for a previously backgrounded command to finish and return its
-/// (already-formatted) output, or an error if `job_id` is unknown or was
-/// already collected.
-async fn await_bash_job(job_id: &str) -> String {
+/// (already-formatted) output, or an error if `job_id` is unknown, was
+/// already collected, or belongs to another conversation.
+async fn await_bash_job(job_id: &str, owner: Option<&str>) -> String {
     // The receiver is taken, but the entry is left behind: for however long
     // this command still runs, it must stay listable and killable. Removed
     // only once it has actually produced its output.
@@ -1321,6 +1648,8 @@ async fn await_bash_job(job_id: &str) -> String {
         let mut jobs = bash_jobs().lock().unwrap();
         match jobs.get_mut(job_id) {
             None => Collect::Unknown,
+            // Another conversation's job: the same answer as no job at all.
+            Some(job) if job.owner.as_deref() != owner => Collect::Unknown,
             Some(job) => {
                 if let Some(done) = job.output.take() {
                     Collect::Parked(done)
@@ -2109,6 +2438,11 @@ mod bash_job_registry_tests {
                 call_id: Some("call-1".to_string()),
                 pid,
                 collecting: false,
+                owner: None,
+                started_at_ms: now_ms(),
+                finished_at_ms: None,
+                stopped_by_request: false,
+                tail: Default::default(),
             },
         );
         tx
@@ -2133,12 +2467,12 @@ mod bash_job_registry_tests {
         // rather than a stub.
         let _tx = park_with_pid("bash-kill-refused", "sleep 300", Some(1));
 
-        let first = kill_bash_job("bash-kill-refused");
+        let first = kill_bash_job("bash-kill-refused", None);
         assert_eq!(first.outcome, BashJobKillOutcome::Failed);
         assert!(first.error.is_some(), "a refusal must say why");
 
         // Still killable: the pid was not surrendered.
-        let second = kill_bash_job("bash-kill-refused");
+        let second = kill_bash_job("bash-kill-refused", None);
         assert_eq!(second.outcome, BashJobKillOutcome::Failed);
         let _ = bash_jobs().lock().unwrap().remove("bash-kill-refused");
     }
@@ -2148,14 +2482,14 @@ mod bash_job_registry_tests {
     #[tokio::test]
     async fn killing_a_process_that_has_already_exited_counts_as_stopped() {
         let tx = park_with_pid("bash-kill-gone", "true", Some(u32::MAX - 5));
-        let killed = kill_bash_job("bash-kill-gone");
+        let killed = kill_bash_job("bash-kill-gone", None);
         assert_eq!(killed.outcome, BashJobKillOutcome::Killed);
         assert!(killed.error.is_none());
 
         // And its output still reaches the agent.
         tx.send("printed before it died".to_string()).unwrap();
         assert_eq!(
-            await_bash_job("bash-kill-gone").await,
+            await_bash_job("bash-kill-gone", None).await,
             "printed before it died"
         );
     }
@@ -2167,7 +2501,7 @@ mod bash_job_registry_tests {
     async fn a_job_stays_listable_and_killable_while_it_is_collected() {
         let tx = park_with_pid("bash-collect-live", "npm run build", Some(u32::MAX - 8));
 
-        let collector = tokio::spawn(async { await_bash_job("bash-collect-live").await });
+        let collector = tokio::spawn(async { await_bash_job("bash-collect-live", None).await });
         // Let the collector take the receiver.
         for _ in 0..100 {
             if bash_jobs()
@@ -2181,28 +2515,28 @@ mod bash_job_registry_tests {
             tokio::task::yield_now().await;
         }
 
-        let listed = list_bash_jobs();
+        let listed = list_bash_jobs(None);
         let job = listed
             .iter()
             .find(|j| j.job_id == "bash-collect-live")
             .expect("a job being collected is still a job");
         assert!(!job.finished, "it is still running");
         assert_eq!(
-            kill_bash_job("bash-collect-live").outcome,
+            kill_bash_job("bash-collect-live", None).outcome,
             BashJobKillOutcome::Killed
         );
 
         tx.send("built".to_string()).unwrap();
         assert_eq!(collector.await.unwrap(), "built");
         // Collected: now it is gone.
-        assert!(!list_bash_jobs()
+        assert!(!list_bash_jobs(None)
             .iter()
             .any(|j| j.job_id == "bash-collect-live"));
     }
 
     #[tokio::test]
     async fn killing_an_unknown_job_reports_it_rather_than_claiming_success() {
-        let killed = kill_bash_job("bash-never-existed");
+        let killed = kill_bash_job("bash-never-existed", None);
         assert_eq!(killed.outcome, BashJobKillOutcome::Unknown);
         assert_eq!(killed.job_id, "bash-never-existed");
     }
@@ -2214,18 +2548,18 @@ mod bash_job_registry_tests {
         let tx = park_with_pid("bash-kill-finished", "true", Some(u32::MAX - 2));
         tx.send("all done".to_string()).unwrap();
 
-        let killed = kill_bash_job("bash-kill-finished");
+        let killed = kill_bash_job("bash-kill-finished", None);
         assert_eq!(killed.outcome, BashJobKillOutcome::AlreadyFinished);
-        assert_eq!(await_bash_job("bash-kill-finished").await, "all done");
+        assert_eq!(await_bash_job("bash-kill-finished", None).await, "all done");
     }
 
     #[tokio::test]
     async fn a_job_with_no_pid_is_reported_rather_than_reported_killed() {
         let _tx = park("bash-kill-nopid", "sleep 5");
-        let killed = kill_bash_job("bash-kill-nopid");
+        let killed = kill_bash_job("bash-kill-nopid", None);
         assert_eq!(killed.outcome, BashJobKillOutcome::NoPid);
         // Still listed: nothing was signalled, so nothing has stopped.
-        assert!(list_bash_jobs()
+        assert!(list_bash_jobs(None)
             .iter()
             .any(|j| j.job_id == "bash-kill-nopid"));
         let _ = bash_jobs().lock().unwrap().remove("bash-kill-nopid");
@@ -2237,13 +2571,13 @@ mod bash_job_registry_tests {
     async fn a_killed_job_still_hands_over_what_it_printed() {
         let tx = park_with_pid("bash-kill-partial", "sleep 300", Some(u32::MAX - 3));
 
-        let killed = kill_bash_job("bash-kill-partial");
+        let killed = kill_bash_job("bash-kill-partial", None);
         assert_eq!(killed.outcome, BashJobKillOutcome::Killed);
 
         // The detached collector resolves when the shell dies.
         tx.send("half a line before the kill".to_string()).unwrap();
         assert_eq!(
-            await_bash_job("bash-kill-partial").await,
+            await_bash_job("bash-kill-partial", None).await,
             "half a line before the kill"
         );
     }
@@ -2256,11 +2590,11 @@ mod bash_job_registry_tests {
         let _tx = park_with_pid("bash-kill-twice", "sleep 300", Some(u32::MAX - 4));
 
         assert_eq!(
-            kill_bash_job("bash-kill-twice").outcome,
+            kill_bash_job("bash-kill-twice", None).outcome,
             BashJobKillOutcome::Killed
         );
         assert_eq!(
-            kill_bash_job("bash-kill-twice").outcome,
+            kill_bash_job("bash-kill-twice", None).outcome,
             BashJobKillOutcome::NoPid
         );
         let _ = bash_jobs().lock().unwrap().remove("bash-kill-twice");
@@ -2270,7 +2604,7 @@ mod bash_job_registry_tests {
     async fn listing_reports_a_running_job_without_consuming_it() {
         let tx = park("bash-listing-running", "sleep 5");
 
-        let listed = list_bash_jobs();
+        let listed = list_bash_jobs(None);
         let job = listed
             .iter()
             .find(|j| j.job_id == "bash-listing-running")
@@ -2281,7 +2615,7 @@ mod bash_job_registry_tests {
 
         // The output still reaches the collector: listing took nothing.
         tx.send("done at last".to_string()).unwrap();
-        assert_eq!(await_bash_job("bash-listing-running").await, "done at last");
+        assert_eq!(await_bash_job("bash-listing-running", None).await, "done at last");
     }
 
     #[tokio::test]
@@ -2291,42 +2625,207 @@ mod bash_job_registry_tests {
         let tx = park("bash-peek-finished", "echo hi");
         tx.send("hi\n".to_string()).unwrap();
 
-        let listed = list_bash_jobs();
+        let listed = list_bash_jobs(None);
         let job = listed
             .iter()
             .find(|j| j.job_id == "bash-peek-finished")
             .expect("the job should be listed");
         assert!(job.finished, "the command has produced its output");
 
-        assert_eq!(await_bash_job("bash-peek-finished").await, "hi\n");
+        assert_eq!(await_bash_job("bash-peek-finished", None).await, "hi\n");
     }
 
     #[tokio::test]
     async fn a_job_outlives_the_call_that_backgrounded_it() {
         let tx = park("bash-outlives", "long build");
         // Nothing collects it for now: it stays listed, still running.
-        assert!(list_bash_jobs()
+        assert!(list_bash_jobs(None)
             .iter()
             .any(|j| j.job_id == "bash-outlives" && !j.finished));
 
         tx.send("built".to_string()).unwrap();
         // Finishing does not remove it either — only collection does.
-        assert!(list_bash_jobs()
+        assert!(list_bash_jobs(None)
             .iter()
             .any(|j| j.job_id == "bash-outlives" && j.finished));
 
-        assert_eq!(await_bash_job("bash-outlives").await, "built");
-        assert!(!list_bash_jobs().iter().any(|j| j.job_id == "bash-outlives"));
+        assert_eq!(await_bash_job("bash-outlives", None).await, "built");
+        assert!(!list_bash_jobs(None).iter().any(|j| j.job_id == "bash-outlives"));
     }
 
     #[tokio::test]
     async fn collecting_twice_reports_the_second_as_unknown() {
         let tx = park("bash-twice", "echo x");
         tx.send("x".to_string()).unwrap();
-        assert_eq!(await_bash_job("bash-twice").await, "x");
-        assert!(await_bash_job("bash-twice")
+        assert_eq!(await_bash_job("bash-twice", None).await, "x");
+        assert!(await_bash_job("bash-twice", None)
             .await
             .contains("already-collected"));
+    }
+
+    fn park_owned(job_id: &str, command: &str, owner: &str) -> tokio::sync::oneshot::Sender<String> {
+        let tx = park(job_id, command);
+        bash_jobs().lock().unwrap().get_mut(job_id).unwrap().owner = Some(owner.to_string());
+        tx
+    }
+
+    /// A job id learned in one conversation reaches nothing from another:
+    /// not a listing, not a status, not a collection, not a kill -- and the
+    /// refusal reads exactly like "no such job", so it confirms nothing.
+    #[tokio::test]
+    async fn another_conversations_job_is_invisible_and_untouchable() {
+        let tx = park_owned("bash-owned-a", "make build", "session-a");
+
+        assert!(list_bash_jobs(Some("session-b"))
+            .iter()
+            .all(|j| j.job_id != "bash-owned-a"));
+        assert!(list_bash_jobs(None).iter().all(|j| j.job_id != "bash-owned-a"));
+        assert!(inspect_bash_job("bash-owned-a", Some("session-b")).is_none());
+        assert_eq!(
+            kill_bash_job("bash-owned-a", Some("session-b")).outcome,
+            BashJobKillOutcome::Unknown
+        );
+        tx.send("secret build log".to_string()).unwrap();
+        let stolen = await_bash_job("bash-owned-a", Some("session-b")).await;
+        assert!(stolen.contains("unknown or already-collected"), "{stolen}");
+        assert!(!stolen.contains("secret build log"));
+        assert!(bash_job_status_text("bash-owned-a", Some("session-b")).starts_with("ERROR"));
+
+        // Its own conversation still gets it, exactly once.
+        assert!(list_bash_jobs(Some("session-a"))
+            .iter()
+            .any(|j| j.job_id == "bash-owned-a"));
+        assert_eq!(
+            await_bash_job("bash-owned-a", Some("session-a")).await,
+            "secret build log"
+        );
+    }
+
+    /// A status check shows state and recent output and leaves the result for
+    /// the collector.
+    #[tokio::test]
+    async fn a_status_check_never_takes_the_output() {
+        let tx = park_owned("bash-status", "cargo test", "s-status");
+        bash_jobs()
+            .lock()
+            .unwrap()
+            .get("bash-status")
+            .unwrap()
+            .tail
+            .lock()
+            .unwrap()
+            .push("running 12 tests\n");
+
+        let running = bash_job_status_text("bash-status", Some("s-status"));
+        assert!(running.contains("state=running"), "{running}");
+        assert!(running.contains("running 12 tests"), "{running}");
+
+        tx.send("test result: ok\n[exit 0]".to_string()).unwrap();
+        let done = bash_job_status_text("bash-status", Some("s-status"));
+        assert!(done.contains("finished (exit 0)"), "{done}");
+        assert!(done.contains("waiting"), "{done}");
+        // Still collectable, once.
+        assert_eq!(
+            await_bash_job("bash-status", Some("s-status")).await,
+            "test result: ok\n[exit 0]"
+        );
+        assert!(bash_job_status_text("bash-status", Some("s-status")).starts_with("ERROR"));
+    }
+
+    /// What the panel and the model are shown of a command never carries its
+    /// credentials, and neither does its recent output.
+    #[tokio::test]
+    async fn listed_commands_and_peeked_output_are_redacted() {
+        let _tx = park_owned(
+            "bash-redact",
+            "curl -H token=sk-live1234567890abcdefgh https://api.example.com",
+            "s-redact",
+        );
+        bash_jobs()
+            .lock()
+            .unwrap()
+            .get("bash-redact")
+            .unwrap()
+            .tail
+            .lock()
+            .unwrap()
+            .push("using PGPASSWORD=hunter2hunter2\n");
+        let listed = list_bash_jobs(Some("s-redact"));
+        let job = listed.iter().find(|j| j.job_id == "bash-redact").unwrap();
+        assert!(!job.command.contains("sk-live"), "{}", job.command);
+        let status = bash_job_status_text("bash-redact", Some("s-redact"));
+        assert!(!status.contains("hunter2"), "{status}");
+        assert!(!status.contains("sk-live"), "{status}");
+        let _ = bash_jobs().lock().unwrap().remove("bash-redact");
+    }
+
+    /// Finished work reports how it ended; a stop request is recorded as such.
+    #[tokio::test]
+    async fn a_finished_job_reports_its_exit_and_a_stopped_one_says_so() {
+        let tx = park_owned("bash-exit", "false", "s-exit");
+        tx.send("nope\n[exit 3]".to_string()).unwrap();
+        let st = inspect_bash_job("bash-exit", Some("s-exit")).unwrap();
+        assert!(st.finished && st.output_available);
+        assert_eq!(st.exit_code, Some(3));
+        assert!(st.finished_at_ms.is_some());
+        assert!(!st.stopped_by_request);
+        let _ = await_bash_job("bash-exit", Some("s-exit")).await;
+
+        let _tx2 = park_with_pid("bash-stopped", "sleep 300", Some(u32::MAX - 9));
+        assert_eq!(kill_bash_job("bash-stopped", None).outcome, BashJobKillOutcome::Killed);
+        assert!(inspect_bash_job("bash-stopped", None).unwrap().stopped_by_request);
+        let _ = bash_jobs().lock().unwrap().remove("bash-stopped");
+    }
+
+    /// The registry is bounded per conversation: the oldest finished job makes
+    /// room, and with every job still running a new one is refused.
+    #[tokio::test]
+    async fn a_conversation_holds_a_bounded_number_of_jobs() {
+        let owner = "s-bound";
+        let mut senders = Vec::new();
+        for n in 0..MAX_JOBS_PER_OWNER {
+            let id = format!("bash-bound-{n}");
+            senders.push(park_owned(&id, "sleep 300", owner));
+            bash_jobs().lock().unwrap().get_mut(&id).unwrap().started_at_ms = 1_000 + n as u64;
+        }
+        assert!(!make_room_for(Some(owner)), "every job is running: no room");
+        // Another conversation is unaffected by this one's limit.
+        assert!(make_room_for(Some("s-other")));
+
+        senders.remove(3).send("done\n[exit 0]".to_string()).unwrap();
+        assert!(make_room_for(Some(owner)));
+        assert!(
+            inspect_bash_job("bash-bound-3", Some(owner)).is_none(),
+            "the finished job made room"
+        );
+        for n in 0..MAX_JOBS_PER_OWNER {
+            let _ = bash_jobs().lock().unwrap().remove(&format!("bash-bound-{n}"));
+        }
+    }
+
+    #[test]
+    fn job_ids_carry_a_per_process_prefix() {
+        let p = job_id_prefix();
+        assert_eq!(p.len(), 5);
+        assert!(p.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(p, job_id_prefix(), "stable within the process");
+    }
+
+    #[test]
+    fn the_live_tail_is_bounded_and_keeps_the_end() {
+        let mut tail = LiveTail::default();
+        tail.push(&"a".repeat(JOB_TAIL_BYTES));
+        tail.push("é the end");
+        assert!(tail.text.len() <= JOB_TAIL_BYTES + 1);
+        assert!(tail.text.ends_with("the end"));
+        assert!(tail.dropped > 0);
+    }
+
+    #[test]
+    fn the_exit_marker_is_read_from_the_last_line_that_has_one() {
+        assert_eq!(exit_code_of("x\n[exit 0]"), Some(0));
+        assert_eq!(exit_code_of("[exit 1]\nmore\n[exit 7]\n[output truncated at 1 of 2 bytes]"), Some(7));
+        assert_eq!(exit_code_of("[terminated by signal]"), None);
     }
 }
 

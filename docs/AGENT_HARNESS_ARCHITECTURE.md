@@ -536,6 +536,45 @@ context measurement, checkpoints and compatibility ingestion. Citing
 "Phase 5" without saying which document is a defect; cite `AH-###` or a
 blueprint section number.
 
+## Background tasks: lifecycle and control (AH-101 / AH-102)
+
+There is one task system, with three sources that feed one record:
+
+- **Background shell commands** -- the agent-tools job registry
+  (`tools/handlers.rs`). `bash {"command", "background": true}` backgrounds at
+  once (a timeout given with it means "wait this long first") and returns a
+  job id `bash-<process prefix>-<n>`; the prefix keeps ids from a previous app
+  run from ever naming a new job. With no command, `bash` manages jobs:
+  `{"action": "list"}`, `{"job_id"}` to await and collect (exactly once),
+  `{"job_id", "action": "status"}` for state and recent output without
+  consuming anything, `{"job_id", "action": "cancel"}` to kill the process
+  tree. Every job belongs to the conversation that started it (`job_owner`,
+  the thread id on the desktop); another conversation's job reads as "no such
+  job" everywhere, including the Tauri `bash_jobs_list` / `bash_job_kill`
+  commands. Each owner holds at most 32 jobs; the oldest finished job makes
+  room, and with all 32 running a new one is refused and stopped. Commands and
+  peeked output are redacted with `audit::redact`.
+- **Subagents in the Rust loop** -- `BackgroundSubagents` (`subagent.rs`).
+  Each child's life is one atomic phase (queued, running, finished,
+  cancelled) moved only by compare-and-swap, so a cancel and the child's own
+  progress cannot both win. `list_subagent_runs` lists the run's children;
+  `cancel_subagent` takes a queued child out of the queue before it starts or
+  aborts a running one, settles its checkout and announces its end once.
+  Parent teardown cancels every child (`AbortOnDrop`); a clean parent exit
+  waits for them (`join_all`).
+- **Cowork subagents and commands** -- recorded by `coworkActivityRecorder`
+  into `coworkActivity`, the model the Background Tasks panel, the workflow
+  card and the chip all read. A child is stopped through its own
+  `AbortController`, a command through `bash_job_kill` scoped to the session.
+  A failed stop is kept on the row (`cancelError`), not only toasted.
+
+Nothing survives an app exit: graceful shutdown reaps every process tree the
+plugin started, and subagent futures end with the process. On the next start
+`settleOnLoad` marks anything left in flight `interrupted` with the reason
+"Interrupted by application exit" and drops its job id, so the record can
+never show it running. There is no durable worker, which is why AH-101's
+persistence criterion is open.
+
 ## Tool activity: the canonical record (AH-050) and the timeline (AH-172)
 
 Two logs, deliberately separate:
@@ -547,17 +586,40 @@ Two logs, deliberately separate:
   `awaiting-permission`, `allowed`, `refused`, `running`, `succeeded`,
   `failed`, `cancelled`, `stale`, `timed-out`.
 
-**One way in.** `web-app/src/lib/coworkDispatch.ts` routes every tool call in
-the app -- the main agent's, a subagent's, a background task's, an MCP
-server's, a skill's -- and `withToolActivity` wraps that one function. A tool
-added later is covered without being told to be, and there is no second path
-that could execute something the record does not show.
+**Two ways in, one wrapper.** Cowork routes every tool call -- the main
+agent's, a subagent's, a background task's, an MCP server's, a skill's --
+through `coworkDispatch.ts`; Chat runs its tool calls in the thread route's
+tool loop (`routes/threads/$threadId.tsx`). Both wrap execution in
+`withToolActivity`, and both record the permission phases around it, so a
+tool added later is covered without being told to be. The Rust agent loop
+(CLI) does not write this record yet.
 
-**Ordering.** `activity::items` folds the log into one item per call, ordered
-by when each was *requested*. Two concurrent calls therefore read in the order
-they were made however their results interleave. Recording is queued rather
-than awaited (`toolActivity.ts`), so a tool never waits on its own audit line,
-and the queue is what stops `running` landing after `succeeded`.
+**What an event carries (schema v2).** Identity (session, run, call,
+invocation, agent, source, the parent task, a call it supersedes), a sequence
+number stamped as the line is written, the call's redacted input (bounded to
+4 KB) on its request, and its redacted output (the last 16 KB, flagged when
+cut) on its end. Output that was never recorded reads as `unavailable`, never
+as an empty success. A background job's id, a subagent's task id, and the file
+a call changed with its own `+added/-removed` counts. The unified diff of that
+change is stored beside the log (`audit/diffs/<session>/<call>.diff`, redacted,
+up to 512 KB; larger is counted and marked oversized) and read back with
+`tool_activity_diff` -- it is that edit's diff, not the repository's current
+one. Lines written before v2 still read.
+
+**Lifecycle events.** The run's own events -- a context compaction or trim, a
+subagent waiting for a slot, a subagent or background job stopped (or a stop
+that failed) -- are items in the same log and the same sequence, marked
+`event_type: lifecycle`. There is no separate store for them.
+
+**Ordering.** `activity::items` folds the log into one item per call, keyed by
+session *and* call (a provider's call id is not unique across sessions),
+ordered by when each was *requested*. Two concurrent calls therefore read in
+the order they were made however their results interleave. Recording is queued
+rather than awaited (`toolActivity.ts`), so a tool never waits on its own audit
+line, and the queue is what stops `running` landing after `succeeded`.
+
+**Export.** `audit_export(session)` returns one JSON document with the
+session's permission decisions and its execution record (AH-200).
 
 **Restart.** `settle_unfinished` runs in `.setup()` before the window opens:
 a call left `running` by a killed process becomes `stale`, since nothing

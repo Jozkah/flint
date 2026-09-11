@@ -116,6 +116,7 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 | Per-agent worktrees | not run | not run | passed (managed worktree through the UI, mock provider) | passed |
 | Desktop agent surfaces | not run | not run | not run | not run |
 | Tool activity record and timeline (AH-050/AH-172) | not run | passed | passed (mock provider) | passed |
+| Native title bar and window placement | not run (config unchanged: borderless, app-drawn controls) | not run (config unchanged: overlay title bar) | passed (real mouse input, restart in a new process) | passed |
 
 ## Known blockers
 
@@ -149,6 +150,98 @@ Run: `cargo test --lib activity::` and
 `cargo run --example cowork-smoke --features cowork-smoke -- --only tool-activity-timeline`.
 
 
+## Native Windows title bar and window placement
+
+The Windows window uses the operating system's own title bar
+(`decorations: true` in `tauri.windows.conf.json`). The app no longer draws
+caption buttons there, declares no `data-tauri-drag-region` under a native
+bar, and has no full-width strip over the top of the page. macOS keeps its
+overlay title bar and Linux its borderless window; neither configuration
+changed, and neither was run.
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 14 unit tests | `src-tauri/src/core/window_state.rs` | a frame on screen comes back exactly; logical size survives a monitor with different scaling; a record for an unplugged monitor, or with its title bar off every screen, falls back to the default; a frame hanging off an edge is pulled back inside; oversize and undersize frames are clamped; nonsense sizes fall back; maximised survives restore and fallback; the normal frame is the OS placement's, whether the window is maximised or minimised (Windows parks a minimised one at -32000); sizes are logical; corrupt and older records load safely |
+| 10 unit tests | `web-app/src/containers/__tests__/HeaderPage.test.tsx` | no drag region and no reserved caption-button room under a native title bar; the drag region and its clickable controls where the app draws its own chrome. The three native-bar tests fail against the previous header |
+| 3 unit tests | `web-app/src/routes/__tests__/__root.test.tsx` | no app-drawn caption buttons, grips or top strip under a native title bar; drawn only for the borderless window |
+| 5 + 9 unit tests | `web-app/src/lib/__tests__/titlebar.test.ts`, `windowTitle.test.ts` | who draws the chrome per platform; the window title names the chat or Cowork session and project folder without any path |
+| Real Windows scenario, real mouse input | `cowork-smoke --only window-chrome` with `COWORK_SMOKE_REAL_INPUT=1` and `COWORK_SMOKE_KEEP=<dir>` | starts unmaximised; drags by the native caption and the frame moves by exactly the pointer's travel with no resize; minimise button, then restore; double-click maximises and restores to the same frame; minimise again after that restore; maximise/restore caption button; a button just under the title bar receives a trusted click and the window does not move; the band under the title bar hit-tests as client area end to end; no drag region in the page; the record is written with the normal frame and `maximized: true` |
+| Restart in a new process | `cowork-smoke --only window-chrome-restart`, same `COWORK_SMOKE_KEEP` | the window comes back visible, on a monitor, maximised, and restoring it returns exactly the normal frame the first process left |
+
+Aim at what is drawn. On Windows 11 `WM_NCHITTEST` still answers with the
+legacy caption-button geometry, which is narrower than the buttons DWM draws;
+its "minimise" centre sits on the visible maximise button, and a real press
+there maximises -- a plain WinForms window does the same. The scenario aims
+through `DWMWA_CAPTION_BUTTON_BOUNDS`, as a person aims at the drawn button.
+Its first six runs aimed through the hit test and failed at the minimise step
+for that reason; the logs are kept in `C:\tmp\jan-dwi\logs\wc-1..6-first.log`.
+
+The scenario also drags the window by its title bar onto the second monitor
+and checks it lands there with the same logical size. That step found a real
+defect: the first implementation rebuilt the normal frame from debounced move
+and resize events, so a move made just before a maximise was lost and the
+record kept the other monitor's position (`FIRST-FAILURE-mm1-first.log`, 3 of
+3 runs). The normal frame is now read from `GetWindowPlacement` and restored
+with `SetWindowPlacement` while the window is hidden. The same change removed
+a restart race in which tao's queued move landed after the maximise
+(`FIRST-FAILURE-rep2-restart.log`, 1 of 4 restarts).
+
+Run history on this host (two 100% monitors), every run a new pair of
+processes:
+
+| Build | Runs | Result |
+| --- | --- | --- |
+| hit-test aiming | 6 | failed at the minimise step (harness aim, see above) |
+| DWM aiming, event-built record | 1 + 3 + 5 | 7 passed; 1 restart came back unmaximised (race); 2 failed under concurrent desktop use (foreground lost, pointer on the other monitor mid-drag) |
+| + cross-monitor step | 3 | 3 failed: record kept the other monitor (defect, fixed) |
+| placement record | 3 | 3 passed, first run and restart |
+
+Not verified: monitors with different scaling (both monitors here are 100%;
+the placement logic is unit-tested for it), Snap Layouts flyout selection,
+macOS and Linux. The real-input scenario moves the desktop's actual pointer,
+so a person using the machine at the same time can fail it; the failure
+message then says whether the window still had the foreground.
+
+## Background tasks: lifecycle, isolation and restart (AH-101 / AH-102)
+
+One task system, extended rather than duplicated: background `bash` jobs live
+in the agent-tools plugin's job registry, subagents in the Rust loop's
+`BackgroundSubagents` and the Cowork runner, and the desktop records both in
+the canonical activity model (`coworkActivity`) that the Background Tasks
+panel, the inline workflow card and the activity chip all read.
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| unit tests | `plugins/tauri-plugin-agent-tools/src/tools/handlers.rs` (`bash_job_registry_tests`) | another conversation's job is invisible and untouchable (list, status, collect, kill all read as "no such job"); a status check shows state and recent output and never takes the result; listed commands and peeked output are redacted; a finished job reports its exit code, a stopped one says so; the registry is bounded per conversation (oldest finished job makes room, all-running refuses); job ids carry a per-process prefix; the live tail is bounded and keeps the end |
+| unit tests | `src-tauri/src/core/agent/subagent.rs` | one running child cancelled while its sibling finishes; a queued child cancelled before it starts, releasing its queue count exactly once and never taking a slot; finished, unknown and repeated cancels reported as such; teardown after a cancel announces nothing twice; the two new tools are routed to the subagent handler |
+| unit tests | `web-app/src/lib/__tests__/coworkBackgroundLifecycle.test.ts` | restart marks live work *interrupted by application exit*, never running; older `cancelled` + restart records read the same way; a late event cannot revive interrupted work; job lookup confined to the session; a finished job's exit code, signal or stop request decides its row; only a collection settles a row; no credential from a command line or its output reaches the stored record; the end of a long log is kept |
+| unit tests | `coworkCancel.test.ts`, `CoworkTasksPanel.test.tsx` | kills are scoped to the session; a failed stop stays on the row; kind in words, exit code, start/end time, copy of the whole output; finished workflows render a bounded page |
+| Real Windows app, real IPC | `cowork-smoke --only background-job-isolation` | `execute_tool` runs `bash {"background": true}` in the confined shell (PowerShell 5.1 in AppContainer on this host) and gets a job id at once; another session's `bash_jobs_list` shows nothing and its `bash_job_kill` answers `unknown` without stopping anything; the listed command is redacted; the owner's kill reports `killed`, the job says `stoppedByRequest`, and the kernel shows the job's `ping` gone (1 process before, 0 after); another session's collection is refused; the owner collects once and a second collection is refused. **Passed on Windows 2026-09-11.** Its first two runs failed on the scenario's own command (`&&` is not a PowerShell 5.1 separator; logs `FIRST-FAILURE-bgjob.log`, `bgjob-2.log`) |
+| Mutation checks | `C:\tmp\jan-dwi\mut2.sh` | removing the owner check on collection, the queue-count release on a queued cancel, output redaction, or the `interrupted` restart state each fails its test |
+
+### Restart semantics
+
+Jobs and subagents are run-scoped: nothing keeps running once the app exits
+(`proc::kill_all` reaps every process tree at graceful exit; subagent futures
+die with the process). After a restart the record is truthful rather than
+hopeful -- anything left in flight is `interrupted` with the reason
+"Interrupted by application exit", its stale job id is dropped, and it can
+never be shown as running. No durable worker exists, so AH-101's persistence
+criterion is not met and the item is `in-progress`.
+
+## Execution record v2: one contract for Chat and Cowork (AH-050 / AH-200)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 23 unit tests | `plugins/tauri-plugin-agent-tools/src/activity.rs` | one item per call; request order under interleaved results; refusal, cancellation, failure and interruption distinct; sequence numbers continue across a restart; version-1 lines and lines with fields from a later build (a snapshot id, token usage) still read; a damaged line costs that line only; two sessions reusing a call id stay two items with stable `session|call` ids; an edit keeps its own diff and +/- counts; an oversized diff is counted, not kept; a diff path cannot leave the audit folder; input bounded to its start, output to its end, unrecorded output reads `unavailable`; no credential reaches the log or a stored diff; lifecycle events (compaction, steering) share the sequence; the export joins decisions and activity for one session only |
+| 10 unit tests | `web-app/src/lib/__tests__/toolActivityRecord.test.ts` | Chat and Cowork write the same event keys, each under its own session; input on the request, outcome and diff on the end; a chat-shaped error is a failure; a background job id and exit code are captured; an aborted run is cancelled; the outcome is passed through untouched; a huge input is bounded; lifecycle events; a stored diff is read by session and call, and is unavailable rather than empty when missing |
+| Real Windows app, real IPC | `cowork-smoke --only execution-record` then, in a new process on the same profile, `--only execution-record-restart` | events written through `tool_activity_record` read back from `tool_activity_items` in sequence with the edit's +2/-1 counts, the compaction lifecycle item, the failed command's exit code; no credential in the items or the stored diff; another session cannot read the diff; `audit_export` is scoped to the session and refuses an empty one; after a restart the same items come back in the same order with the same states. **Passed on Windows 2026-09-11** |
+
+Run history for batch 3 (retries disabled): first combined run -- `background-job-isolation` failed because `ping` in the AppContainer reported "Unable to contact IP driver" and ended before the kill (the scenario now sleeps instead); second -- `tool-activity-timeline` failed on a WebView stall (the page stopped answering scripts); third, and `tool-activity-timeline` alone -- all passed. Logs: `.dwi-artifacts/logs/gate-b3final`, `gate-b3scen2`, `gate-b3scen3` in the session worktree.
+
+Steering is represented only as a lifecycle name (`lifecycle: "steering"`); no steering implementation is imported here. Prompt snapshots and token usage attach later through the existing `invocation` join key and optional fields, which older and newer builds both tolerate -- no second event store.
+
+Recommendation for the per-edit timeline diff (not implemented): generate a standard unified diff in the backend from trusted before/after snapshots (the undo journal already captures both), rather than treating the tool's custom display diff as authoritative.
 ## Memory proposals: the approval card (AH-045-adjacent, memory path)
 
 | Evidence | Where | Covers |

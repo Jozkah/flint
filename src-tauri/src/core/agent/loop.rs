@@ -693,6 +693,22 @@ impl CompositeToolInvoker {
                 let registry = SubagentRegistry::load(&self.project_root);
                 format_subagent_list(&registry)
             }
+            // AH-102: the run's own children, listed and cancelled one at a
+            // time. Both are confined to this parent's registry, so a run id
+            // from another run names nothing here.
+            "list_subagent_runs" => {
+                crate::core::agent::subagent::format_subagent_runs(&ctx.bg.list())
+            }
+            "cancel_subagent" => {
+                let run_id = match parse_await_args(args) {
+                    Ok(r) => r,
+                    Err(e) => return format!("ERROR: {e}"),
+                };
+                crate::core::agent::subagent::format_subagent_cancel(
+                    &run_id,
+                    ctx.bg.cancel(&run_id),
+                )
+            }
             "dispatch_subagent" => {
                 let req = match parse_dispatch_args(args) {
                     Ok(r) => r,

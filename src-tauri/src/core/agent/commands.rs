@@ -1158,10 +1158,54 @@ pub async fn tool_activity_items(
     session: Option<String>,
 ) -> Result<Vec<tauri_plugin_agent_tools::activity::ToolActivityItem>, String> {
     let data_folder = get_jan_data_folder_path(app);
-    Ok(tauri_plugin_agent_tools::activity::items(
-        &data_folder,
-        session.as_deref(),
-    ))
+    // Off the async workers: a long session's log is real parsing work.
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::activity::items(&data_folder, session.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// The unified diff one call produced, as it was stored when the call ended.
+///
+/// Scoped by session and call, which is also how it was stored: an edit's diff
+/// is that edit's, never the repository's current aggregate. `None` when the
+/// call stored none -- it changed no file, the diff was oversized, or it ran
+/// before diffs were recorded -- and the timeline says which from the item.
+#[tauri::command]
+pub async fn tool_activity_diff(
+    app: tauri::AppHandle,
+    session: String,
+    call: String,
+) -> Result<Option<String>, String> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::activity::read_diff(&data_folder, &session, &call)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Everything the audit holds for one session -- permission decisions and the
+/// execution record -- as one reviewable JSON document. AH-200.
+///
+/// A session is required: an export of every conversation at once is not
+/// something a caller should get by omitting an argument.
+#[tauri::command]
+pub async fn audit_export(app: tauri::AppHandle, session: String) -> Result<String, String> {
+    if session.trim().is_empty() {
+        return Err("an audit export needs the session it is for".to_string());
+    }
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        serde_json::to_string_pretty(&tauri_plugin_agent_tools::activity::export(
+            &data_folder,
+            Some(&session),
+        ))
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Record what one dispatched payload cost. AH-073.
