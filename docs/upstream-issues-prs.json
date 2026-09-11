@@ -35,9 +35,9 @@
       "rejected": 31,
       "already-fixed": 84,
       "needs-user-hardware": 16,
-      "fixed": 30,
+      "fixed": 31,
       "adapted": 15,
-      "implementation-ready": 3,
+      "implementation-ready": 2,
       "cannot-reproduce": 3
     }
   },
@@ -73610,12 +73610,22 @@
       "registryIds": [],
       "decision": "fix",
       "decisionReason": "batch-3 P1 triage: cowork.tsx keeps one running state and one abort ref for the page, so Stop in session B aborts session A, and the model is global. Reimplement per session.",
-      "implementationStatus": "implementation-ready",
-      "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "implementationStatus": "fixed",
+      "forkCommits": [
+        "90de4da",
+        "b87b62b46"
+      ],
+      "tests": [
+        "web-app/src/hooks/__tests__/useCoworkRun.sessions.test.ts",
+        "web-app/src/routes/__tests__/cowork.sessions.test.tsx (two sessions through the real route; Stop while preparing / preparation failing)",
+        "web-app/src/lib/__tests__/coworkRunner.test.ts (Stop with an endless stream / a request not yet streaming)",
+        "web-app/src/lib/__tests__/coworkSessionLifecycle.test.ts",
+        "web-app/src/hooks/__tests__/useCoworkSessions.model.test.ts",
+        "src-tauri/examples/cowork_smoke.rs stop-cancels-only-the-selected-session"
+      ],
+      "verification": "Unit and route tests fail on the old code (mutation checks for a page-wide running flag, Stop aborting every run, a run not bound to its model; each new Stop test fails on the code before its fix). Real WebView on Windows 11 with the mock provider: two sessions streaming, Stop in B ends B within the wait, A still running 3 s later, both sessions record their model in settings.json; model-round-trip and tool-activity-timeline still pass. Mock provider only, not a real model.",
       "blockers": [],
-      "notes": null
+      "notes": "Attributed reimplementation on the fork architecture; see docs/UPls/8905-cowork-per-session-runs.md. The real-app scenario found three pre-existing waits Stop did not reach (preparation outside try/finally, sendMessages, stream reads)."
     },
     {
       "source": "janhq/jan",
