@@ -260,6 +260,22 @@ function ProviderDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerName, provider?.api_key, JSON.stringify(provider?.api_key_fallbacks ?? [])])
 
+  // The configured data folder, when this run could not use it (#8374, #8855).
+  const [unavailableDataFolder, setUnavailableDataFolder] = useState<
+    string | undefined
+  >()
+  useEffect(() => {
+    let alive = true
+    void Promise.resolve(serviceHub.app?.()?.getUnavailableJanDataFolder?.())
+      .then((path) => {
+        if (alive) setUnavailableDataFolder(path || undefined)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [serviceHub])
+
   useEffect(() => {
     if (provider?.provider !== 'azure') return
     setBaseUrlDraft(provider.base_url ?? '')
@@ -993,6 +1009,22 @@ function ProviderDetail() {
                   </Card>
                 )}
 
+              {/* janhq/jan#8374. A local model list read from the default data
+                  folder because the configured one could not be used is not
+                  an empty library: say so here, where the models are missing,
+                  not only in Settings > General. */}
+              {unavailableDataFolder &&
+                (provider?.provider === 'llamacpp' || provider?.provider === 'mlx') && (
+                  <p
+                    role="alert"
+                    data-testid="data-folder-unavailable-notice"
+                    className="text-xs text-destructive mb-2"
+                  >
+                    {t('providers:dataFolderUnavailable', {
+                      path: unavailableDataFolder,
+                    })}
+                  </p>
+                )}
               {/* Models */}
               <Card
                 header={
