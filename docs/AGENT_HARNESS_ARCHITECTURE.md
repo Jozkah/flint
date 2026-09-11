@@ -423,6 +423,14 @@ a silent gap. A session log is bounded at 32 MiB, and the oldest of more than
   `run.started`, `run.ended` (with `stoppedBy`), `agent.dispatched`,
   `job.started` and `job.ended`.
 
+**The Rust loop writes too.** The CLI and the desktop's own agent runs go
+through `CompositeToolInvoker`, which (with `record_to` set to the data
+folder) records each asked-for call before any gate and its ending --
+succeeded, failed, or a typed refusal -- with input, output and diff, under
+the run's session, run and agent, `source: agent-loop`; `orchestrate_inner`
+records `run.started` and `run.ended`. The loop's text streaming, steering and
+compaction are not written yet (AH-004).
+
 **One store (integration of AH-005 with AH-050's v2 record).** Before the
 integration, main wrote each tool phase twice -- to this log and to
 `audit/tool-activity.jsonl` -- and the desktop branch's v2 record wrote only

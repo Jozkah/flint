@@ -339,6 +339,11 @@ struct CompositeToolInvoker {
     /// forged `write` reached the gate and, under the CLI's auto-approval,
     /// ran. `None` = no allowlist. AH-094..099.
     allowed_tools: Option<std::collections::HashSet<String>>,
+    /// Jan's data folder, when this run's calls go into the session's
+    /// canonical execution record (AH-004/AH-050). The CLI and the desktop's
+    /// own agent runs write every call here, the same record the renderer
+    /// writes for Cowork and Chat. `None` records nothing (tests, proxies).
+    record_to: Option<std::path::PathBuf>,
     project_root: std::path::PathBuf,
     /// Where `memory/` and `skills/` live. Co-located with the project here, so
     /// the on-disk layout is unchanged; the desktop points this at its permanent
@@ -1090,6 +1095,89 @@ fn plan_mode_read_only_msg(name: &str) -> String {
 #[async_trait]
 impl ToolInvoker for CompositeToolInvoker {
     async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, String> {
+        self.record_requested(tool_calls);
+        let out = self.dispatch_calls(tool_calls).await;
+        if let Ok(outcomes) = &out {
+            self.record_outcomes(tool_calls, outcomes);
+        }
+        out
+    }
+}
+
+impl CompositeToolInvoker {
+    /// Who this run acts as, as the execution record names an agent.
+    fn agent_name(&self) -> String {
+        use tauri_plugin_agent_tools::subject::Subject;
+        match &self.subject {
+            Subject::MainAgent => "main".to_string(),
+            Subject::NamedAgent(n) | Subject::AgentRole(n) => n.clone(),
+            other => other.to_string(),
+        }
+    }
+
+    fn activity_event(
+        &self,
+        tc: &serde_json::Value,
+        phase: tauri_plugin_agent_tools::activity::Phase,
+    ) -> tauri_plugin_agent_tools::activity::ToolActivityEvent {
+        let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        let function = tc.get("function");
+        let name = function.and_then(|f| f.get("name")).and_then(|v| v.as_str()).unwrap_or("");
+        let mut e = tauri_plugin_agent_tools::activity::ToolActivityEvent::new(id, name, phase);
+        e.session = self.cancel_scope.session.clone();
+        e.run = self.cancel_scope.run.clone();
+        e.agent = self.agent_name();
+        e.source = "agent-loop".into();
+        e.project = self.project_root.to_string_lossy().to_string();
+        if phase == tauri_plugin_agent_tools::activity::Phase::Requested {
+            e.input = function
+                .and_then(|f| f.get("arguments"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+        }
+        e
+    }
+
+    /// Every call, as it is asked for, before any gate.
+    fn record_requested(&self, tool_calls: &[serde_json::Value]) {
+        let Some(data) = &self.record_to else { return };
+        for tc in tool_calls {
+            let e = self.activity_event(tc, tauri_plugin_agent_tools::activity::Phase::Requested);
+            tauri_plugin_agent_tools::activity::append(data, &e.redacted());
+        }
+    }
+
+    /// How each call ended: refused by the harness (typed), failed, or done,
+    /// with its output and its own diff.
+    fn record_outcomes(&self, tool_calls: &[serde_json::Value], outcomes: &[ToolOutcome]) {
+        use tauri_plugin_agent_tools::activity::Phase;
+        let Some(data) = &self.record_to else { return };
+        for outcome in outcomes {
+            let Some(tc) = tool_calls
+                .iter()
+                .find(|tc| tc.get("id").and_then(|v| v.as_str()) == Some(outcome.id.as_str()))
+            else {
+                continue;
+            };
+            let phase = if outcome.refusal.is_some() {
+                Phase::Refused
+            } else if outcome.content.starts_with("ERROR") {
+                Phase::Failed
+            } else {
+                Phase::Succeeded
+            };
+            let mut e = self.activity_event(tc, phase);
+            e.output = Some(outcome.content.clone());
+            e.refusal = outcome.refusal.map(|r| r.code().to_string());
+            if phase != Phase::Succeeded {
+                e.detail = outcome.content.chars().take(400).collect();
+            }
+            e.diff = outcome.diff.clone();
+            tauri_plugin_agent_tools::activity::append(data, &e.redacted());
+        }
+    }
+
+    async fn dispatch_calls(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, String> {
         use tauri_plugin_agent_tools::tools::{
             gate::{resolve_decision, Decision, PromptKind},
             handlers::{execute_builtin_with_diff, preview_diff, stage_change},
@@ -2265,6 +2353,8 @@ async fn orchestrate_inner(
         }
         let tools = CompositeToolInvoker {
             allowed_tools: allowed_names.clone(),
+            record_to: (!jan_data_folder.is_empty())
+                .then(|| std::path::PathBuf::from(jan_data_folder.as_str())),
             subject: subject.clone(),
             // One scope per run. A session-less run still gets a distinct run
             // id, so an application-wide stop reaches it while a stop aimed at
@@ -2303,6 +2393,25 @@ async fn orchestrate_inner(
         let run_registered = tauri_plugin_agent_tools::lifecycle::register(
             tauri_plugin_agent_tools::lifecycle::Token::new(tools.cancel_scope.clone()),
         );
+        // AH-004: this run's start and end in the session's canonical log, in
+        // sequence with its calls. Only a run with a session has a log.
+        let record_run = |kind: &str, payload: serde_json::Value| {
+            if let (Some(data), false) = (&tools.record_to, tools.cancel_scope.session.is_empty()) {
+                let run = tools.cancel_scope.run.clone();
+                let _ = tauri_plugin_agent_tools::event_log::append(
+                    data,
+                    tauri_plugin_agent_tools::event_log::NewEvent {
+                        id: format!("run:{run}:{}", kind.trim_start_matches("run.")),
+                        session: tools.cancel_scope.session.clone(),
+                        run,
+                        invocation: String::new(),
+                        kind: kind.to_string(),
+                        payload,
+                    },
+                );
+            }
+        };
+        record_run("run.started", serde_json::json!({ "model": model_id, "source": "agent-loop" }));
         let result = tauri_plugin_agent_tools::lifecycle::with_current(
             run_registered.token().clone(),
             run_turn_cycle(
@@ -2322,6 +2431,13 @@ async fn orchestrate_inner(
             ),
         )
         .await;
+        record_run(
+            "run.ended",
+            serde_json::json!({
+                "stoppedBy": if result.is_ok() { "done" } else { "error" },
+                "source": "agent-loop",
+            }),
+        );
         // On a clean exit, wait for any subagents the model dispatched but never
         // explicitly awaited, so their in-flight work isn't aborted and lost by
         // `_bg_guard`. On an error, teardown still aborts them.
@@ -5300,6 +5416,7 @@ mod tests {
     ) -> CompositeToolInvoker {
         CompositeToolInvoker {
             allowed_tools: None,
+            record_to: None,
             // Tests run one dispatch at a time; a fixed scope is enough to
             // exercise the token without colliding with another run.
             cancel_scope: tauri_plugin_agent_tools::lifecycle::Scope::default(),
@@ -5484,6 +5601,44 @@ mod tests {
             assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "keep\n", "{} edited a file", role.name);
             let _ = std::fs::remove_dir_all(&root);
         }
+    }
+
+    /// AH-004/AH-050: the Rust loop's calls go into the session's canonical
+    /// execution record -- each asked-for call, and how it ended, typed
+    /// refusals included -- under the run's session, run and agent.
+    #[tokio::test]
+    async fn the_loops_calls_are_recorded_in_the_session_log() {
+        let root = std::env::temp_dir().join(format!("jan_loop_record_{}", std::process::id()));
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).expect("create data");
+        let (tx, _rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            registry,
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::NamedAgent("reviewer".to_string()),
+        );
+        invoker.record_to = Some(data.clone());
+        invoker.cancel_scope = tauri_plugin_agent_tools::lifecycle::Scope::new("cli-s1", "cli-s1#run-1", "");
+        invoker.allowed_tools = Some(["ls".to_string()].into_iter().collect());
+        let calls = vec![
+            serde_json::json!({ "id": "c1", "type": "function", "function": { "name": "ls", "arguments": "{\"path\":\".\"}" } }),
+            serde_json::json!({ "id": "c2", "type": "function", "function": { "name": "write", "arguments": "{\"path\":\"x\",\"content\":\"y\"}" } }),
+        ];
+        invoker.invoke(&calls).await.expect("dispatch");
+        let items = tauri_plugin_agent_tools::activity::items(&data, Some("cli-s1"));
+        assert_eq!(items.len(), 2, "{items:?}");
+        let ls = items.iter().find(|i| i.call == "c1").unwrap();
+        assert_eq!(ls.phase, tauri_plugin_agent_tools::activity::Phase::Succeeded);
+        assert_eq!(ls.agent, "reviewer");
+        assert_eq!(ls.run, "cli-s1#run-1");
+        let write = items.iter().find(|i| i.call == "c2").unwrap();
+        assert_eq!(write.phase, tauri_plugin_agent_tools::activity::Phase::Refused);
+        assert_eq!(write.refusal.as_deref(), Some("tool-not-offered"));
+        assert_eq!(write.history.len(), 2, "requested, then refused -- one event each");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Without an allowlist nothing is refused this way: the check only ever
