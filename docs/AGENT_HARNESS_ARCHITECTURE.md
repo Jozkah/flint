@@ -577,6 +577,24 @@ enabling tools, posing as a system prompt, closing the memory block) is
 refused. Remembered facts are rendered inside `<remembered_facts>` as sealed
 single lines, so stored text cannot start a heading or close the block.
 
+**Durability and trust boundaries (Priority 4).** Every read-modify-write of a
+scope's file (save, forget, restore, clear, use records) runs under a per-scope
+lock file created exclusively beside the store, so concurrent windows cannot
+lose each other's records; a lock older than 30 s is taken over, and a writer
+that cannot get it in 5 s is refused with "busy" rather than overwriting. The
+rewrite stays temp-and-rename, so an interrupted write leaves the previous
+file, and a store that cannot be read at all is never overwritten with what
+little was readable. The project folder the renderer names is validated
+before anything is written inside it: it must resolve to a real directory,
+not a filesystem root, not overlap the Jan data folder, and its `.jan` and
+`.jan/agent` must not be symlinks or junctions (Windows reparse points
+included); a refused folder gets no project memory and the reason is reported
+to the page and the turn. Saving refuses credentials, authority claims and
+records over 2,000 characters, and a scope holds at most 2,000 live records.
+The memory module writes nothing to logs; a test checks its sources. Commands
+do their file work synchronously inside one call, so an abandoned request is
+either entirely before or entirely after its single atomic write.
+
 Memory can never grant a permission, move the workspace boundary, enable a
 tool, or override the current request: it is text in a labelled block, and the
 gate, the sandbox and the tool list are decided before and without it. Two

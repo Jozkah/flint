@@ -551,6 +551,45 @@ integration, line endings, formatters); disagreements outside it are not
 detected. Cowork delivers no skill text to the model, so there is nothing for
 a Cowork memory to contradict at level 6; skills are enforced on the CLI path.
 
+## Memory security and durability (Priority 4)
+
+| Threat | Evidence |
+| --- | --- |
+| Prompt injection stored as memory | refused when saved (`security_tests::an_injection_is_refused_when_it_is_saved`, and on the page in `memory-security`); one already in the store is refused at retrieval (`memory-precedence` plants one) and shown on the turn |
+| Secrets, API keys, auth headers, private keys | refused when saved (`credentials_are_refused`: OpenAI-style key, bearer token, OpenSSH private key, AWS keys) |
+| Oversized records and collections | 2,000-character record limit (`create.rs` existing test); 2,000 live records per scope (`a_full_scope_refuses_more`) |
+| Path traversal, filesystem root, data-folder overlap | `a_named_project_folder_is_validated_before_anything_is_written_into_it`: unresolvable `..` paths, the Jan data folder and anything inside it, and `C:\` are refused and nothing is written |
+| Symlink/junction/reparse escape | `a_junctioned_jan_folder_is_refused_and_nothing_is_written_through_it` (real `mklink /J`); WebView `memory-security` attaches a checkout whose `.jan` is a junction: the turn reports why project memory was not used, a project save is refused, and the junction target stays empty |
+| Cross-scope leakage; same-named unrelated repositories | `memory-session-*`, `memory-project-*` (same folder name, different repository), `conflicts_are_listed_...only_where_they_apply`, `uses_are_only_recorded_on_records_this_place_may_see` |
+| Concurrent writers | `concurrent_writers_do_not_lose_each_others_records`: 8 threads x 10 records, all 80 present, no lock left; an abandoned lock is taken over after 30 s, a live one makes a writer report "busy" |
+| Interrupted atomic writes, corrupt and partial records | `an_interrupted_write_leaves_the_store_as_it_was` (a half-written temp file is ignored, the next write succeeds); torn lines skipped and reported (`damaged_or_unreadable_storage_is_reported_to_the_caller`); an unreadable store is never overwritten |
+| Stale versions | `service.rs::editing_refuses_a_stale_hash`; restore requires the exact forgotten text (`restoring_with_different_text_is_refused`) |
+| Deletion leaving plaintext or index entries | forget and clear remove the text from the file (`forgetting_removes_the_text_from_the_store_file`, WebView `memory-user-after-restart`); there is no separate memory index since the BM25 index was removed |
+| Cancellation during create/update/delete | each command does its file work synchronously in one call with a single atomic write under the scope lock, so an abandoned request is wholly before or after it; not separately fault-injected |
+| Subagent access | Cowork subagents receive no memory (`coworkPrompt.test.ts`); CLI subagents inherit the parent's session and project, as documented |
+| Audit and log output | the memory module has no log or print output (`the_memory_module_has_no_log_or_print_output`, checked against the sources) |
+| Recalled memory as untrusted data | sealed single lines inside `<remembered_facts>`, below every instruction source (AH-084) |
+
+Last run 2026-09-11, Windows WebView2, retries off. First attempts of two
+scenarios **failed** and are recorded: `memory-security` because `cmd mklink`
+read the forward-slash path `C:/tmp/...` as a switch (harness fix: pass
+backslashes); `memory-precedence` because its setup saved an injection, which
+this batch now refuses at the door (scenario changed to expect the refusal
+and plant the record directly). Both then passed on fresh profiles, with the
+project and user pairs re-run alongside. Malicious import is covered with the
+import work (Priority 5).
+
+The batch gate then **failed** once more, on a real defect:
+`concurrent_writers_do_not_lose_each_others_records` passed alone but failed
+inside the full parallel agent-tools suite with "could not lock the memory
+store: Access is denied (os error 5)". On Windows a lock file another writer
+has just deleted is "delete pending" until its handle closes, and creating it
+in that window fails with access denied rather than "already exists"; the lock
+treated that as fatal and aborted a save. Fixed by treating it as contention
+(wait and retry within the 5 s deadline). The full suite and the WebView user
+pair were re-run after the fix; this note is the record of the first failure,
+not a retry that hid it.
+
 ## Conflicting memory, surfaced and settled (AH-085)
 
 | Evidence | Where | Covers |

@@ -86,6 +86,18 @@ describe('buildSubagentSystemPrompt', () => {
     expect(out).toContain('cannot dispatch')
   })
 
+  it('carries no remembered facts: a Cowork subagent gets no memory (documented scope)', () => {
+    const out = buildSubagentSystemPrompt('You review Rust.', {
+      ...opts,
+      projectInstructions: 'Use pnpm.',
+    })
+    expect(out).not.toContain('<remembered_facts>')
+    expect(out).not.toContain('# Remembered')
+    expect(out).not.toContain('# Instruction precedence')
+    // It does inherit the parent's project instructions, which are not memory.
+    expect(out).toContain('Use pnpm.')
+  })
+
   it('never leaks plan mode or a subagent roster into a child', () => {
     const out = buildSubagentSystemPrompt('p', opts)
     expect(out).not.toContain('PLAN MODE')

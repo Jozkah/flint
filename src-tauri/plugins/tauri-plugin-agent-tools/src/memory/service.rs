@@ -38,6 +38,9 @@ pub struct Access {
     pub project_store: Option<PathBuf>,
     /// The permanent store holding user and session records.
     pub permanent_store: Option<PathBuf>,
+    /// Why the named project folder was not usable for memory, when it was
+    /// refused (a link, the data folder, a path that does not resolve).
+    pub project_refused: Option<String>,
 }
 
 impl Access {
@@ -233,6 +236,11 @@ pub fn list(
     offset: usize,
     limit: usize,
 ) -> Result<Page, Denied> {
+    if scope == Scope::Project {
+        if let Some(why) = &access.project_refused {
+            return Err(Denied::ScopeUnavailable(format!("project: {why}")));
+        }
+    }
     let store_root = access
         .store_for(scope)
         .ok_or_else(|| Denied::ScopeUnavailable(scope_word(scope).to_string()))?;
@@ -512,6 +520,7 @@ mod tests {
                 project_id: Some("p1".into()),
                 project_store: Some(project.clone()),
                 permanent_store: Some(permanent.clone()),
+                project_refused: None,
             },
             project,
             permanent,

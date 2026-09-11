@@ -34,6 +34,10 @@ pub enum Refusal {
     MissingScopeIdentity(Scope),
     /// Longer than a memory should ever be. A memory is a fact, not a document.
     TooLong { limit: usize },
+    /// Reads as an instruction trying to act above memory: overriding earlier
+    /// instructions, lifting an approval, enabling tools, posing as a system
+    /// prompt. Refused at the door as well as at retrieval (AH-084).
+    ClaimsAuthority(&'static str),
 }
 
 impl Refusal {
@@ -60,9 +64,17 @@ impl Refusal {
             Refusal::TooLong { limit } => {
                 format!("a memory should be a fact, not a document (over {limit} characters)")
             }
+            Refusal::ClaimsAuthority(why) => format!(
+                "this reads as an instruction rather than a fact about how you work ({why}); memory cannot carry that"
+            ),
         }
     }
 }
+
+/// How many live records one scope may hold. Past this, saving is refused
+/// until something is forgotten: an unbounded store would be re-read on
+/// every request and grow without anyone deciding it should.
+pub const MAX_RECORDS_PER_SCOPE: usize = 2_000;
 
 /// A memory should be a fact worth re-reading in every future prompt. Past this
 /// it is a document, and documents belong in a note or a file.
@@ -116,6 +128,9 @@ pub fn propose(
     // while implying something was kept.
     if !secrets::scan_text(&content).is_empty() {
         return Err(Refusal::ContainsSecret);
+    }
+    if let Some(why) = super::precedence::authority_claim(&content) {
+        return Err(Refusal::ClaimsAuthority(why));
     }
 
     // A scope without its identity would apply to nothing or, worse, to
@@ -176,8 +191,24 @@ pub fn propose(
 /// shown. A caller cannot review one thing and commit another without building
 /// a second proposal, which would be checked again.
 pub fn commit(store_root: &std::path::Path, proposal: &Proposal) -> Result<MemoryId, String> {
-    store::upsert(store_root, &proposal.record)?;
-    Ok(proposal.record.id.clone())
+    let record = &proposal.record;
+    store::update(store_root, record.scope, |records| {
+        let live = records
+            .iter()
+            .filter(|r| !matches!(r.status, Status::Deleted) && r.id != record.id)
+            .count();
+        if live >= MAX_RECORDS_PER_SCOPE {
+            return Err(format!(
+                "ERROR: this scope already holds {MAX_RECORDS_PER_SCOPE} memories; forget some before saving more"
+            ));
+        }
+        match records.iter_mut().find(|r| r.id == record.id) {
+            Some(existing) => *existing = record.clone(),
+            None => records.push(record.clone()),
+        }
+        Ok((true, ()))
+    })?;
+    Ok(record.id.clone())
 }
 
 /// Forget a memory.
@@ -194,15 +225,15 @@ pub fn forget(
     id: &MemoryId,
     now: i64,
 ) -> Result<bool, String> {
-    let mut records = store::load(store_root, scope).records;
-    let Some(record) = records.iter_mut().find(|r| &r.id == id) else {
-        return Ok(false);
-    };
-    record.status = Status::Deleted;
-    record.content = String::new();
-    record.updated_at = now;
-    store::save(store_root, scope, &records)?;
-    Ok(true)
+    store::update(store_root, scope, |records| {
+        let Some(record) = records.iter_mut().find(|r| &r.id == id) else {
+            return Ok((false, false));
+        };
+        record.status = Status::Deleted;
+        record.content = String::new();
+        record.updated_at = now;
+        Ok((true, true))
+    })
 }
 
 /// Restore a forgotten memory from the text the caller still holds.
@@ -216,22 +247,22 @@ pub fn restore(
     content: &str,
     now: i64,
 ) -> Result<bool, String> {
-    let mut records = store::load(store_root, scope).records;
-    let Some(record) = records.iter_mut().find(|r| &r.id == id) else {
-        return Ok(false);
-    };
-    if !matches!(record.status, Status::Deleted) {
-        return Ok(false);
-    }
-    let normalised = super::record::normalise(content);
-    if super::record::content_hash(&normalised) != record.content_hash {
-        return Err("ERROR: that is not the text that was forgotten, so it cannot be restored under this memory".into());
-    }
-    record.content = normalised;
-    record.status = Status::Active;
-    record.updated_at = now;
-    store::save(store_root, scope, &records)?;
-    Ok(true)
+    store::update(store_root, scope, |records| {
+        let Some(record) = records.iter_mut().find(|r| &r.id == id) else {
+            return Ok((false, false));
+        };
+        if !matches!(record.status, Status::Deleted) {
+            return Ok((false, false));
+        }
+        let normalised = super::record::normalise(content);
+        if super::record::content_hash(&normalised) != record.content_hash {
+            return Err("ERROR: that is not the text that was forgotten, so it cannot be restored under this memory".into());
+        }
+        record.content = normalised;
+        record.status = Status::Active;
+        record.updated_at = now;
+        Ok((true, true))
+    })
 }
 
 /// Forget every memory in one scope that `access` may see. Returns how many.
@@ -245,21 +276,19 @@ pub fn forget_all(
     may_see: impl Fn(&super::record::MemoryRecord) -> bool,
     now: i64,
 ) -> Result<usize, String> {
-    let mut records = store::load(store_root, scope).records;
-    let mut n = 0;
-    for record in records.iter_mut().filter(|r| may_see(r)) {
-        if matches!(record.status, Status::Deleted) {
-            continue;
+    store::update(store_root, scope, |records| {
+        let mut n = 0;
+        for record in records.iter_mut().filter(|r| may_see(r)) {
+            if matches!(record.status, Status::Deleted) {
+                continue;
+            }
+            record.status = Status::Deleted;
+            record.content = String::new();
+            record.updated_at = now;
+            n += 1;
         }
-        record.status = Status::Deleted;
-        record.content = String::new();
-        record.updated_at = now;
-        n += 1;
-    }
-    if n > 0 {
-        store::save(store_root, scope, &records)?;
-    }
-    Ok(n)
+        Ok((n > 0, n))
+    })
 }
 
 #[cfg(test)]
