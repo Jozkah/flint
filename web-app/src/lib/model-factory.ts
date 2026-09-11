@@ -106,6 +106,24 @@ interface LlamaCppTimings {
 const totalPromptTokens = (timings: LlamaCppTimings): number =>
   (timings.prompt_n ?? 0) + (timings.cache_n ?? 0)
 
+// The engine's own cache count, only when it sent one. An engine that reports
+// no `cache_n` has said nothing about its cache, which is not the same as
+// "nothing was cached"; see lib/tokenUsage.ts.
+const cacheTokensOf = (timings: LlamaCppTimings): { cacheTokens?: number } =>
+  typeof timings.cache_n === 'number' && Number.isFinite(timings.cache_n)
+    ? { cacheTokens: timings.cache_n }
+    : {}
+
+const timingsMetadata = (timings: LlamaCppTimings) => ({
+  providerMetadata: {
+    promptTokens: totalPromptTokens(timings),
+    completionTokens: timings.predicted_n ?? null,
+    tokensPerSecond: timings.predicted_per_second ?? null,
+    promptPerSecond: timings.prompt_per_second ?? null,
+    ...cacheTokensOf(timings),
+  },
+})
+
 interface LlamaCppPromptProgress {
   total?: number
   cache?: number
@@ -126,16 +144,7 @@ interface LlamaCppChunk {
 const providerMetadataExtractor: MetadataExtractor = {
   extractMetadata: async ({ parsedBody }: { parsedBody: unknown }) => {
     const body = parsedBody as LlamaCppChunk
-    if (body?.timings) {
-      return {
-        providerMetadata: {
-          promptTokens: totalPromptTokens(body.timings),
-          completionTokens: body.timings.predicted_n ?? null,
-          tokensPerSecond: body.timings.predicted_per_second ?? null,
-          promptPerSecond: body.timings.prompt_per_second ?? null,
-        },
-      }
-    }
+    if (body?.timings) return timingsMetadata(body.timings)
     return undefined
   },
   createStreamExtractor: () => {
@@ -153,12 +162,18 @@ const providerMetadataExtractor: MetadataExtractor = {
           state.updateThreadLoadingModel(streamThreadId, false)
         }
         if (chunk?.timings) {
+          // Cumulative per chunk: the latest snapshot replaces the last one,
+          // it is never added to it.
           lastTimings = chunk.timings
+          const cache = cacheTokensOf(lastTimings)
           const liveStats = {
             promptTokens: totalPromptTokens(lastTimings),
             completionTokens: lastTimings.predicted_n ?? 0,
             tokensPerSecond: lastTimings.predicted_per_second ?? null,
             promptPerSecond: lastTimings.prompt_per_second ?? null,
+            ...(cache.cacheTokens !== undefined
+              ? { cachedPromptTokens: cache.cacheTokens }
+              : {}),
           }
           state.updateLiveTokenStats(liveStats)
           if (streamThreadId) {
@@ -183,22 +198,14 @@ const providerMetadataExtractor: MetadataExtractor = {
           }
         }
       },
-      buildMetadata: () => {
-        if (lastTimings) {
-          return {
-            providerMetadata: {
-              promptTokens: totalPromptTokens(lastTimings),
-              completionTokens: lastTimings.predicted_n ?? null,
-              tokensPerSecond: lastTimings.predicted_per_second ?? null,
-              promptPerSecond: lastTimings.prompt_per_second ?? null,
-            },
-          }
-        }
-        return undefined
-      },
+      buildMetadata: () =>
+        lastTimings ? timingsMetadata(lastTimings) : undefined,
     }
   },
 }
+
+/** The llama.cpp/MLX extractor, for tests that drive a real provider model. */
+export const __llamacppExtractorForTests = providerMetadataExtractor
 
 /**
  * Keys from inference parameters that are client-side only and must not

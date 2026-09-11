@@ -310,6 +310,23 @@ export type MemoryView = {
   sourceMessageId: string | null
   sourceDeleted: boolean
   supersedes: string | null
+  /** 1 when created, +1 per edit; null for a record saved before versions. */
+  version?: number | null
+  contentHash?: string
+  /** 'user-authored' | 'agent-authored' | 'imported' | 'extracted' | 'system' */
+  sourceType?: string
+  sourceRunId?: string | null
+  sourceProjectId?: string | null
+  /** Earlier versions, as hashes and times only. */
+  history?: { version: number; content_hash: string; replaced_at: number }[]
+  /** The most recent dispatches that carried it, newest last. */
+  uses?: {
+    session_id: string
+    turn_id?: string
+    snapshot_id?: string
+    reason?: string
+    at: number
+  }[]
   /** A single-line preview, already truncated by the backend so a redaction
    * marker is never cut in half. */
   preview: string
@@ -346,11 +363,24 @@ export type MemoryStorageSummary = {
   deletedCount: number
   conflictedCount: number
   bytes: number
+  /** Stores that could not be read in full, in words for the UI. */
+  issues: string[]
+}
+
+/** Which scopes are recalled into requests. Stored records are kept either way. */
+export type MemoryRecall = {
+  session: boolean
+  project: boolean
+  user: boolean
 }
 
 export type MemorySettings = {
   automaticallySave: boolean
+  recall: MemoryRecall
   schemaVersion: number
+  /** Set when the settings file exists but could not be read; recall is then
+   * off until the settings are saved again. */
+  issue?: string | null
 }
 
 /**
@@ -369,6 +399,75 @@ export type MemoryRetrieved = {
   /** Applicable records the budget had no room for. */
   droppedIds: string[]
   charsUsed: number
+  /** Storage or settings that could not be read, in words for the UI. */
+  storageIssues?: string[]
+  /** Scopes whose recall the user switched off ("chat", "project", "user"). */
+  recallOff?: string[]
+  /** Why each injected memory was chosen, in injection order. `rank` is its
+   * precedence position, not a relevance score. */
+  recall?: MemoryRecallReason[]
+  /** Withheld because JAN.md, a compatibility file or a skill says otherwise
+   * (AH-084): both values, both sources, and the winner. */
+  overridden?: MemoryOverride[]
+  /** Refused because they claim authority memory cannot have. */
+  refused?: { memoryId: string; reason: string }[]
+  /** The precedence chain, as the prompt states it. */
+  precedence?: string
+}
+
+export type InstructionSource =
+  | 'system'
+  | 'current-request'
+  | 'workspace'
+  | 'jan-md'
+  | 'compat'
+  | 'skill'
+  | 'user-memory'
+  | 'project-memory'
+  | 'session-memory'
+  | 'transcript'
+
+/** Instruction text above memory, handed to retrieval so a memory that
+ * contradicts it is withheld. Used only to withhold, never to allow. */
+export type MemoryInstruction = {
+  source: 'jan-md' | 'compat' | 'skill'
+  name: string
+  text: string
+}
+
+export type MemoryOverride = {
+  memoryId: string
+  memorySource: InstructionSource
+  memorySays: string
+  subject: string
+  winner: InstructionSource
+  winnerName: string
+  winnerSays: string
+}
+
+export type MemoryRecallReason = {
+  id: string
+  scope: string
+  rank: number
+  reason: string
+}
+
+/**
+ * Record that one dispatch carried these memories: the turn it produced and,
+ * when one was taken, its prompt snapshot. Returns how many were recorded;
+ * records this place may not see, or already forgotten, are left alone.
+ */
+export async function memoryRecordUses(
+  location: MemoryLocation,
+  used: { id: string; reason?: string }[],
+  where: { turnId?: string; snapshotId?: string }
+): Promise<number> {
+  return await invoke('plugin:agent-tools|memory_record_uses', {
+    location,
+    used,
+    turnId: where.turnId,
+    snapshotId: where.snapshotId,
+  })
 }
 
 /**
@@ -383,12 +482,41 @@ export type MemoryRetrieved = {
  */
 export async function memoryRetrieve(
   location: MemoryLocation,
-  options?: { temporary?: boolean; budgetChars?: number }
+  options?: {
+    temporary?: boolean
+    budgetChars?: number
+    instructions?: MemoryInstruction[]
+  }
 ): Promise<MemoryRetrieved> {
   return await invoke('plugin:agent-tools|memory_retrieve', {
     location,
     temporary: options?.temporary,
     budgetChars: options?.budgetChars,
+    instructions: options?.instructions,
+  })
+}
+
+/** Two remembered records that cannot both be followed, both in full. */
+export type MemoryConflictPair = {
+  /** What they disagree about, e.g. "package manager". */
+  subject: string
+  left: MemoryView
+  right: MemoryView
+}
+
+/**
+ * The conflicts a dispatch from `location` would withhold.
+ *
+ * Retrieval withholds both sides of a conflict; this is how the user finds out
+ * and settles it. Same records and applicability as `memoryRetrieve`.
+ */
+export async function memoryConflicts(
+  location: MemoryLocation,
+  options?: { temporary?: boolean }
+): Promise<MemoryConflictPair[]> {
+  return await invoke('plugin:agent-tools|memory_conflicts', {
+    location,
+    temporary: options?.temporary,
   })
 }
 
@@ -517,7 +645,7 @@ export async function memoryRecordCommit(
   scope: MemoryScope,
   content: string,
   expectedHash: string,
-  source?: { sessionId?: string; messageId?: string }
+  source?: { sessionId?: string; messageId?: string; runId?: string }
 ): Promise<MemoryView> {
   return await invoke('plugin:agent-tools|memory_record_commit', {
     location,
@@ -526,6 +654,7 @@ export async function memoryRecordCommit(
     expectedHash,
     sourceSessionId: source?.sessionId,
     sourceMessageId: source?.messageId,
+    sourceRunId: source?.runId,
   })
 }
 
@@ -542,17 +671,32 @@ export async function memoryRecordForget(
   })
 }
 
-/** Undo a forget, restoring the same record rather than a copy of its text. */
+/**
+ * Undo a forget, restoring the same record rather than a copy of its text.
+ *
+ * Forgetting removes the text from disk, so the caller hands back the text it
+ * showed; it must be exactly what was forgotten.
+ */
 export async function memoryRecordRestore(
   location: MemoryLocation,
   scope: MemoryScope,
-  id: string
+  id: string,
+  content: string
 ): Promise<boolean> {
   return await invoke('plugin:agent-tools|memory_record_restore', {
     location,
     scope,
     id,
+    content,
   })
+}
+
+/** Forget every memory in one scope that `location` may see. Returns how many. */
+export async function memoryScopeClear(
+  location: MemoryLocation,
+  scope: MemoryScope
+): Promise<number> {
+  return await invoke('plugin:agent-tools|memory_scope_clear', { location, scope })
 }
 
 export async function memoryRecordPin(
@@ -612,13 +756,19 @@ export async function memorySettingsGet(
   return await invoke('plugin:agent-tools|memory_settings_get', { location })
 }
 
+/**
+ * Change memory settings. A boolean is the automatic-save switch (the original
+ * form); an object changes only the fields it names.
+ */
 export async function memorySettingsUpdate(
   location: MemoryLocation,
-  automaticallySave: boolean
+  change: boolean | { automaticallySave?: boolean; recall?: MemoryRecall }
 ): Promise<MemorySettings> {
+  const patch = typeof change === 'boolean' ? { automaticallySave: change } : change
   return await invoke('plugin:agent-tools|memory_settings_update', {
     location,
-    automaticallySave,
+    automaticallySave: patch.automaticallySave,
+    recall: patch.recall,
   })
 }
 

@@ -30,6 +30,28 @@ pub struct Loaded {
     /// Records written by a newer Jan. Kept out of use rather than guessed at,
     /// and never rewritten, so downgrading does not destroy them.
     pub skipped_newer_schema: usize,
+    /// The store exists but could not be read at all (locked, a directory
+    /// where the file should be, permissions). Distinct from "empty": an
+    /// unreadable store that looked empty would silently lose every memory.
+    pub unavailable: Option<String>,
+}
+
+impl Loaded {
+    /// A sentence for the UI when anything was not loaded, `None` when all was.
+    pub fn issue(&self, scope: Scope) -> Option<String> {
+        let what = file_name(scope);
+        if let Some(e) = &self.unavailable {
+            return Some(format!("{what} could not be read: {e}"));
+        }
+        match (self.skipped_unreadable, self.skipped_newer_schema) {
+            (0, 0) => None,
+            (bad, 0) => Some(format!("{what}: {bad} damaged record(s) were skipped")),
+            (0, newer) => Some(format!("{what}: {newer} record(s) from a newer Jan were left untouched")),
+            (bad, newer) => Some(format!(
+                "{what}: {bad} damaged record(s) skipped, {newer} from a newer Jan left untouched"
+            )),
+        }
+    }
 }
 
 fn file_name(scope: Scope) -> &'static str {
@@ -57,8 +79,15 @@ pub fn records_path(store_root: &Path, scope: Scope) -> PathBuf {
 /// line that will not parse is skipped and counted.
 pub fn load(store_root: &Path, scope: Scope) -> Loaded {
     let path = records_path(store_root, scope);
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        return Loaded::default();
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Loaded::default(),
+        Err(e) => {
+            return Loaded {
+                unavailable: Some(e.to_string()),
+                ..Loaded::default()
+            }
+        }
     };
 
     let mut out = Loaded::default();
@@ -129,14 +158,101 @@ fn rename_with_retry(from: &Path, to: &Path) -> Result<(), String> {
     Err(format!("ERROR: could not replace {}: {last}", to.display()))
 }
 
+/// How long a writer waits for another to finish before giving up.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+/// A lock older than this was left by a writer that died; it is taken over.
+const LOCK_STALE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Held while one writer reads, changes and rewrites a scope's file.
+///
+/// The rewrite itself is atomic (temp and rename), but a read-modify-write is
+/// not: two windows each loading, adding one record and saving would each
+/// save a file without the other's record. The lock makes the whole cycle one
+/// step. It is a file created exclusively beside the store, so it works across
+/// processes, and a lock abandoned by a crashed writer expires.
+struct ScopeLock {
+    path: PathBuf,
+}
+
+impl ScopeLock {
+    fn acquire(store_root: &Path, scope: Scope) -> Result<Self, String> {
+        let path = records_path(store_root, scope).with_extension("jsonl.lock");
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| format!("ERROR: {e}"))?;
+        }
+        let deadline = std::time::Instant::now() + LOCK_WAIT;
+        loop {
+            match std::fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+                Ok(_) => return Ok(Self { path }),
+                // Windows reports a lock file another writer has just deleted
+                // -- still "delete pending" while its handle closes -- as
+                // access denied rather than as existing. That is contention,
+                // not a failure: found by the concurrent-writers test under a
+                // full parallel suite, where it aborted a save.
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::AlreadyExists
+                        || e.kind() == std::io::ErrorKind::PermissionDenied =>
+                {
+                    let stale = std::fs::metadata(&path)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok())
+                        .is_some_and(|age| age > LOCK_STALE);
+                    if stale {
+                        let _ = std::fs::remove_file(&path);
+                        continue;
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        return Err(format!(
+                            "ERROR: the {} memory store is busy in another window; try again",
+                            file_name(scope)
+                        ));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(15));
+                }
+                Err(e) => return Err(format!("ERROR: could not lock the memory store: {e}")),
+            }
+        }
+    }
+}
+
+impl Drop for ScopeLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Read a scope, change it, and write it back as one step no other writer can
+/// interleave with. `change` returns whether it changed anything; nothing is
+/// written when it did not. A store that could not be read at all is refused
+/// rather than overwritten with what little was readable.
+pub fn update<T>(
+    store_root: &Path,
+    scope: Scope,
+    change: impl FnOnce(&mut Vec<MemoryRecord>) -> Result<(bool, T), String>,
+) -> Result<T, String> {
+    let _lock = ScopeLock::acquire(store_root, scope)?;
+    let loaded = load(store_root, scope);
+    if let Some(e) = &loaded.unavailable {
+        return Err(format!("ERROR: the memory store could not be read ({e}); nothing was changed"));
+    }
+    let mut records = loaded.records;
+    let (changed, out) = change(&mut records)?;
+    if changed {
+        save(store_root, scope, &records)?;
+    }
+    Ok(out)
+}
+
 /// Add or replace one record, preserving everything else in its scope.
 pub fn upsert(store_root: &Path, record: &MemoryRecord) -> Result<(), String> {
-    let mut records = load(store_root, record.scope).records;
-    match records.iter_mut().find(|r| r.id == record.id) {
-        Some(existing) => *existing = record.clone(),
-        None => records.push(record.clone()),
-    }
-    save(store_root, record.scope, &records)
+    update(store_root, record.scope, |records| {
+        match records.iter_mut().find(|r| r.id == record.id) {
+            Some(existing) => *existing = record.clone(),
+            None => records.push(record.clone()),
+        }
+        Ok((true, ()))
+    })
 }
 
 /// Remove one record outright. Idempotent.

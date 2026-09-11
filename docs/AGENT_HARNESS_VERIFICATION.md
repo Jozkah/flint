@@ -117,6 +117,7 @@ Filled in as platform-specific work lands. Empty cells mean *not executed*, neve
 | Desktop agent surfaces | not run | not run | not run | not run |
 | Tool activity record and timeline (AH-050/AH-172) | not run | passed | passed (mock provider) | passed |
 | Native title bar and window placement | not run (config unchanged: borderless, app-drawn controls) | not run (config unchanged: overlay title bar) | passed (real mouse input, restart in a new process) | passed |
+| Provider cache-aware token usage (AH-211) | not run | not run | passed | passed (Windows) |
 
 ## Known blockers
 
@@ -561,6 +562,233 @@ made to return `true` unconditionally -- which is what the bug was.
 ever passed with accounting: no dispatch was given an invocation id, so
 `recordPayloadUsage` dropped every record and the scenario failed at exactly
 this check. Fixed in `providerFetch`; the scenario now passes on Windows.
+
+
+## Provider cache-aware token usage (AH-211)
+
+Provider-reported usage only; AH-073's estimate is a separate record and is not
+exercised here.
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 19 unit tests | `web-app/src/lib/__tests__/tokenUsage.test.ts` | OpenAI `cached_tokens`; Anthropic read and creation without double counting; llama.cpp usage including a measured zero; `cache_n` fallback; no cache data stays absent despite the SDK's zero default; Responses and Gemini; clamping with the reported value kept; step combination; legacy records; Cowork mapping |
+| 8 provider tests | `web-app/src/lib/__tests__/tokenUsage.providers.test.ts` | the real `@ai-sdk/openai-compatible`, llama.cpp and `@ai-sdk/anthropic` models over replayed wire bodies (llama-server and vLLM bodies captured from real servers), folded the way the transport stores them; cumulative streaming kept final, not summed; malformed counts clamped |
+| 5 unit tests | `web-app/src/lib/__tests__/tokenUsage.cowork.test.ts` | the runner's step fold; run outcome is the last step, not a sum; Cowork session breakdown and subagent usage survive a rehydrate from storage; a pre-existing session loads without invented fields |
+| 2 subagent tests | `web-app/src/lib/__tests__/coworkSubagent.test.ts` | a child's breakdown reaches its task record; a child with no cache data carries no cache fields |
+| 4 hook tests | `web-app/src/hooks/__tests__/useTokensCount.test.ts` | Chat reload from a persisted message; a legacy message; live `cache_n`; Cowork source usage |
+| 7 render tests | `web-app/src/components/__tests__/TokenCounter.test.tsx` (`cache breakdown`) | rows with and without cache data, "Not reported" rather than 0, a measured zero, cache write, the derived-count explanation, clamping notice, compact badge unchanged |
+| Rust unit tests | `core/server/converters.rs`, `core/agent/events.rs`, `core/threads/tests.rs`, `plugins/tauri-plugin-agent-tools/src/usage.rs` | Anthropic, Responses and Gemini cache counts in chat/completions shape; cumulative `message_delta` replaces rather than adds; absent counts omitted; `messages.jsonl` round trip; payload records old and new |
+| Real WebView scenarios | `cowork-smoke --only token-usage-cache`, then `token-usage-cache-cowork`, then `token-usage-cache-after-restart`, each its own process on the same `COWORK_SMOKE_DATA_DIR` | against a real llama-server reached through the fixture's transparent relay: two turns in Chat and in Cowork, the follow-up served from the provider's cache, the popover's Input/Cached/Uncached/Output/Total equal to what the provider reported for that request; then a second process shows the same breakdown from disk without contacting the provider |
+
+Run the scenario with a real OpenAI-compatible server that reports
+`prompt_tokens_details.cached_tokens`:
+
+```
+set COWORK_SMOKE_CACHE_UPSTREAM=http://<host>:<port>/v1
+set COWORK_SMOKE_CACHE_MODEL=<model id>
+set COWORK_SMOKE_KEEP=<empty folder, kept across the runs>
+set COWORK_SMOKE_PORT=18711
+cargo run --example cowork-smoke --features cowork-smoke -- --only token-usage-cache
+cargo run --example cowork-smoke --features cowork-smoke -- --only token-usage-cache-cowork
+cargo run --example cowork-smoke --features cowork-smoke -- --only token-usage-cache-after-restart
+```
+
+Each surface runs in its own process, and the restart check is a later one on
+the same `COWORK_SMOKE_KEEP` profile (data folder, working directory and
+WebView profile all kept). `COWORK_SMOKE_PORT` moves the fixture off 8080.
+These scenarios are never retried: a retry would hide exactly the kind of
+nondeterminism they exist to catch.
+
+Last run, 2026-09-11, merged onto `fork/main` 4a9ba6f68, Windows WebView2,
+llama-server `qwen3.8-27b`, all three passing on the first attempt (retries
+off). Each popover value equals what the provider reported for that request:
+
+| Check | Input | Cached | Uncached (derived) | Output | Total (derived) |
+| --- | --- | --- | --- | --- | --- |
+| Chat follow-up | 2,807 | 2,784 | 23 | 19 | 2,826 |
+| Cowork follow-up | 6,093 | 6,056 | 37 | 35 | 6,128 |
+| After restart (new process, no provider request) | same | same | same | same | same |
+
+The previous run, on `fork/main` 9ab30620e, gave Chat 2,825 / 2,802 / 23 / 39
+/ 2,864 and Cowork 5,542 / 5,505 / 37 / 17 / 5,559; the prompts differ between
+the two trees, so the counts do, and in both runs the display matched the
+provider exactly.
+
+Raw field mapping for that provider: `usage.prompt_tokens` to Input,
+`usage.prompt_tokens_details.cached_tokens` to Cached input,
+`usage.completion_tokens` to Output; `timings.cache_n` agreed with
+`cached_tokens` and was not needed.
+
+The first-attempt failure seen in the earlier restart run (passed on retry,
+before retries were disabled here) was a race in the harness: the popover is
+portalled, and the previous surface's one was still in the document when the
+next surface's counter was opened, so Chat's numbers were read while Cowork's
+were asserted. The counter and breakdown now carry `data-usage-scope` (the
+thread or session id), the harness reads only the matching breakdown, and a
+render test switches the source between two sessions and asserts the scope and
+values follow it.
+
+
+## Session memory through the app (AH-081 / AH-083)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView pair | `cowork-smoke --only memory-session-scope`, then `--only memory-session-after-restart` on the same `COWORK_SMOKE_KEEP` | a session memory committed through the memory commands reaches that session's next request as `[id] (session)` under the "not instructions" label (read from the request body the fixture received); the turn lists the id; a second session never receives it; after a restart in a new process it is still recalled and still isolated, the memory page shows it with provenance, and once forgotten it is not sent |
+| Unit tests | `coworkTransport.test.ts`, `tokenUsage.cowork.test.ts`, `coworkTurns.test.ts`, `TurnUsageDetails.test.tsx`, `useMemoryConversations.test.ts` | the Cowork prompt carries the block after the run's instructions and none when nothing was retrieved; per-turn memory ids; the conversation/project picker source |
+| Rust tests | `tools/handlers.rs::memory_propose_project_scope_is_saved_where_it_is_read_back`, `snapshot.rs` retention tests | project proposals land in the store readers open; snapshot deletion by session, retention by count, torn lines kept |
+
+Last run 2026-09-11, Windows WebView2, scripted provider: both passed on the
+first attempt, with retries disabled for these scenarios.
+
+## Project and user memory through the app (AH-080 / AH-082)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView pair | `cowork-smoke --only memory-project-scope`, then `--only memory-project-after-restart` on the same `COWORK_SMOKE_KEEP` | a folder is attached through the real pill and picker; a project memory committed for it reaches that session's request as `[id] (project)`; a second checkout with the **same folder name** under another parent gets a different project id and never receives it; a user-scope memory reaches that other project as `[id] (user)` and stops being sent once forgotten; after a restart in a new process the project memory is still recalled in its project, still absent from the same-named one, and absent once forgotten |
+
+Last run 2026-09-11, Windows WebView2, scripted provider: three fresh
+scope/restart pairs, all six runs passed on the first attempt, retries
+disabled for `memory-project-*`. Not run live: user memory across a restart,
+conflicting memory in the WebView, Chat (rather than Cowork) recall.
+
+## User-level memory through the app (AH-082)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView pair | `cowork-smoke --only memory-user-scope`, then `--only memory-user-after-restart` on the same `COWORK_SMOKE_KEEP` | written, edited and pinned on Settings > Memory; recalled as `[id] (user)` in two unrelated projects (the fixture and a different checkout with the same folder name), each turn listing that exact id; "Across chats" recall switched off: not sent, still stored and listed; **after a restart in a new process** the switch is still off, the record still edited and pinned, and nothing is sent; switched back on, the same record returns in both projects; forgotten on the page: gone from the next request and its text gone from `user.jsonl`; two more cleared with "Forget all" after confirmation: neither sent, neither on disk; a damaged line in `user.jsonl` shows as an error on the page, not as an empty store |
+| Rust tests | `memory/commands.rs::user_memory_tests` (recall off withholds without deleting and on restores; a switched-off scope takes no part in conflicts; clearing forgets one scope only and leaves no text; chat/project saves never create a user memory; damaged or unreadable storage and damaged settings reported, settings fail closed with recall off; a forgotten memory leaves the list), `memory/create.rs` (forget removes the text from the file, restore needs the exact forgotten text, forget-all respects visibility), `memory/settings.rs` (recall defaults on, survives a restart, damaged file turns it off and says so) | |
+| Mutation checks | each fix removed in turn, the test that guards it run | forget keeping text, forgotten rows listed, recall filter removed, damaged settings recalling: all four fail their test |
+| Render tests | `routes/settings/__tests__/memory.user.test.tsx` | recall switches, rollback on failure, storage error banner, add, clear only after confirmation, undo hands back the text |
+
+Last run 2026-09-11, Windows WebView2, scripted provider, retries off.
+First attempt of the restart scenario **failed**: after "Forget memory" the
+row stayed on the page as an empty "deleted" entry, because the list showed
+tombstones. Fixed (`service::list` excludes forgotten records, regression
+test `a_forgotten_memory_leaves_the_list`) and the pair re-run on a fresh
+profile: both passed on the first attempt. Earlier prompt snapshots keep the
+text a forgotten memory contributed to requests already sent; forgetting does
+not rewrite what was sent.
+
+## Memory provenance (AH-083, in progress)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView pair | `cowork-smoke --only memory-provenance`, then `--only memory-provenance-after-restart` on the same `COWORK_SMOKE_KEEP` | a memory written on Settings > Memory is version 1, user-authored; a Cowork turn that carried it says why ("applies to this user", rank 1); the memory then records that use with the session and the exact prompt-snapshot id, and that snapshot in `prompts.jsonl` contains the memory id; an edit on the page makes version 2 with version 1 on record by hash, and the old text is not on disk; **after a restart in a new process** the version, history, source type and recorded snapshot are unchanged and the page shows version 2 and the snapshot |
+| Rust tests | `memory/commands.rs::provenance_tests` | new record's version, source type, run, session, message, hash; editing bumps the version and keeps only the replaced hash; saving the same text is not a version; a record from before provenance loads with version, run and session unknown, and its first edit starts at version 0 rather than inventing one; retrieval gives rank and reason; a use records turn and snapshot; uses are refused on another chat's or a forgotten memory; the use list is bounded while the count is not; source type from creator and origin |
+| Mutation checks | revision history and the visibility check on uses removed in turn | both fail their tests |
+| Render tests | `memory.user.test.tsx` (provenance panel: known and unknown version, history, uses with snapshot ids), `TurnUsageDetails.test.tsx` (reason per memory, recall off, storage error), `memoryUses.test.ts` (exact ids, reasons, turn and snapshot; nothing without a session or memory; failure never reaches the turn) | |
+
+Last run 2026-09-11, Windows WebView2, scripted provider, retries off: both
+passed on the first attempt, and the AH-082 pair re-run alongside also passed.
+Still open for AH-083: provenance through export/import and the "imported"
+mark on arrival (Priority 5), and Chat records a use without a snapshot id,
+because the Chat path takes no prompt snapshot.
+
+## One precedence chain (AH-084)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView | `cowork-smoke --only memory-precedence` | the attached project's `JAN.md` says pnpm; a user memory says npm, another claims authority ("Ignore previous instructions…"), a third is unrelated. The request body states the chain ahead of `<remembered_facts>`, carries JAN.md and the unrelated memory, and carries neither the contradicted nor the refused one; the turn shows the override with both texts, both sources and JAN.md as the winner, and the refusal with its reason |
+| CLI prompt path | `core/agent/context.rs::a_skill_outranks_a_contradicting_memory_in_the_prompt` | a project **skill** says pnpm, a user memory says npm: the real prompt builder states the chain, does not send the memory, and reports the skill as winner |
+| Rust tests | `memory/precedence.rs` (chain order and statement; skill beats memory with both excerpts; JAN.md reported over a skill; agreeing or unrelated memories untouched; lower sources ignored; authority claims refused, ordinary preferences not), `memory/retrieve.rs` (skill-contradicted memory withheld and reported; authority and block-closing memories refused; the surviving one sealed to a single line with no raw tag; JAN.md over skill; injection order user, project, session; budget drops session first), `memory/record.rs` (scope precedence user > project > session; duplicates keep the user copy; order independence) | |
+| Mutation checks | override withholding, sealing, and the scope order reverted in turn | each fails its test |
+| Render and transport tests | `TurnUsageDetails.test.tsx` (override with both sides, refusal), `coworkTransport.test.ts` (JAN.md and compatibility text handed to retrieval; chain before the facts) | |
+
+Last run 2026-09-11, Windows WebView2, scripted provider, retries off: passed
+on the first attempt. The chain changed an existing rule: memory-versus-memory
+precedence was "more specific scope wins"; it is now user above project above
+session, as the chain requires, and the tests encoding the old order were
+rewritten rather than deleted. Contradiction detection is the shared lexical
+table (package manager, response length, indentation, test runner, branch
+integration, line endings, formatters); disagreements outside it are not
+detected. Cowork delivers no skill text to the model, so there is nothing for
+a Cowork memory to contradict at level 6; skills are enforced on the CLI path.
+
+## Memory security and durability (Priority 4)
+
+| Threat | Evidence |
+| --- | --- |
+| Prompt injection stored as memory | refused when saved (`security_tests::an_injection_is_refused_when_it_is_saved`, and on the page in `memory-security`); one already in the store is refused at retrieval (`memory-precedence` plants one) and shown on the turn |
+| Secrets, API keys, auth headers, private keys | refused when saved (`credentials_are_refused`: OpenAI-style key, bearer token, OpenSSH private key, AWS keys) |
+| Oversized records and collections | 2,000-character record limit (`create.rs` existing test); 2,000 live records per scope (`a_full_scope_refuses_more`) |
+| Path traversal, filesystem root, data-folder overlap | `a_named_project_folder_is_validated_before_anything_is_written_into_it`: unresolvable `..` paths, the Jan data folder and anything inside it, and `C:\` are refused and nothing is written |
+| Symlink/junction/reparse escape | `a_junctioned_jan_folder_is_refused_and_nothing_is_written_through_it` (real `mklink /J`); WebView `memory-security` attaches a checkout whose `.jan` is a junction: the turn reports why project memory was not used, a project save is refused, and the junction target stays empty |
+| Cross-scope leakage; same-named unrelated repositories | `memory-session-*`, `memory-project-*` (same folder name, different repository), `conflicts_are_listed_...only_where_they_apply`, `uses_are_only_recorded_on_records_this_place_may_see` |
+| Concurrent writers | `concurrent_writers_do_not_lose_each_others_records`: 8 threads x 10 records, all 80 present, no lock left; an abandoned lock is taken over after 30 s, a live one makes a writer report "busy" |
+| Interrupted atomic writes, corrupt and partial records | `an_interrupted_write_leaves_the_store_as_it_was` (a half-written temp file is ignored, the next write succeeds); torn lines skipped and reported (`damaged_or_unreadable_storage_is_reported_to_the_caller`); an unreadable store is never overwritten |
+| Stale versions | `service.rs::editing_refuses_a_stale_hash`; restore requires the exact forgotten text (`restoring_with_different_text_is_refused`) |
+| Deletion leaving plaintext or index entries | forget and clear remove the text from the file (`forgetting_removes_the_text_from_the_store_file`, WebView `memory-user-after-restart`); there is no separate memory index since the BM25 index was removed |
+| Cancellation during create/update/delete | each command does its file work synchronously in one call with a single atomic write under the scope lock, so an abandoned request is wholly before or after it; not separately fault-injected |
+| Subagent access | Cowork subagents receive no memory (`coworkPrompt.test.ts`); CLI subagents inherit the parent's session and project, as documented |
+| Audit and log output | the memory module has no log or print output (`the_memory_module_has_no_log_or_print_output`, checked against the sources) |
+| Recalled memory as untrusted data | sealed single lines inside `<remembered_facts>`, below every instruction source (AH-084) |
+
+Last run 2026-09-11, Windows WebView2, retries off. First attempts of two
+scenarios **failed** and are recorded: `memory-security` because `cmd mklink`
+read the forward-slash path `C:/tmp/...` as a switch (harness fix: pass
+backslashes); `memory-precedence` because its setup saved an injection, which
+this batch now refuses at the door (scenario changed to expect the refusal
+and plant the record directly). Both then passed on fresh profiles, with the
+project and user pairs re-run alongside. Malicious import is covered with the
+import work (Priority 5).
+
+The batch gate then **failed** once more, on a real defect:
+`concurrent_writers_do_not_lose_each_others_records` passed alone but failed
+inside the full parallel agent-tools suite with "could not lock the memory
+store: Access is denied (os error 5)". On Windows a lock file another writer
+has just deleted is "delete pending" until its handle closes, and creating it
+in that window fails with access denied rather than "already exists"; the lock
+treated that as fatal and aborted a save. Fixed by treating it as contention
+(wait and retry within the 5 s deadline). The full suite and the WebView user
+pair were re-run after the fix; this note is the record of the first failure,
+not a retry that hid it.
+
+## Conflicting memory, surfaced and settled (AH-085)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView | `cowork-smoke --only memory-conflict-settle` | a project memory ("npm") and a user memory ("yarn") that disagree are both withheld from the request body; the turn lists both ids as withheld; Settings > Memory shows the pair in full; "Keep this one" on the project side forgets the user side, and the next request carries only the project memory |
+| Real WebView pair | `--only memory-conflict-scope`, then `--only memory-conflict-after-restart` on the same `COWORK_SMOKE_KEEP` | the conflict made in one process is still withheld and still listed after a restart in a new process, and is settled there the other way (user side kept, project side not sent) |
+| Rust test | `memory/commands.rs::conflicts_are_listed_with_both_sides_and_only_where_they_apply` | both sides returned in full; another chat's disagreement is not listed; the same ids are what retrieval withholds; forgetting one side clears the conflict and lets the other be injected; none for a temporary chat |
+| Render test | `routes/settings/__tests__/memory.conflicts.test.tsx` | both sides and where each applies; asked for the picked conversation and project; keeping one forgets the other in its own scope, never the kept one; no card when nothing disagrees |
+
+Last run 2026-09-11, Windows WebView2, scripted provider: all passed on the
+first attempt (the settle scenario twice, on fresh profiles), retries off.
+Detection is the existing lexical table (package manager, indentation,
+response length); contradictions outside it are not detected.
+
+### Harness defect found on the way: eval results lost on the event bus
+
+Before the fix above, these scenarios failed about half the time with
+`eval timed out after 60s` on a trivial DOM query, always during the first
+send in a folder session. Diagnosis over the WebView's DevTools protocol
+(`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=...`):
+
+- the page stayed responsive the whole time; no dialog, crash or long task;
+- the timed-out script had started, and its `plugin:event|emit` had resolved
+  in the page -- the result reached Tauri and was not delivered;
+- Tauri's `Listeners::emit_filter` (tauri 2.11.5, `event/listener.rs`) only
+  `try_lock`s its handler table. When another thread holds it, the emit is
+  parked in a pending queue that is flushed only by a later emit that reaches
+  a handler. The harness was blocked waiting, so nothing flushed it;
+- the window is widest during the first folder-session send, when
+  `advertised_tool_schemas` spends ~40 s in the sandboxed shell probe
+  (`PROBE_TIMEOUT` is 10 s per candidate) while the app's own events flow.
+
+Fix: `Ctx::eval` no longer returns results over the event bus. The script
+stores its result in the page and the harness collects it with
+`WebviewWindow::eval_with_callback`. No retry was added. The ~40 s first-send
+probe is a real product latency, recorded separately and not fixed here.
+
+### Prompt snapshot ids were reused after a restart (AH-078)
+
+The same runs showed `prompts.jsonl` holding two records with id `snap-1`:
+the id was a process-local counter, so the first snapshot after a restart took
+an old record's id, and a lookup by id could return the wrong request. The
+same defect was fixed independently on `fork/main` alongside AH-079 replay
+(which depends on lookup by id); the merged tree keeps that version, ids of the
+form `snap-<launch>-<n>`, with its regression test
+`snapshot.rs::an_id_from_an_earlier_launch_is_never_issued_again`.
 
 
 ## Run reliability (AH-018 / AH-019 / AH-021 / AH-024 / AH-025 / AH-029 / AH-030)

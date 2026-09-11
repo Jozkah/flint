@@ -94,6 +94,7 @@ macro_rules! invoke_commands_with_extras {
         core::net::commands::provider_endpoint_diagnostics,
         core::net::commands::provider_endpoint_refresh,
         core::agent::commands::agent_prompt_snapshots,
+        core::agent::commands::agent_prompt_snapshots_delete,
         core::agent::commands::agent_worktree_export,
         core::agent::commands::agent_events_record,
         core::agent::commands::agent_events_export,

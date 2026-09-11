@@ -73,6 +73,83 @@ describe('useTokensCount', () => {
     expect(result.current.tokenCount).toBe(15)
   })
 
+  // Chat reload: the counter is rebuilt from what was persisted on the message.
+  it('restores the cache breakdown from a persisted message', async () => {
+    const persisted = JSON.parse(
+      JSON.stringify([
+        makeMessage({
+          metadata: {
+            usage: {
+              inputTokens: 5974,
+              outputTokens: 8,
+              totalTokens: 5982,
+              cachedInputTokens: 5957,
+              uncachedInputTokens: 17,
+              cacheSource: 'openai-chat',
+            },
+          },
+        }),
+      ])
+    ) as ThreadMessage[]
+    const { result } = renderHook(() => useTokensCount(persisted))
+    await waitFor(() => expect(result.current.modelProps).toBeDefined())
+    expect(result.current.usage).toEqual({
+      inputTokens: 5974,
+      outputTokens: 8,
+      totalTokens: 5982,
+      cachedInputTokens: 5957,
+      uncachedInputTokens: 17,
+      cacheSource: 'openai-chat',
+    })
+  })
+
+  it('reads a message saved before cache accounting without inventing a cached count', async () => {
+    const messages = [
+      makeMessage({ metadata: { usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } } }),
+    ]
+    const { result } = renderHook(() => useTokensCount(messages))
+    await waitFor(() => expect(result.current.modelProps).toBeDefined())
+    expect(result.current.usage).toEqual({ inputTokens: 10, outputTokens: 5, totalTokens: 15 })
+    expect(result.current.usage?.cachedInputTokens).toBeUndefined()
+  })
+
+  it("carries the engine's live cache_n while a llama.cpp turn streams", async () => {
+    act(() => {
+      useAppState.getState().updateThreadLiveTokenStats('thread-1', {
+        promptTokens: 20956,
+        completionTokens: 95,
+        tokensPerSecond: 30,
+        promptPerSecond: 60,
+        cachedPromptTokens: 20935,
+      })
+    })
+    const { result } = renderHook(() =>
+      useTokensCount([makeMessage()])
+    )
+    await waitFor(() => expect(result.current.modelProps).toBeDefined())
+    expect(result.current.usage?.cachedInputTokens).toBe(20935)
+    expect(result.current.usage?.uncachedInputTokens).toBe(21)
+  })
+
+  it('reports the Cowork source usage, cache counts included, for a remote provider', () => {
+    modelProviderState.selectedProvider = 'anthropic'
+    const { result } = renderHook(() =>
+      useTokensCount([], {
+        threadId: 's1',
+        usage: {
+          inputTokens: 2312,
+          outputTokens: 6,
+          totalTokens: 2318,
+          cachedInputTokens: 2000,
+          uncachedInputTokens: 312,
+          cacheWriteTokens: 300,
+        },
+      })
+    )
+    expect(result.current.tokenCount).toBe(2318)
+    expect(result.current.usage?.cacheWriteTokens).toBe(300)
+  })
+
   it('prefers live per-thread token stats over the static last-message usage while streaming', async () => {
     const messages = [
       makeMessage({ metadata: { usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 } } }),

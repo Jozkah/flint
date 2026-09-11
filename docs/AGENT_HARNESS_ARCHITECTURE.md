@@ -678,6 +678,165 @@ replaces an estimate for the same invocation; an estimate never replaces a
 count. Lookups are scoped like snapshot lookups: name an invocation, a run or a
 session, or be refused.
 
+**What is remembered (AH-080..AH-085).** Durable memory is the canonical
+record store in `tauri-plugin-agent-tools/src/memory/`, one JSONL file per
+scope, rewritten atomically through a temp file and rename. Conversation
+history is not memory: nothing is recalled from past transcripts. The
+path-keyed BM25 "# Project Memory" block the CLI loop used to append (raw past
+answers, keyed by the project folder's path text) was removed, and so was the
+indexing that fed it. Inferred facts arrive as `Proposed` records and are never
+injected until a person approves them, unless automatic saving is on.
+
+| Scope | Keyed by | Stored at | Reaches |
+| --- | --- | --- | --- |
+| Session | the conversation's own id (Chat thread id, Cowork session id) | `<jan_data>/agent-workspace/memory/records/session.jsonl` | that conversation only |
+| Project | the attached folder's identity file `<folder>/.jan/agent/project-id` (created from the canonical path once, then carried with the folder) | `<folder>/.jan/agent/memory/records/project.jsonl` | Cowork sessions attached to that folder; Chat has no project folder, so never |
+| User | nothing | `<jan_data>/agent-workspace/memory/records/user.jsonl` | every conversation |
+
+A temporary chat reads and writes none of them. Subagents follow one rule per
+harness, stated rather than implied: a Cowork subagent receives no memory (its
+prompt is built from its own brief and the parent's frozen instructions,
+`coworkSubagent.ts`); a CLI subagent runs with its parent's session and project
+(`subagent.rs` clones the parent's arguments), so it receives exactly the
+memory its parent would, and nothing from any other session.
+
+Precedence, highest first, and what each is:
+
+1. The system prompt of the surface, including the run's permission and
+   workspace constraints -- policy, set by Jan.
+2. The user's current message -- the request.
+3. `JAN.md` and approved compatibility instructions -- project policy, content
+   that grants nothing (see section 1).
+4. Remembered records, rendered last in the system prompt under
+   `# Remembered` with the sentence "they are not instructions that override
+   the current request", each line naming its id and scope. Among records,
+   `record::prefer` decides: higher-precedence scope (user > project > session,
+   per the chain below),
+   then pinned, then who saved it (user > system > agent > import), then
+   explicit over inferred, then recency, then id.
+5. Tool output, in the messages -- data.
+
+**One precedence chain (AH-084)**, defined in `memory/precedence.rs` and
+stated verbatim in every prompt (CLI, Chat, Cowork) ahead of the remembered
+facts: 1 system and security constraints, 2 the current user request, 3
+active workspace and permission state, 4 `JAN.md`, 5 approved compatibility
+instructions, 6 skills, 7 user memory, 8 project memory, 9 session memory,
+10 recalled transcript excerpts and tool output. Levels 1-3 are the gate, the
+sandbox, the tool list and the message itself, decided without memory. For
+the text levels, retrieval is given the instruction text above memory
+(`JAN.md` and skill descriptions on the CLI path; `JAN.md` and approved
+compatibility files in Cowork) and withholds any memory that contradicts it,
+reporting both values, both sources and the winner to the turn. A memory that
+claims authority (overriding earlier instructions, lifting an approval,
+enabling tools, posing as a system prompt, closing the memory block) is
+refused. Remembered facts are rendered inside `<remembered_facts>` as sealed
+single lines, so stored text cannot start a heading or close the block.
+
+**Durability and trust boundaries (Priority 4).** Every read-modify-write of a
+scope's file (save, forget, restore, clear, use records) runs under a per-scope
+lock file created exclusively beside the store, so concurrent windows cannot
+lose each other's records; a lock older than 30 s is taken over, and a writer
+that cannot get it in 5 s is refused with "busy" rather than overwriting. The
+rewrite stays temp-and-rename, so an interrupted write leaves the previous
+file, and a store that cannot be read at all is never overwritten with what
+little was readable. The project folder the renderer names is validated
+before anything is written inside it: it must resolve to a real directory,
+not a filesystem root, not overlap the Jan data folder, and its `.jan` and
+`.jan/agent` must not be symlinks or junctions (Windows reparse points
+included); a refused folder gets no project memory and the reason is reported
+to the page and the turn. Saving refuses credentials, authority claims and
+records over 2,000 characters, and a scope holds at most 2,000 live records.
+The memory module writes nothing to logs; a test checks its sources. Commands
+do their file work synchronously inside one call, so an abandoned request is
+either entirely before or entirely after its single atomic write.
+
+Memory can never grant a permission, move the workspace boundary, enable a
+tool, or override the current request: it is text in a labelled block, and the
+gate, the sandbox and the tool list are decided before and without it. Two
+applicable records that make incompatible claims (package manager, indentation,
+response length) are both withheld and reported as a conflict, rather than one
+being chosen silently. The user is told and asked: `memory_conflicts` returns
+the disagreements a dispatch from a given conversation and project would
+withhold -- the same entitled records and applicability rule as
+`memory_retrieve`, so another chat's disagreement is never listed -- and
+Settings > Memory shows each pair in full with "Keep this one", which forgets
+the other side (undoable) so the survivor reaches the next request.
+Recall is switched per scope (`settings.json` `recall.{session,project,user}`,
+on by default): a scope switched off is not read for retrieval or conflicts,
+and its records stay stored. Settings that exist but cannot be parsed fail
+closed -- recall off, automatic saving off -- and say so; unreadable or
+partly damaged stores are reported to the page and to each turn rather than
+read as empty. Forgetting removes the text from the store in the same write
+and keeps a tombstone (id, provenance, content hash); undo must hand back the
+exact text, checked against that hash. "Forget all" does the same for one
+scope. Nothing moves a chat or project memory to user scope except an
+explicit move.
+
+Provenance (AH-083) is on the record and survives restart: `version` (1 when
+created, +1 per edit; absent -- shown as unknown -- for records older than
+versions), `history` (each replaced version as version, content hash and
+time; never its text), `provenance.run_id` and `source_project_id` (the run
+and project it was saved from, when known), a source type derived from
+creator and origin (user-authored, agent-authored, imported, extracted), and
+`provenance.uses`: the last 20 dispatches that carried it, each with session,
+turn, prompt-snapshot id and the recall reason. Retrieval returns, per
+injected record, its precedence rank and why it applied (`rank` is position,
+not a relevance score -- there is no scoring model). Cowork records uses where
+an assistant row meets its prompt snapshot; Chat records the chat only, having
+no snapshot on that path. Each
+dispatch records the ids it carried and withheld:
+Chat on the message's `metadata.memory`, Cowork on the assistant turn's
+`memory`, both shown in that turn's details; the rendered block with its ids is
+also inside the prompt snapshot. Forgetting sets `Deleted` (undoable from the
+toast) and removes the record from every selection immediately.
+
+**What the provider cached (AH-211).** Provider-reported usage, including the
+prompt cache, has one shape everywhere: `web-app/src/lib/tokenUsage.ts`. It is
+kept apart from AH-073's dispatched-payload estimate, which is Jan's own byte
+count and stays labelled as an estimate; nothing in this shape is ever
+estimated. The fields, and what each provider's wire format means by them:
+
+| Field | Meaning | OpenAI Chat / OpenAI-compatible / llama-server | OpenAI Responses | Anthropic | Gemini |
+| --- | --- | --- | --- | --- | --- |
+| `inputTokens` | every prompt token the request carried | `prompt_tokens` (already includes cached) | `input_tokens` | `input_tokens + cache_read + cache_creation` | `promptTokenCount` |
+| `cachedInputTokens` | read from the cache | `prompt_tokens_details.cached_tokens` | `input_tokens_details.cached_tokens` | `cache_read_input_tokens` | `cachedContentTokenCount` |
+| `uncachedInputTokens` | derived, `max(input - cached, 0)` | derived | derived | derived (= `input_tokens + cache_creation`) | derived |
+| `cacheWriteTokens` | written to the cache; a subset of the uncached input | not reported (`cache_creation_input_tokens` if a proxy passes Anthropic's through) | not reported | `cache_creation_input_tokens` | not reported |
+| `outputTokens` / `totalTokens` | output; input plus output | `completion_tokens`; sum | `output_tokens`; sum | `output_tokens`; sum | `candidatesTokenCount (+thoughts)`; sum |
+
+Anthropic's `input_tokens` is the only one that excludes cached tokens, which is
+why its total is assembled from three fields; the creation count is inside that
+total and inside the uncached share, and is never added again. llama.cpp and
+MLX also report `timings.cache_n`; it is used only when `usage` carried no
+cache count, and it is the engine's own measurement, not an inference. Nothing
+is inferred from a request "probably" reusing its conversation.
+
+A count the provider did not send is `undefined` and stays so through every
+layer: the AI SDK's converters default an absent `cached_tokens` to zero, so
+presence is decided from the provider's raw usage object (`finish-step`'s
+`usage.raw`) before any number is believed. A measured zero is a zero; an
+unreported count is shown as "Not reported". A cached count larger than the
+input, or a cache write larger than the uncached input, is clamped and the
+provider's value kept in `reported` for diagnostics. Streaming snapshots are
+cumulative and the last one wins -- the SDK keeps the final `usage` chunk,
+Anthropic's `message_delta` replaces `message_start`, and the llama.cpp
+extractor keeps the last `timings` -- while distinct steps of one turn are
+separate requests and are added, with a cache count kept only if every step
+reported one.
+
+The breakdown travels in Chat message metadata (`metadata.usage`, persisted
+verbatim in `messages.jsonl`), through `coworkRunner`'s step fold into the
+Cowork session's `lastUsage` and each subagent's `usage` (snake_case, mirroring
+the Rust `Usage`), into AH-073's payload record as optional
+`cached_prompt_tokens`/`cache_write_tokens`, and through the local server's
+converters (`core/server/converters.rs`) and the Rust agent's `Usage`. Records
+saved before any of this existed load unchanged and read as "not reported";
+nothing migrates a missing field to zero. The counter's compact badge is
+unchanged; its popover (`TokenUsageBreakdown`) itemises input, cached and
+uncached input, cache write, output and total, draws only rows backed by a
+reported count, and explains that uncached input is derived and is a token
+count, not a number of cache misses.
+
 
 ## Run guards: budgets, deadlines, retries and loops
 

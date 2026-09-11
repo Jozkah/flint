@@ -601,6 +601,34 @@ fn test_write_and_read_messages_round_trip() {
     assert_eq!(read[1]["role"], "assistant");
 }
 
+/// A message's provider usage, cache breakdown included, is stored verbatim:
+/// messages.jsonl keeps metadata as opaque JSON, so neither a cache count nor
+/// its absence is rewritten on the way through. AH-211.
+#[test]
+fn test_message_usage_cache_breakdown_survives_the_round_trip() {
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path();
+    ensure_thread_dir_exists(base, "usage").unwrap();
+    let path = get_messages_path(base, "usage");
+
+    let cached = json!({
+        "inputTokens": 5974, "outputTokens": 8, "totalTokens": 5982,
+        "cachedInputTokens": 5957, "uncachedInputTokens": 17,
+        "cacheSource": "openai-chat"
+    });
+    let legacy = json!({ "inputTokens": 10, "outputTokens": 5, "totalTokens": 15 });
+    let msgs = vec![
+        json!({"id": "m1", "role": "assistant", "metadata": {"usage": cached}}),
+        json!({"id": "m2", "role": "assistant", "metadata": {"usage": legacy}}),
+    ];
+    write_messages_to_file(&msgs, &path).unwrap();
+
+    let read = read_messages_from_file(base, "usage").unwrap();
+    assert_eq!(read[0]["metadata"]["usage"], cached);
+    assert_eq!(read[1]["metadata"]["usage"], legacy);
+    assert!(read[1]["metadata"]["usage"].get("cachedInputTokens").is_none());
+}
+
 #[test]
 fn test_read_messages_missing_file_returns_empty() {
     let tmp = tempfile::tempdir().unwrap();

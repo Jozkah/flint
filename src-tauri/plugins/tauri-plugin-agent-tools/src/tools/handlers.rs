@@ -2864,8 +2864,12 @@ async fn memory_propose(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Stri
         _ => Scope::Session,
     };
 
+    // Project records live in the project's own store, the one every reader
+    // (`commands`, `context::load_memories`, the settings page) opens. This
+    // used to write to `<project>/.jan`, one level above it, so a project
+    // memory the model proposed was saved where nothing ever looked.
     let store_root = match scope {
-        Scope::Project => ctx.project_root.join(crate::tools::sandbox::JAN_DIR),
+        Scope::Project => crate::workspace::project_store(ctx.project_root),
         _ => ctx.store_root.to_path_buf(),
     };
     let now = std::time::SystemTime::now()
@@ -5444,6 +5448,33 @@ mod tests {
         .await;
         assert!(out.contains("temporary"), "{out}");
         assert!(stored(&store).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A project memory lands in the store the readers open. It used to be
+    /// written one directory above it, where nothing looked.
+    #[tokio::test]
+    async fn memory_propose_project_scope_is_saved_where_it_is_read_back() {
+        let root = unique_root();
+        let session_store = root.join("store");
+        allow_automatic(&session_store);
+        let ctx = propose_ctx(&root, &session_store, false);
+        let out = execute_text(
+            lookup("memory_propose").unwrap(),
+            &json!({"content": "This project builds with yarn.", "scope": "project"}),
+            &ctx,
+        )
+        .await;
+        assert!(out.starts_with("Remembered") || out.contains("Not saved yet"), "{out}");
+        let project = crate::workspace::project_store(&root);
+        let records =
+            crate::memory::store::load(&project, crate::memory::record::Scope::Project).records;
+        assert_eq!(records.len(), 1, "the proposal was not written to the project store");
+        assert_eq!(records[0].content, "This project builds with yarn.");
+        assert!(
+            !root.join(".jan").join("memory").exists(),
+            "nothing may be written to the old, unread location"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

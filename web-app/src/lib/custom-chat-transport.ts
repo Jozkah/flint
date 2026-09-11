@@ -13,6 +13,7 @@ import {
 } from 'ai'
 import { repairToolArgs } from './toolCallRepair'
 import { streamCutOff } from './streamFinish'
+import { recordMemoryUses } from './memoryUses'
 import { getServiceHub, useServiceStore } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import { DISPATCH_PARAM_KEY, ModelFactory } from './model-factory'
@@ -33,6 +34,7 @@ import { getAgentToolSchemas, sandboxEnforces } from '@/lib/agentTools'
 import { errorText } from '@/lib/errorText'
 import {
   memoryRetrieve,
+  type MemoryInstruction,
   type MemoryRetrieved,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { useAppState } from '@/hooks/useAppState'
@@ -67,9 +69,14 @@ import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
 import { paramsSettings } from '@/lib/predefinedParams'
 import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
+import {
+  createUsageCollector,
+  readTokenUsage,
+  type TokenUsage,
+} from '@/lib/tokenUsage'
 
 export type TokenUsageCallback = (
-  usage: LanguageModelUsage,
+  usage: TokenUsage,
   messageId: string
 ) => void
 export type StreamingTokenSpeedCallback = (
@@ -799,6 +806,8 @@ function prependContinuationToUIStream(
 }
 
 export class CustomChatTransport implements ChatTransport<UIMessage> {
+  /** Record memory uses when a reply finishes. Cowork records its own. */
+  protected recordsMemoryUsesOnFinish = true
   public model: LanguageModel | null = null
   private routerModel: LanguageModel | null = null
   private routerModelKey = ''
@@ -946,9 +955,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const raw =
       [
         this.systemMessage,
-        // Remembered facts are data the model may use, not instructions it must
-        // follow. The block arrives already delimited from the backend, which
-        // is what keeps that distinction visible in the prompt itself.
+        // The precedence chain (AH-084), stated by the backend so every surface
+        // says the same thing, then the remembered facts it ranks. Remembered
+        // facts are data the model may use, not instructions it must follow;
+        // the block arrives delimited and sealed from the backend.
+        this.memorySelection?.block ? this.memorySelection.precedence : undefined,
         this.memorySelection?.block ?? undefined,
         this.buildFilesSystemInstruction(messages),
         this.buildWebSearchSystemInstruction(),
@@ -1002,11 +1013,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           projectRoot: this.projectRoot,
           sessionId: this.threadId,
         },
-        { temporary: this.temporary }
+        { temporary: this.temporary, instructions: this.memoryInstructions() }
       )
     } catch (e) {
       console.warn('[memory] retrieval failed:', errorText(e))
     }
+  }
+
+  /**
+   * Instruction text above memory for this request (AH-084): a memory that
+   * contradicts it is withheld and reported. Chat has none of its own; Cowork
+   * supplies its project's JAN.md and approved compatibility files.
+   */
+  protected memoryInstructions(): MemoryInstruction[] {
+    return []
   }
 
   /** The memories the last dispatch carried, for the snapshot and accounting. */
@@ -1670,6 +1690,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     let tokensPerSecond = 0
     let promptPerSecond = 0
+    // Per step, with the provider's raw usage: the `finish` part's total has
+    // already been summed by the SDK and no longer says whether a cache count
+    // was reported or defaulted to zero.
+    const usageCollector = createUsageCollector()
 
     const uiStream = result.toUIMessageStream({
       messageMetadata: ({ part }) => {
@@ -1698,6 +1722,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           streamStartTime = Date.now()
         }
 
+        usageCollector.observe(part)
+
         if (part.type === 'finish-step') {
           tokensPerSecond =
             (part.providerMetadata?.providerMetadata
@@ -1714,13 +1740,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             totalUsage: LanguageModelUsage
             finishReason: string
           }
-          const usage = finishPart.totalUsage
+          const usage = usageCollector.total(finishPart.totalUsage)
           const durationMs = streamStartTime ? Date.now() - streamStartTime : 0
           const durationSec = durationMs / 1000
 
-          // Use provider's outputTokens, or llama.cpp completionTokens, or fall back to text delta count
-          const outputTokens = usage?.outputTokens ?? 0
-          const inputTokens = usage?.inputTokens
+          // Only for the speed figure; the stored usage keeps an unreported
+          // count unreported rather than zero.
+          const outputTokens = usage.outputTokens ?? 0
 
           // Use llama.cpp's tokens per second if available, otherwise calculate from duration
           let tokenSpeed: number
@@ -1731,15 +1757,44 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             tokenSpeed = 0
           }
 
+          // AH-083: where each carried memory was used. Chat has no prompt
+          // snapshot on this path, so the use names the chat and nothing it
+          // cannot prove. Cowork records its own, with the snapshot, where the
+          // turn row is built.
+          if (this.recordsMemoryUsesOnFinish && this.memorySelection?.injectedIds.length) {
+            void recordMemoryUses({
+              sessionId: this.threadId,
+              projectRoot: this.projectRoot,
+              memory: {
+                injectedIds: this.memorySelection.injectedIds,
+                conflictIds: this.memorySelection.conflictIds,
+                recall: this.memorySelection.recall ?? [],
+              },
+            })
+          }
           return {
             finishReason: finishPart.finishReason,
             streamCutOff: streamCutOff(part),
-            usage: {
-              inputTokens: inputTokens,
-              outputTokens: outputTokens,
-              totalTokens:
-                usage?.totalTokens ?? (inputTokens ?? 0) + outputTokens,
-            },
+            usage,
+            // Which remembered records this request carried, and which were
+            // withheld as conflicting: ids only, never their text.
+            ...(this.memorySelection
+              ? {
+                  memory: {
+                    injectedIds: this.memorySelection.injectedIds,
+                    conflictIds: this.memorySelection.conflictIds,
+                    storageIssues: this.memorySelection.storageIssues ?? [],
+                    recallOff: this.memorySelection.recallOff ?? [],
+                    recall: (this.memorySelection.recall ?? []).map((r) => ({
+                      id: r.id,
+                      rank: r.rank,
+                      reason: r.reason,
+                    })),
+                    overridden: this.memorySelection.overridden ?? [],
+                    refused: this.memorySelection.refused ?? [],
+                  },
+                }
+              : {}),
             tokenSpeed: {
               tokenSpeed: Math.round(tokenSpeed * 100) / 100,
               promptSpeed: promptPerSecond
@@ -1799,7 +1854,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           const metadata = responseMessage.metadata as
             | Record<string, unknown>
             | undefined
-          const usage = metadata?.usage as LanguageModelUsage | undefined
+          const usage = readTokenUsage(metadata?.usage)
           if (usage) {
             this.onTokenUsage?.(usage, responseMessage.id)
           }

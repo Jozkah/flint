@@ -61,6 +61,18 @@ export type CoworkTurn = {
    */
   promptSnapshot?: { id: string; hash: string; redactions: number }
   /**
+   * The memories the request behind this turn actually carried, by id, and
+   * the ones withheld because they conflicted. What "which memories were used
+   * in this turn" answers from; never the memory text itself.
+   */
+  memory?: TurnMemory
+  /**
+   * The provider's usage for the request behind this assistant turn. Absent
+   * on turns saved before per-turn usage existed, and on turns whose provider
+   * reported none.
+   */
+  usage?: Usage
+  /**
    * Questions the run asked at this point in the conversation.
    *
    * Attached to the turn, not held in a single "current question" slot beside
@@ -70,6 +82,29 @@ export type CoworkTurn = {
    * vanished when it was given.
    */
   asks?: AskRecord[]
+}
+
+/** Memory ids placed in (and withheld from) one dispatched request. */
+export type TurnMemory = {
+  injectedIds: string[]
+  conflictIds: string[]
+  /** Memory storage that could not be read for this request, in words. */
+  storageIssues?: string[]
+  /** Scopes whose recall was switched off for this request. */
+  recallOff?: string[]
+  /** Why each sent memory was chosen: precedence rank and reason. */
+  recall?: { id: string; rank: number; reason: string }[]
+  /** Withheld because a higher source says otherwise, with both sides. */
+  overridden?: {
+    memoryId: string
+    subject: string
+    memorySays: string
+    winner: string
+    winnerName: string
+    winnerSays: string
+  }[]
+  /** Refused for claiming authority memory cannot have. */
+  refused?: { memoryId: string; reason: string }[]
 }
 
 /**
@@ -94,11 +129,29 @@ export type AskRecord = {
   answers?: AskAnswer[]
 }
 
-/** Mirrors the Rust `Usage` struct (events.rs). */
+/**
+ * Mirrors the Rust `Usage` struct (events.rs).
+ *
+ * The cache fields are present only when the provider reported them; a
+ * session saved before they existed simply lacks them, and reads as "not
+ * reported" rather than "nothing cached". `uncached_prompt_tokens` is derived
+ * (`prompt - cached`) and is re-derived on read. See `lib/tokenUsage.ts`.
+ */
 export type Usage = {
   prompt_tokens?: number
   completion_tokens?: number
   total_tokens?: number
+  cached_prompt_tokens?: number
+  uncached_prompt_tokens?: number
+  cache_write_tokens?: number
+  cache_source?:
+    | 'openai-chat'
+    | 'openai-responses'
+    | 'anthropic'
+    | 'google'
+    | 'engine-timings'
+  /** Provider values that were clamped, kept for diagnostics. */
+  reported?: { cachedInputTokens?: number; cacheWriteTokens?: number }
 }
 
 /**

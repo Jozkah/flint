@@ -216,3 +216,28 @@ describe('prompt snapshots ride the assistant message they produced', () => {
     expect(parts.find((p: any) => p.type === 'data-prompt-snapshot')).toBeUndefined()
   })
 })
+
+describe('per-turn usage on the transcript', () => {
+  it('carries a turn’s usage and memory ids as a display-only part', () => {
+    const messages = coworkTurnsToUIMessages([
+      { role: 'user', content: 'go' },
+      {
+        role: 'assistant',
+        content: 'done',
+        usage: { prompt_tokens: 900, completion_tokens: 4, total_tokens: 904, cached_prompt_tokens: 850 },
+        memory: { injectedIds: ['mem-1'], conflictIds: [] },
+      } as CoworkTurn,
+    ])
+    const part = partsOf(messages, 1).find((p: any) => p.type === 'data-turn-usage')
+    expect(part?.data.usage.cached_prompt_tokens).toBe(850)
+    expect(part?.data.memory.injectedIds).toEqual(['mem-1'])
+  })
+
+  it('adds nothing for a turn saved before per-turn usage existed', () => {
+    const messages = coworkTurnsToUIMessages([
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: 'done' },
+    ])
+    expect(partsOf(messages, 1).some((p: any) => p.type === 'data-turn-usage')).toBe(false)
+  })
+})

@@ -136,6 +136,10 @@ import { CoworkEnvironmentReadiness } from '@/containers/CoworkEnvironmentReadin
 import { usePrompt } from '@/hooks/usePrompt'
 import { setSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
 import { recordPayloadUsage } from '@/lib/payloadUsage'
+import { fromCoworkUsage } from '@/lib/tokenUsage'
+import { TurnUsageDetails } from '@/components/TurnUsageDetails'
+import { recordMemoryUses } from '@/lib/memoryUses'
+import type { TurnMemory } from '@/types/coworkSession'
 import { attachAskToTurns, settleAskInTurns } from '@/hooks/useCoworkRun'
 import {
   NO_SESSION,
@@ -1144,13 +1148,9 @@ function CoworkPage() {
   const tokenSource = useMemo(
     () => ({
       threadId: session?.id,
-      usage: usage
-        ? {
-            inputTokens: usage.prompt_tokens,
-            outputTokens: usage.completion_tokens,
-            totalTokens: usage.total_tokens,
-          }
-        : undefined,
+      // Cache counts included: the counter's popover shows them for Cowork
+      // exactly as it does for Chat.
+      usage: fromCoworkUsage(usage),
     }),
     [session?.id, usage]
   )
@@ -1555,6 +1555,21 @@ function CoworkPage() {
     )
     liveTurnsRef.current = [...liveTurnsRef.current, ...stamped]
     setLiveTurns(liveTurnsRef.current)
+    // AH-083: the memories this row's request carried now know the turn and
+    // the exact snapshot they went out in. Here for the same reason as the
+    // stamp above: this is where the row, its memory and its snapshot meet.
+    const store = useCoworkSessions.getState()
+    const session = store.sessions.find((s) => s.id === store.currentId)
+    for (const turn of stamped) {
+      if (turn.role !== 'assistant' || !turn.memory?.injectedIds.length) continue
+      void recordMemoryUses({
+        sessionId: session?.id,
+        projectRoot: session?.folder ?? undefined,
+        memory: turn.memory,
+        turnId: turn.promptSnapshot?.id ? `turn-${turn.promptSnapshot.id}` : undefined,
+        snapshotId: turn.promptSnapshot?.id,
+      })
+    }
   }, [])
 
   /**
@@ -1921,6 +1936,13 @@ function CoworkPage() {
       // nothing here.
       compatInstructions: compatInstructionBlocks(runCompat),
       openingInspection: inspecting,
+    })
+    // Project memory is keyed by the attached folder's own identity file, not
+    // by the tree this run reads: a managed worktree is the same project, and
+    // a session with no folder has no project memory at all. Never temporary.
+    transport.setMemoryBinding({
+      projectRoot: current?.folder ?? undefined,
+      temporary: false,
     })
     await transport.refreshTools()
     // Now the count is a fact rather than a guess, so the readiness card can
@@ -3303,6 +3325,22 @@ function CoworkPage() {
                             <PromptSnapshotView
                               snapshotId={ref.id}
                               sessionId={session?.id}
+                            />
+                          ) : null
+                        })()}
+                        {/* This turn's own token breakdown and the memory ids
+                        its request carried (AH-211, AH-083). */}
+                        {(() => {
+                          const data = (
+                            message.parts as { type: string; data?: unknown }[]
+                          ).find((part) => part.type === 'data-turn-usage')
+                            ?.data as
+                            | { usage?: Usage; memory?: TurnMemory }
+                            | undefined
+                          return data ? (
+                            <TurnUsageDetails
+                              usage={fromCoworkUsage(data.usage)}
+                              memory={data.memory}
                             />
                           ) : null
                         })()}

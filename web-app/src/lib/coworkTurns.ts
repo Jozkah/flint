@@ -119,6 +119,15 @@ export function coworkTurnsToUIMessages(
           data: turn.promptSnapshot,
         } as never)
       }
+      // The request's own usage and the memory ids it carried, so this turn's
+      // breakdown is shown for this turn. Display only: `data-` parts are not
+      // sent to the model.
+      if (turn.usage || turn.memory) {
+        ensureAssistant(i).parts.push({
+          type: 'data-turn-usage',
+          data: { usage: turn.usage, memory: turn.memory },
+        } as never)
+      }
       // Questions the run asked here. They stay in the transcript after they
       // are answered, so the answer is part of the history.
       for (const ask of turn.asks ?? []) {

@@ -1,7 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { recordToolActivity } from '@/lib/toolActivity'
 import type { UIMessage, UIMessageChunk } from 'ai'
-import type { AskAnswer, CoworkTurn, Usage } from '@/types/coworkSession'
+import type {
+  AskAnswer,
+  CoworkTurn,
+  TurnMemory,
+  Usage,
+} from '@/types/coworkSession'
 import {
   MAX_AGENT_STEPS,
   budgetExceeded,
@@ -16,6 +21,7 @@ import {
 } from '@/lib/runLoopGuard'
 import { isExpired, operationSignal, type Deadline } from '@/lib/runDeadline'
 import { decideRetry, waitFor } from '@/lib/runRetry'
+import { readTokenUsage, toCoworkUsage } from '@/lib/tokenUsage'
 
 /**
  * The HTTP status a failure carried, when it carried one.
@@ -99,6 +105,11 @@ export type ToolOutcome = {
 
 /** One model turn's worth of stream, folded into a shape the loop can act on. */
 export type StepResult = {
+  /**
+   * Memory ids the request carried and withheld, as the transport reported
+   * them. Absent when the transport retrieved nothing.
+   */
+  memory?: TurnMemory
   text: string
   toolCalls: PendingToolCall[]
   usage: Usage | null
@@ -272,17 +283,45 @@ export function answerAsk(
   return true
 }
 
-const usageOf = (meta: unknown): Usage | null => {
-  const u = (meta as { usage?: Record<string, unknown> } | undefined)?.usage
-  if (!u || typeof u !== 'object') return null
-  const num = (v: unknown) => (typeof v === 'number' ? v : undefined)
+// The cache counts ride along: dropping them here was where a provider's
+// cache report used to stop on its way to the Cowork counter.
+const idList = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+
+const memoryOf = (meta: unknown): TurnMemory | undefined => {
+  const m = (meta as { memory?: unknown } | undefined)?.memory
+  if (!m || typeof m !== 'object') return undefined
+  const r = m as Record<string, unknown>
+  const issues = idList(r.storageIssues)
+  const off = idList(r.recallOff)
+  const recall = Array.isArray(r.recall)
+    ? r.recall.flatMap((x) => {
+        const v = x as Record<string, unknown>
+        return typeof v?.id === 'string' && typeof v.reason === 'string'
+          ? [{ id: v.id, rank: typeof v.rank === 'number' ? v.rank : 0, reason: v.reason }]
+          : []
+      })
+    : []
   return {
-    prompt_tokens: num(u.inputTokens ?? u.promptTokens ?? u.prompt_tokens),
-    completion_tokens: num(
-      u.outputTokens ?? u.completionTokens ?? u.completion_tokens
-    ),
-    total_tokens: num(u.totalTokens ?? u.total_tokens),
+    injectedIds: idList(r.injectedIds),
+    conflictIds: idList(r.conflictIds),
+    ...(issues.length > 0 ? { storageIssues: issues } : {}),
+    ...(off.length > 0 ? { recallOff: off } : {}),
+    ...(recall.length > 0 ? { recall } : {}),
+    ...(Array.isArray(r.overridden) && r.overridden.length > 0
+      ? { overridden: r.overridden as NonNullable<TurnMemory['overridden']> }
+      : {}),
+    ...(Array.isArray(r.refused) && r.refused.length > 0
+      ? { refused: r.refused as NonNullable<TurnMemory['refused']> }
+      : {}),
   }
+}
+
+const usageOf = (meta: unknown): Usage | null => {
+  const usage = readTokenUsage(
+    (meta as { usage?: unknown } | undefined)?.usage
+  )
+  return usage ? toCoworkUsage(usage) : null
 }
 
 export type StreamSink = {
@@ -372,6 +411,7 @@ export async function consumeStep(
           break
         case 'finish':
           result.usage = usageOf(chunk.messageMetadata) ?? result.usage
+          result.memory = memoryOf(chunk.messageMetadata) ?? result.memory
           // A reply the provider never finished -- the connection dropped
           // mid-stream -- still ends with a `finish` chunk, carrying whatever
           // text arrived. Read as an answer, a child cut off after one word
@@ -426,7 +466,17 @@ export function turnsFor(
   outcomes: Map<string, ToolOutcome>
 ): CoworkTurn[] {
   const turns: CoworkTurn[] = []
-  if (step.text) turns.push({ role: 'assistant', content: step.text })
+  // The request's own usage and memory ride on the turn it produced, so an
+  // earlier turn's breakdown -- and which memories it carried -- can be shown
+  // for that turn rather than only the session's latest.
+  if (step.text) {
+    turns.push({
+      role: 'assistant',
+      content: step.text,
+      ...(step.usage ? { usage: step.usage } : {}),
+      ...(step.memory ? { memory: step.memory } : {}),
+    })
+  }
   for (const call of step.toolCalls) {
     const outcome = outcomes.get(call.toolCallId)
     turns.push({

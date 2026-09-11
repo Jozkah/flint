@@ -32,6 +32,7 @@ import {
 import { CANCELLED_BY_USER } from '@/lib/coworkCancel'
 import { INTERRUPTED_BY_RESTART } from '@/lib/hydrateStores'
 import type { CoworkTurn } from '@/types/coworkSession'
+import { describeTokenUsage, fromCoworkUsage } from '@/lib/tokenUsage'
 
 /** How often running rows re-render so their elapsed time advances. A second
  * is the resolution the duration label shows, so anything finer is wasted
@@ -597,6 +598,9 @@ function TaskItem({
   const { t } = useTranslation()
   const ms = taskElapsedMs(task, now)
   const tokens = task.usage?.total_tokens ?? 0
+  // The row has room for one number; the rest, cache counts included, is on
+  // hover, and says so when the provider reported none.
+  const usageDetail = describeTokenUsage(fromCoworkUsage(task.usage))
 
   return (
     <div
@@ -648,7 +652,11 @@ function TaskItem({
                 {formatCompactDuration(Math.round(ms / 1000), t)}
               </span>
               {tokens > 0 && (
-                <span className="font-mono tabular-nums">
+                <span
+                  className="font-mono tabular-nums"
+                  title={usageDetail || undefined}
+                  data-testid="task-token-usage"
+                >
                   {t('common:tasks.tokens', { tokens: formatTokens(tokens) })}
                 </span>
               )}

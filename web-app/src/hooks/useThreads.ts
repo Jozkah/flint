@@ -11,6 +11,7 @@ import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useAppState } from '@/hooks/useAppState'
 import { cleanupThreadWorkspace } from '@/lib/agentTools'
+import { deletePromptSnapshots } from '@/lib/promptSnapshotRetention'
 
 type ThreadState = {
   threads: Record<string, Thread>
@@ -203,7 +204,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       // behind they would sit in the record forever.
       useModelOverrides.getState().dropThread(threadId)
       cleanupThreadArtifacts(threadId)
-      getServiceHub().threads().deleteThread(threadId)
+      getServiceHub().threads().deleteThread(threadId); void deletePromptSnapshots(threadId)
 
       return {
         threads: remainingThreads,
@@ -239,7 +240,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       // Delete threads and clean up their out-of-store artifacts
       threadsToDeleteIds.forEach((threadId) => {
         cleanupThreadArtifacts(threadId)
-        getServiceHub().threads().deleteThread(threadId)
+        getServiceHub().threads().deleteThread(threadId); void deletePromptSnapshots(threadId)
       })
 
       // Keep favorite threads and threads with project metadata
@@ -273,7 +274,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
         useChatSessions.getState().removeSession(threadId)
         useAppState.getState().clearThreadState(threadId)
         cleanupThreadArtifacts(threadId)
-        getServiceHub().threads().deleteThread(threadId)
+        getServiceHub().threads().deleteThread(threadId); void deletePromptSnapshots(threadId)
       })
 
       return {
@@ -299,7 +300,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
         useChatSessions.getState().removeSession(threadId)
         useAppState.getState().clearThreadState(threadId)
         cleanupThreadArtifacts(threadId)
-        getServiceHub().threads().deleteThread(threadId)
+        getServiceHub().threads().deleteThread(threadId); void deletePromptSnapshots(threadId)
       })
 
       // Keep threads that don't belong to this project

@@ -127,6 +127,9 @@ const SessionItem = memo(function SessionItem({
       <SidebarMenuButton
         isActive={isCurrent}
         onClick={() => onSelect(session.id)}
+        data-testid="cowork-session-item"
+        data-session-id={session.id}
+        data-current={isCurrent ? 'true' : 'false'}
       >
         <span className="truncate">{session.title}</span>
       </SidebarMenuButton>

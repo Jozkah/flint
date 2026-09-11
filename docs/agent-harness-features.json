@@ -2460,7 +2460,9 @@
       "files": [
         "src-tauri/plugins/tauri-plugin-agent-tools/src/snapshot.rs",
         "src-tauri/src/core/agent/loop.rs",
-        "src-tauri/src/core/agent/events.rs"
+        "src-tauri/src/core/agent/events.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/lib/promptSnapshotRetention.ts"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -2472,11 +2474,12 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/snapshot.rs::tests"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/snapshot.rs::tests",
+        "web-app/src/lib/__tests__/promptSnapshotRetention.test.ts"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The snapshot is taken in HttpModelInvoker::invoke from `normalized` -- the exact serialized request, after context construction and after the model id is rewritten, at the last point before dispatch. Not reconstructed from earlier state. It carries schema version, stable id, RFC3339 UTC timestamp, session, run, thread, agent, provider, model, reasoning configuration, the redacted payload, its hash, and the redaction list; message count, tool names and system prompt are derived from the payload rather than stored twice. Redaction runs while the record is built, walks the whole document (a credential in a nested tool argument leaks as surely as one in a header), matches credential fields by name because an auth header's value is opaque, and still applies the value-shaped pass to free text for an env line pasted into a prompt. Each removal records its path and reason, so an empty field is distinguishable from a redacted one. The hash is FNV-1a over a canonical key-sorted serialization of the *redacted* payload: identical payloads hash identically however built, any change to a retry produces a different hash, and a reader can verify the record against its own hash. Storage is append-only JSONL at <jan_data>/audit/prompts.jsonl, flushed per record, with a reader that drops an unparseable line so a truncated tail costs one record. Lookup by id, run and session. A snapshot that cannot be taken is recorded as explicitly unavailable with its reason and identity intact. StreamEvent::PromptSnapshot carries id, hash and redaction count to the activity timeline, never the payload. Guards mutation-checked: removing redaction, and making the hash ignore its input, each turn the relevant tests red. The viewer is built (PromptSnapshotView, verified by cowork-smoke --only prompt-snapshot-panel), and a snapshot is now bound to the assistant turn that produced it rather than matched by position. Six earlier designs wrote the reference from the snapshot sink onto 'the last assistant turn'; instrumenting the live turn lane in the running app showed the lane holds only the user turn at dispatch time, so there was no assistant row to write onto and every one of those writes silently did nothing -- while passing in vitest, which hands the mutation an array that already contains one. The attach happens in pushLive, where the row is created, from the dispatch that just went out; coworkTurns.ts already emitted a data-prompt-snapshot part for any turn carrying one, so nothing downstream needed changing. The render prefers the message's own part and keeps positional matching as a fallback for turns written to disk before rows carried one. Proven by mutation in the real WebView: with the positional fallback disabled entirely the panel still renders, so the per-turn reference is what carries it. A continuation, a retry and a compaction each carry their own snapshot, which is what position could not express. Snapshot ids now carry the process launch (snap-<launch>-<n>): the plain counter restarted at snap-1 in every launch, so an id could name an earlier launch's record in the same log.",
+      "auditNote": "The snapshot is taken in HttpModelInvoker::invoke from `normalized` -- the exact serialized request, after context construction and after the model id is rewritten, at the last point before dispatch. Not reconstructed from earlier state. It carries schema version, stable id, RFC3339 UTC timestamp, session, run, thread, agent, provider, model, reasoning configuration, the redacted payload, its hash, and the redaction list; message count, tool names and system prompt are derived from the payload rather than stored twice. Redaction runs while the record is built, walks the whole document (a credential in a nested tool argument leaks as surely as one in a header), matches credential fields by name because an auth header's value is opaque, and still applies the value-shaped pass to free text for an env line pasted into a prompt. Each removal records its path and reason, so an empty field is distinguishable from a redacted one. The hash is FNV-1a over a canonical key-sorted serialization of the *redacted* payload: identical payloads hash identically however built, any change to a retry produces a different hash, and a reader can verify the record against its own hash. Storage is append-only JSONL at <jan_data>/audit/prompts.jsonl, flushed per record, with a reader that drops an unparseable line so a truncated tail costs one record. Lookup by id, run and session. A snapshot that cannot be taken is recorded as explicitly unavailable with its reason and identity intact. StreamEvent::PromptSnapshot carries id, hash and redaction count to the activity timeline, never the payload. Guards mutation-checked: removing redaction, and making the hash ignore its input, each turn the relevant tests red. The viewer is built (PromptSnapshotView, verified by cowork-smoke --only prompt-snapshot-panel), and a snapshot is now bound to the assistant turn that produced it rather than matched by position. Six earlier designs wrote the reference from the snapshot sink onto 'the last assistant turn'; instrumenting the live turn lane in the running app showed the lane holds only the user turn at dispatch time, so there was no assistant row to write onto and every one of those writes silently did nothing -- while passing in vitest, which hands the mutation an array that already contains one. The attach happens in pushLive, where the row is created, from the dispatch that just went out; coworkTurns.ts already emitted a data-prompt-snapshot part for any turn carrying one, so nothing downstream needed changing. The render prefers the message's own part and keeps positional matching as a fallback for turns written to disk before rows carried one. Proven by mutation in the real WebView: with the positional fallback disabled entirely the panel still renders, so the per-turn reference is what carries it. A continuation, a retry and a compaction each carry their own snapshot, which is what position could not express. 2026-09-11: retention and deletion added -- the log keeps the newest 2000 snapshots (checked when it passes 8 MB), deleting a Chat thread or Cowork session deletes its snapshots (agent_prompt_snapshots_delete), both by an atomic temp-and-rename rewrite that keeps unattributable torn lines. Stored as credential-redacted plaintext like conversation history; not encrypted. Snapshot ids now carry the process launch (snap-<launch>-<n>): the plain counter restarted at snap-1 in every launch, so an id could name an earlier launch's record in the same log.",
       "evidence": "Captured in core/net/transport.rs::capture_snapshot, at the last point before a provider request leaves the process -- the one path every OpenAI-compatible request takes -- from the exact serialized body that is dispatched. Redacted before it is written; FNV-1a hash over the canonical key-sorted redacted payload; append-only JSONL at <jan_data>/audit/prompts.jsonl. Retrieval is scoped: an id alone is refused, and an unscoped list is refused (agent_prompt_snapshots -> snapshot::scoped_lookup). The reference reaches the timeline through the transport's head chunk and a session-keyed store, and the Nth dispatch renders under the Nth assistant message, so a snapshot sits with its own invocation. Smoke: prompt-snapshot-panel (performs a real model request over http://v100:8080/v1, asserts the dispatch was recorded on disk, opens the panel, checks provider/model/session/hash/redactions, switches tree and JSON views, and asserts no credential appears) and prompt-snapshot-cross-session-refused (a snapshot id with another session's scope returns nothing; an unscoped list errors)."
     },
     {
@@ -2570,7 +2573,7 @@
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Project scope is on the canonical record and resolves through a project id derived from the checkout rather than its path, so moving a checkout takes its memories along and a project that cannot be identified retrieves nothing rather than everything. migrate::migrate_project_notes carries the legacy <name>.md notes into the store once, keyed by content so it is a no-op afterwards and never re-imports a renamed note; the legacy files are left untouched."
+      "auditNote": "Project scope is on the canonical record and resolves through a project id derived from the checkout rather than its path, so moving a checkout takes its memories along and a project that cannot be identified retrieves nothing rather than everything. migrate::migrate_project_notes carries the legacy <name>.md notes into the store once, keyed by content so it is a no-op afterwards and never re-imports a renamed note; the legacy files are left untouched. Re-audit 2026-09-11: the desktop never bound a transport to a project (setMemoryBinding had no caller) and memory_propose wrote project records to <project>/.jan, one level above the store readers open. Both fixed (Cowork binds to the attached folder's identity; project_store used; regression test memory_propose_project_scope_is_saved_where_it_is_read_back). Live since the fix (2026-09-11, Windows WebView2, cowork-smoke memory-project-scope + memory-project-after-restart, three fresh pairs, first attempt, retries off): a folder attached through the real picker recalls its project memory as [id] (project); a different checkout with the same folder name gets a different project id and never receives it; after a restart in a new process it is still recalled, still isolated, and not sent once forgotten. Hardened 2026-09-11 (Priority 4): the renderer-named project folder is validated before memory writes inside it (must resolve to a real directory, not a filesystem root, not overlap the Jan data folder, and .jan/.jan/agent must not be symlinks or junctions); a refused folder gets no project memory and the reason is shown on the page and the turn. Proven by unit tests with a real mklink /J junction and the WebView memory-security scenario."
     },
     {
       "id": "AH-081",
@@ -2578,14 +2581,13 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-010"
       ],
       "owner": "lane-05-context-memory",
       "files": [
-        "src-tauri/src/core/agent/memory.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/record.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
@@ -2593,7 +2595,10 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
         "src-tauri/src/core/agent/context.rs",
-        "web-app/src/lib/custom-chat-transport.ts"
+        "web-app/src/lib/custom-chat-transport.ts",
+        "web-app/src/lib/coworkTransport.ts",
+        "web-app/src/routes/settings/memory.tsx",
+        "web-app/src/hooks/useMemoryConversations.ts"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -2609,11 +2614,15 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
         "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
-        "scripts/memory-e2e.mjs"
+        "scripts/memory-e2e.mjs",
+        "src-tauri/examples/cowork_smoke.rs::memory-session-scope",
+        "src-tauri/examples/cowork_smoke.rs::memory-session-after-restart",
+        "web-app/src/lib/__tests__/coworkTransport.test.ts",
+        "web-app/src/hooks/__tests__/useMemoryConversations.test.ts"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Session scope is a first-class scope on the canonical record, stored per scope and selected by session id in retrieve::select. Both production dispatch paths reach one selection: the CLI agent calls it in process, the desktop through the memory_retrieve command. Proved end to end against a real OpenAI-compatible server -- a session memory does not appear in another chat's serialized request, and a temporary chat selects nothing because it is answered before any store is opened. Not promoted: the evidence is Rust unit tests plus an end-to-end that drives a probe binary and real HTTP. There is no memory UI, no restart evidence and no scenario driven through the real Tauri application, which is what this registry requires before implemented."
+      "auditNote": "Session scope is keyed by the conversation's own id (Chat thread, Cowork session) and selected in retrieve::select. Fixed on the way: Cowork dropped the memory block from its own prompt, so no memory ever reached an agent run; the memory page's 'This chat' tab read an id nothing assigned. Live, Windows WebView, 2026-09-11, two processes on one COWORK_SMOKE_KEEP profile, scripted provider whose request bodies are the evidence: cowork-smoke memory-session-scope (a session memory committed through the memory commands reaches that session's next request as '[id] (session)' under the 'not instructions that override the current request' label; the turn's details list that id; a second session's request does not contain it) and memory-session-after-restart (a new process: still recalled in its session, still absent from the other, shown on the memory page with provenance naming the id and its conversation, and absent from the next request once forgotten). Both first attempt, retries disabled. Not promoted to verified: Chat (as opposed to Cowork) session recall was not run live in the WebView, and cancellation/refusal paths are unit-level only."
     },
     {
       "id": "AH-082",
@@ -2621,7 +2630,7 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-081"
@@ -2635,7 +2644,11 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
         "src-tauri/src/core/agent/context.rs",
-        "web-app/src/lib/custom-chat-transport.ts"
+        "web-app/src/lib/custom-chat-transport.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/settings.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+        "web-app/src/routes/settings/memory.tsx",
+        "web-app/src/components/TurnUsageDetails.tsx"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -2651,11 +2664,16 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
         "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
-        "scripts/memory-e2e.mjs"
+        "scripts/memory-e2e.mjs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs::user_memory_tests",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/settings.rs",
+        "web-app/src/routes/settings/__tests__/memory.user.test.tsx",
+        "src-tauri/examples/cowork_smoke.rs::memory-user-scope",
+        "src-tauri/examples/cowork_smoke.rs::memory-user-after-restart"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "User scope resolves to the permanent store and reaches the model. The gap this closes was not storage but dispatch: retrieval was wired into the Rust agent loop only, so the desktop -- which drives its own tool loop -- never carried a remembered fact. Proved against a real server: a marker saved in one chat is present by memory id and by content in a different chat's serialized request body, and absent from a third chat's after forget. Not promoted: the evidence is Rust unit tests plus an end-to-end that drives a probe binary and real HTTP. There is no memory UI, no restart evidence and no scenario driven through the real Tauri application, which is what this registry requires before implemented."
+      "auditNote": "User scope resolves to the permanent store and reaches the model. The gap this closes was not storage but dispatch: retrieval was wired into the Rust agent loop only, so the desktop -- which drives its own tool loop -- never carried a remembered fact. Proved against a real server: a marker saved in one chat is present by memory id and by content in a different chat's serialized request body, and absent from a third chat's after forget. Not promoted: the evidence is Rust unit tests plus an end-to-end that drives a probe binary and real HTTP. There is no memory UI, no restart evidence and no scenario driven through the real Tauri application, which is what this registry requires before implemented. Re-audit 2026-09-11: the Cowork prompt now carries the selection (it previously dropped it). Live in the WebView (cowork-smoke memory-project-scope): a user-scope memory committed through the memory commands reaches a session attached to a different project as [id] (user), and is not sent once forgotten. Still in-progress: user memory has not been exercised across a restart through the app, and precedence against a conflicting project memory has no WebView scenario. Implemented 2026-09-11 after the restart, enable/disable, deletion and cross-project paths passed in the real Windows WebView (memory-user-scope / memory-user-after-restart, retries off): written, edited and pinned on Settings > Memory; recalled with its exact id in two unrelated projects (same folder name, different repository); per-scope recall switches (off: not sent, still stored; on after a restart: the same record returns); forget removes the text from user.jsonl (tombstone keeps id and hash; undo must hand back the exact text); Forget all after confirmation; chat/project saves never create user memories; damaged or unreadable storage and damaged settings are reported on the page and per turn, settings failing closed. First attempt of the restart scenario failed on a real defect (forgotten records stayed listed as empty rows), fixed with a regression test and re-run on a fresh profile. Mutation checks: removing each fix fails its test. Not done: past prompt snapshots keep text a memory contributed to requests already sent."
     },
     {
       "id": "AH-083",
@@ -2677,7 +2695,12 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/service.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
-        "web-app/src/lib/custom-chat-transport.ts"
+        "web-app/src/lib/custom-chat-transport.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+        "web-app/src/routes/settings/memory.tsx",
+        "web-app/src/components/TurnUsageDetails.tsx",
+        "web-app/src/lib/memoryUses.ts",
+        "web-app/src/routes/cowork.tsx"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -2693,11 +2716,15 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
         "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
-        "scripts/memory-e2e.mjs"
+        "scripts/memory-e2e.mjs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs::provenance_tests",
+        "web-app/src/lib/__tests__/memoryUses.test.ts",
+        "src-tauri/examples/cowork_smoke.rs::memory-provenance",
+        "src-tauri/examples/cowork_smoke.rs::memory-provenance-after-restart"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Every record carries a Provenance -- creator, origin, source session and message, timestamps -- written at creation and preserved through edits and supersession. What is missing is the user-facing half: 'Why does Jan remember this?' does not navigate to the source message, and there is no unavailable-source state for a deleted origin."
+      "auditNote": "Every record carries a Provenance -- creator, origin, source session and message, timestamps -- written at creation and preserved through edits and supersession. What is missing is the user-facing half: 'Why does Jan remember this?' does not navigate to the source message, and there is no unavailable-source state for a deleted origin. 2026-09-11: the memory page shows each record's provenance (id, scope, creator, origin, created/updated, source conversation and message, project identity, supersedes, redaction) and each Chat message and Cowork turn lists the memory ids its request carried and withheld; seen live in memory-session-after-restart. Still missing: the injected line names id and scope but not its source, and provenance does not navigate to the source message. 2026-09-11: version + hash-only revision history, source run and project, derived source type (user-authored/agent-authored/imported/extracted), bounded per-dispatch uses with session, turn, prompt-snapshot id and recall reason, and per-memory rank and reason from retrieval -- all persisted, shown on Settings > Memory and in turn details, and proven through a WebView restart pair with the snapshot id checked against prompts.jsonl. Kept in-progress: provenance through export/import and imported marking on arrival are not built yet (Priority 5)."
     },
     {
       "id": "AH-084",
@@ -2705,7 +2732,7 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-083"
@@ -2719,7 +2746,10 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
         "src-tauri/src/core/agent/context.rs",
-        "web-app/src/lib/custom-chat-transport.ts"
+        "web-app/src/lib/custom-chat-transport.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/precedence.rs",
+        "web-app/src/lib/coworkTransport.ts",
+        "web-app/src/components/TurnUsageDetails.tsx"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -2735,11 +2765,15 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
         "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
-        "scripts/memory-e2e.mjs"
+        "scripts/memory-e2e.mjs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/precedence.rs::tests",
+        "src-tauri/src/core/agent/context.rs::a_skill_outranks_a_contradicting_memory_in_the_prompt",
+        "web-app/src/lib/__tests__/coworkTransport.test.ts",
+        "src-tauri/examples/cowork_smoke.rs::memory-precedence"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "record::prefer applies a deterministic order -- scope specificity, then creator trust, then recency -- and records why, so a displaced record can say what displaced it. Applied inside retrieve::select, which is the only path either surface reaches, and covered by the focused memory tests. Not promoted: the evidence is Rust unit tests plus an end-to-end that drives a probe binary and real HTTP. There is no memory UI, no restart evidence and no scenario driven through the real Tauri application, which is what this registry requires before implemented."
+      "auditNote": "record::prefer applies a deterministic order -- scope specificity, then creator trust, then recency -- and records why, so a displaced record can say what displaced it. Applied inside retrieve::select, which is the only path either surface reaches, and covered by the focused memory tests. Not promoted: the evidence is Rust unit tests plus an end-to-end that drives a probe binary and real HTTP. There is no memory UI, no restart evidence and no scenario driven through the real Tauri application, which is what this registry requires before implemented. Re-audit 2026-09-11: unchanged status; the Cowork prompt now carries the selection (it previously dropped it), but this scope/rule was not exercised live in the WebView. Implemented 2026-09-11: one ten-level chain (system/security, current request, workspace/permissions, JAN.md, approved compatibility, skills, user, project, session memory, transcript/tool output) in memory/precedence.rs, stated verbatim in CLI, Chat and Cowork prompts ahead of the remembered facts. Memories contradicting JAN.md, compatibility files or skills are withheld with both values, both sources and the winner reported per turn; memories claiming authority are refused; the memory block is sealed. Memory-vs-memory precedence changed to user > project > session to match the chain (old tests rewritten). Evidence: WebView memory-precedence (JAN.md over user memory, refusal, chain before facts) first attempt, retries off; CLI real prompt test with a project skill; unit tests; three mutation checks. Limits: lexical contradiction table only; Cowork sends no skill text, so level-6 enforcement is on the CLI path."
     },
     {
       "id": "AH-085",
@@ -2747,7 +2781,7 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-084"
@@ -2761,7 +2795,10 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
         "src-tauri/src/core/agent/context.rs",
-        "web-app/src/lib/custom-chat-transport.ts"
+        "web-app/src/lib/custom-chat-transport.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+        "web-app/src/routes/settings/memory.tsx",
+        "web-app/src/components/TurnUsageDetails.tsx"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -2777,11 +2814,16 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
         "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
-        "scripts/memory-e2e.mjs"
+        "scripts/memory-e2e.mjs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs::conflicts_are_listed_with_both_sides_and_only_where_they_apply",
+        "web-app/src/routes/settings/__tests__/memory.conflicts.test.tsx",
+        "src-tauri/examples/cowork_smoke.rs::memory-conflict-settle",
+        "src-tauri/examples/cowork_smoke.rs::memory-conflict-scope",
+        "src-tauri/examples/cowork_smoke.rs::memory-conflict-after-restart"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "detect_conflicts finds instruction pairs that cannot both be followed, and retrieve::select withholds BOTH sides rather than picking one, so an unresolved conflict never reaches the model as authoritative -- asserted in the renderer tests. What is missing is the resolution UI: keep-first, keep-second, merge, narrow to chat or project, dismiss, bound to the conflict hash. Conflicts are reported to the renderer and cannot yet be acted on there."
+      "auditNote": "detect_conflicts finds instruction pairs that cannot both be followed, and retrieve::select withholds BOTH sides rather than picking one, so an unresolved conflict never reaches the model as authoritative -- asserted in the renderer tests. What is missing is the resolution UI: keep-first, keep-second, merge, narrow to chat or project, dismiss, bound to the conflict hash. Conflicts are reported to the renderer and cannot yet be acted on there. Re-audit 2026-09-11: unchanged status; the Cowork prompt now carries the selection (it previously dropped it), but this scope/rule was not exercised live in the WebView. Implemented 2026-09-11: conflicts were withheld but never surfaced. memory_conflicts returns the pairs a dispatch from a given conversation/project would withhold (same entitled records and applies_to rule as memory_retrieve, so another chat's disagreement is never listed; none for a temporary chat), and Settings > Memory shows each pair in full with 'Keep this one', which forgets the other side (undoable) so the survivor is sent again. Evidence: Rust test conflicts_are_listed_with_both_sides_and_only_where_they_apply; memory.conflicts.test.tsx; live Windows WebView2 scenarios memory-conflict-settle (twice) and the two-process memory-conflict-scope / memory-conflict-after-restart pair, first attempt, retries off: a conflicting project and user memory are both withheld from the request body, the turn lists both ids as withheld, the page lists the pair (also after a restart), and after keeping one side only that side reaches the next request. Detection itself is the existing lexical INCOMPATIBLE table (package manager, indentation, response length); semantic contradictions outside it are not detected."
     },
     {
       "id": "AH-086",
@@ -6795,6 +6837,62 @@
       "blockedReason": null,
       "evidence": "Not implemented. Depends on AH-203, which does not exist yet.",
       "auditNote": "'Hand off to another computer' in a session's menu writes the AH-203 export (same schema, same credential redaction, authority dropped) plus a handoff block: the folder by name, branch and commit (never its path) and the model by provider and id (anything else sent under handoff is dropped, keys included). Every absolute path that only means something on this machine is replaced by what it means: the session's folder becomes <folder>, Jan's data folder <jan-data>, the home folder ~. It is produced and consumed locally through dialogs the backend owns; nothing is uploaded. Importing it creates the session unbound and says, item by item, what could not be restored: the folder to attach (checked against the recorded name, branch and commit once one is attached), a provider not set up here, a model its provider does not offer here. The notice is kept on the session until dismissed. Windows: session-handoff passes in the real WebView, and handoff-persist-1/2 prove the notice survives a real restart. macOS and Linux were not run."
+    },
+    {
+      "id": "AH-211",
+      "title": "Provider cache-aware token accounting",
+      "category": "ux-operations",
+      "phase": 9,
+      "phaseName": "Approved additions",
+      "status": "implemented",
+      "priority": "P1",
+      "dependencies": [],
+      "owner": "lane-09-ux-observability",
+      "files": [
+        "web-app/src/lib/tokenUsage.ts",
+        "web-app/src/components/TokenUsageBreakdown.tsx",
+        "web-app/src/components/TokenCounter.tsx",
+        "web-app/src/hooks/useTokensCount.ts",
+        "web-app/src/lib/custom-chat-transport.ts",
+        "web-app/src/lib/coworkRunner.ts",
+        "web-app/src/lib/coworkSubagent.ts",
+        "web-app/src/lib/model-factory.ts",
+        "src-tauri/src/core/server/converters.rs",
+        "src-tauri/src/core/agent/events.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/usage.rs",
+        "src-tauri/examples/cowork_smoke.rs",
+        "web-app/src/containers/TokenSpeedIndicator.tsx",
+        "web-app/src/lib/sessionBundle.ts",
+        "src-tauri/src/core/agent/session_bundle.rs"
+      ],
+      "securityImpact": "low",
+      "acceptanceCriteria": [
+        "Provider-reported input, cached input, cache write, output and total tokens are normalized from the wire formats Jan uses (OpenAI-compatible prompt_tokens_details.cached_tokens, Anthropic cache_read/cache_creation_input_tokens, llama.cpp usage and timings.cache_n, and other providers only where their converter reports cache counts), with uncached input derived as max(input - cached, 0).",
+        "A count the provider did not report stays unknown end to end and is never displayed or stored as zero; a measured zero is displayed as zero.",
+        "Cache-creation tokens are part of the input total and of its uncached share and are never counted twice; inconsistent provider values are clamped and the reported values retained; cumulative streaming usage keeps the final values rather than summing snapshots.",
+        "The breakdown survives the Chat and Cowork paths -- converters, streaming metadata, the transport callback, Chat message persistence, Cowork runner events, session persistence and subagent usage -- and an application restart; records saved before it existed load unchanged and read as not reported.",
+        "The Chat and Cowork token counter keeps its compact badge and shows Input, Cached input, Uncached input, Cache write (when reported), Output and Total in its popover, with an explanation that uncached input is derived and is a token count, not a count of cache misses.",
+        "Provider-reported usage stays separate from AH-073's dispatched-payload estimate, which is never presented as provider usage.",
+        "Tests: unit, provider-parsing and real WebView coverage, including a real provider that reports cache counts and a restart."
+      ],
+      "tests": [
+        "web-app/src/lib/__tests__/tokenUsage.test.ts",
+        "web-app/src/lib/__tests__/tokenUsage.providers.test.ts",
+        "web-app/src/lib/__tests__/tokenUsage.cowork.test.ts",
+        "web-app/src/components/__tests__/TokenCounter.test.tsx",
+        "web-app/src/hooks/__tests__/useTokensCount.test.ts",
+        "src-tauri/src/core/server/converters.rs",
+        "src-tauri/src/core/agent/events.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/usage.rs",
+        "src-tauri/examples/cowork_smoke.rs::token-usage-cache",
+        "src-tauri/examples/cowork_smoke.rs::token-usage-cache-cowork",
+        "src-tauri/examples/cowork_smoke.rs::token-usage-cache-after-restart",
+        "web-app/src/lib/__tests__/sessionBundle.test.ts",
+        "src-tauri/src/core/agent/session_bundle.rs"
+      ],
+      "platformRequirements": [],
+      "blockedReason": null,
+      "evidence": "Merged onto fork/main 9ab30620e. Live, Windows WebView, 2026-09-11, real llama-server (qwen3.8-27b) via the fixture's transparent relay, each check its own process on one COWORK_SMOKE_KEEP profile, all first attempt with retries disabled for these scenarios: Chat follow-up input 2825 / cached 2802 / uncached 23 (derived) / output 39 / total 2864 (derived); Cowork follow-up 5542 / 5505 / 37 / 17 / 5559; each equal to the provider's own usage for that request; a restarted process showed both again from disk with no provider traffic. The previous run's first-attempt restart failure was a harness race: a portalled popover from the previous surface was still in the document and its numbers were read for the next surface; fixed by stamping the thread/session scope on the counter and breakdown and reading only the matching one (TokenCounter test 'stamps the session ... follows a session switch'). Cowork export now carries lastUsage (session_bundle.rs, sessionBundle.test.ts); Chat has no export feature. Not yet run live: export/import through the UI and rapid session switching in the WebView. Not verified live: Anthropic, OpenAI Responses, Gemini, Jan's bundled llama.cpp engine path. Separate from AH-073's estimate; AH-175 unchanged."
     }
   ]
 }

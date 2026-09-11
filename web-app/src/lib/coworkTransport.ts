@@ -50,6 +50,23 @@ export type CoworkRunConfig = CoworkToolOptions & {
  * parent.
  */
 export class CoworkChatTransport extends CustomChatTransport {
+  /** The route records uses where the turn meets its snapshot (AH-083). */
+  protected override recordsMemoryUsesOnFinish = false
+
+  /**
+   * JAN.md and the approved compatibility files: the instruction text above
+   * memory in this run (AH-084). Exactly what the prompt carries, so a memory
+   * is withheld only for disagreeing with something the model is told.
+   */
+  protected override memoryInstructions() {
+    const out: { source: 'jan-md' | 'compat' | 'skill'; name: string; text: string }[] = []
+    const jan = this.config.projectInstructions?.trim()
+    if (jan) out.push({ source: 'jan-md', name: 'JAN.md', text: jan })
+    for (const one of this.config.compatInstructions ?? []) {
+      if (one.content.trim()) out.push({ source: 'compat', name: one.name, text: one.content })
+    }
+    return out
+  }
   private config: CoworkRunConfig
   /**
    * The advertised tool set, frozen for a run's lifetime.
@@ -115,8 +132,19 @@ export class CoworkChatTransport extends CustomChatTransport {
       subagentNames: this.config.allowSubagents ? this.config.subagentNames : [],
       webSearch: this.config.webSearch,
     })
-    const files = this.buildFilesSystemInstruction(messages)
-    return files.trim().length > 0 ? `${base}\n\n${files}` : base
+    // Remembered facts come after everything that states policy -- the run's
+    // own rules, `JAN.md`, the compatibility instructions -- and the block
+    // labels itself as data rather than instructions. Omitting it, as this
+    // override used to, meant Cowork retrieved memory on every turn and then
+    // never sent any of it.
+    return [
+      base,
+      this.memorySelection?.block ? this.memorySelection.precedence : undefined,
+      this.memorySelection?.block,
+      this.buildFilesSystemInstruction(messages),
+    ]
+      .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+      .join('\n\n')
   }
 
   /**

@@ -247,8 +247,18 @@ import {
   type ImportRefusal,
   type SessionBundle,
 } from '@/lib/sessionBundle'
+import { fromCoworkUsage, toCoworkUsage } from '@/lib/tokenUsage'
+import { deletePromptSnapshots } from '@/lib/promptSnapshotRetention'
 
 const now = () => Date.now()
+
+/** An imported session's usage, normalised the same way a live one is. */
+function importedUsage(raw: unknown): Usage | undefined {
+  const usage = fromCoworkUsage(
+    raw && typeof raw === 'object' ? (raw as Usage) : undefined
+  )
+  return usage && Object.keys(usage).length > 0 ? toCoworkUsage(usage) : undefined
+}
 
 export const useCoworkSessions = create<CoworkSessionsState>()(
   persist(
@@ -373,6 +383,9 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           goal: bundle.session.goal,
           todos: bundle.session.todos,
           forkedFrom: bundle.session.forkedFrom,
+          // Re-read rather than trusted: a hand-edited file cannot plant a
+          // negative, a string or a cached count larger than the input.
+          lastUsage: importedUsage(bundle.session.lastUsage),
           importedFrom: {
             exportId: bundle.exportId,
             sessionId: bundle.session.id,
@@ -389,6 +402,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
 
       deleteSession: (id) =>
         set((s) => {
+          void deletePromptSnapshots(id)
           const sessions = s.sessions.filter((x) => x.id !== id)
           const currentId =
             s.currentId === id ? (sessions[0]?.id ?? null) : s.currentId

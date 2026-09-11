@@ -28,7 +28,13 @@ import {
 } from '@/lib/settingsSearch'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
+import { useMemoryConversations } from '@/hooks/useMemoryConversations'
 import {
+  memoryConflicts,
+  memoryRecordCommit,
+  memoryRecordPropose,
+  memoryScopeClear,
+  type MemoryRecall,
   memoryRecordEdit,
   memoryRecordForget,
   memoryRecordPin,
@@ -37,6 +43,7 @@ import {
   memorySettingsGet,
   memorySettingsUpdate,
   memoryStorageSummary,
+  type MemoryConflictPair,
   type MemoryLocation,
   type MemoryScope,
   type MemoryStorageSummary,
@@ -74,6 +81,17 @@ const TABS: { scope: MemoryScope; label: string; blurb: string }[] = [
   },
 ]
 
+const ALL_RECALLED: MemoryRecall = { session: true, project: true, user: true }
+
+/** The recall switch a tab's scope is governed by. */
+const recallKey = (scope: MemoryScope): keyof MemoryRecall =>
+  scope === 'chat' ? 'session' : scope === 'project' ? 'project' : 'user'
+
+/** Where a memory applies, in the words the tabs use. */
+function scopeLabel(scope: MemoryScope): string {
+  return TABS.find((tab) => tab.scope === scope)?.label ?? scope
+}
+
 /** How many rows one request fetches. The backend clamps this too. */
 const PAGE_SIZE = 50
 
@@ -106,6 +124,14 @@ function MemorySettings() {
   const [editing, setEditing] = useState<MemoryView | null>(null)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
+  /** Which scopes are recalled into requests (AH-082). */
+  const [recall, setRecall] = useState<MemoryRecall>(ALL_RECALLED)
+  /** Damaged settings: recall is off until they are saved again. */
+  const [settingsIssue, setSettingsIssue] = useState<string | null>(null)
+  /** A new memory being written on this page. */
+  const [newMemory, setNewMemory] = useState('')
+  /** The scope a "forget all" is waiting for confirmation on. */
+  const [clearing, setClearing] = useState<MemoryScope | null>(null)
 
   /**
    * Where the settings page is. Deliberately not a project or session the page
@@ -143,16 +169,38 @@ function MemorySettings() {
     }
   }, [])
 
+  /**
+   * Which conversation and which project the chat/project tabs are about.
+   *
+   * This read `window.core.api.activeSessionId` and `.projectRoot`, which
+   * nothing in the application ever assigns, so "This chat" and "This
+   * project" always answered "no chat is open". The user picks them here from
+   * the conversations and project folders that exist; the backend still
+   * derives the project's identity from the folder itself and never trusts an
+   * id the page sends.
+   */
+  const conversations = useMemoryConversations()
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined)
+  const [projectRoot, setProjectRoot] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    if (sessionId === undefined && conversations.sessions[0]) {
+      setSessionId(conversations.sessions[0].id)
+    }
+    if (projectRoot === undefined && conversations.projects[0]) {
+      setProjectRoot(conversations.projects[0])
+    }
+  }, [conversations, sessionId, projectRoot])
+
   const location: MemoryLocation | null = useMemo(
     () =>
       dataFolder == null
         ? null
         : {
             dataFolder,
-            projectRoot: window.core?.api?.projectRoot ?? undefined,
-            sessionId: window.core?.api?.activeSessionId ?? undefined,
+            projectRoot,
+            sessionId,
           },
-    [dataFolder]
+    [dataFolder, projectRoot, sessionId]
   )
 
   /**
@@ -194,27 +242,81 @@ function MemorySettings() {
     void refresh(scope, query, offset)
   }, [refresh, scope, query, offset])
 
+  /**
+   * Remembered records that disagree, for the conversation and project picked
+   * above. Retrieval withholds both sides, so until one is settled neither
+   * reaches the model; this is where the user finds that out.
+   */
+  const [conflicts, setConflicts] = useState<MemoryConflictPair[]>([])
+  const loadConflicts = useCallback(async () => {
+    if (!location) return
+    try {
+      setConflicts(await memoryConflicts(location))
+    } catch {
+      setConflicts([])
+    }
+  }, [location])
+
   useEffect(() => {
     if (!location) return
+    void loadConflicts()
     void (async () => {
       try {
         setSummary(await memoryStorageSummary(location))
-        setAutoSave((await memorySettingsGet(location)).automaticallySave)
+        const stored = await memorySettingsGet(location)
+        setAutoSave(stored.automaticallySave)
+        setRecall(stored.recall ?? ALL_RECALLED)
+        setSettingsIssue(stored.issue ?? null)
       } catch {
         // Storage and settings are informational here; the list is the page.
       }
     })()
-  }, [location])
+  }, [location, loadConflicts])
 
   const reload = useCallback(async () => {
     if (!location) return
     await refresh(scope, query, offset)
+    await loadConflicts()
     try {
       setSummary(await memoryStorageSummary(location))
     } catch {
       /* informational only */
     }
-  }, [refresh, scope, query, offset, location])
+  }, [refresh, scope, query, offset, location, loadConflicts])
+
+  /**
+   * Settle a conflict by keeping one side: the other is forgotten (a normal,
+   * undoable forget), so the survivor reaches the next request again.
+   */
+  const onKeep = useCallback(
+    async (keep: MemoryView, drop: MemoryView) => {
+      if (!location) return
+      setBusy(true)
+      try {
+        await memoryRecordForget(location, drop.scope, drop.id)
+        await reload()
+        toast.success('Kept one memory', {
+          description: keep.preview,
+          action: {
+            label: 'Undo',
+            onClick: () => {
+              void (async () => {
+                await memoryRecordRestore(location, drop.scope, drop.id, drop.content)
+                await reload()
+              })()
+            },
+          },
+        })
+      } catch (error) {
+        toast.error('Could not settle that conflict', {
+          description: errorText(error),
+        })
+      } finally {
+        setBusy(false)
+      }
+    },
+    [location, reload]
+  )
 
   const onForget = useCallback(
     async (memory: MemoryView) => {
@@ -232,7 +334,7 @@ function MemorySettings() {
             onClick: () => {
               if (!location) return
               void (async () => {
-                await memoryRecordRestore(location, scope, memory.id)
+                await memoryRecordRestore(location, scope, memory.id, memory.content)
                 await reload()
               })()
             },
@@ -326,6 +428,65 @@ function MemorySettings() {
     [location, autoSave]
   )
 
+  /**
+   * Switch one scope's recall. Optimistic like the autosave switch, and the
+   * stored value is whatever the backend returns. Stored memories are kept.
+   */
+  const onToggleRecall = useCallback(
+    async (key: keyof MemoryRecall, next: boolean) => {
+      if (!location) return
+      const previous = recall
+      const wanted = { ...recall, [key]: next }
+      setRecall(wanted)
+      try {
+        const saved = await memorySettingsUpdate(location, { recall: wanted })
+        setRecall(saved.recall ?? wanted)
+        setSettingsIssue(saved.issue ?? null)
+      } catch (error) {
+        setRecall(previous)
+        toast.error('Recall could not be changed', { description: errorText(error) })
+      }
+    },
+    [location, recall]
+  )
+
+  /** Save a memory the user wrote here, in the tab's scope. */
+  const onAdd = useCallback(async () => {
+    if (!location) return
+    const content = newMemory.trim()
+    if (!content) return
+    setBusy(true)
+    try {
+      const source = scope === 'chat' ? { sessionId } : undefined
+      const proposal = await memoryRecordPropose(location, scope, content, source)
+      await memoryRecordCommit(location, scope, proposal.content, proposal.contentHash, source)
+      setNewMemory('')
+      await reload()
+      toast.success('Memory saved')
+    } catch (error) {
+      // A credential, an empty text, a scope with no chat or project open.
+      toast.error('Could not save that memory', { description: errorText(error) })
+    } finally {
+      setBusy(false)
+    }
+  }, [location, newMemory, scope, sessionId, reload])
+
+  /** Forget everything in one scope, after the user confirmed. */
+  const onClear = useCallback(async () => {
+    if (!location || !clearing) return
+    setBusy(true)
+    try {
+      const n = await memoryScopeClear(location, clearing)
+      setClearing(null)
+      await reload()
+      toast.success(n === 1 ? 'Forgot 1 memory' : `Forgot ${n} memories`)
+    } catch (error) {
+      toast.error('Could not forget those memories', { description: errorText(error) })
+    } finally {
+      setBusy(false)
+    }
+  }, [location, clearing, reload])
+
   const activeTab = TABS.find((tab) => tab.scope === scope) ?? TABS[2]
 
   return (
@@ -355,6 +516,44 @@ function MemorySettings() {
                   />
                 }
               />
+              <div className="px-4 py-3 flex flex-col gap-2" data-testid="memory-recall">
+                <p className="text-sm font-medium">Use remembered facts in requests</p>
+                <p className="text-xs text-muted-foreground">
+                  Turning a scope off stops it being sent. Nothing is deleted; turning it back on uses it again.
+                </p>
+                {(
+                  [
+                    ['session', 'This chat'],
+                    ['project', 'This project'],
+                    ['user', 'Across chats'],
+                  ] as Array<[keyof MemoryRecall, string]>
+                ).map(([key, label]) => (
+                  <label key={key} className="flex items-center justify-between gap-3 text-sm">
+                    <span>{label}</span>
+                    <Switch
+                      checked={recall[key]}
+                      disabled={location == null}
+                      aria-label={`Use ${label.toLowerCase()} memories`}
+                      data-testid={`memory-recall-${key}`}
+                      data-checked={recall[key] ? 'true' : 'false'}
+                      onCheckedChange={(checked) => void onToggleRecall(key, checked)}
+                    />
+                  </label>
+                ))}
+              </div>
+              {(settingsIssue || (summary?.issues?.length ?? 0) > 0) && (
+                <div
+                  role="alert"
+                  data-testid="memory-storage-error"
+                  className="mx-4 mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
+                >
+                  {[settingsIssue, ...(summary?.issues ?? [])]
+                    .filter(Boolean)
+                    .map((issue) => (
+                      <p key={issue as string}>{issue}</p>
+                    ))}
+                </div>
+              )}
               {summary && (
                 <CardItem
                   anchor={MEMORY_STORAGE_ANCHOR}
@@ -383,6 +582,59 @@ function MemorySettings() {
                     }}
                   />
                 </div>
+              </Card>
+            )}
+
+            {conflicts.length > 0 && (
+              <Card title="Memories that disagree">
+                <CardItem
+                  title="Neither side is being used"
+                  description="These remembered facts contradict each other, so Jan leaves both out of every request here until you keep one."
+                />
+                <ul className="p-2 flex flex-col gap-3" data-testid="memory-conflicts">
+                  {conflicts.map((conflict) => (
+                    <li
+                      key={`${conflict.left.id}|${conflict.right.id}`}
+                      className="rounded-md border border-border p-2"
+                      data-testid="memory-conflict"
+                      data-left-id={conflict.left.id}
+                      data-right-id={conflict.right.id}
+                    >
+                      <p className="text-xs text-muted-foreground mb-2">
+                        About the {conflict.subject}
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {(
+                          [
+                            [conflict.left, conflict.right],
+                            [conflict.right, conflict.left],
+                          ] satisfies Array<[MemoryView, MemoryView]>
+                        ).map(([side, other]: [MemoryView, MemoryView]) => (
+                          <div key={side.id} className="flex flex-col gap-1 min-w-0">
+                            <p className="text-sm break-words">{side.content}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {scopeLabel(side.scope)}
+                              {' · '}
+                              <span className="font-mono">{side.id}</span>
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="self-start"
+                              disabled={busy}
+                              data-testid="memory-conflict-keep"
+                              data-keep-id={side.id}
+                              aria-label={`Keep "${side.preview}" and forget the other`}
+                              onClick={() => void onKeep(side, other)}
+                            >
+                              Keep this one
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </Card>
             )}
 
@@ -415,6 +667,98 @@ function MemorySettings() {
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground">{activeTab.blurb}</p>
+                {!recall[recallKey(scope)] && (
+                  <p className="text-xs text-amber-600" data-testid="memory-recall-off-note">
+                    Recall is off for this scope: these are kept, but not sent.
+                  </p>
+                )}
+
+                <form
+                  className="flex flex-col gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    void onAdd()
+                  }}
+                >
+                  <Textarea
+                    value={newMemory}
+                    aria-label={`New memory for ${activeTab.label.toLowerCase()}`}
+                    data-testid="memory-new-content"
+                    placeholder="Something Jan should remember"
+                    onChange={(e) => setNewMemory(e.target.value)}
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={busy || !newMemory.trim() || location == null}
+                      data-testid="memory-new-save"
+                    >
+                      Remember
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="ml-auto text-destructive"
+                      disabled={busy || total === 0 || location == null}
+                      data-testid="memory-clear-scope"
+                      onClick={() => setClearing(scope)}
+                    >
+                      Forget all in {activeTab.label.toLowerCase()}
+                    </Button>
+                  </div>
+                </form>
+
+                {scope === 'chat' && (
+                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    Conversation
+                    <select
+                      className="h-8 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                      aria-label="Conversation whose memory to show"
+                      data-testid="memory-session-picker"
+                      value={sessionId ?? ''}
+                      onChange={(e) => {
+                        setSessionId(e.target.value || undefined)
+                        setOffset(0)
+                      }}
+                    >
+                      {conversations.sessions.length === 0 && (
+                        <option value="">No conversations yet</option>
+                      )}
+                      {conversations.sessions.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.kind === 'cowork' ? 'Cowork · ' : 'Chat · '}
+                          {s.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {scope === 'project' && (
+                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    Project folder
+                    <select
+                      className="h-8 rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                      aria-label="Project whose memory to show"
+                      data-testid="memory-project-picker"
+                      value={projectRoot ?? ''}
+                      onChange={(e) => {
+                        setProjectRoot(e.target.value || undefined)
+                        setOffset(0)
+                      }}
+                    >
+                      {conversations.projects.length === 0 && (
+                        <option value="">No project attached to any session</option>
+                      )}
+                      {conversations.projects.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
 
                 <Input
                   value={query}
@@ -442,6 +786,9 @@ function MemorySettings() {
                       <li
                         key={memory.id}
                         className="py-2 flex items-start justify-between gap-3"
+                        data-testid="memory-row"
+                        data-memory-id={memory.id}
+                        data-pinned={memory.pinned ? 'true' : 'false'}
                       >
                         <div className="min-w-0">
                           <p className="text-sm break-words">{memory.preview}</p>
@@ -455,6 +802,101 @@ function MemorySettings() {
                             {' · last used '}
                             {formatWhen(memory.lastUsedAt)}
                           </p>
+                          <details className="mt-1 text-xs" data-testid="memory-provenance">
+                            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                              Why Jan remembers this
+                            </summary>
+                            <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-muted-foreground">
+                              <dt>ID</dt>
+                              <dd className="font-mono break-all">{memory.id}</dd>
+                              <dt>Scope</dt>
+                              <dd>{memory.scope}</dd>
+                              <dt>Written by</dt>
+                              <dd>
+                                {memory.creator} ({memory.origin})
+                              </dd>
+                              <dt>Created</dt>
+                              <dd>{formatWhen(memory.createdAt)}</dd>
+                              <dt>Updated</dt>
+                              <dd>{formatWhen(memory.updatedAt)}</dd>
+                              <dt>From conversation</dt>
+                              <dd className="font-mono break-all">
+                                {memory.sourceSessionId ?? 'not recorded'}
+                                {memory.sourceDeleted && ' (deleted since)'}
+                              </dd>
+                              {memory.sourceMessageId && (
+                                <>
+                                  <dt>From message</dt>
+                                  <dd className="font-mono break-all">{memory.sourceMessageId}</dd>
+                                </>
+                              )}
+                              {memory.projectId && (
+                                <>
+                                  <dt>Project identity</dt>
+                                  <dd className="font-mono break-all">{memory.projectId}</dd>
+                                </>
+                              )}
+                              {memory.supersedes && (
+                                <>
+                                  <dt>Replaces</dt>
+                                  <dd className="font-mono break-all">{memory.supersedes}</dd>
+                                </>
+                              )}
+                              <dt>Redacted</dt>
+                              <dd>{memory.redacted ? 'yes' : 'no'}</dd>
+                              {memory.expiresAt && (
+                                <>
+                                  <dt>Expires</dt>
+                                  <dd>{formatWhen(memory.expiresAt)}</dd>
+                                </>
+                              )}
+                              <dt>Version</dt>
+                              <dd data-testid="memory-provenance-version">
+                                {memory.version == null ? 'unknown (saved before versions were kept)' : memory.version}
+                              </dd>
+                              <dt>Source</dt>
+                              <dd data-testid="memory-provenance-source">{memory.sourceType ?? 'unknown'}</dd>
+                              <dt>From run</dt>
+                              <dd className="font-mono break-all">{memory.sourceRunId ?? 'not recorded'}</dd>
+                              <dt>Saved in project</dt>
+                              <dd className="font-mono break-all">{memory.sourceProjectId ?? 'not recorded'}</dd>
+                              {memory.contentHash && (
+                                <>
+                                  <dt>Content hash</dt>
+                                  <dd className="font-mono break-all">{memory.contentHash}</dd>
+                                </>
+                              )}
+                              {(memory.history?.length ?? 0) > 0 && (
+                                <>
+                                  <dt>Earlier versions</dt>
+                                  <dd data-testid="memory-provenance-history">
+                                    {memory.history!.map((h) => (
+                                      <span key={`${h.version}-${h.content_hash}`} className="block font-mono break-all">
+                                        v{h.version} · {h.content_hash} · replaced {formatWhen(h.replaced_at)}
+                                      </span>
+                                    ))}
+                                  </dd>
+                                </>
+                              )}
+                              <dt>Used in</dt>
+                              <dd data-testid="memory-provenance-uses">
+                                {(memory.uses?.length ?? 0) === 0
+                                  ? 'no recorded request yet'
+                                  : memory.uses!.map((u, i) => (
+                                      <span
+                                        key={`${u.at}-${i}`}
+                                        className="block font-mono break-all"
+                                        data-snapshot-id={u.snapshot_id ?? ''}
+                                      >
+                                        {formatWhen(u.at)} · {u.session_id}
+                                        {u.turn_id ? ` · turn ${u.turn_id}` : ''}
+                                        {u.snapshot_id ? ` · snapshot ${u.snapshot_id}` : ''}
+                                        {u.reason ? ` · ${u.reason}` : ''}
+                                      </span>
+                                    ))}
+                              </dd>
+                            </dl>
+                          </details>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <Button
@@ -550,8 +992,38 @@ function MemorySettings() {
             <Button variant="ghost" onClick={() => setEditing(null)}>
               Cancel
             </Button>
-            <Button disabled={busy || !draft.trim()} onClick={() => void onSaveEdit()}>
+            <Button
+              disabled={busy || !draft.trim()}
+              data-testid="memory-edit-save"
+              onClick={() => void onSaveEdit()}
+            >
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={clearing !== null} onOpenChange={(open) => !open && setClearing(null)}>
+        <DialogContent data-testid="memory-clear-dialog">
+          <DialogHeader>
+            <DialogTitle>Forget every memory here?</DialogTitle>
+            <DialogDescription>
+              {clearing
+                ? `Everything remembered for ${scopeLabel(clearing).toLowerCase()} stops being used and its text is removed from this machine. This cannot be undone in one step.`
+                : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setClearing(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={busy}
+              data-testid="memory-clear-confirm"
+              onClick={() => void onClear()}
+            >
+              Forget all
             </Button>
           </DialogFooter>
         </DialogContent>

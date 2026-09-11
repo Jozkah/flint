@@ -311,6 +311,47 @@ describe('runSubagent', () => {
     )
   })
 
+  it("hands the child's cache breakdown to its task record", async () => {
+    mockSteps([
+      [
+        { type: 'text-delta', delta: 'found it' },
+        {
+          type: 'finish',
+          messageMetadata: {
+            usage: {
+              inputTokens: 900,
+              outputTokens: 40,
+              totalTokens: 940,
+              cachedInputTokens: 800,
+              uncachedInputTokens: 100,
+              cacheSource: 'openai-chat',
+            },
+          },
+        },
+      ],
+    ])
+    const opts = baseOpts()
+    const out = await runSubagent(opts)
+    const expected = {
+      prompt_tokens: 900,
+      completion_tokens: 40,
+      total_tokens: 940,
+      cached_prompt_tokens: 800,
+      uncached_prompt_tokens: 100,
+      cache_source: 'openai-chat',
+    }
+    expect(opts.events.onEnd).toHaveBeenCalledWith(expected)
+    expect(out.usage).toEqual(expected)
+  })
+
+  it('reports a child whose provider sent no cache data with no cache fields', async () => {
+    mockSteps([textStep('done', 30)])
+    const opts = baseOpts()
+    const out = await runSubagent(opts)
+    expect(out.usage).not.toHaveProperty('cached_prompt_tokens')
+    expect(out.usage).not.toHaveProperty('uncached_prompt_tokens')
+  })
+
   it('reuses the parent model instance rather than creating one', async () => {
     mockSteps([textStep('done')])
     await runSubagent(baseOpts())

@@ -54,6 +54,15 @@ pub struct PayloadUsage {
     pub completion_tokens: Option<u64>,
     #[serde(default)]
     pub total_tokens: Option<u64>,
+    /// The provider's prompt-cache read for this dispatch. AH-211. Absent on
+    /// records written before it existed and whenever the provider did not
+    /// report it -- never written as a zero nobody measured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_prompt_tokens: Option<u64>,
+    /// The provider's prompt-cache write for this dispatch. Part of
+    /// `prompt_tokens`, not in addition to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<u64>,
     pub source: UsageSource,
 }
 
@@ -155,6 +164,8 @@ pub fn record(invocation: impl Into<String>, source: UsageSource) -> PayloadUsag
         prompt_tokens: None,
         completion_tokens: None,
         total_tokens: None,
+        cached_prompt_tokens: None,
+        cache_write_tokens: None,
         source,
     }
 }
@@ -245,6 +256,37 @@ mod tests {
         let dir = scratch();
         append(&dir, &seed("i1", UsageSource::Provider, 137));
         assert!(scoped_lookup(&dir, None, None, None).is_err());
+    }
+
+    #[test]
+    fn cache_counts_round_trip_and_older_records_stay_unreported() {
+        let dir = scratch();
+        let mut cached = seed("i1", UsageSource::Provider, 5974);
+        cached.cached_prompt_tokens = Some(5957);
+        cached.cache_write_tokens = Some(0);
+        append(&dir, &cached);
+        // A line written before the cache fields existed.
+        let path = log_path(&dir);
+        let mut raw = std::fs::read_to_string(&path).unwrap();
+        raw.push_str(
+            "{\"v\":1,\"at\":\"2026-01-01T00:00:00Z\",\"invocation\":\"i0\",\
+             \"prompt_tokens\":10,\"source\":\"provider\"}\n",
+        );
+        std::fs::write(&path, raw).unwrap();
+
+        let back = latest_for(&dir, "i1").unwrap();
+        assert_eq!(back.cached_prompt_tokens, Some(5957));
+        // A reported zero is a measurement and survives as one.
+        assert_eq!(back.cache_write_tokens, Some(0));
+
+        let old = latest_for(&dir, "i0").unwrap();
+        assert_eq!(old.prompt_tokens, Some(10));
+        assert_eq!(old.cached_prompt_tokens, None);
+        assert_eq!(old.cache_write_tokens, None);
+        // And writing it again does not invent the fields.
+        let line = serde_json::to_string(&old).unwrap();
+        assert!(!line.contains("cached_prompt_tokens"));
+        assert!(!line.contains("cache_write_tokens"));
     }
 
     #[test]
