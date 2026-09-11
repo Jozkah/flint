@@ -345,6 +345,42 @@ describe('the review', () => {
     expect(approval.acknowledged).toEqual([])
   })
 
+  // AH-168.
+  it('exports the worktree by its record and says where the bundle went', async () => {
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'agent_proposal_list') return []
+      if (cmd === 'agent_worktree_export')
+        return { path: 'C:/data/exports/b1', manifest: { files: [1, 2] } }
+      return null
+    })
+    render(<CoworkProposalReview worktree={worktree} session="s1" />)
+    await userEvent.click(await screen.findByTestId('worktree-export'))
+    expect(await screen.findByTestId('worktree-export-path')).toHaveTextContent('C:/data/exports/b1')
+    expect(calls('agent_worktree_export')[0][1]).toEqual({ record: worktree })
+  })
+
+  it('shows an export refusal and offers no export without a record', async () => {
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'agent_proposal_list') return []
+      if (cmd === 'agent_worktree_export')
+        throw { kind: 'no-changes', message: 'the worktree has no changes since its base commit' }
+      return null
+    })
+    const { unmount } = render(<CoworkProposalReview worktree={worktree} session="s1" />)
+    await userEvent.click(await screen.findByTestId('worktree-export'))
+    expect(await screen.findByTestId('proposal-error')).toHaveTextContent('no changes')
+    unmount()
+    render(
+      <CoworkProposalReview
+        worktree={{ path: worktree.path, sourceRoot: worktree.sourceRoot }}
+        session="s1"
+        propose={async () => ({ ok: false, message: 'x', conflicts: [] })}
+      />
+    )
+    await screen.findByTestId('proposal-create')
+    expect(screen.queryByTestId('worktree-export')).toBeNull()
+  })
+
   it("does not show another worktree's proposal", async () => {
     invoke.mockImplementation(async (cmd: string) =>
       cmd === 'agent_proposal_list'

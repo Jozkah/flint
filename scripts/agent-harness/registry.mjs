@@ -9,7 +9,8 @@
  * Deliberately dependency-free: it runs on a bare `node` before `yarn install`,
  * which is what lets it gate the registry in CI and in a pre-commit hook.
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 export const STATUSES = [
   'missing',
@@ -220,6 +221,27 @@ export function validateRegistry(doc) {
     bad(`dependency cycle: ${cycle.join(' -> ')}`)
   }
 
+  return problems
+}
+
+/**
+ * Lists `implemented` and `verified` items whose listed files are not on disk.
+ *
+ * Kept apart from `validateRegistry`, which stays a pure check of the document:
+ * this one reads the working tree, relative to `root`. It exists because six
+ * items once kept claiming a crate that a merge had dropped, and nothing
+ * noticed. Unfinished items are exempt -- their files may name work to come.
+ */
+export function findMissingFiles(doc, root) {
+  const problems = []
+  for (const feature of doc?.features ?? []) {
+    if (!['implemented', 'verified'].includes(feature?.status)) continue
+    for (const file of feature.files ?? []) {
+      if (!existsSync(join(root, file))) {
+        problems.push(`${feature.id}: status "${feature.status}" lists ${file}, which does not exist`)
+      }
+    }
+  }
   return problems
 }
 

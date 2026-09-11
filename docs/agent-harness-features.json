@@ -122,14 +122,13 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "implemented",
+      "status": "in-progress",
       "priority": "P0",
       "dependencies": [
         "AH-003"
       ],
       "owner": "lane-01-architecture-registry",
       "files": [
-        "src-tauri/harness/src/event.rs",
         "src-tauri/src/core/agent/events.rs"
       ],
       "securityImpact": "low",
@@ -141,12 +140,10 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [
-        "src-tauri/harness/src/event.rs::tests"
-      ],
+      "tests": [],
       "platformRequirements": [],
-      "blockedReason": null,
-      "auditNote": "Canonical model landed in jan-agent-harness. StreamEvent is still never persisted, so replay, audit and export have no source; migrating the emitters is Phase 1 work (lane-02)."
+      "blockedReason": "Only the in-memory StreamEvent exists. The canonical, persisted HarnessEvent model (src-tauri/harness/src/event.rs) is not in the tree, so replay, audit and export still have no source.",
+      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (HarnessEvent, EventPayload, ToolOutcome) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/event.rs` if it is to be restored."
     },
     {
       "id": "AH-005",
@@ -154,15 +151,13 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "implemented",
+      "status": "missing",
       "priority": "P0",
       "dependencies": [
         "AH-004"
       ],
       "owner": "lane-01-architecture-registry",
-      "files": [
-        "src-tauri/harness/src/envelope.rs"
-      ],
+      "files": [],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Events serialize to a stable versioned envelope with a forward-compatible reader that tolerates unknown variants.",
@@ -172,12 +167,10 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [
-        "src-tauri/harness/src/envelope.rs::tests"
-      ],
+      "tests": [],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Versioned envelope, forward-compatible reader and a crash-tolerant JSONL log. Adopted by the run store in Phase 1."
+      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (Envelope, ENVELOPE_VERSION, EventLog) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/envelope.rs` if it is to be restored."
     },
     {
       "id": "AH-006",
@@ -266,15 +259,13 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "implemented",
+      "status": "missing",
       "priority": "P0",
       "dependencies": [
         "AH-003"
       ],
       "owner": "lane-01-architecture-registry",
-      "files": [
-        "src-tauri/harness/src/identity.rs"
-      ],
+      "files": [],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "A run carries one stable id that correlates its thread, session, subagents, events, checkpoints and audit records.",
@@ -284,12 +275,10 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [
-        "src-tauri/harness/src/identity.rs::tests"
-      ],
+      "tests": [],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "RunIdentity ties run, thread, session and agent together. The three existing ids are migrated onto it in Phase 1 (lane-02)."
+      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (RunIdentity, RunId, ThreadId, SessionId, AgentId) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/identity.rs` if it is to be restored."
     },
     {
       "id": "AH-009",
@@ -297,15 +286,13 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "implemented",
+      "status": "missing",
       "priority": "P0",
       "dependencies": [
         "AH-003"
       ],
       "owner": "lane-01-architecture-registry",
-      "files": [
-        "src-tauri/harness/src/error.rs"
-      ],
+      "files": [],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A single error enum classifies harness failures by kind, retryability and whether the model or the user should see them.",
@@ -315,12 +302,10 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [
-        "src-tauri/harness/src/error.rs::tests"
-      ],
+      "tests": [],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "HarnessError classifies kind, retryability and audience, and preserves the existing `ERROR [tag]:` shape so migrating a call site does not change what the model sees."
+      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (HarnessError, ErrorKind, Retry, Audience) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/error.rs` if it is to be restored. Per-module error kinds exist (ExportErrorKind, ChildErrorKind, ReplayErrorKind) but no shared taxonomy."
     },
     {
       "id": "AH-010",
@@ -328,16 +313,13 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "implemented",
+      "status": "missing",
       "priority": "P0",
       "dependencies": [
         "AH-008"
       ],
       "owner": "lane-01-architecture-registry",
-      "files": [
-        "src-tauri/harness/src/state.rs",
-        "src-tauri/src/core/threads/constants.rs"
-      ],
+      "files": [],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "On-disk run state has a declared, versioned schema with a documented migration path.",
@@ -347,12 +329,10 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [
-        "src-tauri/harness/src/state.rs::tests"
-      ],
+      "tests": [],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Versioned run record with an atomic writer, strict version reads and interrupted-run detection. The existing thread.json and messages.jsonl remain unversioned until Phase 1 migrates them."
+      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (RunRecord, RunStatus, StateStore, STATE_SCHEMA_VERSION) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/state.rs` if it is to be restored. thread.json and messages.jsonl (src-tauri/src/core/threads) remain unversioned."
     },
     {
       "id": "AH-011",
@@ -360,16 +340,14 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "implemented",
+      "status": "missing",
       "priority": "P0",
       "dependencies": [
         "AH-004",
         "AH-009"
       ],
       "owner": "lane-01-architecture-registry",
-      "files": [
-        "src-tauri/harness/src/fixtures.rs"
-      ],
+      "files": [],
       "securityImpact": "none",
       "acceptanceCriteria": [
         "Shared builders produce runs, events, permission rules and workspaces so harness tests do not hand-roll state.",
@@ -379,12 +357,10 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [
-        "src-tauri/harness/src/fixtures.rs::tests"
-      ],
+      "tests": [],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (EventStreamBuilder, sample_run) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/fixtures.rs` if it is to be restored."
     },
     {
       "id": "AH-012",
@@ -5321,13 +5297,19 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-108"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/worktree_export.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/patch_export.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/lib/proposals.ts",
+        "web-app/src/containers/CoworkProposalReview.tsx"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "An agent's worktree exports as a reviewable patch bundle.",
@@ -5336,12 +5318,23 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "tauri-plugin-agent-tools::patch_export::tests::text_changes_become_one_git_style_patch",
+        "tauri-plugin-agent-tools::patch_export::tests::a_missing_final_newline_is_marked",
+        "tauri-plugin-agent-tools::patch_export::tests::a_file_that_is_not_text_ships_whole",
+        "Jan::core::agent::worktree_export::tests::a_bundle_applied_to_the_base_reproduces_the_worktree",
+        "Jan::core::agent::worktree_export::tests::a_worktree_that_cannot_be_exported_is_a_typed_refusal",
+        "Jan::core::agent::worktree_export::tests::a_link_out_of_the_worktree_refuses_the_export",
+        "Jan::core::agent::worktree_export::tests::an_export_stopped_part_way_leaves_no_bundle",
+        "Jan::core::agent::worktree_export::tests::a_bundle_path_cannot_leave_the_bundle",
+        "web-app::CoworkProposalReview.test.tsx",
+        "cowork-smoke::worktree-export"
+      ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "agent_worktree_export writes a managed worktree's changes since its base commit (committed or not, tracked or not, read through proposals::changes_in_worktree, so a link out of the worktree refuses and .git/.jan are never included) to <data>/exports/<stamp>-<worktree>/: changes.patch (one unified diff git apply reads, built by patch_export.rs), files/<path> for anything that is not text, and manifest.json (repository, branch, base, head, per-file change/counts/review flags, SHA-256 of the patch and of each shipped file). The record from IPC must lie inside Jan's worktrees folder and be Ready; refusals are typed (not-managed, not-ready, link-escape, no-changes, io). Assembled under .partial and renamed only when complete; a failure removes the partial, and a partial left by a stopped process is swept by the next export. Nothing in the worktree or the checkout is written. Verified by applying a bundle with git apply to a fresh clone at the base and comparing byte for byte. 'Export as patch' in the review for a run's own worktree. Windows: worktree-export over real IPC. macOS and Linux were not run; applying a bundle (AH-169) is not implemented."
     },
     {
       "id": "AH-169",
@@ -5602,7 +5595,7 @@
       "tests": [],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Blocked on AH-005: the versioned envelope and JSONL event log it would export were lost with src-tauri/harness (see AH-005), so AH-005 is missing, not implemented. An export built on the tool-activity log alone would not be an export of canonical run events."
     },
     {
       "id": "AH-178",
@@ -6192,13 +6185,11 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "implemented",
+      "status": "rejected-with-decision",
       "priority": "P1",
       "dependencies": [],
       "owner": "lane-09-ux-observability",
-      "files": [
-        "web-app/src/containers/analytics/AnalyticConsent.tsx"
-      ],
+      "files": [],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "Telemetry is consent-gated and can be disabled.",
@@ -6210,8 +6201,8 @@
       ],
       "tests": [],
       "platformRequirements": [],
-      "blockedReason": null,
-      "auditNote": ""
+      "blockedReason": "Jan is local-only: 3be88793f (\"refactor(privacy): remove telemetry and update checking\") removed telemetry, so there is nothing for a telemetry control to govern.",
+      "auditNote": "Was listed as implemented by web-app/src/containers/analytics/AnalyticConsent.tsx, which 3be88793f removed on purpose together with the telemetry it controlled."
     },
     {
       "id": "AH-200",

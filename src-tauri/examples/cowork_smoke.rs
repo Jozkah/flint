@@ -1052,6 +1052,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_proposal_flags,
     },
     Scenario {
+        name: "worktree-export",
+        run: scenario_worktree_export,
+    },
+    Scenario {
         name: "managed-worktree-review",
         run: scenario_managed_worktree_review,
     },
@@ -3347,6 +3351,74 @@ fn scenario_proposal_flags(ctx: &Ctx) -> ScenarioResult {
     std::fs::write(ctx.project.join(manifest), before).map_err(|e| fail(e.to_string()))?;
     let _ = std::fs::remove_file(ctx.project.join(lock));
     let _ = std::fs::remove_dir_all(ctx.project.join("db"));
+    Ok(())
+}
+
+/// A managed worktree exports as a patch bundle that reproduces it, over real
+/// IPC into the real backend; the user's checkout is not touched, and the
+/// checkout itself cannot be exported as if it were a worktree. AH-168.
+fn scenario_worktree_export(ctx: &Ctx) -> ScenarioResult {
+    let fail = |e: String| Failure(e);
+    let data = std::env::var("JAN_DATA_FOLDER").unwrap_or_default();
+    let project = ctx.project.to_string_lossy().to_string();
+    let session = "smoke-export";
+    let file = "export-target.txt";
+    if git(&ctx.project, &["ls-files", "--error-unmatch", file]).is_err() {
+        std::fs::write(ctx.project.join(file), "a\nb\nc\n").map_err(|e| fail(e.to_string()))?;
+        git(&ctx.project, &["add", file]).map_err(fail)?;
+        git(&ctx.project, &["commit", "-qm", "export base"]).map_err(fail)?;
+    }
+    let status_before = git(&ctx.project, &["status", "--porcelain"]).unwrap_or_default();
+
+    let (ok, record) = ipc(
+        ctx,
+        "agent_worktree_ensure",
+        &format!("{{ dataFolder: {data:?}, sessionId: {session:?}, project: {project:?} }}"),
+    )?;
+    ensure!(ok, "could not make the worktree: {record}");
+    let worktree = PathBuf::from(record["path"].as_str().unwrap_or_default());
+    let _ = git(&worktree, &["checkout", "--", "."]);
+
+    // Nothing changed yet: a typed refusal, and no bundle.
+    let (ok, refused) = ipc(ctx, "agent_worktree_export", &format!("{{ record: {record} }}"))?;
+    ensure!(!ok && refused["kind"] == "no-changes", "an unchanged worktree was exported: {refused}");
+
+    std::fs::write(worktree.join(file), "a\nB\nc\n").map_err(|e| fail(e.to_string()))?;
+    std::fs::write(worktree.join("export-new.txt"), "new\n").map_err(|e| fail(e.to_string()))?;
+    let (ok, report) = ipc(ctx, "agent_worktree_export", &format!("{{ record: {record} }}"))?;
+    ensure!(ok, "the export was refused: {report}");
+    let bundle = PathBuf::from(report["path"].as_str().unwrap_or_default());
+    ensure!(
+        bundle.starts_with(Path::new(&data).join("exports")) || bundle.to_string_lossy().contains("exports"),
+        "the bundle is not under Jan's exports folder: {}",
+        bundle.display()
+    );
+    let patch = std::fs::read_to_string(bundle.join("changes.patch")).unwrap_or_default();
+    ensure!(
+        patch.contains("-b\n+B\n") && patch.contains("+++ b/export-new.txt"),
+        "the patch does not hold the changes:\n{patch}"
+    );
+    let manifest: Value = serde_json::from_str(
+        &std::fs::read_to_string(bundle.join("manifest.json")).unwrap_or_default(),
+    )
+    .map_err(|e| fail(format!("manifest: {e}")))?;
+    ensure!(manifest["baseSha"] == record["baseSha"], "the manifest names another base: {manifest}");
+    ensure!(
+        git(&ctx.project, &["status", "--porcelain"]).unwrap_or_default() == status_before,
+        "exporting changed the user's checkout"
+    );
+
+    // The checkout, dressed as a worktree record, is refused.
+    let mut forged = record.clone();
+    forged["path"] = Value::String(project.clone());
+    let (ok, refused) = ipc(ctx, "agent_worktree_export", &format!("{{ record: {forged} }}"))?;
+    ensure!(!ok && refused["kind"] == "not-managed", "the checkout was exported: {refused}");
+
+    let _ = ipc(
+        ctx,
+        "agent_worktree_discard",
+        &format!("{{ dataFolder: {data:?}, record: {record}, force: true }}"),
+    );
     Ok(())
 }
 

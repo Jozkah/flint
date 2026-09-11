@@ -15,12 +15,13 @@ import {
   LANES,
   PHASES,
   findCycles,
+  findMissingFiles,
   loadRegistry,
   phaseForId,
   renderMarkdown,
   validateRegistry,
 } from './registry.mjs'
-import { JSON_PATH, MARKDOWN_PATH } from './paths.mjs'
+import { JSON_PATH, MARKDOWN_PATH, REPO_ROOT } from './paths.mjs'
 
 const pristine = () => structuredClone(loadRegistry(JSON_PATH))
 
@@ -172,6 +173,27 @@ test('claiming "implemented" without listed files is rejected', () => {
   const feature = doc.features.find((f) => f.status === 'missing')
   feature.status = 'implemented'
   expectProblem(doc, 'requires the implementing files')
+})
+
+test('every file an implemented or verified item lists exists', () => {
+  assert.deepEqual(findMissingFiles(pristine(), REPO_ROOT), [])
+})
+
+test('an implemented item naming a file that is gone is reported', () => {
+  const doc = pristine()
+  const feature = doc.features.find((f) => f.status === 'implemented')
+  feature.files = [...feature.files, 'src-tauri/harness/src/envelope.rs']
+  const problems = findMissingFiles(doc, REPO_ROOT)
+  assert.equal(problems.length, 1)
+  assert.ok(problems[0].startsWith(`${feature.id}:`), problems[0])
+  assert.ok(problems[0].includes('src-tauri/harness/src/envelope.rs'), problems[0])
+})
+
+test('a missing file on an unfinished item is not reported', () => {
+  const doc = pristine()
+  const feature = doc.features.find((f) => f.status === 'missing')
+  feature.files = ['src-tauri/not/written/yet.rs']
+  assert.deepEqual(findMissingFiles(doc, REPO_ROOT), [])
 })
 
 test('a feature with no acceptance criteria is rejected', () => {

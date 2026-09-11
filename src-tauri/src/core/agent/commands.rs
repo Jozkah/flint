@@ -850,6 +850,31 @@ pub async fn agent_prompt_snapshots_delete(
     tauri_plugin_agent_tools::snapshot::delete_session(&data_folder, &session)
 }
 
+/// Export a managed worktree as a patch bundle under `<data>/exports`. AH-168.
+///
+/// The record arrives over IPC and is checked the way a proposal checks it:
+/// inside the folder Jan owns, and still the worktree it says it is. Nothing
+/// in the worktree or the user's checkout is written.
+#[tauri::command]
+pub async fn agent_worktree_export(
+    app: tauri::AppHandle,
+    record: WorktreeRecordInput,
+) -> Result<
+    crate::core::agent::worktree_export::ExportReport,
+    crate::core::agent::worktree_export::ExportError,
+> {
+    use crate::core::agent::worktree_export::{export, ExportError};
+    let data_folder = get_jan_data_folder_path(app);
+    let record: worktree::WorktreeRecord = record.into();
+    tokio::task::spawn_blocking(move || {
+        let roots = worktree::absolute(&workspace::worktrees_dir(&data_folder))
+            .map_err(ExportError::io_error)?;
+        export(&data_folder, &roots, &record, &mut |_| Ok(()))
+    })
+    .await
+    .map_err(|e| ExportError::io_error(format!("the export did not finish: {e}")))?
+}
+
 async fn replay_blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, crate::core::agent::replay::ReplayError> + Send + 'static,
 ) -> Result<T, crate::core::agent::replay::ReplayError> {
