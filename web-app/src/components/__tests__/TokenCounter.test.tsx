@@ -61,6 +61,30 @@ describe('TokenCounter', () => {
     expect(screen.getAllByText('50.0%').length).toBeGreaterThanOrEqual(1)
   })
 
+  it('warns in words, not only colour, before the window fills (AH-077)', () => {
+    mockTokens({ tokenCount: 900, maxTokens: 1000 })
+    render(<TokenCounter />)
+    const warning = screen.getByTestId('context-pressure')
+    expect(warning).toHaveAttribute('role', 'status')
+    expect(warning).toHaveAttribute('data-tier', 'warn')
+    expect(warning).toHaveTextContent('Nearly full')
+    expect(screen.getByTestId('context-pressure-detail')).toHaveTextContent('100 tokens left')
+  })
+
+  it('says the window is full once it is over', () => {
+    mockTokens({ tokenCount: 1500, maxTokens: 1000 })
+    render(<TokenCounter />)
+    expect(screen.getByTestId('context-pressure')).toHaveAttribute('data-tier', 'over')
+    expect(screen.getByTestId('context-pressure')).toHaveTextContent('Full')
+  })
+
+  it('does not warn with room to spare', () => {
+    mockTokens({ tokenCount: 500, maxTokens: 1000 })
+    render(<TokenCounter />)
+    expect(screen.queryByTestId('context-pressure')).toBeNull()
+    expect(screen.queryByTestId('context-pressure-detail')).toBeNull()
+  })
+
   it('applies destructive styling when over limit (>100%)', () => {
     mockTokens({ tokenCount: 1500, maxTokens: 1000 })
     render(<TokenCounter />)

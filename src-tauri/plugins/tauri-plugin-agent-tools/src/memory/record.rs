@@ -183,6 +183,36 @@ pub struct Provenance {
     /// Bounded: this is "where was it used", not an audit log.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub uses: Vec<MemoryUse>,
+    /// Where an imported memory came from: the export it arrived in and its
+    /// provenance there. `None` for anything not imported (AH-083).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported_from: Option<ImportedFrom>,
+}
+
+/// An imported memory's origin, as its export described it. Kept verbatim so
+/// "why does Jan remember this?" can say "imported from export X, where it was
+/// written by the user in session Y", and never mistaken for this machine's
+/// own provenance.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportedFrom {
+    pub export_id: String,
+    /// Unix seconds the export was made.
+    pub exported_at: i64,
+    /// The scope it was exported from (`chat`, `project`, `user`).
+    pub exported_scope: String,
+    /// Its id in the export's own store.
+    pub original_id: String,
+    /// `user-authored`, `agent-authored`, `extracted`, `imported`, `system`.
+    pub original_source_type: String,
+    pub original_created_at: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_version: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_project_id: Option<String>,
 }
 
 /// How many uses a record keeps. Older ones fall off; the count keeps going.

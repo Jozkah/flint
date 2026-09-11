@@ -914,6 +914,44 @@ mod tests {
         e
     }
 
+    /// AH-200 negative authority: a session's audit export carries its own
+    /// permission decisions and calls only -- not a session whose id merely
+    /// starts the same, not decisions recorded with no session, not another
+    /// session's.
+    #[test]
+    fn an_audit_export_holds_only_its_own_session() {
+        use crate::audit::{append as record_decision, Outcome, PermissionRecord};
+        use crate::resource::Resource;
+        let dir = scratch();
+        let decision = |session: &str| {
+            PermissionRecord::new(
+                "2026-01-01T00:00:00Z".into(),
+                session,
+                "bash",
+                "exec",
+                &Resource::command(&format!("echo {session}-marker")),
+                Outcome::Allow,
+                "because",
+            )
+        };
+        for session in ["s1", "s10", "", "s2"] {
+            record_decision(&dir, &decision(session));
+            let mut e = ev(&format!("call-{session}"), "bash", Phase::Requested);
+            e.session = session.into();
+            append(&dir, &e);
+        }
+        let out = export(&dir, Some("s1"));
+        assert_eq!(out.permissions.len(), 1, "{:?}", out.permissions);
+        assert_eq!(out.permissions[0].session, "s1");
+        assert_eq!(out.activity.len(), 1, "{:?}", out.activity);
+        assert_eq!(out.activity[0].session, "s1");
+        let text = serde_json::to_string(&out).unwrap();
+        for leaked in ["s10-marker", "s2-marker", "call-s10", "call-s2", "echo -marker"] {
+            assert!(!text.contains(leaked), "{leaked} reached s1's audit export");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn one_call_stays_one_item_through_its_whole_life() {
         let dir = scratch();

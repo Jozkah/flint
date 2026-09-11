@@ -46,7 +46,7 @@ pub struct Access {
 impl Access {
     /// Where records of this scope live, or `None` when the caller has no
     /// standing to see that scope at all.
-    fn store_for(&self, scope: Scope) -> Option<&Path> {
+    pub(crate) fn store_for(&self, scope: Scope) -> Option<&Path> {
         match scope {
             Scope::Project => self.project_store.as_deref(),
             Scope::User | Scope::Session => self.permanent_store.as_deref(),
@@ -150,6 +150,8 @@ pub struct MemoryView {
     pub history: Vec<super::record::Revision>,
     /// The most recent dispatches that carried it, newest last.
     pub uses: Vec<super::record::MemoryUse>,
+    /// Set for an imported memory: the export it came in and its origin there.
+    pub imported_from: Option<super::record::ImportedFrom>,
 }
 
 fn preview_of(content: &str) -> String {
@@ -203,6 +205,7 @@ impl MemoryView {
             source_project_id: record.provenance.source_project_id.clone(),
             history: record.history.clone(),
             uses: record.provenance.uses.clone(),
+            imported_from: record.provenance.imported_from.clone(),
         }
     }
 }

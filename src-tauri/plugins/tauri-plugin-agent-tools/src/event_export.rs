@@ -399,6 +399,40 @@ mod tests {
         assert_eq!(std::fs::read_dir(exports_dir(&d)).unwrap().count(), 0, "a stopped export left something");
     }
 
+    /// AH-200 negative authority: naming another session's run, or a session
+    /// id shaped like a path, reaches nothing of any other session.
+    #[test]
+    fn another_sessions_run_or_a_path_shaped_session_exports_nothing() {
+        let d = dir("authority");
+        seed(&d);
+        let refused = |session: &str, run: Option<&str>| {
+            export(&d, session, run, true, &AtomicBool::new(false)).unwrap_err().kind
+        };
+        // r9 is s2's run: asking for it under s1 finds nothing.
+        assert_eq!(refused("s1", Some("r9")), ExportErrorKind::NoEvents);
+        for session in ["../s1", "s1/../s2", "..\\s1", "S1", "s1 ", "s", "s10"] {
+            assert_eq!(refused(session, None), ExportErrorKind::NoEvents, "{session:?} reached a log");
+        }
+        assert!(!exports_dir(&d).exists() || std::fs::read_dir(exports_dir(&d)).unwrap().count() == 0);
+    }
+
+    /// A line claiming another session, planted in a session's log, makes the
+    /// export refuse rather than carry it out under the wrong session.
+    #[test]
+    fn a_planted_event_of_another_session_is_refused_not_exported() {
+        let d = dir("planted");
+        seed(&d);
+        let log = crate::event_log::log_path(&d, "s1");
+        let other = std::fs::read_to_string(crate::event_log::log_path(&d, "s2")).unwrap();
+        let mut body = std::fs::read_to_string(&log).unwrap();
+        body.push_str(&other);
+        std::fs::write(&log, body).unwrap();
+        crate::event_log::forget_loaded();
+        let err = export(&d, "s1", None, true, &AtomicBool::new(false)).unwrap_err();
+        assert_eq!(err.kind, ExportErrorKind::LogUnreadable, "{err:?}");
+        assert!(!exports_dir(&d).exists() || std::fs::read_dir(exports_dir(&d)).unwrap().count() == 0);
+    }
+
     #[test]
     fn a_damaged_or_foreign_export_is_a_typed_refusal() {
         let d = dir("inspect");

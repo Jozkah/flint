@@ -5603,6 +5603,52 @@ mod tests {
         }
     }
 
+    /// AH-200 negative authority: a model cannot reach the app's export and
+    /// audit commands by naming them as tools. They are not offered, and a
+    /// role that asks for one is refused before any gate; nothing is written.
+    #[tokio::test]
+    async fn a_model_cannot_call_an_export_or_audit_command_by_name() {
+        let commands = ["audit_export", "agent_events_export", "memory_export", "session_export_save"];
+        let offered: Vec<String> = tauri_plugin_agent_tools::tools::schema::builtin_tool_schemas()
+            .iter()
+            .filter_map(|s| s["function"]["name"].as_str().map(str::to_string))
+            .collect();
+        for c in commands {
+            assert!(!offered.iter().any(|o| o == c), "{c} is offered to the model");
+        }
+
+        let root = std::env::temp_dir().join(format!("jan_loop_authority_{}", std::process::id()));
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).expect("create data");
+        let (tx, _rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            registry,
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::AgentRole("reviewer".to_string()),
+        );
+        invoker.record_to = Some(data.clone());
+        invoker.cancel_scope = tauri_plugin_agent_tools::lifecycle::Scope::new("auth-s1", "auth-s1#run-1", "");
+        invoker.allowed_tools = Some(["read".to_string(), "ls".to_string()].into_iter().collect());
+        let calls: Vec<serde_json::Value> = commands
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                serde_json::json!({ "id": format!("c{i}"), "type": "function",
+                    "function": { "name": c, "arguments": "{\"session\":\"someone-else\"}" } })
+            })
+            .collect();
+        let outcomes = invoker.invoke(&calls).await.expect("dispatch");
+        assert_eq!(outcomes.len(), commands.len());
+        for o in &outcomes {
+            assert_eq!(o.refusal, Some(HarnessRefusal::ToolNotOffered), "{}: {}", o.id, o.content);
+        }
+        assert!(!data.join("exports").exists(), "a refused call wrote an export");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// AH-004/AH-050: the Rust loop's calls go into the session's canonical
     /// execution record -- each asked-for call, and how it ended, typed
     /// refusals included -- under the run's session, run and agent.

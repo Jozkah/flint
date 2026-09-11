@@ -697,6 +697,123 @@ pub async fn memory_scope_clear(location: Where, scope: String) -> Result<usize,
         .map_err(AgentToolsError::from)
 }
 
+/// What an export wrote.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportReport {
+    pub export_id: String,
+    pub path: String,
+    pub count: usize,
+}
+
+fn store_root_for(access: &Access, scope: Scope) -> Result<PathBuf, AgentToolsError> {
+    match scope {
+        Scope::Project if access.project_id.is_none() => {
+            Err(AgentToolsError::from("no project is open".to_string()))
+        }
+        Scope::Session if access.session_id.is_none() => {
+            Err(AgentToolsError::from("no chat is open".to_string()))
+        }
+        _ => access
+            .store_for(scope)
+            .map(Path::to_path_buf)
+            .ok_or_else(|| AgentToolsError::from("no store for that scope here".to_string())),
+    }
+}
+
+/// Write one scope's active memories, with provenance, to `path` (AH-083).
+/// The path is the one the user picked in the save dialog.
+#[tauri::command]
+pub async fn memory_export(
+    location: Where,
+    scope: String,
+    path: String,
+) -> Result<ExportReport, AgentToolsError> {
+    let scope = parse_scope(&scope)?;
+    let access = location.access();
+    let store_root = store_root_for(&access, scope)?;
+    let visible: Vec<_> = super::store::load(&store_root, scope)
+        .records
+        .into_iter()
+        .filter(|r| access.may_see(r))
+        .collect();
+    let at = now();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let export_id = format!("exp-{at}-{:08x}", fnv(&format!("{nanos}{path}")) as u32);
+    let file = super::transfer::export(&visible, scope, &export_id, at);
+    let body = serde_json::to_vec_pretty(&file).map_err(|e| AgentToolsError::from(e.to_string()))?;
+    let target = PathBuf::from(&path);
+    let tmp = target.with_extension("json.partial");
+    std::fs::write(&tmp, &body)
+        .and_then(|_| std::fs::rename(&tmp, &target))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            AgentToolsError::from(format!("the export could not be written: {e}"))
+        })?;
+    Ok(ExportReport {
+        export_id,
+        path,
+        count: file.records.len(),
+    })
+}
+
+/// Import a memory export into `scope` (AH-083). Every record passes the same
+/// gate as one typed by hand, arrives as imported, and keeps its original
+/// provenance; altered, unsafe and duplicate records are reported, not stored.
+#[tauri::command]
+pub async fn memory_import(
+    location: Where,
+    scope: String,
+    path: String,
+) -> Result<super::transfer::ImportReport, AgentToolsError> {
+    use super::transfer;
+    let scope = parse_scope(&scope)?;
+    let access = location.access();
+    let store_root = store_root_for(&access, scope)?;
+    let meta = std::fs::metadata(&path)
+        .map_err(|e| AgentToolsError::from(format!("the file could not be opened: {e}")))?;
+    if !meta.is_file() {
+        return Err(AgentToolsError::from("that is not a file".to_string()));
+    }
+    if meta.len() as usize > transfer::MAX_BYTES {
+        return Err(AgentToolsError::from(
+            transfer::ImportError::TooLarge { limit: transfer::MAX_BYTES }.message(),
+        ));
+    }
+    let bytes = std::fs::read(&path)
+        .map_err(|e| AgentToolsError::from(format!("the file could not be read: {e}")))?;
+    let file = transfer::parse(&bytes).map_err(|e| AgentToolsError::from(e.message()))?;
+    let existing = super::store::load(&store_root, scope).records;
+    let at = now();
+    let (accepted, mut report) = transfer::plan_import(
+        &file,
+        scope,
+        access.project_id.as_deref(),
+        access.session_id.as_deref(),
+        &existing,
+        at,
+        |i, m| MemoryId::new(format!("mem-{at}-{:016x}", fnv(&format!("{}#{i}#{}", file.export_id, m.id)))),
+    );
+    // Committed one by one through the same path as a reviewed memory, so the
+    // per-scope cap applies; a record the store refuses is reported as such.
+    let mut stored = Vec::new();
+    for ((index, proposal), id) in accepted.iter().zip(report.imported.clone()) {
+        match super::create::commit(&store_root, proposal) {
+            Ok(_) => stored.push(id),
+            Err(e) => report.refused.push(transfer::Skipped {
+                index: *index,
+                original_id: file.records[*index].id.clone(),
+                reason: e,
+            }),
+        }
+    }
+    report.imported = stored;
+    Ok(report)
+}
+
 #[tauri::command]
 pub async fn memory_record_pin(
     location: Where,

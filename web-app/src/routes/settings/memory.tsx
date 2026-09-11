@@ -34,6 +34,9 @@ import {
   memoryRecordCommit,
   memoryRecordPropose,
   memoryScopeClear,
+  memoryExport,
+  memoryImport,
+  type MemoryImportReport,
   type MemoryRecall,
   memoryRecordEdit,
   memoryRecordForget,
@@ -128,6 +131,10 @@ function MemorySettings() {
   const [recall, setRecall] = useState<MemoryRecall>(ALL_RECALLED)
   /** Damaged settings: recall is off until they are saved again. */
   const [settingsIssue, setSettingsIssue] = useState<string | null>(null)
+  /** What the last import did, record by record (AH-083). */
+  const [importReport, setImportReport] = useState<MemoryImportReport | null>(null)
+  /** Bumped per import, so each report is a new status announcement. */
+  const [importCount, setImportCount] = useState(0)
   /** A new memory being written on this page. */
   const [newMemory, setNewMemory] = useState('')
   /** The scope a "forget all" is waiting for confirmation on. */
@@ -487,6 +494,57 @@ function MemorySettings() {
     }
   }, [location, clearing, reload])
 
+  /** Save this scope's memories, with provenance, where the user picks. */
+  const onExport = useCallback(async () => {
+    if (!location) return
+    const path = await getServiceHub()
+      .dialog()
+      .save({
+        defaultPath: `jan-memory-${scope}.json`,
+        filters: [{ name: 'Jan memory export', extensions: ['json'] }],
+      })
+    if (!path) return
+    setBusy(true)
+    try {
+      const report = await memoryExport(location, scope, path)
+      toast.success(
+        report.count === 1 ? 'Exported 1 memory' : `Exported ${report.count} memories`,
+        { description: report.path }
+      )
+    } catch (error) {
+      toast.error('Could not export memories', { description: errorText(error) })
+    } finally {
+      setBusy(false)
+    }
+  }, [location, scope])
+
+  /** Import an export into this scope. What was refused is said, not hidden. */
+  const onImport = useCallback(async () => {
+    if (!location) return
+    const picked = await getServiceHub()
+      .dialog()
+      .open({
+        multiple: false,
+        filters: [{ name: 'Jan memory export', extensions: ['json'] }],
+      })
+    const path = Array.isArray(picked) ? picked[0] : picked
+    if (!path) return
+    setBusy(true)
+    try {
+      const report = await memoryImport(location, scope, path)
+      setImportReport(report)
+      setImportCount((n) => n + 1)
+      await reload()
+      const n = report.imported.length
+      toast.success(n === 1 ? 'Imported 1 memory' : `Imported ${n} memories`)
+    } catch (error) {
+      setImportReport(null)
+      toast.error('Could not import memories', { description: errorText(error) })
+    } finally {
+      setBusy(false)
+    }
+  }, [location, scope, reload])
+
   const activeTab = TABS.find((tab) => tab.scope === scope) ?? TABS[2]
 
   return (
@@ -699,8 +757,29 @@ function MemorySettings() {
                     <Button
                       type="button"
                       size="sm"
+                      variant="outline"
+                      className="ml-auto"
+                      disabled={busy || total === 0 || location == null}
+                      data-testid="memory-export"
+                      onClick={() => void onExport()}
+                    >
+                      Export
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy || location == null}
+                      data-testid="memory-import"
+                      onClick={() => void onImport()}
+                    >
+                      Import
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
                       variant="ghost"
-                      className="ml-auto text-destructive"
+                      className="text-destructive"
                       disabled={busy || total === 0 || location == null}
                       data-testid="memory-clear-scope"
                       onClick={() => setClearing(scope)}
@@ -709,6 +788,35 @@ function MemorySettings() {
                     </Button>
                   </div>
                 </form>
+
+                {importReport && (
+                  <div
+                    key={importCount}
+                    className="rounded-md border border-border p-2 text-xs text-muted-foreground"
+                    role="status"
+                    data-testid="memory-import-report"
+                    data-imported={importReport.imported.length}
+                    data-duplicates={importReport.duplicates.length}
+                    data-refused={importReport.refused.length}
+                  >
+                    <p>
+                      Imported {importReport.imported.length} from export{' '}
+                      <span className="font-mono">{importReport.exportId}</span>
+                      {importReport.duplicates.length > 0 &&
+                        ` · ${importReport.duplicates.length} already remembered`}
+                      {importReport.refused.length > 0 && ` · ${importReport.refused.length} refused`}
+                    </p>
+                    {importReport.refused.length > 0 && (
+                      <ul className="mt-1 list-disc pl-4" data-testid="memory-import-refused">
+                        {importReport.refused.map((r) => (
+                          <li key={`${r.index}-${r.originalId}`}>
+                            #{r.index + 1} <span className="font-mono">{r.originalId}</span>: {r.reason}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
 
                 {scope === 'chat' && (
                   <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -856,6 +964,25 @@ function MemorySettings() {
                               </dd>
                               <dt>Source</dt>
                               <dd data-testid="memory-provenance-source">{memory.sourceType ?? 'unknown'}</dd>
+                              {memory.importedFrom && (
+                                <>
+                                  <dt>Imported from</dt>
+                                  <dd className="break-all" data-testid="memory-provenance-imported">
+                                    export <span className="font-mono">{memory.importedFrom.export_id}</span> (
+                                    {memory.importedFrom.exported_scope}, {formatWhen(memory.importedFrom.exported_at)})
+                                  </dd>
+                                  <dt>Originally</dt>
+                                  <dd className="break-all" data-testid="memory-provenance-original">
+                                    {memory.importedFrom.original_source_type} ·{' '}
+                                    <span className="font-mono">{memory.importedFrom.original_id}</span> · created{' '}
+                                    {formatWhen(memory.importedFrom.original_created_at)}
+                                    {memory.importedFrom.original_session_id &&
+                                      ` · conversation ${memory.importedFrom.original_session_id}`}
+                                    {memory.importedFrom.original_run_id &&
+                                      ` · run ${memory.importedFrom.original_run_id}`}
+                                  </dd>
+                                </>
+                              )}
                               <dt>From run</dt>
                               <dd className="font-mono break-all">{memory.sourceRunId ?? 'not recorded'}</dd>
                               <dt>Saved in project</dt>

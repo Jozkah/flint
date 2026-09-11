@@ -11545,6 +11545,14 @@ const OPT_IN_SCENARIOS: &[Scenario] = &[
         run: scenario_memory_user_after_restart,
     },
     Scenario {
+        name: "memory-export-import",
+        run: scenario_memory_export_import,
+    },
+    Scenario {
+        name: "memory-export-import-restart",
+        run: scenario_memory_export_import_restart,
+    },
+    Scenario {
         name: "memory-conflict-settle",
         run: scenario_memory_conflict_settle,
     },
@@ -12245,6 +12253,205 @@ fn scenario_memory_proposal(ctx: &Ctx) -> ScenarioResult {
 // ---------------------------------------------------------------------------
 // Durability and integration regressions (the batch-1 fixes, end to end)
 // ---------------------------------------------------------------------------
+
+const TRANSFER_EXPECTED: &str = "memory-transfer-expected.json";
+const TRANSFER_FACT: &str = "Smoke transfer fact: release builds are signed on the build farm.";
+const TRANSFER_FORGOTTEN: &str = "Smoke transfer fact: the staging host is called larkspur.";
+
+/// Click a memory-page button once it is enabled.
+fn click_memory_button(ctx: &Ctx, testid: &str) -> ScenarioResult {
+    ctx.wait_until(
+        &format!("{testid} to be enabled"),
+        &format!("const b = document.querySelector('[data-testid=\"{testid}\"]'); return !!b && !b.disabled;"),
+        Duration::from_secs(20),
+    )?;
+    ctx.eval(&format!("document.querySelector('[data-testid=\"{testid}\"]').click(); return true;"))?;
+    Ok(())
+}
+
+/// Import `file` through the page's Import button and the real picker
+/// command (only the OS dialog is scripted); returns the rendered report's
+/// imported / duplicates / refused counts.
+fn import_through_the_page(ctx: &Ctx, file: &Path) -> Result<(String, String, String), Failure> {
+    // A report from an earlier import must not satisfy the wait below.
+    ctx.eval("document.querySelector('[data-testid=\"memory-import-report\"]')?.setAttribute('data-stale', '1'); return true;")?;
+    ctx.script_dialog(Some(file));
+    let clicked = click_memory_button(ctx, "memory-import");
+    let landed = clicked.and_then(|()| {
+        ctx.wait_until(
+            "the import report",
+            "const r = document.querySelector('[data-testid=\"memory-import-report\"]'); return !!r && !r.hasAttribute('data-stale');",
+            Duration::from_secs(30),
+        )
+    });
+    if let Err(e) = landed {
+        let toasts = ctx
+            .eval_string("return [...document.querySelectorAll('[data-sonner-toast]')].map(t => t.textContent).join(' || ');")
+            .unwrap_or_default();
+        let direct = ctx
+            .eval_string(&format!(
+                r#"const c = await window.__TAURI_INTERNALS__.invoke('get_app_configurations');
+                   const picked = await window.__TAURI_INTERNALS__.invoke('open_dialog', {{ options: {{ multiple: false }} }}).catch(e => 'open failed: ' + e);
+                   try {{
+                     return JSON.stringify({{ picked, report: await window.__TAURI_INTERNALS__.invoke('plugin:agent-tools|memory_import', {{
+                       location: {{ dataFolder: c.data_folder }}, scope: 'user', path: {path:?},
+                     }}) }});
+                   }} catch (e) {{ return JSON.stringify({{ picked, error: String(e?.message ?? e) }}); }}"#,
+                path = file.to_string_lossy()
+            ))
+            .unwrap_or_default();
+        ctx.clear_dialog_script();
+        bail!("{} (toasts: {toasts}; direct: {direct})", e.0);
+    }
+    ctx.clear_dialog_script();
+    let attr = |a: &str| {
+        ctx.eval_string(&format!(
+            "return document.querySelector('[data-testid=\"memory-import-report\"]').getAttribute('{a}') || '';"
+        ))
+    };
+    Ok((attr("data-imported")?, attr("data-duplicates")?, attr("data-refused")?))
+}
+
+/// AH-083: a user memory leaves in an export with its provenance, is
+/// forgotten, and comes back through Import marked as imported, with where it
+/// was first written. A record altered after export is refused and named;
+/// importing twice adds nothing; forgotten text never reaches the file; the
+/// imported memory is recalled into a real request.
+fn scenario_memory_export_import(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    // Stored before the page is first opened, so its first load lists them:
+    // re-navigating to the same route does not reload the list.
+    let kept = commit_memory(ctx, "user", None, TRANSFER_FACT)?;
+    let dropped = commit_memory(ctx, "user", None, TRANSFER_FORGOTTEN)?;
+    forget_memory(ctx, "user", None, &dropped)?;
+    goto_memory_page(ctx)?;
+    ctx.wait_until(
+        "the memory to list",
+        &format!("return !!document.querySelector('[data-testid=\"memory-row\"][data-memory-id={kept:?}]');"),
+        Duration::from_secs(20),
+    )?;
+
+    // Export through the page's button and the real save_dialog command.
+    let dir = data_folder()?.join("smoke-exports");
+    std::fs::create_dir_all(&dir).map_err(|e| Failure(e.to_string()))?;
+    let export = dir.join("memory-user.json");
+    let _ = std::fs::remove_file(&export);
+    // The script stays set until the file lands: the click only starts the
+    // save, and the picker command runs after it returns.
+    ctx.script_dialog(Some(&export));
+    let clicked = click_memory_button(ctx, "memory-export");
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    while clicked.is_ok() && !export.exists() && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    ctx.clear_dialog_script();
+    clicked?;
+    let text = std::fs::read_to_string(&export)
+        .map_err(|e| Failure(format!("the export was not written to {}: {e}", export.display())))?;
+    let file: Value = serde_json::from_str(&text).map_err(|e| Failure(format!("the export is not JSON: {e}")))?;
+    ensure!(file["format"] == "jan-memory-export" && file["version"] == 1, "unexpected export header: {text}");
+    let export_id = file["exportId"].as_str().unwrap_or_default().to_string();
+    let record = file["records"]
+        .as_array()
+        .and_then(|r| r.iter().find(|m| m["id"] == kept.as_str()))
+        .cloned()
+        .ok_or_else(|| Failure(format!("the kept memory is not in the export: {text}")))?;
+    ensure!(record["sourceType"] == "user-authored", "exported source type: {record}");
+    ensure!(!text.contains("larkspur"), "forgotten text reached the export: {text}");
+
+    // Forget it here, then prove a tampered copy is refused and named.
+    forget_memory(ctx, "user", None, &kept)?;
+    ensure!(!user_store_text(ctx)?.contains("build farm"), "forgotten text is still in the store");
+    let mut tampered = file.clone();
+    let mut altered = record.clone();
+    altered["content"] = Value::String("Smoke transfer fact: release builds are never signed.".into());
+    tampered["records"] = Value::Array(vec![altered]);
+    let tampered_path = dir.join("memory-user-tampered.json");
+    std::fs::write(&tampered_path, tampered.to_string()).map_err(|e| Failure(e.to_string()))?;
+    goto_memory_page(ctx)?;
+    let (imported, _, refused) = import_through_the_page(ctx, &tampered_path)?;
+    ensure!(imported == "0" && refused == "1", "tampered import: imported {imported}, refused {refused}");
+    let why = ctx.eval_string("return document.querySelector('[data-testid=\"memory-import-refused\"]')?.textContent || '';")?;
+    ensure!(why.contains(&kept) && why.contains("changed after it was exported"), "refusal not named: {why}");
+    ensure!(!user_store_text(ctx)?.contains("never signed"), "tampered text reached the store");
+
+    // The real file imports once; a second import adds nothing.
+    let (imported, dups, refused) = import_through_the_page(ctx, &export)?;
+    ensure!(imported == "1" && refused == "0" && dups == "0", "import: {imported}/{dups}/{refused}");
+    let (imported, dups, _) = import_through_the_page(ctx, &export)?;
+    ensure!(imported == "0" && dups == "1", "second import: imported {imported}, duplicates {dups}");
+
+    let new_id = listed_user_memory(ctx, "build farm")?;
+    ensure!(!new_id.is_empty() && new_id != kept, "the imported memory was not listed under a new id");
+    let row = format!("[data-testid=\"memory-row\"][data-memory-id={new_id:?}]");
+    ctx.wait_until(
+        "the imported row",
+        &format!("return !!document.querySelector('{row} [data-testid=\"memory-provenance-imported\"]');"),
+        Duration::from_secs(20),
+    )?;
+    let shown = ctx.eval_string(&format!(
+        "const q = s => document.querySelector('{row} ' + s)?.textContent || ''; return [q('[data-testid=\"memory-provenance-source\"]'), q('[data-testid=\"memory-provenance-imported\"]'), q('[data-testid=\"memory-provenance-original\"]')].join(' | ');"
+    ))?;
+    ensure!(
+        shown.starts_with("imported") && shown.contains(&export_id) && shown.contains(&kept) && shown.contains("user-authored"),
+        "imported provenance not shown: {shown}"
+    );
+
+    // An imported memory is a memory: it is recalled into a real request.
+    new_cowork_session(ctx)?;
+    attach_folder(ctx, &ctx.project)?;
+    send_cowork(ctx, "transfer recall probe")?;
+    let system = last_system_prompt(ctx)?;
+    ensure!(
+        system.contains(&format!("[{new_id}] (user) (source: imported)")) && system.contains("build farm"),
+        "the imported memory was not recalled: {system}"
+    );
+
+    std::fs::write(
+        data_folder()?.join(TRANSFER_EXPECTED),
+        serde_json::json!({ "exportId": export_id, "original": kept, "id": new_id }).to_string(),
+    )
+    .map_err(|e| Failure(format!("could not record the import: {e}")))?;
+    Ok(())
+}
+
+fn scenario_memory_export_import_restart(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    let raw = std::fs::read_to_string(data_folder()?.join(TRANSFER_EXPECTED)).map_err(|e| {
+        Failure(format!(
+            "no recorded import ({e}); run memory-export-import first with the same COWORK_SMOKE_KEEP"
+        ))
+    })?;
+    let expected: Value = serde_json::from_str(&raw).map_err(|e| Failure(e.to_string()))?;
+    let field = |k: &str| expected[k].as_str().unwrap_or_default().to_string();
+    let (export_id, original, id) = (field("exportId"), field("original"), field("id"));
+    goto_memory_page(ctx)?;
+    let row = format!("[data-testid=\"memory-row\"][data-memory-id={id:?}]");
+    ctx.wait_until(
+        "the imported memory after a restart",
+        &format!("return !!document.querySelector('{row} [data-testid=\"memory-provenance-imported\"]');"),
+        Duration::from_secs(30),
+    )?;
+    let shown = ctx.eval_string(&format!(
+        "const q = s => document.querySelector('{row} ' + s)?.textContent || ''; return [q('[data-testid=\"memory-provenance-source\"]'), q('[data-testid=\"memory-provenance-imported\"]'), q('[data-testid=\"memory-provenance-original\"]')].join(' | ');"
+    ))?;
+    ensure!(
+        shown.starts_with("imported") && shown.contains(&export_id) && shown.contains(&original),
+        "imported provenance lost across a restart: {shown}"
+    );
+    let store = user_store_text(ctx)?;
+    ensure!(store.contains("imported_from") && store.contains(&export_id), "provenance not persisted");
+    ensure!(!store.contains("larkspur") && !store.contains("never signed"), "refused or forgotten text in the store");
+    new_cowork_session(ctx)?;
+    attach_folder(ctx, &ctx.project)?;
+    send_cowork(ctx, "transfer recall after restart")?;
+    let system = last_system_prompt(ctx)?;
+    ensure!(
+        system.contains(&format!("[{id}] (user) (source: imported)")),
+        "the imported memory was not recalled, marked imported, after a restart: {system}"
+    );
+    Ok(())
+}
 
 fn data_folder() -> Result<PathBuf, Failure> {
     std::env::var("JAN_DATA_FOLDER")

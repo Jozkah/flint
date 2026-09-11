@@ -240,6 +240,8 @@ criterion is not met and the item is `in-progress`.
 
 Run history for batch 3 (retries disabled): first combined run -- `background-job-isolation` failed because `ping` in the AppContainer reported "Unable to contact IP driver" and ended before the kill (the scenario now sleeps instead); second -- `tool-activity-timeline` failed on a WebView stall (the page stopped answering scripts); third, and `tool-activity-timeline` alone -- all passed. Logs: `.dwi-artifacts/logs/gate-b3final`, `gate-b3scen2`, `gate-b3scen3` in the session worktree.
 
+Negative authority (AH-200, unit level): `event_export.rs::another_sessions_run_or_a_path_shaped_session_exports_nothing` (another session's run named under this session, and `../s1`, `s1/../s2`, `S1`, `s10` reach no log and write nothing), `event_export.rs::a_planted_event_of_another_session_is_refused_not_exported` (a foreign line in a session's log makes the export refuse with `LogUnreadable`), `activity.rs::an_audit_export_holds_only_its_own_session` (no prefix-sharing session, no session-less decision, no other session), and `loop.rs::a_model_cannot_call_an_export_or_audit_command_by_name` (export and audit commands are not offered as tools; a role naming them is refused `tool-not-offered` before any gate and nothing is written). No real-app scenario attempts these refusals.
+
 Steering is represented only as a lifecycle name (`lifecycle: "steering"`); no steering implementation is imported here. Prompt snapshots and token usage attach later through the existing `invocation` join key and optional fields, which older and newer builds both tolerate -- no second event store.
 
 Recommendation for the per-edit timeline diff (not implemented): generate a standard unified diff in the backend from trusted before/after snapshots (the undo journal already captures both), rather than treating the tool's custom display diff as authoritative.
@@ -469,6 +471,18 @@ Run: `cargo test --lib --no-default-features --features test-tauri -- replay::`,
 
 Not exercised in the real app: a window that actually overflowed, so the
 "left the window" path is shown by unit tests only.
+
+## Context pressure warnings (AH-077, in progress)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Render tests | `web-app/src/components/__tests__/TokenCounter.test.tsx` | at 90% the counter says "Nearly full" with `role="status"` and the popover says how many tokens are left; over 100% it says "Full"; at 50% nothing is said |
+| Rust tests | `src-tauri/src/core/cli/tui.rs::context_pressure_is_warned_once_before_the_window_fills`, `no_context_pressure_warning_without_a_window` | the TUI warns once at 80% with the headroom before auto-compact and `/compact`; not again every turn; again after the fill drops; nothing with an unknown window |
+
+Not yet proven in a running app: the scripted Cowork provider reports no
+context window, so no WebView scenario reaches the threshold, and the TUI
+needs a terminal the harness does not drive. The non-interactive
+`jan cli agent run` path does not warn.
 
 ## Prompt snapshots bound to their turn (AH-078)
 
@@ -702,9 +716,28 @@ not rewrite what was sent.
 
 Last run 2026-09-11, Windows WebView2, scripted provider, retries off: both
 passed on the first attempt, and the AH-082 pair re-run alongside also passed.
-Still open for AH-083: provenance through export/import and the "imported"
-mark on arrival (Priority 5), and Chat records a use without a snapshot id,
-because the Chat path takes no prompt snapshot.
+
+### Export and import with provenance
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView pair | `cowork-smoke --only memory-export-import`, then `--only memory-export-import-restart` on the same `COWORK_SMOKE_KEEP` | two user memories are saved and one forgotten; **Export** on Settings > Memory goes through the real `save_dialog` command (only the OS picker is scripted) and writes a v1 export holding the kept memory as user-authored and not the forgotten text; the kept memory is then forgotten; a copy with altered text imported through **Import** and the real `open_dialog` command is refused and named (original id, "changed after it was exported") and its text is not in the store; the real file imports one record, a second import reports one duplicate and adds nothing; the new record shows source "imported", the export id and the original id and author; a real Cowork request carries it as `[id] (user) (source: imported)`; **after a restart in a new process** the provenance is still shown, `imported_from` is on disk, refused and forgotten text are not, and the next request still carries it marked imported |
+| Rust tests | `memory/transfer.rs` (9) | export excludes forgotten and proposed text, where it was used, and old versions' words; import marks the record imported and keeps the original id, author, time, session and run through the store's own serialisation; records from before imports still load; an altered record is refused while the rest import; an instruction or a credential is refused; importing twice adds nothing; re-exporting an import keeps the first author; a non-export, a newer version, unknown fields and an oversized file are told apart; a project import needs a project |
+| Rust tests | `memory/retrieve.rs` | each injected line names id, scope and source, and an imported memory is marked imported |
+| Render tests | `memory.user.test.tsx` | export writes where the user picked; import shows the per-record report with the refused record named; imported provenance is shown; a cancelled picker does nothing |
+
+Last run 2026-09-11, Windows WebView2, scripted provider, retries off: the
+pair passed after three harness fixes found on first attempts (see the Phase 2
+report); no product behaviour was changed to make it pass except one real
+defect: a second import reused the report element, so the page now remounts
+the report for each import. The `smoke_dialog` seam's own unit test cannot run
+on this Windows host: the desktop library test binary built with the
+`cowork-smoke` feature exits with `STATUS_ENTRYPOINT_NOT_FOUND` before any
+test starts; the seam is exercised by the real-app pair instead.
+
+Still open for AH-083: provenance does not navigate to the source message, and
+Chat records a use without a snapshot id, because the Chat path takes no
+prompt snapshot.
 
 ## One precedence chain (AH-084)
 

@@ -236,6 +236,17 @@ export const TokenCounter = memo(function TokenCounter({
                   />
                 </svg>
               </div>
+              {tier !== 'ok' && (
+                // AH-077: said in words, not only by colour, and announced.
+                <span
+                  role="status"
+                  data-testid="context-pressure"
+                  data-tier={tier}
+                  className={cn('text-[11px] font-medium', textCls)}
+                >
+                  {tier === 'over' ? 'Full' : 'Nearly full'}
+                </span>
+              )}
             </div>
           </button>
         </TooltipTrigger>
@@ -270,6 +281,16 @@ export const TokenCounter = memo(function TokenCounter({
 
           {/* Progress block */}
           <div className="px-3 py-2.5">
+            {tier !== 'ok' && (
+              <p
+                data-testid="context-pressure-detail"
+                className={cn('mb-2 text-[11px] leading-snug', textCls)}
+              >
+                {tier === 'over'
+                  ? 'This conversation is larger than the context window: the next request may be cut or refused. Start a new chat or remove attachments.'
+                  : `${formatExact(remaining)} tokens left. Start a new chat or remove attachments before the window fills.`}
+              </p>
+            )}
             <div className="flex items-baseline justify-between mb-1.5">
               <span
                 className={cn(

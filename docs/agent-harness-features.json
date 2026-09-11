@@ -2486,7 +2486,10 @@
         "AH-073"
       ],
       "owner": "lane-05-context-memory",
-      "files": [],
+      "files": [
+        "web-app/src/components/TokenCounter.tsx",
+        "src-tauri/src/core/cli/tui.rs"
+      ],
       "securityImpact": "none",
       "acceptanceCriteria": [
         "The user is warned before the window fills, not after it overflows.",
@@ -2496,10 +2499,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "web-app/src/components/__tests__/TokenCounter.test.tsx",
+        "src-tauri/src/core/cli/tui.rs::context_pressure_is_warned_once_before_the_window_fills",
+        "src-tauri/src/core/cli/tui.rs::no_context_pressure_warning_without_a_window"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Desktop shows a percentage ring; the CLI warns only when /context is invoked."
+      "auditNote": "Desktop shows a percentage ring; the CLI warns only when /context is invoked. 2026-09-11 (Phase 2): the desktop counter now says \"Nearly full\" (85%+) or \"Full\" (100%+) in words with role=status, and its popover says how many tokens are left and what to do; the CLI TUI warns once at 80% after a turn with the headroom before auto-compact and /compact, re-arming only after the fill drops. Evidence is render and unit tests only. Kept in-progress: no real-app scenario has driven a conversation to the threshold (the scripted Cowork provider reports no context window, and the TUI needs a terminal the harness does not drive), and the non-interactive `jan cli agent run` path does not warn."
     },
     {
       "id": "AH-078",
@@ -2737,7 +2744,7 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-081"
@@ -2756,7 +2763,10 @@
         "web-app/src/routes/settings/memory.tsx",
         "web-app/src/components/TurnUsageDetails.tsx",
         "web-app/src/lib/memoryUses.ts",
-        "web-app/src/routes/cowork.tsx"
+        "web-app/src/routes/cowork.tsx",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/transfer.rs",
+        "src-tauri/src/core/filesystem/smoke_dialog.rs",
+        "src-tauri/src/core/filesystem/commands.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -2776,11 +2786,16 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs::provenance_tests",
         "web-app/src/lib/__tests__/memoryUses.test.ts",
         "src-tauri/examples/cowork_smoke.rs::memory-provenance",
-        "src-tauri/examples/cowork_smoke.rs::memory-provenance-after-restart"
+        "src-tauri/examples/cowork_smoke.rs::memory-provenance-after-restart",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/transfer.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs::an_imported_memory_is_marked_imported_where_it_is_injected",
+        "web-app/src/routes/settings/__tests__/memory.user.test.tsx",
+        "src-tauri/examples/cowork_smoke.rs::memory-export-import",
+        "src-tauri/examples/cowork_smoke.rs::memory-export-import-restart"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Every record carries a Provenance -- creator, origin, source session and message, timestamps -- written at creation and preserved through edits and supersession. What is missing is the user-facing half: 'Why does Jan remember this?' does not navigate to the source message, and there is no unavailable-source state for a deleted origin. 2026-09-11: the memory page shows each record's provenance (id, scope, creator, origin, created/updated, source conversation and message, project identity, supersedes, redaction) and each Chat message and Cowork turn lists the memory ids its request carried and withheld; seen live in memory-session-after-restart. Still missing: the injected line names id and scope but not its source, and provenance does not navigate to the source message. 2026-09-11: version + hash-only revision history, source run and project, derived source type (user-authored/agent-authored/imported/extracted), bounded per-dispatch uses with session, turn, prompt-snapshot id and recall reason, and per-memory rank and reason from retrieval -- all persisted, shown on Settings > Memory and in turn details, and proven through a WebView restart pair with the snapshot id checked against prompts.jsonl. Kept in-progress: provenance through export/import and imported marking on arrival are not built yet (Priority 5)."
+      "auditNote": "Every record carries a Provenance -- creator, origin, source session and message, timestamps -- written at creation and preserved through edits and supersession. What is missing is the user-facing half: 'Why does Jan remember this?' does not navigate to the source message, and there is no unavailable-source state for a deleted origin. 2026-09-11: the memory page shows each record's provenance (id, scope, creator, origin, created/updated, source conversation and message, project identity, supersedes, redaction) and each Chat message and Cowork turn lists the memory ids its request carried and withheld; seen live in memory-session-after-restart. Still missing: the injected line names id and scope but not its source, and provenance does not navigate to the source message. 2026-09-11: version + hash-only revision history, source run and project, derived source type (user-authored/agent-authored/imported/extracted), bounded per-dispatch uses with session, turn, prompt-snapshot id and recall reason, and per-memory rank and reason from retrieval -- all persisted, shown on Settings > Memory and in turn details, and proven through a WebView restart pair with the snapshot id checked against prompts.jsonl. Kept in-progress: provenance through export/import and imported marking on arrival are not built yet (Priority 5). 2026-09-11 (Phase 2): export/import built. Settings > Memory exports one scope as a jan-memory-export v1 file through the save dialog and imports through the open dialog; forgotten, proposed and inactive records and where a memory was used never leave; each imported record passes the hand-typed gate (credentials and instructions refused), a record whose text no longer matches its hash is refused and named, duplicates are skipped, and accepted records are Creator::Import with provenance.imported_from (export id, original id, author, time, session, run, project) kept through re-export. Every injected line now names its source before the quoted text (\"[id] (user) (source: imported)\"). Proven by 9 transfer unit tests, retrieve render tests, memory page render tests, and the memory-export-import / -restart WebView pair (export, forget, tampered import refused, import, duplicate import, provenance shown, recalled into a real request marked imported, all again after a restart). Remaining gaps, not acceptance criteria: provenance does not navigate to the source message; Chat records uses without a snapshot id."
     },
     {
       "id": "AH-084",
@@ -6492,7 +6507,7 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-049",
@@ -6514,11 +6529,15 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs"
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/event_export.rs::another_sessions_run_or_a_path_shaped_session_exports_nothing",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/event_export.rs::a_planted_event_of_another_session_is_refused_not_exported",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs::an_audit_export_holds_only_its_own_session",
+        "src-tauri/src/core/agent/loop.rs::a_model_cannot_call_an_export_or_audit_command_by_name"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "2026-09-11: `audit_export(session)` returns one JSON document joining the session's permission decisions (permissions.jsonl) and its execution record (tool calls and run lifecycle events, tool-activity.jsonl), both redacted when written; an export needs a session. Not complete: the Rust agent loop (CLI) writes no execution record, and there is no negative authority test beyond session scoping. Integration 2026-09-11: AH-005 and AH-177 are implemented on main, so the dependency is no longer blocked; the execution record the export joins is folded from the session event log (legacy tool-activity.jsonl lines still read). Remaining: the CLI loop writes no record, and no negative authority test beyond session scoping. 2026-09-11: both export formats (jan-event-export schema 1, jan-audit-export version 1) are documented field by field in AGENT_HARNESS_ARCHITECTURE.md. Remaining unchanged: the CLI loop writes no record, and no negative authority test beyond session scoping. The CLI loop now writes the execution record the export joins (see AH-050). Remaining: a negative authority test beyond session scoping."
+      "auditNote": "2026-09-11: `audit_export(session)` returns one JSON document joining the session's permission decisions (permissions.jsonl) and its execution record (tool calls and run lifecycle events, tool-activity.jsonl), both redacted when written; an export needs a session. Not complete: the Rust agent loop (CLI) writes no execution record, and there is no negative authority test beyond session scoping. Integration 2026-09-11: AH-005 and AH-177 are implemented on main, so the dependency is no longer blocked; the execution record the export joins is folded from the session event log (legacy tool-activity.jsonl lines still read). Remaining: the CLI loop writes no record, and no negative authority test beyond session scoping. 2026-09-11: both export formats (jan-event-export schema 1, jan-audit-export version 1) are documented field by field in AGENT_HARNESS_ARCHITECTURE.md. Remaining unchanged: the CLI loop writes no record, and no negative authority test beyond session scoping. The CLI loop now writes the execution record the export joins (see AH-050). Remaining: a negative authority test beyond session scoping. 2026-09-11 (Phase 2): negative authority tests beyond session scoping added. Event export: another session's run named under this session, and path-shaped or near-miss session ids (\"../s1\", \"s1/../s2\", \"S1\", \"s10\"), reach no log and write nothing; a line of another session planted in a session's log makes the export refuse (LogUnreadable) instead of exporting it. Audit export: a session's export holds only its own permission decisions and calls -- not a session whose id shares a prefix, not decisions recorded with no session, not another session's. Model authority: export and audit commands are not offered as tools, and a role naming them (audit_export, agent_events_export, memory_export, session_export_save) is refused tool-not-offered before any gate, writing nothing. Unit level only: no real-app scenario attempts these refusals."
     },
     {
       "id": "AH-201",

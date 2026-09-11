@@ -44,6 +44,8 @@ permissions = [
     "allow-memory-retrieve",
     "allow-memory-conflicts",
     "allow-memory-scope-clear",
+    "allow-memory-export",
+    "allow-memory-import",
     "allow-memory-record-uses",
     "allow-tool-schemas",
     "allow-sandbox-status",

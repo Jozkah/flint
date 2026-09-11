@@ -43,6 +43,17 @@ const api = vi.hoisted(() => ({
   memoryRecordRestore: vi.fn(async () => true),
   memoryRecordPin: vi.fn(),
   memoryRecordEdit: vi.fn(),
+  memoryExport: vi.fn(async (_l: any, _s: any, path: string) => ({ exportId: 'exp-1', path, count: 1 })),
+  memoryImport: vi.fn(async () => ({
+    exportId: 'exp-1',
+    imported: ['mem-imp'],
+    duplicates: [] as any[],
+    refused: [{ index: 1, originalId: 'mem-bad', reason: 'its text was changed after it was exported' }],
+  })),
+}))
+const dialog = vi.hoisted(() => ({
+  open: vi.fn(async () => '/picked/in.json' as string | null),
+  save: vi.fn(async () => '/picked/out.json' as string | null),
 }))
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 
@@ -69,7 +80,10 @@ vi.mock('@/hooks/useMemoryConversations', () => ({
   }),
 }))
 vi.mock('@/hooks/useServiceHub', () => ({
-  getServiceHub: () => ({ app: () => ({ getJanDataFolder: async () => '/data' }) }),
+  getServiceHub: () => ({
+    app: () => ({ getJanDataFolder: async () => '/data' }),
+    dialog: () => dialog,
+  }),
 }))
 
 import { Route } from '../memory'
@@ -294,5 +308,77 @@ describe('Settings > Memory: user memory controls (AH-082)', () => {
     await waitFor(() =>
       expect(api.memoryRecordRestore).toHaveBeenCalledWith(LOCATION, 'user', 'mem-yarn', 'Use yarn.')
     )
+  })
+
+  it('exports where the user picked and imports with a per-record report (AH-083)', async () => {
+    api.memoryRecordsList.mockResolvedValue({
+      items: [
+        {
+          id: 'mem-imp',
+          content: 'Use pnpm',
+          preview: 'Use pnpm',
+          scope: 'user',
+          creator: 'import',
+          origin: 'explicit',
+          status: 'active',
+          pinned: false,
+          redacted: false,
+          createdAt: 1,
+          updatedAt: 1,
+          lastUsedAt: null,
+          useCount: 0,
+          expiresAt: null,
+          category: null,
+          projectId: null,
+          sessionId: null,
+          sourceSessionId: null,
+          sourceMessageId: null,
+          sourceDeleted: false,
+          supersedes: null,
+          sourceType: 'imported',
+          importedFrom: {
+            export_id: 'exp-1',
+            exported_at: 2,
+            exported_scope: 'user',
+            original_id: 'mem-orig',
+            original_source_type: 'user-authored',
+            original_created_at: 1,
+            original_session_id: 'sess-origin',
+          },
+        },
+      ],
+      total: 1,
+    })
+    render(<Page />)
+    const exportButton = await screen.findByTestId('memory-export')
+    await waitFor(() => expect(exportButton).not.toBeDisabled())
+    await userEvent.click(exportButton)
+    await waitFor(() => expect(api.memoryExport).toHaveBeenCalledWith(LOCATION, 'user', '/picked/out.json'))
+
+    await userEvent.click(screen.getByTestId('memory-import'))
+    await waitFor(() => expect(api.memoryImport).toHaveBeenCalledWith(LOCATION, 'user', '/picked/in.json'))
+    const report = await screen.findByTestId('memory-import-report')
+    expect(report).toHaveAttribute('data-imported', '1')
+    expect(report).toHaveAttribute('data-refused', '1')
+    expect(screen.getByTestId('memory-import-refused')).toHaveTextContent('mem-bad')
+    expect(screen.getByTestId('memory-import-refused')).toHaveTextContent('changed after it was exported')
+    expect(screen.getByTestId('memory-provenance-source')).toHaveTextContent('imported')
+    expect(screen.getByTestId('memory-provenance-imported')).toHaveTextContent('exp-1')
+    expect(screen.getByTestId('memory-provenance-original')).toHaveTextContent('user-authored')
+    expect(screen.getByTestId('memory-provenance-original')).toHaveTextContent('sess-origin')
+  })
+
+  it('a cancelled dialog exports and imports nothing', async () => {
+    dialog.save.mockResolvedValueOnce(null)
+    dialog.open.mockResolvedValueOnce(null)
+    api.memoryExport.mockClear()
+    api.memoryImport.mockClear()
+    render(<Page />)
+    const importButton = await screen.findByTestId('memory-import')
+    await waitFor(() => expect(importButton).not.toBeDisabled())
+    await userEvent.click(importButton)
+    await waitFor(() => expect(dialog.open).toHaveBeenCalled())
+    expect(api.memoryImport).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('memory-import-report')).toBeNull()
   })
 })

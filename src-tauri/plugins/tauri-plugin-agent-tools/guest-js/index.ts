@@ -327,6 +327,9 @@ export type MemoryView = {
     reason?: string
     at: number
   }[]
+  /** Set for an imported memory: the export it arrived in and its origin
+   * there (AH-083). Absent for anything written on this machine. */
+  importedFrom?: MemoryImportedFrom | null
   /** A single-line preview, already truncated by the backend so a redaction
    * marker is never cut in half. */
   preview: string
@@ -689,6 +692,52 @@ export async function memoryRecordRestore(
     id,
     content,
   })
+}
+
+/** Where an imported memory came from, as its export described it. */
+export type MemoryImportedFrom = {
+  export_id: string
+  exported_at: number
+  exported_scope: string
+  original_id: string
+  original_source_type: string
+  original_created_at: number
+  original_version?: number
+  original_session_id?: string
+  original_run_id?: string
+  original_project_id?: string
+}
+
+export type MemoryExportReport = { exportId: string; path: string; count: number }
+
+export type MemoryImportSkipped = { index: number; originalId: string; reason: string }
+
+export type MemoryImportReport = {
+  exportId: string
+  /** Ids of the records created. */
+  imported: string[]
+  /** Already remembered in this scope; nothing written. */
+  duplicates: MemoryImportSkipped[]
+  /** Altered after export, a credential, an instruction, or expired. */
+  refused: MemoryImportSkipped[]
+}
+
+/** Write one scope's active memories, with provenance, to `path`. */
+export async function memoryExport(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  path: string
+): Promise<MemoryExportReport> {
+  return await invoke('plugin:agent-tools|memory_export', { location, scope, path })
+}
+
+/** Import a memory export into `scope`; every record is checked and marked imported. */
+export async function memoryImport(
+  location: MemoryLocation,
+  scope: MemoryScope,
+  path: string
+): Promise<MemoryImportReport> {
+  return await invoke('plugin:agent-tools|memory_import', { location, scope, path })
 }
 
 /** Forget every memory in one scope that `location` may see. Returns how many. */

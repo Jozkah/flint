@@ -906,7 +906,32 @@ dispatch records the ids it carried and withheld:
 Chat on the message's `metadata.memory`, Cowork on the assistant turn's
 `memory`, both shown in that turn's details; the rendered block with its ids is
 also inside the prompt snapshot. Forgetting sets `Deleted` (undoable from the
-toast) and removes the record from every selection immediately.
+toast) and removes the record from every selection immediately. Every injected
+line names its id, scope and source before the quoted text --
+`- [id] (user) (source: imported) ...` -- so the text cannot forge its own
+origin and the model can tell an import from what the user said here.
+
+**Memory export and import (AH-083).** `memory/transfer.rs` defines the
+`jan-memory-export` v1 document: one scope's active memories with content,
+content hash, creator, origin, source type, category, pin, timestamps,
+version, hash-only history, and the source session, run and project. Forgotten,
+proposed, superseded, conflicted and expired records are not exported, nor is
+where a memory was used. Settings > Memory exports through the save dialog
+(`memory_export`) and imports through the open dialog (`memory_import`).
+Import checks the format and version before the shape (a newer file says
+"newer", not "damaged"), rejects unknown fields and files over 8 MB, and then
+takes each record separately: a record whose text no longer matches its hash
+was altered and is refused; every other record goes through the same
+`create::propose` gate as one typed by hand (credentials and instructions
+posing as facts are refused), is created as `Creator::Import`, and keeps its
+origin in `provenance.imported_from` (export id and time, exported scope,
+original id, source type, creation time, version, session, run and project).
+Re-exporting an import keeps the first author rather than the relaying
+machine. Text already remembered in the target scope is skipped as a
+duplicate, so importing the same file twice changes nothing. The page shows a
+per-record report (imported, duplicates, refused with index, original id and
+reason) and, on each imported memory, where it was imported from and who first
+wrote it.
 
 **What the provider cached (AH-211).** Provider-reported usage, including the
 prompt cache, has one shape everywhere: `web-app/src/lib/tokenUsage.ts`. It is

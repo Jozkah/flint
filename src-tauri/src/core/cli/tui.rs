@@ -1912,6 +1912,10 @@ struct App {
     /// Overflow retries spent in the current user turn, capped so a model that
     /// overflows no matter how small the context cannot spin forever.
     overflow_retries: u8,
+    /// The context-pressure warning (AH-077) has been shown for this fill;
+    /// cleared when the fill drops back below the line, so it is said once per
+    /// approach rather than every turn.
+    context_warned: bool,
     /// Lines scrolled back from the tail; 0 pins the view to the bottom so new
     /// content follows. Non-zero survives streaming so scroll-back stays usable.
     scrollback: u16,
@@ -2375,6 +2379,7 @@ impl App {
             compact_started: None,
             retry_after_compact: false,
             overflow_retries: 0,
+            context_warned: false,
             scrollback: 0,
             repaint: false,
             pending_bug_report: None,
@@ -5088,6 +5093,39 @@ impl App {
         self.tokens > limit && self.tokens > 0 && self.history.len() > 4
     }
 
+    /// Warn once as the context window fills (AH-077), before auto-compaction
+    /// or an overflow takes the decision out of the user's hands. Said again
+    /// only after the fill has dropped back below the line. Nothing is said
+    /// when the window is unknown: there is no fraction to report.
+    fn check_context_pressure(&mut self) {
+        const WARN_PCT: u64 = 80;
+        if self.context_window == 0 || self.tokens == 0 {
+            return;
+        }
+        let pct = self.tokens.saturating_mul(100) / self.context_window;
+        if pct < WARN_PCT {
+            self.context_warned = false;
+            return;
+        }
+        if self.context_warned {
+            return;
+        }
+        self.context_warned = true;
+        let limit = self.context_window.saturating_sub(self.reserve_tokens);
+        let headroom = limit.saturating_sub(self.tokens);
+        let text = if headroom == 0 {
+            format!(
+                "{pct}% of the context window is in use: the next turn auto-compacts. /context shows what is using it"
+            )
+        } else {
+            format!(
+                "{pct}% of the context window is in use: {} tokens before auto-compact. /compact now, or /context to see what is using it",
+                format_tokens(headroom)
+            )
+        };
+        self.system(Level::Warn, &text);
+    }
+
     /// Queue a compaction and a retry for a context-overflow error, reporting
     /// whether recovery was taken up. Declines when the error is something
     /// else, the turn's retry budget is spent, a compaction is already in
@@ -7657,6 +7695,7 @@ async fn apply_stream_event(
         Some(StreamEvent::Done { stop_reason, usage }) => {
             app.on_done(stop_reason, usage);
             *current = None;
+            app.check_context_pressure();
             // Auto-compact when approaching the context limit. Handed to
             // the loop like `/compact` so the summarizing call runs off
             // the render loop.
@@ -30704,6 +30743,49 @@ mod tests {
             }));
         }
         assert!(app.should_auto_compact());
+    }
+
+    /// AH-077: the user is warned once as the window fills, before
+    /// auto-compaction or an overflow, and warned again only after the fill
+    /// has dropped back below the line (a compaction, a new conversation).
+    #[test]
+    fn context_pressure_is_warned_once_before_the_window_fills() {
+        let warnings =
+            |app: &App| transcript_text(app).matches("of the context window is in use").count();
+        let mut app = test_app();
+        app.context_window = 100_000;
+        app.reserve_tokens = 10_000;
+        app.tokens = 50_000;
+        app.check_context_pressure();
+        assert_eq!(warnings(&app), 0, "no warning with room to spare");
+
+        app.tokens = 82_000;
+        app.check_context_pressure();
+        assert_eq!(warnings(&app), 1);
+        let text = transcript_text(&app);
+        assert!(text.contains("82% of the context window is in use"), "{text}");
+        assert!(text.contains("8K tokens before auto-compact"), "{text}");
+        assert!(text.contains("/compact"), "{text}");
+
+        app.tokens = 86_000;
+        app.check_context_pressure();
+        assert_eq!(warnings(&app), 1, "not repeated every turn");
+
+        app.tokens = 30_000;
+        app.check_context_pressure();
+        app.tokens = 81_000;
+        app.check_context_pressure();
+        assert_eq!(warnings(&app), 2, "re-armed after the fill dropped");
+    }
+
+    /// With no known window there is no fraction to warn about.
+    #[test]
+    fn no_context_pressure_warning_without_a_window() {
+        let mut app = test_app();
+        app.context_window = 0;
+        app.tokens = 1_000_000;
+        app.check_context_pressure();
+        assert!(!transcript_text(&app).contains("of the context window is in use"));
     }
 
     #[test]
