@@ -9715,6 +9715,13 @@ fn scenario_memory_session_after_restart(ctx: &Ctx) -> ScenarioResult {
 
     // The memory page shows it for session A, with its provenance.
     ctx.goto("/settings/memory")?;
+    // The page renders its tabs once its settings have loaded; clicking before
+    // that found nothing on one run in two after a restart.
+    ctx.wait_until(
+        "the memory scope tabs",
+        "return [...document.querySelectorAll('[role=\"tab\"]')].some(t => /this chat/i.test(t.textContent || ''));",
+        Duration::from_secs(30),
+    )?;
     ctx.click_matching("[role=\"tab\"]", "This chat")?;
     let picked = ctx.eval_bool(&format!(
         "const s = document.querySelector('[data-testid=\"memory-session-picker\"]');
