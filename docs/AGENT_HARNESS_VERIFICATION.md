@@ -329,10 +329,21 @@ Run: `cargo test -p tauri-plugin-agent-tools -- --test-threads=4 proposal::`,
 | 5 unit tests | `web-app/src/lib/__tests__/coworkRoles.test.ts` | as the renderer resolves them: read-only roles get no write, edit, bash, network or MCP tool; a call site cannot widen a role; a role never holds what its parent lacks; no role is offered `task`, `team`, `ask` or `todo`; a saved definition listed first wins |
 | Windows scenario `agent-roles` (mock provider) | `src-tauri/examples/cowork_smoke.rs` | the desktop list returns the six roles as `builtin`, versioned, with no mutating tool on a read-only role; a real parent run in Ask before changes dispatches the built-in reviewer and explorer with `task`; each child is offered only `read`, `ls`, `find`, `grep`, `skill_list`, `skill_read`; the fixture's scripted `write` and `bash` calls are refused as unavailable, no approval prompt appears, no file is written, the tool-activity record has no write or bash for either role; both answers reach the parent; the UI names both children |
 
-Not shown for any role: cancellation mid-run, persistence across a restart in
-a new process, and a typed harness error on refusal (the refusal is a
-tool-error string). Planner, implementer, tester and security were not
-dispatched in a UI run. All six stay `in-progress`.
+Superseded on 2026-09-11 (feat/integrated-phase-2), which adds:
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| 2 loop tests | `src-tauri/src/core/agent/loop.rs` | for each of the six roles, under the CLI's auto-approval, forged `write`, `edit`, `bash`, `task`, `dispatch_subagent`, `ask`, `todo` and an MCP tool are each refused as `HarnessRefusal::ToolNotOffered` before any gate, nothing is written or edited, and the role's own `ls` runs; without an allowlist nothing is refused that way |
+| 2 web tests | `web-app/src/lib/__tests__/coworkRunnerRecord.test.ts` | a call the runner refuses is recorded under its run and agent as a refusal of kind `tool-not-offered`; the SDK's reasons map to `tool-not-offered` / `invalid-call` |
+| Windows `agent-roles` (mock provider, retries off) | `cowork_smoke.rs` | all six roles dispatched through the UI in one run; each child is offered exactly its allowlist plus `skill_list`/`skill_read`; every scripted call outside it (write, edit, bash, and a nested `task`) is recorded as a typed `tool-not-offered` refusal under that role in the run's session; no file is written or edited; no child reaches an approval prompt; the UI names every child |
+| Windows `agent-role-cancel` then `agent-role-cancel-restart` | `cowork_smoke.rs` | all six roles running at once, each stopped on its own from the Background Tasks panel while the others keep running; each ends as cancelled; six `subagent` cancellations are in the session's record; no cancelled role calls the model again; no raw translation key on screen; in a new process on the kept profile all six read back as cancelled (not running, not interrupted), the six built-ins are listed, and nothing is dispatched |
+
+Not covered: Chat has no subagents, so roles do not apply there; the CLI's
+enforcement is shown by unit tests, not a CLI session; escalation through a
+saved definition is by design (a saved definition of the same name replaces
+the role with its own allowlist, `a_saved_definition_shadows_a_builtin_role`),
+and escalation through handoff, replay, import or edited serialized state was
+not exercised.
 
 First attempts, kept: ro1 and ro2 timed out waiting for the page (the lost
 event-bus result, fixed below). ro3 and ro4 got no child at all: attaching a

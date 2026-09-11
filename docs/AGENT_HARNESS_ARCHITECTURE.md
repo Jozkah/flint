@@ -350,6 +350,28 @@ description.
   parent's approval gate. In a team, each isolated child works in its own
   worktree and is reviewed through AH-107/109.
 
+**Enforced at the call, not only at advertisement.** A model can emit a call
+to a tool it was never offered. Such a call is refused by the harness, before
+any gate, prompt or auto-approval, as a typed refusal of kind
+`tool-not-offered`:
+
+- Desktop (Cowork): the AI SDK marks it invalid; `runTurn` returns a
+  `ToolOutcome` with `refusal: { kind, tool, agent }`, and the execution
+  record's `refused` event carries `refusal: "tool-not-offered"` under the
+  role and its run's session.
+- Rust loop (CLI and desktop agent runs): `CompositeToolInvoker` holds the
+  run's `allowed_tools` and refuses anything outside it, whatever its name
+  (built-in, `task`/`dispatch_subagent`, `ask`, `todo`, MCP), with
+  `ToolOutcome.refusal = Some(HarnessRefusal::ToolNotOffered)`. Before this, the
+  allowlist only shaped what was advertised, and a child's forged `write`
+  reached the gate -- which the CLI auto-approves.
+
+**Stopping a role.** Each dispatched role has its own controller; the
+Background Tasks panel's Stop reaches only that child, which ends as
+`cancelled` (never `failed` or `interrupted`), records a `subagent`
+`lifecycle.cancelled` event in its session, and sends nothing more. After a
+restart the child reads back as cancelled and nothing is dispatched again.
+
 ### AHD-009e: one versioned envelope for a session's events (AH-005), exported (AH-177)
 
 The Phase 0 harness crate that first carried an event envelope never reached

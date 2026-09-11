@@ -85,12 +85,32 @@ const translate = (key: string, options: Record<string, unknown> = {}): string =
     }, obj as unknown) as string | undefined
   }
   
+  // Plural forms, as i18next names them: `key_one`, `key_other`, ... chosen by
+  // the language's own rule for `count`. Without this every plural key
+  // rendered as its raw key ("common:tasks.summaryNoTokens").
+  const lookup = (lng: string): string | undefined => {
+    const table = res[lng]?.[namespace]
+    if (typeof options.count !== 'number') return getNestedValue(table, translationKey)
+    let form = 'other'
+    try {
+      form = new Intl.PluralRules(lng).select(options.count)
+    } catch {
+      form = options.count === 1 ? 'one' : 'other'
+    }
+    // As i18next: the exact plural form, then the bare key, then `_other`.
+    return (
+      getNestedValue(table, `${translationKey}_${form}`) ??
+      getNestedValue(table, translationKey) ??
+      getNestedValue(table, `${translationKey}_other`)
+    )
+  }
+
   // Try to get translation from current language
-  let translation = getNestedValue(res[language]?.[namespace], translationKey)
-  
+  let translation = lookup(language)
+
   // Fallback to fallback language if not found
   if (translation === undefined && language !== fallbackLng) {
-    translation = getNestedValue(res[fallbackLng]?.[namespace], translationKey)
+    translation = lookup(fallbackLng)
   }
   
   // Callers may supply an inline `defaultValue`, as i18next allows. Honour it

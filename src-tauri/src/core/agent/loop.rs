@@ -135,6 +135,26 @@ pub(crate) struct ToolOutcome {
     pub content: String,
     pub diff: Option<String>,
     pub images: Vec<tauri_plugin_agent_tools::tools::ImageContentPart>,
+    /// Set when the harness declined the call without running anything, so a
+    /// caller branches on the kind rather than parsing `content`. AH-094..099.
+    pub refusal: Option<HarnessRefusal>,
+}
+
+/// Why the harness declined a call. The model is told in `content`; this is
+/// the typed form for callers and tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HarnessRefusal {
+    /// A tool outside the run's allowlist (for a role, authority it does not
+    /// hold). Asking for it does not grant it.
+    ToolNotOffered,
+}
+
+impl HarnessRefusal {
+    pub(crate) fn code(self) -> &'static str {
+        match self {
+            HarnessRefusal::ToolNotOffered => "tool-not-offered",
+        }
+    }
 }
 
 impl ToolOutcome {
@@ -144,6 +164,21 @@ impl ToolOutcome {
             content,
             diff: None,
             images: Vec::new(),
+            refusal: None,
+        }
+    }
+
+    /// A call the harness refused before any gate, prompt or execution.
+    fn refused(id: String, name: &str, refusal: HarnessRefusal) -> Self {
+        Self {
+            id,
+            content: format!(
+                "ERROR: tool '{name}' was not offered to this agent and was not run (refused: {})",
+                refusal.code()
+            ),
+            diff: None,
+            images: Vec::new(),
+            refusal: Some(refusal),
         }
     }
 }
@@ -298,6 +333,12 @@ struct SubagentContext {
 /// and everything else to the existing `McpToolInvoker`, preserving input order.
 struct CompositeToolInvoker {
     mcp: McpToolInvoker,
+    /// The run's tool allowlist (`allowed_tools`), enforced when a call is
+    /// made, not only when tools are advertised. A child run's model can still
+    /// emit a call to a tool it was never offered; without this, a role's
+    /// forged `write` reached the gate and, under the CLI's auto-approval,
+    /// ran. `None` = no allowlist. AH-094..099.
+    allowed_tools: Option<std::collections::HashSet<String>>,
     project_root: std::path::PathBuf,
     /// Where `memory/` and `skills/` live. Co-located with the project here, so
     /// the on-disk layout is unchanged; the desktop points this at its permanent
@@ -509,6 +550,7 @@ fn return_cancelled_outcome(
         content: format!("ERROR: tool '{name}' was not run: {why}."),
         diff: None,
         images: Vec::new(),
+        refusal: None,
     });
 }
 
@@ -1066,6 +1108,16 @@ impl ToolInvoker for CompositeToolInvoker {
                 .and_then(|f| f.get("name"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
+            // Before every other branch -- ask, todo, subagent dispatch, MCP,
+            // built-ins -- and before any gate, prompt or auto-approval: a tool
+            // this run was not offered is refused, whatever its name.
+            if let Some(allowed) = &self.allowed_tools {
+                if !allowed.contains(name) {
+                    let id = tc.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    out.push(ToolOutcome::refused(id, name, HarnessRefusal::ToolNotOffered));
+                    continue;
+                }
+            }
             if name == "ask" {
                 let id = tc
                     .get("id")
@@ -1248,6 +1300,7 @@ impl ToolInvoker for CompositeToolInvoker {
                         content: text,
                         diff,
                         images: images.unwrap_or_default(),
+                        refusal: None,
                     }
                 });
                 continue;
@@ -1400,6 +1453,7 @@ impl ToolInvoker for CompositeToolInvoker {
                 content: text,
                 diff,
                 images: images.unwrap_or_default(),
+                refusal: None,
             });
         }
         if !read_futures.is_empty() {
@@ -2210,6 +2264,7 @@ async fn orchestrate_inner(
             tauri_plugin_agent_tools::workspace::ensure_scratch_dir_path(&scratch_root).await?;
         }
         let tools = CompositeToolInvoker {
+            allowed_tools: allowed_names.clone(),
             subject: subject.clone(),
             // One scope per run. A session-less run still gets a distinct run
             // id, so an application-wide stop reaches it while a stop aimed at
@@ -2997,6 +3052,7 @@ async fn run_turn_cycle(
                 content,
                 diff,
                 images,
+                ..
             } = outcome;
             // A `bash` call that exits non-zero isn't prefixed "ERROR" (that
             // convention is reserved for hard tool failures the model must
@@ -3746,6 +3802,7 @@ mod tests {
                             id,
                             content: "Read image pic.png (image/png, 10 bytes)".to_string(),
                             diff: None,
+                            refusal: None,
                             images: vec![tauri_plugin_agent_tools::tools::ImageContentPart {
                                 data_url: "data:image/png;base64,QUJD".to_string(),
                                 name: "pic.png".to_string(),
@@ -5242,6 +5299,7 @@ mod tests {
         subject: tauri_plugin_agent_tools::subject::Subject,
     ) -> CompositeToolInvoker {
         CompositeToolInvoker {
+            allowed_tools: None,
             // Tests run one dispatch at a time; a fixed scope is enough to
             // exercise the token without colliding with another run.
             cancel_scope: tauri_plugin_agent_tools::lifecycle::Scope::default(),
@@ -5358,6 +5416,99 @@ mod tests {
             out[0].content
         );
 
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AH-094..099. Every shipped role's allowlist is enforced when a call is
+    /// made, not only when tools are advertised: a forged call to anything
+    /// outside it -- a write, a shell, dispatching another agent, asking the
+    /// user, an MCP tool -- is a typed refusal before any gate, prompt or
+    /// auto-approval, and nothing is written. The CLI auto-approves, so this is
+    /// the only thing between a read-only role's forged `write` and the disk.
+    #[tokio::test]
+    async fn a_role_cannot_call_a_tool_outside_its_allowlist_even_under_auto_approval() {
+        let forged = ["write", "edit", "bash", "task", "dispatch_subagent", "ask", "todo", "srv__tool"];
+        for role in crate::core::agent::roles::ROLES {
+            let root = std::env::temp_dir().join(format!(
+                "jan_loop_role_{}_{}",
+                role.name,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&root).expect("create root");
+            std::fs::write(root.join("a.txt"), "keep\n").unwrap();
+            let (tx, _rx) = mpsc::unbounded_channel::<StreamEvent>();
+            let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+            let mut invoker = build_invoker_for(
+                root.clone(),
+                tx,
+                registry,
+                ToolPermissions::allow_all(),
+                tauri_plugin_agent_tools::subject::Subject::NamedAgent(role.name.to_string()),
+            );
+            invoker.auto_approve = true;
+            invoker.allowed_tools = Some(role.tools.iter().map(|t| t.to_string()).collect());
+            let args = |name: &str| match name {
+                "write" => r#"{"path":"forged.txt","content":"escaped"}"#,
+                "edit" => r#"{"path":"a.txt","old_string":"keep","new_string":"gone"}"#,
+                "bash" => r#"{"command":"echo escaped > forged.txt"}"#,
+                "ls" => r#"{"path":"."}"#,
+                _ => "{}",
+            };
+            let calls: Vec<serde_json::Value> = forged
+                .iter()
+                .filter(|t| !role.tools.contains(t))
+                .chain(std::iter::once(&"ls"))
+                .enumerate()
+                .map(|(i, name)| {
+                    serde_json::json!({
+                        "id": format!("c{i}"),
+                        "type": "function",
+                        "function": { "name": name, "arguments": args(name) }
+                    })
+                })
+                .collect();
+            let out = tokio::time::timeout(std::time::Duration::from_secs(20), invoker.invoke(&calls))
+                .await
+                .expect("a refusal must never wait on a prompt")
+                .expect("dispatch");
+            let last = out.iter().find(|o| o.id == format!("c{}", calls.len() - 1)).unwrap();
+            assert_eq!(last.refusal, None, "{}: its own ls must run: {}", role.name, last.content);
+            for o in out.iter().filter(|o| o.id != last.id) {
+                assert_eq!(o.refusal, Some(HarnessRefusal::ToolNotOffered), "{}: {}", role.name, o.content);
+                assert!(o.content.contains("refused: tool-not-offered"), "{}", o.content);
+            }
+            assert!(!root.join("forged.txt").exists(), "{} wrote a file it may not write", role.name);
+            assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "keep\n", "{} edited a file", role.name);
+            let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    /// Without an allowlist nothing is refused this way: the check only ever
+    /// narrows.
+    #[tokio::test]
+    async fn no_allowlist_refuses_nothing_as_not_offered() {
+        let root = std::env::temp_dir().join(format!("jan_loop_noallow_{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("create root");
+        let (tx, _rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            registry,
+            ToolPermissions::allow_all(),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        let out = invoker
+            .invoke(&[serde_json::json!({
+                "id": "c0", "type": "function",
+                "function": { "name": "ls", "arguments": "{\"path\":\".\"}" }
+            })])
+            .await
+            .expect("dispatch");
+        assert_eq!(out[0].refusal, None);
         let _ = std::fs::remove_dir_all(&root);
     }
 

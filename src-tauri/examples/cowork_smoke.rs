@@ -1086,6 +1086,10 @@ const SCENARIOS: &[Scenario] = &[
         name: "agent-roles",
         run: scenario_agent_roles,
     },
+    Scenario {
+        name: "agent-role-cancel",
+        run: scenario_role_cancel,
+    },
     // A pair (AH-005/AH-177).
     Scenario {
         name: "event-export-1",
@@ -1323,6 +1327,10 @@ const RESTART_SCENARIOS: &[Scenario] = &[
     Scenario {
         name: "session-models-survive-a-restart",
         run: scenario_session_models_after_restart,
+    },
+    Scenario {
+        name: "agent-role-cancel-restart",
+        run: scenario_role_cancel_restart,
     },
 ];
 
@@ -4459,14 +4467,47 @@ fn scenario_agent_roles(ctx: &Ctx) -> ScenarioResult {
         serde_json::json!({ "path": "{{FOLDER}}/role-escape.txt", "content": "a read-only role wrote this\n" })
     );
     let bash_try = format!("bash:{}", serde_json::json!({ "command": "echo escaped > role-escape.txt" }));
-    let routes = serde_json::json!([
-        { "match": "ROLE-REVIEWER", "tools": [write_try, bash_try], "summary": "reviewer finished" },
-        { "match": "ROLE-EXPLORER", "tools": ["ls:{\"path\":\".\"}", write_try], "summary": "explorer finished" },
-    ]);
-    let parent_calls = [
-        format!("task:{}", serde_json::json!({ "subagent_name": "reviewer", "description": "ROLE-REVIEWER: review the fixture" })),
-        format!("task:{}", serde_json::json!({ "subagent_name": "explorer", "description": "ROLE-EXPLORER: map the fixture" })),
+    let edit_try = format!(
+        "edit:{}",
+        serde_json::json!({ "path": "{{FOLDER}}/README.md", "old_string": "#", "new_string": "ROLE-EDITED #" })
+    );
+    // A nested dispatch: a child asking for another agent.
+    let task_try = format!("task:{}", serde_json::json!({ "subagent_name": "implementer", "description": "nested" }));
+    let ls = "ls:{\"path\":\".\"}".to_string();
+    // Every role asks for what it may do and for what it may not. Writes and
+    // commands a role does hold are not scripted, so no child ever reaches an
+    // approval prompt: what is being proven is the refusal, not the prompt.
+    let scripted: [(&str, Vec<String>); 6] = [
+        ("explorer", vec![ls.clone(), write_try.clone()]),
+        ("planner", vec![ls.clone(), bash_try.clone()]),
+        ("reviewer", vec![write_try.clone(), bash_try.clone()]),
+        ("security", vec![bash_try.clone(), task_try.clone()]),
+        ("implementer", vec![ls.clone(), bash_try.clone(), task_try.clone()]),
+        ("tester", vec![ls.clone(), edit_try.clone(), write_try.clone()]),
     ];
+    let routes: Vec<Value> = scripted
+        .iter()
+        .map(|(role, tools)| {
+            serde_json::json!({
+                "match": format!("ROLE-{}", role.to_uppercase()),
+                "tools": tools,
+                "summary": format!("{role} finished"),
+            })
+        })
+        .collect();
+    let routes = Value::Array(routes);
+    let parent_calls: Vec<String> = scripted
+        .iter()
+        .map(|(role, _)| {
+            format!(
+                "task:{}",
+                serde_json::json!({
+                    "subagent_name": role,
+                    "description": format!("ROLE-{}: work on the fixture", role.to_uppercase()),
+                })
+            )
+        })
+        .collect();
     let port = ctx.mock_port;
     ensure!(
         ctx.eval_bool(&format!(
@@ -4502,7 +4543,7 @@ fn scenario_agent_roles(ctx: &Ctx) -> ScenarioResult {
     // Attaching starts in Review first, a plan mode that withholds `task`
     // from the parent; the parent needs a mode that can dispatch.
     choose_mode(ctx, "Ask before changes")?;
-    ctx.type_into("[data-testid=\"chat-input\"]", "Run the reviewer and the explorer on this project.")?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "Run all six roles on this project.")?;
     ctx.wait_until(
         "the send control to arm",
         "const b = document.querySelector('[data-test-id=\"send-message-button\"]'); return !!b && !b.disabled;",
@@ -4532,8 +4573,7 @@ fn scenario_agent_roles(ctx: &Ctx) -> ScenarioResult {
                 })
             })
         };
-        if answered("reviewer")
-            && answered("explorer")
+        if scripted.iter().all(|(role, _)| answered(role))
             && ctx.eval_bool("return !!document.querySelector('[data-test-id=\"send-message-button\"]');")?
         {
             break;
@@ -4559,28 +4599,41 @@ fn scenario_agent_roles(ctx: &Ctx) -> ScenarioResult {
         }
         std::thread::sleep(Duration::from_millis(700));
     }
-    ensure!(!escape.exists(), "a read-only role wrote into the project");
+    ensure!(!escape.exists(), "a role wrote a file it may not write");
+    let readme = std::fs::read_to_string(ctx.project.join("README.md")).unwrap_or_default();
+    ensure!(!readme.contains("ROLE-EDITED"), "the tester edited a file it may not edit");
 
     // The children's calls, as the durable record has them.
     let activity: Vec<Value> = activity_records();
-    for agent in ["reviewer", "explorer"] {
+    for (agent, tools) in &scripted {
+        let role_tools = role_allowlist(agent);
+        let forbidden: Vec<String> = tools
+            .iter()
+            .map(|t| t.split(':').next().unwrap_or("").to_string())
+            .filter(|t| !role_tools.contains(&t.as_str()))
+            .collect();
         let mutating_ran = activity.iter().any(|e| {
-            e["agent"] == agent
-                && ["write", "bash"].contains(&e["tool"].as_str().unwrap_or(""))
+            e["agent"] == *agent
+                && forbidden.iter().any(|f| e["tool"] == f.as_str())
                 && ["running", "succeeded"].contains(&e["phase"].as_str().unwrap_or(""))
         });
-        ensure!(!mutating_ran, "the {agent} role ran a write or a command");
+        ensure!(!mutating_ran, "the {agent} role ran a tool it was not given: {forbidden:?}");
         // Declined by the harness as a typed refusal, recorded under the role
         // in its run's session -- not an unscoped tool-error string.
         let refused: Vec<&Value> = activity
             .iter()
             .filter(|e| {
-                e["agent"] == agent
-                    && ["write", "bash"].contains(&e["tool"].as_str().unwrap_or(""))
+                e["agent"] == *agent
+                    && forbidden.iter().any(|f| e["tool"] == f.as_str())
                     && e["phase"] == "refused"
             })
             .collect();
-        ensure!(!refused.is_empty(), "the {agent} role's refused write or bash was not recorded under it");
+        for f in &forbidden {
+            ensure!(
+                refused.iter().any(|e| e["tool"] == f.as_str()),
+                "the {agent} role's forged {f} was not recorded as refused under it"
+            );
+        }
         for e in &refused {
             ensure!(
                 e["refusal"] == "tool-not-offered" && e["session"].as_str().is_some_and(|s| !s.is_empty()),
@@ -4604,25 +4657,275 @@ fn scenario_agent_roles(ctx: &Ctx) -> ScenarioResult {
             .map(|m| m["content"].to_string())
             .unwrap_or_default()
     };
-    for tag in ["ROLE-REVIEWER", "ROLE-EXPLORER"] {
-        let offered: Vec<String> = requests
+    for (role, _) in &scripted {
+        let tag = format!("ROLE-{}", role.to_uppercase());
+        let mut offered: Vec<String> = requests
             .iter()
-            .filter(|r| brief(r).contains(tag))
+            .filter(|r| brief(r).contains(&tag))
             .flat_map(|r| r["tools"].as_array().cloned().unwrap_or_default())
             .filter_map(|t| t["function"]["name"].as_str().map(str::to_string))
             .collect();
+        offered.sort();
+        offered.dedup();
         ensure!(!offered.is_empty(), "{tag}'s child request was not seen by the model fixture");
-        for forbidden in ["write", "edit", "bash", "task", "team"] {
-            ensure!(!offered.iter().any(|t| t == forbidden), "{tag} was offered {forbidden}: {offered:?}");
-        }
+        // Exactly its allowlist, plus reading skills, and nothing else.
+        let mut want: Vec<String> = role_allowlist(role)
+            .iter()
+            .map(|t| t.to_string())
+            .chain(["skill_list".to_string(), "skill_read".to_string()])
+            .collect();
+        want.sort();
+        ensure!(offered == want, "{role} was offered {offered:?}; its role allows {want:?}");
+        println!("      {role}: offered {offered:?}");
     }
     // Each child is named by its role where the person sees the run.
-    let named = ctx.eval_bool(
-        "const t = document.body.innerText; return /reviewer/i.test(t) && /explorer/i.test(t);",
-    )?;
-    ensure!(named, "the run does not name its children by role");
+    let text = ctx.eval_string("return document.body.innerText;")?.to_lowercase();
+    for (role, _) in &scripted {
+        ensure!(text.contains(role), "the run does not name the {role} child by role");
+    }
     println!("      NOTE: explorer's ls {}", if explorer_read { "succeeded" } else { "was not recorded" });
     Ok(())
+}
+
+const ROLE_CANCEL_HANDOFF: &str = "role-cancel";
+const ROLE_NAMES: [&str; 6] = ["explorer", "planner", "implementer", "reviewer", "tester", "security"];
+
+/// Make sure the Activity rail (the Background Tasks panel) is showing.
+fn show_tasks_rail(ctx: &Ctx) -> ScenarioResult {
+    // The rail button toggles, so it is pressed only when no task row is on
+    // screen after a moment -- pressing it on an open panel would close it.
+    let shown = ctx.wait_until(
+        "a task row",
+        "return !!document.querySelector('[data-testid^=\"task-status-\"]');",
+        Duration::from_secs(5),
+    );
+    if shown.is_err() {
+        ctx.click_rail("Activity")?;
+    }
+    Ok(())
+}
+
+/// AH-094..099: a role stopped in the middle of its run. The explorer is
+/// dispatched through the UI, reads, then streams without end; the person
+/// stops that one child from the Background Tasks panel. The child ends as
+/// cancelled -- not failed, not running -- the stop is in the session's
+/// execution record, the parent run finishes, and the child sends nothing
+/// more. The second half checks all of it after a restart.
+fn scenario_role_cancel(ctx: &Ctx) -> ScenarioResult {
+    let calls: Vec<String> = ROLE_NAMES
+        .iter()
+        .map(|role| {
+            format!(
+                "task:{}",
+                serde_json::json!({
+                    "subagent_name": role,
+                    "description": format!("ROLE-CANCEL-{}: map the fixture slowly", role.to_uppercase()),
+                })
+            )
+        })
+        .collect();
+    let routes: Vec<Value> = ROLE_NAMES
+        .iter()
+        .map(|role| {
+            serde_json::json!({
+                "match": format!("ROLE-CANCEL-{}", role.to_uppercase()),
+                "tools": ["ls:{\"path\":\".\"}"],
+                "then": "slow",
+            })
+        })
+        .collect();
+    let routes = Value::Array(routes);
+    let calls = serde_json::to_string(&calls).unwrap_or_default();
+    let port = ctx.mock_port;
+    ensure!(
+        ctx.eval_bool(&format!(
+            r#"const res = await fetch('http://127.0.0.1:{port}/__control', {{
+                 method: 'POST', headers: {{ 'Content-Type': 'application/json' }},
+                 body: JSON.stringify({{ script: 'tools', tools: {calls}, routes: {routes}, delay: 0.3 }}),
+               }});
+               return res.ok;"#
+        ))?,
+        "could not script the roles"
+    );
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    attach_project(ctx)?;
+    choose_mode(ctx, "Ask before changes")?;
+    let session = current_cowork_session(ctx)?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "Run all six roles on this project.")?;
+    send_armed(ctx)?;
+
+    // Until every child has read and is streaming its never-ending answer.
+    let streaming = |ctx: &Ctx, role: &str| -> bool {
+        let tag = format!("ROLE-CANCEL-{}", role.to_uppercase());
+        mock_requests(ctx).unwrap_or_default().iter().any(|r| {
+            r["messages"].to_string().contains(&tag)
+                && r["messages"].as_array().is_some_and(|m| m.iter().any(|m| m["role"] == "tool"))
+        })
+    };
+    // A step's tool calls run one at a time, so the parent dispatches the
+    // next role only once the one before has ended. Each role is stopped while
+    // it streams; the next one starting shows the stop reached only that child
+    // and the parent carried on.
+    for (i, role) in ROLE_NAMES.iter().enumerate() {
+        let deadline = Instant::now() + Duration::from_secs(90);
+        while !streaming(ctx, role) {
+            let _ = ctx.eval(
+                "const b = [...document.querySelectorAll('button')].find(x =>
+                   /^allow once$/i.test((x.textContent || '').trim()));
+                 if (b && !b.closest('[data-testid=\"child-approval\"]')) b.click();
+                 return true;",
+            );
+            ensure!(Instant::now() < deadline, "{role} never started streaming: {}", run_state_page(ctx));
+            std::thread::sleep(Duration::from_millis(500));
+        }
+        show_tasks_rail(ctx)?;
+        // A workflow's tasks are listed under its row once it is expanded.
+        ctx.eval(
+            "[...document.querySelectorAll('button[aria-expanded=\"false\"]')]
+               .filter(b => /\\d+ of \\d+ finished/.test(b.textContent || ''))
+               .forEach(b => b.click());
+             return true;",
+        )?;
+        let row = ctx.wait_until(
+            &format!("{role} running in the tasks panel"),
+            &format!("return !!document.querySelector('[aria-label=\"Stop {role}\"]');"),
+            Duration::from_secs(30),
+        );
+        if row.is_err() {
+            ctx.describe("role-cancel-panel")?;
+        }
+        row?;
+        if i == 0 {
+            // No raw translation key anywhere on screen (the panel's own
+            // header read "common:tasks.summaryNoTokens" before plural keys
+            // resolved).
+            let raw = ctx.eval_string(
+                "const m = (document.body.innerText || '').match(/\\b[a-z-]+:[a-zA-Z]+\\.[a-zA-Z._]+\\b/); return m ? m[0] : '';",
+            )?;
+            ensure!(raw.is_empty(), "a raw translation key is on screen: {raw}");
+        }
+        ctx.eval(&format!(
+            "document.querySelector('[aria-label=\"Stop {role}\"]').click(); return true;"
+        ))?;
+        ctx.wait_until(
+            &format!("{role} to end as cancelled"),
+            &format!(
+                "return document.querySelectorAll('[data-testid=\"task-status-cancelled\"]').length >= {}
+                   && !document.querySelector('[aria-label=\"Stop {role}\"]');",
+                i + 1
+            ),
+            Duration::from_secs(30),
+        )?;
+        println!("      {role}: stopped mid-stream, ended as cancelled");
+    }
+    ensure!(
+        !ctx.eval_bool("return !!document.querySelector('[data-testid=\"task-status-running\"]');")?,
+        "a role is still running after all six were stopped"
+    );
+    ctx.wait_until(
+        "the parent run to finish",
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /^allow once$/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+        Duration::from_secs(90),
+    )?;
+    // Stopped means stopped: the child sends nothing more.
+    let asked = |ctx: &Ctx| {
+        mock_requests(ctx)
+            .unwrap_or_default()
+            .iter()
+            .filter(|r| r["messages"].to_string().contains("ROLE-CANCEL-"))
+            .count()
+    };
+    let before = asked(ctx);
+    std::thread::sleep(Duration::from_secs(3));
+    ensure!(asked(ctx) == before, "a cancelled role kept calling the model");
+
+    let record = activity_records();
+    let stops = record
+        .iter()
+        .filter(|e| e["session"] == session.as_str() && e["lifecycle"] == "subagent" && e["phase"] == "cancelled")
+        .count();
+    ensure!(stops >= ROLE_NAMES.len(), "{stops} stops are in the session's execution record, not six");
+    ensure!(
+        !record.iter().any(|e| e["session"] != session.as_str() && e["lifecycle"] == "subagent"
+            && e["summary"].as_str().is_some_and(|s| s.contains("explorer"))),
+        "the stop leaked into another session's record"
+    );
+    write_handoff(ctx, ROLE_CANCEL_HANDOFF, &serde_json::json!({ "session": session }))
+}
+
+/// The second half, in a new process on the kept profile: the cancelled role
+/// comes back cancelled -- not running, not interrupted -- nothing is
+/// dispatched again, and the six roles are still the shipped ones.
+fn scenario_role_cancel_restart(ctx: &Ctx) -> ScenarioResult {
+    let handoff = read_handoff(ctx, ROLE_CANCEL_HANDOFF, "agent-role-cancel")?;
+    let session = handoff["session"].as_str().unwrap_or_default().to_string();
+    ensure!(!session.is_empty(), "the handoff names no session");
+    ensure!(mock_requests(ctx)?.is_empty(), "a request went out before the check started");
+    let (ok, listed) = ipc(ctx, "agent_subagent_list", "{}")?;
+    ensure!(ok, "listing agents failed: {listed}");
+    let builtins = listed
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|d| d["scope"] == "builtin")
+        .count();
+    ensure!(builtins == 6, "{builtins} built-in roles after the restart");
+    open_cowork_session(ctx, &session)?;
+    show_tasks_rail(ctx)?;
+    ctx.eval(
+        "[...document.querySelectorAll('button[aria-expanded=\"false\"]')]
+           .filter(b => /\\d+ of \\d+ finished/.test(b.textContent || ''))
+           .forEach(b => b.click());
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the six cancelled roles after the restart",
+        "return document.querySelectorAll('[data-testid=\"task-status-cancelled\"]').length >= 6;",
+        Duration::from_secs(30),
+    )?;
+    ensure!(
+        !ctx.eval_bool(
+            "return !!document.querySelector('[data-testid=\"task-status-running\"], [data-testid=\"task-status-interrupted\"]');"
+        )?,
+        "the cancelled role came back running or interrupted"
+    );
+    let record = activity_records();
+    ensure!(
+        record
+            .iter()
+            .filter(|e| e["session"] == session.as_str() && e["lifecycle"] == "subagent" && e["phase"] == "cancelled")
+            .count()
+            >= ROLE_NAMES.len(),
+        "the stops are gone from the record after the restart"
+    );
+    std::thread::sleep(Duration::from_secs(2));
+    ensure!(mock_requests(ctx)?.is_empty(), "the restart dispatched the cancelled role again");
+    Ok(())
+}
+
+/// A shipped role's tools, as `core::agent::roles` defines them.
+fn role_allowlist(role: &str) -> &'static [&'static str] {
+    app_lib::core::agent::roles::ROLES
+        .iter()
+        .find(|r| r.name == role)
+        .map(|r| r.tools)
+        .unwrap_or(&[])
 }
 
 /// Press a chord the way the keyboard does: a `keydown` on the window.
