@@ -2259,7 +2259,7 @@ function CoworkPage() {
               // they go through the same prompt rather than around it --
               // shown on its own, because the child's calls are not parts of
               // any message on screen.
-              onApprove: (callId, toolName, _input, preview) =>
+              onApprove: (callId, toolName, _input, preview, signal) =>
                 useToolApprovalRequests
                   .getState()
                   .requestApproval(
@@ -2270,7 +2270,8 @@ function CoworkPage() {
                     preview,
                     destination
                       ? `${resolved.name} (its own checkout)`
-                      : resolved.name
+                      : resolved.name,
+                    signal
                   ),
               trackShell: () =>
                 useCoworkActiveWork.getState().acquire({
@@ -2488,10 +2489,18 @@ function CoworkPage() {
               // The prompt the chat surface already uses for tool approval,
               // not a second one: it honours grants the user has already made
               // and renders in the tool card the call is reported in.
-              onApprove: (callId, toolName, _input, preview) =>
+              onApprove: (callId, toolName, _input, preview, signal) =>
                 useToolApprovalRequests
                   .getState()
-                  .requestApproval(callId, toolName, sid, undefined, preview),
+                  .requestApproval(
+                    callId,
+                    toolName,
+                    sid,
+                    undefined,
+                    preview,
+                    undefined,
+                    signal
+                  ),
               // A shell handed to the backend outlives a cancelled run, so it
               // holds the authority it started with until the process is done.
               trackShell: () =>

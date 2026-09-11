@@ -82,7 +82,14 @@ describe('dispatchCoworkTool', () => {
       call('write', { path: 'a' }),
       ctx({ mode: 'ask', onApprove })
     )
-    expect(onApprove).toHaveBeenCalledWith('c1', 'write', { path: 'a' }, undefined)
+    // No preview (the mock returns none) and no run signal in this call.
+    expect(onApprove).toHaveBeenCalledWith(
+      'c1',
+      'write',
+      { path: 'a' },
+      undefined,
+      undefined
+    )
     expect(out.isError).toBeUndefined()
     expect(executeAgentTool).toHaveBeenCalled()
   })
@@ -106,7 +113,8 @@ describe('dispatchCoworkTool', () => {
       'c1',
       'write',
       { path: 'a', content: 'hi' },
-      '@@ created file @@\n+    1 | hi'
+      '@@ created file @@\n+    1 | hi',
+      undefined
     )
   })
 
@@ -724,5 +732,51 @@ describe('missing reads in review mode', () => {
     const out = await dispatchCoworkTool(call('read', { path: 'y' }), review)
     expect(out.output).toBe('ERROR: permission denied (os error 13)')
     expect(review.onAsk).not.toHaveBeenCalled()
+  })
+})
+
+describe('an approval prompt whose run is stopped', () => {
+  beforeEach(() => {
+    executeAgentTool.mockReset()
+    executeAgentTool.mockResolvedValue({ content: 'ok' })
+  })
+
+  it('hands the prompt the run signal, and stops waiting the moment the run stops', async () => {
+    const run = new AbortController()
+    let seen: AbortSignal | undefined
+    // A prompt nobody answers: only the stop can end the wait.
+    const onApprove = vi.fn(
+      (_c: string, _t: string, _i: unknown, _p?: string, signal?: AbortSignal) => {
+        seen = signal
+        return new Promise<boolean>(() => {})
+      }
+    )
+    const pending = dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'ask', onApprove }),
+      run.signal
+    )
+    await vi.waitFor(() => expect(onApprove).toHaveBeenCalled())
+    expect(seen).toBe(run.signal)
+    run.abort('cancelled')
+    const out = await pending
+    expect(out.isError).toBe(true)
+    expect(out.output).toMatch(/stopped/)
+    expect(executeAgentTool).not.toHaveBeenCalled()
+  })
+
+  it('never runs a call whose approval arrives after the run stopped', async () => {
+    const run = new AbortController()
+    const onApprove = vi.fn(async () => {
+      run.abort('cancelled')
+      return true
+    })
+    const out = await dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'ask', onApprove }),
+      run.signal
+    )
+    expect(out.isError).toBe(true)
+    expect(executeAgentTool).not.toHaveBeenCalled()
   })
 })

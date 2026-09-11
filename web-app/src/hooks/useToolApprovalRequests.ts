@@ -60,7 +60,13 @@ type ToolApprovalRequestsState = {
     threadId: string,
     serverName?: string,
     preview?: string,
-    origin?: string
+    origin?: string,
+    /**
+     * The asking run's signal. When it aborts, the prompt is withdrawn -- taken
+     * off screen, shown or queued -- and answered no, so a stopped run's
+     * question cannot be answered afterwards.
+     */
+    signal?: AbortSignal
   ) => Promise<boolean>
   /**
    * Answer a request. With `requestId`, exactly that request is answered,
@@ -73,6 +79,11 @@ type ToolApprovalRequestsState = {
     requestId?: string
   ) => void
   clearPendingForThread: (threadId: string) => void
+  /**
+   * Take one request away unanswered, shown or queued, and answer it no. An
+   * answer that arrives for it afterwards names a request that is gone.
+   */
+  withdrawApproval: (requestId: string) => void
 }
 
 let nextRequest = 0
@@ -101,9 +112,14 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       threadId,
       serverName,
       preview,
-      origin
+      origin,
+      signal
     ) => {
       return new Promise<boolean>((resolve) => {
+        if (signal?.aborted) {
+          resolve(false)
+          return
+        }
         const settings = useToolApproval.getState()
         if (settings.allowAllMCPPermissions) {
           resolve(true)
@@ -133,7 +149,34 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               }
             : { pending: { ...s.pending, [toolCallId]: entry } }
         )
+        signal?.addEventListener(
+          'abort',
+          () => get().withdrawApproval(entry.requestId),
+          { once: true }
+        )
       })
+    },
+
+    withdrawApproval: (requestId) => {
+      const entry = allApprovalRequests(get()).find(
+        (e) => e.requestId === requestId
+      )
+      if (!entry) return
+      const id = entry.toolCallId
+      set((s) => {
+        const next = { ...s.pending }
+        const waiting = (s.queued[id] ?? []).filter((e) => e !== entry)
+        if (next[id] === entry) {
+          const promoted = waiting.shift()
+          if (promoted) next[id] = promoted
+          else delete next[id]
+        }
+        const queued = { ...s.queued }
+        if (waiting.length > 0) queued[id] = waiting
+        else delete queued[id]
+        return { pending: next, queued }
+      })
+      entry.resolve(false)
     },
 
     resolveApproval: (toolCallId, decision, requestId) => {

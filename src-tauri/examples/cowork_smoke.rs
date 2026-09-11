@@ -1154,6 +1154,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_steering,
     },
     Scenario {
+        name: "stopping-a-run-withdraws-its-approval-prompt",
+        run: scenario_stop_withdraws_approval,
+    },
+    Scenario {
         name: "deleting-a-message-keeps-later-replies",
         run: scenario_delete_keeps_later_replies,
     },
@@ -2108,6 +2112,84 @@ fn choose_from_menu(ctx: &Ctx, trigger: &str, label: &str) -> ScenarioResult {
 /// writing there is the confinement grant in action; the Changes panel's
 /// review lists the run's work; unticking a hunk and applying lands exactly
 /// what was ticked in the attached folder.
+/// Stopping a run that is waiting for approval withdraws the prompt: it leaves
+/// the screen with nothing left to click, the call is recorded as cancelled
+/// with the reason, and nothing is written -- neither then nor by a late
+/// answer.
+fn scenario_stop_withdraws_approval(ctx: &Ctx) -> ScenarioResult {
+    let file = "withdrawn-by-stop.txt";
+    let result = (|| -> ScenarioResult {
+        ctx.goto("/cowork")?;
+        ctx.wait_until(
+            "the cowork composer",
+            "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+            Duration::from_secs(30),
+        )?;
+        ctx.ensure_model_selected()?;
+        ctx.click_matching("button", "New session")?;
+        std::thread::sleep(Duration::from_millis(500));
+        choose_mode(ctx, "Ask before changes")?;
+        let call = format!(
+            "write:{}",
+            serde_json::json!({ "path": file, "content": "must not land\n" })
+        );
+        ctx.script_model("tools", &[call.as_str()])?;
+        send_without_waiting(ctx, "write the file, then wait")?;
+        ctx.wait_until(
+            "the approval prompt",
+            "return [...document.querySelectorAll('button')].some(x => (x.textContent || '').trim() === 'Allow Once');",
+            Duration::from_secs(90),
+        )?;
+        stop_current(ctx)?;
+        ctx.wait_until(
+            "the prompt to be withdrawn",
+            "return ![...document.querySelectorAll('button')].some(x => (x.textContent || '').trim() === 'Allow Once');",
+            Duration::from_secs(20),
+        )?;
+        ctx.wait_until(
+            "the run to end",
+            "return !document.querySelector('[data-testid=\"cowork-stop\"]');",
+            Duration::from_secs(60),
+        )?;
+        // Recorded as the stop it was, not as the person's no.
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let events = loop {
+            let events: Vec<String> = activity_events(ctx)
+                .into_iter()
+                .filter(|l| l.contains(file) || l.contains("approval withdrawn"))
+                .collect();
+            if events.iter().any(|l| l.contains("approval withdrawn")) {
+                break events;
+            }
+            ensure!(
+                Instant::now() < deadline,
+                "the withdrawn prompt was never recorded: {events:?}"
+            );
+            std::thread::sleep(Duration::from_millis(250));
+        };
+        let withdrawn = events.iter().find(|l| l.contains("approval withdrawn")).unwrap();
+        ensure!(
+            withdrawn.contains("\"phase\":\"cancelled\""),
+            "the withdrawal was recorded as {withdrawn}"
+        );
+        ensure!(
+            !events.iter().any(|l| l.contains("\"phase\":\"allowed\"") || l.contains("\"phase\":\"refused\"")),
+            "a withdrawn prompt was recorded as answered: {events:?}"
+        );
+        // Nothing landed anywhere Jan keeps a session's files.
+        let sessions = data_folder()?.join("agent-workspace").join("sessions");
+        let landed = std::fs::read_dir(&sessions)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .any(|e| e.path().join(file).exists());
+        ensure!(!landed, "the withdrawn call wrote {file}");
+        Ok(())
+    })();
+    let _ = ctx.script_model("plain", &[]);
+    result
+}
+
 fn scenario_managed_worktree_review(ctx: &Ctx) -> ScenarioResult {
     let fail = |e: String| Failure(e);
     let file = "proposal-target.txt";
@@ -4644,6 +4726,15 @@ fn scenario_steering(ctx: &Ctx) -> ScenarioResult {
             "return String(document.querySelectorAll('[data-testid=\"steered-label\"]').length);",
         )?;
         ensure!(labels == "2", "the transcript marks {labels} messages as steering, not 2");
+        // The words, not an i18n key: a key that does not resolve renders as
+        // itself, and a count of labels cannot tell the two apart.
+        let label = ctx.eval_string(
+            "return document.querySelector('[data-testid=\"steered-label\"]')?.textContent?.trim() || '';",
+        )?;
+        ensure!(
+            label == "Sent to the agent while it was working",
+            "the steering label reads {label:?}"
+        );
 
         // Session B, in the same app, never sees A's input.
         ctx.script_model("plain", &[])?;
