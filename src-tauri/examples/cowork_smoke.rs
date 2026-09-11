@@ -5449,7 +5449,7 @@ fn cache_upstream() -> Result<(String, String), Failure> {
     Ok((upstream, model))
 }
 
-fn data_folder() -> Result<PathBuf, Failure> {
+fn smoke_data_folder() -> Result<PathBuf, Failure> {
     std::env::var("JAN_DATA_FOLDER")
         .map(PathBuf::from)
         .map_err(|_| Failure("JAN_DATA_FOLDER is not set".into()))
@@ -5532,36 +5532,54 @@ impl Ctx {
     }
 
     /// Open the counter's popover and read its rows.
-    fn read_token_popover(&self) -> Result<Value, Failure> {
+    /// Open the counter's popover for `scope` and read its rows.
+    ///
+    /// The popover is portalled, so the previous surface's one can still be in
+    /// the document -- closing, or animating out -- when the next surface's
+    /// counter appears. Reading "the" breakdown then read the wrong session's
+    /// numbers; that was the first-attempt failure of the restart check, which
+    /// read Chat's figures while asserting Cowork's. Everything here is keyed by
+    /// the scope the counter stamps on itself, so a stale popover is never
+    /// mistaken for the current one.
+    fn read_token_popover(&self, scope: &str) -> Result<Value, Failure> {
+        let counter = format!("[data-testid=\"token-counter\"][data-usage-scope={scope:?}]");
+        let breakdown =
+            format!("[data-testid=\"token-usage-breakdown\"][data-usage-scope={scope:?}]");
         self.wait_until(
-            "the token counter",
-            "return !!document.querySelector('[data-testid=\"token-counter\"]');",
+            &format!("the token counter for {scope}"),
+            &format!("return !!document.querySelector({counter:?});"),
             Duration::from_secs(45),
         )?;
-        self.eval(
-            "const t = document.querySelector('[data-testid=\"token-counter\"]');
+        self.eval(&format!(
+            "const t = document.querySelector({counter:?});
              t.scrollIntoView();
              const r = t.getBoundingClientRect();
-             const at = { bubbles: true, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, pointerType: 'mouse' };
+             const at = {{ bubbles: true, clientX: r.x + r.width / 2, clientY: r.y + r.height / 2, pointerType: 'mouse' }};
              t.dispatchEvent(new PointerEvent('pointerover', at));
              t.dispatchEvent(new PointerEvent('pointerenter', at));
              t.dispatchEvent(new PointerEvent('pointermove', at));
              t.focus();
-             return true;",
-        )?;
+             return true;"
+        ))?;
         self.wait_until(
-            "the token usage popover",
-            "return !!document.querySelector('[data-testid=\"token-usage-breakdown\"]');",
+            &format!("the token usage popover for {scope}"),
+            &format!("return !!document.querySelector({breakdown:?});"),
             Duration::from_secs(15),
         )?;
-        self.eval(
-            "const pick = (id) => {
-               const el = document.querySelector(`[data-testid=\"${id}\"]`);
+        self.eval(&(format!(
+            "const box = document.querySelector({breakdown:?});
+             const pick = (id) => {{
+               const el = box.querySelector(`[data-testid=\"${{id}}\"]`);
                return el ? (el.getAttribute('data-value') ?? el.textContent) : null;
-             };
-             const box = document.querySelector('[data-testid=\"token-usage-breakdown\"]');
-             const note = document.querySelector('[data-testid=\"token-usage-uncached-note\"]');
+             }};
+             const note = box.querySelector('[data-testid=\"token-usage-uncached-note\"]');
+             const others = [...document.querySelectorAll('[data-testid=\"token-usage-breakdown\"]')]
+               .map(b => b.getAttribute('data-usage-scope'))
+               .filter(s => s !== {scope:?});"
+        ) + "
              return {
+               scope: box.getAttribute('data-usage-scope'),
+               others,
                input: pick('token-usage-input'),
                cached: pick('token-usage-cached'),
                uncached: pick('token-usage-uncached'),
@@ -5572,8 +5590,30 @@ impl Ctx {
                note: note ? note.getAttribute('aria-label') : null,
                text: box.innerText,
                compact: document.querySelector('[data-testid=\"token-counter\"]').innerText,
-             };",
-        )
+             };"))
+    }
+
+    /// The scope stamped on the only token counter on screen: the session
+    /// the current surface is showing.
+    fn visible_usage_scope(&self) -> Result<String, Failure> {
+        self.wait_until(
+            "a token counter",
+            "return !!document.querySelector('[data-testid=\"token-counter\"][data-usage-scope]');",
+            Duration::from_secs(45),
+        )?;
+        let scopes = self.eval(
+            "return [...document.querySelectorAll('[data-testid=\"token-counter\"]')]
+               .map(t => t.getAttribute('data-usage-scope'));",
+        )?;
+        let scopes: Vec<String> = scopes
+            .as_array()
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+            .unwrap_or_default();
+        ensure!(
+            scopes.len() == 1,
+            "expected exactly one token counter on screen, found scopes {scopes:?}"
+        );
+        Ok(scopes[0].clone())
     }
 
     /// Give a person time to look at (or capture) the open popover.
@@ -5665,7 +5705,8 @@ fn scenario_token_usage_cache(ctx: &Ctx) -> ScenarioResult {
             chat_path.starts_with("/threads/"),
             "the chat never became a thread: {chat_path}"
         );
-        let shown = ctx.read_token_popover()?;
+        let thread = chat_path.trim_start_matches("/threads/").to_string();
+        let shown = ctx.read_token_popover(&thread)?;
         check_popover("chat", &shown, chat)?;
         ctx.hold_for_capture("chat");
         record_verified("chat", serde_json::json!({ "path": chat_path, "counts": chat.to_json() }))
@@ -5678,7 +5719,7 @@ fn scenario_token_usage_cache(ctx: &Ctx) -> ScenarioResult {
 
 /// Merge one surface's verified counts into the file the restart check reads.
 fn record_verified(surface: &str, entry: Value) -> ScenarioResult {
-    let path = data_folder()?.join(TOKEN_USAGE_EXPECTED);
+    let path = smoke_data_folder()?.join(TOKEN_USAGE_EXPECTED);
     let mut all: Value = std::fs::read_to_string(&path)
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
@@ -5726,17 +5767,21 @@ fn scenario_token_usage_cache_cowork(ctx: &Ctx) -> ScenarioResult {
             cowork.cached > 0,
             "the provider served none of the Cowork follow-up from its cache ({cowork:?})"
         );
-        let shown = ctx.read_token_popover()?;
+        let session = ctx.visible_usage_scope()?;
+        let shown = ctx.read_token_popover(&session)?;
         check_popover("cowork", &shown, cowork)?;
         ctx.hold_for_capture("cowork");
-        record_verified("cowork", serde_json::json!({ "counts": cowork.to_json() }))
+        record_verified(
+            "cowork",
+            serde_json::json!({ "session": session, "counts": cowork.to_json() }),
+        )
     })();
     let _ = ctx.relay_to(None);
     outcome
 }
 
 fn scenario_token_usage_cache_after_restart(ctx: &Ctx) -> ScenarioResult {
-    let path = data_folder()?.join(TOKEN_USAGE_EXPECTED);
+    let path = smoke_data_folder()?.join(TOKEN_USAGE_EXPECTED);
     let raw = std::fs::read_to_string(&path).map_err(|e| {
         Failure(format!(
             "{} is missing ({e}); run token-usage-cache first with the same COWORK_SMOKE_KEEP",
@@ -5758,17 +5803,25 @@ fn scenario_token_usage_cache_after_restart(ctx: &Ctx) -> ScenarioResult {
         "return !!document.querySelector('[data-testid=\"chat-input\"]');",
         Duration::from_secs(45),
     )?;
-    let shown = ctx.read_token_popover()?;
+    let thread = chat_path.trim_start_matches("/threads/").to_string();
+    let shown = ctx.read_token_popover(&thread)?;
     check_popover("chat after restart", &shown, chat)?;
     ctx.hold_for_capture("chat after restart");
 
+    let session = expected["cowork"]["session"]
+        .as_str()
+        .ok_or_else(|| Failure("no cowork session recorded".into()))?
+        .to_string();
     ctx.goto("/cowork")?;
     ctx.wait_until(
         "the restored cowork session",
         "return !!document.querySelector('[data-testid=\"chat-input\"]');",
         Duration::from_secs(45),
     )?;
-    let shown = ctx.read_token_popover()?;
+    // The restored session must be the one that was verified, not merely a
+    // session: reading "a" counter is exactly how Chat's numbers were once
+    // taken for Cowork's.
+    let shown = ctx.read_token_popover(&session)?;
     check_popover("cowork after restart", &shown, cowork)?;
     ctx.hold_for_capture("cowork after restart");
     let records = ctx.relayed_records()?;
@@ -6114,7 +6167,12 @@ fn drive(handle: &AppHandle, fixtures: PathBuf, workspace: PathBuf, mock_port: u
                     if first_err.is_none() {
                         first_err = Some(e.clone());
                     }
-                    let last = attempt >= 3 || scenario.name == SELF_TEST_FAIL.name;
+                    // The token-usage scenarios compare against a real
+                    // provider's counts and a restart; a retry there would
+                    // only hide the nondeterminism they exist to catch.
+                    let last = attempt >= 3
+                        || scenario.name == SELF_TEST_FAIL.name
+                        || scenario.name.starts_with("token-usage-");
                     if last {
                         break Err(Failure(match first_err {
                             Some(ref f) if f != &e => {

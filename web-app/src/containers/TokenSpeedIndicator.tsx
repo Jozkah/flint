@@ -7,12 +7,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-
-interface TokenUsage {
-  inputTokens?: number
-  outputTokens?: number
-  totalTokens?: number
-}
+import { readTokenUsage } from '@/lib/tokenUsage'
+import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
 
 interface TokenSpeedMeta {
   tokenSpeed: number
@@ -42,23 +38,85 @@ export const TokenSpeedIndicator = memo(
     if (streaming) return null
 
     const persisted = metadata?.tokenSpeed as TokenSpeedMeta | undefined
-    const usage = metadata?.usage as TokenUsage | undefined
+    // This message's own usage, not the thread's latest: an earlier turn's
+    // breakdown is shown for that turn.
+    const usage = readTokenUsage(metadata?.usage)
+    const hasBreakdown =
+      !!usage && (usage.totalTokens ?? 0) > 0
     const rawSpeed = toNumber(persisted?.tokenSpeed ?? 0)
     const displaySpeed = Math.round(rawSpeed)
     const displayTokenCount = usage?.outputTokens ?? persisted?.tokenCount ?? 0
     const promptSpeed = persisted?.promptSpeed
 
-    if (displaySpeed === 0 && displayTokenCount === 0) return null
+    if (displaySpeed === 0 && displayTokenCount === 0 && !hasBreakdown) {
+      return null
+    }
+
+    const details = (
+      <PopoverContent
+        align="start"
+        className="w-72 max-w-[calc(100vw-2rem)] p-3 text-xs"
+        data-testid="message-token-details"
+      >
+        <div className="flex flex-col gap-1">
+          {rawSpeed > 0 && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-muted-foreground">Generation</span>
+              <span className="font-mono">{rawSpeed.toFixed(2)} tps</span>
+            </div>
+          )}
+          {promptSpeed && promptSpeed > 0 && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-muted-foreground">Reading</span>
+              <span className="font-mono">{promptSpeed.toFixed(2)} tps</span>
+            </div>
+          )}
+          {hasBreakdown ? (
+            <div
+              className={
+                rawSpeed > 0 || (promptSpeed ?? 0) > 0
+                  ? 'mt-1.5 border-t border-border pt-2'
+                  : undefined
+              }
+            >
+              <TokenUsageBreakdown
+                usage={usage}
+                testIdPrefix="message-token-usage"
+              />
+            </div>
+          ) : (
+            displayTokenCount > 0 && (
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-muted-foreground">Tokens</span>
+                <span className="font-mono">{displayTokenCount}</span>
+              </div>
+            )
+          )}
+        </div>
+      </PopoverContent>
+    )
+
+    const trigger = (
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Token usage for this message"
+          data-testid="message-token-trigger"
+          className="text-muted-foreground cursor-pointer hover:text-foreground focus-visible:text-foreground transition-colors"
+        >
+          <Gauge size={16} />
+        </button>
+      </PopoverTrigger>
+    )
 
     if (showTokenSpeed) {
       return (
         <div className="flex items-center gap-2 text-muted-foreground text-xs">
-          {displaySpeed > 0 && (
-            <div className="flex items-center gap-1">
-              <Gauge size={16} />
-              <span>{displaySpeed} tokens/sec</span>
-            </div>
-          )}
+          <Popover>
+            {trigger}
+            {details}
+          </Popover>
+          {displaySpeed > 0 && <span>{displaySpeed} tokens/sec</span>}
           {displayTokenCount > 0 && (
             <span className="text-muted-foreground">
               ({displayTokenCount} tokens)
@@ -70,37 +128,8 @@ export const TokenSpeedIndicator = memo(
 
     return (
       <Popover>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            aria-label="Token speed details"
-            className="text-muted-foreground cursor-pointer hover:text-foreground transition-colors"
-          >
-            <Gauge size={16} />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-auto p-3 text-xs">
-          <div className="flex flex-col gap-1">
-            {rawSpeed > 0 && (
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Generation</span>
-                <span className="font-mono">{rawSpeed.toFixed(2)} tps</span>
-              </div>
-            )}
-            {promptSpeed && promptSpeed > 0 && (
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Reading</span>
-                <span className="font-mono">{promptSpeed.toFixed(2)} tps</span>
-              </div>
-            )}
-            {displayTokenCount > 0 && (
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-muted-foreground">Tokens</span>
-                <span className="font-mono">{displayTokenCount}</span>
-              </div>
-            )}
-          </div>
-        </PopoverContent>
+        {trigger}
+        {details}
       </Popover>
     )
   }

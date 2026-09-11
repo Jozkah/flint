@@ -9,6 +9,7 @@ import {
   normalizeLanguageModelUsage,
   readTokenUsage,
   toCoworkUsage,
+  usageValueKinds,
 } from '@/lib/tokenUsage'
 
 /**
@@ -358,5 +359,31 @@ describe('persistence shapes', () => {
     expect(describeTokenUsage({ inputTokens: 10, outputTokens: 2, totalTokens: 12 })).toContain(
       'cache not reported'
     )
+  })
+})
+
+describe('usageValueKinds', () => {
+  it('says which values were reported, derived or clamped, and none are estimated', () => {
+    const kinds = usageValueKinds(
+      finalizeTokenUsage({
+        inputTokens: 100,
+        outputTokens: 1,
+        cachedInputTokens: 250,
+        cacheWriteTokens: 0,
+      })
+    )
+    expect(kinds).toEqual({
+      input: 'reported',
+      output: 'reported',
+      total: 'derived',
+      cached: 'clamped',
+      uncached: 'derived',
+      cacheWrite: 'reported',
+    })
+    expect(Object.values(kinds)).not.toContain('estimated')
+  })
+
+  it('gives an unavailable value no kind at all', () => {
+    expect(usageValueKinds({ inputTokens: 10 })).toEqual({ input: 'reported' })
   })
 })

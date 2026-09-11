@@ -138,6 +138,66 @@ export function finalizeTokenUsage(parts: {
   return out
 }
 
+/**
+ * Where a displayed value came from.
+ *
+ * - `reported`: the provider (or the local engine's own timings) sent it.
+ * - `derived`: computed here from reported values -- uncached input, and the
+ *   total, which is input plus output.
+ * - `clamped`: reported, but inconsistent, and cut to a consistent value; the
+ *   original is in `reported`.
+ *
+ * Nothing in a `TokenUsage` is ever `estimated`: Jan's own byte estimate is
+ * AH-073's record and is never merged into provider usage. A value that is
+ * absent is unavailable and has no kind.
+ */
+export type UsageValueKind = 'reported' | 'derived' | 'clamped'
+
+export type UsageField =
+  | 'input'
+  | 'cached'
+  | 'uncached'
+  | 'cacheWrite'
+  | 'output'
+  | 'total'
+
+export function usageValueKinds(
+  usage: TokenUsage
+): Partial<Record<UsageField, UsageValueKind>> {
+  const kinds: Partial<Record<UsageField, UsageValueKind>> = {}
+  if (usage.inputTokens !== undefined) kinds.input = 'reported'
+  if (usage.outputTokens !== undefined) kinds.output = 'reported'
+  if (usage.totalTokens !== undefined) kinds.total = 'derived'
+  if (usage.cachedInputTokens !== undefined) {
+    kinds.cached =
+      usage.reported?.cachedInputTokens !== undefined ? 'clamped' : 'reported'
+  }
+  if (usage.uncachedInputTokens !== undefined) kinds.uncached = 'derived'
+  if (usage.cacheWriteTokens !== undefined) {
+    kinds.cacheWrite =
+      usage.reported?.cacheWriteTokens !== undefined ? 'clamped' : 'reported'
+  }
+  return kinds
+}
+
+/** A reader-facing name for the wire field a cache count came from. */
+export function cacheSourceLabel(source: CacheReportSource | undefined): string {
+  switch (source) {
+    case 'openai-chat':
+      return 'prompt_tokens_details.cached_tokens'
+    case 'openai-responses':
+      return 'input_tokens_details.cached_tokens'
+    case 'anthropic':
+      return 'Anthropic cache_read / cache_creation'
+    case 'google':
+      return 'Gemini cachedContentTokenCount'
+    case 'engine-timings':
+      return 'engine timings (cache_n)'
+    default:
+      return ''
+  }
+}
+
 /** Whether the provider said anything about its prompt cache. */
 export const hasCacheReport = (usage: TokenUsage | undefined): boolean =>
   usage?.cachedInputTokens !== undefined || usage?.cacheWriteTokens !== undefined

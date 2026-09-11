@@ -44,6 +44,10 @@ export const TokenCounter = memo(function TokenCounter({
 }: TokenCounterProps) {
   const { t } = useTranslation()
   const { calculateTokens, ...tokenData } = useTokensCount(messages, source)
+  // Which conversation these numbers belong to, stamped on the badge and its
+  // popover so nothing -- a test, a screen reader, a stale portal left over
+  // from the previous session -- can mistake one session's usage for another's.
+  const scope = source?.threadId ?? messages[0]?.thread_id
 
   const [isAnimating, setIsAnimating] = useState(false)
   const [prevTokenCount, setPrevTokenCount] = useState(0)
@@ -121,6 +125,7 @@ export const TokenCounter = memo(function TokenCounter({
       <TokenCountOnly
         totalTokens={totalTokens}
         usage={breakdown}
+        scope={scope}
         modelDisplayName={tokenData.modelDisplayName}
         className={className}
       />
@@ -168,6 +173,7 @@ export const TokenCounter = memo(function TokenCounter({
             type="button"
             aria-label="Token usage"
             data-testid="token-counter"
+            data-usage-scope={scope}
             className={cn('relative cursor-pointer', className)}
             onClick={handleCalculateTokens}
           >
@@ -278,7 +284,7 @@ export const TokenCounter = memo(function TokenCounter({
 
           {/* Token breakdown */}
           <div className="px-3 py-2 border-t border-border space-y-1.5">
-            <TokenUsageBreakdown usage={breakdown} />
+            <TokenUsageBreakdown usage={breakdown} scope={scope} />
             <Row
               icon={<IconRulerMeasure className="size-3.5" />}
               label="Remaining"
@@ -334,11 +340,13 @@ export const TokenCounter = memo(function TokenCounter({
 function TokenCountOnly({
   totalTokens,
   usage,
+  scope,
   modelDisplayName,
   className,
 }: {
   totalTokens: number
   usage: TokenUsage
+  scope?: string
   modelDisplayName?: string
   className?: string
 }) {
@@ -350,6 +358,7 @@ function TokenCountOnly({
             type="button"
             aria-label="Token usage"
             data-testid="token-counter"
+            data-usage-scope={scope}
             className={cn('relative cursor-default', className)}
           >
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-background border border-border">
@@ -382,7 +391,7 @@ function TokenCountOnly({
             </div>
           </div>
           <div className="px-3 py-2">
-            <TokenUsageBreakdown usage={usage} />
+            <TokenUsageBreakdown usage={usage} scope={scope} />
           </div>
         </TooltipContent>
       </Tooltip>

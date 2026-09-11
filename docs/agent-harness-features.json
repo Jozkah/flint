@@ -6565,7 +6565,10 @@
         "src-tauri/src/core/server/converters.rs",
         "src-tauri/src/core/agent/events.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/usage.rs",
-        "src-tauri/examples/cowork_smoke.rs"
+        "src-tauri/examples/cowork_smoke.rs",
+        "web-app/src/containers/TokenSpeedIndicator.tsx",
+        "web-app/src/lib/sessionBundle.ts",
+        "src-tauri/src/core/agent/session_bundle.rs"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -6588,11 +6591,13 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/usage.rs",
         "src-tauri/examples/cowork_smoke.rs::token-usage-cache",
         "src-tauri/examples/cowork_smoke.rs::token-usage-cache-cowork",
-        "src-tauri/examples/cowork_smoke.rs::token-usage-cache-after-restart"
+        "src-tauri/examples/cowork_smoke.rs::token-usage-cache-after-restart",
+        "web-app/src/lib/__tests__/sessionBundle.test.ts",
+        "src-tauri/src/core/agent/session_bundle.rs"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "evidence": "Integration onto fork/main 9ab30620e pending live re-verification. Earlier live run (on the pre-integration base) is superseded until repeated on the merged tree."
+      "evidence": "Merged onto fork/main 9ab30620e. Live, Windows WebView, 2026-09-11, real llama-server (qwen3.8-27b) via the fixture's transparent relay, each check its own process on one COWORK_SMOKE_KEEP profile, all first attempt with retries disabled for these scenarios: Chat follow-up input 2825 / cached 2802 / uncached 23 (derived) / output 39 / total 2864 (derived); Cowork follow-up 5542 / 5505 / 37 / 17 / 5559; each equal to the provider's own usage for that request; a restarted process showed both again from disk with no provider traffic. The previous run's first-attempt restart failure was a harness race: a portalled popover from the previous surface was still in the document and its numbers were read for the next surface; fixed by stamping the thread/session scope on the counter and breakdown and reading only the matching one (TokenCounter test 'stamps the session ... follows a session switch'). Cowork export now carries lastUsage (session_bundle.rs, sessionBundle.test.ts); Chat has no export feature. Not yet run live: export/import through the UI and rapid session switching in the WebView. Not verified live: Anthropic, OpenAI Responses, Gemini, Jan's bundled llama.cpp engine path. Separate from AH-073's estimate; AH-175 unchanged."
     }
   ]
 }

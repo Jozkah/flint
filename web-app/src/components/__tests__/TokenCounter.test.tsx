@@ -277,6 +277,49 @@ describe('TokenCounter', () => {
       expect(screen.getByTestId('token-usage-clamped').textContent).toContain('250')
     })
 
+    // The restart check's first attempt once read Chat's numbers while
+    // asserting Cowork's: a portalled popover from the previous surface was
+    // still in the document. Every surface stamps its session on the badge and
+    // the breakdown, so a switch can be told apart deterministically.
+    it('stamps the session on badge and breakdown, and follows a session switch', () => {
+      const a = {
+        inputTokens: 2801,
+        cachedInputTokens: 2778,
+        uncachedInputTokens: 23,
+        outputTokens: 24,
+        totalTokens: 2825,
+      }
+      const b = {
+        inputTokens: 5900,
+        cachedInputTokens: 5863,
+        uncachedInputTokens: 37,
+        outputTokens: 32,
+        totalTokens: 5932,
+      }
+      mockUseTokensCount.mockImplementation(((_m: unknown, source?: { threadId?: string }) => ({
+        tokenCount: source?.threadId === 'session-b' ? b.totalTokens : a.totalTokens,
+        maxTokens: undefined,
+        usage: source?.threadId === 'session-b' ? b : a,
+        calculateTokens: vi.fn(),
+      })) as never)
+      const { rerender } = render(
+        <TokenCounter source={{ threadId: 'session-a', usage: a }} />
+      )
+      expect(screen.getByTestId('token-counter').getAttribute('data-usage-scope')).toBe('session-a')
+      expect(screen.getByTestId('token-usage-breakdown').getAttribute('data-usage-scope')).toBe(
+        'session-a'
+      )
+      expect(value('token-usage-input')).toBe('2801')
+
+      rerender(<TokenCounter source={{ threadId: 'session-b', usage: b }} />)
+      expect(screen.getByTestId('token-counter').getAttribute('data-usage-scope')).toBe('session-b')
+      expect(screen.getByTestId('token-usage-breakdown').getAttribute('data-usage-scope')).toBe(
+        'session-b'
+      )
+      expect(value('token-usage-input')).toBe('5900')
+      expect(value('token-usage-cached')).toBe('5863')
+    })
+
     it('keeps the compact counter free of the breakdown', () => {
       mockTokens({
         tokenCount: 5982,

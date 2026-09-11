@@ -348,6 +348,31 @@ cargo run --example cowork-smoke --features cowork-smoke -- --only token-usage-c
 Each surface runs in its own process, and the restart check is a later one on
 the same `COWORK_SMOKE_KEEP` profile (data folder, working directory and
 WebView profile all kept). `COWORK_SMOKE_PORT` moves the fixture off 8080.
+These scenarios are never retried: a retry would hide exactly the kind of
+nondeterminism they exist to catch.
+
+Last run, 2026-09-11, merged onto `fork/main` 9ab30620e, Windows WebView2,
+llama-server `qwen3.8-27b`, all three passing on the first attempt:
+
+| Check | Input | Cached | Uncached (derived) | Output | Total (derived) |
+| --- | --- | --- | --- | --- | --- |
+| Chat follow-up | 2,825 | 2,802 | 23 | 39 | 2,864 |
+| Cowork follow-up | 5,542 | 5,505 | 37 | 17 | 5,559 |
+| After restart (new process, no provider request) | same | same | same | same | same |
+
+Raw field mapping for that provider: `usage.prompt_tokens` to Input,
+`usage.prompt_tokens_details.cached_tokens` to Cached input,
+`usage.completion_tokens` to Output; `timings.cache_n` agreed with
+`cached_tokens` and was not needed.
+
+The first-attempt failure seen in the earlier restart run (passed on retry,
+before retries were disabled here) was a race in the harness: the popover is
+portalled, and the previous surface's one was still in the document when the
+next surface's counter was opened, so Chat's numbers were read while Cowork's
+were asserted. The counter and breakdown now carry `data-usage-scope` (the
+thread or session id), the harness reads only the matching breakdown, and a
+render test switches the source between two sessions and asserts the scope and
+values follow it.
 
 
 ## Run reliability (AH-018 / AH-019 / AH-021 / AH-024 / AH-025 / AH-029 / AH-030)
