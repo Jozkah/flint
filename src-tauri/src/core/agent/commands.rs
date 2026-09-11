@@ -26,6 +26,50 @@ fn ui_error(e: String) -> String {
     e.strip_prefix("ERROR: ").map(str::to_string).unwrap_or(e)
 }
 
+/// What `project_tooling` hands the webview: the structured facts for the
+/// readiness card, and the exact prompt block the CLI would give the model.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectToolingReport {
+    #[serde(flatten)]
+    tooling: crate::core::agent::tooling::ProjectTooling,
+    prompt: Option<String>,
+}
+
+/// A detection that could not run, typed for the surface to branch on.
+#[derive(serde::Serialize)]
+pub struct ProjectToolingError {
+    kind: &'static str,
+    message: String,
+}
+
+/// Detect the attached project's frameworks, build systems and test runners.
+/// AH-068 / AH-069 / AH-070.
+///
+/// Read-only and bounded (see `core::agent::tooling`); runs off the UI thread.
+/// Nothing here can block attaching or using a folder: a failure comes back
+/// typed and the caller carries on without the facts.
+#[tauri::command]
+pub async fn project_tooling(folder: String) -> Result<ProjectToolingReport, ProjectToolingError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let never = std::sync::atomic::AtomicBool::new(false);
+        crate::core::agent::tooling::detect(std::path::Path::new(&folder), &never)
+    })
+    .await
+    .map_err(|e| ProjectToolingError {
+        kind: "internal",
+        message: e.to_string(),
+    })?
+    .map(|tooling| ProjectToolingReport {
+        prompt: tooling.render(),
+        tooling,
+    })
+    .map_err(|e| ProjectToolingError {
+        kind: e.kind(),
+        message: e.to_string(),
+    })
+}
+
 /// List the skills under `<project>/.jan/agent/skills/` (folder `<name>/SKILL.md`
 /// and legacy flat `<name>.md`). These are the same skills `load_skills` injects
 /// into the agent's system prompt; managing them here is CRUD over that

@@ -32,6 +32,23 @@ describe('buildCoworkSystemPrompt', () => {
     expect(p).toMatch(/Do not\s+retry a refused write/i)
   })
 
+  /// AH-068 / AH-069 / AH-070. The block comes from the backend verbatim, so
+  /// the desktop hands the model the same facts the CLI does.
+  it('carries the backend’s project tooling block verbatim, only with a folder', () => {
+    const block = '# Project Tooling\n\nTests:\n- Vitest [unit] `pnpm test` -- high; package.json: scripts.test runs it'
+    const withFolder = buildCoworkSystemPrompt(
+      opts({ readOnlyFolder: '/home/u/repo', projectTooling: block })
+    )
+    expect(withFolder).toContain(block)
+    // Beside the workspace facts, ahead of the project's own instructions.
+    expect(withFolder.indexOf(block)).toBeGreaterThan(withFolder.indexOf('# Workspace'))
+    const without = buildCoworkSystemPrompt(opts({ projectTooling: block }))
+    expect(without).not.toContain('# Project Tooling')
+    expect(
+      buildCoworkSystemPrompt(opts({ readOnlyFolder: '/home/u/repo', projectTooling: null }))
+    ).not.toContain('# Project Tooling')
+  })
+
   it('explains a missing shell rather than staying silent about it', () => {
     const p = buildCoworkSystemPrompt(opts({ bashAvailable: false }))
     expect(p).toMatch(/Shell commands are unavailable/i)

@@ -11,6 +11,7 @@ pub mod filesystem;
 pub mod mcp;
 pub mod net;
 pub mod openai_schema;
+pub mod secret_values;
 pub mod server;
 // Desktop-only app setup (tray, theme, window wiring); pulls in Tauri GUI types
 // (Wry/AppHandle) the headless `jan` CLI build does not link.

@@ -28,14 +28,14 @@ and the latter two require a recorded `blockedReason`.
 | 0 | Foundation | 0 | 0 | 0 | 12 | 0 | 0 | 0 | 12 |
 | 1 | Core execution | 0 | 0 | 2 | 18 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 1 | 0 | 1 | 18 | 0 | 0 | 0 | 20 |
-| 3 | Repository intelligence | 18 | 0 | 2 | 0 | 0 | 0 | 0 | 20 |
+| 3 | Repository intelligence | 15 | 0 | 2 | 0 | 3 | 0 | 0 | 20 |
 | 4 | Context and memory | 1 | 0 | 8 | 7 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 8 | 0 | 4 | 13 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 6 | 15 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 17 | 0 | 1 | 8 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 17 | 0 | 6 | 6 | 0 | 0 | 0 | 29 |
 | 9 | Approved additions | 0 | 0 | 0 | 10 | 0 | 0 | 0 | 10 |
-| **all** | | **73** | **0** | **30** | **107** | **0** | **0** | **0** | **210** |
+| **all** | | **70** | **0** | **30** | **107** | **3** | **0** | **0** | **210** |
 
 ## Ownership lanes
 
@@ -137,9 +137,9 @@ per-OS evidence log rather than backlog items.
 | `AH-065` | Dependency graph extraction | 3 | repo-intelligence | P2 | `missing` | low | `AH-053` |
 | `AH-066` | Test-to-source mapping | 3 | repo-intelligence | P1 | `missing` | low | `AH-065` |
 | `AH-067` | Changed-file impact analysis | 3 | repo-intelligence | P1 | `missing` | low | `AH-065` |
-| `AH-068` | Framework detection | 3 | repo-intelligence | P2 | `missing` | none | `AH-053` |
-| `AH-069` | Build-system detection | 3 | repo-intelligence | P1 | `missing` | none | `AH-068` |
-| `AH-070` | Test-runner detection | 3 | repo-intelligence | P1 | `missing` | none | `AH-068` |
+| `AH-068` | Framework detection | 3 | repo-intelligence | P2 | `verified` | none | `AH-053` |
+| `AH-069` | Build-system detection | 3 | repo-intelligence | P1 | `verified` | none | `AH-068` |
+| `AH-070` | Test-runner detection | 3 | repo-intelligence | P1 | `verified` | none | `AH-068` |
 | `AH-071` | Semantic code search | 3 | repo-intelligence | P2 | `missing` | medium | `AH-053` |
 | `AH-072` | Repository health scan | 3 | repo-intelligence | P2 | `missing` | low | `AH-069`, `AH-070` |
 | `AH-073` | Exact dispatched-payload accounting | 4 | context-memory | P0 | `implemented` | low | `AH-078` |
@@ -325,6 +325,9 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-053` Repository index store** - build_map produces a bounded breadth-first ProjectMap that is embedded in the run's prompt. It is an orientation blob, not an index: no symbols, no cache, no persistence.
 - **`AH-054` Initial index build** - The breadth-first walk is bounded by entry and depth caps and honours ignore rules, but produces no stored index.
 - **`AH-055` Incremental index updates** - The repository map is re-walked in full on each use; there is no cache to update.
+- **`AH-068` Framework detection** - Frameworks from dependencies (high) or config files without the dependency (medium), across JS/TS, Rust, Python, Go, JVM (Android, Spring Boot), .NET (ASP.NET Core, MAUI), Flutter, Rails; each fact carries confidence, source and reason. Surfaced in the CLI prompt and in Cowork (readiness card and prompt) from one backend rendering.
+- **`AH-069` Build-system detection** - Build systems and package managers with lockfile/packageManager precedence, conflict reporting, workspace orchestrators, and no invented command where the manifest does not say how. Surfaced in the CLI prompt and in Cowork (readiness card and prompt) from one backend rendering.
+- **`AH-070` Test-runner detection** - Test runners from scripts and configuration, unit vs integration vs e2e, wrapped scripts followed, absent dependencies and unsafe scripts marked; nothing is ever run. Surfaced in the CLI prompt and in Cowork (readiness card and prompt) from one backend rendering.
 - **`AH-071` Semantic code search** - Two RAG stacks exist (rag-extension, vector-db) but neither is wired to the agent harness; one is dead code.
 - **`AH-073` Exact dispatched-payload accounting** - The provider's own count for the dispatched payload is recorded against the invocation and that payload's snapshot; Jan's byte estimate stays separate and labelled, and never overwrites a real count. A window of zero from a runtime or an overflow error is now reported as not known rather than counted as a real capacity, so the indicator no longer renders 0 / 0.
 - **`AH-074` Per-segment token attribution** - Per-category breakdown taken from the frozen dispatch; unmeasured categories report {known:false} rather than zero. Figures remain estimates until AH-073 lands a tokenizer.

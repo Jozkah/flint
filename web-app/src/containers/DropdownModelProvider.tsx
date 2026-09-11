@@ -58,6 +58,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 type DropdownModelProviderProps = {
   model?: ThreadModel
   useLastUsedModel?: boolean
+  /**
+   * Where a choice is recorded, in place of the current chat thread. Cowork
+   * passes its session's setter, so a choice belongs to the session in view
+   * and to no other (janhq/jan#8905).
+   */
+  onModelChange?: (model: ThreadModel) => void
 }
 
 interface SearchableModel {
@@ -163,6 +169,7 @@ function offersModels(provider: {
 const DropdownModelProvider = memo(function DropdownModelProvider({
   model,
   useLastUsedModel = false,
+  onModelChange,
 }: DropdownModelProviderProps) {
   const {
     providers,
@@ -557,7 +564,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
         searchableModel.provider.provider,
         searchableModel.model.id
       )
-      updateCurrentThreadModel({
+      ;(onModelChange ?? updateCurrentThreadModel)({
         id: searchableModel.model.id,
         provider: searchableModel.provider.provider,
       })
@@ -604,6 +611,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     [
       selectModelProvider,
       updateCurrentThreadModel,
+      onModelChange,
       updateProvider,
       getProviderByName,
       checkAndUpdateModelVisionCapability,

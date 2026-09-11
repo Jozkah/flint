@@ -195,6 +195,68 @@ export function CoworkReadinessCard({
             ? ` · ${manifest.tools.mcpServers.join(', ')}`
             : ` · ${t('common:readiness.noMcp')}`}
         </Row>
+        {manifest.folder && manifest.tooling ? (
+          // AH-068 / AH-069 / AH-070. What the model will be told about how
+          // this project builds and tests, shown with the same evidence.
+          <div className="flex min-w-0 gap-2 sm:col-span-2" data-testid="readiness-tooling">
+            <dt className="shrink-0 text-main-view-fg/50">
+              {t('common:readiness.tooling.label')}
+            </dt>
+            <dd className="min-w-0">
+              {manifest.tooling.state === 'loading' ? (
+                t('common:readiness.tooling.loading')
+              ) : manifest.tooling.state === 'failed' ? (
+                <span className="text-main-view-fg/60">
+                  {t('common:readiness.tooling.failed', {
+                    kind: manifest.tooling.error.kind,
+                  })}
+                </span>
+              ) : manifest.tooling.facts.length === 0 ? (
+                t('common:readiness.tooling.none')
+              ) : (
+                <span className="flex flex-wrap gap-x-2">
+                  {manifest.tooling.facts.map((fact, i) => (
+                    <span
+                      key={`${fact.kind}-${fact.value}-${fact.source}-${i}`}
+                      data-testid="readiness-tooling-fact"
+                      data-kind={fact.kind}
+                      data-confidence={fact.confidence}
+                      title={t('common:readiness.tooling.fact', {
+                        value: fact.value,
+                        confidence: fact.confidence,
+                        source: fact.source,
+                        reason: fact.reason,
+                      })}
+                      className={
+                        fact.confidence === 'high'
+                          ? 'text-main-view-fg/80'
+                          : 'text-main-view-fg/50'
+                      }
+                    >
+                      {fact.value}
+                      {fact.command ? (
+                        <code className="ml-1 font-mono">{fact.command}</code>
+                      ) : null}
+                    </span>
+                  ))}
+                </span>
+              )}
+              {manifest.tooling.state === 'ready' &&
+              manifest.tooling.conflicts.length > 0 ? (
+                <span className="block text-destructive">
+                  {manifest.tooling.conflicts.join(' · ')}
+                </span>
+              ) : null}
+              {manifest.tooling.state === 'ready' && manifest.tooling.truncated ? (
+                <span className="block text-main-view-fg/50">
+                  {t('common:readiness.tooling.incomplete', {
+                    reason: manifest.tooling.truncated,
+                  })}
+                </span>
+              ) : null}
+            </dd>
+          </div>
+        ) : null}
         <Row label={t('common:readiness.context')}>
           {/* Two separate admissions, and the wording keeps them separate.
               "At least" covers a category that could not be measured at all;

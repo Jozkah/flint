@@ -379,6 +379,55 @@ describe('DataProvider', () => {
     expect(hubState.unsubscribe).toHaveBeenCalled()
   })
 
+  /// janhq/jan#8208. A secret header's value is kept out of settings, so the
+  /// store starts with it blank; it has to be read back from the credential
+  /// store before the provider is used or registered.
+  it('loads secret custom header values before registering the provider', async () => {
+    const fetched = [
+      {
+        provider: 'openai',
+        active: true,
+        models: [{ id: 'gpt-4' }],
+        custom_header: [
+          { header: 'X-Tenant', value: 'acme' },
+          { header: 'X-Key', value: '', secret: true },
+        ],
+        base_url: 'https://api',
+      },
+    ]
+    hubState.getProviders.mockResolvedValue(fetched)
+    h.providers = fetched
+    h.updateProvider.mockImplementation(
+      (name: string, data: Record<string, unknown>) => {
+        h.providers = h.providers.map((p) =>
+          p.provider === name ? { ...p, ...data } : p
+        )
+      }
+    )
+    h.invoke.mockImplementation(async (cmd: string, args?: { key?: string }) => {
+      if (cmd === 'get_secret' && args?.key === 'provider-headers:openai') {
+        return JSON.stringify({ 'x-key': 'loaded-secret-value' })
+      }
+      return undefined
+    })
+    render(<DataProvider />)
+    await waitFor(() => {
+      expect(h.invoke).toHaveBeenCalledWith(
+        'register_provider_config',
+        expect.objectContaining({
+          request: expect.objectContaining({
+            provider: 'openai',
+            custom_headers: [
+              { header: 'X-Tenant', value: 'acme', secret: false },
+              { header: 'X-Key', value: 'loaded-secret-value', secret: true },
+            ],
+          }),
+        })
+      )
+    })
+    h.updateProvider.mockReset()
+  })
+
   it('registers remote providers with the backend for active providers', async () => {
     const fetched = [
       {

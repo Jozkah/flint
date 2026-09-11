@@ -53,6 +53,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 ARGS = argparse.Namespace()
 REQUESTS: list = []
 REQUESTS_LOCK = threading.Lock()
+# The request headers of each chat completion, names lower-cased, so a
+# scenario can check what actually reached the provider (janhq/jan#8208).
+HEADERS: list = []
 
 
 def sse(payload: dict) -> bytes:
@@ -129,6 +132,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.rstrip("/").endswith("/__requests"):
             with REQUESTS_LOCK:
                 return self._json(200, {"requests": list(REQUESTS)})
+        if self.path.rstrip("/").endswith("/__headers"):
+            with REQUESTS_LOCK:
+                return self._json(200, {"headers": list(HEADERS)})
         if ARGS.script == "proxy-403":
             return self._forbidden()
         if not self.path.rstrip("/").endswith("/models"):
@@ -173,6 +179,15 @@ class Handler(BaseHTTPRequestHandler):
         with REQUESTS_LOCK:
             REQUESTS.append(body)
             del REQUESTS[:-20]
+            HEADERS.append({k.lower(): v for k, v in self.headers.items()})
+            del HEADERS[:-20]
+
+        # A gateway that rejects the request and echoes its headers back in
+        # the error body, as some do: nothing configured as secret may reach
+        # the user or the disk from here (janhq/jan#8208).
+        if ARGS.script == "echo-401":
+            echoed = json.dumps(dict(self.headers.items()))
+            return self._json(401, {"error": {"message": "rejected: " + echoed}})
 
         # A request whose messages already carry tool results is the follow-up
         # turn: answer in words rather than asking for the tools again.
@@ -244,6 +259,42 @@ class Handler(BaseHTTPRequestHandler):
                         }
                     )
                 )
+
+            # janhq/jan#8864: a first step long enough to type into -- it
+            # streams for a while and then asks for one tool -- so input typed
+            # meanwhile has a boundary to arrive at before the follow-up call.
+            if ARGS.script == "steer" and not carries_results:
+                self.wfile.write(sse(chunk({"role": "assistant", "content": ""})))
+                for _ in range(20):
+                    self.wfile.write(sse(chunk({"content": "working "})))
+                    self.wfile.flush()
+                    time.sleep(ARGS.delay)
+                self.wfile.write(
+                    sse(
+                        chunk(
+                            {
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "id": "call_steer",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "todo",
+                                            "arguments": json.dumps(
+                                                {"op": "init", "list": [{"phase": "Work", "items": ["Steered task"]}]}
+                                            ),
+                                        },
+                                    }
+                                ]
+                            }
+                        )
+                    )
+                )
+                self.wfile.write(sse(chunk({}, finish="tool_calls")))
+                send_usage()
+                self.wfile.write(b"data: [DONE]\n\n")
+                self.wfile.flush()
+                return
 
             if ARGS.script == "tools" and not carries_results:
                 self.wfile.write(sse(chunk({"role": "assistant", "content": ""})))
@@ -399,7 +450,7 @@ def main() -> int:
     parser.add_argument(
         "--script",
         default="plain",
-        choices=["plain", "tools", "fail", "slow", "proxy-403", "no-models", "length"],
+        choices=["plain", "tools", "fail", "slow", "proxy-403", "no-models", "length", "echo-401", "steer"],
     )
     parser.add_argument(
         "--tools",

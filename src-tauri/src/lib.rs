@@ -107,6 +107,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::session_handoff_save,
         core::agent::commands::session_folder_identity,
         core::agent::commands::utility_agent_lookup,
+        core::agent::commands::project_tooling,
         core::agent::commands::agent_skill_list,
         core::agent::commands::agent_skill_read,
         core::agent::commands::agent_skill_write,
@@ -148,6 +149,7 @@ macro_rules! invoke_commands_with_extras {
         core::server::remote_provider_commands::get_provider_config,
         core::server::remote_provider_commands::get_provider_keys,
         core::server::remote_provider_commands::list_provider_configs,
+        core::server::remote_provider_commands::register_secret_values,
         // MCP commands
         core::mcp::commands::get_tools,
         core::mcp::commands::get_tools_for_servers,
@@ -390,6 +392,26 @@ pub fn build_app() -> tauri::App {
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Debug)
+                    // The plugin's own layout, with values the user marked
+                    // secret (a custom provider header, janhq/jan#8208)
+                    // replaced before any target -- file, stdout, webview --
+                    // sees the line.
+                    .format(|out, message, record| {
+                        let now = tauri_plugin_log::TimezoneStrategy::UseUtc.get_now();
+                        let message = message.to_string();
+                        out.finish(format_args!(
+                            "[{:04}-{:02}-{:02}][{:02}:{:02}:{:02}][{}][{}] {}",
+                            now.year(),
+                            u8::from(now.month()),
+                            now.day(),
+                            now.hour(),
+                            now.minute(),
+                            now.second(),
+                            record.target(),
+                            record.level(),
+                            crate::core::secret_values::scrub(&message)
+                        ))
+                    })
                     .targets([
                         tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
                         tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),

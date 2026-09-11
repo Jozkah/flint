@@ -9,6 +9,7 @@ import { forgetAllServerLimits } from '@/lib/contextLimitRecovery'
 import { predefinedProviders } from '@/constants/providers'
 import { isLocalProvider } from '@/lib/utils'
 import { API_KEY_FALLBACKS_SETTING_KEY } from '@/lib/provider-api-keys'
+import { withoutSecretValues } from '@/lib/customHeaders'
 import {
   originOf,
   useProviderReachability,
@@ -31,6 +32,10 @@ export function stripProviderSecrets(provider: ModelProvider): ModelProvider {
     api_key: undefined,
     api_key_fallbacks: undefined,
     ...(settings ? { settings } : {}),
+    // A custom header marked secret is a credential too. janhq/jan#8208.
+    ...(provider.custom_header
+      ? { custom_header: withoutSecretValues(provider.custom_header) }
+      : {}),
   }
 }
 

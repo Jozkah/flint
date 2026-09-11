@@ -858,6 +858,22 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // Tools will be loaded when updateRagToolsAvailability is called with model capabilities
   }
 
+  /**
+   * The provider and model this transport sends with.
+   *
+   * The global picker for chat. A subclass bound to a run of its own -- a
+   * Cowork session -- answers with the model that run captured, so a model
+   * chosen elsewhere mid-run does not change a run already under way
+   * (janhq/jan#8905).
+   */
+  protected getModelSelection(): Pick<
+    ReturnType<typeof useModelProvider.getState>,
+    'selectedProvider' | 'selectedModel'
+  > {
+    const { selectedProvider, selectedModel } = useModelProvider.getState()
+    return { selectedProvider, selectedModel }
+  }
+
   setLastUserMessage(message: string): void {
     this.lastUserMessage = message
   }
@@ -1028,7 +1044,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       return disabledToolKeys.includes(toolKey)
     }
 
-    const selectedModel = useModelProvider.getState().selectedModel
+    const selectedModel = this.getModelSelection().selectedModel
     const modelSupportsTools = selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools
 
     // Only load tools if model supports them
@@ -1346,8 +1362,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // Capture the effective provider name early so the Anthropic serial
     // tool-use repair later uses the same value that was used to create the
     // model, even if the user switches provider mid-request.
-    const modelId = useModelProvider.getState().selectedModel?.id
-    const providerId = useModelProvider.getState().selectedProvider
+    const selection = this.getModelSelection()
+    const modelId = selection.selectedModel?.id
+    const providerId = selection.selectedProvider
     const effectiveProviderName = providerId
     const provider = useModelProvider.getState().getProviderByName(providerId)
     if (!this.serviceHub || !modelId || !provider) {
@@ -1368,7 +1385,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       // thinking budget — has to see the chat's own overrides, or a control
       // the composer shows as set would never reach the request.
       const selectedModel = resolveModel(
-        useModelProvider.getState().selectedModel,
+        selection.selectedModel,
         useModelOverrides.getState().forThread(threadId)
       )
       const reasoningParams = buildLlamacppReasoningParams(
@@ -1463,7 +1480,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const inferenceParams = this.getActiveInferenceParams()
 
-    const selectedModel = useModelProvider.getState().selectedModel
+    const selectedModel = this.getModelSelection().selectedModel
 
     await this.refreshMemory()
     const effectiveSystem = this.buildSystemPrompt(messagesToConvert)
@@ -1612,7 +1629,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const reasoningProviderOptions = buildReasoningProviderOptions(
       providerId,
       resolveModel(
-        useModelProvider.getState().selectedModel,
+        this.getModelSelection().selectedModel,
         useModelOverrides.getState().forThread(threadId)
       )
     )

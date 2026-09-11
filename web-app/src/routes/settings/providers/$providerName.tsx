@@ -22,6 +22,8 @@ import DeleteProvider from '@/containers/dialogs/DeleteProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { Button } from '@/components/ui/button'
 import { SecretInput } from '@/components/ui/secret-input'
+import { ProviderCustomHeaders } from '@/containers/ProviderCustomHeaders'
+import { applyCustomHeaders } from '@/lib/customHeaders'
 import { Switch } from '@/components/ui/switch'
 import {
   IconCircleCheck,
@@ -258,6 +260,22 @@ function ProviderDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerName, provider?.api_key, JSON.stringify(provider?.api_key_fallbacks ?? [])])
 
+  // The configured data folder, when this run could not use it (#8374, #8855).
+  const [unavailableDataFolder, setUnavailableDataFolder] = useState<
+    string | undefined
+  >()
+  useEffect(() => {
+    let alive = true
+    void Promise.resolve(serviceHub.app?.()?.getUnavailableJanDataFolder?.())
+      .then((path) => {
+        if (alive) setUnavailableDataFolder(path || undefined)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [serviceHub])
+
   useEffect(() => {
     if (provider?.provider !== 'azure') return
     setBaseUrlDraft(provider.base_url ?? '')
@@ -433,6 +451,9 @@ function ProviderDetail() {
         if (isLocalEndpoint(provider.base_url)) {
           headers['Origin'] = 'tauri://localhost'
         }
+        // What a real request sends, so a gateway that needs its own header
+        // does not fail the test for want of it. janhq/jan#8208.
+        applyCustomHeaders(headers, provider)
 
         try {
           const response = await fetchImpl(`${provider.base_url}/models`, {
@@ -483,7 +504,7 @@ function ProviderDetail() {
     } finally {
       setIsTestingKeys(false)
     }
-  }, [apiKeysDraft, maskApiKey, provider?.base_url, serviceHub, t])
+  }, [apiKeysDraft, maskApiKey, provider, serviceHub, t])
 
   // Note: settingsChanged event is now handled globally in GlobalEventHandler
   // This ensures all screens receive the event intermediately
@@ -984,9 +1005,26 @@ function ProviderDetail() {
                         </div>
                       )}
                     </div>
+                    <ProviderCustomHeaders provider={provider} />
                   </Card>
                 )}
 
+              {/* janhq/jan#8374. A local model list read from the default data
+                  folder because the configured one could not be used is not
+                  an empty library: say so here, where the models are missing,
+                  not only in Settings > General. */}
+              {unavailableDataFolder &&
+                (provider?.provider === 'llamacpp' || provider?.provider === 'mlx') && (
+                  <p
+                    role="alert"
+                    data-testid="data-folder-unavailable-notice"
+                    className="text-xs text-destructive mb-2"
+                  >
+                    {t('providers:dataFolderUnavailable', {
+                      path: unavailableDataFolder,
+                    })}
+                  </p>
+                )}
               {/* Models */}
               <Card
                 header={

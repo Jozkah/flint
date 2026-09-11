@@ -51,12 +51,34 @@ impl ProviderConfig {
         }
         self.api_key.clone().into_iter().collect()
     }
+
+    /// The config as it may leave the backend: no keys, and no value of a
+    /// header marked secret. janhq/jan#8208.
+    pub fn without_secrets(&self) -> Self {
+        Self {
+            api_key: None,
+            api_keys: Vec::new(),
+            custom_headers: self
+                .custom_headers
+                .iter()
+                .map(|h| ProviderCustomHeader {
+                    value: if h.secret { String::new() } else { h.value.clone() },
+                    ..h.clone()
+                })
+                .collect(),
+            ..self.clone()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ProviderCustomHeader {
     pub header: String,
     pub value: String,
+    /// The value is a credential: kept out of anything the backend returns or
+    /// logs. janhq/jan#8208.
+    #[serde(default)]
+    pub secret: bool,
 }
 
 /// Every connection uses the same handler, so that progress notifications are
