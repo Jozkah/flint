@@ -37,8 +37,8 @@
       "needs-user-hardware": 16,
       "fixed": 32,
       "adapted": 15,
-      "cannot-reproduce": 3,
-      "implementation-ready": 1
+      "cannot-reproduce": 2,
+      "implementation-ready": 2
     }
   },
   "items": [
@@ -43881,14 +43881,16 @@
       "localOnlyCompatibility": "compatible",
       "forkReproduction": null,
       "registryIds": [],
-      "decision": "untriaged",
-      "decisionReason": "Fork scans <data>/llamacpp/models; no vanish path found by reading.",
-      "implementationStatus": "cannot-reproduce",
+      "decision": "fix",
+      "decisionReason": "Two confirmed ways the model list loses GGUF models whose files are intact; neither is the reporter theory or the backslash id slice.",
+      "implementationStatus": "implementation-ready",
       "forkCommits": [],
-      "tests": [],
-      "verification": null,
+      "tests": [
+        "src-tauri/src/core/filesystem/helpers.rs a_model_behind_a_junction_resolves_outside_the_data_folder (Windows, mklink /J)"
+      ],
+      "verification": "Code read of every listing path (extensions/llamacpp-extension/src/index.ts list() 1443-1545, filesystem commands, choose_data_folder) plus a Windows test: a model.yml reached through a junction under <data>/llamacpp/models resolves outside the data folder and is refused by the read_yaml scope check, so list() skips the model with only a warning. Test passes (pins the current behaviour).",
       "blockers": [],
-      "notes": "batch-3 P0 triage: unsure. The models path follows the data folder, which contradicts the reporter theory; folders without model.yml are skipped silently and the model id slice is not backslash-aware. Needs a Windows repro with a moved data folder and nested ids."
+      "notes": "Ranked mechanisms: (1) saved data folder unusable at launch (drive not mounted, locked): choose_data_folder silently falls back to the default folder for the session, empty list, files intact; only notice is in Settings > General (app/commands.rs 298-316). (2) junction/symlink under the data folder, common for moving GGUFs to another drive: read_yaml scope check (filesystem/helpers.rs 90) refuses the path, list() skips it (index.ts 1540); a linked models folder also skews the id slice (join_path vs readdir_sync canonicalisation). Not causes: backslash ids (consistent within listing), stale absolute model_path after a move (listing does not check it; load fails instead), folders without model.yml (ignored, but only once model.yml is lost). Fix needs a decision: trust links that live inside the data folder for model files (read-only), and surface the data-folder fallback in the model list. Ask the reporter for their data_folder config and whether models sit behind a link."
     },
     {
       "source": "janhq/jan",
