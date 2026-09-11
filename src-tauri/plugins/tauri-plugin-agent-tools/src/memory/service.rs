@@ -151,7 +151,7 @@ fn preview_of(content: &str) -> String {
 }
 
 impl MemoryView {
-    fn from_record(record: &MemoryRecord) -> Self {
+    pub(crate) fn from_record(record: &MemoryRecord) -> Self {
         Self {
             id: record.id.to_string(),
             content: record.content.clone(),

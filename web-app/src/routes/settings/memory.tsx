@@ -30,6 +30,7 @@ import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 import { useMemoryConversations } from '@/hooks/useMemoryConversations'
 import {
+  memoryConflicts,
   memoryRecordEdit,
   memoryRecordForget,
   memoryRecordPin,
@@ -38,6 +39,7 @@ import {
   memorySettingsGet,
   memorySettingsUpdate,
   memoryStorageSummary,
+  type MemoryConflictPair,
   type MemoryLocation,
   type MemoryScope,
   type MemoryStorageSummary,
@@ -74,6 +76,11 @@ const TABS: { scope: MemoryScope; label: string; blurb: string }[] = [
     blurb: 'Available everywhere. Keep this for things that are true generally.',
   },
 ]
+
+/** Where a memory applies, in the words the tabs use. */
+function scopeLabel(scope: MemoryScope): string {
+  return TABS.find((tab) => tab.scope === scope)?.label ?? scope
+}
 
 /** How many rows one request fetches. The backend clamps this too. */
 const PAGE_SIZE = 50
@@ -217,8 +224,24 @@ function MemorySettings() {
     void refresh(scope, query, offset)
   }, [refresh, scope, query, offset])
 
+  /**
+   * Remembered records that disagree, for the conversation and project picked
+   * above. Retrieval withholds both sides, so until one is settled neither
+   * reaches the model; this is where the user finds that out.
+   */
+  const [conflicts, setConflicts] = useState<MemoryConflictPair[]>([])
+  const loadConflicts = useCallback(async () => {
+    if (!location) return
+    try {
+      setConflicts(await memoryConflicts(location))
+    } catch {
+      setConflicts([])
+    }
+  }, [location])
+
   useEffect(() => {
     if (!location) return
+    void loadConflicts()
     void (async () => {
       try {
         setSummary(await memoryStorageSummary(location))
@@ -227,17 +250,52 @@ function MemorySettings() {
         // Storage and settings are informational here; the list is the page.
       }
     })()
-  }, [location])
+  }, [location, loadConflicts])
 
   const reload = useCallback(async () => {
     if (!location) return
     await refresh(scope, query, offset)
+    await loadConflicts()
     try {
       setSummary(await memoryStorageSummary(location))
     } catch {
       /* informational only */
     }
-  }, [refresh, scope, query, offset, location])
+  }, [refresh, scope, query, offset, location, loadConflicts])
+
+  /**
+   * Settle a conflict by keeping one side: the other is forgotten (a normal,
+   * undoable forget), so the survivor reaches the next request again.
+   */
+  const onKeep = useCallback(
+    async (keep: MemoryView, drop: MemoryView) => {
+      if (!location) return
+      setBusy(true)
+      try {
+        await memoryRecordForget(location, drop.scope, drop.id)
+        await reload()
+        toast.success('Kept one memory', {
+          description: keep.preview,
+          action: {
+            label: 'Undo',
+            onClick: () => {
+              void (async () => {
+                await memoryRecordRestore(location, drop.scope, drop.id)
+                await reload()
+              })()
+            },
+          },
+        })
+      } catch (error) {
+        toast.error('Could not settle that conflict', {
+          description: errorText(error),
+        })
+      } finally {
+        setBusy(false)
+      }
+    },
+    [location, reload]
+  )
 
   const onForget = useCallback(
     async (memory: MemoryView) => {
@@ -406,6 +464,59 @@ function MemorySettings() {
                     }}
                   />
                 </div>
+              </Card>
+            )}
+
+            {conflicts.length > 0 && (
+              <Card title="Memories that disagree">
+                <CardItem
+                  title="Neither side is being used"
+                  description="These remembered facts contradict each other, so Jan leaves both out of every request here until you keep one."
+                />
+                <ul className="p-2 flex flex-col gap-3" data-testid="memory-conflicts">
+                  {conflicts.map((conflict) => (
+                    <li
+                      key={`${conflict.left.id}|${conflict.right.id}`}
+                      className="rounded-md border border-border p-2"
+                      data-testid="memory-conflict"
+                      data-left-id={conflict.left.id}
+                      data-right-id={conflict.right.id}
+                    >
+                      <p className="text-xs text-muted-foreground mb-2">
+                        About the {conflict.subject}
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {(
+                          [
+                            [conflict.left, conflict.right],
+                            [conflict.right, conflict.left],
+                          ] satisfies Array<[MemoryView, MemoryView]>
+                        ).map(([side, other]: [MemoryView, MemoryView]) => (
+                          <div key={side.id} className="flex flex-col gap-1 min-w-0">
+                            <p className="text-sm break-words">{side.content}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {scopeLabel(side.scope)}
+                              {' · '}
+                              <span className="font-mono">{side.id}</span>
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="self-start"
+                              disabled={busy}
+                              data-testid="memory-conflict-keep"
+                              data-keep-id={side.id}
+                              aria-label={`Keep "${side.preview}" and forget the other`}
+                              onClick={() => void onKeep(side, other)}
+                            >
+                              Keep this one
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </Card>
             )}
 

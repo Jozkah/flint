@@ -2738,7 +2738,7 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-084"
@@ -2752,7 +2752,10 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/identity.rs",
         "src-tauri/src/core/agent/context.rs",
-        "web-app/src/lib/custom-chat-transport.ts"
+        "web-app/src/lib/custom-chat-transport.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+        "web-app/src/routes/settings/memory.tsx",
+        "web-app/src/components/TurnUsageDetails.tsx"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -2768,11 +2771,16 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/retrieve.rs",
         "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/store.rs",
         "web-app/src/lib/__tests__/custom-chat-transport-memory.test.ts",
-        "scripts/memory-e2e.mjs"
+        "scripts/memory-e2e.mjs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/memory/commands.rs::conflicts_are_listed_with_both_sides_and_only_where_they_apply",
+        "web-app/src/routes/settings/__tests__/memory.conflicts.test.tsx",
+        "src-tauri/examples/cowork_smoke.rs::memory-conflict-settle",
+        "src-tauri/examples/cowork_smoke.rs::memory-conflict-scope",
+        "src-tauri/examples/cowork_smoke.rs::memory-conflict-after-restart"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "detect_conflicts finds instruction pairs that cannot both be followed, and retrieve::select withholds BOTH sides rather than picking one, so an unresolved conflict never reaches the model as authoritative -- asserted in the renderer tests. What is missing is the resolution UI: keep-first, keep-second, merge, narrow to chat or project, dismiss, bound to the conflict hash. Conflicts are reported to the renderer and cannot yet be acted on there. Re-audit 2026-09-11: unchanged status; the Cowork prompt now carries the selection (it previously dropped it), but this scope/rule was not exercised live in the WebView."
+      "auditNote": "detect_conflicts finds instruction pairs that cannot both be followed, and retrieve::select withholds BOTH sides rather than picking one, so an unresolved conflict never reaches the model as authoritative -- asserted in the renderer tests. What is missing is the resolution UI: keep-first, keep-second, merge, narrow to chat or project, dismiss, bound to the conflict hash. Conflicts are reported to the renderer and cannot yet be acted on there. Re-audit 2026-09-11: unchanged status; the Cowork prompt now carries the selection (it previously dropped it), but this scope/rule was not exercised live in the WebView. Implemented 2026-09-11: conflicts were withheld but never surfaced. memory_conflicts returns the pairs a dispatch from a given conversation/project would withhold (same entitled records and applies_to rule as memory_retrieve, so another chat's disagreement is never listed; none for a temporary chat), and Settings > Memory shows each pair in full with 'Keep this one', which forgets the other side (undoable) so the survivor is sent again. Evidence: Rust test conflicts_are_listed_with_both_sides_and_only_where_they_apply; memory.conflicts.test.tsx; live Windows WebView2 scenarios memory-conflict-settle (twice) and the two-process memory-conflict-scope / memory-conflict-after-restart pair, first attempt, retries off: a conflicting project and user memory are both withheld from the request body, the turn lists both ids as withheld, the page lists the pair (also after a restart), and after keeping one side only that side reaches the next request. Detection itself is the existing lexical INCOMPATIBLE table (package manager, indentation, response length); semantic contradictions outside it are not detected."
     },
     {
       "id": "AH-086",

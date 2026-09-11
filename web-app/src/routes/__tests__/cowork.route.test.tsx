@@ -58,6 +58,8 @@ const h = vi.hoisted(() => ({
     mcp: [],
     inert: [],
   })),
+  /** Every transport the route built, newest last. */
+  transports: [] as any[],
   /** The last run's dispatcher, captured from `runTurn`. */
   deps: null as any,
   runTurn: vi.fn(),
@@ -171,11 +173,17 @@ vi.mock('@/lib/coworkTransport', () => ({
     constructor(
       public sessionId: string,
       public config: any
-    ) {}
+    ) {
+      h.transports.push(this)
+    }
     setConfig(config: any) {
       this.config = config
     }
     unfreezeTools() {}
+    memoryBinding: { projectRoot?: string; temporary?: boolean } | undefined
+    setMemoryBinding(binding: { projectRoot?: string; temporary?: boolean }) {
+      this.memoryBinding = binding
+    }
     async refreshTools() {}
     measureContext() {
       return {
@@ -519,6 +527,13 @@ describe('what a run carries, decided by the route', () => {
         writeGrant: 'grant-1',
       })
     )
+    // Memory follows the project, not the tree this run reads: a managed
+    // worktree is the same project, so it must recall the attached folder's
+    // memory rather than start a project of its own.
+    expect(h.transports.at(-1)?.memoryBinding).toEqual({
+      projectRoot: FOLDER,
+      temporary: false,
+    })
   })
 
   it('does not start a run against a worktree that is no longer there', async () => {

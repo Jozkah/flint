@@ -392,6 +392,30 @@ export async function memoryRetrieve(
   })
 }
 
+/** Two remembered records that cannot both be followed, both in full. */
+export type MemoryConflictPair = {
+  /** What they disagree about, e.g. "package manager". */
+  subject: string
+  left: MemoryView
+  right: MemoryView
+}
+
+/**
+ * The conflicts a dispatch from `location` would withhold.
+ *
+ * Retrieval withholds both sides of a conflict; this is how the user finds out
+ * and settles it. Same records and applicability as `memoryRetrieve`.
+ */
+export async function memoryConflicts(
+  location: MemoryLocation,
+  options?: { temporary?: boolean }
+): Promise<MemoryConflictPair[]> {
+  return await invoke('plugin:agent-tools|memory_conflicts', {
+    location,
+    temporary: options?.temporary,
+  })
+}
+
 /**
  * A memory an agent proposed that nobody has answered yet.
  *

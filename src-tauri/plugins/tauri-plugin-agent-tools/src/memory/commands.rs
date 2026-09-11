@@ -705,6 +705,68 @@ impl Retrieved {
     }
 }
 
+/// Every record in every scope this caller is entitled to, and no other.
+///
+/// The session and project ids come from `Access`, which derives them rather
+/// than believing the renderer, so naming another chat does not fetch its
+/// records. Shared by retrieval and the conflict list so the page shows exactly
+/// the disagreements a dispatch from the same place would withhold.
+fn entitled_records(location: &Where, access: &Access) -> Vec<super::record::MemoryRecord> {
+    let mut records = Vec::new();
+    if let Some(store) = access.project_store.as_deref() {
+        records.extend(super::store::load(store, Scope::Project).records);
+    }
+    let permanent = crate::workspace::permanent_store(Path::new(&location.data_folder));
+    records.extend(super::store::load(&permanent, Scope::User).records);
+    records.extend(super::store::load(&permanent, Scope::Session).records);
+    records
+}
+
+/// Two remembered records that cannot both be followed, with both in full.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryConflictPair {
+    /// What they disagree about, e.g. "package manager".
+    pub subject: String,
+    pub left: MemoryView,
+    pub right: MemoryView,
+}
+
+/// The conflicts a dispatch from this place would withhold.
+///
+/// Retrieval withholds both sides of a conflict, which is safe but silent: a
+/// user whose memory stopped working had nothing telling them why. This is the
+/// question put back to them, from the same records and the same applicability
+/// rule the prompt uses, so settling one here is what makes the survivor reach
+/// the model again. A temporary chat has none, as it has no memory at all.
+#[tauri::command]
+pub async fn memory_conflicts(
+    location: Where,
+    temporary: Option<bool>,
+) -> Result<Vec<MemoryConflictPair>, AgentToolsError> {
+    if temporary.unwrap_or(false) {
+        return Ok(Vec::new());
+    }
+    let access = location.access();
+    let now = now();
+    let applicable: Vec<super::record::MemoryRecord> = entitled_records(&location, &access)
+        .into_iter()
+        .filter(|r| r.applies_to(access.session_id.as_deref(), access.project_id.as_deref()))
+        .filter(|r| r.is_usable(now))
+        .collect();
+    let find = |id: &MemoryId| applicable.iter().find(|r| &r.id == id);
+    Ok(super::record::detect_conflicts(&applicable)
+        .into_iter()
+        .filter_map(|c| {
+            Some(MemoryConflictPair {
+                subject: c.subject.clone(),
+                left: MemoryView::from_record(find(&c.left)?),
+                right: MemoryView::from_record(find(&c.right)?),
+            })
+        })
+        .collect())
+}
+
 /// Select the memories one dispatch may use.
 ///
 /// `temporary` is the whole of the temporary-chat rule, and it is answered
@@ -721,21 +783,8 @@ pub async fn memory_retrieve(
     }
 
     let access = location.access();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-
-    // Every scope this caller is entitled to and no other. The session and
-    // project ids come from `Access`, which derives them rather than believing
-    // the renderer, so naming another chat does not fetch its records.
-    let mut records = Vec::new();
-    if let Some(store) = access.project_store.as_deref() {
-        records.extend(super::store::load(store, Scope::Project).records);
-    }
-    let permanent = crate::workspace::permanent_store(std::path::Path::new(&location.data_folder));
-    records.extend(super::store::load(&permanent, Scope::User).records);
-    records.extend(super::store::load(&permanent, Scope::Session).records);
+    let now = now();
+    let records = entitled_records(&location, &access);
 
     let selection = super::retrieve::select(
         &records,
@@ -1190,6 +1239,54 @@ mod proposal_tests {
         };
         crate::memory::store::upsert(&store, &record).expect("upsert");
         id.to_string()
+    }
+
+    /// A record written straight to the permanent store, active.
+    fn store_active(dir: &std::path::Path, content: &str, scope: Scope, session: Option<&str>) -> String {
+        use crate::memory::record::{Creator, MemoryId, MemoryRecord, Origin};
+        let store = crate::workspace::permanent_store(dir);
+        std::fs::create_dir_all(&store).expect("store");
+        let id = MemoryId::new(format!("mem-{}-{}-{}", now(), content.len(), session.unwrap_or("u")));
+        let mut record = MemoryRecord::new(id.clone(), content, scope, Creator::User, Origin::Explicit, now());
+        record.session_id = session.map(str::to_string);
+        crate::memory::store::upsert(&store, &record).expect("upsert");
+        id.to_string()
+    }
+
+    #[tokio::test]
+    async fn conflicts_are_listed_with_both_sides_and_only_where_they_apply() {
+        let dir = root("conflicts");
+        let user = store_active(&dir, "Use npm for installs.", Scope::User, None);
+        let mine = store_active(&dir, "Use yarn for installs.", Scope::Session, Some("chat-a"));
+        // Another chat's disagreement is not this chat's problem, and must not
+        // be shown here: that would be a way to read another chat's memory.
+        let theirs = store_active(&dir, "Use pnpm for installs.", Scope::Session, Some("chat-b"));
+
+        let listed = memory_conflicts(at(&dir), None).await.expect("conflicts");
+        assert_eq!(listed.len(), 1, "{listed:?}");
+        let pair = [listed[0].left.id.clone(), listed[0].right.id.clone()];
+        assert!(pair.contains(&user) && pair.contains(&mine), "{pair:?}");
+        assert!(!pair.contains(&theirs));
+        assert_eq!(listed[0].subject, "package manager");
+        assert!(listed[0].left.content.contains("for installs"));
+
+        // The same records are what retrieval withholds, so the page and the
+        // prompt agree about what is in dispute.
+        let retrieved = memory_retrieve(at(&dir), None, None).await.expect("retrieve");
+        assert!(retrieved.conflict_ids.contains(&user) && retrieved.conflict_ids.contains(&mine));
+        assert!(retrieved.injected_ids.is_empty());
+
+        // Settling it by forgetting one side lets the other through again.
+        assert!(memory_record_forget(at(&dir), "user".to_string(), user.clone())
+            .await
+            .expect("forget"));
+        assert!(memory_conflicts(at(&dir), None).await.expect("after").is_empty());
+        let after = memory_retrieve(at(&dir), None, None).await.expect("retrieve");
+        assert_eq!(after.injected_ids, vec![mine]);
+
+        // A temporary chat has no memory, so it has nothing in dispute either.
+        assert!(memory_conflicts(at(&dir), Some(true)).await.expect("temp").is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]

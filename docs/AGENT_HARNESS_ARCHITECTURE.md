@@ -426,7 +426,13 @@ tool, or override the current request: it is text in a labelled block, and the
 gate, the sandbox and the tool list are decided before and without it. Two
 applicable records that make incompatible claims (package manager, indentation,
 response length) are both withheld and reported as a conflict, rather than one
-being chosen silently. Each dispatch records the ids it carried and withheld:
+being chosen silently. The user is told and asked: `memory_conflicts` returns
+the disagreements a dispatch from a given conversation and project would
+withhold -- the same entitled records and applicability rule as
+`memory_retrieve`, so another chat's disagreement is never listed -- and
+Settings > Memory shows each pair in full with "Keep this one", which forgets
+the other side (undoable) so the survivor reaches the next request. Each
+dispatch records the ids it carried and withheld:
 Chat on the message's `metadata.memory`, Cowork on the assistant turn's
 `memory`, both shown in that turn's details; the rendered block with its ids is
 also inside the prompt snapshot. Forgetting sets `Deleted` (undoable from the

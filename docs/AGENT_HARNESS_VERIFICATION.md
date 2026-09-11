@@ -430,6 +430,20 @@ scope/restart pairs, all six runs passed on the first attempt, retries
 disabled for `memory-project-*`. Not run live: user memory across a restart,
 conflicting memory in the WebView, Chat (rather than Cowork) recall.
 
+## Conflicting memory, surfaced and settled (AH-085)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView | `cowork-smoke --only memory-conflict-settle` | a project memory ("npm") and a user memory ("yarn") that disagree are both withheld from the request body; the turn lists both ids as withheld; Settings > Memory shows the pair in full; "Keep this one" on the project side forgets the user side, and the next request carries only the project memory |
+| Real WebView pair | `--only memory-conflict-scope`, then `--only memory-conflict-after-restart` on the same `COWORK_SMOKE_KEEP` | the conflict made in one process is still withheld and still listed after a restart in a new process, and is settled there the other way (user side kept, project side not sent) |
+| Rust test | `memory/commands.rs::conflicts_are_listed_with_both_sides_and_only_where_they_apply` | both sides returned in full; another chat's disagreement is not listed; the same ids are what retrieval withholds; forgetting one side clears the conflict and lets the other be injected; none for a temporary chat |
+| Render test | `routes/settings/__tests__/memory.conflicts.test.tsx` | both sides and where each applies; asked for the picked conversation and project; keeping one forgets the other in its own scope, never the kept one; no card when nothing disagrees |
+
+Last run 2026-09-11, Windows WebView2, scripted provider: all passed on the
+first attempt (the settle scenario twice, on fresh profiles), retries off.
+Detection is the existing lexical table (package manager, indentation,
+response length); contradictions outside it are not detected.
+
 ### Harness defect found on the way: eval results lost on the event bus
 
 Before the fix above, these scenarios failed about half the time with

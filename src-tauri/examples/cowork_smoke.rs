@@ -7093,9 +7093,191 @@ fn scenario_memory_project_after_restart(ctx: &Ctx) -> ScenarioResult {
     Ok(())
 }
 
+// Conflicting memory (AH-085): withheld from the prompt, shown to the user,
+// settled on the memory page, and the survivor sent again.
+
+fn scenario_memory_conflict_settle(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    new_cowork_session(ctx)?;
+    attach_folder(ctx, &ctx.project)?;
+    send_cowork(ctx, "conflict probe one")?;
+    let session = current_cowork_session(ctx)?;
+    let project = commit_memory(
+        ctx,
+        "project",
+        Some(&ctx.project),
+        "Use npm for installs in this repository.",
+    )?;
+    let user = commit_memory(ctx, "user", None, "Use yarn for installs everywhere.")?;
+
+    // Both withheld: neither id nor either instruction reaches the model.
+    send_cowork(ctx, "conflict probe two")?;
+    let system = last_system_prompt(ctx)?;
+    ensure!(
+        !system.contains(&project)
+            && !system.contains(&user)
+            && !system.contains("npm for installs in this repository")
+            && !system.contains("yarn for installs everywhere"),
+        "a side of a conflict reached the model: {system}"
+    );
+    // And the turn says so, by id.
+    ctx.eval(
+        "const t = [...document.querySelectorAll('[data-testid=\"turn-usage-trigger\"]')].pop();
+         t.click(); return true;",
+    )?;
+    ctx.wait_until(
+        "the turn to list both withheld ids",
+        &format!(
+            "const w = document.querySelector('[data-testid=\"turn-memory-withheld\"]');
+             return !!w && w.textContent.includes({project:?}) && w.textContent.includes({user:?});"
+        ),
+        Duration::from_secs(15),
+    )?;
+    ctx.eval("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true;")?;
+
+    // The memory page shows the pair, and keeping the project side settles it.
+    ctx.goto("/settings/memory")?;
+    ctx.wait_until(
+        "the conflict on the memory page",
+        &format!(
+            "return [...document.querySelectorAll('[data-testid=\"memory-conflict\"]')].some(c =>
+               [c.dataset.leftId, c.dataset.rightId].sort().join() === [{project:?}, {user:?}].sort().join());"
+        ),
+        Duration::from_secs(30),
+    )?;
+    ctx.eval(&format!(
+        "document.querySelector('[data-testid=\"memory-conflict-keep\"][data-keep-id={project:?}]').click();
+         return true;"
+    ))?;
+    ctx.wait_until(
+        "the conflict to be settled",
+        "return !document.querySelector('[data-testid=\"memory-conflict\"]');",
+        Duration::from_secs(20),
+    )?;
+
+    // The kept side reaches the next request; the forgotten one does not.
+    open_cowork_session(ctx, &session)?;
+    send_cowork(ctx, "conflict probe three")?;
+    let settled = last_system_prompt(ctx)?;
+    ensure!(
+        settled.contains(&format!("[{project}] (project)")),
+        "the kept memory did not reach the model after the conflict was settled: {settled}"
+    );
+    ensure!(
+        !settled.contains(&user) && !settled.contains("yarn for installs everywhere"),
+        "the forgotten side of the conflict was still sent: {settled}"
+    );
+    forget_memory(ctx, "project", Some(&ctx.project), &project)?;
+    Ok(())
+}
+
+// The same conflict across a restart: made and withheld in one process, still
+// withheld and still listed in the next, and settled there.
+
+const CONFLICT_EXPECTED: &str = "memory-conflict-expected.json";
+
+fn scenario_memory_conflict_scope(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    new_cowork_session(ctx)?;
+    attach_folder(ctx, &ctx.project)?;
+    send_cowork(ctx, "restart conflict probe one")?;
+    let session = current_cowork_session(ctx)?;
+    let project = commit_memory(
+        ctx,
+        "project",
+        Some(&ctx.project),
+        "Use npm for installs in this repository.",
+    )?;
+    let user = commit_memory(ctx, "user", None, "Use yarn for installs everywhere.")?;
+    send_cowork(ctx, "restart conflict probe two")?;
+    let system = last_system_prompt(ctx)?;
+    ensure!(
+        !system.contains(&project) && !system.contains(&user),
+        "a side of a conflict reached the model: {system}"
+    );
+    std::fs::write(
+        data_folder()?.join(CONFLICT_EXPECTED),
+        serde_json::json!({
+            "session": session, "project": project, "user": user,
+        })
+        .to_string(),
+    )
+    .map_err(|e| Failure(format!("could not record the conflict: {e}")))?;
+    Ok(())
+}
+
+fn scenario_memory_conflict_after_restart(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    let raw = std::fs::read_to_string(data_folder()?.join(CONFLICT_EXPECTED)).map_err(|e| {
+        Failure(format!(
+            "no recorded conflict ({e}); run memory-conflict-scope first with the same COWORK_SMOKE_KEEP"
+        ))
+    })?;
+    let expected: Value = serde_json::from_str(&raw).map_err(|e| Failure(e.to_string()))?;
+    let field = |k: &str| expected[k].as_str().unwrap_or_default().to_string();
+    let (session, project, user) = (field("session"), field("project"), field("user"));
+
+    // Still withheld after the restart: the disagreement is in the store, not
+    // in the previous process's memory.
+    open_cowork_session(ctx, &session)?;
+    send_cowork(ctx, "after restart, conflict still open")?;
+    let system = last_system_prompt(ctx)?;
+    ensure!(
+        !system.contains(&project) && !system.contains(&user),
+        "after the restart a side of the conflict reached the model: {system}"
+    );
+
+    // Still listed on the memory page, and settled there.
+    ctx.goto("/settings/memory")?;
+    ctx.wait_until(
+        "the conflict on the memory page after the restart",
+        &format!(
+            "return [...document.querySelectorAll('[data-testid=\"memory-conflict\"]')].some(c =>
+               [c.dataset.leftId, c.dataset.rightId].sort().join() === [{project:?}, {user:?}].sort().join());"
+        ),
+        Duration::from_secs(30),
+    )?;
+    ctx.eval(&format!(
+        "document.querySelector('[data-testid=\"memory-conflict-keep\"][data-keep-id={user:?}]').click();
+         return true;"
+    ))?;
+    ctx.wait_until(
+        "the conflict to be settled",
+        "return !document.querySelector('[data-testid=\"memory-conflict\"]');",
+        Duration::from_secs(20),
+    )?;
+
+    // This time the user-scope side was kept: it is sent, the project side is not.
+    open_cowork_session(ctx, &session)?;
+    send_cowork(ctx, "after restart, conflict settled")?;
+    let settled = last_system_prompt(ctx)?;
+    ensure!(
+        settled.contains(&format!("[{user}] (user)")),
+        "the kept user memory did not reach the model: {settled}"
+    );
+    ensure!(
+        !settled.contains(&project) && !settled.contains("npm for installs in this repository"),
+        "the forgotten project memory was still sent: {settled}"
+    );
+    forget_memory(ctx, "user", None, &user)?;
+    Ok(())
+}
+
 /// Scenarios that run only when named with `--only`: they need something the
 /// default run does not have, such as a real provider.
 const OPT_IN_SCENARIOS: &[Scenario] = &[
+    Scenario {
+        name: "memory-conflict-settle",
+        run: scenario_memory_conflict_settle,
+    },
+    Scenario {
+        name: "memory-conflict-scope",
+        run: scenario_memory_conflict_scope,
+    },
+    Scenario {
+        name: "memory-conflict-after-restart",
+        run: scenario_memory_conflict_after_restart,
+    },
     Scenario {
         name: "memory-project-scope",
         run: scenario_memory_project_scope,

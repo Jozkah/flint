@@ -45,6 +45,7 @@ const COMMANDS: &[&str] = &[
     "memory_settings_get",
     "memory_settings_update",
     "memory_retrieve",
+    "memory_conflicts",
     "tool_schemas",
     "sandbox_status",
     "environment_readiness",
