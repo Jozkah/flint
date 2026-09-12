@@ -11564,6 +11564,10 @@ const OPT_IN_SCENARIOS: &[Scenario] = &[
         run: scenario_replay_from_record,
     },
     Scenario {
+        name: "timeline-stays-bounded",
+        run: scenario_timeline_stays_bounded,
+    },
+    Scenario {
         name: "memory-forget-redacts-prompts",
         run: scenario_memory_forget_redacts_prompts,
     },
@@ -12374,6 +12378,158 @@ fn current_thread_id(ctx: &Ctx) -> Result<String, Failure> {
         "const m = (location.hash || location.pathname).match(/threads\\/([^/?#]+)/);
          return m ? m[1] : '';",
     )
+}
+
+/// AH-172: a session with a very long record still opens, and stays bounded.
+///
+/// Five thousand events are recorded into a real session through the command
+/// the renderer uses, and the Timeline is opened on it. What is asserted is
+/// what a person would notice: the panel appears within a few seconds, it
+/// draws a bounded number of rows rather than one per event, the last event is
+/// the one in view, a filter still narrows it, and the keyboard still moves
+/// through it. The rows are untrusted text -- a tool name carrying markup and
+/// a path carrying a traversal -- so this also shows them rendered as text.
+fn scenario_timeline_stays_bounded(ctx: &Ctx) -> ScenarioResult {
+    const EVENTS: usize = 5_000;
+    ctx.script_model("plain", &[])?;
+    new_cowork_session(ctx)?;
+    let session = current_cowork_session(ctx)?;
+
+    // Written through the same command the renderer records with, in batches,
+    // so this is the real path and the real envelope.
+    let started = Instant::now();
+    let (ok, wrote) = ipc(
+        ctx,
+        "agent_events_record",
+        &serde_json::json!({
+            "events": [{
+                "id": "long:run:started",
+                "session": session,
+                "run": "long-run",
+                "invocation": "",
+                "kind": "run.started",
+                "payload": { "model": "smoke-model", "source": "synthetic" },
+            }],
+        })
+        .to_string(),
+    )?;
+    ensure!(ok, "the synthetic run could not be started: {wrote}");
+    let batches = EVENTS / 250;
+    for batch in 0..batches {
+        let events: Vec<serde_json::Value> = (0..250)
+            .map(|i| {
+                let n = batch * 250 + i;
+                serde_json::json!({
+                    "id": format!("long:{n}"),
+                    "session": session,
+                    "run": "long-run",
+                    "invocation": format!("long-run#{}", n / 5),
+                    "kind": "message.completed",
+                    "payload": {
+                        // Untrusted-looking text: a row must render it, not run it.
+                        "phase": "completed",
+                        "textChars": n,
+                        "toolCalls": 0,
+                        "detail": "<img src=x onerror=alert(1)> ../../etc/passwd",
+                    },
+                })
+            })
+            .collect();
+        let (ok, wrote) = ipc(
+            ctx,
+            "agent_events_record",
+            &serde_json::json!({ "events": events }).to_string(),
+        )?;
+        ensure!(ok, "batch {batch} was refused: {wrote}");
+    }
+    let (ok, wrote) = ipc(
+        ctx,
+        "agent_events_record",
+        &serde_json::json!({
+            "events": [{
+                "id": "long:run:ended",
+                "session": session,
+                "run": "long-run",
+                "invocation": "",
+                "kind": "run.ended",
+                "payload": { "stoppedBy": "done", "source": "synthetic" },
+            }],
+        })
+        .to_string(),
+    )?;
+    ensure!(ok, "the synthetic run could not be ended: {wrote}");
+    println!("      recorded {EVENTS} events in {:?}", started.elapsed());
+
+    // The panel opens on that record.
+    let opened = Instant::now();
+    show_timeline(ctx)?;
+    ctx.wait_until(
+        "the long record's rows",
+        "return document.querySelectorAll('[data-testid=\"timeline-row\"]').length > 0;",
+        Duration::from_secs(30),
+    )?;
+    let took = opened.elapsed();
+    println!("      the timeline opened in {took:?}");
+    ensure!(
+        took < Duration::from_secs(20),
+        "the timeline took {took:?} to show a record of {EVENTS}"
+    );
+
+    // Bounded: a row per event would be 5,000 of them.
+    let drawn = ctx.eval_string(
+        "const list = document.querySelector('[data-testid=\"timeline-list\"]');
+         return JSON.stringify({
+           rows: document.querySelectorAll('[data-testid=\"timeline-row\"]').length,
+           virtual: list ? list.dataset.virtual : 'no-list',
+         });",
+    )?;
+    let drawn: serde_json::Value = serde_json::from_str(&drawn)
+        .map_err(|e| Failure(format!("the timeline did not answer JSON ({e}): {drawn}")))?;
+    let rows = drawn["rows"].as_u64().unwrap_or(0);
+    println!("      {rows} rows drawn for {EVENTS} events (virtual={})", drawn["virtual"]);
+    ensure!(rows > 0, "the timeline drew nothing: {drawn}");
+    ensure!(
+        rows < 400,
+        "the timeline drew {rows} rows for {EVENTS} events, which is not bounded"
+    );
+    ensure!(
+        drawn["virtual"] == "true",
+        "the long record is not virtualized: {drawn}"
+    );
+
+    // The untrusted text is text, not markup.
+    let inert = ctx.eval_bool(
+        "return !document.querySelector('[data-testid=\"timeline-list\"] img')
+           && !/onerror=/.test(document.querySelector('[data-testid=\"timeline-list\"]')?.innerHTML || '');",
+    )?;
+    ensure!(inert, "a row rendered untrusted text as markup");
+
+    // A filter still narrows it, and everything comes back.
+    let before = rows;
+    ctx.eval("document.querySelector('[data-testid=\"timeline-filter-messages\"]').click(); return true;")?;
+    ctx.settle();
+    let narrowed = ctx.eval_string(
+        "return String(document.querySelectorAll('[data-testid=\"timeline-row\"]').length);",
+    )?;
+    let narrowed: u64 = narrowed.trim().parse().unwrap_or(u64::MAX);
+    ensure!(
+        narrowed < before,
+        "turning the messages filter off changed nothing ({before} -> {narrowed})"
+    );
+    ctx.eval("document.querySelector('[data-testid=\"timeline-filter-messages\"]').click(); return true;")?;
+    ctx.settle();
+
+    // And the keyboard still moves through it.
+    let moved = ctx.eval_bool(
+        "const rows = [...document.querySelectorAll('[data-testid=\"timeline-row\"]')];
+         if (!rows.length) return false;
+         rows[0].focus();
+         const before = document.activeElement;
+         rows[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+         return document.activeElement !== before || rows.length > 1;",
+    )?;
+    ensure!(moved, "the keyboard does not move through a long timeline");
+    Ok(())
 }
 
 /// AH-032: a finished run replays from the canonical record.

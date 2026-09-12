@@ -512,6 +512,12 @@ scenario. The real-provider lanes were unavailable again for this batch
 (`v100` does not resolve; see `/c/tmp/jan-p4-evidence/v100-probe-1.log`), so
 the CLI evidence above is against local fixtures, not 8555.
 
+## The timeline on a very long record (AH-172)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView | `cowork-smoke --only timeline-stays-bounded` | 5,000 events are recorded into a real session through the command the renderer uses (1.1s), the Timeline opens on them in **0.9s**, and draws **27 rows** -- not one per event -- with the list marked virtualized; a payload carrying `<img src=x onerror=...>` and a `../../etc/passwd` path renders as text, with no image element and no `onerror` in the list's markup; turning a filter off narrows the rows and turning it back on restores them; the keyboard still moves through it |
+
 ## Provider fallback, hardened (AH-193)
 
 | Evidence | Where | Covers |
