@@ -391,7 +391,10 @@ impl ModelInvoker for HttpModelInvoker {
                 invocation: invocation.clone(),
                 turn: String::new(),
                 attempt: 1,
-                kind: Default::default(),
+                // A request carrying tool results back is the same turn
+                // continuing (AH-087): reading it as another first request
+                // would make one turn look like several.
+                kind: dispatch_kind(&normalized),
             };
             let snapshot = capture(&normalized, &identity);
             append(
@@ -487,6 +490,28 @@ impl ModelInvoker for HttpModelInvoker {
             ),
         }
         out
+    }
+}
+
+/// Whether this request starts a turn or continues one.
+///
+/// A continuation is what a tool result produces: the history ends with the
+/// output of a call the model asked for, and the request is the same turn
+/// carrying it back. Read from the payload rather than tracked, so it is true
+/// of the bytes actually sent.
+fn dispatch_kind(body: &serde_json::Value) -> tauri_plugin_agent_tools::snapshot::DispatchKind {
+    use tauri_plugin_agent_tools::snapshot::DispatchKind;
+    let last_role = body
+        .get("messages")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|m| m.last())
+        .and_then(|m| m.get("role"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    if last_role == "tool" {
+        DispatchKind::Continuation
+    } else {
+        DispatchKind::Initial
     }
 }
 
@@ -5988,6 +6013,33 @@ mod tests {
             assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "keep\n", "{} edited a file", role.name);
             let _ = std::fs::remove_dir_all(&root);
         }
+    }
+
+    /// AH-087: a request carrying tool results back is the same turn
+    /// continuing, and the record says so rather than calling every request
+    /// the first one.
+    #[test]
+    fn a_request_carrying_tool_results_is_a_continuation() {
+        use tauri_plugin_agent_tools::snapshot::DispatchKind;
+        let first = serde_json::json!({ "messages": [
+            { "role": "system", "content": "you are jan" },
+            { "role": "user", "content": "list the files" },
+        ] });
+        assert_eq!(dispatch_kind(&first), DispatchKind::Initial);
+        let after_tools = serde_json::json!({ "messages": [
+            { "role": "user", "content": "list the files" },
+            { "role": "assistant", "content": null, "tool_calls": [{ "id": "c1" }] },
+            { "role": "tool", "tool_call_id": "c1", "content": "README.md" },
+        ] });
+        assert_eq!(dispatch_kind(&after_tools), DispatchKind::Continuation);
+        // A reply after the results is a new turn again.
+        let next_turn = serde_json::json!({ "messages": [
+            { "role": "tool", "tool_call_id": "c1", "content": "README.md" },
+            { "role": "assistant", "content": "done" },
+            { "role": "user", "content": "now build it" },
+        ] });
+        assert_eq!(dispatch_kind(&next_turn), DispatchKind::Initial);
+        assert_eq!(dispatch_kind(&serde_json::json!({})), DispatchKind::Initial);
     }
 
     /// AH-193: only a failure that says the request never reached a model may
