@@ -11556,6 +11556,10 @@ const OPT_IN_SCENARIOS: &[Scenario] = &[
         run: scenario_mcp_liveness,
     },
     Scenario {
+        name: "chat-execution-record",
+        run: scenario_chat_execution_record,
+    },
+    Scenario {
         name: "agent-provenance",
         run: scenario_agent_provenance,
     },
@@ -12272,6 +12276,158 @@ fn scenario_memory_proposal(ctx: &Ctx) -> ScenarioResult {
 // ---------------------------------------------------------------------------
 // Durability and integration regressions (the batch-1 fixes, end to end)
 // ---------------------------------------------------------------------------
+
+/// The canonical events of one session, newest last.
+fn session_events(ctx: &Ctx, session: &str) -> Result<Vec<Value>, Failure> {
+    let (ok, page) = ipc(
+        ctx,
+        "agent_events_list",
+        &serde_json::json!({ "session": session, "afterSeq": 0, "limit": 500 }).to_string(),
+    )?;
+    ensure!(ok, "agent_events_list failed: {page}");
+    Ok(page["events"].as_array().cloned().unwrap_or_default())
+}
+
+/// The thread the chat is showing, from the route.
+fn current_thread_id(ctx: &Ctx) -> Result<String, Failure> {
+    ctx.eval_string(
+        "const m = (location.hash || location.pathname).match(/threads\\/([^/?#]+)/);
+         return m ? m[1] : '';",
+    )
+}
+
+/// AH-004: a Chat turn writes the same canonical record a Cowork turn does --
+/// the run, every tool phase, what the request cost, what the reply was made
+/// of, and how the turn ended -- all under one run and joined by the
+/// invocation of the request that caused them.
+fn scenario_chat_execution_record(ctx: &Ctx) -> ScenarioResult {
+    let was_on = set_builtin_web_search(ctx, false)?;
+    let result = (|| {
+        ctx.script_model("tools", &["web_search:{\"query\":\"execution record query\"}"])?;
+        new_chat(ctx)?;
+        ctx.type_into("[data-testid=\"chat-input\"]", "search the web for the record query")?;
+        ctx.wait_until(
+            "the send control to arm",
+            "const b = document.querySelector('[data-test-id=\"send-message-button\"]');
+             return !!b && b.disabled !== true;",
+            Duration::from_secs(60),
+        )?;
+        ctx.eval("document.querySelector('[data-test-id=\"send-message-button\"]').click(); return true;")?;
+        ctx.wait_until(
+            "the approval request",
+            "return (document.body.innerText || '').includes('This tool needs your approval before it runs.');",
+            Duration::from_secs(60),
+        )?;
+        let clicked = ctx.eval_bool(
+            "const b = [...document.querySelectorAll('button')]
+               .find(x => (x.textContent || '').trim() === 'Allow Once');
+             if (!b) return false; b.click(); return true;",
+        )?;
+        ensure!(clicked, "no Allow Once control on the approval card");
+        ctx.wait_until(
+            "the turn to finish",
+            "return !!document.querySelector('[data-test-id=\"send-message-button\"]');",
+            Duration::from_secs(120),
+        )?;
+        let session = current_thread_id(ctx)?;
+        ensure!(!session.is_empty(), "the chat has no thread id in its route");
+
+        // The record, as the app reports it back.
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let events = loop {
+            let events = session_events(ctx, &session)?;
+            let kinds: Vec<&str> = events.iter().filter_map(|e| e["kind"].as_str()).collect();
+            let complete = [
+                "run.started",
+                "tool.requested",
+                "tool.succeeded",
+                "usage.reported",
+                "message.completed",
+                "run.ended",
+            ]
+            .iter()
+            .all(|k| kinds.contains(k));
+            if complete {
+                break events;
+            }
+            ensure!(Instant::now() < deadline, "the chat turn never reached the record: {kinds:?}");
+            std::thread::sleep(Duration::from_millis(500));
+        };
+        let kinds: Vec<&str> = events.iter().filter_map(|e| e["kind"].as_str()).collect();
+        for kind in [
+            "run.started",
+            "tool.requested",
+            "tool.succeeded",
+            "usage.reported",
+            "message.completed",
+            "run.ended",
+        ] {
+            ensure!(kinds.contains(&kind), "{kind} is missing from the chat record: {kinds:?}");
+        }
+        ensure!(
+            kinds.iter().any(|k| *k == "tool.awaiting-permission" || *k == "tool.allowed"),
+            "the approval is not in the record: {kinds:?}"
+        );
+
+        // One run, and the tool joined to the request that asked for it.
+        let field = |e: &Value, name: &str| e[name].as_str().unwrap_or_default().to_string();
+        let runs: Vec<String> = events.iter().map(|e| field(e, "run")).filter(|r| !r.is_empty()).collect();
+        let first_run = runs.first().cloned().unwrap_or_default();
+        ensure!(!first_run.is_empty(), "the chat events carry no run: {events:?}");
+        ensure!(runs.iter().all(|r| *r == first_run), "one turn wrote more than one run: {runs:?}");
+        let tool_invocation = events
+            .iter()
+            .find(|e| field(e, "kind") == "tool.requested")
+            .map(|e| field(e, "invocation"))
+            .unwrap_or_default();
+        ensure!(!tool_invocation.is_empty(), "the tool call names no request");
+        let usage_invocations: Vec<String> = events
+            .iter()
+            .filter(|e| field(e, "kind") == "usage.reported")
+            .map(|e| field(e, "invocation"))
+            .collect();
+        ensure!(
+            usage_invocations.contains(&tool_invocation),
+            "no request's usage matches the tool call's invocation: {usage_invocations:?} vs {tool_invocation}"
+        );
+        ensure!(
+            usage_invocations.iter().collect::<std::collections::BTreeSet<_>>().len() == usage_invocations.len(),
+            "two requests share one invocation: {usage_invocations:?}"
+        );
+        let ended = events
+            .iter()
+            .find(|e| field(e, "kind") == "run.ended")
+            .cloned()
+            .unwrap_or(Value::Null);
+        ensure!(
+            ended["payload"]["stoppedBy"] == "done" && ended["payload"]["source"] == "chat",
+            "the chat run did not end cleanly: {ended}"
+        );
+        ensure!(
+            ended["payload"]["steps"].as_u64().unwrap_or(0) >= 2,
+            "a turn with a tool call took fewer than two requests: {ended}"
+        );
+
+        // And the usage is the provider's own counts, not an estimate.
+        let usage = events
+            .iter()
+            .find(|e| field(e, "kind") == "usage.reported")
+            .cloned()
+            .unwrap_or(Value::Null);
+        ensure!(
+            usage["payload"]["inputTokens"].as_u64().unwrap_or(0) > 0,
+            "the recorded usage has no input tokens: {usage}"
+        );
+
+        // Nothing of this turn reached another session's log.
+        let other = session_events(ctx, "a-thread-that-never-ran")?;
+        ensure!(other.is_empty(), "another session's log is not empty: {other:?}");
+        println!("      chat record: {} events, run {first_run}", events.len());
+        Ok(())
+    })();
+    let _ = set_builtin_web_search(ctx, was_on);
+    result
+}
 
 const AGENT_PROVENANCE_EXPECTED: &str = "agent-provenance-expected.json";
 const PROVENANCE_AGENT: &str = "scribe";

@@ -720,7 +720,7 @@ impl ToolActivityItem {
     fn from_first(event: ToolActivityEvent) -> Self {
         let finished = event.phase.is_terminal();
         let mut item = ToolActivityItem {
-            id: item_id(&event.session, &event.call),
+            id: item_id(&event.session, &event.call, &event.invocation),
             call: event.call,
             tool: event.tool,
             session: event.session,
@@ -812,8 +812,13 @@ fn output_state(item: &ToolActivityItem) -> String {
     .to_string()
 }
 
-pub fn item_id(session: &str, call: &str) -> String {
-    format!("{session}|{call}")
+pub fn item_id(session: &str, call: &str, invocation: &str) -> String {
+    // The invocation is part of the identity because a provider may reuse a
+    // call id across requests (AH-004): two dispatches that both called their
+    // first tool `call_1` are two calls, not one call reported twice. Events
+    // written before invocations were recorded have none, and fold together
+    // exactly as they did.
+    format!("{session}|{invocation}|{call}")
 }
 
 /// Fold the log into one durable item per call, ordered by when each call was
@@ -829,7 +834,7 @@ pub fn items(data_folder: &Path, session: Option<&str>) -> Vec<ToolActivityItem>
     let mut items: HashMap<String, ToolActivityItem> = HashMap::new();
 
     for event in events {
-        let id = item_id(&event.session, &event.call);
+        let id = item_id(&event.session, &event.call, &event.invocation);
         match items.get_mut(&id) {
             Some(item) => item.refine(event),
             None => {
@@ -1564,13 +1569,40 @@ mod tests {
     /// Ids are stable: the same session and call always name the same item,
     /// before and after a restart.
     #[test]
-    fn an_item_id_is_its_session_and_call() {
+    fn an_item_id_is_its_session_invocation_and_call() {
         let dir = scratch();
         append(&dir, &ev("c1", "read", Phase::Requested));
         let first = items(&dir, None)[0].id.clone();
         event_log::forget_loaded();
         append(&dir, &ev("c1", "read", Phase::Succeeded));
         assert_eq!(items(&dir, None)[0].id, first);
-        assert_eq!(first, "s1|c1");
+        assert_eq!(first, "s1||c1", "an event with no invocation keeps folding as it did");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// AH-004: a provider that numbers its tool calls per request will reuse
+    /// `call_1`. Two dispatches are two calls, whatever they were called.
+    #[test]
+    fn one_call_id_reused_by_two_invocations_stays_two_items() {
+        let dir = scratch();
+        let mut first = ev("call_1", "read", Phase::Requested);
+        first.invocation = "inv-1".into();
+        append(&dir, &first);
+        let mut first_done = ev("call_1", "read", Phase::Succeeded);
+        first_done.invocation = "inv-1".into();
+        first_done.output = Some("the first file".into());
+        append(&dir, &first_done);
+        let mut second = ev("call_1", "read", Phase::Requested);
+        second.invocation = "inv-2".into();
+        append(&dir, &second);
+
+        let found = items(&dir, Some("s1"));
+        assert_eq!(found.len(), 2, "{found:?}");
+        let by = |inv: &str| found.iter().find(|i| i.invocation == inv).expect("the item");
+        assert_eq!(by("inv-1").phase, Phase::Succeeded);
+        assert_eq!(by("inv-1").output.as_deref(), Some("the first file"));
+        assert_eq!(by("inv-2").phase, Phase::Requested, "the second call is still running");
+        assert!(by("inv-2").output.is_none(), "the first call's output leaked into the second");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

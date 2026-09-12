@@ -54,6 +54,26 @@ describe('buildTimeline', () => {
     })
   })
 
+  // AH-004: a provider that numbers its tool calls per request sends `call_1`
+  // again on the next one. Two requests are two calls.
+  it('keeps one call id used by two invocations as two rows', () => {
+    seq = 0
+    const rows = buildTimeline(
+      [
+        tool('requested', 'call_1', { summary: 'first.txt' }, { invocation: 'inv-1' }),
+        tool('succeeded', 'call_1', { output: 'the first file' }, { invocation: 'inv-1' }),
+        tool('requested', 'call_1', { summary: 'second.txt' }, { invocation: 'inv-2' }),
+      ],
+      's1'
+    )
+    expect(rows.length).toBe(2)
+    expect(rows.map((r) => r.invocation)).toEqual(['inv-1', 'inv-2'])
+    expect(rows[0].status).toBe('completed')
+    expect(rows[0].output).toBe('the first file')
+    expect(rows[1].status).toBe('running')
+    expect(rows[1].output).toBeUndefined()
+  })
+
   it('keeps every state apart: running, failed, refused, cancelled, interrupted', () => {
     expect(['requested', 'running', 'allowed'].map(statusOfPhase)).toEqual(['running', 'running', 'running'])
     expect(statusOfPhase('failed')).toBe('failed')

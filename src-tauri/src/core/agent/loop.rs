@@ -188,6 +188,74 @@ pub(crate) trait ToolInvoker: Send + Sync {
     async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, String>;
 }
 
+/// One provider request, as the canonical record names it (AH-004).
+///
+/// The loop dispatches a request, then runs the tools that request asked for,
+/// then dispatches again. Both halves need the same id: the request's own
+/// events -- its usage, what its reply was made of, the prompt snapshot it was
+/// taken from -- and every tool call that came out of it. It is minted by the
+/// model invoker at dispatch and read by the tool invoker, so a provider that
+/// numbers its tool calls per request cannot make two calls look like one.
+#[derive(Debug, Default)]
+pub(crate) struct Invocations {
+    session: String,
+    run: String,
+    /// Where the session's log lives. `None` records nothing (tests, proxies).
+    data: Option<std::path::PathBuf>,
+    next: std::sync::atomic::AtomicU64,
+    current: std::sync::Mutex<String>,
+}
+
+impl Invocations {
+    fn new(session: String, run: String, data: Option<std::path::PathBuf>) -> Self {
+        Self {
+            session,
+            run,
+            data,
+            next: std::sync::atomic::AtomicU64::new(0),
+            current: std::sync::Mutex::new(String::new()),
+        }
+    }
+
+    /// The next request's id, which is the current one from now on.
+    fn begin(&self) -> String {
+        let n = self.next.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        let id = if self.run.is_empty() {
+            format!("inv-{n}")
+        } else {
+            format!("{}#{n}", self.run)
+        };
+        if let Ok(mut current) = self.current.lock() {
+            *current = id.clone();
+        }
+        id
+    }
+
+    /// The request whose work is running now; empty before the first one.
+    fn current(&self) -> String {
+        self.current.lock().map(|c| c.clone()).unwrap_or_default()
+    }
+
+    /// Record one event of this run. Best effort: the record must never fail
+    /// the request it describes.
+    fn record(&self, kind: &str, id: &str, invocation: &str, payload: serde_json::Value) {
+        let (Some(data), false) = (&self.data, self.session.is_empty()) else {
+            return;
+        };
+        let _ = tauri_plugin_agent_tools::event_log::append(
+            data,
+            tauri_plugin_agent_tools::event_log::NewEvent {
+                id: id.to_string(),
+                session: self.session.clone(),
+                run: self.run.clone(),
+                invocation: invocation.to_string(),
+                kind: kind.to_string(),
+                payload,
+            },
+        );
+    }
+}
+
 struct HttpModelInvoker {
     client: Client,
     upstream_url: String,
@@ -206,6 +274,8 @@ struct HttpModelInvoker {
     /// Who this dispatch belongs to, so a snapshot can be found by run or
     /// session later. AH-078.
     snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity,
+    /// The run's request ids (AH-004): minted here, read by the tool invoker.
+    invocations: std::sync::Arc<Invocations>,
 }
 
 fn converter_http_client() -> reqwest::Client {
@@ -232,6 +302,8 @@ impl ModelInvoker for HttpModelInvoker {
                 normalized["model"] = serde_json::json!(bare);
             }
         }
+        // AH-004: this request's id, minted before anything it causes.
+        let invocation = self.invocations.begin();
         // AH-078. `normalized` is the payload as it will go on the wire: the
         // last point at which a snapshot is the dispatch rather than a
         // reconstruction of it. Taken here, after context construction and
@@ -247,9 +319,9 @@ impl ModelInvoker for HttpModelInvoker {
                 thread: self.snapshot_identity.thread.clone(),
                 agent: self.snapshot_identity.agent.clone(),
                 provider: self.snapshot_identity.provider.clone(),
-                // The agent loop dispatches once per step; the step's own id is
-                // the invocation.
-                invocation: String::new(),
+                // One id per provider request, shared with everything that
+                // request causes: its tools, its usage, its reply.
+                invocation: invocation.clone(),
                 turn: String::new(),
                 attempt: 1,
                 kind: Default::default(),
@@ -259,6 +331,19 @@ impl ModelInvoker for HttpModelInvoker {
                 &crate::core::app::commands::resolve_jan_data_folder(),
                 &snapshot,
             );
+            // The record's link from this request to the exact payload it
+            // sent (AH-004/AH-078).
+            self.invocations.record(
+                "message.completed",
+                &format!("dispatch:{invocation}"),
+                &invocation,
+                serde_json::json!({
+                    "phase": "dispatched",
+                    "snapshotId": snapshot.id,
+                    "hash": snapshot.hash,
+                    "model": normalized.get("model").and_then(serde_json::Value::as_str).unwrap_or_default(),
+                }),
+            );
             let _ = events.send(StreamEvent::PromptSnapshot {
                 id: snapshot.id.clone(),
                 hash: snapshot.hash.clone(),
@@ -266,7 +351,7 @@ impl ModelInvoker for HttpModelInvoker {
             });
         }
 
-        if let Some(converter) = &self.converter {
+        let out = if let Some(converter) = &self.converter {
             crate::core::agent::upstream::stream_converted_chat_completions(
                 &self.converter_client,
                 &self.upstream_url,
@@ -287,7 +372,74 @@ impl ModelInvoker for HttpModelInvoker {
                 events,
             )
             .await
+        };
+        // What the request cost and what came back, against the request
+        // itself (AH-004). A failure is recorded too: a request that never
+        // answered is part of what the run did.
+        match &out {
+            Ok(completion) => self.record_completion(&invocation, completion),
+            Err(e) => self.invocations.record(
+                "message.completed",
+                &format!("failed:{invocation}"),
+                &invocation,
+                serde_json::json!({ "phase": "failed", "detail": bound_detail(e) }),
+            ),
         }
+        out
+    }
+}
+
+/// One line of a failure, short enough for the record to hold it.
+fn bound_detail(text: &str) -> String {
+    text.chars().take(400).collect()
+}
+
+impl HttpModelInvoker {
+    /// The provider's own counts for this request, and what its reply was made
+    /// of: sizes and counts only -- the words are in the transcript.
+    fn record_completion(&self, invocation: &str, completion: &serde_json::Value) {
+        if let Some(usage) = Usage::from_completion(completion) {
+            self.invocations.record(
+                "usage.reported",
+                &format!("usage:{invocation}"),
+                invocation,
+                serde_json::json!({
+                    "inputTokens": usage.prompt_tokens,
+                    "outputTokens": usage.completion_tokens,
+                    "totalTokens": usage.total_tokens,
+                    "requests": 1,
+                }),
+            );
+        }
+        let message = extract_choice_message(completion);
+        let text = message
+            .and_then(|m| m.get("content"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        let reasoning = message
+            .and_then(|m| m.get("reasoning_content").or_else(|| m.get("reasoning")))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        let tool_calls = extract_tool_calls(completion).len();
+        let finish = completion
+            .get("choices")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|c| c.first())
+            .and_then(|c| c.get("finish_reason"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        self.invocations.record(
+            "message.completed",
+            &format!("message:{invocation}"),
+            invocation,
+            serde_json::json!({
+                "phase": "completed",
+                "textChars": text.chars().count(),
+                "reasoningChars": reasoning.chars().count(),
+                "toolCalls": tool_calls,
+                "finishReason": finish,
+            }),
+        );
     }
 }
 
@@ -344,6 +496,9 @@ struct CompositeToolInvoker {
     /// own agent runs write every call here, the same record the renderer
     /// writes for Cowork and Chat. `None` records nothing (tests, proxies).
     record_to: Option<std::path::PathBuf>,
+    /// The request this run's calls belong to (AH-004), shared with the model
+    /// invoker that mints it.
+    invocations: std::sync::Arc<Invocations>,
     project_root: std::path::PathBuf,
     /// Where `memory/` and `skills/` live. Co-located with the project here, so
     /// the on-disk layout is unchanged; the desktop points this at its permanent
@@ -1145,6 +1300,9 @@ impl CompositeToolInvoker {
         e.run = self.cancel_scope.run.clone();
         e.agent = self.agent_name();
         e.agent_id = self.agent_identity();
+        // The request that asked for this call, so the record joins the call
+        // to its prompt snapshot and to what that request cost.
+        e.invocation = self.invocations.current();
         e.source = "agent-loop".into();
         e.project = self.project_root.to_string_lossy().to_string();
         if phase == tauri_plugin_agent_tools::activity::Phase::Requested {
@@ -2304,6 +2462,16 @@ async fn orchestrate_inner(
 
     let max_turns = body_turn_cap(json_body);
 
+    // One id for this run, used by the cancellation scope, the execution
+    // record and every request's invocation (AH-004): minted once so a stop, a
+    // snapshot and a recorded call all name the same run.
+    let run_id = run_id_for_cancellation(session_id.as_deref());
+    let invocations = std::sync::Arc::new(Invocations::new(
+        session_id.clone().unwrap_or_default(),
+        run_id.clone(),
+        (!jan_data_folder.is_empty()).then(|| std::path::PathBuf::from(jan_data_folder.as_str())),
+    ));
+
     let http_model = HttpModelInvoker {
         client: client.clone(),
         upstream_url,
@@ -2315,9 +2483,10 @@ async fn orchestrate_inner(
         converter_client: converter_http_client(),
         // Session and thread are the same id on this path; the run id matches
         // the cancellation scope so a snapshot and a stop name the same run.
+        invocations: invocations.clone(),
         snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity {
             session: session_id.clone().unwrap_or_default(),
-            run: String::new(),
+            run: run_id.clone(),
             thread: session_id.clone().unwrap_or_default(),
             agent: "main".to_string(),
             provider: model_id
@@ -2381,9 +2550,10 @@ async fn orchestrate_inner(
             // another run does not.
             cancel_scope: tauri_plugin_agent_tools::lifecycle::Scope::new(
                 session_id.clone().unwrap_or_default(),
-                run_id_for_cancellation(session_id.as_deref()),
+                run_id.clone(),
                 String::new(),
             ),
+            invocations: invocations.clone(),
             mcp: mcp_tools,
             store_root: tauri_plugin_agent_tools::workspace::project_store(root),
             enabled_skills: settings.enabled_skills,
@@ -2585,6 +2755,9 @@ pub(crate) async fn compact_history(
             .await
             .and_then(|(api_type, oauth)| converter_for(Some(&api_type), oauth)),
         converter_client: converter_http_client(),
+        // Its own ids: a compaction is a dispatch of its own, and folding it
+        // into the turn's numbering would renumber the turn's requests.
+        invocations: std::sync::Arc::new(Invocations::default()),
         // A compaction request is a dispatch like any other, and AH-078 says
         // every dispatch leaves a snapshot. `Compaction` is what separates it
         // from the turn's own requests when the snapshots are read back.
@@ -2636,6 +2809,7 @@ pub(crate) async fn evaluate_goal(
             .await
             .and_then(|(api_type, oauth)| converter_for(Some(&api_type), oauth)),
         converter_client: converter_http_client(),
+        invocations: std::sync::Arc::new(Invocations::default()),
         // The goal evaluator is a separate agent making its own single call,
         // so it is named as one rather than folded into the main dispatch.
         snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity {
@@ -5438,6 +5612,7 @@ mod tests {
         CompositeToolInvoker {
             allowed_tools: None,
             record_to: None,
+            invocations: std::sync::Arc::new(Invocations::default()),
             // Tests run one dispatch at a time; a fixed scope is enough to
             // exercise the token without colliding with another run.
             cancel_scope: tauri_plugin_agent_tools::lifecycle::Scope::default(),
@@ -5623,6 +5798,56 @@ mod tests {
             assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "keep\n", "{} edited a file", role.name);
             let _ = std::fs::remove_dir_all(&root);
         }
+    }
+
+    /// AH-004: one id per provider request, shared by everything that request
+    /// causes, and recorded under the run it belongs to.
+    #[test]
+    fn each_request_gets_one_invocation_id_and_records_under_it() {
+        let root = std::env::temp_dir().join(format!("jan_invocations_{}", std::process::id()));
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).expect("create data");
+        let invocations = Invocations::new("s-inv".into(), "s-inv#run-1".into(), Some(data.clone()));
+        assert_eq!(invocations.current(), "", "nothing is current before the first request");
+        let first = invocations.begin();
+        assert_eq!(first, "s-inv#run-1#1");
+        assert_eq!(invocations.current(), first, "a tool call now belongs to this request");
+        invocations.record(
+            "usage.reported",
+            &format!("usage:{first}"),
+            &first,
+            serde_json::json!({ "inputTokens": 11 }),
+        );
+        let second = invocations.begin();
+        assert_ne!(second, first, "a second request is not the first");
+        assert_eq!(invocations.current(), second);
+        invocations.record(
+            "message.completed",
+            &format!("message:{second}"),
+            &second,
+            serde_json::json!({ "textChars": 3 }),
+        );
+
+        let events = tauri_plugin_agent_tools::event_log::read_session(&data, "s-inv")
+            .expect("the session log");
+        let kinds: Vec<(&str, &str)> = events
+            .iter()
+            .map(|e| (e.kind.as_str(), e.invocation.as_str()))
+            .collect();
+        assert_eq!(
+            kinds,
+            vec![("usage.reported", first.as_str()), ("message.completed", second.as_str())],
+            "{events:?}"
+        );
+        assert!(events.iter().all(|e| e.run == "s-inv#run-1"), "{events:?}");
+
+        // A run with nowhere to write records nothing and still hands out ids.
+        let quiet = Invocations::new("s-inv".into(), "s-inv#run-2".into(), None);
+        let id = quiet.begin();
+        quiet.record("usage.reported", "usage:x", &id, serde_json::json!({}));
+        let after = tauri_plugin_agent_tools::event_log::read_session(&data, "s-inv").unwrap();
+        assert_eq!(after.len(), events.len(), "a run with no data folder wrote to the log");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// AH-121: the loop's `skill_read` reaches a skill in the user's store --

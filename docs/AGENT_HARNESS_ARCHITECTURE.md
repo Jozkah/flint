@@ -724,6 +724,20 @@ tool added later is covered without being told to be. The Rust agent loop
 invoker: each call as it is asked for, then how it ended, under the run's
 session, run and agent, with `run.started` / `run.ended` around it.
 
+**One request, one id (AH-004).** Every provider request has an invocation id,
+and everything that request causes is recorded under it: the prompt snapshot it
+was taken from, what it cost, what its reply was made of, and every tool call it
+asked for. The Rust loop mints it (`loop.rs::Invocations`) and shares it with
+the tool invoker; Chat mints it in `lib/chatRun.ts`, where a turn is one run
+even though Chat runs its tools *between* requests -- a reply that asks for
+tools leaves the turn open, and the request carrying the results back continues
+it. Chat therefore writes the same `run.started` / `usage.reported` /
+`message.completed` / `run.ended` events Cowork does, and its tool events carry
+the run and the request instead of an empty run. Folding is keyed by session,
+invocation and call (`activity::item_id`), so a provider that numbers its tool
+calls per request -- `call_1` every time -- cannot make two calls look like one;
+an event written before invocations existed folds exactly as it did.
+
 **Who changed a file (AH-110).** Every change the undo journal records carries
 an `Actor`: a durable `id` in the subject spelling (`agent`, `agent:<name>`,
 `role:<name>`), a `kind` (primary, named, role), a `label` that is for reading

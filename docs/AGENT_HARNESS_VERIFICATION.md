@@ -485,6 +485,23 @@ loop passed the skills folder where the handlers take a store root. Both were
 fixed in code, with the loop test above added for the second; the third run
 passed. Evidence kept in `/c/tmp/jan-p2-first-failures/ah121-*`.
 
+## One record for Chat, Cowork and the CLI (AH-004, in progress)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView | `cowork-smoke --only chat-execution-record` | a Chat turn with an approved MCP tool call writes 11 events: `run.started`, the approval phases, `tool.requested/running/succeeded`, `usage.reported` per request, `message.completed`, and `run.ended` with `stoppedBy: done` and two steps -- all under one run, with the tool call's invocation matching one request's usage, no two requests sharing an invocation, and nothing in another session's log |
+| Real CLI run | `jan cli agent run` against the local model fixture (`tests/fixtures/mock_openai_server.py`), isolated `JAN_DATA_FOLDER` | 10 events in order: `run.started`, the dispatch `message.completed` carrying the prompt snapshot id, `usage.reported`, the reply's `message.completed` (`tool_calls`), `tool.requested` and `tool.succeeded` **under the same invocation**, then the second request's dispatch, usage and reply, then `run.ended` `done`. Kept in `/c/tmp/jan-p2-first-failures/ah004-cli-record.json` |
+| Rust tests | `loop.rs::each_request_gets_one_invocation_id_and_records_under_it`, `activity.rs::one_call_id_reused_by_two_invocations_stays_two_items`, `activity.rs::an_item_id_is_its_session_invocation_and_call` | ids are per request, current between requests, recorded under the run, and a run with no data folder writes nothing; a reused provider call id stays two items; a legacy event with no invocation folds as before |
+| Render tests | `chatRun.test.ts` (5), `executionTimeline.test.ts::keeps one call id used by two invocations as two rows` | a turn is one run across tool steps, cancelled and failed turns say so, two threads never share a run, and the timeline keeps the reused call id apart |
+
+Still missing for AH-004, and why it stays in progress: the CLI loop does not
+record steering, compaction, reasoning or subagent lifecycle events (its
+compaction and goal-evaluation dispatches deliberately keep their own,
+unrecorded ids); retention is bounded by size and session count but has no test
+of its own; and the real-provider lanes could not be used for this batch --
+`v100` stopped resolving partway through (see the Phase 3 report), so the CLI
+evidence above is against the local fixture, not 8555.
+
 ## Agent provenance on changes (AH-110)
 
 | Evidence | Where | Covers |

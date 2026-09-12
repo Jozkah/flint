@@ -168,6 +168,9 @@ function changeOf(v: unknown): TimelineChange | undefined {
 /** Fold a session's envelopes into rows. Envelopes of other sessions are dropped. */
 export function buildTimeline(envelopes: EventEnvelope[], session: string): TimelineRow[] {
   const rows = new Map<string, TimelineRow>()
+  // The same rows keyed without the invocation, so an event that carries none
+  // still folds into the call it belongs to instead of opening a second row.
+  const looseRows = new Map<string, TimelineRow>()
   const lifecycleOf = new Map<string, { lifecycle: string; jobId?: string }>()
   const sorted = envelopes
     .filter((e) => e.session === session)
@@ -181,9 +184,25 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
     if (isTool || isLifecycle) {
       const call = str(p.call) ?? e.id
       const phase = str(p.phase) ?? e.kind.slice(e.kind.indexOf('.') + 1)
-      const key = `item:${call}:${str(p.agent) ?? ''}:${e.run}`
+      // The invocation is part of the key (AH-004): a provider that numbers
+      // its tool calls per request reuses `call_1`, and two requests' calls
+      // are two rows, not one row that changes its mind.
+      const invocation = str(e.invocation) ?? str(p.invocation) ?? ''
+      const base = `item:${call}:${str(p.agent) ?? ''}:${e.run}`
+      const key = `${base}:${invocation}`
       const lifecycle = isLifecycle ? (str(p.lifecycle) ?? 'lifecycle') : ''
       let row = rows.get(key)
+      if (!row) {
+        // An event that lost its invocation still belongs to the call it
+        // names, and a call first seen without one keeps its row when the
+        // invocation arrives. A *different* invocation is a different call.
+        const loose = looseRows.get(base)
+        if (loose && (!invocation || !loose.invocation)) {
+          row = loose
+          if (invocation) row.invocation = invocation
+          rows.set(key, row)
+        }
+      }
       if (!row) {
         row = {
           id: key,
@@ -203,6 +222,7 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
         }
         rows.set(key, row)
       }
+      looseRows.set(base, row)
       row.history.push(phase)
       row.status = statusOfPhase(phase)
       row.invocation ??= str(e.invocation) ?? str(p.invocation)
@@ -331,7 +351,9 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
     }
   }
 
-  const out = [...rows.values()]
+  // One row per call, even when it is reachable under both its loose and its
+  // invocation-qualified key.
+  const out = [...new Set(rows.values())]
   for (const row of out) {
     if (row.history.length > 0) {
       const meta = lifecycleOf.get(row.id)

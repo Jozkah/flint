@@ -1,3 +1,4 @@
+import { chatRunOf } from '@/lib/chatRun'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
@@ -581,9 +582,15 @@ function ThreadDetail() {
               toolName,
               input: toolCall.input,
             }
+            // AH-004: the run and the request that asked for this call, so
+            // Chat's tool events join the same record Cowork writes instead of
+            // standing alone with an empty run.
+            const chatRun = chatRunOf(threadId)
             const activityCtx = {
               session: threadId,
-              run: '',
+              run: chatRun?.run ?? '',
+              invocation: chatRun?.invocation ?? '',
+              agentId: 'agent',
               source: 'chat' as const,
             }
             const permissionEvent = {

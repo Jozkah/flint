@@ -61,6 +61,17 @@ import {
   type ContextManagerConfig,
 } from './context-manager'
 import { recordLifecycle } from '@/lib/toolActivity'
+import {
+  chatAwaitsTools,
+  chatRunOf,
+  continueOrBeginChatRun,
+  endChatRun,
+  markChatAwaitingTools,
+  nextChatInvocation,
+  recordChatMessage,
+  recordChatUsage,
+} from '@/lib/chatRun'
+import { usageEventPayload } from '@/lib/executionTimeline'
 import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import { encodeAudioSentinel, parseAudioDataUrl } from '@/lib/audio-sentinel'
@@ -1393,6 +1404,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
 
     this.lastUserMessage = extractLatestUserText(options.messages)
+    // AH-004: the turn, in the session's canonical record. Opened before the
+    // request goes out, so a turn cancelled before its first token is in the
+    // record rather than missing from it, and continued -- not reopened --
+    // when this request is the one carrying tool results back.
+    continueOrBeginChatRun(threadId, { model: modelId })
 
     try {
       const updatedProvider = useModelProvider
@@ -1741,6 +1757,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
         usageCollector.observe(part)
 
+        // One invocation per model request, minted when the step starts, so
+        // everything the step does -- its tools, its usage, its message -- is
+        // recorded against the request that asked for it.
+        if (part.type === 'start-step') {
+          nextChatInvocation(threadId)
+        }
+        if (part.type === 'finish-step') {
+          const step = part as { type: 'finish-step'; usage?: LanguageModelUsage }
+          const invocation = chatRunOf(threadId)?.invocation ?? ''
+          const reported = readTokenUsage(usageCollector.total(step.usage))
+          if (reported) {
+            recordChatUsage(threadId, invocation, usageEventPayload(reported))
+          }
+        }
         if (part.type === 'finish-step') {
           tokensPerSecond =
             (part.providerMetadata?.providerMetadata
@@ -1812,6 +1842,18 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
                   },
                 }
               : {}),
+            ...(() => {
+              // What the reply was made of: sizes and counts, never the words.
+              recordChatMessage(threadId, chatRunOf(threadId)?.invocation ?? '', {
+                finishReason: finishPart.finishReason,
+                outputTokens,
+                durationMs,
+              })
+              // A reply that asked for tools leaves the turn open: the tools
+              // run next, and their results come back in another request.
+              markChatAwaitingTools(threadId, finishPart.finishReason === 'tool-calls')
+              return {}
+            })(),
             tokenSpeed: {
               tokenSpeed: Math.round(tokenSpeed * 100) / 100,
               promptSpeed: promptPerSecond
@@ -1839,6 +1881,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             useAppState.getState().setCurrentStreamThreadId(undefined)
           }
         }
+        endChatRun(threadId, 'error')
         const unwrapped = unwrapRetryError(error)
         const rawMessage = unwrapped == null
           ? 'Unknown error'
@@ -1856,6 +1899,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         return baseMessage
       },
       onFinish: ({ responseMessage }) => {
+        if (options.abortSignal?.aborted) endChatRun(threadId, 'cancelled')
+        // Left open when tools are still to run: the turn ends with the reply
+        // that needs none.
+        else if (!chatAwaitsTools(threadId)) endChatRun(threadId, 'done')
         if (this.streamGeneration === myGeneration) {
           useAppState.getState().updatePromptProgress(undefined)
           useAppState.getState().updateLoadingModel(false)
