@@ -394,6 +394,15 @@ pub struct ReplayPlan {
     /// The run this one was itself a replay of, when it was one.
     #[serde(default)]
     pub replay_of: Option<String>,
+    /// Whether the record this plan was read from has been cut off.
+    ///
+    /// A session's log is bounded; when it fills, the record keeps a
+    /// `log.truncated` line rather than simply ending, and events written
+    /// before it are gone. A plan read from such a record may be missing
+    /// steps, so it says so instead of presenting what survived as the whole
+    /// run. What did survive is still real and still replayable.
+    #[serde(default)]
+    pub partial: bool,
 }
 
 impl ReplayPlan {
@@ -418,6 +427,10 @@ pub fn plan(data_folder: &Path, session: &str, run: &str) -> Result<ReplayPlan, 
     }
     let events = tauri_plugin_agent_tools::event_log::read_session(data_folder, session)
         .map_err(|e| ReplayError::new(ReplayErrorKind::Io, e.message()))?;
+    // The boundary belongs to the session, not to any one run: it says the
+    // file goes no further back, so every run read out of it may be missing
+    // its earlier events.
+    let cut_off = events.iter().any(|e| e.kind == "log.truncated");
     let mine: Vec<_> = events.into_iter().filter(|e| e.run == run).collect();
     if mine.is_empty() {
         return Err(ReplayError::new(
@@ -434,6 +447,7 @@ pub fn plan(data_folder: &Path, session: &str, run: &str) -> Result<ReplayPlan, 
         steps: Vec::new(),
         tool_calls: Vec::new(),
         replay_of: None,
+        partial: cut_off,
     };
     let text = |v: Option<&Value>| v.and_then(Value::as_str).unwrap_or_default().to_string();
     for event in &mine {
@@ -974,6 +988,129 @@ mod tests {
             ReplayErrorKind::NothingToReplay,
             "a replay run made no recorded dispatch of its own to replay"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A plan over a record that has been cut off says so.
+    ///
+    /// The session's log is bounded, and when it fills the record keeps a
+    /// boundary line rather than simply stopping. A plan read from such a
+    /// record cannot claim to be the whole run: the steps before the boundary
+    /// are gone. Saying "these are the steps" when some were dropped is the
+    /// failure this guards -- a replay of a partial record that presents
+    /// itself as complete.
+    #[test]
+    fn a_plan_over_a_cut_off_record_does_not_claim_to_be_whole() {
+        use tauri_plugin_agent_tools::event_log::{
+            append_within, read_session, Limits, LogError, NewEvent,
+        };
+        let dir = dir("truncated-plan");
+        let run = "s-cut#run-1";
+        recorded_run(&dir, "s-cut", run, chat_payload());
+        // The plan is whole while the record is.
+        assert!(!plan(&dir, "s-cut", run).unwrap().partial);
+
+        // Fill the log so the next write lands past the limit and the
+        // boundary is written.
+        let size = std::fs::metadata(dir.join("events").join("s-cut.jsonl"))
+            .map(|m| m.len())
+            .unwrap_or(0);
+        let overflow = append_within(
+            &dir,
+            NewEvent {
+                id: "e-overflow".into(),
+                session: "s-cut".into(),
+                run: run.into(),
+                invocation: String::new(),
+                kind: "tool.requested".into(),
+                payload: json!({ "tool": "read" }),
+            },
+            Limits { max_log_bytes: size, max_sessions: 500 },
+        );
+        // The event itself is refused -- what is kept is the boundary saying
+        // the record goes no further.
+        assert!(matches!(overflow, Err(LogError::TooLarge)), "{overflow:?}");
+        let kinds: Vec<String> =
+            read_session(&dir, "s-cut").unwrap().into_iter().map(|e| e.kind).collect();
+        assert!(
+            kinds.iter().any(|k| k == "log.truncated"),
+            "the record should carry its own boundary: {kinds:?}"
+        );
+
+        let cut = plan(&dir, "s-cut", run).unwrap();
+        assert!(cut.partial, "a plan over a cut-off record must say it is partial");
+        // It is still usable -- what survived is real, and refusing outright
+        // would throw away a true record. It just may not be all of it.
+        assert!(cut.sendable(), "the steps that survived can still be replayed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A replay is itself a run, so it can be planned -- and it names its
+    /// source rather than passing itself off as the original.
+    #[test]
+    fn a_replay_of_a_replay_still_names_what_it_came_from() {
+        use tauri_plugin_agent_tools::event_log::{append, NewEvent};
+        let dir = dir("replay-chain");
+        let first = "s-chain#run-1";
+        recorded_run(&dir, "s-chain", first, chat_payload());
+
+        // A second run recorded as a replay of the first, exactly as
+        // `begin_for_run` records one.
+        let second = "s-chain#run-2";
+        recorded_run(&dir, "s-chain", second, chat_payload());
+        append(
+            &dir,
+            NewEvent {
+                id: format!("{second}:replay-of"),
+                session: "s-chain".into(),
+                run: second.into(),
+                invocation: String::new(),
+                kind: "run.started".into(),
+                payload: json!({ "model": "fixture/m", "replayOf": first }),
+            },
+        )
+        .unwrap();
+
+        let chained = plan(&dir, "s-chain", second).unwrap();
+        assert_eq!(
+            chained.replay_of.as_deref(),
+            Some(first),
+            "a replay's plan must say which run it replayed"
+        );
+        assert_ne!(chained.run, first, "a replay is its own run, not the original");
+        // And the original does not acquire a source it never had.
+        assert_eq!(plan(&dir, "s-chain", first).unwrap().replay_of, None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A run id that is really a path cannot reach another session's record.
+    ///
+    /// The session and the run both come from the caller -- a WebView command,
+    /// the CLI, an imported bundle. AH-008 parses them at the storage
+    /// boundary; this is the check from the other side, that a plan cannot be
+    /// talked into reading a file the session does not own.
+    #[test]
+    fn a_forged_session_or_run_id_plans_nothing() {
+        let dir = dir("forged-plan");
+        let run = "s-real#run-1";
+        recorded_run(&dir, "s-real", run, chat_payload());
+        assert!(plan(&dir, "s-real", run).is_ok());
+
+        for (session, forged) in [
+            ("../s-real", run),
+            ("s-real/../s-real", run),
+            ("s-real", "../s-real#run-1"),
+            ("s-real\\..\\s-real", run),
+            ("", run),
+            ("s-real", ""),
+        ] {
+            let refused = plan(&dir, session, forged);
+            assert!(
+                refused.is_err(),
+                "{session:?}/{forged:?} must name nothing, got {:?}",
+                refused.map(|p| p.steps.len())
+            );
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
