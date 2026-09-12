@@ -17,6 +17,7 @@ import {
   type UndoTurnSummary,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { Button } from '@/components/ui/button'
+import { changedByText, turnActors } from '@/lib/changeActor'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { errorText } from '@/lib/errorText'
 import { getServiceHub } from '@/hooks/useServiceHub'
@@ -128,6 +129,11 @@ export function CoworkTurnUndo({
             n: turns.length - i,
             files: turn.paths.map(baseName).join(', '),
           })
+          // AH-110: who changed these files, in words rather than by colour,
+          // and inside the row's own label so it is announced with it.
+          const who = turnActors(turn)
+            .map((actor) => changedByText(actor, t))
+            .join('; ')
           return (
             <li
               key={turn.run}
@@ -141,6 +147,18 @@ export function CoworkTurnUndo({
                 title={turn.paths.join('\n')}
               >
                 {label}
+                {who && (
+                  <span
+                    className="ml-1 text-main-view-fg/60"
+                    data-testid="turn-undo-actor"
+                    data-actor-ids={turnActors(turn)
+                      .map((a) => a?.id ?? 'unknown')
+                      .join(' ')}
+                  >
+                    {'\u2014 '}
+                    {who}
+                  </span>
+                )}
               </span>
               {undone ? (
                 <Button
@@ -148,7 +166,7 @@ export function CoworkTurnUndo({
                   variant="ghost"
                   disabled={busy !== null}
                   onClick={() => void act(turn, false)}
-                  aria-label={`${t('common:turnUndo.redo')}: ${label}`}
+                  aria-label={`${t('common:turnUndo.redo')}: ${label}. ${who}`}
                   data-testid="turn-redo"
                 >
                   <Redo2 size={12} />
@@ -160,7 +178,7 @@ export function CoworkTurnUndo({
                   variant="ghost"
                   disabled={busy !== null}
                   onClick={() => void act(turn, true)}
-                  aria-label={`${t('common:turnUndo.undo')}: ${label}`}
+                  aria-label={`${t('common:turnUndo.undo')}: ${label}. ${who}`}
                   data-testid="turn-undo-button"
                 >
                   <Undo2 size={12} />

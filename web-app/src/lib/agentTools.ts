@@ -1,3 +1,4 @@
+import type { ChangeActorInput } from '@janhq/tauri-plugin-agent-tools-api'
 import {
   advertisedToolSchemas,
   executeTool,
@@ -214,6 +215,13 @@ export type AgentToolOptions = {
    * `write` or `edit` changes against it, so the turn can be undone (AH-202).
    */
   undoRun?: string
+  /**
+   * Who is making the call (AH-110). Journaled with every file the call
+   * changes, so a change can name the agent that made it after a restart. The
+   * backend refuses an identity that is not an agent rather than attributing
+   * the change to no one -- or to the wrong one.
+   */
+  actor?: ChangeActorInput
 }
 
 export async function executeAgentTool(
@@ -243,7 +251,8 @@ export async function executeAgentTool(
       options.writeGrant ?? undefined,
       options.scope ?? ('thread' as WorkspaceScope),
       undefined,
-      options.undoRun
+      options.undoRun,
+      options.actor
     )
     if (result.isError) return { error: result.content }
     return { content: result.content, diff: result.diff ?? undefined }

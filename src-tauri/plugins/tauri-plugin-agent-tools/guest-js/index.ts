@@ -1101,7 +1101,9 @@ export async function executeTool(
   scope?: WorkspaceScope,
   callId?: string,
   /** The run this call belongs to; journals its file changes for undo. */
-  undoRun?: string
+  undoRun?: string,
+  /** Who is making this call (AH-110); journaled with every file it changes. */
+  actor?: ChangeActorInput
 ): Promise<ToolResult> {
   return await invoke('plugin:agent-tools|execute_tool', {
     dataFolder,
@@ -1116,15 +1118,43 @@ export async function executeTool(
     scope,
     callId,
     undoRun,
+    actor,
   })
 }
 
 /** One turn's file changes that can be undone or redone. AH-202. */
+/** Who made a change (AH-110). `id` is the identity, `label` is for reading. */
+export type ChangeActorKind = 'primary' | 'named' | 'role'
+
+export type ChangeActor = {
+  /** `agent`, `agent:<name>` or `role:<name>`. Never a display name alone. */
+  id: string
+  kind: ChangeActorKind
+  label: string
+  /** The agent that dispatched this one, for a nested subagent. */
+  parent?: string
+  invocation?: string
+  task?: string
+}
+
+/** What a caller claims about who is making a tool call. Validated in Rust. */
+export type ChangeActorInput = {
+  id: string
+  label?: string
+  parent?: string
+  invocation?: string
+  task?: string
+}
+
 export type UndoTurnSummary = {
   run: string
   at: string
   state: 'applied' | 'undone'
   paths: string[]
+  /** Every distinct agent whose change this turn holds, first change first. */
+  actors?: ChangeActor[]
+  /** One entry per file: which agent left which file. */
+  changes?: { path: string; actor?: ChangeActor }[]
 }
 
 export async function undoJournal(

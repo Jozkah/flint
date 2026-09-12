@@ -3795,7 +3795,7 @@
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": "Team children are recorded (core/agent/team_children.rs) before they run and settled when they end (first ending kept; running-in-another-process reads as interrupted), identified by parent session and task id with worktree, branch and base found from Git, and fingerprinted when they settle. The Changes panel lists every isolated child with task, branch, base, worktree, files, counts and ending (CoworkTeamReviews) and reviews it through the ordinary proposal store (agent_team_child_propose), so selection by file and hunk, the approval bound to patch/base hashes and hunk ids, the revalidation against the folder as it is now, and the atomic rollback are the existing ones. Typed refusals, never an empty review: deleted/corrupt/moved worktree, a link out of the worktree, a worktree changed after its child finished, and an unfinished child (reviewable only after an explicit acknowledgement, which the proposal subject records). Before dispatch, declared write scopes (writes, deletes, renames; reads never count) are compared normalised and case-folded for same file, folder/inside, move ends, deletes and regenerated lock files; each overlap is shown with both tasks and paths and the user serializes (ordering-only edge), narrows a scope, or allows parallel (recorded on both children; never a waiver of the apply-time check); runTeam refuses any undecided overlap. This is declared-path overlap, not semantic conflict detection, and the UI says so. Hardening: links anywhere in a changed path refuse the proposal; nested .git/.jan never proposed; Windows spellings (.git., devices, streams, trailing dot/space) refused on every platform; the destination path is re-checked for links immediately before writing. Windows scenario team-review-persist-1 passed first attempt with retries off; team-review-persist-2 passed after a real restart (all four children listed with their endings, alpha partly applied, beta and gamma still pending, gamma’s junction reported, beta applied from its stored proposal). The scenario found and fixed three defects: child approval prompts that could never appear, same-id approval requests overwriting each other, and a cut-off stream read as success. Mock provider only; the real model lane, macOS and Linux were not run."
+      "auditNote": "Team children are recorded (core/agent/team_children.rs) before they run and settled when they end (first ending kept; running-in-another-process reads as interrupted), identified by parent session and task id with worktree, branch and base found from Git, and fingerprinted when they settle. The Changes panel lists every isolated child with task, branch, base, worktree, files, counts and ending (CoworkTeamReviews) and reviews it through the ordinary proposal store (agent_team_child_propose), so selection by file and hunk, the approval bound to patch/base hashes and hunk ids, the revalidation against the folder as it is now, and the atomic rollback are the existing ones. Typed refusals, never an empty review: deleted/corrupt/moved worktree, a link out of the worktree, a worktree changed after its child finished, and an unfinished child (reviewable only after an explicit acknowledgement, which the proposal subject records). Before dispatch, declared write scopes (writes, deletes, renames; reads never count) are compared normalised and case-folded for same file, folder/inside, move ends, deletes and regenerated lock files; each overlap is shown with both tasks and paths and the user serializes (ordering-only edge), narrows a scope, or allows parallel (recorded on both children; never a waiver of the apply-time check); runTeam refuses any undecided overlap. This is declared-path overlap, not semantic conflict detection, and the UI says so. Hardening: links anywhere in a changed path refuse the proposal; nested .git/.jan never proposed; Windows spellings (.git., devices, streams, trailing dot/space) refused on every platform; the destination path is re-checked for links immediately before writing. Windows scenario team-review-persist-1 passed first attempt with retries off; team-review-persist-2 passed after a real restart (all four children listed with their endings, alpha partly applied, beta and gamma still pending, gamma\u2019s junction reported, beta applied from its stored proposal). The scenario found and fixed three defects: child approval prompts that could never appear, same-id approval requests overwriting each other, and a cut-off stream read as success. Mock provider only; the real model lane, macOS and Linux were not run."
     },
     {
       "id": "AH-110",
@@ -3803,14 +3803,22 @@
       "category": "orchestration",
       "phase": 5,
       "phaseName": "Agent orchestration",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-107"
       ],
       "owner": "lane-06-agents-worktrees",
       "files": [
-        "src-tauri/src/core/agent/events.rs"
+        "src-tauri/src/core/agent/events.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/undo.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
+        "web-app/src/lib/changeActor.ts",
+        "web-app/src/lib/toolActivity.ts",
+        "web-app/src/lib/coworkDispatch.ts",
+        "web-app/src/containers/CoworkTurnUndo.tsx",
+        "web-app/src/containers/CoworkTimelinePanel.tsx"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -3821,12 +3829,20 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/undo.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs::a_tool_call_journals_its_agent_and_refuses_an_identity_that_is_not_one",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs::the_execution_record_carries_the_agents_identity",
+        "web-app/src/lib/__tests__/changeActor.test.ts",
+        "web-app/src/containers/__tests__/CoworkTurnUndo.test.tsx",
+        "src-tauri/examples/cowork_smoke.rs::agent-provenance",
+        "src-tauri/examples/cowork_smoke.rs::agent-provenance-restart"
+      ],
       "platformRequirements": [
         "git >= 2.20 available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": "Provenance exists at the event level only; file changes carry no agent attribution."
+      "auditNote": "Provenance exists at the event level only; file changes carry no agent attribution. 2026-09-12 (Phase 3): every journaled change now carries a durable Actor -- id in the subject spelling (agent, agent:<name>, role:<name>), kind, a display-only label, and the parent agent, invocation and task. execute_tool validates the claimed identity before running the tool and refuses anything that is not an agent with a typed error, so a refused call leaves no change to attribute; labels are flattened to one bounded line and never parsed. Two agents editing the same file in one turn attribute it to the one that left it, and undo still restores the pre-turn state. The execution record carries agent_id beside the display name and exports it. The Changes panel and the Timeline say who changed what in words inside the row label. Records without an actor read as an unknown agent, never as the agent running now. Real evidence: the agent-provenance / -restart WebView pair (primary agent + custom agent + shipped role in one run, journal, panel, Timeline, refusal, restart with the custom agent renamed, session isolation, a stripped legacy record). Not covered: partial-hunk application (changes are applied whole) and session export/import, which does not carry the journal -- provenance travels in the audit export."
     },
     {
       "id": "AH-111",

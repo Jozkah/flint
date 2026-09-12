@@ -1119,6 +1119,19 @@ impl CompositeToolInvoker {
         }
     }
 
+    /// The durable identity the record attributes this run's calls to
+    /// (AH-110): the subject spelling, so a renamed agent does not rewrite
+    /// what an old event points at. Empty for a subject that is not an agent.
+    fn agent_identity(&self) -> String {
+        use tauri_plugin_agent_tools::subject::Subject;
+        match &self.subject {
+            Subject::MainAgent => "agent".to_string(),
+            Subject::NamedAgent(n) => format!("agent:{n}"),
+            Subject::AgentRole(n) => format!("role:{n}"),
+            _ => String::new(),
+        }
+    }
+
     fn activity_event(
         &self,
         tc: &serde_json::Value,
@@ -1131,6 +1144,7 @@ impl CompositeToolInvoker {
         e.session = self.cancel_scope.session.clone();
         e.run = self.cancel_scope.run.clone();
         e.agent = self.agent_name();
+        e.agent_id = self.agent_identity();
         e.source = "agent-loop".into();
         e.project = self.project_root.to_string_lossy().to_string();
         if phase == tauri_plugin_agent_tools::activity::Phase::Requested {
@@ -5726,6 +5740,8 @@ mod tests {
         let ls = items.iter().find(|i| i.call == "c1").unwrap();
         assert_eq!(ls.phase, tauri_plugin_agent_tools::activity::Phase::Succeeded);
         assert_eq!(ls.agent, "reviewer");
+        // AH-110: the identity, not just the name a rename could change.
+        assert_eq!(ls.agent_id, "agent:reviewer");
         assert_eq!(ls.run, "cli-s1#run-1");
         let write = items.iter().find(|i| i.call == "c2").unwrap();
         assert_eq!(write.phase, tauri_plugin_agent_tools::activity::Phase::Refused);

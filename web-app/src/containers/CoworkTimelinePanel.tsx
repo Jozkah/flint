@@ -1,3 +1,4 @@
+import { actorFromEvent, changedByText } from '@/lib/changeActor'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
@@ -344,7 +345,17 @@ function TimelineItem({
               <span data-testid="timeline-row-status">{status}</span>
               <span>{t(`common:timeline.category.${row.primary}`)}</span>
               <span className="font-mono tabular-nums">{time(row.at)}</span>
-              {row.agent && row.agent !== 'main' && <span>{row.agent}</span>}
+              {/* AH-110: who did it, in words, on every row that has an
+                  actor -- the primary agent included, so attribution is never
+                  inferred from an absence. */}
+              {(row.agentId || row.agent) && (
+                <span
+                  data-testid="timeline-row-actor"
+                  data-actor-id={actorFromEvent(row.agentId, row.agent)?.id ?? 'unknown'}
+                >
+                  {changedByText(actorFromEvent(row.agentId, row.agent), t)}
+                </span>
+              )}
               {row.change && (
                 <span className="font-mono tabular-nums" data-testid="timeline-row-counts">
                   +{row.change.added ?? 0} −{row.change.removed ?? 0}

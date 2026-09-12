@@ -169,6 +169,11 @@ pub struct ToolActivityEvent {
     pub invocation: String,
     #[serde(default)]
     pub agent: String,
+    /// The agent's durable identity (AH-110): `agent`, `agent:<name>` or
+    /// `role:<name>`. Empty on events written before it was recorded, and on
+    /// events that are not an agent's.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub agent_id: String,
     #[serde(default)]
     pub project: String,
     /// Which surface recorded it: `cowork`, `chat`, `cli`, `subagent`.
@@ -260,6 +265,7 @@ impl ToolActivityEvent {
             seq: None,
             session: String::new(),
             run: String::new(),
+            agent_id: String::new(),
             call: call.into(),
             invocation: String::new(),
             agent: String::new(),
@@ -673,6 +679,8 @@ pub struct ToolActivityItem {
     pub run: String,
     pub invocation: String,
     pub agent: String,
+    /// The agent's durable identity, empty when the event did not carry one.
+    pub agent_id: String,
     pub source: String,
     pub parent: String,
     pub supersedes: String,
@@ -719,6 +727,7 @@ impl ToolActivityItem {
             run: event.run,
             invocation: event.invocation,
             agent: event.agent,
+            agent_id: event.agent_id,
             source: event.source,
             parent: event.parent,
             supersedes: event.supersedes,
@@ -912,6 +921,36 @@ mod tests {
         e.session = "s1".into();
         e.run = "r1".into();
         e
+    }
+
+    /// AH-110: the agent's identity travels with the record -- into the folded
+    /// item and out through the audit export -- so provenance survives an
+    /// export as well as a restart.
+    #[test]
+    fn the_execution_record_carries_the_agents_identity() {
+        let dir = scratch();
+        let mut e = ev("c1", "write", Phase::Requested);
+        e.agent = "scribe".into();
+        e.agent_id = "agent:scribe".into();
+        append(&dir, &e);
+        let mut done = ev("c1", "write", Phase::Succeeded);
+        done.agent = "scribe".into();
+        done.agent_id = "agent:scribe".into();
+        append(&dir, &done);
+        // An event from before identities were recorded keeps its name only.
+        let mut legacy = ev("c2", "write", Phase::Succeeded);
+        legacy.agent = "main".into();
+        append(&dir, &legacy);
+
+        let items = items(&dir, Some("s1"));
+        let of = |call: &str| items.iter().find(|i| i.call == call).expect("the item").clone();
+        assert_eq!(of("c1").agent_id, "agent:scribe");
+        assert_eq!(of("c1").agent, "scribe");
+        assert_eq!(of("c2").agent_id, "", "a legacy event invents no identity");
+
+        let text = serde_json::to_string(&export(&dir, Some("s1"))).unwrap();
+        assert!(text.contains("agent:scribe"), "the export dropped the identity: {text}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// AH-200 negative authority: a session's audit export carries its own

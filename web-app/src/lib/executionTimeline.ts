@@ -69,6 +69,8 @@ export type TimelineRow = {
   run?: string
   invocation?: string
   agent?: string
+  /** The agent's durable identity (AH-110), when the event carried one. */
+  agentId?: string
   call?: string
   tool?: string
   /** Every phase a folded item went through, in order. */
@@ -194,6 +196,7 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
           run: str(e.run),
           invocation: str(e.invocation) ?? str(p.invocation),
           agent: str(p.agent),
+          agentId: str(p.agent_id),
           call,
           tool: str(p.tool),
           history: [],

@@ -52,6 +52,49 @@ describe('dispatchCoworkTool', () => {
     })
   })
 
+  // AH-110: the backend journals a change under the agent that made it, so
+  // the identity has to travel with the call, not be guessed afterwards.
+  it('tells the backend which agent is making the call', async () => {
+    await dispatchCoworkTool(call('write', { path: 'a', content: 'x' }), ctx({
+      activity: { session: 's1', run: 'run-1', invocation: 'inv-1', agent: 'main' },
+    }))
+    expect(executeAgentTool).toHaveBeenLastCalledWith(
+      'write',
+      { path: 'a', content: 'x' },
+      's1',
+      expect.objectContaining({
+        undoRun: 'run-1',
+        actor: { id: 'agent', label: undefined, parent: undefined, invocation: 'inv-1', task: undefined },
+      })
+    )
+
+    await dispatchCoworkTool(call('write', { path: 'b', content: 'y' }), ctx({
+      activity: {
+        session: 's1',
+        run: 'run-1',
+        invocation: 'inv-2',
+        agent: 'reviewer',
+        agentId: 'role:reviewer',
+        parentAgent: 'agent',
+        parent: 'task-9',
+      },
+    }))
+    expect(executeAgentTool).toHaveBeenLastCalledWith(
+      'write',
+      { path: 'b', content: 'y' },
+      's1',
+      expect.objectContaining({
+        actor: {
+          id: 'role:reviewer',
+          label: 'reviewer',
+          parent: 'agent',
+          invocation: 'inv-2',
+          task: 'task-9',
+        },
+      })
+    )
+  })
+
   it('routes the client-only tools to their handlers', async () => {
     const c = ctx()
     expect((await dispatchCoworkTool(call('todo'), c)).output).toBe('todo ok')

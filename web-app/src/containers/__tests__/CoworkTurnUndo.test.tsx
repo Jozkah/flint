@@ -21,8 +21,18 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
 
 import { CoworkTurnUndo } from '../CoworkTurnUndo'
 
+const primary = { id: 'agent', kind: 'primary', label: 'the primary agent' }
+const explorer = { id: 'agent:explorer', kind: 'named', label: 'Explorer' }
+
 const journal = [
-  { run: 'run-1', at: 't1', state: 'applied', paths: ['C:/ws/a.txt'] },
+  {
+    run: 'run-1',
+    at: 't1',
+    state: 'applied',
+    paths: ['C:/ws/a.txt'],
+    actors: [primary],
+    changes: [{ path: 'C:/ws/a.txt', actor: primary }],
+  },
   { run: 'run-2', at: 't2', state: 'undone', paths: ['C:/ws/b.txt'] },
 ]
 
@@ -55,6 +65,54 @@ describe('CoworkTurnUndo', () => {
     expect(
       rows[1].querySelector('[data-testid="turn-undo-button"]')
     ).not.toBeNull()
+  })
+
+  it('names the agent behind each turn, and says when it does not know (AH-110)', async () => {
+    api.undoJournal.mockResolvedValue([
+      journal[0],
+      {
+        run: 'run-3',
+        at: 't3',
+        state: 'applied',
+        paths: ['C:/ws/c.txt', 'C:/ws/d.txt'],
+        actors: [explorer],
+        changes: [
+          { path: 'C:/ws/c.txt', actor: explorer },
+          // A file changed before provenance was recorded.
+          { path: 'C:/ws/d.txt' },
+        ],
+      },
+    ])
+    mount()
+    const rows = await screen.findAllByTestId('turn-undo-row')
+    const actorOf = (row: HTMLElement) =>
+      row.querySelector('[data-testid="turn-undo-actor"]')
+    const newest = rows[0]
+    expect(newest.getAttribute('data-run')).toBe('run-3')
+    expect(actorOf(newest)?.getAttribute('data-actor-ids')).toBe(
+      'agent:explorer unknown'
+    )
+    expect(actorOf(newest)?.textContent).toContain('turnUndo.namedAgent')
+    expect(actorOf(newest)?.textContent).toContain('turnUndo.unknownAgent')
+    const older = rows[1]
+    expect(actorOf(older)?.getAttribute('data-actor-ids')).toBe('agent')
+    expect(actorOf(older)?.textContent).toContain('turnUndo.primaryAgent')
+    // The same words reach a screen reader through the action's own label.
+    expect(
+      older
+        .querySelector('[data-testid="turn-undo-button"]')
+        ?.getAttribute('aria-label')
+    ).toContain('turnUndo.primaryAgent')
+  })
+
+  it('says an agent it cannot identify is unknown rather than the current one', async () => {
+    api.undoJournal.mockResolvedValue([journal[1]])
+    mount()
+    const row = await screen.findByTestId('turn-undo-row')
+    const actor = row.querySelector('[data-testid="turn-undo-actor"]')
+    expect(actor?.getAttribute('data-actor-ids')).toBe('unknown')
+    expect(actor?.textContent).toContain('turnUndo.unknownAgent')
+    expect(actor?.textContent).not.toContain('primaryAgent')
   })
 
   it('undoes one turn with the session grant and announces the result', async () => {

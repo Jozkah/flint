@@ -16,6 +16,7 @@
  * sequence with `recordLifecycle`, so there is one execution-event model and
  * not several stores that can disagree.
  */
+import type { ChangeActorInput } from '@janhq/tauri-plugin-agent-tools-api'
 import { invoke } from '@tauri-apps/api/core'
 import { summarizeToolInput } from '@/lib/toolInputSummary'
 import { backgroundJobId } from '@/lib/coworkTasks'
@@ -84,6 +85,8 @@ export type ToolActivityEvent = {
   call: string
   invocation: string
   agent: string
+  /** The agent's durable identity (AH-110): `agent`, `agent:<name>`, `role:<name>`. */
+  agent_id?: string
   project: string
   source?: string
   parent?: string
@@ -120,6 +123,8 @@ export type ToolActivityItem = {
   run: string
   invocation: string
   agent: string
+  /** The agent's durable identity, empty when the event carried none. */
+  agent_id?: string
   source?: string
   parent?: string
   supersedes?: string
@@ -258,10 +263,36 @@ export type ToolActivityContext = {
   run: string
   invocation?: string
   agent?: string
+  /**
+   * The agent's durable identity in the subject spelling (AH-110): `agent`,
+   * `agent:<name>`, `role:<name>`. Absent means the primary agent, or -- for a
+   * subagent -- derived from `agent`, which is why a renameable display name is
+   * never the only identifier on a change.
+   */
+  agentId?: string
+  /** The agent that dispatched this one, same spelling. */
+  parentAgent?: string
   project?: string
   source?: ActivitySource
   /** The task or workflow this call runs under. */
   parent?: string
+}
+
+/** What a change should be attributed to, from the identity a call runs under. */
+export function actorFor(
+  ctx: Partial<ToolActivityContext> | undefined
+): ChangeActorInput | undefined {
+  if (!ctx) return undefined
+  const name = ctx.agent?.trim()
+  const id = ctx.agentId?.trim() || (name && name !== 'main' ? `agent:${name}` : 'agent')
+  if (!id) return undefined
+  return {
+    id,
+    label: name && name !== 'main' ? name : undefined,
+    parent: ctx.parentAgent?.trim() || undefined,
+    invocation: ctx.invocation || undefined,
+    task: ctx.parent || undefined,
+  }
 }
 
 /**
@@ -300,6 +331,7 @@ export function recordToolActivity(
           run: '',
           invocation: '',
           agent: '',
+          agent_id: '',
           project: '',
           source: '',
           parent: '',
@@ -357,6 +389,7 @@ export function recordLifecycle(
     run: ctx.run,
     invocation: ctx.invocation ?? '',
     agent: ctx.agent ?? '',
+    agent_id: actorFor(ctx)?.id ?? '',
     project: ctx.project ?? '',
     source: ctx.source ?? '',
     parent: ctx.parent ?? '',
@@ -451,6 +484,7 @@ export async function withToolActivity<T extends RecordableOutcome>(
     run: ctx.run,
     invocation: ctx.invocation ?? '',
     agent: ctx.agent ?? '',
+    agent_id: actorFor(ctx)?.id ?? '',
     project: ctx.project ?? '',
     source: ctx.source ?? '',
     parent: ctx.parent ?? '',

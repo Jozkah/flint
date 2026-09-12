@@ -724,6 +724,24 @@ tool added later is covered without being told to be. The Rust agent loop
 invoker: each call as it is asked for, then how it ended, under the run's
 session, run and agent, with `run.started` / `run.ended` around it.
 
+**Who changed a file (AH-110).** Every change the undo journal records carries
+an `Actor`: a durable `id` in the subject spelling (`agent`, `agent:<name>`,
+`role:<name>`), a `kind` (primary, named, role), a `label` that is for reading
+only, and the parent agent, invocation and task it ran under. The identity is
+what a change points at, so renaming or deleting a custom agent changes the
+words a surface shows and never the agent an old change names. `execute_tool`
+takes the actor as a claim and validates it before the tool runs: an identity
+that is not an agent -- a user, a session, a skill, an injected string -- is a
+typed refusal, so no change is left to be attributed afterwards, and a label is
+flattened to one bounded line of text and never parsed. A file changed twice in
+one turn names the agent that left it as it stands; every call stays separate in
+the execution record, which now carries `agent_id` beside the display name and
+exports it. A change recorded before provenance existed has no actor and is
+shown as an unknown agent -- never as whoever is running now. The Changes panel
+and the Timeline say "Changed by the primary agent", "Changed by <name>" or
+"Changed by the <role> role" in words, inside the row's own label, so the
+information does not depend on colour.
+
 **MCP server liveness (AH-139).** The desktop's per-server health monitor
 probes every 30 seconds with the MCP protocol `ping`
 (`core/mcp/helpers.rs::probe_liveness`), not a tool call and not

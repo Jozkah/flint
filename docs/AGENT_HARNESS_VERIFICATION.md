@@ -485,6 +485,23 @@ loop passed the skills folder where the handlers take a store root. Both were
 fixed in code, with the loop test above added for the second; the third run
 passed. Evidence kept in `/c/tmp/jan-p2-first-failures/ah121-*`.
 
+## Agent provenance on changes (AH-110)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView pair | `cowork-smoke --only agent-provenance`, then `--only agent-provenance-restart` on the same `COWORK_SMOKE_KEEP` | one run writes three files: the primary agent, a saved custom agent (`scribe`) and a shipped role (`implementer`); the journal names `agent`, `agent:scribe` and `role:implementer` file by file; the Changes panel says all three in words and the Timeline carries the same ids; a `write` refused in Review mode adds nothing to the journal; **after a restart**, with the custom agent renamed on disk, the old change still names `agent:scribe` and shows its recorded label (not the new name); another session's journal is empty; stripping one change's actor on disk makes that row read "an unknown agent" while the others keep their agents |
+| Rust tests | `undo.rs` (5), `commands.rs::a_tool_call_journals_its_agent_and_refuses_an_identity_that_is_not_one`, `activity.rs::the_execution_record_carries_the_agents_identity` | per-file actors including two children in one turn, parent/invocation/task, restart through the file, the last writer taking over a file's attribution while undo still restores the first "before", legacy records staying unattributed, refusal of every non-agent identity and of a non-agent parent, a hostile label flattened to one bounded line, session isolation, the refusal happening before the tool runs, and the identity travelling through the audit export |
+| Render tests | `changeActor.test.ts` (5), `CoworkTurnUndo.test.tsx` (2 new), `coworkDispatch.test.ts` (1 new) | the label rules (a role is never a named agent, an unknown is never the current agent, a renamed agent keeps its identity), the panel's per-turn actor ids and words including the unknown case, the same words inside the button's `aria-label`, and the dispatcher sending the actor with every call |
+
+Last run 2026-09-12, Windows WebView2, scripted provider, retries off: the pair
+passed after two harness fixes (the panel had to be remounted to re-read the
+journal; a `location.reload()` killed the harness's own eval channel). No
+product behaviour was changed to make it pass.
+
+Not covered: partial-hunk application (the app applies a tool's change whole),
+and session export/import, which does not carry the undo journal -- provenance
+travels in the audit export instead, which is tested above.
+
 ## MCP liveness by protocol ping (AH-139)
 
 | Evidence | Where | Covers |

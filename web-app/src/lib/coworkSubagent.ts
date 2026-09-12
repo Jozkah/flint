@@ -93,6 +93,24 @@ export type ResolvedSubagent = {
   /** `null` inherits the parent's toolset minus what is withheld. */
   allowedTools: string[] | null
   model: string | null
+  /**
+   * Where the definition came from. `builtin` is one of Jan's roles
+   * (AH-094..099), which is what makes a change "changed by the reviewer role"
+   * rather than by an agent someone named (AH-110).
+   */
+  scope?: SubagentDefinition['scope']
+}
+
+/**
+ * The durable identity of a resolved subagent (AH-110): a role for a built-in,
+ * otherwise a named agent. Renaming the display name of a saved definition
+ * changes what is shown, never what past changes point at.
+ */
+export function subagentActorId(resolved: {
+  name: string
+  scope?: SubagentDefinition['scope']
+}): string {
+  return `${resolved.scope === 'builtin' ? 'role' : 'agent'}:${resolved.name}`
 }
 
 /** Reject a malformed `task` call rather than running an errand with no brief. */
@@ -191,6 +209,7 @@ export function resolveSubagent(
       systemPrompt: saved.system_prompt,
       allowedTools: narrowed.tools,
       model: saved.model,
+      scope: saved.scope,
     }
   }
   if (!req.system_prompt) {

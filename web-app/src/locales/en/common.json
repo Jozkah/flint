@@ -148,7 +148,12 @@
     "undo": "Undo",
     "redo": "Redo",
     "undone": "Undone: {{count}} file(s) put back as they were before the turn.",
-    "redone": "Redone: {{count}} file(s) put back as the turn left them."
+    "redone": "Redone: {{count}} file(s) put back as the turn left them.",
+    "changedBy": "Changed by {{who}}",
+    "primaryAgent": "the primary agent",
+    "namedAgent": "{{name}}",
+    "roleAgent": "the {{name}} role",
+    "unknownAgent": "an unknown agent (recorded before Jan kept this)"
   },
   "exportSession": "Export session…",
   "importSession": "Import session…",

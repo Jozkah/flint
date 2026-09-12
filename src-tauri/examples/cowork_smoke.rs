@@ -11556,6 +11556,14 @@ const OPT_IN_SCENARIOS: &[Scenario] = &[
         run: scenario_mcp_liveness,
     },
     Scenario {
+        name: "agent-provenance",
+        run: scenario_agent_provenance,
+    },
+    Scenario {
+        name: "agent-provenance-restart",
+        run: scenario_agent_provenance_restart,
+    },
+    Scenario {
         name: "memory-export-import",
         run: scenario_memory_export_import,
     },
@@ -12264,6 +12272,356 @@ fn scenario_memory_proposal(ctx: &Ctx) -> ScenarioResult {
 // ---------------------------------------------------------------------------
 // Durability and integration regressions (the batch-1 fixes, end to end)
 // ---------------------------------------------------------------------------
+
+const AGENT_PROVENANCE_EXPECTED: &str = "agent-provenance-expected.json";
+const PROVENANCE_AGENT: &str = "scribe";
+
+/// The undo journal of `session`, as the app reports it.
+fn undo_journal_of(ctx: &Ctx, session: &str) -> Result<Value, Failure> {
+    let data = data_folder()?.to_string_lossy().to_string();
+    let (ok, journal) = ipc(
+        ctx,
+        "plugin:agent-tools|undo_journal",
+        &serde_json::json!({ "dataFolder": data, "sessionId": session }).to_string(),
+    )?;
+    ensure!(ok, "undo_journal failed: {journal}");
+    Ok(journal)
+}
+
+/// Who the journal says changed each file, as `<file name> -> <actor id>`.
+fn journal_actors(journal: &Value) -> Vec<(String, String)> {
+    journal
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|turn| turn["changes"].as_array().into_iter().flatten())
+        .map(|change| {
+            let path = change["path"].as_str().unwrap_or_default();
+            let name = path.rsplit(['/', '\\']).next().unwrap_or(path).to_string();
+            let actor = change["actor"]["id"].as_str().unwrap_or("unknown").to_string();
+            (name, actor)
+        })
+        .collect()
+}
+
+/// What the Changes panel says about who made each turn's changes.
+fn shown_actor_ids(ctx: &Ctx) -> Result<String, Failure> {
+    ctx.eval_string(
+        "return [...document.querySelectorAll('[data-testid=\"turn-undo-actor\"]')]
+           .map(e => e.getAttribute('data-actor-ids') || '').join(' | ');",
+    )
+}
+
+fn shown_actor_text(ctx: &Ctx) -> Result<String, Failure> {
+    ctx.eval_string(
+        "return [...document.querySelectorAll('[data-testid=\"turn-undo-actor\"]')]
+           .map(e => e.textContent || '').join(' | ');",
+    )
+}
+
+/// AH-110: every change says which agent made it -- the primary agent, a
+/// saved custom agent, or one of Jan's roles -- in the journal, in the
+/// Changes panel and on the Timeline.
+fn scenario_agent_provenance(ctx: &Ctx) -> ScenarioResult {
+    // A saved custom agent, so the run has a named agent as well as a role.
+    let subagents = data_folder()?.join("agent-workspace").join("subagents");
+    std::fs::create_dir_all(&subagents).map_err(|e| Failure(e.to_string()))?;
+    std::fs::write(
+        subagents.join(format!("{PROVENANCE_AGENT}.toml")),
+        format!(
+            "name = \"{PROVENANCE_AGENT}\"\n\
+             description = \"Writes one file, for the provenance scenario.\"\n\
+             system_prompt = \"Write the file you are asked for and stop.\"\n\
+             allowed_tools = [\"write\", \"read\", \"ls\"]\n"
+        ),
+    )
+    .map_err(|e| Failure(e.to_string()))?;
+
+    let write_call = |file: &str, body: &str| {
+        format!(
+            "write:{}",
+            serde_json::json!({ "path": file, "content": body })
+        )
+    };
+    let routes = serde_json::json!([
+        {
+            "match": "PROV-SCRIBE",
+            "tools": [write_call("prov-scribe.txt", "written by the custom agent\n")],
+            "summary": "scribe finished",
+        },
+        {
+            "match": "PROV-IMPL",
+            "tools": [write_call("prov-implementer.txt", "written by the role\n")],
+            "summary": "implementer finished",
+        },
+    ]);
+    let parent_calls = vec![
+        write_call("prov-main.txt", "written by the primary agent\n"),
+        format!(
+            "task:{}",
+            serde_json::json!({ "subagent_name": PROVENANCE_AGENT, "description": "PROV-SCRIBE: write the file" })
+        ),
+        format!(
+            "task:{}",
+            serde_json::json!({ "subagent_name": "implementer", "description": "PROV-IMPL: write the file" })
+        ),
+    ];
+    let port = ctx.mock_port;
+    ensure!(
+        ctx.eval_bool(&format!(
+            r#"const res = await fetch('http://127.0.0.1:{port}/__control', {{
+                 method: 'POST', headers: {{ 'Content-Type': 'application/json' }},
+                 body: JSON.stringify({{ script: 'tools', tools: {}, routes: {routes} }}),
+               }});
+               return res.ok;"#,
+            serde_json::to_string(&parent_calls).unwrap()
+        ))?,
+        "could not script the provenance run"
+    );
+
+    new_cowork_session(ctx)?;
+    choose_mode(ctx, "Autonomous")?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "Write the three files.")?;
+    ctx.wait_until(
+        "the send control to arm",
+        "const b = document.querySelector('[data-test-id=\"send-message-button\"]'); return !!b && !b.disabled;",
+        Duration::from_secs(60),
+    )?;
+    ctx.eval("document.querySelector('[data-test-id=\"send-message-button\"]').click(); return true;")?;
+    let session = {
+        let deadline = Instant::now() + Duration::from_secs(180);
+        loop {
+            let _ = ctx.eval(
+                "const b = [...document.querySelectorAll('button')].find(x =>
+                   /^allow once$/i.test((x.textContent || '').trim()));
+                 if (b) b.click();
+                 return true;",
+            );
+            let answered = |who: &str| {
+                mock_requests(ctx).unwrap_or_default().iter().any(|r| {
+                    r["messages"].as_array().into_iter().flatten().any(|m| {
+                        m["role"] == "tool" && m["content"].to_string().contains(&format!("{who} finished"))
+                    })
+                })
+            };
+            let idle = ctx
+                .eval_bool("return !!document.querySelector('[data-test-id=\"send-message-button\"]');")
+                .unwrap_or(false);
+            if answered("scribe") && answered("implementer") && idle {
+                break current_cowork_session(ctx)?;
+            }
+            if Instant::now() >= deadline {
+                bail!("the run did not finish with both children answered");
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    };
+
+    // The journal: one actor per file, each the agent that wrote it.
+    let journal = undo_journal_of(ctx, &session)?;
+    let actors = journal_actors(&journal);
+    let of = |file: &str| {
+        actors
+            .iter()
+            .find(|(name, _)| name == file)
+            .map(|(_, id)| id.clone())
+            .unwrap_or_default()
+    };
+    ensure!(of("prov-main.txt") == "agent", "main's change: {actors:?}");
+    ensure!(
+        of("prov-scribe.txt") == format!("agent:{PROVENANCE_AGENT}"),
+        "the custom agent's change: {actors:?}"
+    );
+    ensure!(
+        of("prov-implementer.txt") == "role:implementer",
+        "the role's change: {actors:?}"
+    );
+
+    // The Changes panel says the same thing in words.
+    open_turn_undo(ctx)?;
+    ctx.wait_until(
+        "the panel to name an agent",
+        "return !!document.querySelector('[data-testid=\"turn-undo-actor\"]');",
+        Duration::from_secs(30),
+    )?;
+    let ids = shown_actor_ids(ctx)?;
+    for id in ["agent", &format!("agent:{PROVENANCE_AGENT}"), "role:implementer"] {
+        ensure!(ids.contains(id), "{id} is not shown in the Changes panel: {ids}");
+    }
+    let words = shown_actor_text(ctx)?;
+    for phrase in ["the primary agent", PROVENANCE_AGENT, "implementer role"] {
+        ensure!(words.contains(phrase), "{phrase:?} is not said in the Changes panel: {words}");
+    }
+    ensure!(!words.contains("unknown agent"), "a change was left unattributed: {words}");
+
+    // And the Timeline attributes the same calls.
+    show_timeline(ctx)?;
+    let timeline = ctx.eval_string(
+        "return [...document.querySelectorAll('[data-testid=\"timeline-row-actor\"]')]
+           .map(e => e.getAttribute('data-actor-id') || '').join(' ');",
+    )?;
+    for id in ["agent", &format!("agent:{PROVENANCE_AGENT}"), "role:implementer"] {
+        ensure!(timeline.contains(id), "{id} is not on the Timeline: {timeline}");
+    }
+
+    // A refused change leaves nothing to attribute: Review mode withholds
+    // `write` altogether, so the journal must not grow.
+    let before = journal_actors(&undo_journal_of(ctx, &session)?).len();
+    ctx.script_model("tools", &[write_call("prov-refused.txt", "should never be written\n").as_str()])?;
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    choose_mode(ctx, "Review first")?;
+    send_cowork(ctx, "try to write the refused file")?;
+    let after = journal_actors(&undo_journal_of(ctx, &session)?);
+    ensure!(after.len() == before, "a refused write reached the journal: {after:?}");
+    ensure!(
+        !after.iter().any(|(name, _)| name == "prov-refused.txt"),
+        "the refused file is in the journal: {after:?}"
+    );
+
+    std::fs::write(
+        data_folder()?.join(AGENT_PROVENANCE_EXPECTED),
+        serde_json::json!({ "session": session }).to_string(),
+    )
+    .map_err(|e| Failure(format!("could not record the session: {e}")))?;
+    Ok(())
+}
+
+/// The same provenance after a restart, when the custom agent has been
+/// renamed, and for a record written before provenance existed.
+fn scenario_agent_provenance_restart(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("plain", &[])?;
+    let raw = std::fs::read_to_string(data_folder()?.join(AGENT_PROVENANCE_EXPECTED)).map_err(|e| {
+        Failure(format!(
+            "no recorded session ({e}); run agent-provenance first with the same COWORK_SMOKE_KEEP"
+        ))
+    })?;
+    let expected: Value = serde_json::from_str(&raw).map_err(|e| Failure(e.to_string()))?;
+    let session = expected["session"].as_str().unwrap_or_default().to_string();
+    ensure!(!session.is_empty(), "the recorded session is empty");
+
+    // The custom agent is renamed between the runs: what it changed before
+    // must still name the agent that changed it.
+    let subagents = data_folder()?.join("agent-workspace").join("subagents");
+    let _ = std::fs::remove_file(subagents.join(format!("{PROVENANCE_AGENT}.toml")));
+    std::fs::write(
+        subagents.join("scribe-renamed.toml"),
+        "name = \"scribe-renamed\"\n\
+         description = \"The same agent under a new name.\"\n\
+         system_prompt = \"Write the file you are asked for and stop.\"\n\
+         allowed_tools = [\"write\"]\n",
+    )
+    .map_err(|e| Failure(e.to_string()))?;
+
+    let journal = undo_journal_of(ctx, &session)?;
+    let actors = journal_actors(&journal);
+    ensure!(
+        actors.iter().any(|(name, id)| name == "prov-scribe.txt" && id == &format!("agent:{PROVENANCE_AGENT}")),
+        "the renamed agent's old change lost its identity: {actors:?}"
+    );
+    ensure!(
+        actors.iter().any(|(name, id)| name == "prov-implementer.txt" && id == "role:implementer"),
+        "the role's change did not survive the restart: {actors:?}"
+    );
+
+    open_cowork_session(ctx, &session)?;
+    open_turn_undo(ctx)?;
+    ctx.wait_until(
+        "the panel to name an agent after the restart",
+        "return !!document.querySelector('[data-testid=\"turn-undo-actor\"]');",
+        Duration::from_secs(30),
+    )?;
+    let ids = shown_actor_ids(ctx)?;
+    ensure!(
+        ids.contains(&format!("agent:{PROVENANCE_AGENT}")) && ids.contains("role:implementer"),
+        "the panel lost the agents after the restart: {ids}"
+    );
+    let words = shown_actor_text(ctx)?;
+    ensure!(
+        words.contains(PROVENANCE_AGENT) && !words.contains("scribe-renamed"),
+        "the renamed agent rewrote an old change: {words}"
+    );
+
+    // One session's changes are not another's.
+    let other = undo_journal_of(ctx, "a-session-that-never-ran")?;
+    ensure!(
+        journal_actors(&other).is_empty(),
+        "another session's journal is not empty: {other}"
+    );
+
+    // A record written before provenance existed reads as unknown, never as
+    // the agent running now.
+    let path = find_journal_for(&data_folder()?, &session)
+        .ok_or_else(|| Failure("the journal file is not where it was expected".into()))?;
+    let text = std::fs::read_to_string(&path).map_err(|e| Failure(e.to_string()))?;
+    let mut doc: Value = serde_json::from_str(&text).map_err(|e| Failure(e.to_string()))?;
+    let mut stripped = false;
+    for turn in doc["turns"].as_array_mut().into_iter().flatten() {
+        for change in turn["files"].as_array_mut().into_iter().flatten() {
+            if change["path"].as_str().unwrap_or_default().ends_with("prov-main.txt") {
+                change.as_object_mut().map(|o| o.remove("actor"));
+                stripped = true;
+            }
+        }
+    }
+    ensure!(stripped, "the primary agent's change is not in {}", path.display());
+    std::fs::write(&path, doc.to_string()).map_err(|e| Failure(e.to_string()))?;
+    // The panel reads the journal when it mounts, so it is closed and opened
+    // again: what is being checked is a fresh read, not what was on screen.
+    ctx.eval(
+        r#"const b = [...document.querySelectorAll('button')].find(x =>
+             /^Changes$|changed/i.test(x.getAttribute('aria-label') || ''));
+           if (b && b.getAttribute('aria-pressed') === 'true') b.click();
+           return true;"#,
+    )?;
+    ctx.settle();
+    open_turn_undo(ctx)?;
+    ctx.wait_until(
+        "the panel to reload the journal",
+        "return !!document.querySelector('[data-testid=\"turn-undo-actor\"]');",
+        Duration::from_secs(30),
+    )?;
+    let words = shown_actor_text(ctx)?;
+    ensure!(
+        words.contains("unknown agent"),
+        "a record with no agent was not shown as unknown: {words}"
+    );
+    ensure!(
+        words.contains(PROVENANCE_AGENT),
+        "the other agents were lost when one became unknown: {words}"
+    );
+    Ok(())
+}
+
+/// The journal file of `session`, found by its content rather than its name.
+fn find_journal_for(data: &Path, session: &str) -> Option<PathBuf> {
+    fn walk(dir: &Path, session: &str, out: &mut Option<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, session, out);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("json") {
+                if let Ok(text) = std::fs::read_to_string(&path) {
+                    if text.contains(session) && text.contains("\"turns\"") {
+                        *out = Some(path);
+                        return;
+                    }
+                }
+            }
+            if out.is_some() {
+                return;
+            }
+        }
+    }
+    let mut found = None;
+    walk(data, session, &mut found);
+    found
+}
 
 /// The methods the web-search fixture has received so far, with times.
 fn mcp_methods_seen() -> Result<Vec<(String, f64)>, Failure> {

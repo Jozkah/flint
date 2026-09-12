@@ -24,6 +24,7 @@ import {
   recordToolActivity,
   resourceOf,
   withToolActivity,
+  actorFor,
   type ToolActivityContext,
 } from '@/lib/toolActivity'
 import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
@@ -546,6 +547,9 @@ async function routeCoworkTool(
         writeGrant: ctx.writeGrant,
         // The run the change belongs to, so it can be undone from it (AH-202).
         undoRun: ctx.activity?.run,
+        // And who is making it, so every change it journals names its agent
+        // (AH-110) -- the primary agent, a named subagent, or a role.
+        actor: actorFor(ctx.activity),
       })
     } finally {
       shellDone?.()

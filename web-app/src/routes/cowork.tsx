@@ -309,6 +309,7 @@ import {
 import {
   parseSubagentRequest,
   resolveSubagent,
+  subagentActorId,
   parentToolNames,
   runSubagent,
   type SubagentRequest,
@@ -2335,6 +2336,10 @@ function CoworkPage() {
             session: sid,
             run: runId,
             agent: resolved.name,
+            // AH-110: what a change it makes is attributed to. A role Jan
+            // ships is a role; anything else is an agent by that name.
+            agentId: subagentActorId(resolved),
+            parentAgent: 'agent',
             project: workspacePath ?? '',
           }),
           // The parent's instance: a second one would mean a second
@@ -2366,6 +2371,8 @@ function CoworkPage() {
                 session: sid,
                 run: runId,
                 agent: resolved.name,
+                agentId: subagentActorId(resolved),
+                parentAgent: 'agent',
                 project: workspacePath ?? '',
               },
               // The owner the grant was issued to, not the run's session: an
