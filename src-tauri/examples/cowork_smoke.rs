@@ -11560,6 +11560,10 @@ const OPT_IN_SCENARIOS: &[Scenario] = &[
         run: scenario_chat_execution_record,
     },
     Scenario {
+        name: "replay-from-record",
+        run: scenario_replay_from_record,
+    },
+    Scenario {
         name: "memory-forget-redacts-prompts",
         run: scenario_memory_forget_redacts_prompts,
     },
@@ -12370,6 +12374,159 @@ fn current_thread_id(ctx: &Ctx) -> Result<String, Failure> {
         "const m = (location.hash || location.pathname).match(/threads\\/([^/?#]+)/);
          return m ? m[1] : '';",
     )
+}
+
+/// AH-032: a finished run replays from the canonical record.
+///
+/// A real Cowork turn with a tool call is run, then the same commands the UI
+/// calls are asked what replaying that run would do: which request, which
+/// stored payload, and which tools the original used -- which the plan shows
+/// and the replay never runs. Beginning one hands back the payload from disk
+/// and opens a run of its own that names its source; settling it closes that
+/// run. The source run is left exactly as it was, and another session's run
+/// is refused.
+fn scenario_replay_from_record(ctx: &Ctx) -> ScenarioResult {
+    ctx.script_model("tools", &["ls:{\"path\":\".\"}"])?;
+    new_cowork_session(ctx)?;
+    attach_folder(ctx, &ctx.project)?;
+    send_cowork(ctx, "list the folder, then stop")?;
+    let session = current_cowork_session(ctx)?;
+
+    // Wait for the run the turn produced, and its tool call, to be recorded.
+    let deadline = Instant::now() + Duration::from_secs(90);
+    let (run, _) = loop {
+        let events = session_events(ctx, &session)?;
+        // The run that dispatched: a Cowork turn also opens a chat run for the
+        // SDK's own steps, and only the one that recorded its payload can be
+        // replayed from the record.
+        let dispatched = events
+            .iter()
+            .find(|e| e["kind"] == "message.completed" && e["payload"]["phase"] == "dispatched")
+            .and_then(|e| e["run"].as_str())
+            .map(str::to_string);
+        if let Some(run) = dispatched {
+            let ended = events
+                .iter()
+                .any(|e| e["kind"] == "run.ended" && e["run"] == run.as_str());
+            if ended {
+                break (run, events.len());
+            }
+        }
+        if Instant::now() >= deadline {
+            let (_, snaps) = ipc(
+                ctx,
+                "agent_prompt_snapshots",
+                &serde_json::json!({ "session": session }).to_string(),
+            )?;
+            let kinds: Vec<String> = session_events(ctx, &session)?
+                .iter()
+                .map(|e| format!("{}|{}", e["kind"].as_str().unwrap_or(""), e["run"].as_str().unwrap_or("")))
+                .collect();
+            return Err(Failure(format!(
+                "the turn never finished recording. kinds={kinds:?} snapshots={}",
+                snaps.as_array().map(|a| a.len()).unwrap_or(0)
+            )));
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    };
+    ensure!(!run.is_empty(), "the recorded run has no id");
+
+    // What would be replayed, before anything is sent.
+    let (ok, plan) = ipc(
+        ctx,
+        "agent_replay_plan",
+        &serde_json::json!({ "session": session, "run": run }).to_string(),
+    )?;
+    ensure!(ok, "agent_replay_plan failed: {plan}");
+    ensure!(plan["run"] == run.as_str(), "the plan is of another run: {plan}");
+    ensure!(plan["stoppedBy"] == "done", "the plan misreports the ending: {plan}");
+    let steps = plan["steps"].as_array().cloned().unwrap_or_default();
+    ensure!(!steps.is_empty(), "the plan has no request to replay: {plan}");
+    ensure!(
+        steps.iter().any(|s| s["sendable"] == true
+            && s["snapshotId"].as_str().is_some_and(|id| !id.is_empty())),
+        "no step carries a stored payload: {plan}"
+    );
+    let tools = plan["toolCalls"].as_array().cloned().unwrap_or_default();
+    ensure!(
+        tools.iter().any(|t| t == "ls"),
+        "the plan does not say what the original ran: {plan}"
+    );
+
+    // The deterministic half: the run's own events, read back, nothing sent.
+    let (ok, recorded) = ipc(
+        ctx,
+        "agent_replay_recorded",
+        &serde_json::json!({ "session": session, "run": run }).to_string(),
+    )?;
+    ensure!(ok, "agent_replay_recorded failed: {recorded}");
+    let recorded = recorded.as_array().cloned().unwrap_or_default();
+    ensure!(
+        recorded.iter().all(|e| e["run"] == run.as_str()),
+        "the recorded run carries another run's events"
+    );
+    let before = recorded.len();
+
+    // A run of a session that does not own it is refused, typed.
+    let (ok, refused) = ipc(
+        ctx,
+        "agent_replay_plan",
+        &serde_json::json!({ "session": "not-this-session", "run": run }).to_string(),
+    )?;
+    ensure!(!ok, "another session was allowed to plan this run: {refused}");
+    ensure!(
+        refused.to_string().contains("unknown-run"),
+        "the refusal is not typed: {refused}"
+    );
+
+    // Beginning one hands back the stored payload and opens its own run.
+    let (ok, started) = ipc(
+        ctx,
+        "agent_replay_run_begin",
+        &serde_json::json!({ "session": session, "run": run, "invocation": null }).to_string(),
+    )?;
+    ensure!(ok, "agent_replay_run_begin failed: {started}");
+    ensure!(
+        started["payload"]["messages"].is_array(),
+        "the replay was not handed the stored request: {started}"
+    );
+    let replay_id = started["record"]["id"].as_str().unwrap_or_default().to_string();
+    ensure!(!replay_id.is_empty(), "the replay has no id: {started}");
+    let replay_run = format!("replay-{replay_id}");
+
+    let (ok, settled) = ipc(
+        ctx,
+        "agent_replay_run_settle",
+        &serde_json::json!({
+            "session": session,
+            "replayId": replay_id,
+            "outcome": { "status": "completed", "text": "replayed" },
+        })
+        .to_string(),
+    )?;
+    ensure!(ok, "agent_replay_run_settle failed: {settled}");
+
+    let after = session_events(ctx, &session)?;
+    let replay_events: Vec<&Value> =
+        after.iter().filter(|e| e["run"] == replay_run.as_str()).collect();
+    ensure!(
+        replay_events.iter().any(|e| e["kind"] == "run.started"
+            && e["payload"]["replayOf"] == run.as_str()
+            && e["payload"]["source"] == "replay"),
+        "the replay did not record whose replay it is: {replay_events:?}"
+    );
+    ensure!(
+        replay_events
+            .iter()
+            .any(|e| e["kind"] == "run.ended" && e["payload"]["stoppedBy"] == "done"),
+        "the replay's end was not recorded: {replay_events:?}"
+    );
+    let source_now = after.iter().filter(|e| e["run"] == run.as_str()).count();
+    ensure!(
+        source_now == before,
+        "replaying wrote into the source run ({before} -> {source_now})"
+    );
+    Ok(())
 }
 
 /// AH-004: a Chat turn writes the same canonical record a Cowork turn does --

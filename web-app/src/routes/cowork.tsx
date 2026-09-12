@@ -3409,6 +3409,28 @@ function CoworkPage() {
       // Kept for the step that follows: the accounting for a dispatch is only
       // known once its reply lands, and by then the sink has moved on.
       lastSnapshotRef.current[sessionId] = ref
+      // AH-032: the record links this request to the exact payload it sent,
+      // the same way the agent loop does, so a finished run can be replayed
+      // from the record rather than from a reconstruction of it. Recorded
+      // under the run that is dispatching, never the session in view.
+      const running = useCoworkRun.getState().runs[sessionId]?.runId
+      if (running) {
+        void recordEvents([
+          {
+            id: `dispatch:${ref.invocation || ref.id}`,
+            session: sessionId,
+            run: running,
+            invocation: ref.invocation ?? '',
+            kind: 'message.completed',
+            payload: {
+              phase: 'dispatched',
+              snapshotId: ref.id,
+              hash: ref.hash,
+              redactions: ref.redactions,
+            },
+          },
+        ])
+      }
       // Beside the turns, not on them: the run rebuilds its live turn array as
       // steps complete, so a reference written onto a turn at dispatch time is
       // gone before it can render.

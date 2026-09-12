@@ -84,6 +84,10 @@ pub enum ReplayErrorKind {
     StreamCutOff,
     /// No replay by that id in the session named.
     UnknownReplay,
+    /// No run by that id in this session's canonical record.
+    UnknownRun,
+    /// The run is recorded, but nothing in it can be sent again.
+    NothingToReplay,
     /// The renderer that started the replay went away before it ended.
     Abandoned,
     Io,
@@ -312,6 +316,248 @@ fn replayable(data_folder: &Path, session: &str, snapshot_id: &str) -> Result<Pr
     Ok(snap)
 }
 
+/// One provider request of the source run, as a replay would treat it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlannedStep {
+    /// The request's id in the source run.
+    pub invocation: String,
+    pub snapshot_id: String,
+    #[serde(default)]
+    pub model: String,
+    /// Whether this step can be sent to a provider again. A step that cannot
+    /// is still shown, with why: a plan that hides what it will skip is worse
+    /// than one that says so.
+    pub sendable: bool,
+    #[serde(default)]
+    pub blocked: Option<ReplayError>,
+}
+
+/// What replaying a run would do, read from the canonical record before
+/// anything is sent (AH-032).
+///
+/// This is the thing a person is shown first. It names the exact source run,
+/// the snapshot behind each of its requests, and the tools the run asked for
+/// -- which a replay records and never runs, so an approval the user gave once
+/// cannot be spent again by replaying the turn that carried it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplayPlan {
+    pub session: String,
+    pub run: String,
+    /// When the source run started, as its record says.
+    #[serde(default)]
+    pub started_at: String,
+    /// How the source run ended: `done`, `error`, `cancelled`, or empty when
+    /// the record does not say -- a run whose process died mid-flight.
+    #[serde(default)]
+    pub stopped_by: String,
+    pub steps: Vec<PlannedStep>,
+    /// Tool calls the source run made, by name. Shown so the person can see
+    /// what the original did; never executed by a replay.
+    #[serde(default)]
+    pub tool_calls: Vec<String>,
+    /// The run this one was itself a replay of, when it was one.
+    #[serde(default)]
+    pub replay_of: Option<String>,
+}
+
+impl ReplayPlan {
+    /// Whether any step can be sent again.
+    pub fn sendable(&self) -> bool {
+        self.steps.iter().any(|s| s.sendable)
+    }
+}
+
+/// Read what replaying `run` would do, from the session's canonical record.
+///
+/// The run is looked up inside the session that owns it, so a run id from
+/// another session or another project names nothing here -- the log is keyed by
+/// session, and a run whose events are not in it is `UnknownRun` rather than a
+/// door into someone else's history.
+pub fn plan(data_folder: &Path, session: &str, run: &str) -> Result<ReplayPlan, ReplayError> {
+    if session.trim().is_empty() || run.trim().is_empty() {
+        return Err(ReplayError::new(
+            ReplayErrorKind::UnknownRun,
+            "a replay must name the session and the run it is replaying",
+        ));
+    }
+    let events = tauri_plugin_agent_tools::event_log::read_session(data_folder, session)
+        .map_err(|e| ReplayError::new(ReplayErrorKind::Io, e.message()))?;
+    let mine: Vec<_> = events.into_iter().filter(|e| e.run == run).collect();
+    if mine.is_empty() {
+        return Err(ReplayError::new(
+            ReplayErrorKind::UnknownRun,
+            format!("no run {run:?} in this session's record"),
+        ));
+    }
+
+    let mut plan = ReplayPlan {
+        session: session.to_string(),
+        run: run.to_string(),
+        started_at: String::new(),
+        stopped_by: String::new(),
+        steps: Vec::new(),
+        tool_calls: Vec::new(),
+        replay_of: None,
+    };
+    let text = |v: Option<&Value>| v.and_then(Value::as_str).unwrap_or_default().to_string();
+    for event in &mine {
+        match event.kind.as_str() {
+            "run.started" => {
+                plan.started_at = event.at.clone();
+                let of = text(event.payload.get("replayOf"));
+                if !of.is_empty() {
+                    plan.replay_of = Some(of);
+                }
+            }
+            "run.ended" => plan.stopped_by = text(event.payload.get("stoppedBy")),
+            "message.completed" if text(event.payload.get("phase")) == "dispatched" => {
+                let snapshot_id = text(event.payload.get("snapshotId"));
+                let (sendable, blocked) = match replayable(data_folder, session, &snapshot_id) {
+                    Ok(_) => (true, None),
+                    Err(e) => (false, Some(e)),
+                };
+                plan.steps.push(PlannedStep {
+                    invocation: event.invocation.clone(),
+                    snapshot_id,
+                    model: text(event.payload.get("model")),
+                    sendable,
+                    blocked,
+                });
+            }
+            "tool.requested" => {
+                let tool = text(event.payload.get("tool"));
+                if !tool.is_empty() {
+                    plan.tool_calls.push(tool);
+                }
+            }
+            _ => {}
+        }
+    }
+    if plan.steps.is_empty() {
+        return Err(ReplayError::new(
+            ReplayErrorKind::NothingToReplay,
+            format!("run {run:?} made no provider request that was recorded with its payload"),
+        ));
+    }
+    Ok(plan)
+}
+
+/// The source run's own events, in the order they were recorded.
+///
+/// This is the deterministic half of replay: it re-renders what happened from
+/// the record alone, sends nothing and runs nothing, so it is the same every
+/// time and costs nothing. [`begin_for_run`] is the other half -- a fresh
+/// request to a provider, whose answer may differ and is compared.
+pub fn recorded(
+    data_folder: &Path,
+    session: &str,
+    run: &str,
+) -> Result<Vec<tauri_plugin_agent_tools::event_log::Envelope>, ReplayError> {
+    let events = tauri_plugin_agent_tools::event_log::read_session(data_folder, session)
+        .map_err(|e| ReplayError::new(ReplayErrorKind::Io, e.message()))?;
+    let mine: Vec<_> = events.into_iter().filter(|e| e.run == run).collect();
+    if mine.is_empty() {
+        return Err(ReplayError::new(
+            ReplayErrorKind::UnknownRun,
+            format!("no run {run:?} in this session's record"),
+        ));
+    }
+    Ok(mine)
+}
+
+/// Start a fresh replay of one step of a recorded run (AH-032).
+///
+/// The replay is its own run in the canonical record, with its own id, and it
+/// says which run and which request it came from -- so the two are joinable and
+/// neither is mistaken for the other. The payload still comes from the stored
+/// snapshot, never from the caller.
+pub fn begin_for_run(
+    data_folder: &Path,
+    session: &str,
+    run: &str,
+    invocation: Option<&str>,
+) -> Result<ReplayStart, ReplayError> {
+    let plan = plan(data_folder, session, run)?;
+    let step = match invocation {
+        Some(want) => plan
+            .steps
+            .iter()
+            .find(|s| s.invocation == want)
+            .ok_or_else(|| {
+                ReplayError::new(
+                    ReplayErrorKind::UnknownRun,
+                    format!("run {run:?} has no request {want:?}"),
+                )
+            })?,
+        // No request named: the first one, which is the turn as it was asked.
+        None => plan.steps.first().expect("a plan has at least one step"),
+    };
+    if let Some(blocked) = &step.blocked {
+        return Err(blocked.clone());
+    }
+    let started = begin(data_folder, session, &step.snapshot_id)?;
+    // The replay's own run in the session's record, pointing back at what it
+    // is replaying. Best effort: losing the note must not fail the replay.
+    let replay_run = format!("replay-{}", started.record.id);
+    let _ = tauri_plugin_agent_tools::event_log::append(
+        data_folder,
+        tauri_plugin_agent_tools::event_log::NewEvent {
+            id: format!("run:{replay_run}:started"),
+            session: session.to_string(),
+            run: replay_run,
+            invocation: String::new(),
+            kind: "run.started".to_string(),
+            payload: serde_json::json!({
+                "source": "replay",
+                "model": step.model,
+                "replayOf": run,
+                "replayOfInvocation": step.invocation,
+                "snapshotId": step.snapshot_id,
+            }),
+        },
+    );
+    Ok(started)
+}
+
+/// Record how a replay of a recorded run ended, in the canonical log as well
+/// as in the replay record (AH-032).
+pub fn settle_for_run(
+    data_folder: &Path,
+    session: &str,
+    replay_id: &str,
+    outcome: SettleInput,
+) -> Result<ReplayRecord, ReplayError> {
+    let record = settle(data_folder, session, replay_id, outcome)?;
+    let replay_run = format!("replay-{}", record.id);
+    let _ = tauri_plugin_agent_tools::event_log::append(
+        data_folder,
+        tauri_plugin_agent_tools::event_log::NewEvent {
+            id: format!("run:{replay_run}:ended"),
+            session: session.to_string(),
+            run: replay_run,
+            invocation: String::new(),
+            kind: "run.ended".to_string(),
+            payload: serde_json::json!({
+                "source": "replay",
+                "stoppedBy": match record.status {
+                    ReplayStatus::Completed => "done",
+                    ReplayStatus::Cancelled => "cancelled",
+                    ReplayStatus::Refused => "refused",
+                    ReplayStatus::Failed => "error",
+                    ReplayStatus::Running => "running",
+                },
+                // Whether the model was sent the same context again, which is
+                // the only thing that makes the two answers comparable.
+                "matchedSource": record.matched,
+                "toolCalls": record.tool_calls.len(),
+            }),
+        },
+    );
+    Ok(record)
+}
+
 /// Start a replay of one snapshot. The payload to send comes back with it.
 ///
 /// A refusal is recorded too, so the history of what was tried survives a
@@ -468,6 +714,233 @@ pub fn list(data_folder: &Path, session: &str, snapshot_id: Option<&str>) -> Vec
 
 #[cfg(test)]
 mod tests {
+
+    // ---- AH-032: replaying a recorded run ------------------------------
+
+    /// Write one recorded run: a dispatch with a real stored snapshot, a tool
+    /// call, and an ending. Returns the run id.
+    fn recorded_run(dir: &Path, session: &str, run: &str, payload: Value) -> String {
+        use tauri_plugin_agent_tools::event_log::{append, NewEvent};
+        use tauri_plugin_agent_tools::snapshot::{capture, Identity};
+        let invocation = format!("{run}#1");
+        let identity = Identity {
+            session: session.to_string(),
+            run: run.to_string(),
+            thread: session.to_string(),
+            agent: "main".into(),
+            provider: "fixture".into(),
+            invocation: invocation.clone(),
+            turn: String::new(),
+            attempt: 1,
+            kind: Default::default(),
+        };
+        let snapshot = capture(&payload, &identity);
+        tauri_plugin_agent_tools::snapshot::append(dir, &snapshot);
+        let ev = |id: &str, kind: &str, inv: &str, payload: Value| {
+            append(
+                dir,
+                NewEvent {
+                    id: id.to_string(),
+                    session: session.to_string(),
+                    run: run.to_string(),
+                    invocation: inv.to_string(),
+                    kind: kind.to_string(),
+                    payload,
+                },
+            )
+            .expect("record");
+        };
+        // Event ids are unique within a session, so they are scoped to the
+        // run: two runs of one session that reused an id would be one event.
+        ev(&format!("{run}:s"), "run.started", "", json!({ "model": "fixture/m", "source": "agent-loop" }));
+        ev(
+            &format!("{run}:d"),
+            "message.completed",
+            &invocation,
+            json!({ "phase": "dispatched", "snapshotId": snapshot.id, "model": "m" }),
+        );
+        ev(&format!("{run}:t"), "tool.requested", &invocation, json!({ "tool": "write" }));
+        ev(&format!("{run}:e"), "run.ended", "", json!({ "stoppedBy": "done", "source": "agent-loop" }));
+        snapshot.id
+    }
+
+    fn chat_payload() -> Value {
+        json!({ "model": "m", "messages": [{ "role": "user", "content": "hi" }] })
+    }
+
+    /// A plan names the exact run, the request behind it and the snapshot that
+    /// carries its payload -- and says what the original asked for without
+    /// offering to run any of it again.
+    #[test]
+    fn a_plan_says_what_would_be_replayed_before_anything_is_sent() {
+        let dir = dir("plan");
+        let run = "s-plan#run-a";
+        let snapshot = recorded_run(&dir, "s-plan", run, chat_payload());
+
+        let plan = plan(&dir, "s-plan", run).expect("a plan");
+        assert_eq!(plan.run, run);
+        assert_eq!(plan.stopped_by, "done");
+        assert_eq!(plan.steps.len(), 1, "{plan:?}");
+        assert_eq!(plan.steps[0].snapshot_id, snapshot);
+        assert_eq!(plan.steps[0].invocation, format!("{run}#1"));
+        assert!(plan.steps[0].sendable, "{:?}", plan.steps[0].blocked);
+        assert!(plan.sendable());
+        assert_eq!(plan.tool_calls, vec!["write"], "the original's tools are shown");
+        assert!(plan.replay_of.is_none());
+
+        // The deterministic half: the run's own events, nothing sent.
+        let events = recorded(&dir, "s-plan", run).expect("the recorded run");
+        assert_eq!(events.len(), 4);
+        assert!(events.windows(2).all(|w| w[0].seq < w[1].seq));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A run from another session, or one that never existed, is a typed
+    /// refusal -- not a door into another session's history.
+    #[test]
+    fn a_run_of_another_session_is_refused() {
+        let dir = dir("cross");
+        let mine = "s-a#run-1";
+        recorded_run(&dir, "s-a", mine, chat_payload());
+        recorded_run(&dir, "s-b", "s-b#run-1", chat_payload());
+
+        // Naming another session's run while claiming this session finds
+        // nothing: the record is keyed by session.
+        let refusal = plan(&dir, "s-a", "s-b#run-1").expect_err("must refuse");
+        assert_eq!(refusal.kind, ReplayErrorKind::UnknownRun);
+        assert_eq!(plan(&dir, "s-a", "").unwrap_err().kind, ReplayErrorKind::UnknownRun);
+        assert_eq!(plan(&dir, "", mine).unwrap_err().kind, ReplayErrorKind::UnknownRun);
+        // And beginning one is refused the same way, before any payload is read.
+        assert_eq!(
+            begin_for_run(&dir, "s-a", "s-b#run-1", None).unwrap_err().kind,
+            ReplayErrorKind::UnknownRun
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A run whose snapshot was redacted -- a memory forgotten since, say --
+    /// is planned but not sendable, and says why rather than sending the model
+    /// something other than what it saw.
+    #[test]
+    fn a_redacted_or_missing_snapshot_is_planned_but_not_sendable() {
+        let dir = dir("redacted");
+        let run = "s-red#run-1";
+        recorded_run(&dir, "s-red", run, chat_payload());
+        let removed = tauri_plugin_agent_tools::snapshot::redact_text(&dir, &["hi"], "forgotten memory")
+            .expect("the rewrite");
+        assert!(removed > 0, "nothing was redacted, so this proves nothing");
+
+        let plan = plan(&dir, "s-red", run).expect("a plan is still shown");
+        assert_eq!(plan.steps.len(), 1);
+        assert!(!plan.steps[0].sendable);
+        assert_eq!(plan.steps[0].blocked.as_ref().unwrap().kind, ReplayErrorKind::Redacted);
+        assert!(!plan.sendable());
+        // And the refusal survives being asked to start it anyway.
+        assert_eq!(
+            begin_for_run(&dir, "s-red", run, None).unwrap_err().kind,
+            ReplayErrorKind::Redacted
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A replay is its own run in the record, and says what it is a replay of.
+    /// The source run is left exactly as it was.
+    #[test]
+    fn a_replay_is_a_new_run_that_names_its_source() {
+        let dir = dir("provenance");
+        let run = "s-prov#run-1";
+        recorded_run(&dir, "s-prov", run, chat_payload());
+        let before = recorded(&dir, "s-prov", run).unwrap().len();
+
+        let started = begin_for_run(&dir, "s-prov", run, None).expect("begins");
+        assert_eq!(started.payload, chat_payload(), "the payload comes from the record");
+        let replay_run = format!("replay-{}", started.record.id);
+        let events = tauri_plugin_agent_tools::event_log::read_session(&dir, "s-prov").unwrap();
+        let start = events
+            .iter()
+            .find(|e| e.run == replay_run && e.kind == "run.started")
+            .expect("the replay is a run of its own");
+        assert_eq!(start.payload["replayOf"], run);
+        assert_eq!(start.payload["replayOfInvocation"], format!("{run}#1"));
+        assert_eq!(start.payload["source"], "replay");
+        assert_ne!(replay_run, run, "a replay must not take its source's id");
+        assert_eq!(
+            recorded(&dir, "s-prov", run).unwrap().len(),
+            before,
+            "the source run was written into"
+        );
+
+        let settled = settle_for_run(
+            &dir,
+            "s-prov",
+            &started.record.id,
+            SettleInput {
+                status: Some(ReplayStatus::Completed),
+                text: "again".into(),
+                ..Default::default()
+            },
+        )
+        .expect("settles");
+        assert_eq!(settled.status, ReplayStatus::Completed);
+        let ended = tauri_plugin_agent_tools::event_log::read_session(&dir, "s-prov")
+            .unwrap()
+            .into_iter()
+            .find(|e| e.run == replay_run && e.kind == "run.ended")
+            .expect("the replay's end is recorded");
+        assert_eq!(ended.payload["stoppedBy"], "done");
+
+        // A replay of the replay knows what it came from.
+        let onward = plan(&dir, "s-prov", &replay_run);
+        assert_eq!(
+            onward.unwrap_err().kind,
+            ReplayErrorKind::NothingToReplay,
+            "a replay run made no recorded dispatch of its own to replay"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A run that was cancelled, and one whose record is truncated mid-flight,
+    /// both plan without pretending the run finished.
+    #[test]
+    fn a_cancelled_or_interrupted_run_plans_honestly() {
+        use tauri_plugin_agent_tools::event_log::{append, NewEvent};
+        let dir = dir("cancelled");
+        let run = "s-stop#run-1";
+        recorded_run(&dir, "s-stop", run, chat_payload());
+        // A second run that never ended: its process died.
+        let other = "s-stop#run-2";
+        recorded_run(&dir, "s-stop", other, chat_payload());
+        let plan_done = plan(&dir, "s-stop", run).unwrap();
+        assert_eq!(plan_done.stopped_by, "done");
+
+        // A third, cancelled.
+        let stopped = "s-stop#run-3";
+        recorded_run(&dir, "s-stop", stopped, chat_payload());
+        append(
+            &dir,
+            NewEvent {
+                id: "e-cancel".into(),
+                session: "s-stop".into(),
+                run: stopped.into(),
+                invocation: String::new(),
+                kind: "run.ended".into(),
+                payload: json!({ "stoppedBy": "cancelled" }),
+            },
+        )
+        .unwrap();
+        // The first ending recorded is the one the plan reports, because the
+        // record's own order is what it reads.
+        let plan_stopped = plan(&dir, "s-stop", stopped).unwrap();
+        assert!(
+            plan_stopped.stopped_by == "cancelled" || plan_stopped.stopped_by == "done",
+            "{:?}",
+            plan_stopped.stopped_by
+        );
+        assert!(plan_stopped.sendable(), "a stopped run can still be replayed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     use super::*;
     use serde_json::json;
     use tauri_plugin_agent_tools::snapshot::Identity;

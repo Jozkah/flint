@@ -1033,6 +1033,77 @@ async fn replay_blocking<T: Send + 'static>(
     })?
 }
 
+/// What replaying a recorded run would do, before anything is sent. AH-032.
+///
+/// Read from the session's canonical record: the run's provider requests, the
+/// snapshot behind each, whether each can be sent again and why not when it
+/// cannot, and the tools the original asked for -- which a replay shows and
+/// never runs.
+#[tauri::command]
+pub async fn agent_replay_plan(
+    app: tauri::AppHandle,
+    session: String,
+    run: String,
+) -> Result<crate::core::agent::replay::ReplayPlan, crate::core::agent::replay::ReplayError> {
+    let data_folder = get_jan_data_folder_path(app);
+    replay_blocking(move || crate::core::agent::replay::plan(&data_folder, &session, &run)).await
+}
+
+/// A recorded run's own events, in order. AH-032.
+///
+/// The deterministic half of replay: what happened, re-read from the record.
+/// Nothing is sent and nothing is run, so it is the same every time.
+#[tauri::command]
+pub async fn agent_replay_recorded(
+    app: tauri::AppHandle,
+    session: String,
+    run: String,
+) -> Result<
+    Vec<tauri_plugin_agent_tools::event_log::Envelope>,
+    crate::core::agent::replay::ReplayError,
+> {
+    let data_folder = get_jan_data_folder_path(app);
+    replay_blocking(move || crate::core::agent::replay::recorded(&data_folder, &session, &run)).await
+}
+
+/// Start a fresh replay of one request of a recorded run. AH-032.
+///
+/// The replay is its own run in the record and says which run and request it
+/// came from, so neither is mistaken for the other.
+#[tauri::command]
+pub async fn agent_replay_run_begin(
+    app: tauri::AppHandle,
+    session: String,
+    run: String,
+    invocation: Option<String>,
+) -> Result<crate::core::agent::replay::ReplayStart, crate::core::agent::replay::ReplayError> {
+    let data_folder = get_jan_data_folder_path(app);
+    replay_blocking(move || {
+        crate::core::agent::replay::begin_for_run(
+            &data_folder,
+            &session,
+            &run,
+            invocation.as_deref(),
+        )
+    })
+    .await
+}
+
+/// Record how a run replay ended, in the canonical record as well. AH-032.
+#[tauri::command]
+pub async fn agent_replay_run_settle(
+    app: tauri::AppHandle,
+    session: String,
+    replay_id: String,
+    outcome: crate::core::agent::replay::SettleInput,
+) -> Result<crate::core::agent::replay::ReplayRecord, crate::core::agent::replay::ReplayError> {
+    let data_folder = get_jan_data_folder_path(app);
+    replay_blocking(move || {
+        crate::core::agent::replay::settle_for_run(&data_folder, &session, &replay_id, outcome)
+    })
+    .await
+}
+
 /// Start replaying a prompt snapshot. AH-079.
 ///
 /// The renderer names the snapshot and the session it belongs to; the payload

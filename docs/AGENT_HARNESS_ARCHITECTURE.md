@@ -1037,6 +1037,23 @@ over that log, and a line that no longer parses is left untouched rather than
 edited blind. `memory/` never logs the outcome -- a body could travel with the
 message -- so the snapshot module reports it instead.
 
+**Replaying a recorded run (AH-032).** Replay reads the canonical record
+rather than a format of its own. `replay::plan` names the exact source run, the
+snapshot behind each of its provider requests, whether each can be sent again
+and why not when it cannot, and the tools the original asked for -- shown, never
+run, so an approval given once cannot be spent again by replaying the turn that
+carried it. `replay::recorded` is the deterministic half: the run's own events,
+re-read, sending nothing and costing nothing. `begin_for_run` is the other half:
+a fresh request whose payload still comes from the stored snapshot, opening a
+run of its own that names the run and the request it came from, and whose
+ending says whether the model really received the same context again.
+
+A run is looked up inside the session that owns it, so a run id from another
+session or another project names nothing. A snapshot that was stored without its
+payload, or whose fields were later redacted -- a memory forgotten since, say --
+is planned but not sendable, with the reason attached: a replay that quietly
+differs is worse than none.
+
 **One identity for a conversation (AH-008).** The session a run records under
 is the conversation, not the process: a `--resume` run adopts the thread's id,
 so its events, prompt snapshots, changes and audit records join the ones its

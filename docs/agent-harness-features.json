@@ -1071,7 +1071,9 @@
       ],
       "owner": "lane-02-execution-runtime",
       "files": [
-        "src-tauri/src/core/cli/journal.rs"
+        "src-tauri/src/core/agent/replay.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "web-app/src/routes/cowork.tsx"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -1082,10 +1084,16 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/replay.rs::a_plan_says_what_would_be_replayed_before_anything_is_sent",
+        "src-tauri/src/core/agent/replay.rs::a_run_of_another_session_is_refused",
+        "src-tauri/src/core/agent/replay.rs::a_redacted_or_missing_snapshot_is_planned_but_not_sendable",
+        "src-tauri/src/core/agent/replay.rs::a_replay_is_a_new_run_that_names_its_source",
+        "src-tauri/examples/cowork_smoke.rs::replay-from-record"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "display.jsonl is a rendering journal; StreamEvent is never persisted, so runs cannot be replayed or audited."
+      "auditNote": "display.jsonl is a rendering journal; StreamEvent is never persisted, so runs cannot be replayed or audited. 2026-09-12 (Phase 4): replay now reads the canonical record. plan() names the source run, the snapshot behind each of its provider requests, whether each is sendable and why not, and the tools the original asked for -- shown and never run, so an approval given once cannot be spent again. recorded() is the deterministic half: the run's events re-read, nothing sent. begin_for_run() sends the stored payload and opens a run of its own recording replayOf, the source invocation and the snapshot; settle_for_run() records that run's end and whether the model received the same context again. A run is looked up inside the session that owns it, so another session's run is unknown-run; a redacted snapshot is planned but refused. Wired as four commands the UI calls. Proven by the replay-from-record WebView scenario on a real Cowork turn plus five unit tests. Doing it exposed a real gap: a Cowork run recorded no link from its request to the payload it sent, so nothing could be replayed from the record; the renderer now records the dispatch the way the agent loop does. Still in progress: a Chat-only run records no dispatch event (its run identity lives in the renderer while the snapshot reference reaches only Cowork's sink), so a purely-Chat run cannot yet be replayed from the record."
     },
     {
       "id": "AH-033",

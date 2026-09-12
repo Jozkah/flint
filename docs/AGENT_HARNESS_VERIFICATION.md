@@ -512,6 +512,18 @@ scenario. The real-provider lanes were unavailable again for this batch
 (`v100` does not resolve; see `/c/tmp/jan-p4-evidence/v100-probe-1.log`), so
 the CLI evidence above is against local fixtures, not 8555.
 
+## Replay from the canonical record (AH-032, in progress)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView | `cowork-smoke --only replay-from-record` | a real Cowork turn with a tool call is run, then the same commands the UI calls are asked what replaying that run would do: the plan names the run, reports how it ended, carries a step with a stored payload, and lists the `ls` the original ran; the recorded half reads the run's own events back and holds no other run's; another session asking for that run is refused with `unknown-run`; beginning a replay hands back the stored request and opens a run of its own whose `run.started` names `replayOf` and `source: replay`; settling records that run's end; and the source run has exactly as many events as before |
+| Rust tests | `replay.rs::a_plan_says_what_would_be_replayed_before_anything_is_sent`, `a_run_of_another_session_is_refused`, `a_redacted_or_missing_snapshot_is_planned_but_not_sendable`, `a_replay_is_a_new_run_that_names_its_source`, `a_cancelled_or_interrupted_run_plans_honestly` | the plan's contents and the deterministic re-read; a run of another session, an empty session and an empty run are all `unknown-run`, and beginning one is refused before any payload is read; a redacted snapshot is shown in the plan with `redacted` and refused when started; a replay is a new run naming its source and its request, the source run is not written into, the replay's end is recorded, and a replay run has no dispatch of its own to replay; a cancelled run still plans and is still replayable |
+
+Still missing for AH-032: a Chat-only run records no dispatch event -- Chat's
+run identity lives in the renderer while the snapshot reference reaches only
+Cowork's sink -- so a run that happened purely in Chat cannot yet be replayed
+from the record. Cowork, the headless CLI and the desktop's own agent runs can.
+
 ## Run and session identity (AH-008, in progress)
 
 | Evidence | Where | Covers |
