@@ -724,6 +724,20 @@ tool added later is covered without being told to be. The Rust agent loop
 invoker: each call as it is asked for, then how it ended, under the run's
 session, run and agent, with `run.started` / `run.ended` around it.
 
+**Saying the window is filling (AH-077).** One shape of the warning, in
+`core/agent/context_pressure.rs`, shared by the TUI and the headless CLI so the
+two cannot drift: the share of the window in use, the figures behind it
+(`82,000 of 100,000 tokens`), where those figures came from -- the provider's
+count or Jan's estimate -- and what can still be done (`/compact`, `/context`).
+It fires at 80% and once per approach: crossing back below re-arms it, which is
+what a compaction, a new conversation or a larger window does. The window is the
+one the run resolved (`[agent].context_window`, then the model catalog, then the
+fallback), never a constant. The desktop counter is the same rule at 85%, with
+"Nearly full" / "Full" in words beside the ring and the same "of N tokens,
+counted by the provider / Jan's estimate" line in its popover. A surface that
+does not know the window -- a remote provider that reports none -- says the
+count and no percentage rather than inventing a denominator.
+
 **One request, one id (AH-004).** Every provider request has an invocation id,
 and everything that request causes is recorded under it: the prompt snapshot it
 was taken from, what it cost, what its reply was made of, and every tool call it

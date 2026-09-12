@@ -13,6 +13,7 @@ pub mod checkpoint;
 pub mod commands;
 pub mod compaction;
 pub mod context;
+pub mod context_pressure;
 pub mod events;
 pub mod genai_bridge;
 pub mod git;

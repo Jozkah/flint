@@ -69,6 +69,10 @@ describe('TokenCounter', () => {
     expect(warning).toHaveAttribute('data-tier', 'warn')
     expect(warning).toHaveTextContent('Nearly full')
     expect(screen.getByTestId('context-pressure-detail')).toHaveTextContent('100 tokens left')
+    // The figures say where they came from: this one is Jan's own estimate.
+    expect(screen.getByTestId('context-pressure-source')).toHaveTextContent(
+      `${(900).toLocaleString()} of ${(1000).toLocaleString()} tokens, Jan's estimate`
+    )
   })
 
   it('says the window is full once it is over', () => {

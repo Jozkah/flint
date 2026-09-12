@@ -289,6 +289,14 @@ export const TokenCounter = memo(function TokenCounter({
                 {tier === 'over'
                   ? 'This conversation is larger than the context window: the next request may be cut or refused. Start a new chat or remove attachments.'
                   : `${formatExact(remaining)} tokens left. Start a new chat or remove attachments before the window fills.`}
+                {/* AH-077: an estimate that reads like a measurement is worse
+                    than no number, so the figures say where they came from. */}
+                <span className="block" data-testid="context-pressure-source">
+                  {formatExact(totalTokens)} of {formatExact(tokenData.maxTokens)} tokens,{' '}
+                  {breakdown.reported
+                    ? 'counted by the provider'
+                    : "Jan's estimate"}
+                </span>
               </p>
             )}
             <div className="flex items-baseline justify-between mb-1.5">

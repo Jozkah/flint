@@ -734,6 +734,9 @@ fn build_cli_orchestration_args(
 pub(crate) struct PreparedRun {
     pub args: OrchestrationArgs,
     pub body: serde_json::Value,
+    /// The window this run was resolved to, so the headless printer can say
+    /// how full it is getting (AH-077).
+    pub limits: SessionLimits,
     pub permission_requests: PermissionRegistry,
     /// Background connect of `active` MCP servers, awaited before the first turn.
     pub mcp_task: Option<tokio::task::JoinHandle<mcp::ConnectOutcome>>,
@@ -1098,6 +1101,7 @@ fn prepare_agent_run(
     Ok(PreparedRun {
         args: session.args,
         body,
+        limits: session.limits,
         permission_requests: session.permission_requests,
         mcp_task: session.mcp_task,
         // Non-interactive runs persist into the same per-project store the TUI
@@ -1142,6 +1146,7 @@ async fn run_agent_loop(
     let PreparedRun {
         args,
         body,
+        limits,
         permission_requests,
         mcp_task,
         persist,
@@ -1185,13 +1190,40 @@ async fn run_agent_loop(
         }
     }
 
+    // AH-077: the headless run warns as the window fills, once per approach,
+    // with the same words the TUI uses.
+    let pressure_window = limits.context_window;
+    let pressure_reserve = limits.reserve_tokens;
     let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
     // The report is folded in both formats from the same stream the printer
     // reads, so the JSON envelope can never disagree with the text output.
     let printer = tokio::spawn(async move {
         let mut report = RunReport::default();
+        let mut warned_about_context = false;
         while let Some(ev) = rx.recv().await {
             report.observe(&ev);
+            // Said before the reply that would overflow, not after: the point
+            // of the warning is that there is still a choice to make.
+            if let StreamEvent::TurnUsage { usage } = &ev {
+                let used = usage.total_tokens.or(usage.prompt_tokens).unwrap_or(0);
+                match crate::core::agent::context_pressure::pressure(
+                    used,
+                    pressure_window,
+                    pressure_reserve,
+                    // The headless path reports the provider's own numbers.
+                    true,
+                ) {
+                    Some(found) if !warned_about_context => {
+                        warned_about_context = true;
+                        eprintln!(
+                            "\n\x1b[33m[context] {}\x1b[0m",
+                            crate::core::agent::context_pressure::line(&found)
+                        );
+                    }
+                    Some(_) => {}
+                    None => warned_about_context = false,
+                }
+            }
             if format.is_json() {
                 resolve_permission_silently(ev, &permission_requests).await;
             } else {

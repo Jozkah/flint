@@ -5098,32 +5098,26 @@ impl App {
     /// only after the fill has dropped back below the line. Nothing is said
     /// when the window is unknown: there is no fraction to report.
     fn check_context_pressure(&mut self) {
-        const WARN_PCT: u64 = 80;
-        if self.context_window == 0 || self.tokens == 0 {
-            return;
-        }
-        let pct = self.tokens.saturating_mul(100) / self.context_window;
-        if pct < WARN_PCT {
+        use crate::core::agent::context_pressure::{line, pressure};
+        // `tokens_estimated` is the difference between "the provider counted
+        // this" and "Jan measured the history itself", and the warning says
+        // which it is rather than letting an estimate read as a measurement.
+        let Some(found) = pressure(
+            self.tokens,
+            self.context_window,
+            self.reserve_tokens,
+            !self.tokens_estimated,
+        ) else {
+            // Below the line again (a compaction, a new conversation, a bigger
+            // window): the next approach is worth saying out loud.
             self.context_warned = false;
             return;
-        }
+        };
         if self.context_warned {
             return;
         }
         self.context_warned = true;
-        let limit = self.context_window.saturating_sub(self.reserve_tokens);
-        let headroom = limit.saturating_sub(self.tokens);
-        let text = if headroom == 0 {
-            format!(
-                "{pct}% of the context window is in use: the next turn auto-compacts. /context shows what is using it"
-            )
-        } else {
-            format!(
-                "{pct}% of the context window is in use: {} tokens before auto-compact. /compact now, or /context to see what is using it",
-                format_tokens(headroom)
-            )
-        };
-        self.system(Level::Warn, &text);
+        self.system(Level::Warn, &line(&found));
     }
 
     /// Queue a compaction and a retry for a context-overflow error, reporting
@@ -30764,7 +30758,10 @@ mod tests {
         assert_eq!(warnings(&app), 1);
         let text = transcript_text(&app);
         assert!(text.contains("82% of the context window is in use"), "{text}");
-        assert!(text.contains("8K tokens before auto-compact"), "{text}");
+        assert!(text.contains("8,000 tokens before auto-compact"), "{text}");
+        // The figures, and where they came from, are part of the warning.
+        // Wrapped in the transcript, so the fragment is short on purpose.
+        assert!(text.contains("82,000 of 100,000 tokens"), "{text}");
         assert!(text.contains("/compact"), "{text}");
 
         app.tokens = 86_000;

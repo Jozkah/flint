@@ -2488,7 +2488,7 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-073"
@@ -2496,7 +2496,9 @@
       "owner": "lane-05-context-memory",
       "files": [
         "web-app/src/components/TokenCounter.tsx",
-        "src-tauri/src/core/cli/tui.rs"
+        "src-tauri/src/core/cli/tui.rs",
+        "src-tauri/src/core/agent/context_pressure.rs",
+        "src-tauri/src/core/cli/mod.rs"
       ],
       "securityImpact": "none",
       "acceptanceCriteria": [
@@ -2510,11 +2512,12 @@
       "tests": [
         "web-app/src/components/__tests__/TokenCounter.test.tsx",
         "src-tauri/src/core/cli/tui.rs::context_pressure_is_warned_once_before_the_window_fills",
-        "src-tauri/src/core/cli/tui.rs::no_context_pressure_warning_without_a_window"
+        "src-tauri/src/core/cli/tui.rs::no_context_pressure_warning_without_a_window",
+        "src-tauri/src/core/agent/context_pressure.rs"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Desktop shows a percentage ring; the CLI warns only when /context is invoked. 2026-09-11 (Phase 2): the desktop counter now says \"Nearly full\" (85%+) or \"Full\" (100%+) in words with role=status, and its popover says how many tokens are left and what to do; the CLI TUI warns once at 80% after a turn with the headroom before auto-compact and /compact, re-arming only after the fill drops. Evidence is render and unit tests only. Kept in-progress: no real-app scenario has driven a conversation to the threshold (the scripted Cowork provider reports no context window, and the TUI needs a terminal the harness does not drive), and the non-interactive `jan cli agent run` path does not warn."
+      "auditNote": "Desktop shows a percentage ring; the CLI warns only when /context is invoked. 2026-09-11 (Phase 2): the desktop counter now says \"Nearly full\" (85%+) or \"Full\" (100%+) in words with role=status, and its popover says how many tokens are left and what to do; the CLI TUI warns once at 80% after a turn with the headroom before auto-compact and /compact, re-arming only after the fill drops. Evidence is render and unit tests only. Kept in-progress: no real-app scenario has driven a conversation to the threshold (the scripted Cowork provider reports no context window, and the TUI needs a terminal the harness does not drive), and the non-interactive `jan cli agent run` path does not warn. 2026-09-12 (Phase 3): one shape of the warning (core/agent/context_pressure.rs) shared by the TUI and the headless CLI -- share of the window, the figures behind it, whether they are the provider's count or Jan's estimate, and the headroom before auto-compact -- fired at 80% and once per approach, re-arming when the fill drops (a compaction, a new conversation, a bigger window). The window is the one the run resolved: configured override, then catalog, then fallback. The non-interactive `jan cli agent run` path now warns too, which was the gap: proven by a real run against the local model fixture with a deliberately tiny window ([agent] context_window = 10), which printed exactly one [context] line with the figures and their source. The desktop counter says \"Nearly full\"/\"Full\" in words with role=status and now labels its figures as counted or estimated. Evidence limit: the desktop path is render-tested only -- the harness's scripted provider reports no context window and loads no local runtime, so nothing in the WebView can cross the threshold."
     },
     {
       "id": "AH-078",

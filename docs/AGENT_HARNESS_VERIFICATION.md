@@ -541,17 +541,23 @@ Limits: the TUI has no in-session text view (the command works from a second
 terminal), `/context` still re-derives category sizes from disk, and the loop
 labels every dispatch `Initial`, continuations included.
 
-## Context pressure warnings (AH-077, in progress)
+## Context pressure warnings (AH-077)
 
 | Evidence | Where | Covers |
 | --- | --- | --- |
-| Render tests | `web-app/src/components/__tests__/TokenCounter.test.tsx` | at 90% the counter says "Nearly full" with `role="status"` and the popover says how many tokens are left; over 100% it says "Full"; at 50% nothing is said |
-| Rust tests | `src-tauri/src/core/cli/tui.rs::context_pressure_is_warned_once_before_the_window_fills`, `no_context_pressure_warning_without_a_window` | the TUI warns once at 80% with the headroom before auto-compact and `/compact`; not again every turn; again after the fill drops; nothing with an unknown window |
+| Real CLI run | `jan cli agent run` against the local model fixture with `[agent] context_window = 10, compaction_reserve_tokens = 2`, isolated `JAN_DATA_FOLDER` | the run prints exactly one `[context]` line: "150% of the context window is in use (15 of 10 tokens, counted by the provider): the next turn auto-compacts. /context shows what is using it" -- the deliberately tiny window is what makes crossing the threshold deterministic without a huge prompt. Kept in `/c/tmp/jan-p2-first-failures/ah077-cli-small-window.err` |
+| Rust tests | `core/agent/context_pressure.rs` (4), `core/cli/tui.rs::context_pressure_is_warned_once_before_the_window_fills`, `no_context_pressure_warning_without_a_window` | nothing is said below 80%, with no window, or with nothing counted; the line carries share, figures, source and headroom; an estimate says it is one; past the reserve it says the next turn compacts; the TUI warns once and re-arms after the fill drops |
+| Render tests | `TokenCounter.test.tsx` | "Nearly full" at 85% with `role="status"`, "Full" over 100%, nothing at 50%, how many tokens are left, and the used/capacity figures labelled as the provider's count or Jan's estimate |
 
-Not yet proven in a running app: the scripted Cowork provider reports no
-context window, so no WebView scenario reaches the threshold, and the TUI
-needs a terminal the harness does not drive. The non-interactive
-`jan cli agent run` path does not warn.
+Both surfaces read the window the run actually resolved (the configured
+override, then the catalog, then the fallback), and both re-arm when the fill
+drops back -- which is what a compaction or a new conversation does.
+
+Not covered: the desktop counter has render-test evidence only. The harness's
+scripted provider reports no context window and no local runtime is loaded in
+it, so nothing in the WebView can cross the threshold; the numbers it would
+show come from the same usage shape the render tests drive. The TUI's own
+warning is unit-tested for the same reason -- the harness drives no terminal.
 
 ## Prompt snapshots bound to their turn (AH-078)
 
