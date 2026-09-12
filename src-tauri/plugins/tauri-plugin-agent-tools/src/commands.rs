@@ -63,6 +63,12 @@ impl From<String> for AgentToolsError {
 }
 
 /// Outcome of a built-in tool execution.
+///
+/// `error` is the failure's classification (AH-009) when there was one: the
+/// kind, the stage, whether another attempt could help and who it is for. The
+/// surfaces read that rather than the words, so Chat, Cowork, the Timeline and
+/// the CLI cannot disagree about whether a call was refused, timed out or
+/// failed.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolResult {
@@ -70,6 +76,9 @@ pub struct ToolResult {
     /// Display-only diff for `write`/`edit`; never part of model context.
     pub diff: Option<String>,
     pub is_error: bool,
+    /// The classified failure, when this is one. Versioned and scrubbed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<serde_json::Value>,
 }
 
 /// The permanent store root holding `memory/` and `skills/`.
@@ -882,8 +891,19 @@ async fn execute_tool_inner(
         _ => None,
     };
     let (content, diff, _images) = handlers::execute_builtin_with_diff(tool, &args, &ctx).await;
-    let is_error =
-        content.starts_with("ERROR") || (name == "bash" && handlers::bash_result_failed(&content));
+    // AH-009: what the call was is decided once, by classification. A shell
+    // command that exited non-zero is a tool failure even though it said so in
+    // its own words rather than in the tool protocol's.
+    let failure = crate::harness_error::classify_tool(&name, &content).or_else(|| {
+        (name == "bash" && handlers::bash_result_failed(&content)).then(|| {
+            crate::harness_error::HarnessError::new(
+                crate::harness_error::ErrorKind::ToolFailed,
+                "the command exited with a failure status",
+            )
+            .at(crate::harness_error::Stage::Tool)
+        })
+    });
+    let is_error = failure.is_some();
     if let (Some((run, target, before)), false) = (journaled, is_error) {
         let after = std::fs::read(&target).ok();
         if let Err(e) = crate::undo::record(
@@ -904,6 +924,7 @@ async fn execute_tool_inner(
         content,
         diff,
         is_error,
+        error: failure.as_ref().map(crate::harness_error::HarnessError::to_wire),
     })
 }
 

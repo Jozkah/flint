@@ -100,6 +100,40 @@ pub struct ReplayError {
     pub message: String,
 }
 
+/// What this failure is, in the harness's own vocabulary (AH-009).
+///
+/// Written out case by case rather than defaulted: this enum says what went
+/// wrong *here*, and the mapping is the place to decide what that means
+/// everywhere else -- whether it may be retried, who it is for, what the
+/// process exits with. A blanket "everything is internal" would be the same
+/// as having no taxonomy at all.
+impl From<&ReplayError> for tauri_plugin_agent_tools::harness_error::HarnessError {
+    fn from(error: &ReplayError) -> Self {
+        use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+        let kind = match error.kind {
+            ReplayErrorKind::NotFound
+            | ReplayErrorKind::UnknownReplay
+            | ReplayErrorKind::UnknownRun => ErrorKind::NotFound,
+            // The request cannot be sent again as it was, which is the one
+            // thing a replay promises.
+            ReplayErrorKind::Unavailable
+            | ReplayErrorKind::Redacted
+            | ReplayErrorKind::NotAChat
+            | ReplayErrorKind::NothingToReplay => ErrorKind::Replay,
+            ReplayErrorKind::ProviderGone | ReplayErrorKind::ModelNotRunning => {
+                ErrorKind::ToolUnavailable
+            }
+            ReplayErrorKind::ProviderUnsupported => ErrorKind::Unsupported,
+            ReplayErrorKind::ProviderError => ErrorKind::Upstream,
+            ReplayErrorKind::StreamCutOff => ErrorKind::InvalidResponse,
+            // The renderer that started it went away mid-flight.
+            ReplayErrorKind::Abandoned => ErrorKind::Interrupted,
+            ReplayErrorKind::Io => ErrorKind::Io,
+        };
+        HarnessError::new(kind, &error.message).at(Stage::Replay)
+    }
+}
+
 impl ReplayError {
     pub fn new(kind: ReplayErrorKind, message: impl Into<String>) -> Self {
         ReplayError {
@@ -710,6 +744,49 @@ pub fn list(data_folder: &Path, session: &str, snapshot_id: Option<&str>) -> Vec
         .collect();
     out.reverse();
     out
+}
+
+#[cfg(test)]
+mod harness_error_bridge {
+    use super::*;
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+
+    /// AH-009: a replay failure says what kind of thing went wrong, so a
+    /// provider that is gone is not reported the same way as a record that
+    /// cannot be replayed.
+    #[test]
+    fn a_replay_failure_keeps_its_meaning() {
+        let of = |kind: ReplayErrorKind| -> HarnessError {
+            (&ReplayError { kind, message: "why".into() }).into()
+        };
+        assert_eq!(of(ReplayErrorKind::UnknownRun).kind(), ErrorKind::NotFound);
+        assert_eq!(of(ReplayErrorKind::Redacted).kind(), ErrorKind::Replay);
+        assert_eq!(of(ReplayErrorKind::ProviderGone).kind(), ErrorKind::ToolUnavailable);
+        assert_eq!(of(ReplayErrorKind::ProviderError).kind(), ErrorKind::Upstream);
+        assert_eq!(of(ReplayErrorKind::StreamCutOff).kind(), ErrorKind::InvalidResponse);
+        // A renderer that went away is an interruption, not a decision.
+        let abandoned = of(ReplayErrorKind::Abandoned);
+        assert_eq!(abandoned.kind(), ErrorKind::Interrupted);
+        assert!(!abandoned.is_cancellation());
+        for kind in [
+            ReplayErrorKind::NotFound,
+            ReplayErrorKind::Unavailable,
+            ReplayErrorKind::Redacted,
+            ReplayErrorKind::NotAChat,
+            ReplayErrorKind::ProviderGone,
+            ReplayErrorKind::ProviderUnsupported,
+            ReplayErrorKind::ModelNotRunning,
+            ReplayErrorKind::ProviderError,
+            ReplayErrorKind::StreamCutOff,
+            ReplayErrorKind::UnknownReplay,
+            ReplayErrorKind::UnknownRun,
+            ReplayErrorKind::NothingToReplay,
+            ReplayErrorKind::Abandoned,
+            ReplayErrorKind::Io,
+        ] {
+            assert_eq!(of(kind).stage(), Stage::Replay, "{kind:?}");
+        }
+    }
 }
 
 #[cfg(test)]

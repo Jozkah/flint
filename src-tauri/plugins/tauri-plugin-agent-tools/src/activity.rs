@@ -228,6 +228,13 @@ pub struct ToolActivityEvent {
     /// older lines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refusal: Option<String>,
+    /// What kind of failure this was, in the harness taxonomy (AH-009):
+    /// `sandbox_denied`, `timeout`, `tool_failed`, ... Empty when the call did
+    /// not fail, and on lines written before the taxonomy reached the tool
+    /// layer -- which read as "a failure of some sort", never as a kind that
+    /// was never decided.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub error_kind: String,
     /// What the call returned: its end, redacted, bounded to
     /// `MAX_OUTPUT_BYTES`. Absent when nothing was recorded -- which reads as
     /// "unavailable", never as an empty success.
@@ -266,6 +273,7 @@ impl ToolActivityEvent {
             session: String::new(),
             run: String::new(),
             agent_id: String::new(),
+            error_kind: String::new(),
             call: call.into(),
             invocation: String::new(),
             agent: String::new(),
@@ -704,6 +712,8 @@ pub struct ToolActivityItem {
     pub detail: String,
     /// The harness refusal's kind, when the harness declined the call.
     pub refusal: Option<String>,
+    /// What kind of failure it was (AH-009). Empty when it did not fail.
+    pub error_kind: String,
     pub output: Option<String>,
     pub output_truncated: bool,
     /// `available`, `truncated`, `unavailable` (finished with nothing
@@ -746,6 +756,7 @@ impl ToolActivityItem {
             exit_code: event.exit_code,
             detail: event.detail,
             refusal: event.refusal,
+            error_kind: event.error_kind,
             output: event.output,
             output_truncated: event.output_truncated,
             output_state: String::new(),
@@ -779,6 +790,9 @@ impl ToolActivityItem {
             }
         };
         take(&mut self.detail, event.detail);
+        // The failure's kind arrives with the terminal phase; an earlier phase
+        // never had one to give.
+        take(&mut self.error_kind, event.error_kind);
         take(&mut self.resource, event.resource);
         take(&mut self.summary, event.summary);
         take(&mut self.job_id, event.job_id);

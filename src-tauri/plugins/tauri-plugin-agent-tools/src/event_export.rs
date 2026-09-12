@@ -82,6 +82,37 @@ pub struct ExportError {
     pub message: String,
 }
 
+/// What this failure is, in the harness's own vocabulary (AH-009).
+///
+/// Written out case by case rather than defaulted: this enum says what went
+/// wrong *here*, and the mapping is the place to decide what that means
+/// everywhere else -- whether it may be retried, who it is for, what the
+/// process exits with. A blanket "everything is internal" would be the same
+/// as having no taxonomy at all.
+impl From<&ExportError> for crate::harness_error::HarnessError {
+    fn from(error: &ExportError) -> Self {
+        use crate::harness_error::{ErrorKind, HarnessError, Stage};
+        let kind = match error.kind {
+            // Nothing to export is not a failure of the export.
+            ExportErrorKind::NoEvents => ErrorKind::NotFound,
+            ExportErrorKind::TooLarge => ErrorKind::InvalidInput,
+            ExportErrorKind::Cancelled => ErrorKind::Cancelled,
+            // What is on disk cannot be read as what it claims to be.
+            ExportErrorKind::LogUnreadable
+            | ExportErrorKind::NotAnExport
+            | ExportErrorKind::ManifestInvalid
+            | ExportErrorKind::Truncated
+            | ExportErrorKind::OutOfOrder
+            | ExportErrorKind::HashMismatch => ErrorKind::MalformedState,
+            ExportErrorKind::UnsupportedVersion => ErrorKind::Unsupported,
+            // Somebody else's events: a refusal, not a malformed file.
+            ExportErrorKind::CrossSession => ErrorKind::PolicyViolation,
+            ExportErrorKind::Io => ErrorKind::Io,
+        };
+        HarnessError::new(kind, &error.message).at(Stage::Export)
+    }
+}
+
 impl ExportError {
     pub fn new(kind: ExportErrorKind, message: impl Into<String>) -> Self {
         ExportError { kind, message: message.into() }
@@ -327,6 +358,52 @@ pub fn inspect(path: &Path) -> Result<InspectReport, ExportError> {
         ));
     }
     Ok(InspectReport { manifest, kinds, unknown_kinds: unknown })
+}
+
+#[cfg(test)]
+mod harness_error_bridge {
+    use super::*;
+    use crate::harness_error::{ErrorKind, HarnessError, Stage};
+
+    /// AH-009: an export failure has one meaning in the harness's vocabulary,
+    /// and the distinctions that matter survive the crossing.
+    #[test]
+    fn an_export_failure_keeps_its_meaning() {
+        let of = |kind: ExportErrorKind| -> HarnessError {
+            (&ExportError { kind, message: "why".into() }).into()
+        };
+        assert_eq!(of(ExportErrorKind::Cancelled).kind(), ErrorKind::Cancelled);
+        assert!(of(ExportErrorKind::Cancelled).is_cancellation(), "a stop became a failure");
+        // Another session's events: refused, never "corrupt file".
+        assert_eq!(of(ExportErrorKind::CrossSession).kind(), ErrorKind::PolicyViolation);
+        assert_eq!(of(ExportErrorKind::HashMismatch).kind(), ErrorKind::MalformedState);
+        assert_eq!(of(ExportErrorKind::UnsupportedVersion).kind(), ErrorKind::Unsupported);
+        assert_eq!(of(ExportErrorKind::NoEvents).kind(), ErrorKind::NotFound);
+        for kind in [
+            ExportErrorKind::NoEvents,
+            ExportErrorKind::TooLarge,
+            ExportErrorKind::Cancelled,
+            ExportErrorKind::LogUnreadable,
+            ExportErrorKind::NotAnExport,
+            ExportErrorKind::UnsupportedVersion,
+            ExportErrorKind::ManifestInvalid,
+            ExportErrorKind::HashMismatch,
+            ExportErrorKind::Truncated,
+            ExportErrorKind::CrossSession,
+            ExportErrorKind::OutOfOrder,
+            ExportErrorKind::Io,
+        ] {
+            let crossed = of(kind);
+            assert_eq!(crossed.stage(), Stage::Export, "{kind:?}");
+            assert_eq!(crossed.message(), "why", "{kind:?}");
+            // Crossing never *earns* a retry: an export that failed on what is
+            // on disk fails the same way again. The one exception is the
+            // filesystem itself, where a single retry is the kind's own policy.
+            if kind != ExportErrorKind::Io {
+                assert!(!crossed.retry().is_allowed(), "{kind:?}");
+            }
+        }
+    }
 }
 
 #[cfg(test)]

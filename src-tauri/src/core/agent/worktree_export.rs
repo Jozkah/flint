@@ -54,6 +54,26 @@ pub struct ExportError {
     pub message: String,
 }
 
+/// What this failure is, in the harness's own vocabulary (AH-009).
+///
+/// Written out case by case rather than defaulted: this enum says what went
+/// wrong *here*, and the mapping is the place to decide what that means
+/// everywhere else -- whether it may be retried, who it is for, what the
+/// process exits with. A blanket "everything is internal" would be the same
+/// as having no taxonomy at all.
+impl From<&ExportError> for tauri_plugin_agent_tools::harness_error::HarnessError {
+    fn from(error: &ExportError) -> Self {
+        use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+        let kind = match error.kind {
+            ExportErrorKind::NotManaged | ExportErrorKind::NoChanges => ErrorKind::InvalidInput,
+            ExportErrorKind::NotReady => ErrorKind::ChildFailed,
+            ExportErrorKind::LinkEscape => ErrorKind::PolicyViolation,
+            ExportErrorKind::Io => ErrorKind::Io,
+        };
+        HarnessError::new(kind, &error.message).at(Stage::Export)
+    }
+}
+
 impl ExportError {
     fn new(kind: ExportErrorKind, message: impl Into<String>) -> Self {
         ExportError {

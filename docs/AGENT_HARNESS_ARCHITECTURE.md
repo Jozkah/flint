@@ -1128,6 +1128,26 @@ place) and carries `parentRun` and the `dispatch` it answers, while the parent
 records `agent.dispatched` naming the same dispatch. The join holds in both
 directions without either side having to guess from timing.
 
+**A tool failure is classified once (AH-009).** The tool protocol is text: a
+handler answers the model in words and a failure begins `ERROR`. That is the
+model's interface and it stays. What does not stay is *deciding* anything by
+reading it. `classify_tool` turns a result into a classification in one place --
+taking an `ERROR [kind]:` tag at its word where a handler already knew what it
+was, reading the shapes the built-in tools produce otherwise, and calling
+anything unrecognised a tool failure that is never retried on that basis alone.
+The tool boundary, the transcript's error flag and the activity record all read
+that one classification, so they cannot disagree about whether a call was
+refused, timed out or failed; the record carries `error_kind` beside the phase,
+and a call that was cancelled or timed out is recorded as cancelled or timed
+out rather than as a failure.
+
+The harness's other error enums -- event export, bundle import, child
+checkouts, worktree export, replay -- each cross into the taxonomy through an
+explicit `From`, written case by case. A checkout reaching outside itself is a
+policy violation, not an I/O fault; another session's events are a refusal, not
+a corrupt file; a renderer that went away mid-replay is an interruption, not a
+decision anybody made.
+
 **Failures carry their classification (AH-009).** The orchestration loop's
 errors are `HarnessError`, not prose: a kind (26 of them, from `authentication`
 and `rate_limited` through `context_overflow`, `sandbox_denied` and

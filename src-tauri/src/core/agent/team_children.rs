@@ -129,6 +129,33 @@ pub struct ChildError {
     pub message: String,
 }
 
+/// What this failure is, in the harness's own vocabulary (AH-009).
+///
+/// Written out case by case rather than defaulted: this enum says what went
+/// wrong *here*, and the mapping is the place to decide what that means
+/// everywhere else -- whether it may be retried, who it is for, what the
+/// process exits with. A blanket "everything is internal" would be the same
+/// as having no taxonomy at all.
+impl From<&ChildError> for tauri_plugin_agent_tools::harness_error::HarnessError {
+    fn from(error: &ChildError) -> Self {
+        use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+        let kind = match error.kind {
+            ChildErrorKind::UnknownChild | ChildErrorKind::Deleted => ErrorKind::NotFound,
+            ChildErrorKind::NotManaged | ChildErrorKind::NoChanges => ErrorKind::InvalidInput,
+            // The checkout is not what the record says it is any more.
+            ChildErrorKind::Corrupt
+            | ChildErrorKind::BranchMoved
+            | ChildErrorKind::IdentityChanged
+            | ChildErrorKind::ModifiedAfterFinish => ErrorKind::MalformedState,
+            // A checkout reaching outside itself is a refusal.
+            ChildErrorKind::LinkEscape => ErrorKind::PolicyViolation,
+            ChildErrorKind::Incomplete => ErrorKind::ChildFailed,
+            ChildErrorKind::Io => ErrorKind::Io,
+        };
+        HarnessError::new(kind, &error.message).at(Stage::Child)
+    }
+}
+
 impl ChildError {
     fn new(kind: ChildErrorKind, message: impl Into<String>) -> Self {
         ChildError {
@@ -614,6 +641,41 @@ pub fn propose(
     };
     proposal::create(data_folder, scope, &record.base_sha, inputs)
         .map_err(|e| ChildError::new(ChildErrorKind::Io, e.message()))
+}
+
+#[cfg(test)]
+mod harness_error_bridge {
+    use super::*;
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, Stage};
+
+    /// AH-009: a child checkout's failures cross into the taxonomy with the
+    /// distinction that matters -- a checkout reaching outside itself is a
+    /// refusal, not an I/O problem.
+    #[test]
+    fn a_child_failure_keeps_its_meaning() {
+        let of = |kind: ChildErrorKind| -> tauri_plugin_agent_tools::harness_error::HarnessError {
+            (&ChildError { kind, message: "why".into() }).into()
+        };
+        assert_eq!(of(ChildErrorKind::LinkEscape).kind(), ErrorKind::PolicyViolation);
+        assert_eq!(of(ChildErrorKind::UnknownChild).kind(), ErrorKind::NotFound);
+        assert_eq!(of(ChildErrorKind::IdentityChanged).kind(), ErrorKind::MalformedState);
+        assert_eq!(of(ChildErrorKind::Incomplete).kind(), ErrorKind::ChildFailed);
+        for kind in [
+            ChildErrorKind::UnknownChild,
+            ChildErrorKind::NotManaged,
+            ChildErrorKind::Deleted,
+            ChildErrorKind::Corrupt,
+            ChildErrorKind::BranchMoved,
+            ChildErrorKind::IdentityChanged,
+            ChildErrorKind::LinkEscape,
+            ChildErrorKind::ModifiedAfterFinish,
+            ChildErrorKind::Incomplete,
+            ChildErrorKind::NoChanges,
+            ChildErrorKind::Io,
+        ] {
+            assert_eq!(of(kind).stage(), Stage::Child, "{kind:?}");
+        }
+    }
 }
 
 #[cfg(test)]

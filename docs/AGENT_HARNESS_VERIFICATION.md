@@ -614,10 +614,14 @@ scenario.
 | Rust tests | `harness_error.rs::every_kind_round_trips_through_its_tag`, `a_failure_survives_being_written_down`, `a_failure_never_carries_a_credential`, `misleading_error_text_cannot_move_the_fallback_decision`, `a_refusal_and_a_stop_are_not_failures`, `every_kind_has_an_exit_status` | every kind has a stable unique tag and reads back from it; a failure serializes versioned with its stage and cause and reads back, a newer version is refused while a newer kind stays readable, an unknown stage reads as unknown; an authorization header, a key in a query string, a key in a JSON body and a password are all gone from the message, the wire form and the model-facing text, and a 5 000-character body is bounded; **adversarial** -- eight refusals worded to look like outages earn no second provider and five outages worded with refusal words are not stranded, and a rate limit takes the provider's own `retry-after`; a refusal is not a cancellation, a cancellation is not a failure, and an interruption is neither |
 | Consumers | `loop.rs` (compaction retry, provider chain, recorded run end), `tui.rs` (whether history may be reused after a failed compaction), `cli/mod.rs` (the streamed error line), `bin/jan.rs` (the reported failure and the exit status) | each reads `kind()` rather than matching text; `is_context_overflow_error` and `may_try_another_provider`'s string form are no longer consulted by any production decision in the loop, the TUI or the CLI |
 
-Still open for AH-009: the tool layer returns its refusals as `ERROR [tag]:`
-strings inside tool results rather than as `HarnessError` values, and the
-desktop's own boundaries (`ExportErrorKind`, `ChildErrorKind`,
-`ReplayErrorKind`) are separate enums that are not yet converted into this one.
+Phase 5 closed both: the tool boundary classifies once (`classify_tool`) and
+the record carries `error_kind`; the parallel enums cross by explicit `From`.
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real CLI run | `jan cli agent run` against a fixture that asks for three failing calls | the record says which kind each failure was: a path that does not resolve is `tool_failed`, a call with no `path` is `invalid_input`, and a tool no server offers is `tool_unavailable` -- against one undifferentiated "ERROR" before. Kept in `/c/tmp/jan-p5-evidence/ah009-tool-failure-kinds.jsonl` |
+| Rust tests | `harness_error.rs::a_tool_failure_says_what_kind_it_is` | a result that is not a failure classifies as none; a tagged failure keeps its kind exactly; seven message shapes map to their kinds, including a timeout that also says "stopped" (a deadline, not the user's decision); an unrecognised failure is `tool_failed`, is never retried on that basis and names its tool; a tag this build does not know is not trusted as a kind |
+| Rust tests, the bridges | `event_export.rs::an_export_failure_keeps_its_meaning`, `replay.rs::a_replay_failure_keeps_its_meaning`, `team_children.rs::a_child_failure_keeps_its_meaning` | every variant of each enum crosses with its stage; a cancellation stays a cancellation; a cross-session export and a checkout link escape are policy violations rather than malformed files; crossing never earns a retry except where the kind's own policy allows one |
 
 ## Agent provenance on changes (AH-110)
 

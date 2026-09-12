@@ -733,6 +733,98 @@ impl From<serde_json::Error> for HarnessError {
     }
 }
 
+/// What a tool result says about itself, as a classification (AH-009).
+///
+/// The tool protocol is text: a handler answers the model in words, and a
+/// failure is a line beginning `ERROR`. That is the model's interface and it
+/// stays. What must not stay is *deciding* anything by reading it -- whether
+/// the call failed, whether it may be retried, whether a refusal was a refusal
+/// -- because two readers of the same sentence disagree the moment one of them
+/// is updated.
+///
+/// So a failure is classified once. A handler that already knows what it is
+/// says so with an `ERROR [kind]:` tag, and that tag is taken at its word. A
+/// message with no tag is read here, once, by the shapes the built-in tools
+/// actually produce -- and anything unrecognised becomes [`ErrorKind::ToolFailed`]
+/// with retry refused, because a failure nobody classified must not earn a
+/// retry by default.
+///
+/// `Ok` means the result is not a failure at all.
+pub fn classify_tool(tool: &str, content: &str) -> Option<HarnessError> {
+    let trimmed = content.trim_start();
+    if !trimmed.starts_with("ERROR") {
+        return None;
+    }
+    let stage = Stage::Tool;
+    // A tagged failure was classified where it happened; nothing is re-derived.
+    if let Some(rest) = trimmed.strip_prefix("ERROR [") {
+        if let Some((tag, message)) = rest.split_once("]:") {
+            if let Some(kind) = ErrorKind::from_tag(tag.trim()) {
+                return Some(HarnessError::new(kind, message.trim()).at(stage));
+            }
+        }
+    }
+    let message = trimmed
+        .strip_prefix("ERROR:")
+        .unwrap_or(trimmed)
+        .trim()
+        .to_string();
+    let text = message.to_ascii_lowercase();
+    let has = |markers: &[&str]| markers.iter().any(|m| text.contains(m));
+    let made = |kind: ErrorKind| Some(HarnessError::new(kind, &message).at(stage));
+
+    // A deadline first: a tool that timed out was also "stopped", and reading
+    // that as the user's cancellation would report a deadline as a decision
+    // somebody made.
+    if has(&["timed out", "timeout"]) {
+        return made(ErrorKind::Timeout);
+    }
+    if has(&["cancelled", "canceled", "stopped by the user", "stop requested"]) {
+        return made(ErrorKind::Cancelled);
+    }
+    if has(&["denied by user", "declined", "user said no", "approval"]) {
+        return made(ErrorKind::ApprovalRefused);
+    }
+    if has(&[
+        "outside the workspace",
+        "outside the agent workspace",
+        "through a symlink",
+        "sandbox",
+        "is not writable",
+        "refused to read",
+        "refused to list",
+        "refused to write",
+    ]) {
+        return made(ErrorKind::SandboxDenied);
+    }
+    if has(&["not permitted", "permission", "is denied", "read-only"]) {
+        return made(ErrorKind::PermissionDenied);
+    }
+    if has(&[
+        "unknown built-in tool",
+        "is unavailable",
+        "not available in this run",
+        // The model asked for an MCP tool no connected server offers.
+        "no mcp server registered",
+        "unknown action",
+    ]) {
+        return made(ErrorKind::ToolUnavailable);
+    }
+    if has(&["not found", "no such", "does not exist", "unknown or already-collected"]) {
+        return made(ErrorKind::NotFound);
+    }
+    if has(&["missing required argument", "not a utf-8", "is not valid", "must be", "invalid"]) {
+        return made(ErrorKind::InvalidInput);
+    }
+    // Unrecognised: the tool failed on its own terms, and a failure nobody
+    // classified is not retried on that basis alone.
+    Some(
+        HarnessError::new(ErrorKind::ToolFailed, format!("{tool}: {message}"))
+            .at(stage)
+            .with_retry(Retry::Never),
+    )
+}
+
 /// Classify a provider failure from the text the upstream layer returns.
 ///
 /// One place decides what a provider failure means, because the decisions that
@@ -998,6 +1090,45 @@ mod tests {
             classify_upstream("This model's maximum context length is 8192 tokens").exit_code(),
             64
         );
+    }
+
+    /// AH-009: a tool result is classified once, and a tagged failure is
+    /// taken at its word rather than re-read.
+    #[test]
+    fn a_tool_failure_says_what_kind_it_is() {
+        assert!(classify_tool("read", "the file says hello").is_none());
+        assert!(classify_tool("bash", "  \nplain output\n").is_none());
+
+        // A handler that knows what it is keeps its kind, exactly.
+        let tagged = classify_tool("write", "ERROR [sandbox_denied]: outside the workspace")
+            .expect("a failure");
+        assert_eq!(tagged.kind(), ErrorKind::SandboxDenied);
+        assert_eq!(tagged.stage(), Stage::Tool);
+        assert_eq!(tagged.message(), "outside the workspace");
+
+        for (content, expected) in [
+            ("ERROR: missing required argument 'path'", ErrorKind::InvalidInput),
+            ("ERROR: refused to read through a symlink out of the workspace: x", ErrorKind::SandboxDenied),
+            ("ERROR: unknown built-in tool 'nope'", ErrorKind::ToolUnavailable),
+            ("ERROR: No MCP server registered for tool 'x'", ErrorKind::ToolUnavailable),
+            ("ERROR: skill 'x' not found", ErrorKind::NotFound),
+            ("ERROR: tool 'bash' timed out after 30s and was stopped", ErrorKind::Timeout),
+            ("ERROR: the run was cancelled", ErrorKind::Cancelled),
+            ("ERROR: something nobody has classified", ErrorKind::ToolFailed),
+        ] {
+            let classified = classify_tool("bash", content).expect("a failure");
+            assert_eq!(classified.kind(), expected, "{content:?}");
+        }
+
+        // An unclassified failure is never retried on that basis alone, and
+        // names the tool it came from.
+        let unknown = classify_tool("grep", "ERROR: odd").unwrap();
+        assert!(!unknown.retry().is_allowed());
+        assert!(unknown.message().starts_with("grep: "), "{}", unknown.message());
+
+        // A tag this build does not know is not trusted as a kind.
+        let forged = classify_tool("bash", "ERROR [not_a_kind]: hello").unwrap();
+        assert_eq!(forged.kind(), ErrorKind::ToolFailed);
     }
 
     /// A refusal and a cancellation are not failures, and nothing downstream

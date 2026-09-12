@@ -1712,15 +1712,36 @@ impl CompositeToolInvoker {
             else {
                 continue;
             };
+            // AH-009: the classification decides, and travels with the record
+            // so every surface says the same thing about the same failure.
+            let name = tc
+                .get("function")
+                .and_then(|f| f.get("name"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            let failure = tauri_plugin_agent_tools::harness_error::classify_tool(
+                name,
+                &outcome.content,
+            );
             let phase = if outcome.refusal.is_some() {
                 Phase::Refused
-            } else if outcome.content.starts_with("ERROR") {
-                Phase::Failed
             } else {
-                Phase::Succeeded
+                match failure.as_ref().map(HarnessError::kind) {
+                    None => Phase::Succeeded,
+                    // A call the user stopped, or one that ran out of time, is
+                    // not the same thing as a call that failed.
+                    Some(ErrorKind::Cancelled) => Phase::Cancelled,
+                    Some(ErrorKind::Timeout) => Phase::TimedOut,
+                    Some(_) => Phase::Failed,
+                }
             };
             let mut e = self.activity_event(tc, phase);
             e.output = Some(outcome.content.clone());
+            if let Some(failure) = failure.as_ref() {
+                // Not `kind`, which says what the call acted on (a path, a
+                // command): what kind of *failure* it was.
+                e.error_kind = failure.kind().tag().to_string();
+            }
             e.refusal = outcome.refusal.map(|r| r.code().to_string());
             if phase != Phase::Succeeded {
                 e.detail = outcome.content.chars().take(400).collect();
@@ -3908,10 +3929,15 @@ async fn run_turn_cycle(
             // convention is reserved for hard tool failures the model must
             // treat as errors), but its failed exit marker still flags the
             // call as failed for display.
-            let is_error = content.starts_with("ERROR")
-                || (tool_names.get(id.as_str()) == Some(&"bash")
-                    && tauri_plugin_agent_tools::tools::handlers::bash_result_failed(&content));
             let name = tool_names.get(id.as_str()).copied().unwrap_or("");
+            // AH-009: one classification, so what the transcript shows and what
+            // the record holds cannot disagree. A `bash` call that exits
+            // non-zero says so in its own words rather than the protocol's,
+            // and is a failure all the same.
+            let is_error =
+                tauri_plugin_agent_tools::harness_error::classify_tool(name, &content).is_some()
+                    || (name == "bash"
+                        && tauri_plugin_agent_tools::tools::handlers::bash_result_failed(&content));
             if name == "todo" {
                 todo_touched_this_batch = true;
             } else if !is_error && matches!(name, "bash" | "write" | "edit") {
