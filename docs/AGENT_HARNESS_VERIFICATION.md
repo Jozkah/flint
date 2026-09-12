@@ -389,9 +389,9 @@ deduplication, no torn-tail repair, accepting a newer envelope, no redaction,
 keeping a partial export, an inspector that trusts the hash, and one that
 skips the order check each fail a test.
 
-Not covered: the Rust CLI and subagent loop's `StreamEvent`s, and steering
-and compaction, are not yet in the log (AH-004 stays in progress). Mock
-provider only; macOS and Linux were not run.
+Not covered: replay does not yet read the log (AH-032), so it is not the sole
+source for everything AH-004 names. Mock provider only; macOS and Linux were
+not run.
 
 ## Bundle import (AH-169), and the flag review UI (AH-154 / AH-155 / AH-156)
 
@@ -494,13 +494,23 @@ passed. Evidence kept in `/c/tmp/jan-p2-first-failures/ah121-*`.
 | Rust tests | `loop.rs::each_request_gets_one_invocation_id_and_records_under_it`, `activity.rs::one_call_id_reused_by_two_invocations_stays_two_items`, `activity.rs::an_item_id_is_its_session_invocation_and_call` | ids are per request, current between requests, recorded under the run, and a run with no data folder writes nothing; a reused provider call id stays two items; a legacy event with no invocation folds as before |
 | Render tests | `chatRun.test.ts` (5), `executionTimeline.test.ts::keeps one call id used by two invocations as two rows` | a turn is one run across tool steps, cancelled and failed turns say so, two threads never share a run, and the timeline keeps the reused call id apart |
 
-Still missing for AH-004, and why it stays in progress: the CLI loop does not
-record steering, compaction, reasoning or subagent lifecycle events (its
-compaction and goal-evaluation dispatches deliberately keep their own,
-unrecorded ids); retention is bounded by size and session count but has no test
-of its own; and the real-provider lanes could not be used for this batch --
-`v100` stopped resolving partway through (see the Phase 3 report), so the CLI
-evidence above is against the local fixture, not 8555.
+Phase 4 added the rest of what one run does, to the same log:
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real CLI run, streamed reasoning | `jan cli agent run` against the `reasoning` fixture script, isolated `JAN_HOME` and `JAN_DATA_FOLDER` | 8 events: the dispatch with its snapshot id, then `message.started` saying reasoning arrived **first**, `message.reasoning` with 20 characters (exactly what the provider streamed), usage, the reply's `message.completed` (`textChars` 15, `reasoningChars` 20, `finishReason: stop`), the answering model, and `run.ended done`. Kept in `/c/tmp/jan-p4-evidence/ah004-cli-reasoning-record.jsonl` |
+| Real CLI session, compacted and answered | seven resumed turns against the `overflow` fixture script, which rejects one request of twelve messages with a context-length error | the run records the failed dispatch, `compaction.started` (`reason: context-overflow`, 12 messages, `keepRecent` 8), the summarizer's own request, `compaction.succeeded` (12 to 10), then the retried dispatch and the reply -- and the turns before and after it are untouched. Kept in `/c/tmp/jan-p4-evidence/ah004-cli-compaction-records.jsonl` |
+| Rust tests | `loop.rs::steering_and_compaction_are_recorded_in_the_order_they_happened`, `a_compaction_that_cannot_help_is_recorded_as_a_failure`, `a_streamed_reply_is_recorded_once_with_what_arrived_first`, `a_reply_that_never_streamed_records_no_stream` | steering handed in at a turn boundary and a compaction forced by an overflow are recorded in the order they happened, under the run, with the log's own strictly increasing sequence; a compaction that cannot shrink the history is a recorded failure, not a silent stop; a streamed reply records one `message.started` saying what arrived first plus the reasoning it was given, forwards every event unchanged, and puts none of the words in the log; an empty delta is not a stream |
+| Rust tests, retention | `event_log.rs::a_full_log_stops_at_a_readable_boundary`, `the_oldest_session_logs_are_removed_once_there_are_too_many`, `a_log_from_an_older_build_reads_and_continues` | a full log keeps what it has, writes one `log.truncated` line saying why, refuses everything after it, stays valid JSONL and reads the same after a restart; the oldest session logs go first and the log being written is never the one removed; a log written by an older build (no invocation, no redactions) reads back and the sequence continues into it |
+
+Still missing for AH-004, and why it stays in progress: replay does not yet read
+the canonical log (AH-032), so the log is not yet the sole source for
+*everything* the criterion names. Steering is a TUI-only path -- the API server,
+headless runs and subagents never wait on a handoff -- so its recording is
+proven by the loop test above and the TUI's own tests rather than by a WebView
+scenario. The real-provider lanes were unavailable again for this batch
+(`v100` does not resolve; see `/c/tmp/jan-p4-evidence/v100-probe-1.log`), so
+the CLI evidence above is against local fixtures, not 8555.
 
 ## Agent provenance on changes (AH-110)
 

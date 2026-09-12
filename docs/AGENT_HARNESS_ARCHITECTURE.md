@@ -1037,6 +1037,25 @@ over that log, and a line that no longer parses is left untouched rather than
 edited blind. `memory/` never logs the outcome -- a body could travel with the
 message -- so the snapshot module reports it instead.
 
+**What one run records (AH-004).** A run's canonical log holds what it did, not
+what it said. Per provider request: the dispatch and its prompt snapshot id,
+`message.started` when the reply first produces something (saying whether that
+was content or reasoning), `message.reasoning` with the size of what the
+provider supplied, the usage it reported, and the finished `message.completed`.
+Between requests, under the request that was last in flight: `steering.received`
+when the surface hands input over mid-run, `compaction.started` with why, then
+`compaction.succeeded` with the sizes or `compaction.failed` with the reason,
+and `agent.dispatched` / `agent.ended` for a child the model started. Ordering
+is the log's own sequence, so a reader can say what happened before what without
+trusting whichever clock a writer had. Sizes and counts only: the words are in
+the transcript and the payload is in the snapshot, and a log that copied either
+would be a second place for them to leak from.
+
+A session's log is bounded (32 MB) and the number of logs is bounded (500). A
+log that fills up writes one `log.truncated` line saying so and refuses what
+follows, because a record that simply stops is indistinguishable from a run that
+did.
+
 **Memory export and import (AH-083).** `memory/transfer.rs` defines the
 `jan-memory-export` v1 document: one scope's active memories with content,
 content hash, creator, origin, source type, category, pin, timestamps,

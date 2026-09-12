@@ -207,6 +207,9 @@ pub(crate) struct Invocations {
     /// Where the session's log lives. `None` records nothing (tests, proxies).
     data: Option<std::path::PathBuf>,
     next: std::sync::atomic::AtomicU64,
+    /// Ids for what the run does between requests, which have no request id of
+    /// their own to be named after.
+    notes: std::sync::atomic::AtomicU64,
     current: std::sync::Mutex<String>,
 }
 
@@ -217,6 +220,7 @@ impl Invocations {
             run,
             data,
             next: std::sync::atomic::AtomicU64::new(0),
+            notes: std::sync::atomic::AtomicU64::new(0),
             current: std::sync::Mutex::new(String::new()),
         }
     }
@@ -238,6 +242,20 @@ impl Invocations {
     /// The request whose work is running now; empty before the first one.
     fn current(&self) -> String {
         self.current.lock().map(|c| c.clone()).unwrap_or_default()
+    }
+
+    /// Record something the run did between provider requests -- input handed
+    /// in mid-run, a compaction, a child dispatched.
+    ///
+    /// It is filed under the request that was last in flight, and ordered by
+    /// the log's own sequence, so a reader can say what happened before what
+    /// without trusting whichever clock a writer had. Nothing here is a
+    /// request of its own, so nothing here mints an invocation id.
+    fn note(&self, kind: &str, payload: serde_json::Value) {
+        let n = self.notes.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        let run = if self.run.is_empty() { "run" } else { self.run.as_str() };
+        let current = self.current();
+        self.record(kind, &format!("note:{run}:{n}"), &current, payload);
     }
 
     /// Record one event of this run. Best effort: the record must never fail
@@ -385,7 +403,7 @@ impl ModelInvoker for HttpModelInvoker {
         }
 
         let mut out = self
-            .dispatch_to(&self.upstream_url, &self.api_keys, &normalized, events)
+            .dispatch_to(&self.upstream_url, &self.api_keys, &normalized, events, &invocation)
             .await;
 
         // AH-193: the configured chain, in order, and only for a failure that
@@ -426,7 +444,7 @@ impl ModelInvoker for HttpModelInvoker {
             let mut next = normalized.clone();
             next["model"] = serde_json::json!(lane.model_id);
             out = self
-                .dispatch_to(&lane.upstream_url, &lane.api_keys, &next, events)
+                .dispatch_to(&lane.upstream_url, &lane.api_keys, &next, events, &invocation)
                 .await;
             if out.is_ok() {
                 normalized = next;
@@ -454,6 +472,67 @@ impl ModelInvoker for HttpModelInvoker {
         }
         out
     }
+}
+
+/// Watch one request's stream, record that it streamed, and pass every event
+/// on untouched (AH-004).
+///
+/// The record holds the fact and the size, never the words: the reply's text is
+/// already in the transcript, and a log that copied it would be a second place
+/// for the same content to leak from. One event when the reply first produces
+/// something -- saying whether that was content or reasoning -- and one for the
+/// reasoning the provider supplied, so a reader can see what a request actually
+/// did and where anything else in the log fell relative to it.
+fn tee_stream(
+    invocations: std::sync::Arc<Invocations>,
+    invocation: String,
+    out: mpsc::UnboundedSender<StreamEvent>,
+) -> (mpsc::UnboundedSender<StreamEvent>, tokio::task::JoinHandle<()>) {
+    let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
+    let watching = tokio::spawn(async move {
+        let (mut text, mut reasoning) = (0usize, 0usize);
+        while let Some(event) = rx.recv().await {
+            // The id is the same either way, so the first delta of the reply
+            // is the one that is recorded and a later one cannot overwrite it.
+            match &event {
+                StreamEvent::Token { text: delta } if !delta.is_empty() => {
+                    if text == 0 {
+                        invocations.record(
+                            "message.started",
+                            &format!("stream:{invocation}"),
+                            &invocation,
+                            serde_json::json!({ "phase": "streaming", "first": "content" }),
+                        );
+                    }
+                    text += delta.chars().count();
+                }
+                StreamEvent::Reasoning { text: delta } if !delta.is_empty() => {
+                    if reasoning == 0 {
+                        invocations.record(
+                            "message.started",
+                            &format!("stream:{invocation}"),
+                            &invocation,
+                            serde_json::json!({ "phase": "streaming", "first": "reasoning" }),
+                        );
+                    }
+                    reasoning += delta.chars().count();
+                }
+                _ => {}
+            }
+            // A consumer that has gone away does not stop the watching: the
+            // record of what the provider sent is still owed.
+            let _ = out.send(event);
+        }
+        if reasoning > 0 {
+            invocations.record(
+                "message.reasoning",
+                &format!("reasoning:{invocation}"),
+                &invocation,
+                serde_json::json!({ "chars": reasoning, "supplied": "provider" }),
+            );
+        }
+    });
+    (tx, watching)
 }
 
 /// Whether this request starts a turn or continues one.
@@ -487,6 +566,27 @@ impl HttpModelInvoker {
     /// Send one request to one provider. Split out so the primary and every
     /// fallback go the same way, including the native-wire converter.
     async fn dispatch_to(
+        &self,
+        upstream_url: &str,
+        api_keys: &[String],
+        body: &serde_json::Value,
+        events: &mpsc::UnboundedSender<StreamEvent>,
+        invocation: &str,
+    ) -> Result<serde_json::Value, String> {
+        // AH-004: what streamed back is recorded against this request, in
+        // order, before the reply that closes it.
+        let (tee, watching) =
+            tee_stream(self.invocations.clone(), invocation.to_string(), events.clone());
+        let out = self.send_to(upstream_url, api_keys, body, &tee).await;
+        // The watcher ends when the last event is in, which is what puts the
+        // stream's events in the log before the completion's.
+        drop(tee);
+        let _ = watching.await;
+        out
+    }
+
+    /// One request on the wire, with no recording of its own.
+    async fn send_to(
         &self,
         upstream_url: &str,
         api_keys: &[String],
@@ -1054,16 +1154,27 @@ impl CompositeToolInvoker {
                     Ok(r) => r,
                     Err(e) => return format!("ERROR: {e}"),
                 };
-                crate::core::agent::subagent::format_subagent_cancel(
-                    &run_id,
-                    ctx.bg.cancel(&run_id),
-                )
+                let cancelled = ctx.bg.cancel(&run_id);
+                // Only a run this call actually stopped is an ending: one that
+                // had already finished, or was never this parent's, is not.
+                if matches!(
+                    cancelled,
+                    crate::core::agent::subagent::SubagentCancelOutcome::CancelledQueued
+                        | crate::core::agent::subagent::SubagentCancelOutcome::CancelledRunning
+                ) {
+                    self.invocations.note(
+                        "agent.ended",
+                        serde_json::json!({ "child": run_id, "stoppedBy": "cancelled" }),
+                    );
+                }
+                crate::core::agent::subagent::format_subagent_cancel(&run_id, cancelled)
             }
             "dispatch_subagent" => {
                 let req = match parse_dispatch_args(args) {
                     Ok(r) => r,
                     Err(e) => return format!("ERROR: {e}"),
                 };
+                let child_name = req.subagent_name.clone();
                 match spawn_subagent(
                     &ctx.bg,
                     &ctx.parent_args,
@@ -1076,6 +1187,18 @@ impl CompositeToolInvoker {
                     &self.events,
                 ) {
                     Ok(run_id) => {
+                        // AH-004: the parent's record says which child it
+                        // started and which request asked for it, so a nested
+                        // run is reachable from the run that caused it.
+                        self.invocations.note(
+                            "agent.dispatched",
+                            serde_json::json!({
+                                "child": run_id,
+                                "agent": child_name,
+                                "mode": "background",
+                                "parentRun": self.cancel_scope.run,
+                            }),
+                        );
                         let mut out = format!(
                             "Subagent started in the background. run_id={run_id}. Continue working, then call await_subagent with this run_id to collect its result."
                         );
@@ -1095,7 +1218,25 @@ impl CompositeToolInvoker {
                     Ok(r) => r,
                     Err(e) => return format!("ERROR: {e}"),
                 };
-                let outcome = match await_subagent(&ctx.bg, &run_id).await {
+                let awaited = await_subagent(&ctx.bg, &run_id).await;
+                // How the child ended, against the parent's run. Sizes only:
+                // the child's own report is its own record.
+                self.invocations.note(
+                    "agent.ended",
+                    match &awaited {
+                        Ok(text) => serde_json::json!({
+                            "child": run_id,
+                            "stoppedBy": "done",
+                            "textChars": text.chars().count(),
+                        }),
+                        Err(e) => serde_json::json!({
+                            "child": run_id,
+                            "stoppedBy": "error",
+                            "detail": bound_detail(&e.to_string()),
+                        }),
+                    },
+                );
+                let outcome = match awaited {
                     Ok(text) if text.trim().is_empty() => {
                         "The subagent finished but produced no text output.".to_string()
                     }
@@ -2791,6 +2932,7 @@ async fn orchestrate_inner(
                 todo_registry.as_ref(),
                 force_first_tool,
                 steering,
+                Some(invocations.as_ref()),
             ),
         )
         .await;
@@ -2823,6 +2965,7 @@ async fn orchestrate_inner(
             todo_registry.as_ref(),
             force_first_tool,
             steering,
+            Some(invocations.as_ref()),
         )
         .await
     }
@@ -3058,16 +3201,16 @@ fn body_session_budget(json_body: &serde_json::Value) -> Option<u64> {
 }
 
 /// Offer the surface a boundary to hand over what the user typed meanwhile.
-/// Appends whatever comes back as ordinary user messages and says whether
-/// anything did. Never blocks without a surface: none, or one that has gone
-/// away, is no input.
+/// Appends whatever comes back as ordinary user messages and returns how many
+/// arrived. Never blocks without a surface: none, or one that has gone away,
+/// is no input.
 async fn receive_steering(
     steering: Option<&mpsc::UnboundedSender<SteeringRequest>>,
     messages: &mut Vec<serde_json::Value>,
     run_mode: crate::core::agent::plan::RunMode,
-) -> bool {
+) -> usize {
     let Some(steering) = steering else {
-        return false;
+        return 0;
     };
     let (reply, response) = tokio::sync::oneshot::channel();
     if steering
@@ -3078,11 +3221,11 @@ async fn receive_steering(
         })
         .is_err()
     {
-        return false;
+        return 0;
     }
     // A reply dropped unanswered is no input, not an error.
     let incoming = response.await.unwrap_or_default();
-    let received = !incoming.is_empty();
+    let received = incoming.len();
     messages.extend(incoming);
     received
 }
@@ -3108,6 +3251,9 @@ async fn run_turn_cycle(
     // (the TUI). `None` everywhere else: the API server, headless runs and
     // subagents never wait on a handoff.
     steering: Option<&mpsc::UnboundedSender<SteeringRequest>>,
+    // The run's canonical record (AH-004), for what happens between provider
+    // requests: steering handed in, a compaction. `None` records nothing.
+    record: Option<&Invocations>,
 ) -> Result<serde_json::Value, String> {
     // `max_turns == 0` is the normal case: the session token budget and user
     // cancellation are the real guards, so a run isn't cut off mid-task by a
@@ -3138,7 +3284,18 @@ async fn run_turn_cycle(
         // The safe boundary: every tool result of the last turn is in and the
         // next model call has not been made, so anything the user typed
         // meanwhile reaches the model now rather than after the run ends.
-        receive_steering(steering, &mut conversation_messages, run_mode).await;
+        let steered = receive_steering(steering, &mut conversation_messages, run_mode).await;
+        if steered > 0 {
+            if let Some(record) = record {
+                // Between the last request and the next: the log's sequence is
+                // what says so, which is why the ordering holds even when the
+                // reply was still streaming as the user typed.
+                record.note(
+                    "steering.received",
+                    serde_json::json!({ "messages": steered, "turn": turn + 1, "at": "turn-start" }),
+                );
+            }
+        }
         let _ = events.send(StreamEvent::Step {
             index: (turn as u32) + 1,
             max: max_turns as u32,
@@ -3175,15 +3332,64 @@ async fn run_turn_cycle(
                         if crate::core::agent::upstream::is_context_overflow_error(&e)
                             && attempts < MAX_COMPACTION_ATTEMPTS =>
                     {
-                        let compacted = crate::core::agent::compaction::compact_conversation(
+                        if let Some(record) = record {
+                            record.note(
+                                "compaction.started",
+                                serde_json::json!({
+                                    "reason": "context-overflow",
+                                    "attempt": attempts + 1,
+                                    "messages": conversation_messages.len(),
+                                    "keepRecent": keep_recent,
+                                }),
+                            );
+                        }
+                        let compacted = match crate::core::agent::compaction::compact_conversation(
                             &conversation_messages,
                             model_id,
                             model,
                             keep_recent,
                         )
-                        .await?;
+                        .await
+                        {
+                            Ok(compacted) => compacted,
+                            Err(error) => {
+                                if let Some(record) = record {
+                                    record.note(
+                                        "compaction.failed",
+                                        serde_json::json!({
+                                            "reason": "context-overflow",
+                                            "detail": bound_detail(&error),
+                                        }),
+                                    );
+                                }
+                                return Err(error);
+                            }
+                        };
                         if compacted.len() >= conversation_messages.len() {
+                            // Nothing left to drop: the request is too large
+                            // for this model and saying so is the honest end.
+                            if let Some(record) = record {
+                                record.note(
+                                    "compaction.failed",
+                                    serde_json::json!({
+                                        "reason": "context-overflow",
+                                        "detail": "compaction did not shrink the conversation",
+                                        "messages": conversation_messages.len(),
+                                    }),
+                                );
+                            }
                             return Err(e);
+                        }
+                        if let Some(record) = record {
+                            record.note(
+                                "compaction.succeeded",
+                                serde_json::json!({
+                                    "reason": "context-overflow",
+                                    "from": conversation_messages.len(),
+                                    "to": compacted.len(),
+                                    "attempt": attempts + 1,
+                                }),
+                            );
                         }
                         log::info!(
                             "agent: context overflow, compacted {} -> {} messages (attempt {})",
@@ -3284,7 +3490,7 @@ async fn run_turn_cycle(
                     .unwrap_or_else(|| serde_json::json!({ "content": final_text }));
                 assistant["role"] = serde_json::json!("assistant");
                 continued.push(assistant);
-                if receive_steering(steering, &mut continued, run_mode).await {
+                if receive_steering(steering, &mut continued, run_mode).await > 0 {
                     conversation_messages = continued;
                     turn += 1;
                     continue;
@@ -3324,6 +3530,15 @@ async fn run_turn_cycle(
             // input untouched when there is too little to drop, and publishing
             // an unchanged history would spend a summarizer call for nothing.
             if budget.exhausted() {
+                if let Some(record) = record {
+                    record.note(
+                        "compaction.started",
+                        serde_json::json!({
+                            "reason": "budget-exhausted",
+                            "messages": conversation_messages.len(),
+                        }),
+                    );
+                }
                 match crate::core::agent::compaction::compact_conversation(
                     &conversation_messages,
                     model_id,
@@ -3338,11 +3553,32 @@ async fn run_turn_cycle(
                             conversation_messages.len(),
                             compacted.len()
                         );
+                        if let Some(record) = record {
+                            record.note(
+                                "compaction.succeeded",
+                                serde_json::json!({
+                                    "reason": "budget-exhausted",
+                                    "from": conversation_messages.len(),
+                                    "to": compacted.len(),
+                                }),
+                            );
+                        }
                         conversation_messages = compacted;
                     }
+                    // Too little to drop: not a failure, and not a compaction
+                    // either, so the record says nothing happened.
                     Ok(_) => {}
                     Err(error) => {
                         log::warn!("agent: budget exhausted but compaction failed: {error}");
+                        if let Some(record) = record {
+                            record.note(
+                                "compaction.failed",
+                                serde_json::json!({
+                                    "reason": "budget-exhausted",
+                                    "detail": bound_detail(&error),
+                                }),
+                            );
+                        }
                     }
                 }
             }
@@ -3869,6 +4105,7 @@ mod tests {
             None,
             None,
             Some(&steering),
+            None,
         )
         .await
         .unwrap();
@@ -3923,6 +4160,7 @@ mod tests {
             None,
             None,
             Some(&steering),
+            None,
         )
         .await
         .unwrap();
@@ -3946,13 +4184,14 @@ mod tests {
         let (steering, receiver) = mpsc::unbounded_channel();
         drop(receiver);
         let mut messages = vec![json!({"role": "user", "content": "start"})];
-        assert!(
-            !receive_steering(
+        assert_eq!(
+            receive_steering(
                 Some(&steering),
                 &mut messages,
                 crate::core::agent::plan::RunMode::Normal
             )
-            .await
+            .await,
+            0
         );
         assert_eq!(messages.len(), 1);
     }
@@ -3991,6 +4230,7 @@ mod tests {
             None,
             None,
             Some(&steering),
+            None,
         )
         .await
         .unwrap();
@@ -4035,6 +4275,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4073,6 +4314,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
             None,
@@ -4143,6 +4385,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4200,6 +4443,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4231,6 +4475,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
             None,
@@ -4319,6 +4564,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4376,6 +4622,7 @@ mod tests {
             &tool,
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
+            None,
             None,
             None,
         )
@@ -4494,6 +4741,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("sanitized history must be accepted so the session can continue");
@@ -4529,6 +4777,7 @@ mod tests {
             crate::core::agent::plan::RunMode::Normal,
             None,
             Some("todo"),
+            None,
             None,
         )
         .await
@@ -4725,6 +4974,7 @@ mod tests {
             Some(&registry),
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4802,6 +5052,7 @@ mod tests {
             Some(&registry),
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4847,6 +5098,7 @@ mod tests {
             Some(&registry),
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -4881,6 +5133,7 @@ mod tests {
             &tool,
             crate::core::agent::plan::RunMode::Plan,
             Some(&registry),
+            None,
             None,
             None,
         )
@@ -4933,6 +5186,7 @@ mod tests {
             &tool,
             crate::core::agent::plan::RunMode::Normal,
             Some(&registry),
+            None,
             None,
             None,
         )
@@ -5012,6 +5266,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -5064,6 +5319,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
             None,
@@ -5133,6 +5389,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("run completes");
@@ -5197,6 +5454,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
             None,
@@ -5279,6 +5537,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -5324,6 +5583,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
             None,
@@ -5377,6 +5637,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
             None,
@@ -5444,6 +5705,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await;
 
@@ -5501,6 +5763,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await;
 
@@ -5552,6 +5815,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -5587,6 +5851,7 @@ mod tests {
             &model,
             &tool,
             crate::core::agent::plan::RunMode::Normal,
+            None,
             None,
             None,
             None,
@@ -6032,6 +6297,233 @@ mod tests {
         ] {
             assert!(!is_failover_worthy(answered), "{answered:?}");
         }
+    }
+
+    /// A model that overflows once, then summarizes, then answers: the three
+    /// calls a reactive compaction actually makes.
+    struct OverflowsOnce {
+        calls: StdMutex<usize>,
+    }
+    #[async_trait]
+    impl ModelInvoker for OverflowsOnce {
+        async fn invoke(
+            &self,
+            _request: &serde_json::Value,
+            events: &mpsc::UnboundedSender<StreamEvent>,
+        ) -> Result<serde_json::Value, String> {
+            let n = {
+                let mut calls = self.calls.lock().unwrap();
+                *calls += 1;
+                *calls
+            };
+            match n {
+                1 => Err(format!(
+                    "{}: this model's maximum context length is 8192 tokens",
+                    crate::core::agent::upstream::CONTEXT_OVERFLOW_MARKER
+                )),
+                2 => Ok(json!({"choices": [{"message": {"content": "a summary"}}]})),
+                _ => {
+                    let _ = events.send(StreamEvent::Token { text: "ok".into() });
+                    Ok(json!({"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}))
+                }
+            }
+        }
+    }
+
+    /// AH-004: what the run does between provider requests is in the record,
+    /// in the order it happened. Steering handed in at the turn boundary and a
+    /// compaction forced by an overflow are both the run's own doing, so
+    /// neither has a request id -- but both are placed by the log's sequence,
+    /// which is what makes the causal order readable after the fact.
+    #[tokio::test]
+    async fn steering_and_compaction_are_recorded_in_the_order_they_happened() {
+        let root = std::env::temp_dir().join(format!("jan_p4_record_{}", std::process::id()));
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).expect("create data");
+        let invocations = Invocations::new("s-rec".into(), "s-rec#run-1".into(), Some(data.clone()));
+
+        let (events, _rx) = mpsc::unbounded_channel();
+        let (steering, mut requests) = mpsc::unbounded_channel::<SteeringRequest>();
+        let consumer = tokio::spawn(async move {
+            // Only the first boundary hands anything over.
+            let first = requests.recv().await.unwrap();
+            first
+                .reply
+                .send(vec![json!({"role": "user", "content": "use pnpm"})])
+                .unwrap();
+            while let Some(request) = requests.recv().await {
+                request.reply.send(vec![]).unwrap();
+            }
+        });
+        // Long enough that compaction has something to drop.
+        let history: Vec<serde_json::Value> = (0..24)
+            .map(|i| json!({"role": if i % 2 == 0 { "user" } else { "assistant" }, "content": format!("m{i}")}))
+            .collect();
+        let mut budget = SessionBudget::new(None);
+        let model = OverflowsOnce { calls: StdMutex::new(0) };
+        run_turn_cycle(
+            &events,
+            &json!({}),
+            "m",
+            &[],
+            history,
+            4,
+            &mut budget,
+            &model,
+            &MockTool::default(),
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            Some(&steering),
+            Some(&invocations),
+        )
+        .await
+        .expect("the run answers after compacting");
+        drop(steering);
+        consumer.await.unwrap();
+
+        let kinds: Vec<String> =
+            tauri_plugin_agent_tools::event_log::read_session(&data, "s-rec")
+                .expect("the session log")
+                .into_iter()
+                .map(|e| e.kind)
+                .collect();
+        assert_eq!(
+            kinds,
+            vec![
+                "steering.received",
+                "compaction.started",
+                "compaction.succeeded",
+            ],
+            "{kinds:?}"
+        );
+        let events = tauri_plugin_agent_tools::event_log::read_session(&data, "s-rec").unwrap();
+        let steered = &events[0];
+        assert_eq!(steered.payload["messages"], 1, "{steered:?}");
+        assert_eq!(steered.run, "s-rec#run-1", "a note belongs to its run");
+        let compacted = &events[2];
+        assert_eq!(compacted.payload["reason"], "context-overflow");
+        assert!(
+            compacted.payload["to"].as_u64().unwrap() < compacted.payload["from"].as_u64().unwrap(),
+            "a compaction that did not shrink is not a success: {compacted:?}"
+        );
+        assert!(
+            events.windows(2).all(|w| w[0].seq < w[1].seq),
+            "the order is the log's own: {events:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AH-004: a compaction that cannot shrink the conversation is recorded as
+    /// the failure it is, not quietly dropped -- otherwise the record shows a
+    /// run that overflowed and then simply stopped.
+    #[tokio::test]
+    async fn a_compaction_that_cannot_help_is_recorded_as_a_failure() {
+        let root = std::env::temp_dir().join(format!("jan_p4_nocompact_{}", std::process::id()));
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).expect("create data");
+        let invocations = Invocations::new("s-fail".into(), "s-fail#run-1".into(), Some(data.clone()));
+        let (events, _rx) = mpsc::unbounded_channel();
+        let mut budget = SessionBudget::new(None);
+        let model = OverflowsOnce { calls: StdMutex::new(0) };
+        // Two messages: there is no middle to summarize, so compaction returns
+        // the input untouched and the overflow stands.
+        let result = run_turn_cycle(
+            &events,
+            &json!({}),
+            "m",
+            &[],
+            vec![json!({"role": "user", "content": "hi"})],
+            4,
+            &mut budget,
+            &model,
+            &MockTool::default(),
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            Some(&invocations),
+        )
+        .await;
+        assert!(result.is_err(), "an unshrinkable overflow is not a success");
+        let events = tauri_plugin_agent_tools::event_log::read_session(&data, "s-fail").unwrap();
+        let kinds: Vec<&str> = events.iter().map(|e| e.kind.as_str()).collect();
+        assert_eq!(kinds, vec!["compaction.started", "compaction.failed"], "{kinds:?}");
+        assert_eq!(events[1].payload["reason"], "context-overflow");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AH-004: a reply that streamed says so in the record -- once, with which
+    /// kind of output arrived first and how much reasoning the provider
+    /// supplied. Counts only: the words belong to the transcript, and a log
+    /// that copied them would be a second place for them to leak from.
+    #[tokio::test]
+    async fn a_streamed_reply_is_recorded_once_with_what_arrived_first() {
+        let root = std::env::temp_dir().join(format!("jan_p4_stream_{}", std::process::id()));
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).expect("create data");
+        let invocations =
+            std::sync::Arc::new(Invocations::new("s-str".into(), "s-str#run-1".into(), Some(data.clone())));
+        let invocation = invocations.begin();
+        let (out, mut seen) = mpsc::unbounded_channel::<StreamEvent>();
+        let (tee, watching) = tee_stream(invocations.clone(), invocation.clone(), out);
+        for event in [
+            StreamEvent::Reasoning { text: "think".into() },
+            StreamEvent::Token { text: "he".into() },
+            StreamEvent::Reasoning { text: "more".into() },
+            StreamEvent::Token { text: "llo".into() },
+        ] {
+            tee.send(event).expect("the watcher is listening");
+        }
+        drop(tee);
+        watching.await.expect("the watcher finishes with the stream");
+
+        // Everything still reaches the surface, unchanged and in order.
+        let mut forwarded = Vec::new();
+        while let Ok(event) = seen.try_recv() {
+            forwarded.push(event);
+        }
+        assert_eq!(forwarded.len(), 4, "the watcher swallowed an event: {forwarded:?}");
+        assert!(matches!(&forwarded[3], StreamEvent::Token { text } if text == "llo"));
+
+        let events = tauri_plugin_agent_tools::event_log::read_session(&data, "s-str").unwrap();
+        let kinds: Vec<&str> = events.iter().map(|e| e.kind.as_str()).collect();
+        assert_eq!(kinds, vec!["message.started", "message.reasoning"], "{kinds:?}");
+        assert_eq!(events[0].payload["first"], "reasoning", "reasoning came first");
+        assert_eq!(events[1].payload["chars"], 9, "think + more");
+        assert!(
+            events.iter().all(|e| e.invocation == invocation),
+            "a stream belongs to the request that produced it"
+        );
+        let raw = std::fs::read_to_string(
+            tauri_plugin_agent_tools::event_log::log_path(&data, "s-str"),
+        )
+        .unwrap();
+        assert!(!raw.contains("hello") && !raw.contains("think"), "the words reached the log: {raw}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A reply with nothing in it records nothing: an empty delta is not a
+    /// stream, and a request that never produced one must not look like it did.
+    #[tokio::test]
+    async fn a_reply_that_never_streamed_records_no_stream() {
+        let root = std::env::temp_dir().join(format!("jan_p4_nostream_{}", std::process::id()));
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).expect("create data");
+        let invocations =
+            std::sync::Arc::new(Invocations::new("s-q".into(), "s-q#run-1".into(), Some(data.clone())));
+        let invocation = invocations.begin();
+        let (out, _seen) = mpsc::unbounded_channel::<StreamEvent>();
+        let (tee, watching) = tee_stream(invocations, invocation, out);
+        tee.send(StreamEvent::Token { text: String::new() }).unwrap();
+        tee.send(StreamEvent::Step { index: 1, max: 0 }).unwrap();
+        drop(tee);
+        watching.await.unwrap();
+        assert!(
+            tauri_plugin_agent_tools::event_log::read_session(&data, "s-q").unwrap().is_empty(),
+            "an empty stream was recorded as one"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// AH-004: one id per provider request, shared by everything that request
@@ -6959,6 +7451,7 @@ mod tests {
                     model.as_ref(),
                     invoker.as_ref(),
                     crate::core::agent::plan::RunMode::Normal,
+                    None,
                     None,
                     None,
                     None,

@@ -35,6 +35,13 @@ The reply is chosen by ``--script``:
 ``length``
     Streams the reply and stops with ``finish_reason: "length"``, the way a
     server does when the output cap cuts a turn short.
+``reasoning``
+    Streams ``reasoning_content`` deltas and then the answer, the way a
+    provider that exposes reasoning as its own field does.
+``overflow``
+    Rejects the first chat request with a context-length error, then answers
+    normally -- so the run has to compact its history and retry, the way a
+    real overflow makes it.
 
 Every chat request body is kept (the last 20) and served back on
 ``GET /__requests``, so a scenario can assert what the app actually sent --
@@ -68,6 +75,8 @@ REQUESTS_LOCK = threading.Lock()
 # What each relayed exchange's provider reported. See "Upstream pass-through".
 RECORDS: list[dict] = []
 RECORDS_LOCK = threading.Lock()
+# Whether the ``overflow`` script has already rejected a request.
+OVERFLOWED = False
 
 
 def last_user_text(body: dict) -> str:
@@ -309,6 +318,26 @@ class Handler(BaseHTTPRequestHandler):
         if ARGS.upstream:
             return self._relay(body)
 
+        # One rejection, then business as usual: the first request overflows
+        # the window, and whatever the run sends next (the summarizer call,
+        # then the compacted retry) is answered.
+        if ARGS.script == "overflow":
+            global OVERFLOWED
+            # Only once, and only once the conversation is long enough that
+            # compacting it can actually drop something -- otherwise the run
+            # correctly reports that there was nothing to compact.
+            if not OVERFLOWED and len(body.get("messages", [])) >= ARGS.overflow_after:
+                OVERFLOWED = True
+                return self._json(
+                    400,
+                    {
+                        "error": {
+                            "message": "This model's maximum context length is 8192 tokens",
+                            "code": "context_length_exceeded",
+                        }
+                    },
+                )
+
         # A request whose messages already carry tool results is the follow-up
         # turn: answer in words rather than asking for the tools again.
         carries_results = any(
@@ -411,6 +440,23 @@ class Handler(BaseHTTPRequestHandler):
                     )
                 )
                 self.wfile.write(sse(chunk({}, finish="tool_calls")))
+                send_usage()
+                self.wfile.write(b"data: [DONE]\n\n")
+                self.wfile.flush()
+                return
+
+            # A provider that supplies reasoning as its own field, the way
+            # DeepSeek-style endpoints do: reasoning first, then the answer,
+            # so a reader can tell which arrived first.
+            if ARGS.script == "reasoning":
+                self.wfile.write(sse(chunk({"role": "assistant", "content": ""})))
+                for part in ("weighing ", "the options"):
+                    self.wfile.write(sse(chunk({"reasoning_content": part})))
+                    self.wfile.flush()
+                for part in ("the answer ", "is 4"):
+                    self.wfile.write(sse(chunk({"content": part})))
+                    self.wfile.flush()
+                self.wfile.write(sse(chunk({}, finish="stop")))
                 send_usage()
                 self.wfile.write(b"data: [DONE]\n\n")
                 self.wfile.flush()
@@ -570,7 +616,26 @@ def main() -> int:
     parser.add_argument(
         "--script",
         default="plain",
-        choices=["plain", "tools", "fail", "slow", "proxy-403", "no-models", "length", "echo-401", "steer"],
+        choices=[
+            "plain",
+            "tools",
+            "fail",
+            "slow",
+            "proxy-403",
+            "no-models",
+            "length",
+            "echo-401",
+            "steer",
+            "reasoning",
+            "overflow",
+        ],
+    )
+    parser.add_argument(
+        # How many messages a request must carry before the `overflow` script
+        # rejects it.
+        "--overflow-after",
+        type=int,
+        default=1,
     )
     parser.add_argument(
         "--tools",
