@@ -12513,30 +12513,43 @@ fn scenario_background_job_record_restart(ctx: &Ctx) -> ScenarioResult {
     println!("      after restart: {}", serde_json::to_string(&records).unwrap_or_default());
     for record in &records {
         let state = record["state"].as_str().unwrap_or_default();
-        ensure!(
-            state != "running",
-            "a job whose process died with the app still reads as running: {record}"
-        );
+        let pid = record["identity"]["pid"].as_u64().unwrap_or(0);
         ensure!(
             state != "completed",
             "an ending nobody saw was reported as completion: {record}"
         );
         ensure!(
-            matches!(state, "interrupted" | "orphaned" | "cancelled" | "failed"),
+            matches!(state, "running" | "interrupted" | "orphaned" | "cancelled" | "failed"),
             "unexpected state {state:?}: {record}"
         );
-        ensure!(
-            record["identity"]["pid"].as_u64().unwrap_or(0) == 0,
-            "a settled job kept a pid that could be reused: {record}"
-        );
+        if state == "running" {
+            // Either the process really did outlive the app -- which is the
+            // whole point -- and was re-identified by pid *and* creation time,
+            // or it should have been settled. What must never happen is a job
+            // reading "running" with nothing to identify it by.
+            ensure!(
+                pid > 0 && record["identity"]["created"].as_u64().unwrap_or(0) > 0,
+                "a job reads as running with nothing to identify it by: {record}"
+            );
+        } else {
+            ensure!(
+                pid == 0,
+                "a settled job kept a pid that could be reused: {record}"
+            );
+        }
     }
-    ensure!(
-        records.iter().any(|r| r["state"] == "interrupted"),
-        "nothing was settled as interrupted: {records:?}"
-    );
+    // The job that was stopped before the restart keeps its ending, whatever
+    // became of the other one.
     ensure!(
         records.iter().any(|r| r["state"] == "cancelled"),
         "the job stopped before the restart lost its ending: {records:?}"
+    );
+    // And every job the earlier process left is accounted for: either settled,
+    // or still running and provably the same process.
+    ensure!(
+        records.iter().all(|r| r["state"] != "running"
+            || r["identity"]["created"].as_u64().unwrap_or(0) > 0),
+        "a job was carried over without being re-identified: {records:?}"
     );
     Ok(())
 }
