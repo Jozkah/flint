@@ -1408,3 +1408,75 @@ showed 6,379 / 6,342 / 22 against 6379 / 6342 / 22; after a restart with no
 provider traffic both were shown again unchanged.
 
 Not run: macOS, Linux; providers other than the mock and this llama-server.
+
+## Phase 5: a real project, built by a real model through Jan
+
+The point of this exercise is not that a model can write Python. It is that
+the harness carries a long, tool-heavy, multi-session piece of work without
+losing the record of it — and that when something is wrong, the record says
+so rather than the model's summary of itself.
+
+**The provider.** `http://v100:8555/v1`, model id `claude-sonnet-4-5`,
+configured in an isolated `JAN_HOME` (`/c/tmp/jan-p5-pb-home`) so nothing
+touched the developer's own Jan profile. No DNS, Tailscale, firewall,
+routing or remote service was changed; the endpoint was used as it already
+stood.
+
+**The project.** `PocketBoard`, a small task board with a storage layer, a
+CLI and an HTTP API, built in a disposable repository outside the Jan tree
+(`/c/tmp/jan-real-ai-pocketboard`, seeded with an empty README and a single
+commit). It contains no user data. Every file was written by the model
+through Jan's own tool path — `write`, `edit`, `bash` — and none of its
+proposed patches was applied by hand.
+
+| | |
+| --- | --- |
+| Runs recorded | 11 (3 threads: build, review, adversarial follow-up) |
+| Model turns (assistant messages) | 298 |
+| Tool calls | 164: `bash` 35, `read` 54, `edit` 32, `write` 17, `ls` 16, `grep` 8, `dispatch_subagent` 1, `await_subagent` 1 |
+| Tool outcomes | 148 succeeded, 16 failed, 1 timed out |
+| Product code written | 30 files, 2,487 lines (7 modules, 6 test modules, README, `pyproject.toml`) |
+| Tests | 106, `Ran 106 tests … OK` on an independent run |
+| Provider usage | 3,209,235 input tokens, 59,486 output tokens |
+
+**Cache status, as reported and not inferred.** `8555` returns
+`prompt_tokens_details: null` on every completion, so every run of this
+exercise is recorded as **Not reported** — the harness does not guess a hit
+from a repeated prompt or a fast reply. The contrast case is `v100:8080`,
+which does report the field: 2,784 cached of 2,808 prompt tokens, recorded
+as **Cache reused**. An explicit `cached_tokens: 0` is recorded as **No
+cached input**. The three cases are distinguishable in the record because
+they are three different statements, not three latencies.
+
+**What the model found in its own work.** Asked to review what it had
+built, it reported a genuine data-loss bug: the HTTP API reads, mutates and
+rewrites the whole board file per request, so concurrent writes are
+last-writer-wins. An independent probe confirmed it — 32 concurrent adds,
+9 survivors, the store still valid JSON and no stray `.tmp` files. It also
+looked at the API's network binding and correctly declined to call it a
+vulnerability (loopback by default), rather than inflating the finding.
+
+**What the model got wrong, and how the record caught it.** Twice, on a
+resumed run, it reported results from a subagent and a background job it had
+never dispatched. The execution record disagreed: one request, no `tool.*`
+events, and no `stats` command anywhere in the tree. That is the whole
+argument for a canonical record — the model's narration was confident and
+the log was not persuadable.
+
+**Two Jan defects this exposed, both fixed here.**
+
+| Defect | How it showed | Fix |
+| --- | --- | --- |
+| A headless run saved only the prompt and the final answer, so `--resume` handed the model a transcript in which it had *described* work and never called a tool — an example of the wrong behaviour, which it imitated | the fabricated subagent/job results above | the CLI now persists the conversation the loop published, tool calls and results included (`3622f4369`); verified against the real model: `system, user, assistant, tool, assistant, user` with `tool_calls` present |
+| `jan cli job start` blocked for the whole job instead of returning, because the detached child inherited the caller's stdout pipe on Windows | `id=$(jan cli job start …)` did not return until the 240 s job ended | clear `HANDLE_FLAG_INHERIT` on the standard handles across the spawn (`1fde20f11`); `start` then returns in 0 s |
+
+**Typed failures seen in the flow.** Every failed call in the record
+carries a kind rather than a message the caller has to parse: `invalid_input`
+15 times (a `read` of a path that did not exist yet, 12 of them; two `bash`
+invocations and one `grep` with bad arguments), `permission_denied` once,
+and one `bash` call recorded as `tool.timed-out` with kind `timeout`. The
+timeout is classified before cancellation on purpose — a tool that ran out
+of time *was* stopped, and reading that as a cancellation would make it
+retryable when it must not be. None of the sixteen is a string beginning
+`ERROR [`. No prompt text, authorization header, API key or absolute home
+path appears in the exported record.
