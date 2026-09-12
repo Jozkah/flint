@@ -243,6 +243,12 @@ enum PluginCommands {
 /// The non-interactive command surface, reached via `jan cli <command>`.
 #[derive(Subcommand)]
 enum CliCommands {
+    /// Background work that outlives this process (AH-101/AH-102)
+    #[command(display_order = 9)]
+    Job {
+        #[command(subcommand)]
+        cmd: JobCommands,
+    },
     /// List and inspect conversation threads saved by the Jan app
     #[command(display_order = 10)]
     Threads {
@@ -447,6 +453,64 @@ enum AgentConfigCommands {
 }
 
 // ── Threads subcommands ────────────────────────────────────────────────────
+
+/// Background jobs: start one that survives this process, see what it has
+/// done, and stop it from anywhere.
+#[derive(Subcommand)]
+enum JobCommands {
+    /// Start a command as a job that keeps running after this process exits
+    Start {
+        /// The conversation the job belongs to; only it can see or stop the job
+        #[arg(long)]
+        owner: String,
+        /// The command to run, as the host shell would run it
+        command: String,
+        /// Where Jan keeps its data. Defaults to the configured data folder
+        #[arg(long)]
+        data: Option<String>,
+    },
+    /// This conversation's jobs, newest first
+    List {
+        #[arg(long)]
+        owner: String,
+        #[arg(long)]
+        data: Option<String>,
+    },
+    /// What one job has produced so far
+    Output {
+        #[arg(long)]
+        owner: String,
+        id: String,
+        #[arg(long)]
+        data: Option<String>,
+        /// How much of the end to show
+        #[arg(long, default_value_t = 8192)]
+        bytes: usize,
+    },
+    /// Stop one job and the work it is running
+    Cancel {
+        #[arg(long)]
+        owner: String,
+        id: String,
+        #[arg(long)]
+        data: Option<String>,
+    },
+    /// Run one job to its end and write down what happened. Started by
+    /// `job start`; not meant to be run by hand.
+    #[command(hide = true)]
+    Supervise {
+        #[arg(long)]
+        data: String,
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        owner: String,
+        #[arg(long)]
+        token: String,
+        #[arg(long)]
+        command: String,
+    },
+}
 
 #[derive(Subcommand)]
 enum ThreadsCommands {
@@ -822,6 +886,7 @@ fn format_plugin_list(plugins: &[InstalledPlugin]) -> String {
 
 async fn handle_cli(cmd: CliCommands) {
     match cmd {
+        CliCommands::Job { cmd } => handle_job(cmd),
         CliCommands::Threads { cmd } => handle_threads(cmd).await,
         CliCommands::Models { cmd } => handle_models(cmd).await,
         CliCommands::Agent { cmd } => handle_agent(cmd).await,
@@ -837,6 +902,86 @@ async fn handle_cli(cmd: CliCommands) {
 // ── Agent handlers ───────────────────────────────────────────────────────
 
 use tauri_plugin_agent_tools::harness_error::HarnessError;
+
+/// `jan cli job`: work that outlives the process that started it.
+fn handle_job(cmd: JobCommands) {
+    use tauri_plugin_agent_tools::worker;
+    let folder = |given: Option<String>| -> std::path::PathBuf {
+        given
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(app_lib::core::app::commands::resolve_jan_data_folder)
+    };
+    let result = match cmd {
+        JobCommands::Start {
+            owner,
+            command,
+            data,
+        } => {
+            let data = folder(data);
+            // This binary is the supervisor: the same one that is already
+            // installed, so nothing new has to be shipped or found.
+            let me = std::env::current_exe().unwrap_or_else(|_| "jan".into());
+            worker::start(&data, &me, &owner, &command, ("", "", "")).map(|record| {
+                println!("{}", record.id);
+                eprintln!(
+                    "\x1b[2m[job {} started; it keeps running if this process exits]\x1b[0m",
+                    record.id
+                );
+            })
+        }
+        JobCommands::List { owner, data } => {
+            let data = folder(data);
+            // What an earlier process left is settled before it is listed, so
+            // a job nobody is running is not shown as running.
+            worker::reconcile(&data, &owner);
+            let mut jobs = tauri_plugin_agent_tools::job_record::read_owner(&data, &owner);
+            jobs.reverse();
+            if jobs.is_empty() {
+                println!("No background jobs.");
+            }
+            for job in jobs {
+                println!(
+                    "{}  {:<12} {}",
+                    job.id,
+                    job.state.tag(),
+                    job.summary
+                );
+            }
+            Ok(())
+        }
+        JobCommands::Output {
+            owner,
+            id,
+            data,
+            bytes,
+        } => {
+            let data = folder(data);
+            worker::output(&data, &owner, &id, bytes).map(|text| print!("{text}"))
+        }
+        JobCommands::Cancel { owner, id, data } => {
+            let data = folder(data);
+            worker::cancel(&data, &owner, &id).map(|state| {
+                println!("{}", state.tag());
+            })
+        }
+        JobCommands::Supervise {
+            data,
+            id,
+            owner,
+            token,
+            command,
+        } => worker::supervise(std::path::Path::new(&data), &id, &owner, &token, &command)
+            .map(|state| {
+                // Nothing is printed on the happy path: the supervisor has no
+                // console, and what it has to say is in the record.
+                let _ = state;
+            }),
+    };
+    if let Err(e) = result {
+        eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+        std::process::exit(e.exit_code());
+    }
+}
 
 async fn handle_agent(cmd: AgentCommands) {
     let result = match cmd {

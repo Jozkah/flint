@@ -541,13 +541,19 @@ the CLI evidence above is against local fixtures, not 8555.
 | Real WebView pair | `cowork-smoke --only background-job-record`, then `--only background-job-record-restart` on the same kept profile | a real background command started through the desktop's own tool path is written down as `running` with a pid *and* a creation time, its command redacted (the `sk-live_...` token in it is gone) but still recognisable, and another conversation is shown nothing of it; a second job stopped on request is recorded `cancelled` with its pid dropped; **after a real restart** neither job reads `running` or `completed` -- the one whose process died with the app reads `interrupted`, the stopped one keeps its ending, and neither keeps a pid anything could act on |
 | Rust tests | `job_record.rs::a_job_is_readable_after_the_app_that_started_it`, `a_restart_never_adopts_a_process_it_cannot_identify`, `the_record_is_bounded_and_survives_a_damaged_line` | a job survives with its provenance and a redacted command, listed only to its owner; a restart keeps a live process alive, writes off a pid that is gone, refuses to adopt a pid that now belongs to something else (dropping it), and settles a job it cannot identify -- and a second reconcile changes nothing; the listing is bounded to 200 per owner oldest-first, and neither a damaged line nor a record from a newer build hides the rest |
 
-Still missing for AH-101/AH-102: **the work itself does not survive.** A
-background job's process is the app's child and a subagent is a future inside
-it, so both end when the app does; what survives now is the record of them and
-an honest account of how they ended. Surviving would mean running the work
-outside the app process -- the CLI binary already runs the same loop headlessly,
-so the shape exists, but nothing spawns or re-attaches to it, and that is the
-exact remaining criterion.
+Phase 5 made the work itself survive:
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real processes, no app | `jan cli job start/list/output/cancel` against a job that ticks once a second for 90 seconds | `start` returns in **0s** and the starting process exits; with nothing owning it the job is at 6 ticks after 6s and 12 after 12s, `list` says `running`; a **later process** reads its output (`tick 26`, `tick 27`); **another conversation** asking for it is refused (`not_found`); cancelling from that later process returns `cancelled`, the tick count stops at 27 and is still 27 five seconds later, and an unrelated process started alongside is still alive. Kept in `/c/tmp/jan-p5-evidence/ah101-worker-survival.txt` |
+| Rust tests | `worker.rs::a_job_is_only_ours_when_all_three_agree`, `reconciling_leaves_a_live_job_alone`, `another_conversations_job_is_not_cancellable`, `the_token_is_not_in_anything_that_is_listed` | a claim whose token does not hash to the record's, and a live pid that did not claim the job, are both `Foreign` and never adopted; a job with no claim is `Interrupted`; an ending is final; reconciling settles what nobody is running and leaves a live job alone, and twice changes nothing; another conversation can neither cancel nor read a job; the secret appears in nothing a listing returns |
+
+Still missing for AH-101/AH-102: a *subagent* is still a future inside the app
+process, so an agent run does not yet survive the app the way a shell job now
+does; the desktop's `bash` backgrounding still uses the in-process registry
+rather than the supervisor (the supervisor is reachable from the desktop through
+`agent_job_start`, and the two paths have not been merged); and a machine reboot
+has not been exercised -- only an app exit.
 
 ## The timeline on a very long record (AH-172)
 

@@ -43,6 +43,7 @@ pub mod tools;
 pub mod undo;
 pub mod usage;
 pub mod utility;
+pub mod worker;
 pub mod workspace;
 
 #[cfg(feature = "tauri")]

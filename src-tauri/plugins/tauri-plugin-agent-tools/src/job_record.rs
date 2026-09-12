@@ -131,6 +131,11 @@ pub struct JobRecord {
     /// Why the state says what it says, when that is not obvious.
     #[serde(default)]
     pub note: String,
+    /// The hash of this job's secret (AH-101). The secret itself lives only in
+    /// the supervisor's claim file: a record that carried it would put it in
+    /// every listing and every export.
+    #[serde(default)]
+    pub token_hash: String,
 }
 
 impl JobRecord {
@@ -157,6 +162,7 @@ impl JobRecord {
             exit_code: None,
             output_path: String::new(),
             note: String::new(),
+            token_hash: String::new(),
         }
     }
 
@@ -264,6 +270,20 @@ fn read_all(data_folder: &Path) -> Vec<(PathBuf, Vec<JobRecord>)> {
             out.push((path, records));
         }
     }
+    out
+}
+
+/// Every conversation that has a job record here.
+///
+/// Read from inside the records rather than from the file names, which are
+/// hashes: an owner is never a path component.
+pub fn owners(data_folder: &Path) -> Vec<String> {
+    let mut out: Vec<String> = read_all(data_folder)
+        .into_iter()
+        .filter_map(|(_, records)| records.first().map(|r| r.owner.clone()))
+        .collect();
+    out.sort();
+    out.dedup();
     out
 }
 

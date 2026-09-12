@@ -109,6 +109,9 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_replay_begin,
         core::agent::commands::agent_context_breakdown,
         core::agent::commands::agent_background_jobs,
+        core::agent::commands::agent_job_start,
+        core::agent::commands::agent_job_output,
+        core::agent::commands::agent_job_cancel,
         core::agent::commands::agent_run_tree,
         core::agent::commands::agent_replay_plan,
         core::agent::commands::agent_replay_recorded,
@@ -414,7 +417,9 @@ pub fn build_app() -> tauri::App {
             // process left. A job whose process is gone is interrupted, never
             // "still running"; one whose pid now belongs to something else is
             // orphaned and is not touched. Nothing is adopted on a pid alone.
-            let settled = tauri_plugin_agent_tools::job_record::reconcile(
+            // AH-101: a job whose supervisor is still running is left alone --
+            // that is the point of the supervisor. Everything else is settled.
+            let settled = tauri_plugin_agent_tools::worker::reconcile_all(
                 &get_jan_data_folder_path(app.handle().clone()),
             );
             if !settled.is_empty() {

@@ -1044,6 +1044,26 @@ over that log, and a line that no longer parses is left untouched rather than
 edited blind. `memory/` never logs the outcome -- a body could travel with the
 message -- so the snapshot module reports it instead.
 
+**Background work outlives the app (AH-101/AH-102).** A job is run by a
+supervisor process of its own -- `jan cli job supervise`, the same command-line
+binary that ships beside the app -- spawned detached, so closing the window
+leaves the work running and a later app process can find it, read what it has
+produced and stop it. The supervisor is what makes an ending *knowable*: a bare
+detached command that exits while the app is closed leaves nobody to write down
+that it finished, and the next process could only say "its process is gone".
+
+Detaching means more than "do not wait for it". A detached child on Windows
+still inherits this process's inheritable handles, including the pipe a caller
+is capturing output through -- so `id=$(jan cli job start ...)` would block for
+the whole job rather than for the id, which is precisely what background work
+must not do. The standard handles are therefore marked non-inheritable across
+the spawn and restored afterwards.
+
+A job is "ours" only when three things agree: the pid, the process's creation
+time, and a per-job secret. The secret lives in the supervisor's claim file; the
+record keeps only its hash, so nothing listed, exported or logged carries it.
+Two out of three is a stranger, and a stranger is never signalled.
+
 **A background job outlives the app that started it, as a record
 (AH-101/AH-102).** Background jobs lived in a map in memory, so the moment the
 app exited a job that was running became a job nobody had any record of: the

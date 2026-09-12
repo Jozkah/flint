@@ -1058,6 +1058,90 @@ pub async fn agent_run_tree(
     })?
 }
 
+/// Start background work that outlives the app. AH-101/AH-102.
+///
+/// The job is run by a supervisor process of its own, so closing the window
+/// leaves it running and a later app process can find it, read it and stop it.
+#[tauri::command]
+pub async fn agent_job_start(
+    app: tauri::AppHandle,
+    session: String,
+    command: String,
+    run: Option<String>,
+    invocation: Option<String>,
+    agent: Option<String>,
+) -> Result<
+    tauri_plugin_agent_tools::job_record::JobRecord,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        let supervisor = tauri_plugin_agent_tools::worker::supervisor_binary()?;
+        tauri_plugin_agent_tools::worker::start(
+            &data_folder,
+            &supervisor,
+            &session,
+            &command,
+            (
+                run.as_deref().unwrap_or_default(),
+                invocation.as_deref().unwrap_or_default(),
+                agent.as_deref().unwrap_or_default(),
+            ),
+        )
+    })
+    .await
+    .map_err(|e| {
+        tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!(
+            "the job could not be started: {e}"
+        ))
+    })?
+}
+
+/// What one background job has produced so far. AH-102.
+#[tauri::command]
+pub async fn agent_job_output(
+    app: tauri::AppHandle,
+    session: String,
+    id: String,
+    bytes: Option<usize>,
+) -> Result<String, tauri_plugin_agent_tools::harness_error::HarnessError> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::worker::output(
+            &data_folder,
+            &session,
+            &id,
+            bytes.unwrap_or(64 * 1024),
+        )
+    })
+    .await
+    .map_err(|e| {
+        tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!(
+            "the job's output could not be read: {e}"
+        ))
+    })?
+}
+
+/// Stop one background job, and only that one. AH-102.
+#[tauri::command]
+pub async fn agent_job_cancel(
+    app: tauri::AppHandle,
+    session: String,
+    id: String,
+) -> Result<String, tauri_plugin_agent_tools::harness_error::HarnessError> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::worker::cancel(&data_folder, &session, &id)
+            .map(|state| state.tag().to_string())
+    })
+    .await
+    .map_err(|e| {
+        tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!(
+            "the job could not be stopped: {e}"
+        ))
+    })?
+}
+
 /// One conversation's background jobs, including those an earlier process
 /// started. AH-101/AH-102.
 ///
@@ -1071,6 +1155,9 @@ pub async fn agent_background_jobs(
 ) -> Result<Vec<tauri_plugin_agent_tools::job_record::JobRecord>, String> {
     let data_folder = get_jan_data_folder_path(app);
     tokio::task::spawn_blocking(move || {
+        // What an earlier process left is settled before it is listed, so a
+        // job nobody is running is never shown as running.
+        tauri_plugin_agent_tools::worker::reconcile(&data_folder, &session);
         let mut records = tauri_plugin_agent_tools::job_record::read_owner(&data_folder, &session);
         // Newest first, the order a panel shows them in.
         records.reverse();
