@@ -2155,13 +2155,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/impact.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Module and package import edges are derivable from the index.",
@@ -2170,10 +2173,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/impact.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). Import edges are read from the repository for Rust (mod, use crate::), JS/TS (import/require, including the project's own tsconfig paths aliases) and Python (import/from), and resolved to files in the same project; anything that does not resolve to a file here is dropped rather than guessed at. Line-shaped rather than parsed, and the graph says how much it missed. Rust is the weakest: use paths through workspace crates and items in inline modules do not resolve, which a real run reports rather than hides."
     },
     {
       "id": "AH-066",
@@ -2181,13 +2186,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-065"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/impact.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "The harness can name the tests that cover a given source file.",
@@ -2196,10 +2204,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/impact.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). tests_for walks the edges backwards from a source file and keeps the files that look like tests, so a test three re-exports away still counts as covering the change. Proven on this repository: changing web-app/src/lib/executionTimeline.ts names 43 test files, including the direct one."
     },
     {
       "id": "AH-067",
@@ -2207,13 +2217,16 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-065"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/impact.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "A diff resolves to the set of modules and tests it can affect.",
@@ -2222,10 +2235,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/impact.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). A set of changed files resolves to everything that can reach them plus the tests among those, and says what it could not place -- a changed path the graph has never seen is reported rather than dropped, because 'nothing covers this' and 'I have not seen this file' are different answers. Exposed as `jan cli agent impact`."
     },
     {
       "id": "AH-068",
@@ -5181,14 +5196,17 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-066",
         "AH-067"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/impact.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "The tests covering a change are selected and run without the model guessing.",
@@ -5197,10 +5215,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/impact.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). The selection narrows only when the graph is whole; an incomplete graph proposes the whole suite, because a green subset drawn from a graph with missing edges is a false negative dressed as a pass. The command is the project's own detected test runner (AH-070) or there is none -- never an invented one -- and nothing is ever run: the command is printed for someone else to decide about."
     },
     {
       "id": "AH-152",

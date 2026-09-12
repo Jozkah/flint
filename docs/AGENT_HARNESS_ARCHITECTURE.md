@@ -1540,3 +1540,46 @@ the shell, and the process tree beneath it is killed with it -- found by the
 test that asserts the marker file a stopped hook would have written never
 appears. A stopped hook is never retried on the harness's own initiative: it
 already ran, and whatever it did to the project is done.
+
+## What a change can affect (AH-065 / AH-066 / AH-067 / AH-151)
+
+`impact.rs` answers the question a run keeps asking after an edit: what should
+I run now? Without an answer a model either runs the whole suite -- slow
+enough that it stops running it -- or guesses a test name from the file name,
+which is wrong the moment the coverage is indirect.
+
+It reads import edges out of the repository: Rust `mod`/`use crate::`, JS/TS
+`import`/`require` (including the project's own `tsconfig.json` `paths`
+aliases), Python `import`/`from`. Edges that do not resolve to a file in the
+project are dropped rather than guessed at. Walking those edges backwards from
+a changed file gives the files that can be affected, and the subset of them
+that look like tests -- so a test three re-exports away is still found.
+
+`jan cli agent impact --changed <files>` prints it, and `--json` gives the
+whole answer. Nothing is ever run: a command is printed for someone else to
+decide about.
+
+**Two honesty rules that decide whether this is usable.**
+
+*A package import is not incompleteness.* Almost every real file imports a
+package; treating that as an unresolved edge would make every answer partial,
+which is the same as having no answer. What does count as incomplete is an
+import that named a file *here* and did not find one, a changed path the graph
+has never seen, or a walk that hit a bound. A specifier that resolves to a
+stylesheet, an image or a JSON fixture is neither -- those exist and cannot
+import anything, so they cannot be the path from a change to a test.
+
+*Partial means run everything.* A selection narrows only when the graph is
+whole. An incomplete graph can hide the one test that would have failed, and a
+green subset would then be a false negative dressed as a pass. The reason line
+says exactly what was incomplete and by how much.
+
+**What it does not do.** It does not parse: edges come from line-shaped
+matching, so a specifier inside a string literal reads as an import. Rust
+resolution is the weakest -- `use` paths through workspace crates and items
+inside inline modules do not resolve -- which is why a Rust crate's answer
+reports many missed edges and proposes the whole suite. That is the honest
+outcome rather than a confident wrong one. And the command comes from the
+project's own detected test runner (AH-070) or there is no command at all; a
+guessed `npm test` at a project with no such script is a turn spent learning
+that it does not work.

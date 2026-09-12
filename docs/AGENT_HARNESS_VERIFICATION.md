@@ -1512,3 +1512,29 @@ reached from outside the project refused as `sandbox_denied`; the path hooks
 live at being one no file tool and no `bash` command may write; and every
 kind's crossing into the harness taxonomy, including that a wrong hooks file
 is never retried and never sends the run to another provider.
+
+### Change impact and test selection (AH-065/066/067/151)
+
+Eleven tests, plus real runs against this repository's own two trees.
+
+`web-app` (1,099 TypeScript files), changing `src/lib/executionTimeline.ts`:
+97 files affected, 43 test files reach it, 2 imports in the whole tree named a
+file that was not found. `src-tauri`, changing `src/core/agent/replay.rs`: the
+answer reports 229 missed edges (Rust `use` paths through workspace crates and
+inline modules do not resolve) and proposes the whole suite with the project's
+own `cargo test`, rather than a confident subset.
+
+Two defects the real runs found, both fixed here:
+
+| Found by | What was wrong | Fix |
+| --- | --- | --- |
+| Running it against `web-app` | Every import in that app is written through the `@/` alias, so the first answer had no edges at all | `tsconfig.json` `compilerOptions.paths` are read and expanded |
+| The answer still reading `partial` everywhere | Any unresolved specifier counted as incompleteness, and every real file imports a package | Package imports are counted separately from imports that named a file here and missed; assets (css/svg/json/...) on disk count as neither |
+
+Covered by test: edges in all three languages and packages never becoming
+files; a test found through three layers of indirection; an aliased import;
+the package-versus-missed distinction; a change resolving to what it can reach
+while naming what it could not place; a path that leaves the project refused
+as `sandbox_denied`; a bound making the answer partial; the test-file
+convention; generated and vendored trees not read; and that the runner command
+is the project's own or there is none.

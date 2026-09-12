@@ -391,6 +391,19 @@ enum AgentCommands {
         #[arg(long)]
         accept_widening: bool,
     },
+    /// What a change can affect, and which tests cover it (AH-065/066/067/151)
+    Impact {
+        /// The files that changed, relative to the project, `/`-separated.
+        /// Repeat the flag, or separate with commas.
+        #[arg(long, value_delimiter = ',', required = true)]
+        changed: Vec<String>,
+        /// The project to read. Omitted: the working directory.
+        #[arg(long)]
+        project: Option<String>,
+        /// Print the answer as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
     /// What a session's last request was made of, by category (AH-087)
     Context {
         /// The session to read. Required: a breakdown belongs to one
@@ -1142,6 +1155,40 @@ async fn handle_agent(cmd: AgentCommands) {
                     );
                 }
             })
+        }
+        AgentCommands::Impact {
+            changed,
+            project,
+            json,
+        } => {
+            let root = project
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let runner = app_lib::core::agent::impact::detected_runner(&root);
+            app_lib::core::agent::impact::selection(&root, &changed, runner.as_deref())
+                .map_err(|e| HarnessError::from(&e))
+                .map(|selection| {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&selection).unwrap_or_default()
+                        );
+                    } else {
+                        println!("{}", selection.reason);
+                        for test in &selection.impact.tests {
+                            println!("  test: {test}");
+                        }
+                        for unknown in &selection.impact.unknown {
+                            println!("  not seen: {unknown}");
+                        }
+                        match selection.command.as_deref() {
+                            // Printed, never run: what to do about it is the
+                            // caller's decision, not this command's.
+                            Some(command) => println!("run: {command}"),
+                            None => println!("run: (this project does not say)"),
+                        }
+                    }
+                })
         }
         AgentCommands::Prompts { session, show } => agent_prompts_text(
             &app_lib::core::app::commands::resolve_jan_data_folder(),

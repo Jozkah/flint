@@ -134,9 +134,9 @@ per-OS evidence log rather than backlog items.
 | `AH-062` | Call hierarchy | 3 | repo-intelligence | P2 | `missing` | low | `AH-060` |
 | `AH-063` | Diagnostics collection | 3 | repo-intelligence | P1 | `missing` | low | `AH-057` |
 | `AH-064` | Diagnostics surfaced to the agent | 3 | repo-intelligence | P1 | `missing` | low | `AH-063` |
-| `AH-065` | Dependency graph extraction | 3 | repo-intelligence | P2 | `missing` | low | `AH-053` |
-| `AH-066` | Test-to-source mapping | 3 | repo-intelligence | P1 | `missing` | low | `AH-065` |
-| `AH-067` | Changed-file impact analysis | 3 | repo-intelligence | P1 | `missing` | low | `AH-065` |
+| `AH-065` | Dependency graph extraction | 3 | repo-intelligence | P2 | `implemented` | low | `AH-053` |
+| `AH-066` | Test-to-source mapping | 3 | repo-intelligence | P1 | `implemented` | low | `AH-065` |
+| `AH-067` | Changed-file impact analysis | 3 | repo-intelligence | P1 | `implemented` | low | `AH-065` |
 | `AH-068` | Framework detection | 3 | repo-intelligence | P2 | `verified` | none | `AH-053` |
 | `AH-069` | Build-system detection | 3 | repo-intelligence | P1 | `verified` | none | `AH-068` |
 | `AH-070` | Test-runner detection | 3 | repo-intelligence | P1 | `verified` | none | `AH-068` |
@@ -220,7 +220,7 @@ per-OS evidence log rather than backlog items.
 | `AH-148` | Patch application with conflict detection | 7 | git-workflows | P1 | `implemented` | high | `AH-147` |
 | `AH-149` | Automatic formatting on edit | 7 | git-workflows | P2 | `missing` | low | `AH-150` |
 | `AH-150` | Formatter detection | 7 | git-workflows | P2 | `missing` | none | `AH-069` |
-| `AH-151` | Automatic test selection | 7 | git-workflows | P1 | `missing` | low | `AH-066`, `AH-067` |
+| `AH-151` | Automatic test selection | 7 | git-workflows | P1 | `implemented` | low | `AH-066`, `AH-067` |
 | `AH-152` | Test failure clustering | 7 | git-workflows | P2 | `missing` | low | `AH-151` |
 | `AH-153` | Flake detection | 7 | git-workflows | P2 | `missing` | low | `AH-151` |
 | `AH-154` | Dependency-change warnings | 7 | git-workflows | P1 | `implemented` | high | `AH-146` |
