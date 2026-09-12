@@ -1484,3 +1484,59 @@ note.
 
 Nothing is persisted: the registry does not ask for it, and a stale record
 would be worse than a 3 s scan.
+
+## Lifecycle hooks (AH-127 / AH-128 / AH-129)
+
+A hook is a shell command the *user* asks to be run when something happens in
+a run: before a tool call, after one, when a session starts, when a run ends.
+It is the escape hatch for the things a harness should not try to do itself --
+run this project's linter before every write, refuse a command this project
+does not allow, notify someone when a long run finishes.
+
+Hooks live in `<project>/.jan/agent/hooks.toml`:
+
+```toml
+[[hook]]
+event = "pre-tool"        # pre-tool | post-tool | session-start | run-end
+command = "cargo fmt --check"
+on_failure = "block"      # block | warn | ignore   (default: warn)
+tools = ["write", "edit"] # omitted: every tool
+timeout_secs = 30         # 1..=120
+```
+
+**Why a hook is safe to have at all.** Four properties, each of which is a
+test:
+
+* *The model cannot write one.* `.jan` is refused to every file-writing tool
+  and to `bash`, so a model that would like a hook cannot create one, and a
+  `hooks.toml` that resolves outside the project through a symlink is not
+  read (`sandbox_denied`).
+* *A hook is not more privileged than a tool.* It runs through the shell the
+  jail can confine, under the same policy `bash` gets on that surface, and
+  under a harness deadline rather than the file's word. Where no confinable
+  shell can run the command as written -- Windows, where the MSYS runtime
+  cannot start inside an AppContainer -- the hook is refused
+  (`unsupported`), never quietly handed to a different shell that would run
+  something else.
+* *A hook is told almost nothing.* `JAN_HOOK_EVENT`, `JAN_HOOK_TOOL`,
+  `JAN_PROJECT_ROOT`. No prompt, no message, no credential; its own output is
+  scrubbed and bounded before it reaches a transcript.
+* *A hook can only take authority away.* `block` refuses the call the hook ran
+  before, and only `pre-tool` may declare it -- by the time the other three
+  events fire, the thing they would refuse has already happened. There is no
+  hook outcome that grants anything.
+
+**What failing means is declared, not inferred.** `block` refuses the call and
+skips the remaining hooks (the decision is made; more commands would just be
+more side effects). `warn` lets the call through and appends the failure to
+the result, where the model and the person reading the transcript both see it.
+`ignore` is recorded and nothing else. A `hooks.toml` that is wrong in any way
+refuses *every* tool call with `invalid_input` rather than silently meaning no
+hooks -- a project that declared a policy and got none is the worst of the
+three outcomes.
+
+**Stopping a hook stops its work.** The deadline drops the future, which kills
+the shell, and the process tree beneath it is killed with it -- found by the
+test that asserts the marker file a stopped hook would have written never
+appears. A stopped hook is never retried on the harness's own initiative: it
+already ran, and whatever it did to the project is done.

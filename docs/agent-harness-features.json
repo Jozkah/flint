@@ -4405,13 +4405,16 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-004"
       ],
       "owner": "lane-07-mcp-skills-plugins",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "The harness runs user-configured hooks at defined lifecycle points.",
@@ -4422,10 +4425,15 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_block_hook_refuses_the_tool_call_and_the_tool_does_not_run",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_warn_hook_lets_the_call_through_and_says_it_failed",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_hooks_file_that_cannot_be_read_stops_the_call"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The largest single compatibility gap; no hook registry exists anywhere in the codebase."
+      "auditNote": "Implemented 2026-09-12 (Phase 5). A project declares hooks in .jan/agent/hooks.toml; pre-tool, post-tool, session-start and run-end are the points, and the tool layer runs the first two around every built-in call. The model cannot introduce one: .jan is refused to every file-writing tool and to bash, and a hooks.toml that resolves outside the project is not read. Proven by a real CLI run in which a blocking hook refused the model's write -- the file does not exist and the record says tool.failed write policy_violation."
     },
     {
       "id": "AH-128",
@@ -4433,13 +4441,16 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-127"
       ],
       "owner": "lane-07-mcp-skills-plugins",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+      ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
         "Hooks run under the same jail and timeout discipline as tool execution.",
@@ -4450,12 +4461,17 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_block_hook_refuses_the_tool_call_and_the_tool_does_not_run",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_warn_hook_lets_the_call_through_and_says_it_failed",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_hooks_file_that_cannot_be_read_stops_the_call"
+      ],
       "platformRequirements": [
         "per-OS validation on macOS, Windows and Linux"
       ],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). A hook runs through the shell the jail can confine, under the same policy bash gets on that surface, and under a harness deadline (1..=120s, the file cannot ask for more). Where no confinable shell can run the command as written the hook is refused as unsupported rather than handed to a different shell. A hook that outlives its deadline is stopped and its process tree with it -- asserted by the marker a surviving hook would have written never appearing -- and is never retried on the harness's own initiative."
     },
     {
       "id": "AH-129",
@@ -4463,13 +4479,16 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-127"
       ],
       "owner": "lane-07-mcp-skills-plugins",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "A hook's failure mode (block, warn, ignore) is declared and enforced.",
@@ -4480,10 +4499,15 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/hooks.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_block_hook_refuses_the_tool_call_and_the_tool_does_not_run",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_warn_hook_lets_the_call_through_and_says_it_failed",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs::a_hooks_file_that_cannot_be_read_stops_the_call"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). on_failure is declared per hook and enforced: block refuses the call the hook ran before and skips the hooks after it, warn lets the call through and appends the failure where the model and the reader both see it, ignore is recorded only. block is accepted only for pre-tool, because the other events fire after the thing they would refuse. A malformed hooks file refuses every tool call with invalid_input rather than silently meaning no hooks."
     },
     {
       "id": "AH-130",

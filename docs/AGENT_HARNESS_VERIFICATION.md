@@ -1480,3 +1480,35 @@ of time *was* stopped, and reading that as a cancellation would make it
 retryable when it must not be. None of the sixteen is a string beginning
 `ERROR [`. No prompt text, authorization header, API key or absolute home
 path appears in the exported record.
+
+### Lifecycle hooks (AH-127 / AH-128 / AH-129)
+
+Twenty tests in `hooks.rs` and `tools/handlers.rs`, plus a real CLI run.
+
+The real run: a project whose `.jan/agent/hooks.toml` declares a `pre-tool`
+hook on `write` with `on_failure = "block"`, a mock provider scripted to make
+the model call `write`, and the shipped `jan` CLI binary. The result:
+
+```
+run rc=0
+no hooked.txt: the write was refused
+ERROR [policy_violation]: a pre-tool hook refused this call: the pre-tool hook exited with 3
+tool.requested write
+tool.failed   write   policy_violation
+```
+
+The file the model asked for does not exist, the refusal is typed rather than
+a message to be parsed, and the canonical record carries the kind. Kept as
+`ah127-hook-blocks-a-real-run.txt` with its events.
+
+Covered by test: every way a `hooks.toml` can be wrong (ten of them, each a
+typed kind, and a good hook beside a bad one yields no hooks at all); the hook
+limit; `block` refused where nothing can be blocked; `block` skipping the
+hooks after it; `warn` and `ignore` differing in what they say and agreeing
+that the work proceeds; a timeout named a timeout and a cancellation named a
+cancellation; a stopped hook leaving nothing running behind it; the
+environment a hook is given; its output scrubbed and bounded; a hook file
+reached from outside the project refused as `sandbox_denied`; the path hooks
+live at being one no file tool and no `bash` command may write; and every
+kind's crossing into the harness taxonomy, including that a wrong hooks file
+is never retried and never sends the run to another provider.

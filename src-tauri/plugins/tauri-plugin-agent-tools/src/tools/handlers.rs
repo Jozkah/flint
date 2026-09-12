@@ -506,6 +506,48 @@ pub async fn execute_builtin(
         .unwrap_or_else(crate::lifecycle::Token::detached);
     let limit = crate::lifecycle::Timeouts::default().for_tool(tool.name);
 
+    // AH-127/AH-129. The project's own hooks run around the call. They are
+    // read per call rather than cached: the file is small, and a user who
+    // fixes a hook mid-run means the fixed one, not the one that was read
+    // when the run started.
+    let hook_ctx = crate::hooks::Context {
+        project_root,
+        allow_network: ctx.allow_network,
+        home_readonly: ctx.home_readonly,
+        sandbox: ctx.sandbox,
+        cancel: ctx.cancel.clone(),
+    };
+    let hooks = match crate::hooks::load(project_root) {
+        Ok(hooks) => hooks,
+        // A hooks file that cannot be read is not silently no hooks: a
+        // project that declared a policy and got none would be the worst of
+        // the three outcomes.
+        Err(error) => {
+            let harness: crate::harness_error::HarnessError = (&error).into();
+            return (
+                format!(
+                    "ERROR [{}]: this project's hooks could not be read, so no tool ran: {}",
+                    harness.kind().tag(),
+                    error.message
+                ),
+                None,
+            );
+        }
+    };
+    let before =
+        crate::hooks::run(&hooks, crate::hooks::Event::PreTool, Some(tool.name), &hook_ctx).await;
+    if let Some(blocked) = before.blocked {
+        let harness: crate::harness_error::HarnessError = (&blocked).into();
+        return (
+            format!(
+                "ERROR [{}]: a pre-tool hook refused this call: {}",
+                harness.kind().tag(),
+                blocked.message
+            ),
+            None,
+        );
+    }
+
     let work = async {
         match tool.name {
             "read" => read(args, project_root, scratch, ctx.read_roots).await,
@@ -514,7 +556,7 @@ pub async fn execute_builtin(
         }
     };
 
-    let (content, images) = match crate::lifecycle::run_with_deadline(&token, limit, work).await {
+    let (mut content, images) = match crate::lifecycle::run_with_deadline(&token, limit, work).await {
         Ok(pair) => pair,
         // Named, and distinguishable: a person reading the transcript needs to
         // know whether they stopped this or it ran out of time.
@@ -531,6 +573,18 @@ pub async fn execute_builtin(
             None,
         ),
     };
+
+    // A post-tool hook cannot undo what the tool did, so it never blocks. What
+    // it can do is say something went wrong, where the model and the person
+    // reading the transcript will both see it.
+    let after =
+        crate::hooks::run(&hooks, crate::hooks::Event::PostTool, Some(tool.name), &hook_ctx).await;
+    for warning in &after.warnings {
+        content.push_str(&format!("\n\n[post-tool hook] {}", warning.message));
+    }
+    for warning in &before.warnings {
+        content.push_str(&format!("\n\n[pre-tool hook] {}", warning.message));
+    }
     (content, images)
 }
 
@@ -3243,6 +3297,96 @@ mod tests {
 
     /// The command language the sandboxed shell for `root` actually speaks.
     ///
+    // ---- AH-127/AH-129: the project's own hooks, around a real tool call ----
+
+    /// Write a hooks file for `root`. Commands here must run under whichever
+    /// shell can be confined on this host, so they use only `echo` and `exit`.
+    fn write_hooks(root: &Path, body: &str) {
+        let dir = root.join(".jan").join("agent");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("hooks.toml"), body).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_block_hook_refuses_the_tool_call_and_the_tool_does_not_run() {
+        let root = unique_root();
+        write_hooks(
+            &root,
+            "[[hook]]
+event = \"pre-tool\"
+command = \"exit 3\"
+on_failure = \"block\"
+tools = [\"write\"]
+",
+        );
+        let out = execute_builtin(
+            lookup("write").unwrap(),
+            &json!({ "path": "new.txt", "content": "hello" }),
+            &root,
+        )
+        .await;
+        assert!(
+            out.starts_with("ERROR [policy_violation]:"),
+            "a refused call must say what kind of refusal it was: {out}"
+        );
+        assert!(
+            !root.join("new.txt").exists(),
+            "the tool ran anyway; a blocked call must not have happened"
+        );
+        // AH-009: what the run sees is the typed failure, and it is not
+        // something to try again or to try elsewhere.
+        let classified = crate::harness_error::classify_tool("write", &out)
+            .expect("a refusal is a classified failure");
+        assert_eq!(classified.kind(), crate::harness_error::ErrorKind::PolicyViolation);
+        assert!(!crate::harness_error::may_try_another(&classified));
+
+        // A tool the hook does not name is untouched.
+        let read_back =
+            execute_builtin(lookup("ls").unwrap(), &json!({ "path": "." }), &root).await;
+        assert!(!read_back.starts_with("ERROR"), "{read_back}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_warn_hook_lets_the_call_through_and_says_it_failed() {
+        let root = unique_root();
+        write_hooks(
+            &root,
+            "[[hook]]
+event = \"post-tool\"
+command = \"exit 1\"
+on_failure = \"warn\"
+",
+        );
+        let out = execute_builtin(
+            lookup("write").unwrap(),
+            &json!({ "path": "new.txt", "content": "hello" }),
+            &root,
+        )
+        .await;
+        assert!(!out.starts_with("ERROR"), "a warn hook must not refuse the call: {out}");
+        assert!(root.join("new.txt").exists(), "the write still happened");
+        assert!(
+            out.contains("[post-tool hook]"),
+            "the failure has to be visible to whoever reads the result: {out}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A hooks file that is wrong stops tools rather than quietly meaning no
+    /// hooks: a project that declared a policy and silently got none is the
+    /// outcome worth refusing loudest.
+    #[tokio::test]
+    async fn a_hooks_file_that_cannot_be_read_stops_the_call() {
+        let root = unique_root();
+        write_hooks(&root, "[[hook]]\nevent = \"whenever\"\ncommand = \"echo hi\"\n");
+        let out =
+            execute_builtin(lookup("ls").unwrap(), &json!({ "path": "." }), &root).await;
+        assert!(out.starts_with("ERROR [invalid_input]:"), "{out}");
+        assert!(out.contains("hooks"), "{out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// Asked of the same code the handler asks, so a fixture cannot be written
     /// for one shell while the command runs in another.
     fn sandbox_flavor(root: &Path) -> Option<proc::ShellFlavor> {
