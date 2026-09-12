@@ -11567,6 +11567,10 @@ const OPT_IN_SCENARIOS: &[Scenario] = &[
         name: "timeline-stays-bounded",
         run: scenario_timeline_stays_bounded,
     },
+    Scenario {
+        name: "identity-boundary",
+        run: scenario_identity_boundary,
+    },
     // A pair (AH-101/AH-102): a background job is written down where it can
     // outlive the app, and what became of it is decided honestly by the next
     // process rather than left reading "running" forever.
@@ -12551,6 +12555,116 @@ fn scenario_background_job_record_restart(ctx: &Ctx) -> ScenarioResult {
             || r["identity"]["created"].as_u64().unwrap_or(0) > 0),
         "a job was carried over without being re-identified: {records:?}"
     );
+    Ok(())
+}
+
+/// AH-008: an id that was not parsed never reaches storage, and no spelling
+/// of one session's id reads another's record.
+///
+/// Driven through the same commands the renderer calls. The hostile ids are
+/// the ones that would matter: a path separator (the record is a file named
+/// after the session), a parent directory, a control character, and an id that
+/// merely begins with a real one.
+fn scenario_identity_boundary(ctx: &Ctx) -> ScenarioResult {
+    new_cowork_session(ctx)?;
+    let session = current_cowork_session(ctx)?;
+    ensure!(!session.is_empty(), "the cowork session has no id");
+
+    // Something real to try to reach.
+    let (ok, wrote) = ipc(
+        ctx,
+        "agent_events_record",
+        &serde_json::json!({
+            "events": [{
+                "id": "identity:marker",
+                "session": session,
+                "run": format!("{session}#run-identity"),
+                "invocation": "",
+                "kind": "run.started",
+                "payload": { "model": "smoke-model", "source": "identity-scenario" },
+            }],
+        })
+        .to_string(),
+    )?;
+    ensure!(ok, "the marker event was not recorded: {wrote}");
+    ensure!(
+        session_events(ctx, &session)?
+            .iter()
+            .any(|e| e["id"] == "identity:marker"),
+        "the marker is not in this session's record"
+    );
+
+    // An id that could name a place on disk is refused, and writes nothing.
+    for hostile in [
+        format!("{session}/../other"),
+        format!("../{session}"),
+        format!("{session}\\other"),
+        format!("{session}{}", char::from(7u8)),
+        "  ".to_string(),
+    ] {
+        let (ok, answer) = ipc(
+            ctx,
+            "agent_events_record",
+            &serde_json::json!({
+                "events": [{
+                    "id": "identity:forged",
+                    "session": hostile,
+                    "run": "",
+                    "invocation": "",
+                    "kind": "run.started",
+                    "payload": {},
+                }],
+            })
+            .to_string(),
+        )?;
+        // Either the command refuses, or it reports the event as not written:
+        // what must never happen is the event appearing anywhere.
+        let written = answer.to_string().contains("identity:forged")
+            && !answer.to_string().contains("error");
+        ensure!(
+            !ok || !written,
+            "an unparsed session id was accepted: {hostile:?} -> {answer}"
+        );
+        // Reading with the same spelling either refuses or finds nothing;
+        // what it must never do is hand back another session's record.
+        let (read_ok, page) = ipc(
+            ctx,
+            "agent_events_list",
+            &serde_json::json!({ "session": hostile, "afterSeq": 0, "limit": 50 }).to_string(),
+        )?;
+        let text = page.to_string();
+        ensure!(
+            !read_ok || !text.contains("identity:marker"),
+            "{hostile:?} read another session's record: {text}"
+        );
+        ensure!(
+            !text.contains("identity:forged"),
+            "{hostile:?} stored an event: {text}"
+        );
+    }
+
+    // A near-miss id -- one that merely begins with a real session's -- is a
+    // different session, with nothing in it.
+    let lookalike = format!("{session}x");
+    ensure!(
+        session_events(ctx, &lookalike)?.is_empty(),
+        "an id that only starts the same read the real session's record"
+    );
+
+    // The other readers agree: a run of this session is not readable by a
+    // hostile spelling of it, and is a typed refusal rather than a silence.
+    let (ok, refused) = ipc(
+        ctx,
+        "agent_run_tree",
+        &serde_json::json!({ "session": format!("{session}/..") }).to_string(),
+    )?;
+    ensure!(!ok, "a hostile id produced a run tree: {refused}");
+    let (ok, tree) = ipc(
+        ctx,
+        "agent_run_tree",
+        &serde_json::json!({ "session": session }).to_string(),
+    )?;
+    ensure!(ok, "the real session has no run tree: {tree}");
     Ok(())
 }
 

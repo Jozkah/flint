@@ -327,11 +327,25 @@ pub fn append_within(
     event: NewEvent,
     limits: Limits,
 ) -> Result<Envelope, LogError> {
-    if !valid_token(&event.id, 200) || !valid_token(&event.session, 200) {
-        return Err(LogError::InvalidInput("an event needs an id and a session".into()));
+    // AH-008: nothing is stored under an id that was not parsed. A separator,
+    // a control character or a `..` is refused here rather than sanitised into
+    // something else and written -- the id names a key in this file and, for
+    // the session, the file itself.
+    if !valid_token(&event.id, 200) {
+        return Err(LogError::InvalidInput("an event needs an id".into()));
     }
-    if event.run.len() > 200 || event.invocation.len() > 200 {
-        return Err(LogError::InvalidInput("an event's run or invocation is too long".into()));
+    if let Err(e) = crate::identity::SessionId::parse(event.session.as_str()) {
+        return Err(LogError::InvalidInput(e.message().to_string()));
+    }
+    if !event.run.is_empty() {
+        if let Err(e) = crate::identity::RunId::parse(event.run.as_str()) {
+            return Err(LogError::InvalidInput(e.message().to_string()));
+        }
+    }
+    if !event.invocation.is_empty() {
+        if let Err(e) = crate::identity::InvocationId::parse(event.invocation.as_str()) {
+            return Err(LogError::InvalidInput(e.message().to_string()));
+        }
     }
     if !valid_kind(&event.kind) {
         return Err(LogError::InvalidInput(format!("{:?} is not an event kind", event.kind)));
@@ -606,6 +620,32 @@ mod tests {
         let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
         f.write_all(b"not an event\n{\"v\":1,\"id\":\"z\",\"session\":\"s1\",\"seq\":5,\"at\":\"t\",\"kind\":\"run.ended\"}\n").unwrap();
         assert!(matches!(read_session(&d, "s1"), Err(LogError::Corrupt(_))));
+    }
+
+    /// AH-008: an event is only stored under an id that parses. What is
+    /// already recorded stays readable, and nothing is sanitised into a
+    /// different id and written.
+    #[test]
+    fn an_event_is_refused_rather_than_stored_under_an_unparsed_id() {
+        let d = dir("ids");
+        for bad in ["../escape", "a/b", "with\u{7}bell", "", " leading"] {
+            let refused = append(&d, ev("x", bad, "run.started", json!({})));
+            assert!(
+                matches!(refused, Err(LogError::InvalidInput(_))),
+                "{bad:?} was accepted: {refused:?}"
+            );
+        }
+        // A run or invocation that could escape is refused too, without
+        // touching what is already there.
+        append(&d, ev("a", "s-ids", "run.started", json!({}))).unwrap();
+        let mut bad_run = ev("b", "s-ids", "tool.requested", json!({}));
+        bad_run.run = "../elsewhere".to_string();
+        assert!(matches!(append(&d, bad_run), Err(LogError::InvalidInput(_))));
+        let mut bad_inv = ev("c", "s-ids", "tool.requested", json!({}));
+        bad_inv.invocation = "inv\u{0}".to_string();
+        assert!(matches!(append(&d, bad_inv), Err(LogError::InvalidInput(_))));
+        assert_eq!(read_session(&d, "s-ids").unwrap().len(), 1, "a refusal wrote something");
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// AH-183: a watcher hears every event as it is recorded, in order, and

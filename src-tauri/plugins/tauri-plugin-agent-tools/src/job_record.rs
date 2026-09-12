@@ -201,9 +201,10 @@ fn path_for(data_folder: &Path, owner: &str) -> PathBuf {
 ///
 /// Best effort by design: losing the note must not fail the job it describes.
 pub fn save(data_folder: &Path, record: &JobRecord) -> Result<(), String> {
-    if record.owner.trim().is_empty() || record.id.trim().is_empty() {
-        return Err("a job record needs an owner and an id".to_string());
-    }
+    // AH-008: the owner names the file this is written to and the id is a key
+    // in it, so both are parsed before either is used.
+    crate::identity::SessionId::parse(record.owner.as_str()).map_err(|e| e.message().to_string())?;
+    crate::identity::JobId::parse(record.id.as_str()).map_err(|e| e.message().to_string())?;
     let path = path_for(data_folder, &record.owner);
     std::fs::create_dir_all(jobs_dir(data_folder)).map_err(|e| e.to_string())?;
     let mut kept: Vec<JobRecord> = read_owner(data_folder, &record.owner)

@@ -598,12 +598,13 @@ replayable from the record.
 | Real CLI run with a child agent | a run whose model dispatches the shipped `implementer` role | the parent records `agent.dispatched` naming the child dispatch and its own run; the child's `run.started` names the same `parentRun` and `dispatch`; both are in the one session log, and the child's `run.ended` lands after the parent's because it was never awaited -- which the record shows rather than hides. Kept in `/c/tmp/jan-p4-evidence/ah008-cli-parent-child-record.jsonl` |
 | Rust test | `loop.rs::a_run_id_is_not_reused_by_the_next_process` | two runs of one session never share an id, the id carries a time part rather than only a counter, a session-less run is still its own run, and ids sort by when they were minted |
 
-Still missing for AH-008: there is no single identity *type* that the surfaces
-construct and validate -- the ids are assembled where they are needed and
-checked by the record's own input rules (non-empty, bounded, no control
-characters, typed refusal) rather than by a parsing boundary of their own -- and
-the resumed-conversation join is proven on the CLI but not yet by a desktop
-scenario.
+Phase 5 added the parsing boundary and the desktop evidence:
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView | `cowork-smoke --only identity-boundary` | a real Cowork session records a marker event; five hostile spellings of its id (`<id>/../other`, `../<id>`, a backslash, a control character, blank) each fail to store anything and never read the real session's record -- some are refused outright, and the scenario accepts either, because what matters is that nothing crosses; an id that merely *begins* with a real one is a different, empty session; and a run tree asked for with a hostile id is refused while the real one is not |
+| Rust tests | `identity.rs::the_ids_the_harness_already_writes_are_valid`, `an_id_that_could_escape_its_record_is_refused`, `a_forged_parent_is_refused`, `a_legacy_record_is_readable_but_never_trusted_as_an_id` | the spellings Phases 1-4 write still parse, and a run and its invocation are recognised as belonging to their session and run; twelve hostile ids are refused by the specific rule that catches each, with the refusal naming what was being parsed; a self-parenting run and another session's run as a parent are both refused, and a session id that is a prefix of another is not that session; a legacy id that would be refused today reads as nothing rather than as a value to store under |
+| Storage boundaries | `event_log.rs::an_event_is_refused_rather_than_stored_under_an_unparsed_id`, `job_record.rs::save` | the event log parses session, run and invocation before writing, and a refusal writes nothing; the durable job record parses its owner and id before either names a file or a key |
 
 ## Typed failures (AH-009)
 

@@ -1111,6 +1111,19 @@ payload, or whose fields were later redacted -- a memory forgotten since, say --
 is planned but not sendable, with the reason attached: a replay that quietly
 differs is worse than none.
 
+**An id is parsed before anything is stored under it (AH-008).** Session, run,
+invocation, job, agent and snapshot ids arrive from the renderer over IPC, the
+CLI's flags, a resumed thread on disk, an imported bundle and a provider's own
+reply. `identity` gives each a validated type: bounded, no control characters,
+no path separator and no `..`, refused with a typed error rather than sanitised
+into something else and written -- which matters because the session id names
+the file its record lives in. Parentage is checked rather than believed: a child
+run must name a parent of the same session and nothing may be its own parent. A
+provider's own id never becomes one of these, because two requests can carry the
+same one. A record written before this module is readable, but an id in it that
+would be refused today comes back as nothing rather than as a value to store
+under.
+
 **One identity for a conversation (AH-008).** The session a run records under
 is the conversation, not the process: a `--resume` run adopts the thread's id,
 so its events, prompt snapshots, changes and audit records join the ones its
