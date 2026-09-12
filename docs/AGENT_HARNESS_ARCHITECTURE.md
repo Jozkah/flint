@@ -1010,6 +1010,19 @@ line names its id, scope and source before the quoted text --
 `- [id] (user) (source: imported) ...` -- so the text cannot forge its own
 origin and the model can tell an import from what the user said here.
 
+**Forgetting reaches the prompts (AH-083).** A prompt snapshot is the exact
+payload, so a memory forgotten from the store would still be readable in every
+request it had already been sent in -- in the snapshot panel, in
+`jan cli agent prompts`, in the audit export and in a session export.
+Forgetting one memory, or clearing a whole scope, now takes its text out of
+every snapshot that carries it (`snapshot::redact_text`), replacing it with
+`[redacted: forgotten memory]` and recording that redaction on the snapshot.
+The request itself stays: what was asked, which tools were offered, and that
+something was removed on purpose. The rewrite is atomic, like every other pass
+over that log, and a line that no longer parses is left untouched rather than
+edited blind. `memory/` never logs the outcome -- a body could travel with the
+message -- so the snapshot module reports it instead.
+
 **Memory export and import (AH-083).** `memory/transfer.rs` defines the
 `jan-memory-export` v1 document: one scope's active memories with content,
 content hash, creator, origin, source type, category, pin, timestamps,

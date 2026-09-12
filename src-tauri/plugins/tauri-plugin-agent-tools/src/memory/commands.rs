@@ -645,8 +645,34 @@ pub async fn memory_record_forget(
         _ => access.permanent_store.clone(),
     }
     .ok_or_else(|| AgentToolsError::from("no store for that scope here".to_string()))?;
-    super::create::forget(&store_root, scope, &MemoryId::new(id), now())
-        .map_err(AgentToolsError::from)
+    let forgotten = super::create::forget_text(&store_root, scope, &MemoryId::new(id), now())
+        .map_err(AgentToolsError::from)?;
+    // AH-083: what was forgotten leaves the prompts it was already sent in
+    // too. A snapshot is the exact payload, so leaving it there would keep the
+    // words readable in the inspector, the CLI, the audit export and the
+    // session export for as long as the log lives.
+    if let Some(text) = forgotten.as_deref() {
+        redact_forgotten(&location, text);
+    }
+    Ok(forgotten.is_some())
+}
+
+/// Take forgotten text out of every prompt snapshot that carries it.
+///
+/// Never fails the forget: the store is the authority on what Jan remembers,
+/// and a snapshot log that could not be rewritten is reported where someone
+/// debugging it will look rather than turning "forget this" into an error.
+fn redact_forgotten(location: &Where, text: &str) {
+    if location.data_folder.trim().is_empty() || text.trim().is_empty() {
+        return;
+    }
+    // Reported by the snapshot module, not here: nothing in `memory/` may
+    // reach a log, because a body could travel with the message.
+    crate::snapshot::redact_text_reporting(
+        Path::new(&location.data_folder),
+        &[text],
+        "forgotten memory",
+    );
 }
 
 /// Undo a forget. `content` is the text the caller showed before forgetting:
@@ -693,8 +719,13 @@ pub async fn memory_scope_clear(location: Where, scope: String) -> Result<usize,
         _ => access.permanent_store.clone(),
     }
     .ok_or_else(|| AgentToolsError::from("no store for that scope here".to_string()))?;
-    super::create::forget_all(&store_root, scope, |r| access.may_see(r), now())
-        .map_err(AgentToolsError::from)
+    let forgotten = super::create::forget_all_text(&store_root, scope, |r| access.may_see(r), now())
+        .map_err(AgentToolsError::from)?;
+    // Forgetting a whole scope reaches the prompts too (AH-083).
+    for text in &forgotten {
+        redact_forgotten(&location, text);
+    }
+    Ok(forgotten.len())
 }
 
 /// What an export wrote.
@@ -1791,6 +1822,62 @@ mod security_tests {
                 );
             }
         }
+    }
+
+    /// AH-083: forgetting a memory reaches the prompts it was already sent in.
+    /// The request is still in the record; the words are not.
+    #[tokio::test]
+    async fn forgetting_a_memory_redacts_it_from_the_prompts_it_reached() {
+        let data = root("forget-prompts");
+        let store = crate::workspace::permanent_store(&data);
+        let text = "Smoke fact: the staging host is called larkspur.";
+        let id = MemoryId::new("mem-forget-prompts");
+        let proposal = super::super::create::propose(
+            id.clone(),
+            text,
+            Scope::User,
+            None,
+            None,
+            crate::memory::record::Creator::User,
+            crate::memory::record::Origin::Explicit,
+            1,
+            &[],
+        )
+        .expect("a valid memory");
+        super::super::create::commit(&store, &proposal).expect("stored");
+
+        // A dispatch that carried it, exactly as the loop would have recorded.
+        let snapshot = crate::snapshot::capture(
+            &serde_json::json!({ "messages": [
+                { "role": "system", "content": format!("<remembered_facts>\n- [{id}] (user) {text}\n</remembered_facts>") },
+                { "role": "user", "content": "deploy the app" },
+            ] }),
+            &crate::snapshot::Identity { session: "s-forget".into(), ..Default::default() },
+        );
+        crate::snapshot::append(&data, &snapshot);
+        let on_disk = || {
+            std::fs::read_to_string(crate::snapshot::log_path(&data)).unwrap_or_default()
+        };
+        assert!(on_disk().contains("larkspur"), "the prompt did not carry the memory");
+
+        let location = Where {
+            data_folder: data.to_string_lossy().to_string(),
+            project_root: None,
+            session_id: None,
+        };
+        let forgotten = memory_record_forget(location, "user".into(), id.to_string())
+            .await
+            .expect("forget");
+        assert!(forgotten);
+
+        let raw = on_disk();
+        assert!(!raw.contains("larkspur"), "the forgotten words are still in a prompt: {raw}");
+        assert!(raw.contains("[redacted: forgotten memory]"), "{raw}");
+        // The request itself is still readable, and says something was removed.
+        let back = crate::snapshot::find(&data, &snapshot.id).expect("the snapshot");
+        assert!(back.render_text().contains("deploy the app"));
+        assert!(back.redactions.iter().any(|r| r.why == "forgotten memory"));
+        let _ = std::fs::remove_dir_all(&data);
     }
 
     /// A lock left by a writer that died does not wedge memory forever.

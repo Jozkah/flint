@@ -11560,6 +11560,10 @@ const OPT_IN_SCENARIOS: &[Scenario] = &[
         run: scenario_chat_execution_record,
     },
     Scenario {
+        name: "memory-forget-redacts-prompts",
+        run: scenario_memory_forget_redacts_prompts,
+    },
+    Scenario {
         name: "agent-provenance",
         run: scenario_agent_provenance,
     },
@@ -12276,6 +12280,78 @@ fn scenario_memory_proposal(ctx: &Ctx) -> ScenarioResult {
 // ---------------------------------------------------------------------------
 // Durability and integration regressions (the batch-1 fixes, end to end)
 // ---------------------------------------------------------------------------
+
+/// Everything the prompt log holds, as text.
+fn prompts_text() -> Result<String, Failure> {
+    let path = data_folder()?.join("audit").join("prompts.jsonl");
+    Ok(std::fs::read_to_string(path).unwrap_or_default())
+}
+
+/// AH-083: forgetting a memory reaches the requests it was already sent in.
+/// The snapshot stays -- the run still happened -- but the words are replaced
+/// by a marker saying why, so the inspector, the CLI and any export show a
+/// redaction rather than the forgotten text.
+fn scenario_memory_forget_redacts_prompts(ctx: &Ctx) -> ScenarioResult {
+    const FORGETTABLE: &str = "Smoke privacy fact: the staging host is called larkspur.";
+    ctx.script_model("plain", &[])?;
+    new_cowork_session(ctx)?;
+    attach_folder(ctx, &ctx.project)?;
+    send_cowork(ctx, "first turn, before the memory")?;
+    let session = current_cowork_session(ctx)?;
+
+    let id = commit_session_memory(ctx, &session, FORGETTABLE)?;
+    send_cowork(ctx, "second turn, carrying the memory")?;
+    let system = last_system_prompt(ctx)?;
+    ensure!(
+        system.contains("larkspur"),
+        "the memory never reached the model, so there is nothing to forget from: {system}"
+    );
+    let before = prompts_text()?;
+    ensure!(before.contains("larkspur"), "the prompt log did not keep the request");
+
+    forget_session_memory(ctx, &session, &id)?;
+
+    // The words are gone from every snapshot that carried them, and the
+    // requests are still there.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    let after = loop {
+        let text = prompts_text()?;
+        if !text.contains("larkspur") {
+            break text;
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "the forgotten memory is still in the prompt log"
+        );
+        std::thread::sleep(Duration::from_millis(500));
+    };
+    ensure!(
+        after.contains("[redacted: forgotten memory]"),
+        "the redaction left no trace of why: {}",
+        after.chars().take(400).collect::<String>()
+    );
+    ensure!(
+        after.contains("second turn, carrying the memory"),
+        "the request itself was lost with the memory"
+    );
+    ensure!(
+        after.lines().filter(|l| !l.trim().is_empty()).count()
+            == before.lines().filter(|l| !l.trim().is_empty()).count(),
+        "a snapshot was dropped instead of redacted"
+    );
+
+    // And what the CLI-facing reader shows agrees with the file.
+    let (ok, page) = ipc(
+        ctx,
+        "agent_prompt_snapshots",
+        &serde_json::json!({ "session": session, "snapshotId": null, "run": null }).to_string(),
+    )?;
+    if ok {
+        let shown = page.to_string();
+        ensure!(!shown.contains("larkspur"), "the snapshot reader still shows the forgotten text");
+    }
+    Ok(())
+}
 
 /// The canonical events of one session, newest last.
 fn session_events(ctx: &Ctx, session: &str) -> Result<Vec<Value>, Failure> {

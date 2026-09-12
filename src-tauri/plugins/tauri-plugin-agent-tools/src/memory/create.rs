@@ -225,15 +225,32 @@ pub fn forget(
     id: &MemoryId,
     now: i64,
 ) -> Result<bool, String> {
+    Ok(forget_text(store_root, scope, id, now)?.is_some())
+}
+
+/// [`forget`], returning the text it removed.
+///
+/// The words are needed for exactly one thing after they leave the store: the
+/// prompts they were already sent in still hold them (AH-083), and forgetting
+/// has to reach those too. Returned rather than re-read, because after this
+/// call there is nowhere left to read them from.
+pub fn forget_text(
+    store_root: &std::path::Path,
+    scope: Scope,
+    id: &MemoryId,
+    now: i64,
+) -> Result<Option<String>, String> {
+    let mut forgotten: Option<String> = None;
     store::update(store_root, scope, |records| {
         let Some(record) = records.iter_mut().find(|r| &r.id == id) else {
             return Ok((false, false));
         };
+        forgotten = Some(std::mem::take(&mut record.content));
         record.status = Status::Deleted;
-        record.content = String::new();
         record.updated_at = now;
         Ok((true, true))
-    })
+    })?;
+    Ok(forgotten)
 }
 
 /// Restore a forgotten memory from the text the caller still holds.
@@ -276,19 +293,32 @@ pub fn forget_all(
     may_see: impl Fn(&super::record::MemoryRecord) -> bool,
     now: i64,
 ) -> Result<usize, String> {
+    Ok(forget_all_text(store_root, scope, may_see, now)?.len())
+}
+
+/// [`forget_all`], returning the texts it removed, for the same reason
+/// [`forget_text`] does: the prompts they were sent in still hold them.
+pub fn forget_all_text(
+    store_root: &std::path::Path,
+    scope: Scope,
+    may_see: impl Fn(&super::record::MemoryRecord) -> bool,
+    now: i64,
+) -> Result<Vec<String>, String> {
+    let mut forgotten: Vec<String> = Vec::new();
     store::update(store_root, scope, |records| {
         let mut n = 0;
         for record in records.iter_mut().filter(|r| may_see(r)) {
             if matches!(record.status, Status::Deleted) {
                 continue;
             }
+            forgotten.push(std::mem::take(&mut record.content));
             record.status = Status::Deleted;
-            record.content = String::new();
             record.updated_at = now;
             n += 1;
         }
         Ok((n > 0, n))
-    })
+    })?;
+    Ok(forgotten)
 }
 
 #[cfg(test)]

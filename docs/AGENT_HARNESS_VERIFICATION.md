@@ -806,6 +806,17 @@ not rewrite what was sent.
 Last run 2026-09-11, Windows WebView2, scripted provider, retries off: both
 passed on the first attempt, and the AH-082 pair re-run alongside also passed.
 
+### Forgetting reaches past prompts
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView | `cowork-smoke --only memory-forget-redacts-prompts` | a session memory is committed, a Cowork turn carries it (checked in the system prompt the fixture received), and the prompt log holds it; after forgetting it through the same command the page uses, the log no longer contains the text, does contain `[redacted: forgotten memory]`, still contains the request that was sent, and has exactly as many snapshots as before -- redacted, not dropped. The snapshot reader shows the same |
+| Rust tests | `snapshot.rs::forgotten_text_leaves_the_prompts_it_was_sent_in`, `redaction_refuses_to_rewrite_for_nothing`, `memory/commands.rs::forgetting_a_memory_redacts_it_from_the_prompts_it_reached` | only the snapshots that carried it are rewritten, the payload stays a payload, the redaction is recorded on the snapshot, another session's snapshot is untouched, a second forget changes nothing more, an empty or absent needle rewrites nothing, and the end-to-end command path does it |
+
+Scope clears do the same for every memory they forget. `memory/` still logs
+nothing -- the reporting lives in the snapshot module, which is covered by the
+existing no-print rule test.
+
 ### Export and import with provenance
 
 | Evidence | Where | Covers |
