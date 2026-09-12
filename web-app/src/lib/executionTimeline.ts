@@ -82,6 +82,18 @@ export type TimelineRow = {
   elapsedMs?: number
   exitCode?: number
   refusal?: string
+  /**
+   * What kind of failure this was, in the harness taxonomy (AH-009):
+   * `sandbox_denied`, `timeout`, `tool_unavailable`, ... Absent when the row
+   * did not fail, and on rows recorded before the taxonomy reached the tool
+   * layer -- which read as "a failure", never as a kind nobody decided.
+   */
+  errorKind?: string
+  /**
+   * A provider attempt that was given up on, and what was tried next
+   * (AH-193). Present only on the row of the request that fell back.
+   */
+  fallback?: { from: string; to: string; reason?: string; kind?: string }
   usage?: TokenUsage
 }
 
@@ -238,6 +250,9 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
       row.elapsedMs = num(p.elapsed_ms) ?? num(p.elapsedMs) ?? row.elapsedMs
       row.exitCode = num(p.exit_code) ?? num(p.exitCode) ?? row.exitCode
       row.refusal = str(p.refusal) ?? row.refusal
+      // AH-009: the record says what kind of failure it was; the row shows
+      // that rather than making a reader infer it from the words.
+      row.errorKind = str(p.error_kind) ?? str(p.errorKind) ?? row.errorKind
       const jobId = str(p.job_id) ?? lifecycleOf.get(key)?.jobId
       lifecycleOf.set(key, { lifecycle, jobId })
       continue
@@ -274,6 +289,44 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
         break
       }
       case 'message.completed': {
+        const phase = str(p.phase)
+        if (phase === 'fell-back') {
+          // AH-193: the provider that did not answer and the one tried next.
+          // Its own row, because it is something that happened rather than a
+          // property of the reply that eventually arrived.
+          rows.set(e.id, {
+            ...base,
+            primary: 'run',
+            categories: ['run'],
+            title: 'Provider fell back',
+            detail: `${str(p.from) ?? 'the model'} did not answer; trying ${str(p.to) ?? 'the next provider'}`,
+            status: 'failed',
+            errorKind: str(p.failureKind),
+            fallback: {
+              from: str(p.from) ?? '',
+              to: str(p.to) ?? '',
+              reason: str(p.reason),
+              kind: str(p.failureKind),
+            },
+          })
+          break
+        }
+        if (phase === 'failed') {
+          // A request that never produced a reply: what kind of failure it
+          // was is the useful part, and the record now says.
+          const failure = p.error as Record<string, unknown> | undefined
+          rows.set(e.id, {
+            ...base,
+            primary: 'run',
+            categories: ['run'],
+            title: 'Request failed',
+            detail: str(p.detail),
+            status: 'failed',
+            errorKind:
+              typeof failure?.kind === 'string' ? (failure.kind as string) : undefined,
+          })
+          break
+        }
         const text = num(p.textChars) ?? 0
         const reasoning = num(p.reasoningChars) ?? 0
         const calls = num(p.toolCalls) ?? 0

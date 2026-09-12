@@ -555,6 +555,13 @@ rather than the supervisor (the supervisor is reachable from the desktop through
 `agent_job_start`, and the two paths have not been merged); and a machine reboot
 has not been exercised -- only an app exit.
 
+## The timeline says what kind of failure it was (AH-172/AH-009/AH-193)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Render tests | `executionTimeline.test.ts::says what kind of failure a call was, and never invents one`, `shows a provider fall-back as something that happened`, `shows a request that never answered as a failure with its kind` | a failed call carries the record's `error_kind` (`sandbox_denied`), and a row recorded before the taxonomy reached the tool layer carries none rather than a kind nobody decided; a provider fall-back is its own row saying which provider did not answer and which was tried next, with the failure's kind, while the reply that did arrive stays its own row; a request that never answered is a failure row with its kind |
+| Panel | `CoworkTimelinePanel.tsx` | the expanded row shows the failure kind and, for a fall-back, the provider left and the one tried next |
+
 ## The timeline on a very long record (AH-172)
 
 | Evidence | Where | Covers |

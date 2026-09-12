@@ -433,6 +433,29 @@ function TimelineDetail({ row, sessionId }: { row: TimelineRow; sessionId: strin
             </dd>
           </>
         )}
+        {row.errorKind && (
+          <>
+            {/* AH-009: what kind of failure it was, as the record classified
+                it -- so a refusal, a timeout and a broken tool are told apart
+                without reading the message. */}
+            <dt>{t('common:timeline.failure')}</dt>
+            <dd className="font-mono" data-testid="timeline-detail-error-kind">
+              {row.errorKind.replace(/_/g, ' ')}
+            </dd>
+          </>
+        )}
+        {row.fallback && (
+          <>
+            <dt>{t('common:timeline.fellBackFrom')}</dt>
+            <dd className="font-mono" data-testid="timeline-detail-fallback-from">
+              {row.fallback.from}
+            </dd>
+            <dt>{t('common:timeline.fellBackTo')}</dt>
+            <dd className="font-mono" data-testid="timeline-detail-fallback-to">
+              {row.fallback.to}
+            </dd>
+          </>
+        )}
       </dl>
       {row.detail && <p className="whitespace-pre-wrap break-words">{row.detail}</p>}
       {row.input && (

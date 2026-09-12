@@ -158,6 +158,68 @@ describe('buildTimeline', () => {
     expect(rows.at(-1)).toMatchObject({ title: 'Run ended', status: 'cancelled' })
   })
 
+  it('says what kind of failure a call was, and never invents one', () => {
+    seq = 0
+    const rows = buildTimeline(
+      [
+        env('tool.requested', { call: 'c1', tool: 'read' }, { invocation: 'inv-1' }),
+        env(
+          'tool.failed',
+          { call: 'c1', tool: 'read', error_kind: 'sandbox_denied', detail: 'outside the workspace' },
+          { invocation: 'inv-1' }
+        ),
+        env('tool.requested', { call: 'c2', tool: 'bash' }, { invocation: 'inv-1' }),
+        // A row recorded before the taxonomy reached the tool layer.
+        env('tool.failed', { call: 'c2', tool: 'bash', detail: 'it went wrong' }, { invocation: 'inv-1' }),
+      ],
+      's1'
+    )
+    const denied = rows.find((r) => r.tool === 'read')!
+    expect(denied.status).toBe('failed')
+    expect(denied.errorKind).toBe('sandbox_denied')
+    const legacy = rows.find((r) => r.tool === 'bash')!
+    expect(legacy.status).toBe('failed')
+    expect(legacy.errorKind).toBeUndefined()
+  })
+
+  it('shows a provider fall-back as something that happened', () => {
+    seq = 0
+    const rows = buildTimeline(
+      [
+        env('message.completed', { phase: 'dispatched', snapshotId: 'snap-1' }, { invocation: 'inv-1' }),
+        env(
+          'message.completed',
+          { phase: 'fell-back', from: 'first/m', to: 'second/m', failureKind: 'transport', reason: 'error sending request' },
+          { invocation: 'inv-2' }
+        ),
+        env('message.completed', { phase: 'completed', textChars: 10 }, { invocation: 'inv-2' }),
+      ],
+      's1'
+    )
+    const fallback = rows.find((r) => r.title === 'Provider fell back')!
+    expect(fallback).toBeTruthy()
+    expect(fallback.status).toBe('failed')
+    expect(fallback.fallback).toMatchObject({ from: 'first/m', to: 'second/m', kind: 'transport' })
+    expect(fallback.invocation).toBe('inv-2')
+    // The reply that did arrive is still its own row.
+    expect(rows.some((r) => r.title === 'Response')).toBe(true)
+  })
+
+  it('shows a request that never answered as a failure with its kind', () => {
+    seq = 0
+    const rows = buildTimeline(
+      [
+        env(
+          'message.completed',
+          { phase: 'failed', detail: 'the provider did not answer', error: { kind: 'transport', stage: 'dispatch' } },
+          { invocation: 'inv-1' }
+        ),
+      ],
+      's1'
+    )
+    expect(rows[0]).toMatchObject({ title: 'Request failed', status: 'failed', errorKind: 'transport' })
+  })
+
   it('keeps a kind this build does not know, verbatim', () => {
     seq = 0
     const rows = buildTimeline([env('future.thing', { x: 1 })], 's1')
