@@ -1231,6 +1231,8 @@ async fn run_agent_loop(
     // The report is folded in both formats from the same stream the printer
     // reads, so the JSON envelope can never disagree with the text output.
     let printer = tokio::spawn(async move {
+        // The last conversation the loop published, kept for the save below.
+        let mut conversation: Option<Vec<serde_json::Value>> = None;
         let mut report = RunReport::default();
         let mut warned_about_context = false;
         while let Some(ev) = rx.recv().await {
@@ -1257,18 +1259,28 @@ async fn run_agent_loop(
                     None => warned_about_context = false,
                 }
             }
+            // The run's own conversation, as the loop last published it. A
+            // headless run used to save only the prompt and the final answer,
+            // so a `--resume` turn handed the model a transcript in which it
+            // had *described* work and never called a tool -- which is an
+            // example of exactly the wrong behaviour, and the model imitates
+            // it. Keeping the calls and their results is what makes a resumed
+            // turn continue the same run rather than re-enact a summary of it.
+            if let StreamEvent::MessagesUpdated { messages } = &ev {
+                conversation = Some(messages.clone());
+            }
             if format.is_json() {
                 resolve_permission_silently(ev, &permission_requests).await;
             } else {
                 print_event(ev, &permission_requests).await;
             }
         }
-        report
+        (report, conversation)
     });
 
     let result = run_orchestration_streamed(&tx, &body, &args).await;
     drop(tx);
-    let report = printer.await.unwrap_or_default();
+    let (report, conversation) = printer.await.unwrap_or_default();
 
     // Write the turn back so the session stays continuable with --resume.
     let PersistTarget {
@@ -1281,8 +1293,32 @@ async fn run_agent_loop(
     let mut final_text = None;
     if let Ok(completion) = result.as_ref() {
         final_text = completion_text(completion);
-        if let Some(text) = final_text.as_ref() {
-            history.push(serde_json::json!({ "role": "assistant", "content": text.clone() }));
+        // What the run actually did, when the loop published it: the user's
+        // prompt, every tool call the model made, every result it got back,
+        // and the answer. Falling back to prompt-and-answer only when no
+        // conversation was published (a run that never reached a turn).
+        match conversation {
+            Some(messages) if !messages.is_empty() => {
+                history = messages;
+                if let Some(text) = final_text.as_ref() {
+                    let already = history
+                        .last()
+                        .and_then(|m| m.get("content"))
+                        .and_then(serde_json::Value::as_str)
+                        .is_some_and(|last| last == text);
+                    if !already {
+                        history.push(
+                            serde_json::json!({ "role": "assistant", "content": text.clone() }),
+                        );
+                    }
+                }
+            }
+            _ => {
+                if let Some(text) = final_text.as_ref() {
+                    history
+                        .push(serde_json::json!({ "role": "assistant", "content": text.clone() }));
+                }
+            }
         }
         match cli_save_thread(&agent_dir, thread_id.as_deref(), &model, &history, None) {
             Ok(id) => {
@@ -1708,6 +1744,69 @@ async fn prompt_permission(
 
 #[cfg(test)]
 mod tests {
+    /// A headless run's conversation survives being saved and resumed, tool
+    /// calls and all.
+    ///
+    /// This is what stops a resumed turn showing the model a transcript in
+    /// which it described work and never called a tool -- an example of the
+    /// wrong behaviour, which a model will imitate. Observed against a real
+    /// provider before the run's conversation was persisted: the model
+    /// narrated tool calls it had not made and reported their results.
+    #[test]
+    fn a_resumed_turn_still_shows_the_model_the_tools_it_ran() {
+        let base = std::env::temp_dir().join(format!(
+            "jan-cli-resume-tools-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+
+        // What the loop publishes: the prompt, the call, its result, the answer.
+        let conversation = vec![
+            serde_json::json!({ "role": "user", "content": "how many files?" }),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "call_1",
+                    "type": "function",
+                    "function": { "name": "ls", "arguments": "{\"path\":\".\"}" }
+                }]
+            }),
+            serde_json::json!({ "role": "tool", "tool_call_id": "call_1", "content": "a.py b.py" }),
+            serde_json::json!({ "role": "assistant", "content": "Two." }),
+        ];
+        let id = cli_save_thread(&base, None, "m", &conversation, None).expect("saved");
+
+        let resumed = load_resume_history(&base, &ResumeTarget::Id(id.clone()))
+            .expect("the thread resumes");
+        let roles: Vec<&str> = resumed
+            .history
+            .iter()
+            .filter_map(|m| m.get("role").and_then(|v| v.as_str()))
+            .collect();
+        assert_eq!(
+            roles,
+            ["user", "assistant", "tool", "assistant"],
+            "the resumed history is not the conversation: {roles:?}"
+        );
+        let call = resumed
+            .history
+            .iter()
+            .find(|m| m.get("tool_calls").is_some())
+            .expect("the assistant's tool call survived");
+        assert_eq!(call["tool_calls"][0]["function"]["name"], "ls");
+        let result = resumed
+            .history
+            .iter()
+            .find(|m| m.get("role").and_then(|v| v.as_str()) == Some("tool"))
+            .expect("the tool's result survived");
+        assert_eq!(result["tool_call_id"], "call_1");
+        assert_eq!(result["content"], "a.py b.py");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     use super::*;
 
     /// Signing in to Tokamak is what unlocks the desktop inherit. Without it the

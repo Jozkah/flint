@@ -619,6 +619,25 @@ Phase 5 added the parsing boundary and the desktop evidence:
 | Rust tests | `identity.rs::the_ids_the_harness_already_writes_are_valid`, `an_id_that_could_escape_its_record_is_refused`, `a_forged_parent_is_refused`, `a_legacy_record_is_readable_but_never_trusted_as_an_id` | the spellings Phases 1-4 write still parse, and a run and its invocation are recognised as belonging to their session and run; twelve hostile ids are refused by the specific rule that catches each, with the refusal naming what was being parsed; a self-parenting run and another session's run as a parent are both refused, and a session id that is a prefix of another is not that session; a legacy id that would be refused today reads as nothing rather than as a value to store under |
 | Storage boundaries | `event_log.rs::an_event_is_refused_rather_than_stored_under_an_unparsed_id`, `job_record.rs::save` | the event log parses session, run and invocation before writing, and a refusal writes nothing; the durable job record parses its owner and id before either names a file or a key |
 
+## A resumed headless run keeps its tool calls (AH-026/AH-008)
+
+Found by the real-AI exercise on `v100:8555`, not by reading the code: on a
+resumed session the model twice *described* dispatching a child agent and
+running a background job, reported their results in detail, and had called no
+tool at all -- the execution record for those turns holds a single request and
+no `tool.*` events, and the working tree had none of the claimed changes.
+
+The cause was in what a headless run persisted: the prompt and the final answer
+only. Every resumed turn therefore handed the model a transcript in which it had
+answered in prose where it should have used tools -- an example of the wrong
+behaviour, which a model imitates. The run's own conversation is now saved, so a
+resumed turn sees the calls it made and the results it got.
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real provider, before and after | `jan cli agent run` against `claude-sonnet-4-5` on `v100:8555`, one turn that runs `ls`, then a resumed turn | before: the resumed request's roles are `system, user, assistant, user, ...` with no `tool_calls` anywhere; after: `system, user, assistant, tool, assistant, user` with the call and its result intact |
+| Rust test | `cli/mod.rs::a_resumed_turn_still_shows_the_model_the_tools_it_ran` | a conversation containing a tool call and its result survives save and resume with its roles, the call's name and the result's `tool_call_id` and content |
+
 ## Typed failures (AH-009)
 
 | Evidence | Where | Covers |
