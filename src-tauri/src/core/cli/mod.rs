@@ -1320,6 +1320,102 @@ async fn run_agent_loop(
     result.map(|_| ())
 }
 
+/// This project's permission policy, as a document somebody can review
+/// (AH-052).
+pub fn cli_policy_export(
+    project: &str,
+) -> Result<
+    tauri_plugin_agent_tools::policy_transfer::PolicyDocument,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+    let root = resolve_project_root(project);
+    let config = crate::core::agent::project::load_agent_config(&root).map_err(|e| {
+        HarnessError::new(ErrorKind::MalformedState, format!("this project's configuration cannot be read: {e}"))
+            .at(Stage::Startup)
+    })?;
+    Ok(tauri_plugin_agent_tools::policy_transfer::export(
+        config.tools.default.as_deref().unwrap_or("read-only"),
+        &config.tools.allow,
+        &config.tools.deny,
+        &config.tools.allow_write,
+    ))
+}
+
+/// Replace this project's permission policy with a reviewed document
+/// (AH-052).
+///
+/// Refuses anything that would let the agent do more than it can now, unless
+/// `accept_widening` says the caller has seen exactly what it opens.
+pub fn cli_policy_import(
+    project: &str,
+    text: &str,
+    accept_widening: bool,
+) -> Result<
+    tauri_plugin_agent_tools::policy_transfer::PolicyChange,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+    use tauri_plugin_agent_tools::policy_transfer::{plan_import, to_toml, Widening};
+    let current = cli_policy_export(project)?;
+    let (document, change) = plan_import(
+        &current,
+        text,
+        if accept_widening { Widening::Accept } else { Widening::Refuse },
+    )?;
+    if change.is_empty() {
+        return Ok(change);
+    }
+    let root = resolve_project_root(project);
+    let path = agent_dir_for(&root).join("agent.toml");
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let rewritten = replace_tools_section(&existing, &to_toml(&document));
+    std::fs::create_dir_all(agent_dir_for(&root)).map_err(|e| {
+        HarnessError::new(ErrorKind::Io, format!("the project's config directory is not writable: {e}"))
+            .at(Stage::Persistence)
+    })?;
+    std::fs::write(&path, rewritten).map_err(|e| {
+        HarnessError::new(ErrorKind::Io, format!("the policy could not be written: {e}"))
+            .at(Stage::Persistence)
+    })?;
+    Ok(change)
+}
+
+/// Put `section` where the file's `[tools]` block was, keeping everything
+/// else exactly as it is: a policy import must not rewrite a project's model,
+/// budget or skills.
+fn replace_tools_section(existing: &str, section: &str) -> String {
+    let mut out = String::new();
+    let mut skipping = false;
+    let mut replaced = false;
+    for line in existing.lines() {
+        let heading = line.trim_start().starts_with('[') && line.trim_end().ends_with(']');
+        if heading {
+            if line.trim() == "[tools]" {
+                out.push_str(section);
+                // A blank line before whatever section follows, so the file
+                // reads the way the user wrote it.
+                out.push('\n');
+                skipping = true;
+                replaced = true;
+                continue;
+            }
+            skipping = false;
+        }
+        if !skipping {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if !replaced {
+        if !out.is_empty() && !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(section);
+    }
+    out
+}
+
 /// Send this run's canonical events somewhere as they happen (AH-183).
 ///
 /// `-` is stdout, anything else a file that is created or truncated. The

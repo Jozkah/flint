@@ -1772,13 +1772,17 @@
       "category": "security",
       "phase": 2,
       "phaseName": "Security and permissions",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-007"
       ],
       "owner": "lane-03-permission-security",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/policy_transfer.rs",
+        "src-tauri/src/core/cli/mod.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "high",
       "acceptanceCriteria": [
         "A policy set round-trips to a reviewable file so it can be shared or version-controlled.",
@@ -1789,10 +1793,14 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/policy_transfer.rs::a_policy_round_trips_through_a_reviewable_file",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/policy_transfer.rs::a_document_cannot_smuggle_authority_or_an_unreadable_rule",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/policy_transfer.rs::an_import_that_would_widen_authority_is_refused_and_says_what_it_would_drop"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": " 2026-09-12 (Phase 4): a policy round-trips through a versioned document, with `jan cli agent policy-export` and `policy-import` at the two ends. The transfer path is strict where the runtime is lenient: every rule must parse, and a document may hold rules and nothing else -- one carrying grants, approvals, a signature or session grants is refused by name rather than ignored. Importing is asymmetric: a policy that only takes things away applies freely, while one that lifts a denial, adds a permission or opens the default is refused unless the caller says so out loud, and the refusal names exactly what it would open (exit 77). The project's other config sections are untouched. Proven by a real CLI round trip and refusal plus three unit tests, one of them the security negative test."
     },
     {
       "id": "AH-053",

@@ -1153,6 +1153,23 @@ grows and an old reader must still see what happened. Exit statuses follow
 `sysexits.h`, so a script can tell a stopped run (130) from a rejected
 credential (77) from a provider that was not there (69) without parsing text.
 
+**A policy as a file somebody reviewed (AH-052).** A project's permissions live
+in its `agent.toml`, which is already reviewable and committable -- but nothing
+could take one out, check it, and put it back, so a policy copied between
+projects was a policy nobody diffed. `policy_transfer` is strict where the
+runtime is lenient: every rule must parse (the runtime drops one it cannot read,
+which is right at load time and wrong in a file whose purpose is to say what
+will happen), and a document may hold rules and nothing else -- a key this build
+does not know is refused by name rather than ignored, because an unknown key is
+either meaningless or is trying to bring authority along with the rules.
+
+Importing is the asymmetric part. A policy that only takes things away applies
+freely. One that would let the agent do anything more -- a denial lifted, a
+permission added, the default opened -- is refused unless the caller says so out
+loud, and the refusal names exactly what it would open. `jan cli agent
+policy-export` and `policy-import` are the two ends; nothing else in a document
+can grant anything, because approvals and session grants are not in it.
+
 **Watching a headless run as it happens (AH-183).** The record is written
 first and read afterwards, which is no use to a caller that wants to watch. One
 watcher per process hears every event as it is recorded -- after it is on disk

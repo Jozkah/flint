@@ -356,6 +356,26 @@ enum AgentCommands {
     },
     /// List the exact requests a session sent to the model, or print one as
     /// text (what the model saw: every message, tool call and tool offered)
+    /// Read this project's permission policy as a reviewable document (AH-052)
+    PolicyExport {
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Write it here instead of to stdout.
+        #[arg(long)]
+        out: Option<String>,
+    },
+    /// Replace this project's permission policy with a reviewed document (AH-052)
+    PolicyImport {
+        /// The document to apply, or `-` to read it from stdin.
+        file: String,
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Apply it even though it widens what the agent may do. Without
+        /// this, an import that lifts a denial, adds a permission or opens
+        /// the default is refused, and says exactly what it would open.
+        #[arg(long)]
+        accept_widening: bool,
+    },
     /// What a session's last request was made of, by category (AH-087)
     Context {
         /// The session to read. Required: a breakdown belongs to one
@@ -865,6 +885,71 @@ async fn handle_agent(cmd: AgentCommands) {
                 },
             )
             .await
+        }
+        AgentCommands::PolicyExport { project, out } => {
+            app_lib::core::cli::cli_policy_export(&project).and_then(|document| {
+                let text = tauri_plugin_agent_tools::policy_transfer::render(&document);
+                match out {
+                    Some(path) => std::fs::write(&path, format!("{text}\n")).map_err(|e| {
+                        HarnessError::new(
+                            tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
+                            format!("the policy could not be written to {path}: {e}"),
+                        )
+                    }),
+                    None => {
+                        println!("{text}");
+                        Ok(())
+                    }
+                }
+            })
+        }
+        AgentCommands::PolicyImport {
+            file,
+            project,
+            accept_widening,
+        } => {
+            let text = if file == "-" {
+                use std::io::Read;
+                let mut buffer = String::new();
+                std::io::stdin().read_to_string(&mut buffer).map(|_| buffer).map_err(|e| {
+                    HarnessError::new(
+                        tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
+                        format!("the policy could not be read from stdin: {e}"),
+                    )
+                })
+            } else {
+                std::fs::read_to_string(&file).map_err(|e| {
+                    HarnessError::new(
+                        tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
+                        format!("{file} could not be read: {e}"),
+                    )
+                })
+            };
+            text.and_then(|text| {
+                app_lib::core::cli::cli_policy_import(&project, &text, accept_widening)
+            })
+            .map(|change| {
+                if change.is_empty() {
+                    println!("The policy is already what this document says.");
+                    return;
+                }
+                println!("Policy updated.");
+                for (label, rules) in [
+                    ("added allow", &change.allow_added),
+                    ("added deny", &change.deny_added),
+                    ("added allow_write", &change.allow_write_added),
+                    ("removed allow", &change.allow_removed),
+                    ("removed deny", &change.deny_removed),
+                    ("removed allow_write", &change.allow_write_removed),
+                ] {
+                    for rule in rules {
+                        println!("  {label}: {rule}");
+                    }
+                }
+                if let Some(default) = change.default_changed_to.as_deref() {
+                    println!("  default is now: {default}");
+                }
+            })
         }
         AgentCommands::Context {
             session,

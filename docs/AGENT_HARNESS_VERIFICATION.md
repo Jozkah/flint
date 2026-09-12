@@ -512,6 +512,13 @@ scenario. The real-provider lanes were unavailable again for this batch
 (`v100` does not resolve; see `/c/tmp/jan-p4-evidence/v100-probe-1.log`), so
 the CLI evidence above is against local fixtures, not 8555.
 
+## A permission policy as a reviewable file (AH-052)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real CLI | `jan cli agent policy-export` / `policy-import` on a project with a real `agent.toml` | the policy comes out as a versioned document naming its default and every rule, goes back in unchanged as "already what this document says", and an import that lifts the `bash` denial and adds a write permission is **refused** -- `Error [policy_violation]: importing this policy would widen what the agent may do: stops denying bash, allows writing with write. Nothing was changed.`, exit 77 -- while one that only adds a denial applies without ceremony. The `[agent]` and `[skills]` sections are left exactly as they were. Kept in `/c/tmp/jan-p4-evidence/ah052-*` |
+| Rust tests | `policy_transfer.rs::a_policy_round_trips_through_a_reviewable_file`, `a_document_cannot_smuggle_authority_or_an_unreadable_rule`, `an_import_that_would_widen_authority_is_refused_and_says_what_it_would_drop` | a round trip changes nothing and renders the `[tools]` section it becomes; **security** -- a document carrying `grants`, `approved`, `signature` or `sessionGrants` is refused by name, as are an unknown default, a newer version and a rule this build cannot read; a widening import is refused with what it would open, is applied only when asked for out loud, and opening the default counts as widening even when no rule changes |
+
 ## A headless run's events, as they happen (AH-183)
 
 | Evidence | Where | Covers |
