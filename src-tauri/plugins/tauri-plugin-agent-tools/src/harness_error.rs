@@ -678,6 +678,15 @@ impl HarnessError {
     }
 }
 
+/// A failure crosses a command boundary as its wire form: versioned, scrubbed,
+/// carrying its kind, stage and cause, so the surface on the other side reads
+/// the classification instead of the words (AH-009).
+impl Serialize for HarnessError {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.to_wire().serialize(serializer)
+    }
+}
+
 impl fmt::Display for HarnessError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.kind.tag(), self.message)

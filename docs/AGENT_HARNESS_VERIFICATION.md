@@ -512,6 +512,14 @@ scenario. The real-provider lanes were unavailable again for this batch
 (`v100` does not resolve; see `/c/tmp/jan-p4-evidence/v100-probe-1.log`), so
 the CLI evidence above is against local fixtures, not 8555.
 
+## One context classification (AH-087)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real CLI | `jan cli agent context --session <id>` over a real seven-turn recorded session | the breakdown of the request that was actually sent: system prompt 409, custom agents 1,131, skills 222, tools sent 3,715 across 23 definitions, messages 38 across 13 -- 5,515 estimated tokens in all, every line marked `~`, and "this model's window is not known" until `--window` is given, at which point the same numbers read as 67% of 8,192. `--json` prints the same values with `usedExact: false`. A session that has sent nothing is a typed `not_found`. Kept in `/c/tmp/jan-p4-evidence/ah087-cli-context.txt` |
+| Rust tests | `context_report.rs::a_request_is_cut_into_what_it_was_made_of`, `the_providers_count_is_used_when_there_is_one`, `an_unknown_window_stays_unknown`, `an_empty_request_reports_nothing`, `the_text_form_distinguishes_counted_from_estimated` | every category is cut from one request, the conversation and a compaction summary are told apart, attachments are counted apart from words, deferred tools are reported with zero tokens and excluded from what was used, free space is the window minus what was used and what was reserved; the provider's own count wins and says so while the categories stay estimates; an unknown window yields no percentage and no free space; an empty request is zero, not a division by zero; the text form says which numbers were counted and which were estimated |
+| Consumers | `tui.rs::report_from_the_last_request`, `bin/jan.rs` (`agent context`), `commands.rs::agent_context_breakdown` | the TUI's `/context` reads the classification and falls back to sizing the next request only when the session has not sent one; the headless CLI prints it as text or JSON; the desktop reads the same function through a command |
+
 ## Replay from the canonical record (AH-032, in progress)
 
 | Evidence | Where | Covers |

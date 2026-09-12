@@ -4359,6 +4359,16 @@ struct ContextSnapshot {
 /// path the compaction gauge uses), which is why the section is headed
 /// "Context breakdown (estimated)" regardless of the headline's source.
 async fn compute_context_report(snapshot: ContextSnapshot) -> ContextReport {
+    // AH-087: what the last request was actually made of, read from the
+    // request itself. Every surface reads this same classification, so the
+    // TUI, the headless CLI and the desktop cannot disagree about what is
+    // filling the window -- and what is reported is what went out, not a
+    // rebuild of it from whatever is on disk now.
+    if let Some(report) = report_from_the_last_request(&snapshot) {
+        return report;
+    }
+    // Nothing has been sent yet in this session, so there is no request to
+    // read. Fall back to sizing what the next one would carry.
     let mut segments = Vec::new();
     let args = snapshot.args.as_ref();
     let root = args.and_then(|a| a.project_root.clone());
@@ -4467,6 +4477,76 @@ async fn compute_context_report(snapshot: ContextSnapshot) -> ContextReport {
         fill_reported: reported,
         segments,
     }
+}
+
+/// The `/context` view built from the session's last dispatched request
+/// (AH-087), or `None` when the session has not sent one.
+fn report_from_the_last_request(snapshot: &ContextSnapshot) -> Option<ContextReport> {
+    use tauri_plugin_agent_tools::context_report::Category;
+    let session = snapshot.args.as_ref()?.session_id.clone()?;
+    let data = crate::core::app::commands::resolve_jan_data_folder();
+    let window = (snapshot.context_window > 0).then_some(snapshot.context_window);
+    let breakdown =
+        tauri_plugin_agent_tools::context_report::of_snapshot(&data, &session, None, window, 0)
+            .ok()?;
+
+    // The same marker letters the legend has always used, so a reader who
+    // knows the view still knows it.
+    let key = |category: Category| match category {
+        Category::SystemPrompt => Some(('P', "System prompt")),
+        Category::ProjectContext => Some(('C', "Project context")),
+        Category::Skills => Some(('K', "Skills")),
+        Category::Memory => Some(('Y', "Memory")),
+        Category::CustomAgents => Some(('A', "Custom agents")),
+        Category::ToolsTransmitted => Some(('T', "System tools")),
+        Category::CompactedHistory => Some(('H', "Compacted history")),
+        Category::Messages => Some(('M', "Messages")),
+        Category::Attachments => Some(('F', "Attachments")),
+        // Reported by the breakdown, but not part of the window's fill: a
+        // definition that was not sent cost nothing, and free space and the
+        // reserve are added below in the view's own terms.
+        Category::ToolsDeferred | Category::ReservedOutput | Category::FreeSpace => None,
+    };
+    let mut segments: Vec<ContextSegment> = breakdown
+        .slices
+        .iter()
+        .filter_map(|slice| {
+            key(slice.category).map(|(key, label)| ContextSegment {
+                key,
+                label,
+                tokens: slice.tokens,
+            })
+        })
+        .collect();
+
+    // The provider's own count for the last turn is the authority on the fill
+    // when the history it measured is still the history (`tokens_estimated`
+    // goes true the moment a compaction rewrites it).
+    let reported = !snapshot.tokens_estimated && snapshot.turn_prompt_tokens > 0;
+    let used: u64 = segments.iter().map(|s| s.tokens).sum();
+    let buffer = snapshot.reserve_tokens.min(snapshot.context_window);
+    let free = snapshot.context_window.saturating_sub(used + buffer);
+    segments.push(ContextSegment {
+        key: '.',
+        label: "Available",
+        tokens: free,
+    });
+    segments.push(ContextSegment {
+        key: 'B',
+        label: "Auto-compact reserve",
+        tokens: buffer,
+    });
+    Some(ContextReport {
+        model_id: snapshot.model.clone(),
+        window: snapshot.context_window,
+        fill: if reported {
+            snapshot.turn_prompt_tokens
+        } else {
+            used
+        },
+        fill_reported: reported,
+        segments,
+    })
 }
 
 impl App {

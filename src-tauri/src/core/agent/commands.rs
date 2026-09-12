@@ -1033,6 +1033,42 @@ async fn replay_blocking<T: Send + 'static>(
     })?
 }
 
+/// What one dispatched request was made of, by category. AH-087.
+///
+/// Read from the stored request itself -- the exact bytes the provider
+/// received -- so every surface answers "what is filling the window?" from the
+/// same place instead of each re-deriving it. `snapshotId` names the request;
+/// omitted, it is the session's most recent one. A request of another session
+/// names nothing here.
+#[tauri::command]
+pub async fn agent_context_breakdown(
+    app: tauri::AppHandle,
+    session: String,
+    snapshot_id: Option<String>,
+    window_tokens: Option<u64>,
+    deferred_tools: Option<u64>,
+) -> Result<
+    tauri_plugin_agent_tools::context_report::Breakdown,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::context_report::of_snapshot(
+            &data_folder,
+            &session,
+            snapshot_id.as_deref(),
+            window_tokens,
+            deferred_tools.unwrap_or(0),
+        )
+    })
+    .await
+    .map_err(|e| {
+        tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!(
+            "the context breakdown did not finish: {e}"
+        ))
+    })?
+}
+
 /// What replaying a recorded run would do, before anything is sent. AH-032.
 ///
 /// Read from the session's canonical record: the run's provider requests, the

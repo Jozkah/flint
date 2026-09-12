@@ -1037,6 +1037,32 @@ over that log, and a line that no longer parses is left untouched rather than
 edited blind. `memory/` never logs the outcome -- a body could travel with the
 message -- so the snapshot module reports it instead.
 
+**One classification of what filled the window (AH-087).** Every surface used
+to answer "what is filling the context?" its own way: the TUI rebuilt the system
+prompt from disk and re-serialized the tool schemas, the renderer counted what
+it had in memory, and the headless CLI had no answer at all. Three derivations
+of one number disagree the moment anything moves -- a skill added since, a
+memory forgotten, a tool that was never advertised on this run -- and none of
+them read the request that was actually sent.
+
+`context_report` reads that. Given a stored prompt snapshot -- the exact bytes
+the provider received -- it cuts the request into categories: the harness's own
+prompt, project context, skills, memory, custom agents, the tool definitions the
+request carried, compacted history, the conversation, attachments, what was
+reserved for the answer, and what is left. The parts are cut from the whole, so
+they sum to it.
+
+Two honesty rules the callers depend on. A number is marked exact only when the
+provider reported it; everything cut from the payload is an estimate (bytes over
+four) and says so, including in the text form's `~`. A window this build does
+not know is unknown, not a default: there is then no percentage and no free
+space rather than invented ones. Tool definitions the run holds but did not send
+are reported and never counted, because a definition that was not transmitted
+cost nothing.
+
+The TUI's `/context` reads it, `jan cli agent context` prints it as text or
+JSON, and `agent_context_breakdown` hands it to the desktop.
+
 **Replaying a recorded run (AH-032).** Replay reads the canonical record
 rather than a format of its own. `replay::plan` names the exact source run, the
 snapshot behind each of its provider requests, whether each can be sent again

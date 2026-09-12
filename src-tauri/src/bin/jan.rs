@@ -352,6 +352,23 @@ enum AgentCommands {
     },
     /// List the exact requests a session sent to the model, or print one as
     /// text (what the model saw: every message, tool call and tool offered)
+    /// What a session's last request was made of, by category (AH-087)
+    Context {
+        /// The session to read. Required: a breakdown belongs to one
+        /// conversation, and reading another's is not a default.
+        #[arg(long)]
+        session: String,
+        /// A specific request, by snapshot id. Omitted: the most recent one.
+        #[arg(long)]
+        snapshot: Option<String>,
+        /// The model's context window, when you know it. Omitted, the window
+        /// is reported as unknown rather than guessed at.
+        #[arg(long)]
+        window: Option<u64>,
+        /// Print the breakdown as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
     Prompts {
         /// The session whose requests to list
         session: String,
@@ -835,6 +852,34 @@ async fn handle_agent(cmd: AgentCommands) {
                 },
             )
             .await
+        }
+        AgentCommands::Context {
+            session,
+            snapshot,
+            window,
+            json,
+        } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            tauri_plugin_agent_tools::context_report::of_snapshot(
+                &data,
+                &session,
+                snapshot.as_deref(),
+                window,
+                0,
+            )
+            .map(|breakdown| {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&breakdown).unwrap_or_default()
+                    );
+                } else {
+                    print!(
+                        "{}",
+                        tauri_plugin_agent_tools::context_report::render(&breakdown)
+                    );
+                }
+            })
         }
         AgentCommands::Prompts { session, show } => agent_prompts_text(
             &app_lib::core::app::commands::resolve_jan_data_folder(),
