@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use tokio::sync::mpsc;
 
 use crate::core::agent::r#loop::ModelInvoker;
+use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError};
 use crate::core::agent::upstream::extract_choice_message;
 
 /// Default number of most-recent non-system messages kept verbatim.
@@ -80,7 +81,7 @@ pub(crate) async fn compact_conversation(
     model_id: &str,
     model: &dyn ModelInvoker,
     keep_recent: usize,
-) -> Result<Vec<Value>, String> {
+) -> Result<Vec<Value>, HarnessError> {
     let sys_end = messages.iter().take_while(|m| role(m) == "system").count();
     let (system_msgs, rest) = messages.split_at(sys_end);
 
@@ -176,7 +177,7 @@ async fn summarize(
     dropped: &[Value],
     model_id: &str,
     model: &dyn ModelInvoker,
-) -> Result<String, String> {
+) -> Result<String, HarnessError> {
     let transcript = clamp_middle(&render_transcript(dropped), SUMMARY_INPUT_CHARS);
     if transcript.trim().is_empty() {
         return Ok(FALLBACK_NOTE.to_string());
@@ -205,7 +206,8 @@ async fn summarize(
             // A model-switch compaction targets the (smaller) new model: if the
             // summarizer itself overflows, a note is not safe -- the request
             // could still overflow and the dropped span would be lost. Propagate.
-            if crate::core::agent::upstream::is_context_overflow_error(&e) {
+            // AH-009: the kind decides, not the wording.
+            if e.kind() == ErrorKind::ContextOverflow {
                 Err(e)
             } else {
                 Ok(FALLBACK_NOTE.to_string())
@@ -231,7 +233,7 @@ mod tests {
             &self,
             request: &Value,
             _events: &mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
-        ) -> Result<Value, String> {
+        ) -> Result<Value, HarnessError> {
             self.requests.lock().await.push(request.clone());
             *self.calls.lock().unwrap() += 1;
             Ok(json!({ "choices": [{ "message": { "content": self.summary.clone() } }] }))
@@ -245,8 +247,8 @@ mod tests {
             &self,
             _request: &Value,
             _events: &mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
-        ) -> Result<Value, String> {
-            Err("boom".to_string())
+        ) -> Result<Value, HarnessError> {
+            Err("boom".to_string().into())
         }
     }
 
@@ -460,11 +462,12 @@ mod tests {
             &self,
             _request: &Value,
             _events: &mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
-        ) -> Result<Value, String> {
+        ) -> Result<Value, HarnessError> {
             Err(format!(
                 "[{}] Upstream returned HTTP 400: prompt is too long",
                 crate::core::agent::upstream::CONTEXT_OVERFLOW_MARKER
-            ))
+            )
+            .into())
         }
     }
 
@@ -474,9 +477,7 @@ mod tests {
         let error = compact_conversation(&input, "m", &OverflowingModel, 4)
             .await
             .expect_err("a summarizer context overflow must not be swallowed");
-        assert!(crate::core::agent::upstream::is_context_overflow_error(
-            &error
-        ));
+        assert_eq!(error.kind(), ErrorKind::ContextOverflow);
     }
 
     /// One prompt driving a long agentic run is the normal shape here: a single

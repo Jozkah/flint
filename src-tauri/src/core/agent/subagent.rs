@@ -1168,7 +1168,7 @@ async fn run_subagent(
 
     match result {
         Ok(completion) => Ok(final_assistant_text(&completion)),
-        Err(message) => Err(SubagentError::Upstream(message)),
+        Err(message) => Err(SubagentError::Upstream(message.message().to_string())),
     }
 }
 

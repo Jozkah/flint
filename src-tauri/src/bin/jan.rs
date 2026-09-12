@@ -786,6 +786,8 @@ async fn handle_cli(cmd: CliCommands) {
 
 // ── Agent handlers ───────────────────────────────────────────────────────
 
+use tauri_plugin_agent_tools::harness_error::HarnessError;
+
 async fn handle_agent(cmd: AgentCommands) {
     let result = match cmd {
         AgentCommands::Run {
@@ -834,23 +836,37 @@ async fn handle_agent(cmd: AgentCommands) {
             )
             .await
         }
-        AgentCommands::Prompts { session, show } => {
-            let data = app_lib::core::app::commands::resolve_jan_data_folder();
-            agent_prompts_text(&data, &session, show.as_deref()).map(|text| print!("{text}"))
-        }
+        AgentCommands::Prompts { session, show } => agent_prompts_text(
+            &app_lib::core::app::commands::resolve_jan_data_folder(),
+            &session,
+            show.as_deref(),
+        )
+        .map(|text| print!("{text}"))
+        .map_err(HarnessError::legacy),
         AgentCommands::Status { project, providers } => {
             match cli_agent_status(&project, &providers.into_overrides()) {
                 Ok(status) => {
                     println!("{}", serde_json::to_string_pretty(&status).unwrap());
                     Ok(())
                 }
-                Err(e) => Err(e),
+                Err(e) => Err(HarnessError::legacy(e)),
             }
         }
     };
     if let Err(e) = result {
-        eprintln!("Error: {e}");
-        std::process::exit(1);
+        // AH-009: what ended the run decides how it is reported and what the
+        // process exits with. A run the user stopped is not a failure, and a
+        // rejected credential is not an outage -- a script reading the status
+        // can tell them apart without parsing this line.
+        if e.is_cancellation() {
+            eprintln!("Stopped: {}", e.message());
+        } else {
+            eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+            for cause in e.chain().into_iter().skip(1) {
+                eprintln!("  caused by [{}]: {}", cause.kind().tag(), cause.message());
+            }
+        }
+        std::process::exit(e.exit_code());
     }
 }
 

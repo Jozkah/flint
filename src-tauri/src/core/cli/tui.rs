@@ -7823,7 +7823,11 @@ async fn chat_loop<B: Backend>(
 
     // Compaction is a summarizing model call, so it runs off the render loop
     // too; `compact_base` is the history length it was computed from.
-    let mut compact_task: Option<tokio::task::JoinHandle<Result<Vec<serde_json::Value>, String>>> =
+    let mut compact_task: Option<
+        tokio::task::JoinHandle<
+            Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError>,
+        >,
+    > =
         None;
     let mut compact_base = 0usize;
 
@@ -10409,8 +10413,8 @@ impl CompactKind {
 /// Await an in-flight compaction, parking forever when none is running so this
 /// can sit in the loop's `select!` unconditionally.
 async fn await_compaction(
-    task: &mut Option<tokio::task::JoinHandle<Result<Vec<serde_json::Value>, String>>>,
-) -> Result<Vec<serde_json::Value>, String> {
+    task: &mut Option<tokio::task::JoinHandle<Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError>>>,
+) -> Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError> {
     let joined = match task.as_mut() {
         Some(h) => h.await,
         None => return pending().await,
@@ -10418,7 +10422,7 @@ async fn await_compaction(
     *task = None;
     match joined {
         Ok(inner) => inner,
-        Err(e) => Err(format!("compaction task failed: {e}")),
+        Err(e) => Err(tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!("compaction task failed: {e}"))),
     }
 }
 
@@ -10427,7 +10431,7 @@ async fn await_compaction(
 /// in flight) is carried over rather than dropped.
 fn finish_compaction(
     app: &mut App,
-    result: Result<Vec<serde_json::Value>, String>,
+    result: Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError>,
     base_len: usize,
 ) {
     let kind = app.compacting.take().unwrap_or(CompactKind::Manual);
@@ -10469,7 +10473,9 @@ fn finish_compaction(
             }
         }
         Err(e) => {
-            app.note(&format!("{} failed: {e}", kind.label()));
+            // The words, not the classification: the kind drives what happens
+            // next (below), and repeating it here only reads as noise.
+            app.note(&format!("{} failed: {}", kind.label(), e.message()));
             // A target-model compaction (model switch) that itself overflows
             // must block the oversized ordinary request: history stays
             // untouched, the target model stays selected, and the turn is
@@ -10478,7 +10484,10 @@ fn finish_compaction(
             // disarm a queued `want_start`, so a gated ordinary request is
             // explicitly deferred too -- otherwise the loop would re-send the
             // oversized history the moment the compaction task clears.
-            let overflow = crate::core::agent::upstream::is_context_overflow_error(&e);
+            // AH-009: the kind says what happened; the TUI does not read the
+            // wording to decide whether the history may be reused.
+            let overflow =
+                e.kind() == tauri_plugin_agent_tools::harness_error::ErrorKind::ContextOverflow;
             if retrying || overflow {
                 app.halt_turn();
             }
@@ -31075,7 +31084,7 @@ mod tests {
             "[{}] Upstream returned HTTP 400: prompt is too long",
             crate::core::agent::upstream::CONTEXT_OVERFLOW_MARKER
         );
-        finish_compaction(&mut app, Err(overflow), 1);
+        finish_compaction(&mut app, Err(overflow.into()), 1);
 
         assert!(
             app.compacting.is_none(),

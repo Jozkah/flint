@@ -512,6 +512,20 @@ scenario. The real-provider lanes were unavailable again for this batch
 (`v100` does not resolve; see `/c/tmp/jan-p4-evidence/v100-probe-1.log`), so
 the CLI evidence above is against local fixtures, not 8555.
 
+## Typed failures (AH-009)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real CLI run, rejected credential | `jan cli agent run` against a fixture that answers 401 and echoes the request headers back | the process exits **77** (`EX_NOPERM`), the line reads `Error [authentication]:`, and the echoed `Authorization` header comes back as `"Bearer [redacted],` -- the key the run was configured with appears nowhere in the output. Kept in `/c/tmp/jan-p4-evidence/ah009-cli-auth-exit77.err` |
+| Real CLI run, nothing listening | the same run against a closed port | exits **69** (`EX_UNAVAILABLE`) and reads `Error [transport]:`. Kept in `/c/tmp/jan-p4-evidence/ah009-cli-transport-exit69.err` |
+| Rust tests | `harness_error.rs::every_kind_round_trips_through_its_tag`, `a_failure_survives_being_written_down`, `a_failure_never_carries_a_credential`, `misleading_error_text_cannot_move_the_fallback_decision`, `a_refusal_and_a_stop_are_not_failures`, `every_kind_has_an_exit_status` | every kind has a stable unique tag and reads back from it; a failure serializes versioned with its stage and cause and reads back, a newer version is refused while a newer kind stays readable, an unknown stage reads as unknown; an authorization header, a key in a query string, a key in a JSON body and a password are all gone from the message, the wire form and the model-facing text, and a 5 000-character body is bounded; **adversarial** -- eight refusals worded to look like outages earn no second provider and five outages worded with refusal words are not stranded, and a rate limit takes the provider's own `retry-after`; a refusal is not a cancellation, a cancellation is not a failure, and an interruption is neither |
+| Consumers | `loop.rs` (compaction retry, provider chain, recorded run end), `tui.rs` (whether history may be reused after a failed compaction), `cli/mod.rs` (the streamed error line), `bin/jan.rs` (the reported failure and the exit status) | each reads `kind()` rather than matching text; `is_context_overflow_error` and `may_try_another_provider`'s string form are no longer consulted by any production decision in the loop, the TUI or the CLI |
+
+Still open for AH-009: the tool layer returns its refusals as `ERROR [tag]:`
+strings inside tool results rather than as `HarnessError` values, and the
+desktop's own boundaries (`ExportErrorKind`, `ChildErrorKind`,
+`ReplayErrorKind`) are separate enums that are not yet converted into this one.
+
 ## Agent provenance on changes (AH-110)
 
 | Evidence | Where | Covers |

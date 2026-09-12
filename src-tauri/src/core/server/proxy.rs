@@ -1059,7 +1059,7 @@ async fn proxy_request(
                                     &origin_header,
                                     &config.trusted_hosts,
                                 );
-                                return Ok(error_response.body(full(e)).unwrap());
+                                return Ok(error_response.body(full(e.message().to_string())).unwrap());
                             }
                         }
                     }
@@ -1580,7 +1580,7 @@ async fn proxy_request(
                                     &origin_header,
                                     &config.trusted_hosts,
                                 );
-                                return Ok(error_response.body(full(e)).unwrap());
+                                return Ok(error_response.body(full(e.message().to_string())).unwrap());
                             }
                         }
                     }

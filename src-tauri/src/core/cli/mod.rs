@@ -645,6 +645,9 @@ pub async fn cli_plugin_search(
 
 /// Autonomous run: as many turns as the task needs, bounded only by the
 /// session token budget.
+///
+/// The failure is classified (AH-009), so the caller can choose an exit status
+/// and a message from what went wrong rather than from how it was worded.
 #[allow(clippy::too_many_arguments)]
 pub async fn cli_agent_run(
     project: &str,
@@ -654,7 +657,7 @@ pub async fn cli_agent_run(
     flags: SessionFlags,
     resume: Option<ResumeTarget>,
     format: OutputFormat,
-) -> Result<(), String> {
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     run_agent_loop(
         project, task, model, false, overrides, flags, resume, format,
     )
@@ -669,7 +672,7 @@ pub async fn cli_agent_step(
     model: Option<String>,
     overrides: ProviderOverrides,
     flags: SessionFlags,
-) -> Result<(), String> {
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     run_agent_loop(
         project,
         task,
@@ -1135,7 +1138,7 @@ async fn run_agent_loop(
     flags: SessionFlags,
     resume: Option<ResumeTarget>,
     format: OutputFormat,
-) -> Result<(), String> {
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     let started = std::time::Instant::now();
     let prepared = prepare_agent_run(
         project,
@@ -1166,7 +1169,13 @@ async fn run_agent_loop(
                     None,
                 ));
             }
-            return Err(e);
+            // Setup failed before a provider was ever reached: the run never
+            // started, which is a startup failure and not the model's.
+            return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
+                tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                e,
+            )
+            .at(tauri_plugin_agent_tools::harness_error::Stage::Startup));
         }
     };
 
@@ -1460,19 +1469,15 @@ async fn print_event(ev: StreamEvent, registry: &PermissionRegistry) {
             eprintln!("\n\x1b[2m[done] stop_reason={stop_reason} tokens={tokens}\x1b[0m");
         }
         StreamEvent::Error { code, message } => {
-            // AH-009: the taxonomy says what kind of failure this is and who
-            // it is for, so a cancellation does not read as a crash and a
-            // provider outage is not reported as the model's mistake.
-            let classified = tauri_plugin_agent_tools::harness_error::classify_upstream(&message);
-            if classified.is_cancellation() {
+            // AH-009: the event already carries the classification, so the
+            // line says what kind of failure it was once, and a cancellation
+            // does not read as a crash.
+            if code == "cancelled" {
                 eprintln!("
 [2m[stopped] {message}[0m");
             } else {
-                eprintln!(
-                    "
-[31m[error:{}] {code}: {message}[0m",
-                    classified.kind().tag()
-                );
+                eprintln!("
+[31m[error:{code}] {message}[0m");
             }
         }
         StreamEvent::AskRequest { .. } => {

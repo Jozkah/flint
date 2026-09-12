@@ -15,6 +15,12 @@ use reqwest13::Client;
 use tauri_plugin_llamacpp::state::LlamacppState;
 use tokio::sync::{mpsc, Mutex};
 
+/// The loop's failures carry their classification (AH-009): what kind of
+/// failure it is, where it happened, whether another attempt could help and
+/// who it is addressed to. Prose from a layer that does not classify its own
+/// failures crosses into it once, at `From<String>`.
+use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+
 use crate::core::agent::events::{StreamEvent, Usage};
 use crate::core::agent::session::SessionBudget;
 use crate::core::agent::upstream::{
@@ -126,7 +132,7 @@ pub(crate) trait ModelInvoker: Send + Sync {
         &self,
         request: &serde_json::Value,
         events: &mpsc::UnboundedSender<StreamEvent>,
-    ) -> Result<serde_json::Value, String>;
+    ) -> Result<serde_json::Value, HarnessError>;
 }
 
 /// One tool call's outcome: `content` is the model-facing result string,
@@ -189,7 +195,7 @@ impl ToolOutcome {
 
 #[async_trait]
 pub(crate) trait ToolInvoker: Send + Sync {
-    async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, String>;
+    async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError>;
 }
 
 /// One provider request, as the canonical record names it (AH-004).
@@ -296,8 +302,8 @@ pub(crate) struct ProviderLane {
 /// The decision itself lives in the harness error taxonomy (AH-009), so the
 /// chain, the retry policy and what the user is told all read one
 /// classification instead of each matching the text their own way.
-pub(crate) fn is_failover_worthy(error: &str) -> bool {
-    tauri_plugin_agent_tools::harness_error::may_try_another_provider(error)
+pub(crate) fn is_failover_worthy(error: &HarnessError) -> bool {
+    tauri_plugin_agent_tools::harness_error::may_try_another(error)
 }
 
 struct HttpModelInvoker {
@@ -336,7 +342,7 @@ impl ModelInvoker for HttpModelInvoker {
         &self,
         request: &serde_json::Value,
         events: &mpsc::UnboundedSender<StreamEvent>,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<serde_json::Value, HarnessError> {
         // `provider/model` is the CLI's explicit selection syntax. The upstream
         // URL + credential have already been resolved from that qualifier, so
         // the body must carry the bare model id - providers like OpenCode GO
@@ -433,12 +439,14 @@ impl ModelInvoker for HttpModelInvoker {
                     "from": from,
                     "to": lane.model_id,
                     "afterInvocation": previous,
-                    "reason": bound_detail(reason),
+                    "reason": bound_detail(reason.message()),
+                "failureKind": reason.kind().tag(),
                 }),
             );
             log::warn!(
-                "agent: {from} did not answer ({}); falling back to {}",
-                bound_detail(reason),
+                "agent: {from} did not answer ({}: {}); falling back to {}",
+                reason.kind().tag(),
+                bound_detail(reason.message()),
                 lane.model_id
             );
             let mut next = normalized.clone();
@@ -467,7 +475,11 @@ impl ModelInvoker for HttpModelInvoker {
                 "message.completed",
                 &format!("failed:{invocation}"),
                 &invocation,
-                serde_json::json!({ "phase": "failed", "detail": bound_detail(e) }),
+                serde_json::json!({
+                    "phase": "failed",
+                    "detail": bound_detail(e.message()),
+                    "error": e.to_wire(),
+                }),
             ),
         }
         out
@@ -565,6 +577,9 @@ fn bound_detail(text: &str) -> String {
 impl HttpModelInvoker {
     /// Send one request to one provider. Split out so the primary and every
     /// fallback go the same way, including the native-wire converter.
+    ///
+    /// The upstream layer returns prose; it becomes a classified failure here,
+    /// at the one boundary where prose enters the loop (AH-009).
     async fn dispatch_to(
         &self,
         upstream_url: &str,
@@ -572,7 +587,7 @@ impl HttpModelInvoker {
         body: &serde_json::Value,
         events: &mpsc::UnboundedSender<StreamEvent>,
         invocation: &str,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<serde_json::Value, HarnessError> {
         // AH-004: what streamed back is recorded against this request, in
         // order, before the reply that closes it.
         let (tee, watching) =
@@ -592,8 +607,10 @@ impl HttpModelInvoker {
         api_keys: &[String],
         body: &serde_json::Value,
         events: &mpsc::UnboundedSender<StreamEvent>,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<serde_json::Value, HarnessError> {
         if let Some(converter) = &self.converter {
+            // The streaming layer speaks prose; it is classified once, here,
+            // and every decision after this reads the kind (AH-009).
             crate::core::agent::upstream::stream_converted_chat_completions(
                 &self.converter_client,
                 upstream_url,
@@ -603,6 +620,9 @@ impl HttpModelInvoker {
                 events,
             )
             .await
+            .map_err(|e| {
+                tauri_plugin_agent_tools::harness_error::classify_upstream_at(&e, Stage::Stream)
+            })
         } else {
             stream_openai_chat_completions(
                 &self.client,
@@ -614,6 +634,9 @@ impl HttpModelInvoker {
                 events,
             )
             .await
+            .map_err(|e| {
+                tauri_plugin_agent_tools::harness_error::classify_upstream_at(&e, Stage::Stream)
+            })
         }
     }
 }
@@ -695,7 +718,7 @@ struct McpToolInvoker {
 
 #[async_trait]
 impl ToolInvoker for McpToolInvoker {
-    async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, String> {
+    async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError> {
         let results = execute_mcp_tool_calls(
             tool_calls,
             &self.tool_to_server,
@@ -1538,7 +1561,7 @@ fn plan_mode_read_only_msg(name: &str) -> String {
 
 #[async_trait]
 impl ToolInvoker for CompositeToolInvoker {
-    async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, String> {
+    async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError> {
         self.record_requested(tool_calls);
         let out = self.dispatch_calls(tool_calls).await;
         if let Ok(outcomes) = &out {
@@ -1638,7 +1661,7 @@ impl CompositeToolInvoker {
         }
     }
 
-    async fn dispatch_calls(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, String> {
+    async fn dispatch_calls(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError> {
         use tauri_plugin_agent_tools::tools::{
             gate::{resolve_decision, Decision, PromptKind},
             handlers::{execute_builtin_with_diff, preview_diff, stage_change},
@@ -2083,7 +2106,7 @@ pub(crate) async fn run_server_side_openai_orchestration(
     mcp_servers: SharedMcpServers,
     mcp_settings: Arc<Mutex<McpSettings>>,
     jan_data_folder: &str,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, HarnessError> {
     let (tx, _rx) = mpsc::unbounded_channel();
     let args = OrchestrationArgs {
         fallback_models: Vec::new(),
@@ -2152,7 +2175,7 @@ pub(crate) async fn run_orchestration_streamed(
     events: &mpsc::UnboundedSender<StreamEvent>,
     json_body: &serde_json::Value,
     args: &OrchestrationArgs,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, HarnessError> {
     run_orchestration_steered(events, json_body, args, None).await
 }
 
@@ -2162,7 +2185,7 @@ pub(crate) async fn run_orchestration_steered(
     json_body: &serde_json::Value,
     args: &OrchestrationArgs,
     steering: Option<&mpsc::UnboundedSender<SteeringRequest>>,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, HarnessError> {
     let started = std::time::Instant::now();
     let result = orchestrate_inner(events, json_body, args, steering).await;
     match &result {
@@ -2180,13 +2203,19 @@ pub(crate) async fn run_orchestration_steered(
             // Bounded: the message wraps a provider body, and this line is
             // persisted to the local log.
             log::info!(
-                "agent: run finished outcome=error elapsed={}ms -- {}",
+                "agent: run finished outcome={} kind={} stage={} elapsed={}ms -- {}",
+                if message.is_cancellation() { "stopped" } else { "error" },
+                message.kind().tag(),
+                message.stage().tag(),
                 started.elapsed().as_millis(),
-                crate::core::agent::upstream::log_brief(message)
+                crate::core::agent::upstream::log_brief(message.message())
             );
             let _ = events.send(StreamEvent::Error {
-                code: "error".to_string(),
-                message: message.clone(),
+                // The classification travels with the event, so every surface
+                // says the same thing about the same failure and none of them
+                // has to read the words to decide what it was (AH-009).
+                code: message.kind().tag().to_string(),
+                message: message.message().to_string(),
             });
         }
     }
@@ -2519,7 +2548,7 @@ async fn orchestrate_inner(
     json_body: &serde_json::Value,
     args: &OrchestrationArgs,
     steering: Option<&mpsc::UnboundedSender<SteeringRequest>>,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, HarnessError> {
     let OrchestrationArgs {
         client,
         fallback_models,
@@ -2938,10 +2967,17 @@ async fn orchestrate_inner(
         .await;
         record_run(
             "run.ended",
-            serde_json::json!({
-                "stoppedBy": if result.is_ok() { "done" } else { "error" },
-                "source": "agent-loop",
-            }),
+            match &result {
+                Ok(_) => serde_json::json!({ "stoppedBy": "done", "source": "agent-loop" }),
+                // AH-009: how a run ended is the classification, so a run the
+                // user stopped is recorded as stopped and not as a failure,
+                // and every surface reading the record says the same thing.
+                Err(error) => serde_json::json!({
+                    "stoppedBy": if error.is_cancellation() { "cancelled" } else { "error" },
+                    "source": "agent-loop",
+                    "error": error.to_wire(),
+                }),
+            },
         );
         // On a clean exit, wait for any subagents the model dispatched but never
         // explicitly awaited, so their in-flight work isn't aborted and lost by
@@ -3051,7 +3087,7 @@ pub(crate) async fn compact_history(
     model_id: &str,
     messages: &[serde_json::Value],
     keep_recent: usize,
-) -> Result<Vec<serde_json::Value>, String> {
+) -> Result<Vec<serde_json::Value>, HarnessError> {
     let (upstream_url, api_keys) = resolve_upstream_for_model(
         model_id,
         args.provider_configs.clone(),
@@ -3108,7 +3144,7 @@ pub(crate) async fn evaluate_goal(
     smol_model_id: &str,
     condition: &str,
     messages: &[serde_json::Value],
-) -> Result<crate::core::agent::goal::GoalVerdict, String> {
+) -> Result<crate::core::agent::goal::GoalVerdict, HarnessError> {
     let (upstream_url, api_keys) = resolve_upstream_for_model(
         smol_model_id,
         args.provider_configs.clone(),
@@ -3254,7 +3290,7 @@ async fn run_turn_cycle(
     // The run's canonical record (AH-004), for what happens between provider
     // requests: steering handed in, a compaction. `None` records nothing.
     record: Option<&Invocations>,
-) -> Result<serde_json::Value, String> {
+) -> Result<serde_json::Value, HarnessError> {
     // `max_turns == 0` is the normal case: the session token budget and user
     // cancellation are the real guards, so a run isn't cut off mid-task by a
     // fixed turn cap.
@@ -3328,8 +3364,9 @@ async fn run_turn_cycle(
                 );
                 match model.invoke(&request_value, events).await {
                     Ok(c) => break c,
+                    // AH-009: what the failure *is*, not how it was worded.
                     Err(e)
-                        if crate::core::agent::upstream::is_context_overflow_error(&e)
+                        if e.kind() == ErrorKind::ContextOverflow
                             && attempts < MAX_COMPACTION_ATTEMPTS =>
                     {
                         if let Some(record) = record {
@@ -3358,7 +3395,7 @@ async fn run_turn_cycle(
                                         "compaction.failed",
                                         serde_json::json!({
                                             "reason": "context-overflow",
-                                            "detail": bound_detail(&error),
+                                            "detail": bound_detail(error.message()),
                                         }),
                                     );
                                 }
@@ -3417,7 +3454,7 @@ async fn run_turn_cycle(
                     // so the client's persisted history loses it too, the way the
                     // compacted history above is published.
                     Err(e)
-                        if crate::core::agent::upstream::is_reasoning_field_error(&e)
+                        if crate::core::agent::upstream::is_reasoning_field_error(e.message())
                             && body_send_reasoning(json_body)
                             && carries_assistant_reasoning(&conversation_messages) =>
                     {
@@ -3575,7 +3612,7 @@ async fn run_turn_cycle(
                                 "compaction.failed",
                                 serde_json::json!({
                                     "reason": "budget-exhausted",
-                                    "detail": bound_detail(&error),
+                                    "detail": bound_detail(error.message()),
                                 }),
                             );
                         }
@@ -3863,9 +3900,11 @@ async fn run_turn_cycle(
         turn += 1;
     }
 
-    Err(format!(
-        "reached the {max_turns}-turn limit while the model was still calling tools"
-    ))
+    Err(HarnessError::new(
+        ErrorKind::BudgetExhausted,
+        format!("reached the {max_turns}-turn limit while the model was still calling tools"),
+    )
+    .at(Stage::Context))
 }
 
 #[cfg(test)]
@@ -3896,13 +3935,13 @@ mod tests {
             &self,
             request: &serde_json::Value,
             _events: &mpsc::UnboundedSender<StreamEvent>,
-        ) -> Result<serde_json::Value, String> {
+        ) -> Result<serde_json::Value, HarnessError> {
             self.requests.lock().unwrap().push(request.clone());
             self.responses
                 .lock()
                 .unwrap()
                 .pop_front()
-                .ok_or_else(|| "mock model exhausted".to_string())
+                .ok_or_else(|| "mock model exhausted".to_string().into())
         }
     }
 
@@ -3915,7 +3954,7 @@ mod tests {
         async fn invoke(
             &self,
             tool_calls: &[serde_json::Value],
-        ) -> Result<Vec<ToolOutcome>, String> {
+        ) -> Result<Vec<ToolOutcome>, HarnessError> {
             self.calls.lock().unwrap().push(tool_calls.to_vec());
             Ok(tool_calls
                 .iter()
@@ -4523,7 +4562,7 @@ mod tests {
             async fn invoke(
                 &self,
                 tool_calls: &[serde_json::Value],
-            ) -> Result<Vec<ToolOutcome>, String> {
+            ) -> Result<Vec<ToolOutcome>, HarnessError> {
                 Ok(tool_calls
                     .iter()
                     .map(|tc| {
@@ -4672,7 +4711,7 @@ mod tests {
                 &self,
                 request: &serde_json::Value,
                 _events: &mpsc::UnboundedSender<StreamEvent>,
-            ) -> Result<serde_json::Value, String> {
+            ) -> Result<serde_json::Value, HarnessError> {
                 self.calls
                     .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 for m in request["messages"].as_array().into_iter().flatten() {
@@ -4682,7 +4721,9 @@ mod tests {
                             let plain_object =
                                 decoded.as_ref().map(|v| v.is_object()).unwrap_or(false);
                             if !args.trim().is_empty() && !plain_object {
-                                return Err("HTTP 422: invalid tool call arguments".to_string());
+                                return Err(
+                                    "HTTP 422: invalid tool call arguments".to_string().into()
+                                );
                             }
                         }
                     }
@@ -5211,7 +5252,7 @@ mod tests {
         async fn invoke(
             &self,
             tool_calls: &[serde_json::Value],
-        ) -> Result<Vec<ToolOutcome>, String> {
+        ) -> Result<Vec<ToolOutcome>, HarnessError> {
             Ok(tool_calls
                 .iter()
                 .map(|tc| {
@@ -5479,7 +5520,7 @@ mod tests {
     }
 
     struct ResultQueueModel {
-        results: StdMutex<VecDeque<Result<serde_json::Value, String>>>,
+        results: StdMutex<VecDeque<Result<serde_json::Value, HarnessError>>>,
     }
     #[async_trait]
     impl ModelInvoker for ResultQueueModel {
@@ -5487,12 +5528,12 @@ mod tests {
             &self,
             _request: &serde_json::Value,
             _events: &mpsc::UnboundedSender<StreamEvent>,
-        ) -> Result<serde_json::Value, String> {
+        ) -> Result<serde_json::Value, HarnessError> {
             self.results
                 .lock()
                 .unwrap()
                 .pop_front()
-                .unwrap_or_else(|| Err("mock exhausted".to_string()))
+                .unwrap_or_else(|| Err("mock exhausted".to_string().into()))
         }
     }
 
@@ -5503,7 +5544,8 @@ mod tests {
         let overflow = Err(format!(
             "[{}] Upstream returned HTTP 400: context_length_exceeded",
             crate::core::agent::upstream::CONTEXT_OVERFLOW_MARKER
-        ));
+        )
+        .into());
         let model = ResultQueueModel {
             results: StdMutex::new(
                 vec![
@@ -5557,7 +5599,8 @@ mod tests {
             results: StdMutex::new(
                 vec![
                     Err("Upstream returned HTTP 400: property 'reasoning_content' is unsupported"
-                        .to_string()),
+                        .to_string()
+                        .into()),
                     Ok(json!({ "choices": [{ "message": { "content": "final" }, "finish_reason": "stop" }] })),
                 ]
                 .into_iter()
@@ -5614,8 +5657,11 @@ mod tests {
     #[tokio::test]
     async fn a_persistent_reasoning_rejection_fails_the_turn() {
         let (tx, _rx) = mpsc::unbounded_channel();
-        let reject =
-            || Err("Upstream returned HTTP 400: 'reasoning_content' is unsupported".to_string());
+        let reject = || {
+            Err("Upstream returned HTTP 400: 'reasoning_content' is unsupported"
+                .to_string()
+                .into())
+        };
         let model = ResultQueueModel {
             results: StdMutex::new(vec![reject(), reject(), reject()].into_iter().collect()),
         };
@@ -5662,7 +5708,8 @@ mod tests {
             Err(format!(
                 "[{}] Upstream returned HTTP 400: context_length_exceeded",
                 crate::core::agent::upstream::CONTEXT_OVERFLOW_MARKER
-            ))
+            )
+            .into())
         };
         let summary = || Ok(json!({ "choices": [{ "message": { "content": "SUMMARY" } }] }));
         let model = ResultQueueModel {
@@ -5735,7 +5782,8 @@ mod tests {
             Err(format!(
                 "[{}] Upstream returned HTTP 400: prompt is too long",
                 crate::core::agent::upstream::CONTEXT_OVERFLOW_MARKER
-            ))
+            )
+            .into())
         };
         // 1) the main request overflows, 2) the summarizer it spawned overflows too.
         let model = ResultQueueModel {
@@ -5772,7 +5820,7 @@ mod tests {
             "a summarizer context overflow must fail the turn"
         );
         assert!(
-            crate::core::agent::upstream::is_context_overflow_error(result.as_ref().unwrap_err()),
+            result.as_ref().unwrap_err().kind() == ErrorKind::ContextOverflow,
             "the summarizer overflow must propagate, not be rewritten"
         );
         drop(tx);
@@ -6284,7 +6332,7 @@ mod tests {
             "upstream returned 503 Service Unavailable",
             "the request timed out",
         ] {
-            assert!(is_failover_worthy(unreachable), "{unreachable:?}");
+            assert!(is_failover_worthy(&unreachable.into()), "{unreachable:?}");
         }
         for answered in [
             "401 Unauthorized: invalid api key",
@@ -6295,7 +6343,7 @@ mod tests {
             // An outage word inside an answered refusal must not flip it.
             "403 Forbidden (connection refused by policy)",
         ] {
-            assert!(!is_failover_worthy(answered), "{answered:?}");
+            assert!(!is_failover_worthy(&answered.into()), "{answered:?}");
         }
     }
 
@@ -6310,7 +6358,7 @@ mod tests {
             &self,
             _request: &serde_json::Value,
             events: &mpsc::UnboundedSender<StreamEvent>,
-        ) -> Result<serde_json::Value, String> {
+        ) -> Result<serde_json::Value, HarnessError> {
             let n = {
                 let mut calls = self.calls.lock().unwrap();
                 *calls += 1;
@@ -6320,7 +6368,8 @@ mod tests {
                 1 => Err(format!(
                     "{}: this model's maximum context length is 8192 tokens",
                     crate::core::agent::upstream::CONTEXT_OVERFLOW_MARKER
-                )),
+                )
+                .into()),
                 2 => Ok(json!({"choices": [{"message": {"content": "a summary"}}]})),
                 _ => {
                     let _ = events.send(StreamEvent::Token { text: "ok".into() });

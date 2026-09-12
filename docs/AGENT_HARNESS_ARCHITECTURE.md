@@ -1037,6 +1037,31 @@ over that log, and a line that no longer parses is left untouched rather than
 edited blind. `memory/` never logs the outcome -- a body could travel with the
 message -- so the snapshot module reports it instead.
 
+**Failures carry their classification (AH-009).** The orchestration loop's
+errors are `HarnessError`, not prose: a kind (26 of them, from `authentication`
+and `rate_limited` through `context_overflow`, `sandbox_denied` and
+`child_failed` to `internal`), the stage it happened at, whether another attempt
+could help, who it is addressed to, and the failure that caused it. Prose
+crosses into the taxonomy at exactly one place -- `classify_upstream`, where the
+streaming layer's text arrives -- and every decision after that reads the kind:
+whether to compact and retry (`ContextOverflow`), whether the next provider in
+the chain may be tried (`may_try_another`), whether the TUI may reuse the
+history, what the CLI prints and what the process exits with.
+
+Nothing that travels with a failure can carry a credential: `scrub` removes the
+value after any authorization, key, token, password or secret marker, and any
+bare `sk-` key, when the error is *built* -- so there is no path (a log, the
+record, a serialized cause) where the raw text still exists. Messages are
+bounded, so a provider that echoes the whole request back in its error body
+cannot turn one failure into a copy of the prompt.
+
+The serialized form is versioned (`to_wire` / `from_wire`). A record from a
+newer build is refused with a typed error rather than guessed at; a *kind* from
+a newer build stays readable as what it called itself, because the vocabulary
+grows and an old reader must still see what happened. Exit statuses follow
+`sysexits.h`, so a script can tell a stopped run (130) from a rejected
+credential (77) from a provider that was not there (69) without parsing text.
+
 **What one run records (AH-004).** A run's canonical log holds what it did, not
 what it said. Per provider request: the dispatch and its prompt snapshot id,
 `message.started` when the reply first produces something (saying whether that
