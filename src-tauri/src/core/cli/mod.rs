@@ -695,8 +695,12 @@ fn build_cli_orchestration_args(
     plan: bool,
     max_parallel_subagents: u32,
     sandbox: Option<bool>,
+    // `[agent].fallback`: providers to try when the model cannot be reached
+    // (AH-193). Empty unless the project configured a chain.
+    fallback_models: Vec<String>,
 ) -> OrchestrationArgs {
     OrchestrationArgs {
+        fallback_models,
         client: crate::core::agent::upstream::agent_http_client(),
         provider_configs: Arc::new(Mutex::new(provider_configs)),
         mcp_servers,
@@ -980,6 +984,7 @@ fn prepare_agent_session(
         flags.plan,
         max_parallel_subagents,
         flags.sandbox,
+        cfg.agent.fallback.clone(),
     );
 
     // Resolution order: configured `[agent].context_window` override, then the

@@ -724,6 +724,26 @@ tool added later is covered without being told to be. The Rust agent loop
 invoker: each call as it is asked for, then how it ended, under the run's
 session, run and agent, with `run.started` / `run.ended` around it.
 
+**When a provider cannot be reached (AH-193).** `[agent].fallback` in
+`agent.toml` is an ordered list of models to try when the configured one does
+not answer. It is empty by default: a reply from a provider the user did not
+choose is worse than an error, so a chain exists only because someone wrote one
+down. Each entry is resolved the same way the primary model is; one that
+resolves to nothing is logged and skipped rather than failing the run.
+
+Only a failure that says the request never reached a model is failed over --
+a refused connection, an unknown host, a 502/503/504, a timeout
+(`loop.rs::is_failover_worthy`). Anything a provider *answered* is a decision,
+not an outage: a rejected key, a refused request, a context that does not fit, a
+cancelled run. That rule is also what keeps the guarantees simple: a dispatch
+that never reached a model produced no tokens, ran no tool and collected no
+approval, so nothing can be duplicated by trying the next provider. Each attempt
+is its own invocation in the record, the fallback itself is recorded
+(`phase: "fell-back"`, from, to, the reason and the request it follows), and the
+usage is attributed to the provider that actually answered (`answeredBy`). The
+chain belongs to the agent loop, which is what the CLI runs; Chat and Cowork
+have no chain configuration, so they never fail over.
+
 **Saying the window is filling (AH-077).** One shape of the warning, in
 `core/agent/context_pressure.rs`, shared by the TUI and the headless CLI so the
 two cannot drift: the share of the window in use, the figures behind it

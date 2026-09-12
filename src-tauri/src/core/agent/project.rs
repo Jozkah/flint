@@ -82,6 +82,13 @@ pub(crate) struct BudgetSection {
 pub(crate) struct AgentSection {
     #[serde(default)]
     pub model: Option<String>,
+    /// Providers to try, in order, when the configured model cannot be
+    /// reached at all (AH-193). Each entry is a model id, optionally
+    /// provider-qualified (`provider/model`), resolved the same way `model`
+    /// is. Empty by default: a fallback nobody asked for is a surprise, and a
+    /// reply from a provider the user did not choose is worse than an error.
+    #[serde(default)]
+    pub fallback: Vec<String>,
     /// Context window limit in tokens for the model (defaults to 128K if unset).
     /// Set this to match your model's actual context length so compaction
     /// triggers at the right threshold.

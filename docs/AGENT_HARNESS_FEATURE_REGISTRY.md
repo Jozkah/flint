@@ -33,9 +33,9 @@ and the latter two require a recorded `blockedReason`.
 | 5 | Agent orchestration | 2 | 0 | 4 | 19 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 11 | 0 | 4 | 17 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 15 | 0 | 1 | 10 | 0 | 0 | 0 | 26 |
-| 8 | UX, automation and operations | 15 | 0 | 6 | 7 | 0 | 0 | 1 | 29 |
+| 8 | UX, automation and operations | 14 | 0 | 6 | 8 | 0 | 0 | 1 | 29 |
 | 9 | Approved additions | 0 | 0 | 0 | 11 | 0 | 0 | 0 | 11 |
-| **all** | | **63** | **0** | **22** | **122** | **3** | **0** | **1** | **211** |
+| **all** | | **62** | **0** | **22** | **123** | **3** | **0** | **1** | **211** |
 
 ## Ownership lanes
 
@@ -262,7 +262,7 @@ per-OS evidence log rather than backlog items.
 | `AH-190` | Custom CA certificates | 8 | ux-operations | P2 | `missing` | high | `AH-189` |
 | `AH-191` | Usage quotas | 8 | ux-operations | P2 | `missing` | medium | `AH-017` |
 | `AH-192` | Spend budgets | 8 | ux-operations | P2 | `missing` | medium | `AH-175`, `AH-191` |
-| `AH-193` | Provider fallback | 8 | ux-operations | P1 | `missing` | medium | `AH-025` |
+| `AH-193` | Provider fallback | 8 | ux-operations | P1 | `implemented` | medium | `AH-025` |
 | `AH-194` | Provider routing rules | 8 | ux-operations | P2 | `in-progress` | medium | `AH-193` |
 | `AH-195` | Local and offline model support | 8 | ux-operations | P1 | `implemented` | low | - |
 | `AH-196` | Benchmark harness | 8 | ux-operations | P2 | `missing` | none | `AH-011` |
@@ -396,6 +396,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-180` Keyboard navigation** - Not audited in depth during Phase 0; the CLI is keyboard-driven by nature, the desktop surfaces are unverified.
 - **`AH-182` Headless JSON API** - --output-format json emits a single terminal object, not a machine API surface.
 - **`AH-183` Headless event-stream API** - StreamEvent is already Tauri-free but is never exposed over stdout or a socket.
+- **`AH-193` Provider fallback** - 2026-09-12 (Phase 3): implemented in the agent loop. `[agent].fallback` in agent.toml is an ordered, opt-in chain; each entry resolves like the primary model and an unresolvable one is logged and skipped rather than failing the run. Only failures that say the request never reached a model are failed over (connection refused, DNS, 502/503/504, timeout); anything a provider answered -- 401/403, an invalid key, a context-length refusal, a 400, a cancelled run -- is not, which is also what makes the guarantees hold: a dispatch that never reached a model produced no output, ran no tool and took no approval, so nothing can be duplicated. Every attempt is its own invocation, the fallback is recorded (phase fell-back, from, to, reason, the request it follows) and the usage is attributed to the provider that answered (answeredBy). Real evidence: a two-lane CLI run (dead primary port, local fixture backup) answered from the backup with the whole chain in the record, and the same run against a 401 fixture failed without falling back. Limit: the chain is agent.toml configuration, so Chat and Cowork -- which have no chain UI -- never fail over, and compaction/goal-evaluation dispatches keep their own provider.
 - **`AH-194` Provider routing rules** - Resolution prefers a credentialed provider and supports a small-model role; there are no user-authored rules.
 - **`AH-195` Local and offline model support** - Canonical ModelCapabilities with a fixed discovery order over sources the app already has; no network lookup. llama.cpp's effective n_ctx is distinguished from n_ctx_train, and an unknown window stays unknown. usableContextValue is the single gate every context number passes: zero, negative, NaN, Infinity and malformed strings are non-answers, not capacities. Migration 19 rewrites already-persisted ones to "not set" without touching a positive value, so no profile has to be deleted. `server-response` ranks above every described source and below an explicit user decision, because a refusal is the one answer measured against a real request.
 - **`AH-198` Security regression corpus** - Adversarial corpus in tools/gate.rs::security_corpus: bypass spellings, traversal, unreadable arguments, command wrappers and second commands, destructive git behind a blanket allow, secret files, network off, lookalike and case/trailing-dot domains, deny-over-allow, absent grants, hidden agent state. Each asserts the specific refusal. Two live defects were found by writing it.

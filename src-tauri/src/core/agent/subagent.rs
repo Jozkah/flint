@@ -2607,6 +2607,7 @@ mod tests {
         use std::sync::Arc;
         use tauri_plugin_agent_tools::permissions::ToolPermissions;
         OrchestrationArgs {
+            fallback_models: Vec::new(),
             client: crate::core::agent::upstream::agent_http_client(),
             provider_configs: Arc::new(tokio::sync::Mutex::new(
                 HashMap::<String, ProviderConfig>::new(),

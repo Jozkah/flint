@@ -108,6 +108,10 @@ pub(crate) struct OrchestrationArgs {
     /// dispatched subagent renames itself in `run_subagent`, which is what
     /// lets a child be narrower than its parent.
     pub subject: tauri_plugin_agent_tools::subject::Subject,
+    /// Providers to try when the model cannot be reached (AH-193), in order.
+    /// Empty unless the project configured a chain; inherited by dispatched
+    /// subagents, which run against the same providers their parent does.
+    pub fallback_models: Vec<String>,
     /// Per-invocation override for `bash` confinement (the CLI's `--sandbox`).
     /// `None` falls through to `[tools].sandbox`, then the user's global
     /// `sandbox`, then the surface default -- see [`resolve_sandbox`]. Inherited
@@ -256,6 +260,65 @@ impl Invocations {
     }
 }
 
+/// One provider a request may be sent to (AH-193).
+///
+/// A fallback chain is a list of these: the first is the run's own model, the
+/// rest are what `[agent].fallback` names, resolved the same way the primary
+/// is. Nothing here is chosen automatically -- a chain exists only because the
+/// user wrote one down.
+#[derive(Debug, Clone)]
+pub(crate) struct ProviderLane {
+    pub model_id: String,
+    pub upstream_url: String,
+    pub api_keys: Vec<String>,
+}
+
+/// Whether a failed request may be tried on the next provider (AH-193).
+///
+/// Only failures that say the request never reached a model: a refused
+/// connection, an unknown host, a gateway that is down. Anything the provider
+/// answered -- a rejected key, a refused request, a context that does not fit,
+/// a cancelled run -- is a decision, not an outage, and repeating it on another
+/// provider would either duplicate work or hide the reason. Kept as text
+/// matching because that is what the upstream layer returns; each pattern is
+/// something that cannot have produced a single token of output.
+pub(crate) fn is_failover_worthy(error: &str) -> bool {
+    let text = error.to_ascii_lowercase();
+    // Answered, so not an outage: never failed over, whatever else the
+    // message says.
+    const ANSWERED: &[&str] = &[
+        "401",
+        "403",
+        "invalid api key",
+        "unauthorized",
+        "permission",
+        "context length",
+        "context window",
+        "too many tokens",
+        "cancelled",
+        "canceled",
+        "aborted",
+        "stopped by the user",
+    ];
+    if ANSWERED.iter().any(|marker| text.contains(marker)) {
+        return false;
+    }
+    const UNREACHED: &[&str] = &[
+        "error sending request",
+        "connection refused",
+        "connection reset",
+        "connect error",
+        "dns error",
+        "failed to lookup",
+        "no route to host",
+        "timed out",
+        "502",
+        "503",
+        "504",
+    ];
+    UNREACHED.iter().any(|marker| text.contains(marker))
+}
+
 struct HttpModelInvoker {
     client: Client,
     upstream_url: String,
@@ -276,6 +339,9 @@ struct HttpModelInvoker {
     snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity,
     /// The run's request ids (AH-004): minted here, read by the tool invoker.
     invocations: std::sync::Arc<Invocations>,
+    /// Providers to try after this one, in order (AH-193). Empty unless the
+    /// project configured a chain.
+    fallbacks: Vec<ProviderLane>,
 }
 
 fn converter_http_client() -> reqwest::Client {
@@ -294,6 +360,7 @@ impl ModelInvoker for HttpModelInvoker {
         // URL + credential have already been resolved from that qualifier, so
         // the body must carry the bare model id - providers like OpenCode GO
         // reject a provider-qualified id with "model not supported".
+        #[allow(unused_assignments)]
         let mut normalized = request.clone();
         if let Some(model) = normalized.get("model").and_then(|m| m.as_str()) {
             let pc = self.provider_configs.lock().await;
@@ -351,33 +418,67 @@ impl ModelInvoker for HttpModelInvoker {
             });
         }
 
-        let out = if let Some(converter) = &self.converter {
-            crate::core::agent::upstream::stream_converted_chat_completions(
-                &self.converter_client,
-                &self.upstream_url,
-                &self.api_keys,
-                converter.as_ref(),
-                &normalized,
-                events,
-            )
-            .await
-        } else {
-            stream_openai_chat_completions(
-                &self.client,
-                &self.upstream_url,
-                &self.api_keys,
-                // The agent speaks OpenAI chat/completions to default providers.
-                None,
-                &normalized,
-                events,
-            )
-            .await
-        };
+        let mut out = self
+            .dispatch_to(&self.upstream_url, &self.api_keys, &normalized, events)
+            .await;
+
+        // AH-193: the configured chain, in order, and only for a failure that
+        // says the request never reached a model. Each attempt is its own
+        // request in the record, so nothing is attributed to the provider that
+        // did not answer, and a tool call cannot be run twice -- a failed
+        // dispatch produced no reply to call anything from.
+        let mut invocation = invocation;
+        for lane in &self.fallbacks {
+            let Err(reason) = &out else { break };
+            if !is_failover_worthy(reason) {
+                break;
+            }
+            let from = normalized
+                .get("model")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let previous = invocation.clone();
+            invocation = self.invocations.begin();
+            self.invocations.record(
+                "message.completed",
+                &format!("fallback:{invocation}"),
+                &invocation,
+                serde_json::json!({
+                    "phase": "fell-back",
+                    "from": from,
+                    "to": lane.model_id,
+                    "afterInvocation": previous,
+                    "reason": bound_detail(reason),
+                }),
+            );
+            log::warn!(
+                "agent: {from} did not answer ({}); falling back to {}",
+                bound_detail(reason),
+                lane.model_id
+            );
+            let mut next = normalized.clone();
+            next["model"] = serde_json::json!(lane.model_id);
+            out = self
+                .dispatch_to(&lane.upstream_url, &lane.api_keys, &next, events)
+                .await;
+            if out.is_ok() {
+                normalized = next;
+                break;
+            }
+        }
         // What the request cost and what came back, against the request
         // itself (AH-004). A failure is recorded too: a request that never
         // answered is part of what the run did.
         match &out {
-            Ok(completion) => self.record_completion(&invocation, completion),
+            Ok(completion) => self.record_completion_for(
+                &invocation,
+                completion,
+                normalized
+                    .get("model")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default(),
+            ),
             Err(e) => self.invocations.record(
                 "message.completed",
                 &format!("failed:{invocation}"),
@@ -395,8 +496,63 @@ fn bound_detail(text: &str) -> String {
 }
 
 impl HttpModelInvoker {
+    /// Send one request to one provider. Split out so the primary and every
+    /// fallback go the same way, including the native-wire converter.
+    async fn dispatch_to(
+        &self,
+        upstream_url: &str,
+        api_keys: &[String],
+        body: &serde_json::Value,
+        events: &mpsc::UnboundedSender<StreamEvent>,
+    ) -> Result<serde_json::Value, String> {
+        if let Some(converter) = &self.converter {
+            crate::core::agent::upstream::stream_converted_chat_completions(
+                &self.converter_client,
+                upstream_url,
+                api_keys,
+                converter.as_ref(),
+                body,
+                events,
+            )
+            .await
+        } else {
+            stream_openai_chat_completions(
+                &self.client,
+                upstream_url,
+                api_keys,
+                // The agent speaks OpenAI chat/completions to default providers.
+                None,
+                body,
+                events,
+            )
+            .await
+        }
+    }
+}
+
+impl HttpModelInvoker {
     /// The provider's own counts for this request, and what its reply was made
     /// of: sizes and counts only -- the words are in the transcript.
+    ///
+    /// `model` is the provider that actually answered, which after a fallback
+    /// is not the one the run started with (AH-193).
+    fn record_completion_for(
+        &self,
+        invocation: &str,
+        completion: &serde_json::Value,
+        model: &str,
+    ) {
+        self.record_completion(invocation, completion);
+        if !model.is_empty() {
+            self.invocations.record(
+                "usage.reported",
+                &format!("answered:{invocation}"),
+                invocation,
+                serde_json::json!({ "answeredBy": model, "requests": 1 }),
+            );
+        }
+    }
+
     fn record_completion(&self, invocation: &str, completion: &serde_json::Value) {
         if let Some(usage) = Usage::from_completion(completion) {
             self.invocations.record(
@@ -1801,6 +1957,7 @@ pub(crate) async fn run_server_side_openai_orchestration(
 ) -> Result<serde_json::Value, String> {
     let (tx, _rx) = mpsc::unbounded_channel();
     let args = OrchestrationArgs {
+        fallback_models: Vec::new(),
         client: client.clone(),
         provider_configs,
         llama_state,
@@ -2236,6 +2393,7 @@ async fn orchestrate_inner(
 ) -> Result<serde_json::Value, String> {
     let OrchestrationArgs {
         client,
+        fallback_models,
         provider_configs,
         #[cfg(not(feature = "cli"))]
         llama_state,
@@ -2462,6 +2620,31 @@ async fn orchestrate_inner(
 
     let max_turns = body_turn_cap(json_body);
 
+    // AH-193: the configured chain, resolved the same way the primary model
+    // is. An entry that resolves to nothing is dropped with a warning rather
+    // than failing the run: a fallback that cannot be reached is one fewer
+    // option, not a reason to refuse to start.
+    let mut fallback_lanes: Vec<ProviderLane> = Vec::new();
+    for candidate in fallback_models.iter() {
+        match resolve_upstream_for_model(
+            candidate,
+            provider_configs.clone(),
+            #[cfg(not(feature = "cli"))]
+            llama_state.clone(),
+            #[cfg(not(feature = "cli"))]
+            mlx_sessions.clone(),
+        )
+        .await
+        {
+            Ok((url, keys)) => fallback_lanes.push(ProviderLane {
+                model_id: candidate.to_string(),
+                upstream_url: url,
+                api_keys: keys,
+            }),
+            Err(e) => log::warn!("agent: fallback {candidate} is not configured ({e}); skipping it"),
+        }
+    }
+
     // One id for this run, used by the cancellation scope, the execution
     // record and every request's invocation (AH-004): minted once so a stop, a
     // snapshot and a recorded call all name the same run.
@@ -2484,6 +2667,7 @@ async fn orchestrate_inner(
         // Session and thread are the same id on this path; the run id matches
         // the cancellation scope so a snapshot and a stop name the same run.
         invocations: invocations.clone(),
+        fallbacks: fallback_lanes,
         snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity {
             session: session_id.clone().unwrap_or_default(),
             run: run_id.clone(),
@@ -2758,6 +2942,9 @@ pub(crate) async fn compact_history(
         // Its own ids: a compaction is a dispatch of its own, and folding it
         // into the turn's numbering would renumber the turn's requests.
         invocations: std::sync::Arc::new(Invocations::default()),
+        // A compaction or an evaluation is the run's own bookkeeping: it is
+        // not worth sending to a second provider behind the user's back.
+        fallbacks: Vec::new(),
         // A compaction request is a dispatch like any other, and AH-078 says
         // every dispatch leaves a snapshot. `Compaction` is what separates it
         // from the turn's own requests when the snapshots are read back.
@@ -2810,6 +2997,9 @@ pub(crate) async fn evaluate_goal(
             .and_then(|(api_type, oauth)| converter_for(Some(&api_type), oauth)),
         converter_client: converter_http_client(),
         invocations: std::sync::Arc::new(Invocations::default()),
+        // A compaction or an evaluation is the run's own bookkeeping: it is
+        // not worth sending to a second provider behind the user's back.
+        fallbacks: Vec::new(),
         // The goal evaluator is a separate agent making its own single call,
         // so it is named as one rather than folded into the main dispatch.
         snapshot_identity: tauri_plugin_agent_tools::snapshot::Identity {
@@ -5797,6 +5987,35 @@ mod tests {
             assert!(!root.join("forged.txt").exists(), "{} wrote a file it may not write", role.name);
             assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "keep\n", "{} edited a file", role.name);
             let _ = std::fs::remove_dir_all(&root);
+        }
+    }
+
+    /// AH-193: only a failure that says the request never reached a model may
+    /// be tried on the next provider. Anything a provider answered -- a
+    /// refused key, a context that does not fit, a cancelled run -- is a
+    /// decision, and repeating it elsewhere would hide the reason or duplicate
+    /// work that already happened.
+    #[test]
+    fn only_an_unreached_provider_is_worth_failing_over() {
+        for unreachable in [
+            "Upstream request failed: error sending request for url (http://v100:8555/v1/chat/completions)",
+            "connection refused",
+            "dns error: failed to lookup address information",
+            "upstream returned 503 Service Unavailable",
+            "the request timed out",
+        ] {
+            assert!(is_failover_worthy(unreachable), "{unreachable:?}");
+        }
+        for answered in [
+            "401 Unauthorized: invalid api key",
+            "403 Forbidden",
+            "This model's maximum context length is 8192 tokens",
+            "the run was cancelled by the user",
+            "400 Bad Request: unsupported tool schema",
+            // An outage word inside an answered refusal must not flip it.
+            "403 Forbidden (connection refused by policy)",
+        ] {
+            assert!(!is_failover_worthy(answered), "{answered:?}");
         }
     }
 

@@ -6354,13 +6354,17 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-025"
       ],
       "owner": "lane-10-provider-enterprise",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/project.rs",
+        "src-tauri/src/core/cli/mod.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A failing provider fails over to the next in a configured chain.",
@@ -6369,10 +6373,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::only_an_unreached_provider_is_worth_failing_over"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "2026-09-12 (Phase 3): implemented in the agent loop. `[agent].fallback` in agent.toml is an ordered, opt-in chain; each entry resolves like the primary model and an unresolvable one is logged and skipped rather than failing the run. Only failures that say the request never reached a model are failed over (connection refused, DNS, 502/503/504, timeout); anything a provider answered -- 401/403, an invalid key, a context-length refusal, a 400, a cancelled run -- is not, which is also what makes the guarantees hold: a dispatch that never reached a model produced no output, ran no tool and took no approval, so nothing can be duplicated. Every attempt is its own invocation, the fallback is recorded (phase fell-back, from, to, reason, the request it follows) and the usage is attributed to the provider that answered (answeredBy). Real evidence: a two-lane CLI run (dead primary port, local fixture backup) answered from the backup with the whole chain in the record, and the same run against a 401 fixture failed without falling back. Limit: the chain is agent.toml configuration, so Chat and Cowork -- which have no chain UI -- never fail over, and compaction/goal-evaluation dispatches keep their own provider."
     },
     {
       "id": "AH-194",

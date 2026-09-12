@@ -541,6 +541,20 @@ Limits: the TUI has no in-session text view (the command works from a second
 terminal), `/context` still re-derives category sizes from disk, and the loop
 labels every dispatch `Initial`, continuations included.
 
+## Provider fallback (AH-193)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real two-lane run | `jan cli agent run` with `[agent] fallback = ["backup-model"]`, an isolated `JAN_HOME` naming two providers: a primary pointing at a closed port and a backup pointing at the local model fixture | the run answers from the backup ("Answered by the backup provider."), the log says `primary-model did not answer (...); falling back to backup-model`, and the record holds `run.started` (model primary-model), the primary's dispatch under invocation `#1`, a `fell-back` event under `#2` naming from, to, the reason and the request it follows, then the backup's usage, reply and `answeredBy: backup-model`, and `run.ended done`. Kept in `/c/tmp/jan-p2-first-failures/ah193-fallback-record.json` |
+| Real refusal | the same run with the primary pointed at the fixture's `echo-401` script | the run fails with the provider's own 401 and never falls back (no "falling back" line), so a rejected key is not retried elsewhere. Kept in `ah193-no-failover-on-401.err` |
+| Rust test | `loop.rs::only_an_unreached_provider_is_worth_failing_over` | connection refused, DNS failure, 502/503/504 and timeouts fail over; 401/403, an invalid key, a context-length refusal, a cancelled run and a 400 do not -- including an answered refusal whose text contains an outage word |
+
+Limits: the chain is configured in `agent.toml`, so it applies to the agent
+loop (the CLI and desktop agent runs that pass one). Chat and Cowork have no
+chain configuration and never fail over. A compaction or goal-evaluation
+dispatch deliberately keeps its own provider: those are the run's own
+bookkeeping, not the user's request.
+
 ## Context pressure warnings (AH-077)
 
 | Evidence | Where | Covers |
