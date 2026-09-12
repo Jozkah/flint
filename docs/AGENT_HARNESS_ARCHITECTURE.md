@@ -724,6 +724,20 @@ tool added later is covered without being told to be. The Rust agent loop
 invoker: each call as it is asked for, then how it ended, under the run's
 session, run and agent, with `run.started` / `run.ended` around it.
 
+**What kind of failure this is (AH-009).** `harness_error.rs` in the tools
+plugin carries the classification on the value: a `kind` (cancelled, timeout,
+budget exhausted, permission denied, policy violation, not found, invalid
+input, upstream, transport, io, serialization, unsupported, internal), whether
+a retry could help, and who the failure is addressed to -- the model, the user,
+or the log. `classify_upstream` turns a provider failure into one of those, in
+one place, with the answered cases decided first so an outage word inside a
+refusal cannot turn a refusal into an outage. The provider chain asks it
+whether another provider may be tried (AH-193), and the headless CLI asks it
+how to say what happened: a cancellation reads as `[stopped]`, everything else
+as `[error:<kind>]`. The module was written on the `feat/agent-harness-phase-1`
+line, whose crate never reached the main tree; it is restored here, in the
+plugin both surfaces already depend on.
+
 **When a provider cannot be reached (AH-193).** `[agent].fallback` in
 `agent.toml` is an ordered list of models to try when the configured one does
 not answer. It is empty by default: a reply from a provider the user did not

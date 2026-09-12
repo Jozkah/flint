@@ -547,6 +547,19 @@ rule itself.
 Limits: the TUI has no in-session text view (the command works from a second
 terminal), `/context` still re-derives category sizes from disk, .
 
+## Harness error taxonomy (AH-009)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Rust tests | `harness_error.rs` (11) | tags are unique and stable; denials, budget stops, cancellations and bad input are never retried while upstream and transport failures are; a cancellation is distinguishable from a failure; io and serialization errors are classified rather than flattened; internal failures are not taught to the model; the model-facing wire shape is unchanged; and `classify_upstream` places refusals, context-length rejections, cancellations, timeouts, transport faults and gateway errors -- including a refusal whose text contains an outage word |
+| Real CLI run | `jan cli agent run` with no provider listening | the run prints `[error:transport] ...` rather than an unclassified error line, and the same classification is what the provider chain reads. Kept in `/c/tmp/jan-p2-first-failures/ah009-cli-tagged-error.err` |
+| Production use | `loop.rs::is_failover_worthy` delegates to `may_try_another_provider`; `core/cli/mod.rs` prints `[stopped]` for a cancellation and `[error:<kind>]` otherwise | the taxonomy is the shared decision, not a second opinion beside the call sites |
+
+Not yet converted: the orchestration loop still returns `Result<_, String>`
+internally, and the per-module kinds (`ExportErrorKind`, `ChildErrorKind`,
+`ReplayErrorKind`) remain their own types. What the taxonomy owns today is the
+provider-failure decision and how the CLI reports a failure.
+
 ## Provider fallback (AH-193)
 
 | Evidence | Where | Covers |

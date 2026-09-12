@@ -313,13 +313,17 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P0",
       "dependencies": [
         "AH-003"
       ],
       "owner": "lane-01-architecture-registry",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/harness_error.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/cli/mod.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "A single error enum classifies harness failures by kind, retryability and whether the model or the user should see them.",
@@ -329,10 +333,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/harness_error.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (HarnessError, ErrorKind, Retry, Audience) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/error.rs` if it is to be restored. Per-module error kinds exist (ExportErrorKind, ChildErrorKind, ReplayErrorKind) but no shared taxonomy."
+      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (HarnessError, ErrorKind, Retry, Audience) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/error.rs` if it is to be restored. Per-module error kinds exist (ExportErrorKind, ChildErrorKind, ReplayErrorKind) but no shared taxonomy. 2026-09-12 (Phase 3): the taxonomy is restored from 7c48d71aa into the tools plugin (harness_error.rs) -- kind, retryability and audience on the value, with the model-facing \"ERROR [tag]:\" shape unchanged -- and given a classifier for provider failures. It is wired into two production paths: the provider chain reads may_try_another_provider for its fail-over decision (AH-193), and the headless CLI reads the classification to print [stopped] for a cancellation and [error:<kind>] otherwise, proven in a real run with no provider listening ([error:transport]). Left in progress deliberately: the orchestration loop still returns Result<_, String> internally and the per-module kinds (ExportErrorKind, ChildErrorKind, ReplayErrorKind) are not converted, so the single enum does not yet classify every harness failure."
     },
     {
       "id": "AH-010",

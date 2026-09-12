@@ -1460,7 +1460,20 @@ async fn print_event(ev: StreamEvent, registry: &PermissionRegistry) {
             eprintln!("\n\x1b[2m[done] stop_reason={stop_reason} tokens={tokens}\x1b[0m");
         }
         StreamEvent::Error { code, message } => {
-            eprintln!("\n\x1b[31m[error] {code}: {message}\x1b[0m")
+            // AH-009: the taxonomy says what kind of failure this is and who
+            // it is for, so a cancellation does not read as a crash and a
+            // provider outage is not reported as the model's mistake.
+            let classified = tauri_plugin_agent_tools::harness_error::classify_upstream(&message);
+            if classified.is_cancellation() {
+                eprintln!("
+[2m[stopped] {message}[0m");
+            } else {
+                eprintln!(
+                    "
+[31m[error:{}] {code}: {message}[0m",
+                    classified.kind().tag()
+                );
+            }
         }
         StreamEvent::AskRequest { .. } => {
             eprintln!("\n\x1b[31m[error] interactive ask requires `jan agent ui`\x1b[0m")

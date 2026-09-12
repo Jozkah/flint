@@ -275,48 +275,11 @@ pub(crate) struct ProviderLane {
 
 /// Whether a failed request may be tried on the next provider (AH-193).
 ///
-/// Only failures that say the request never reached a model: a refused
-/// connection, an unknown host, a gateway that is down. Anything the provider
-/// answered -- a rejected key, a refused request, a context that does not fit,
-/// a cancelled run -- is a decision, not an outage, and repeating it on another
-/// provider would either duplicate work or hide the reason. Kept as text
-/// matching because that is what the upstream layer returns; each pattern is
-/// something that cannot have produced a single token of output.
+/// The decision itself lives in the harness error taxonomy (AH-009), so the
+/// chain, the retry policy and what the user is told all read one
+/// classification instead of each matching the text their own way.
 pub(crate) fn is_failover_worthy(error: &str) -> bool {
-    let text = error.to_ascii_lowercase();
-    // Answered, so not an outage: never failed over, whatever else the
-    // message says.
-    const ANSWERED: &[&str] = &[
-        "401",
-        "403",
-        "invalid api key",
-        "unauthorized",
-        "permission",
-        "context length",
-        "context window",
-        "too many tokens",
-        "cancelled",
-        "canceled",
-        "aborted",
-        "stopped by the user",
-    ];
-    if ANSWERED.iter().any(|marker| text.contains(marker)) {
-        return false;
-    }
-    const UNREACHED: &[&str] = &[
-        "error sending request",
-        "connection refused",
-        "connection reset",
-        "connect error",
-        "dns error",
-        "failed to lookup",
-        "no route to host",
-        "timed out",
-        "502",
-        "503",
-        "504",
-    ];
-    UNREACHED.iter().any(|marker| text.contains(marker))
+    tauri_plugin_agent_tools::harness_error::may_try_another_provider(error)
 }
 
 struct HttpModelInvoker {

@@ -13,6 +13,8 @@ pub mod activity;
 pub mod audit;
 pub mod event_export;
 pub mod event_log;
+/// How a harness failure is classified: kind, retryability, audience (AH-009).
+pub mod harness_error;
 /// Which MCP servers the user has agreed to run tools from (AH-041).
 pub mod mcp_trust;
 /// A proposed change held as reviewable hunks (AH-146/147/148).
