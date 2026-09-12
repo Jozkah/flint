@@ -818,6 +818,36 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
     outcome
 }
 
+/// When the process holding `pid` was created, or `None` if nothing does.
+///
+/// Opened for query only: asking which process something *is* must not require
+/// the right to end it, and a durable job record checks pids that may by then
+/// belong to strangers -- that check is exactly what stops one of them being
+/// mistaken for ours (AH-101).
+#[cfg(windows)]
+pub(crate) fn creation_time_of_pid(pid: u32) -> Option<u64> {
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        return None;
+    }
+    let zero = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+    let ok = unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) };
+    unsafe { CloseHandle(handle) };
+    if ok == 0 {
+        return None;
+    }
+    let ticks = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
+    (ticks != 0).then_some(ticks)
+}
+
 /// When `handle`'s process was created, as a FILETIME count. `None` if unknown.
 #[cfg(all(windows, test))]
 pub(crate) fn creation_time(handle: windows_sys::Win32::Foundation::HANDLE) -> Option<u64> {

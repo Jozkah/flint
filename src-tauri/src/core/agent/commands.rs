@@ -1033,6 +1033,28 @@ async fn replay_blocking<T: Send + 'static>(
     })?
 }
 
+/// One conversation's background jobs, including those an earlier process
+/// started. AH-101/AH-102.
+///
+/// Read from the durable record, so a job that outlived the app -- or that the
+/// app outlived -- is still listed, with what became of it. Another
+/// conversation's jobs are not listed at all.
+#[tauri::command]
+pub async fn agent_background_jobs(
+    app: tauri::AppHandle,
+    session: String,
+) -> Result<Vec<tauri_plugin_agent_tools::job_record::JobRecord>, String> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        let mut records = tauri_plugin_agent_tools::job_record::read_owner(&data_folder, &session);
+        // Newest first, the order a panel shows them in.
+        records.reverse();
+        records
+    })
+    .await
+    .map_err(|e| format!("the background jobs could not be read: {e}"))
+}
+
 /// What one dispatched request was made of, by category. AH-087.
 ///
 /// Read from the stored request itself -- the exact bytes the provider

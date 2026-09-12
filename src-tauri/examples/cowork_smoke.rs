@@ -11567,6 +11567,17 @@ const OPT_IN_SCENARIOS: &[Scenario] = &[
         name: "timeline-stays-bounded",
         run: scenario_timeline_stays_bounded,
     },
+    // A pair (AH-101/AH-102): a background job is written down where it can
+    // outlive the app, and what became of it is decided honestly by the next
+    // process rather than left reading "running" forever.
+    Scenario {
+        name: "background-job-record",
+        run: scenario_background_job_record,
+    },
+    Scenario {
+        name: "background-job-record-restart",
+        run: scenario_background_job_record_restart,
+    },
     Scenario {
         name: "memory-forget-redacts-prompts",
         run: scenario_memory_forget_redacts_prompts,
@@ -12378,6 +12389,156 @@ fn current_thread_id(ctx: &Ctx) -> Result<String, Failure> {
         "const m = (location.hash || location.pathname).match(/threads\\/([^/?#]+)/);
          return m ? m[1] : '';",
     )
+}
+
+/// The owner both halves of the durable-job pair use.
+const JOB_RECORD_OWNER: &str = "smoke-job-record";
+
+/// AH-101/AH-102, first half: a background job is written down durably, with
+/// its provenance and a redacted command, and its ending is recorded.
+fn scenario_background_job_record(ctx: &Ctx) -> ScenarioResult {
+    let data = std::env::var("JAN_DATA_FOLDER").map_err(|_| Failure("JAN_DATA_FOLDER unset".into()))?;
+    // Long enough that it is still running when this half ends, so the second
+    // half has something for the next process to decide about.
+    let command = "Start-Sleep -Seconds 240; echo token=sk-live_abcdefghijklmnop0123456789";
+    let (ok, started) = ipc(
+        ctx,
+        "plugin:agent-tools|execute_tool",
+        &format!(
+            "{{ dataFolder: {data:?}, threadId: {JOB_RECORD_OWNER:?}, name: 'bash', \
+               args: {{ command: {command:?}, background: true }}, callId: 'job-record-1' }}"
+        ),
+    )?;
+    let content = started.get("content").and_then(Value::as_str).unwrap_or("").to_string();
+    if !ok || content.contains("bash is unavailable") {
+        bail!("BLOCKED: this host starts no sandboxed shell, so no background job can run: {started}");
+    }
+    let job = content
+        .split("job_id=")
+        .nth(1)
+        .and_then(|rest| rest.split(')').next())
+        .map(str::to_string)
+        .ok_or_else(|| Failure(format!("no job id in: {content}")))?;
+
+    let records = |session: &str| -> Result<Vec<Value>, Failure> {
+        let (ok, v) = ipc(
+            ctx,
+            "agent_background_jobs",
+            &serde_json::json!({ "session": session }).to_string(),
+        )?;
+        ensure!(ok, "agent_background_jobs failed: {v}");
+        Ok(v.as_array().cloned().unwrap_or_default())
+    };
+
+    let mine = records(JOB_RECORD_OWNER)?;
+    let record = mine
+        .iter()
+        .find(|r| r["id"] == job.as_str())
+        .cloned()
+        .ok_or_else(|| Failure(format!("the job was not written down: {mine:?}")))?;
+    println!("      record: {}", serde_json::to_string(&record).unwrap_or_default());
+    ensure!(record["state"] == "running", "a running job is not recorded as running: {record}");
+    ensure!(
+        record["identity"]["pid"].as_u64().unwrap_or(0) > 0
+            && record["identity"]["created"].as_u64().unwrap_or(0) > 0,
+        "the record cannot identify its process again: {record}"
+    );
+    let summary = record["summary"].as_str().unwrap_or_default();
+    ensure!(
+        !summary.contains("sk-live_abcdefghijklmnop0123456789"),
+        "the recorded command kept a credential: {summary}"
+    );
+    ensure!(summary.contains("Start-Sleep"), "the record says nothing about the command: {summary}");
+    // Another conversation sees nothing of it.
+    ensure!(
+        records("smoke-job-record-other")?.is_empty(),
+        "another conversation was shown this job"
+    );
+
+    // A second job, stopped on request, is recorded as stopped.
+    let (ok, second) = ipc(
+        ctx,
+        "plugin:agent-tools|execute_tool",
+        &format!(
+            "{{ dataFolder: {data:?}, threadId: {JOB_RECORD_OWNER:?}, name: 'bash', \
+               args: {{ command: 'Start-Sleep -Seconds 240', background: true }}, callId: 'job-record-2' }}"
+        ),
+    )?;
+    let text = second.get("content").and_then(Value::as_str).unwrap_or("").to_string();
+    ensure!(ok, "the second job did not start: {second}");
+    let stoppable = text
+        .split("job_id=")
+        .nth(1)
+        .and_then(|rest| rest.split(')').next())
+        .map(str::to_string)
+        .ok_or_else(|| Failure(format!("no job id in: {text}")))?;
+    let (ok, cancelled) = ipc(
+        ctx,
+        "plugin:agent-tools|execute_tool",
+        &format!(
+            "{{ dataFolder: {data:?}, threadId: {JOB_RECORD_OWNER:?}, name: 'bash', \
+               args: {{ action: 'cancel', job_id: {stoppable:?} }}, callId: 'job-record-3' }}"
+        ),
+    )?;
+    ensure!(ok, "the cancel failed: {cancelled}");
+    let after = records(JOB_RECORD_OWNER)?;
+    let stopped = after
+        .iter()
+        .find(|r| r["id"] == stoppable.as_str())
+        .cloned()
+        .ok_or_else(|| Failure(format!("the stopped job left no record: {after:?}")))?;
+    ensure!(stopped["state"] == "cancelled", "a stopped job is not recorded as stopped: {stopped}");
+    ensure!(
+        stopped["identity"]["pid"].as_u64().unwrap_or(0) == 0,
+        "an ended job kept a pid something could act on later: {stopped}"
+    );
+    Ok(())
+}
+
+/// AH-101/AH-102, second half, after a real restart: the record is still
+/// there, and the job whose process died with the app reads as interrupted --
+/// not as still running, and not as completed, because nobody saw it end.
+fn scenario_background_job_record_restart(ctx: &Ctx) -> ScenarioResult {
+    let (ok, v) = ipc(
+        ctx,
+        "agent_background_jobs",
+        &serde_json::json!({ "session": JOB_RECORD_OWNER }).to_string(),
+    )?;
+    ensure!(ok, "agent_background_jobs failed after the restart: {v}");
+    let records = v.as_array().cloned().unwrap_or_default();
+    ensure!(
+        !records.is_empty(),
+        "the jobs the earlier process started were not kept"
+    );
+    println!("      after restart: {}", serde_json::to_string(&records).unwrap_or_default());
+    for record in &records {
+        let state = record["state"].as_str().unwrap_or_default();
+        ensure!(
+            state != "running",
+            "a job whose process died with the app still reads as running: {record}"
+        );
+        ensure!(
+            state != "completed",
+            "an ending nobody saw was reported as completion: {record}"
+        );
+        ensure!(
+            matches!(state, "interrupted" | "orphaned" | "cancelled" | "failed"),
+            "unexpected state {state:?}: {record}"
+        );
+        ensure!(
+            record["identity"]["pid"].as_u64().unwrap_or(0) == 0,
+            "a settled job kept a pid that could be reused: {record}"
+        );
+    }
+    ensure!(
+        records.iter().any(|r| r["state"] == "interrupted"),
+        "nothing was settled as interrupted: {records:?}"
+    );
+    ensure!(
+        records.iter().any(|r| r["state"] == "cancelled"),
+        "the job stopped before the restart lost its ending: {records:?}"
+    );
+    Ok(())
 }
 
 /// AH-172: a session with a very long record still opens, and stays bounded.

@@ -108,6 +108,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_bundle_abandon,
         core::agent::commands::agent_replay_begin,
         core::agent::commands::agent_context_breakdown,
+        core::agent::commands::agent_background_jobs,
         core::agent::commands::agent_replay_plan,
         core::agent::commands::agent_replay_recorded,
         core::agent::commands::agent_replay_run_begin,
@@ -408,6 +409,19 @@ pub fn build_app() -> tauri::App {
             tauri_plugin_agent_tools::activity::settle_unfinished(&get_jan_data_folder_path(
                 app.handle().clone(),
             ));
+            // AH-101/AH-102: and what became of the background jobs the last
+            // process left. A job whose process is gone is interrupted, never
+            // "still running"; one whose pid now belongs to something else is
+            // orphaned and is not touched. Nothing is adopted on a pid alone.
+            let settled = tauri_plugin_agent_tools::job_record::reconcile(
+                &get_jan_data_folder_path(app.handle().clone()),
+            );
+            if !settled.is_empty() {
+                log::info!(
+                    "background jobs: {} left by an earlier process were settled",
+                    settled.len()
+                );
+            }
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Debug)

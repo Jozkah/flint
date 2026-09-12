@@ -1037,6 +1037,30 @@ over that log, and a line that no longer parses is left untouched rather than
 edited blind. `memory/` never logs the outcome -- a body could travel with the
 message -- so the snapshot module reports it instead.
 
+**A background job outlives the app that started it, as a record
+(AH-101/AH-102).** Background jobs lived in a map in memory, so the moment the
+app exited a job that was running became a job nobody had any record of: the
+panel was empty, its output could not be found, and a process that outlived the
+app -- which is what happens whenever the app is killed rather than closed --
+was running with nothing naming it.
+
+`job_record` is the durable half: one line per job under `<data>/jobs/`, keyed
+by a hash of the owner so a conversation id is never a path component, holding
+what a listing needs and nothing more -- the owner, the run and invocation that
+started it, a redacted and bounded summary of the command, and how it ended.
+
+Which process a job *is* matters more than its number. A pid alone is not an
+identity: the operating system reuses them, and a record that trusts one can end
+up listing -- or killing -- whatever holds that number now. Every record keeps
+the process's creation time beside its pid, and a job is only still ours when
+both match.
+
+A restart reconciles: a job whose process is gone is `interrupted` (an ending
+nobody saw is never a completion), one whose pid now belongs to something else
+is `orphaned` and is never touched, and one that cannot be identified at all is
+`interrupted` too. In every case the pid is dropped, so nothing can act on it
+afterwards.
+
 **One classification of what filled the window (AH-087).** Every surface used
 to answer "what is filling the context?" its own way: the TUI rebuilt the system
 prompt from disk and re-serialized the tool schemas, the renderer counted what

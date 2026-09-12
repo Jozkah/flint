@@ -858,7 +858,9 @@ async fn execute_tool_inner(
         .with_read_roots(&read_roots)
         .with_write_roots(&write_roots)
         // The thread is the conversation: its background commands are its own.
-        .with_job_owner(&thread_id);
+        .with_job_owner(&thread_id)
+        // ... and survive the app that started them, as a record (AH-101).
+        .with_job_record_to(Path::new(&data_folder));
     if let Some(id) = call_id.as_deref() {
         ctx = ctx.with_call_id(id);
     }

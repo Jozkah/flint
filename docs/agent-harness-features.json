@@ -3533,7 +3533,8 @@
       "files": [
         "src-tauri/src/core/agent/subagent.rs",
         "web-app/src/lib/coworkSubagent.ts",
-        "web-app/src/lib/coworkActivity.ts"
+        "web-app/src/lib/coworkActivity.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/job_record.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -3545,11 +3546,14 @@
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
       "tests": [
-        "src-tauri/src/core/agent/subagent.rs"
+        "src-tauri/src/core/agent/subagent.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/job_record.rs::a_restart_never_adopts_a_process_it_cannot_identify",
+        "src-tauri/examples/cowork_smoke.rs::background-job-record",
+        "src-tauri/examples/cowork_smoke.rs::background-job-record-restart"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Reclassified from implemented (2026-09-11). Spawn-without-blocking and await-later work (dispatch_subagent / await_subagent; the Cowork task tool), but the persistence criterion is not met: children are run-scoped futures, aborted on parent teardown (AbortOnDrop) and gone at app exit. After a restart the record is truthful -- the desktop marks unfinished children interrupted by application exit -- but nothing survives or resumes. Meeting it needs a durable worker outside the app process, which does not exist."
+      "auditNote": "Reclassified from implemented (2026-09-11). Spawn-without-blocking and await-later work (dispatch_subagent / await_subagent; the Cowork task tool), but the persistence criterion is not met: children are run-scoped futures, aborted on parent teardown (AbortOnDrop) and gone at app exit. After a restart the record is truthful -- the desktop marks unfinished children interrupted by application exit -- but nothing survives or resumes. Meeting it needs a durable worker outside the app process, which does not exist. 2026-09-12 (Phase 4): the durable half exists. Every background job is written down under <data>/jobs/ (keyed by a hash of the owner, so a conversation id is never a path component) with its owner, the run and invocation that started it, a redacted bounded command summary and how it ended. Identity is the pid *and* the process creation time, so a reused pid can never be mistaken for ours: a restart marks a job whose process is gone interrupted (an ending nobody saw is never a completion), one whose pid now belongs to something else orphaned and untouched, and one that cannot be identified interrupted -- dropping the pid in every case so nothing acts on it later. Proven by a real WebView pair across an actual restart plus three unit tests. Still in progress, and this is the whole remaining criterion: the work itself does not survive the app, because a job is the app's child process and a subagent is a future inside it. The CLI binary already runs the same loop headlessly, so the shape of a durable worker exists, but nothing spawns one or re-attaches to it."
     },
     {
       "id": "AH-102",
@@ -3569,7 +3573,8 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
         "web-app/src/lib/coworkRunner.ts",
         "web-app/src/lib/coworkCancel.ts",
-        "web-app/src/containers/CoworkTasksPanel.tsx"
+        "web-app/src/containers/CoworkTasksPanel.tsx",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/job_record.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -3585,11 +3590,14 @@
         "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
         "web-app/src/lib/__tests__/coworkCancel.test.ts",
         "web-app/src/lib/__tests__/coworkBackgroundLifecycle.test.ts",
-        "web-app/src/containers/__tests__/CoworkTasksPanel.test.tsx"
+        "web-app/src/containers/__tests__/CoworkTasksPanel.test.tsx",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/job_record.rs::a_restart_never_adopts_a_process_it_cannot_identify",
+        "src-tauri/examples/cowork_smoke.rs::background-job-record",
+        "src-tauri/examples/cowork_smoke.rs::background-job-record-restart"
       ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Individual control now exists on both surfaces. Rust loop: list_subagent_runs and cancel_subagent (queued children leave the queue and never start; running ones are aborted; finished ones are left alone; a late result cannot revive a cancelled child; teardown does not announce a cancelled child twice). Cowork: per-child abort and the Background Tasks panel. Background bash jobs: list/status/await/cancel confined to the owning conversation. Still in-progress because the persistence criterion is not met -- see AH-101: nothing survives an app exit, and the record says interrupted rather than running."
+      "auditNote": "Individual control now exists on both surfaces. Rust loop: list_subagent_runs and cancel_subagent (queued children leave the queue and never start; running ones are aborted; finished ones are left alone; a late result cannot revive a cancelled child; teardown does not announce a cancelled child twice). Cowork: per-child abort and the Background Tasks panel. Background bash jobs: list/status/await/cancel confined to the owning conversation. Still in-progress because the persistence criterion is not met -- see AH-101: nothing survives an app exit, and the record says interrupted rather than running. 2026-09-12 (Phase 4): the durable half exists. Every background job is written down under <data>/jobs/ (keyed by a hash of the owner, so a conversation id is never a path component) with its owner, the run and invocation that started it, a redacted bounded command summary and how it ended. Identity is the pid *and* the process creation time, so a reused pid can never be mistaken for ours: a restart marks a job whose process is gone interrupted (an ending nobody saw is never a completion), one whose pid now belongs to something else orphaned and untouched, and one that cannot be identified interrupted -- dropping the pid in every case so nothing acts on it later. Proven by a real WebView pair across an actual restart plus three unit tests. Still in progress, and this is the whole remaining criterion: the work itself does not survive the app, because a job is the app's child process and a subagent is a future inside it. The CLI binary already runs the same loop headlessly, so the shape of a durable worker exists, but nothing spawns one or re-attaches to it."
     },
     {
       "id": "AH-103",

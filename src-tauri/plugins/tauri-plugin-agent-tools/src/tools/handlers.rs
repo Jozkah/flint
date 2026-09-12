@@ -1244,9 +1244,38 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         let action = arg_str(args, "action").map(str::trim).unwrap_or("");
         let job_id = arg_str(args, "job_id").map(str::trim).filter(|id| !id.is_empty());
         return match (action, job_id) {
-            ("" | "await", Some(job_id)) => await_bash_job(job_id, owner).await,
+            ("" | "await", Some(job_id)) => {
+                let out = await_bash_job(job_id, owner).await;
+                // AH-102: how it ended, on the record, so a listing after a
+                // restart says what became of it.
+                end_job_record(
+                    ctx,
+                    owner,
+                    job_id,
+                    match exit_code_of(&out) {
+                        Some(0) | None => crate::job_record::JobState::Completed,
+                        Some(_) => crate::job_record::JobState::Failed,
+                    },
+                    exit_code_of(&out),
+                    "",
+                );
+                out
+            }
             ("status", Some(job_id)) => bash_job_status_text(job_id, owner),
-            ("cancel", Some(job_id)) => bash_job_cancel_text(job_id, owner),
+            ("cancel", Some(job_id)) => {
+                let out = bash_job_cancel_text(job_id, owner);
+                if out.starts_with("Stopped job") {
+                    end_job_record(
+                        ctx,
+                        owner,
+                        job_id,
+                        crate::job_record::JobState::Cancelled,
+                        None,
+                        "stopped on request, with every process it started",
+                    );
+                }
+                out
+            }
             ("list", _) => bash_job_list_text(owner),
             (other, _) if !other.is_empty() && !matches!(other, "await" | "status" | "cancel") => {
                 format!(
@@ -1465,6 +1494,22 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                     job_id_prefix(),
                     BASH_JOB_COUNTER.fetch_add(1, Ordering::SeqCst)
                 );
+                // AH-101/AH-102: a durable record, so a job that outlives the
+                // app is still a job somebody has a record of -- and one whose
+                // process is gone is honestly interrupted rather than
+                // eternally "running". Best effort: the note must never fail
+                // the job it describes.
+                if let (Some(data), Some(owner)) = (ctx.job_record_to, owner) {
+                    let identity = crate::job_record::ProcessIdentity {
+                        pid: pid.unwrap_or(0),
+                        created: pid.and_then(crate::job_record::creation_time_of).unwrap_or(0),
+                    };
+                    let record =
+                        crate::job_record::JobRecord::started(&job_id, owner, command, identity);
+                    // Dropped quietly on failure: the record is a witness, and
+                    // losing one must not fail the job it describes.
+                    let _ = crate::job_record::save(data, &record);
+                }
                 bash_jobs().lock().unwrap().insert(
                     job_id.clone(),
                     BashJob {
@@ -1574,6 +1619,47 @@ fn bash_job_status_text(job_id: &str, owner: Option<&str>) -> String {
         ));
     }
     out
+}
+
+/// Close a job's durable record, if this surface keeps one.
+///
+/// Only a record this owner already has is touched: an ending for a job that
+/// was never written down, or that belongs to another conversation, writes
+/// nothing rather than inventing history.
+fn end_job_record(
+    ctx: &ToolContext<'_>,
+    owner: Option<&str>,
+    job_id: &str,
+    state: crate::job_record::JobState,
+    exit_code: Option<i32>,
+    note: &str,
+) {
+    let (Some(data), Some(owner)) = (ctx.job_record_to, owner) else {
+        return;
+    };
+    let Some(mut record) = crate::job_record::read_owner(data, owner)
+        .into_iter()
+        .find(|r| r.id == job_id)
+    else {
+        return;
+    };
+    if record.state.is_ended() {
+        return;
+    }
+    record.state = state;
+    record.exit_code = exit_code;
+    record.ended_at_ms = Some(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0),
+    );
+    if !note.is_empty() {
+        record.note = note.to_string();
+    }
+    // Nothing may act on the process afterwards.
+    record.identity = crate::job_record::ProcessIdentity::default();
+    let _ = crate::job_record::save(data, &record);
 }
 
 /// Stop a job on the model's behalf, and say exactly what happened.

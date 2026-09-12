@@ -145,6 +145,12 @@ pub struct ToolContext<'a> {
     /// another. Kept apart from `session_id`, which also decides what memory a
     /// call may read and write.
     pub job_owner: Option<&'a str>,
+    /// Where a background job's durable record is written (AH-101/AH-102).
+    ///
+    /// The in-memory registry dies with the app, so a job that was running is
+    /// a job nobody has any record of. `None` records nothing, which is what
+    /// a surface with no data folder wants.
+    pub job_record_to: Option<&'a Path>,
     /// The user's own skills, shared by every project (AH-121). `skill_list`
     /// and `skill_read` consult it after `store_root`, which shadows it. `None`
     /// where the store already is the user store (the desktop) or none exists.
@@ -170,6 +176,7 @@ impl std::fmt::Debug for ToolContext<'_> {
             .field("write_roots", &self.write_roots)
             .field("call_id", &self.call_id)
             .field("job_owner", &self.job_owner)
+            .field("job_record_to", &self.job_record_to)
             .field("user_skills_root", &self.user_skills_root)
             .finish()
     }
@@ -200,6 +207,7 @@ impl<'a> ToolContext<'a> {
             write_roots: &[],
             call_id: None,
             job_owner: None,
+            job_record_to: None,
             user_skills_root: None,
         }
     }
@@ -212,6 +220,13 @@ impl<'a> ToolContext<'a> {
     }
 
     /// Confine the background commands this call starts or touches to
+    /// Where a background job's durable record goes. See
+    /// [`Self::job_record_to`].
+    pub fn with_job_record_to(mut self, data_folder: &'a Path) -> Self {
+        self.job_record_to = Some(data_folder);
+        self
+    }
+
     /// `owner`. See [`Self::job_owner`].
     pub fn with_job_owner(mut self, owner: &'a str) -> Self {
         self.job_owner = Some(owner);

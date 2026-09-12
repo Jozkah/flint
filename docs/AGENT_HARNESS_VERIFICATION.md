@@ -512,6 +512,21 @@ scenario. The real-provider lanes were unavailable again for this batch
 (`v100` does not resolve; see `/c/tmp/jan-p4-evidence/v100-probe-1.log`), so
 the CLI evidence above is against local fixtures, not 8555.
 
+## Background jobs that outlive the app (AH-101/AH-102, in progress)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real WebView pair | `cowork-smoke --only background-job-record`, then `--only background-job-record-restart` on the same kept profile | a real background command started through the desktop's own tool path is written down as `running` with a pid *and* a creation time, its command redacted (the `sk-live_...` token in it is gone) but still recognisable, and another conversation is shown nothing of it; a second job stopped on request is recorded `cancelled` with its pid dropped; **after a real restart** neither job reads `running` or `completed` -- the one whose process died with the app reads `interrupted`, the stopped one keeps its ending, and neither keeps a pid anything could act on |
+| Rust tests | `job_record.rs::a_job_is_readable_after_the_app_that_started_it`, `a_restart_never_adopts_a_process_it_cannot_identify`, `the_record_is_bounded_and_survives_a_damaged_line` | a job survives with its provenance and a redacted command, listed only to its owner; a restart keeps a live process alive, writes off a pid that is gone, refuses to adopt a pid that now belongs to something else (dropping it), and settles a job it cannot identify -- and a second reconcile changes nothing; the listing is bounded to 200 per owner oldest-first, and neither a damaged line nor a record from a newer build hides the rest |
+
+Still missing for AH-101/AH-102: **the work itself does not survive.** A
+background job's process is the app's child and a subagent is a future inside
+it, so both end when the app does; what survives now is the record of them and
+an honest account of how they ended. Surviving would mean running the work
+outside the app process -- the CLI binary already runs the same loop headlessly,
+so the shape exists, but nothing spawns or re-attaches to it, and that is the
+exact remaining criterion.
+
 ## The timeline on a very long record (AH-172)
 
 | Evidence | Where | Covers |
