@@ -12969,6 +12969,36 @@ fn scenario_chat_execution_record(ctx: &Ctx) -> ScenarioResult {
             "the recorded usage has no input tokens: {usage}"
         );
 
+        // AH-032/AH-083: the record says which payload each request sent, so a
+        // Chat turn can be replayed from the record rather than reconstructed.
+        let dispatched: Vec<&Value> = events
+            .iter()
+            .filter(|e| field(e, "kind") == "message.completed"
+                && e["payload"]["phase"] == "dispatched")
+            .collect();
+        ensure!(
+            dispatched.len() >= 2,
+            "a two-request turn recorded {} dispatches: {events:?}",
+            dispatched.len()
+        );
+        ensure!(
+            dispatched.iter().all(|e| e["payload"]["snapshotId"]
+                .as_str()
+                .is_some_and(|id| !id.is_empty())),
+            "a dispatch names no stored request: {dispatched:?}"
+        );
+        let (ok, plan) = ipc(
+            ctx,
+            "agent_replay_plan",
+            &serde_json::json!({ "session": session, "run": first_run }).to_string(),
+        )?;
+        ensure!(ok, "a Chat run cannot be replayed from the record: {plan}");
+        ensure!(
+            plan["steps"].as_array().map(|s| s.len()).unwrap_or(0) >= 2
+                && plan["steps"][0]["sendable"] == true,
+            "the Chat run's plan has no sendable request: {plan}"
+        );
+
         // Nothing of this turn reached another session's log.
         let other = session_events(ctx, "a-thread-that-never-ran")?;
         ensure!(other.is_empty(), "another session's log is not empty: {other:?}");

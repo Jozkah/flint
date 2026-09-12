@@ -31,6 +31,8 @@ export type ChatRunIdentity = {
    * be recorded as two runs with the tools outside both.
    */
   awaitingTools: boolean
+  /** The snapshot id of the last request this turn sent, when one was taken. */
+  snapshot?: string
 }
 
 const runs = new Map<string, ChatRunIdentity>()
@@ -112,6 +114,43 @@ export function nextChatInvocation(threadId: string): string {
   identity.steps += 1
   identity.invocation = `${identity.run}#${identity.steps}`
   return identity.invocation
+}
+
+/**
+ * The snapshot a Chat request was taken of, as the transport reports it.
+ *
+ * Two things need it, and neither could prove anything without it: the record
+ * of *which payload* this request sent (AH-032, so a Chat turn can be replayed
+ * from the record rather than reconstructed), and the note that a memory was
+ * used in it (AH-083, so "used in this turn" names the exact request).
+ */
+export function recordChatDispatch(
+  threadId: string,
+  snapshot: { id: string; hash: string; redactions?: number; invocation?: string }
+): void {
+  const identity = runs.get(threadId)
+  if (!identity || !snapshot.id) return
+  identity.snapshot = snapshot.id
+  void recordEvents([
+    {
+      id: `dispatch:${snapshot.invocation || snapshot.id}`,
+      session: threadId,
+      run: identity.run,
+      invocation: snapshot.invocation ?? identity.invocation,
+      kind: 'message.completed',
+      payload: {
+        phase: 'dispatched',
+        snapshotId: snapshot.id,
+        hash: snapshot.hash,
+        ...(snapshot.redactions === undefined ? {} : { redactions: snapshot.redactions }),
+      },
+    },
+  ])
+}
+
+/** The last request this turn sent, when one has been taken. */
+export function chatSnapshotId(threadId: string | undefined): string | undefined {
+  return threadId ? runs.get(threadId)?.snapshot : undefined
 }
 
 /** What one request cost, against the request it belongs to. */

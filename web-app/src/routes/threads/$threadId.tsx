@@ -1,4 +1,5 @@
-import { chatRunOf } from '@/lib/chatRun'
+import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
+import { addSnapshotSink } from '@/lib/providerFetch'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import {
@@ -246,6 +247,20 @@ function ThreadDetail() {
   const systemMessage = threadAssistant?.instructions
     ? renderInstructions(threadAssistant.instructions)
     : undefined
+
+  // AH-032/AH-083: the transport takes a snapshot of every request and has
+  // nowhere to return it -- the AI SDK owns the call -- so it hands it here.
+  // Chat records which payload each request sent, which is what lets a Chat
+  // turn be replayed from the record, and what lets a memory's use name the
+  // exact request it went out in.
+  useEffect(
+    () =>
+      addSnapshotSink((session, ref) => {
+        if (session !== threadId) return
+        recordChatDispatch(session, ref)
+      }),
+    [threadId]
+  )
 
   useEffect(() => {
     threadRef.current = thread

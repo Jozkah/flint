@@ -135,7 +135,7 @@ import type { AskRecord } from '@/types/coworkSession'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { CoworkEnvironmentReadiness } from '@/containers/CoworkEnvironmentReadiness'
 import { usePrompt } from '@/hooks/usePrompt'
-import { setSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
+import { addSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
 import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { fromCoworkUsage, summarizeUsage } from '@/lib/tokenUsage'
 import { usageEventPayload } from '@/lib/executionTimeline'
@@ -3405,7 +3405,7 @@ function CoworkPage() {
   // -- the AI SDK owns the call. It hands them here instead, and they land on
   // the turn whose reply that request produced.
   useEffect(() => {
-    setSnapshotSink((sessionId, ref) => {
+    return addSnapshotSink((sessionId, ref) => {
       // Kept for the step that follows: the accounting for a dispatch is only
       // known once its reply lands, and by then the sink has moved on.
       lastSnapshotRef.current[sessionId] = ref
@@ -3436,7 +3436,6 @@ function CoworkPage() {
       // gone before it can render.
       useCoworkRun.getState().recordPromptSnapshot(sessionId, ref)
     })
-    return () => setSnapshotSink(null)
   }, [])
 
   // A run outlives this component, so unmounting must not stop it.

@@ -61,16 +61,7 @@ import {
   type ContextManagerConfig,
 } from './context-manager'
 import { recordLifecycle } from '@/lib/toolActivity'
-import {
-  chatAwaitsTools,
-  chatRunOf,
-  continueOrBeginChatRun,
-  endChatRun,
-  markChatAwaitingTools,
-  nextChatInvocation,
-  recordChatMessage,
-  recordChatUsage,
-} from '@/lib/chatRun'
+import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, endChatRun, markChatAwaitingTools, nextChatInvocation, recordChatMessage, recordChatUsage } from '@/lib/chatRun'
 import { usageEventPayload } from '@/lib/executionTimeline'
 import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
@@ -1804,11 +1795,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             tokenSpeed = 0
           }
 
-          // AH-083: where each carried memory was used. Chat has no prompt
-          // snapshot on this path, so the use names the chat and nothing it
-          // cannot prove. Cowork records its own, with the snapshot, where the
-          // turn row is built.
+          // AH-083: where each carried memory was used -- now naming the
+          // exact request it went out in, the way Cowork's does, because the
+          // transport's snapshot reaches Chat as well (AH-032). Without the
+          // snapshot a use could say only "this chat, some turn".
           if (this.recordsMemoryUsesOnFinish && this.memorySelection?.injectedIds.length) {
+            const snapshotId = chatSnapshotId(this.threadId)
             void recordMemoryUses({
               sessionId: this.threadId,
               projectRoot: this.projectRoot,
@@ -1817,6 +1809,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
                 conflictIds: this.memorySelection.conflictIds,
                 recall: this.memorySelection.recall ?? [],
               },
+              ...(snapshotId
+                ? { snapshotId, turnId: `turn-${snapshotId}` }
+                : {}),
             })
           }
           return {

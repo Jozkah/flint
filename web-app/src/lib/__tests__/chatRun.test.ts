@@ -22,6 +22,8 @@ import {
   recordChatMessage,
   recordChatUsage,
   __testing,
+  recordChatDispatch,
+  chatSnapshotId,
 } from '@/lib/chatRun'
 
 const written = () => recordEvents.mock.calls.flatMap((c) => c[0] as { kind: string; run: string; invocation?: string; id: string; payload?: Record<string, unknown> }[])
@@ -97,6 +99,45 @@ describe('chatRun', () => {
     expect(ends[1].payload).toMatchObject({ stoppedBy: 'error', detail: 'upstream 500' })
     // Two turns, two runs: an ended turn never lends its id to the next.
     expect(ends[0].run).not.toBe(ends[1].run)
+  })
+
+  it('records which payload a request sent, and remembers it for the turn', () => {
+    const run = beginChatRun('snap', { model: 'm' })
+    const invocation = nextChatInvocation('snap')
+    recordChatDispatch('snap', {
+      id: 'snap-1',
+      hash: 'fnv1a64:abc',
+      redactions: 2,
+      invocation,
+    })
+    const dispatched = written().find((e) => e.payload?.phase === 'dispatched')
+    expect(dispatched).toMatchObject({
+      session: 'snap',
+      run: run.run,
+      invocation,
+      kind: 'message.completed',
+      payload: { snapshotId: 'snap-1', hash: 'fnv1a64:abc', redactions: 2 },
+    })
+    // And the turn knows which request it last sent, which is what a memory
+    // use names.
+    expect(chatSnapshotId('snap')).toBe('snap-1')
+    // A second request of the same turn replaces it.
+    const second = nextChatInvocation('snap')
+    recordChatDispatch('snap', { id: 'snap-2', hash: 'h2', invocation: second })
+    expect(chatSnapshotId('snap')).toBe('snap-2')
+    // The turn is still one run.
+    const runs = new Set(written().map((e) => e.run))
+    expect(runs).toEqual(new Set([run.run]))
+  })
+
+  it('records no dispatch for a thread with no turn, and none without an id', () => {
+    recordChatDispatch('nothing-running', { id: 'x', hash: 'h' })
+    expect(recordEvents).not.toHaveBeenCalled()
+    expect(chatSnapshotId('nothing-running')).toBeUndefined()
+    beginChatRun('empty')
+    recordChatDispatch('empty', { id: '', hash: 'h' })
+    expect(written().some((e) => e.payload?.phase === 'dispatched')).toBe(false)
+    expect(chatSnapshotId('empty')).toBeUndefined()
   })
 
   it('records nothing for a thread that has no turn running', () => {

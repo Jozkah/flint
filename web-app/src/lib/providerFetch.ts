@@ -52,10 +52,40 @@ export type PromptSnapshotRef = {
  * timeline; unset outside that.
  */
 type SnapshotSink = (session: string, ref: PromptSnapshotRef) => void
-let snapshotSink: SnapshotSink | null = null
+const snapshotSinks = new Set<SnapshotSink>()
 
+/**
+ * Hear about every snapshot this process takes, until the returned function is
+ * called.
+ *
+ * More than one listener, because more than one surface needs the same fact:
+ * Cowork stamps it onto the turn it is drawing, Chat records the dispatch it
+ * belongs to and the memory that went out in it. A single slot meant whichever
+ * route mounted last silently took the reference away from the other.
+ */
+export function addSnapshotSink(sink: SnapshotSink): () => void {
+  snapshotSinks.add(sink)
+  return () => {
+    snapshotSinks.delete(sink)
+  }
+}
+
+/** Replace every listener with this one, or clear them. Tests and the legacy
+ * single-listener call site. */
 export function setSnapshotSink(sink: SnapshotSink | null): void {
-  snapshotSink = sink
+  snapshotSinks.clear()
+  if (sink) snapshotSinks.add(sink)
+}
+
+/** Tell every listener, and let one that throws not stop the others. */
+function announceSnapshot(session: string, ref: PromptSnapshotRef): void {
+  for (const sink of [...snapshotSinks]) {
+    try {
+      sink(session, ref)
+    } catch (e) {
+      console.warn('prompt snapshot: a listener threw', e)
+    }
+  }
 }
 
 /**
@@ -276,7 +306,7 @@ export const providerFetch: typeof globalThis.fetch = async (
             identity.session &&
             identity.agent !== REPLAY_AGENT
           ) {
-            snapshotSink?.(identity.session, chunk.snapshot)
+            announceSnapshot(identity.session, chunk.snapshot)
           }
           const body = new ReadableStream<Uint8Array>({
             start(c) {

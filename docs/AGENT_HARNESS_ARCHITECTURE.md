@@ -1024,6 +1024,13 @@ line names its id, scope and source before the quoted text --
 `- [id] (user) (source: imported) ...` -- so the text cannot forge its own
 origin and the model can tell an import from what the user said here.
 
+**A memory's use names the request it went out in (AH-083).** A use recorded
+against "this chat, some turn" cannot be checked against anything. Cowork always
+named the snapshot; Chat could not, because the transport's snapshot reference
+reached only whichever route had registered last for it. Snapshots are now
+announced to every listener, so Chat records both the dispatch (AH-032) and the
+memory use that went out in it, naming the same request.
+
 **Forgetting reaches the prompts (AH-083).** A prompt snapshot is the exact
 payload, so a memory forgotten from the store would still be readable in every
 request it had already been sent in -- in the snapshot panel, in

@@ -492,7 +492,7 @@ passed. Evidence kept in `/c/tmp/jan-p2-first-failures/ah121-*`.
 | Real WebView | `cowork-smoke --only chat-execution-record` | a Chat turn with an approved MCP tool call writes 11 events: `run.started`, the approval phases, `tool.requested/running/succeeded`, `usage.reported` per request, `message.completed`, and `run.ended` with `stoppedBy: done` and two steps -- all under one run, with the tool call's invocation matching one request's usage, no two requests sharing an invocation, and nothing in another session's log |
 | Real CLI run | `jan cli agent run` against the local model fixture (`tests/fixtures/mock_openai_server.py`), isolated `JAN_DATA_FOLDER` | 10 events in order: `run.started`, the dispatch `message.completed` carrying the prompt snapshot id, `usage.reported`, the reply's `message.completed` (`tool_calls`), `tool.requested` and `tool.succeeded` **under the same invocation**, then the second request's dispatch, usage and reply, then `run.ended` `done`. Kept in `/c/tmp/jan-p2-first-failures/ah004-cli-record.json` |
 | Rust tests | `loop.rs::each_request_gets_one_invocation_id_and_records_under_it`, `activity.rs::one_call_id_reused_by_two_invocations_stays_two_items`, `activity.rs::an_item_id_is_its_session_invocation_and_call` | ids are per request, current between requests, recorded under the run, and a run with no data folder writes nothing; a reused provider call id stays two items; a legacy event with no invocation folds as before |
-| Render tests | `chatRun.test.ts` (5), `executionTimeline.test.ts::keeps one call id used by two invocations as two rows` | a turn is one run across tool steps, cancelled and failed turns say so, two threads never share a run, and the timeline keeps the reused call id apart |
+| Render tests | `chatRun.test.ts` (7), `executionTimeline.test.ts::keeps one call id used by two invocations as two rows` | a turn is one run across tool steps, cancelled and failed turns say so, two threads never share a run, and the timeline keeps the reused call id apart |
 
 Phase 4 added the rest of what one run does, to the same log:
 
@@ -560,10 +560,13 @@ stops.
 | Real WebView | `cowork-smoke --only replay-from-record` | a real Cowork turn with a tool call is run, then the same commands the UI calls are asked what replaying that run would do: the plan names the run, reports how it ended, carries a step with a stored payload, and lists the `ls` the original ran; the recorded half reads the run's own events back and holds no other run's; another session asking for that run is refused with `unknown-run`; beginning a replay hands back the stored request and opens a run of its own whose `run.started` names `replayOf` and `source: replay`; settling records that run's end; and the source run has exactly as many events as before |
 | Rust tests | `replay.rs::a_plan_says_what_would_be_replayed_before_anything_is_sent`, `a_run_of_another_session_is_refused`, `a_redacted_or_missing_snapshot_is_planned_but_not_sendable`, `a_replay_is_a_new_run_that_names_its_source`, `a_cancelled_or_interrupted_run_plans_honestly` | the plan's contents and the deterministic re-read; a run of another session, an empty session and an empty run are all `unknown-run`, and beginning one is refused before any payload is read; a redacted snapshot is shown in the plan with `redacted` and refused when started; a replay is a new run naming its source and its request, the source run is not written into, the replay's end is recorded, and a replay run has no dispatch of its own to replay; a cancelled run still plans and is still replayable |
 
-Still missing for AH-032: a Chat-only run records no dispatch event -- Chat's
-run identity lives in the renderer while the snapshot reference reaches only
-Cowork's sink -- so a run that happened purely in Chat cannot yet be replayed
-from the record. Cowork, the headless CLI and the desktop's own agent runs can.
+Chat closed the last gap: the transport's snapshot reaches every listener
+rather than only the route that registered last, so a Chat turn records which
+payload each of its requests sent. The `chat-execution-record` scenario now
+checks that a two-request turn records two dispatches, each naming a stored
+request, and that `agent_replay_plan` returns a sendable plan for that run --
+so Cowork, Chat, the headless CLI and the desktop's own agent runs are all
+replayable from the record.
 
 ## Run and session identity (AH-008, in progress)
 
