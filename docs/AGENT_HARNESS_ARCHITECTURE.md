@@ -1153,6 +1153,18 @@ grows and an old reader must still see what happened. Exit statuses follow
 `sysexits.h`, so a script can tell a stopped run (130) from a rejected
 credential (77) from a provider that was not there (69) without parsing text.
 
+**What a run started, as a tree (AH-173).** A run dispatches children,
+children call tools, and tools start processes that outlive the call. All three
+are recorded -- runs and tool phases in the canonical log, background jobs in
+their own record -- but nothing joined them, so "what is this run actually
+running?" meant reading three things and matching them by eye. `run_tree` joins
+them: each run with its tool calls folded to one node per call, each child run
+under the run that dispatched it, and each background job under the run that
+left it. It is built from what was recorded and never from the machine's process
+list, which cannot say which run asked for anything -- and adopting a process by
+pid is the mistake the job record exists to avoid. `jan cli agent tree` prints
+it; `agent_run_tree` hands the same nodes to the desktop.
+
 **A policy as a file somebody reviewed (AH-052).** A project's permissions live
 in its `agent.toml`, which is already reviewable and committable -- but nothing
 could take one out, check it, and put it back, so a policy copied between

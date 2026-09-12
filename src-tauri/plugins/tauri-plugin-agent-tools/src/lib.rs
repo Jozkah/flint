@@ -27,6 +27,7 @@ pub mod memory;
 pub mod permissions;
 pub mod policy;
 pub mod policy_transfer;
+pub mod run_tree;
 pub mod project_browse;
 pub mod project_init;
 pub mod proposal;

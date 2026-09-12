@@ -356,6 +356,15 @@ enum AgentCommands {
     },
     /// List the exact requests a session sent to the model, or print one as
     /// text (what the model saw: every message, tool call and tool offered)
+    /// What a session's runs started, as a tree (AH-173)
+    Tree {
+        /// The session to read.
+        #[arg(long)]
+        session: String,
+        /// Print the tree as JSON instead of lines.
+        #[arg(long)]
+        json: bool,
+    },
     /// Read this project's permission policy as a reviewable document (AH-052)
     PolicyExport {
         #[arg(long, default_value = ".")]
@@ -885,6 +894,16 @@ async fn handle_agent(cmd: AgentCommands) {
                 },
             )
             .await
+        }
+        AgentCommands::Tree { session, json } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            tauri_plugin_agent_tools::run_tree::of_session(&data, &session).map(|tree| {
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&tree).unwrap_or_default());
+                } else {
+                    print!("{}", tauri_plugin_agent_tools::run_tree::render(&tree));
+                }
+            })
         }
         AgentCommands::PolicyExport { project, out } => {
             app_lib::core::cli::cli_policy_export(&project).and_then(|document| {

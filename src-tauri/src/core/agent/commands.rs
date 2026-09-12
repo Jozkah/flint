@@ -1033,6 +1033,31 @@ async fn replay_blocking<T: Send + 'static>(
     })?
 }
 
+/// What a session's runs started, as a tree. AH-173.
+///
+/// Built from what was recorded -- runs, their tool calls, the children they
+/// dispatched and the background jobs they left -- never from the machine's
+/// process list, which cannot say which run asked for anything.
+#[tauri::command]
+pub async fn agent_run_tree(
+    app: tauri::AppHandle,
+    session: String,
+) -> Result<
+    Vec<tauri_plugin_agent_tools::run_tree::Node>,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::run_tree::of_session(&data_folder, &session)
+    })
+    .await
+    .map_err(|e| {
+        tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!(
+            "the run tree did not finish: {e}"
+        ))
+    })?
+}
+
 /// One conversation's background jobs, including those an earlier process
 /// started. AH-101/AH-102.
 ///

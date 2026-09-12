@@ -109,6 +109,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_replay_begin,
         core::agent::commands::agent_context_breakdown,
         core::agent::commands::agent_background_jobs,
+        core::agent::commands::agent_run_tree,
         core::agent::commands::agent_replay_plan,
         core::agent::commands::agent_replay_recorded,
         core::agent::commands::agent_replay_run_begin,

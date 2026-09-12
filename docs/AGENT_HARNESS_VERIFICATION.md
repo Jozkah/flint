@@ -512,6 +512,13 @@ scenario. The real-provider lanes were unavailable again for this batch
 (`v100` does not resolve; see `/c/tmp/jan-p4-evidence/v100-probe-1.log`), so
 the CLI evidence above is against local fixtures, not 8555.
 
+## What a run started, as a tree (AH-173)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real CLI | `jan cli agent tree --session <id>` over the recorded session in which a run dispatched the shipped `implementer` role | the parent run with its `dispatch_subagent` call, and **under it** the child run with its own refused call, each with the request that asked for it -- built from the record, not from the machine. A session that never ran is a typed `not_found`, and an unnamed one `invalid_input`. Kept in `/c/tmp/jan-p4-evidence/ah173-run-tree.txt` |
+| Rust tests | `run_tree.rs::a_run_shows_what_it_started`, `a_session_with_no_record_is_a_typed_refusal`, `a_cancelled_run_is_shown_as_it_ended` | a run's tools, its child run and the background job it left are one tree, three deep, with a call's phases folded to one node whose state is the phase it reached; an empty session name, a session with no record and another session's record are each refused rather than shown as a quiet run; a cancelled run and its unfinished call are shown as cancelled rather than finished |
+
 ## A permission policy as a reviewable file (AH-052)
 
 | Evidence | Where | Covers |
