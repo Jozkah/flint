@@ -303,6 +303,34 @@ pub(crate) struct ProviderLane {
     pub api_keys: Vec<String>,
 }
 
+/// The chain to try after `primary`, in order, with what would be tried twice
+/// removed (AH-193).
+///
+/// A chain that names the primary, or names the same fallback twice, is a
+/// configuration mistake rather than an instruction: trying a provider that
+/// has already failed cannot help, it doubles the time the user waits for the
+/// failure, and -- for a lane that is merely slow -- it doubles the load on
+/// the thing that is already struggling. The first mention of each is kept, so
+/// the order the user wrote is the order they are tried.
+fn distinct_chain(primary: &str, candidates: &[String]) -> Vec<String> {
+    let mut seen: Vec<String> = vec![primary.trim().to_ascii_lowercase()];
+    let mut out = Vec::new();
+    for candidate in candidates {
+        let name = candidate.trim();
+        if name.is_empty() {
+            continue;
+        }
+        let key = name.to_ascii_lowercase();
+        if seen.contains(&key) {
+            log::warn!("agent: fallback {name} is already in the chain; skipping the repeat");
+            continue;
+        }
+        seen.push(key);
+        out.push(name.to_string());
+    }
+    out
+}
+
 /// Whether a failed request may be tried on the next provider (AH-193).
 ///
 /// The decision itself lives in the harness error taxonomy (AH-009), so the
@@ -424,16 +452,19 @@ impl ModelInvoker for HttpModelInvoker {
         // did not answer, and a tool call cannot be run twice -- a failed
         // dispatch produced no reply to call anything from.
         let mut invocation = invocation;
+        // Which provider the request is on now. Without this the record says
+        // every fall-back came from the run's own model, so a chain of three
+        // reads as though the second lane was never tried.
+        let mut from = normalized
+            .get("model")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string();
         for lane in &self.fallbacks {
             let Err(reason) = &out else { break };
             if !is_failover_worthy(reason) {
                 break;
             }
-            let from = normalized
-                .get("model")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .to_string();
             let previous = invocation.clone();
             invocation = self.invocations.begin();
             self.invocations.record(
@@ -460,6 +491,7 @@ impl ModelInvoker for HttpModelInvoker {
             out = self
                 .dispatch_to(&lane.upstream_url, &lane.api_keys, &next, events, &invocation)
                 .await;
+            from = lane.model_id.clone();
             if out.is_ok() {
                 normalized = next;
                 break;
@@ -2824,7 +2856,7 @@ async fn orchestrate_inner(
     // than failing the run: a fallback that cannot be reached is one fewer
     // option, not a reason to refuse to start.
     let mut fallback_lanes: Vec<ProviderLane> = Vec::new();
-    for candidate in fallback_models.iter() {
+    for candidate in distinct_chain(&model_id, fallback_models).iter() {
         match resolve_upstream_for_model(
             candidate,
             provider_configs.clone(),
@@ -6629,6 +6661,74 @@ mod tests {
             "an empty stream was recorded as one"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AH-193: a chain is the providers that have not been tried yet, in the
+    /// order they were written. A repeat cannot help and costs the user the
+    /// wait twice over.
+    #[test]
+    fn a_fallback_chain_never_repeats_a_provider() {
+        let chain = distinct_chain(
+            "openai/gpt-4",
+            &[
+                "openai/gpt-4".into(),
+                "anthropic/claude".into(),
+                "ANTHROPIC/CLAUDE".into(),
+                "  ".into(),
+                "local/llama".into(),
+                "anthropic/claude".into(),
+            ],
+        );
+        assert_eq!(chain, vec!["anthropic/claude", "local/llama"], "{chain:?}");
+        // A chain of only the primary is no chain at all.
+        assert!(distinct_chain("m", &["m".into(), " m ".into()]).is_empty());
+        // Nothing configured stays nothing.
+        assert!(distinct_chain("m", &[]).is_empty());
+        // Three distinct providers stay three, in order.
+        assert_eq!(
+            distinct_chain("a", &["b".into(), "c".into(), "d".into()]),
+            vec!["b", "c", "d"]
+        );
+    }
+
+    /// AH-193/AH-009: what the chain does with each kind of failure. The
+    /// decision is the classification, and these are the cases Phase 4 set out
+    /// to be sure of.
+    #[test]
+    fn the_chain_only_moves_on_from_a_provider_that_never_answered() {
+        use tauri_plugin_agent_tools::harness_error::{classify_upstream, ErrorKind};
+        let cases: &[(&str, ErrorKind, bool)] = &[
+            // Connection failure, and a timeout before anything arrived.
+            ("error sending request for url (http://host/v1)", ErrorKind::Transport, true),
+            ("the request timed out", ErrorKind::Timeout, true),
+            // A rate limit is transient and produced no output.
+            ("429 Too Many Requests", ErrorKind::RateLimited, true),
+            // A gateway that answered for a model that was not there.
+            ("503 Service Unavailable", ErrorKind::Upstream, true),
+            // Authentication: the user's configuration, not an outage.
+            ("401 Unauthorized: invalid api key", ErrorKind::Authentication, false),
+            // A refusal.
+            ("403 Forbidden", ErrorKind::PermissionDenied, false),
+            // The request does not fit -- and would not fit elsewhere either.
+            ("400: maximum context length is 8192 tokens", ErrorKind::ContextOverflow, false),
+            // A capability this provider does not have; asking another one for
+            // the same thing is a different decision, not a retry.
+            ("400 Bad Request: tools are not supported", ErrorKind::Unsupported, false),
+            // A stream that arrived malformed: part of the reply may already be
+            // on screen, so sending the same request again could duplicate it.
+            ("unexpected end of stream", ErrorKind::InvalidResponse, false),
+            // The user stopped it.
+            ("the run was cancelled by the user", ErrorKind::Cancelled, false),
+        ];
+        for (text, kind, may_move_on) in cases {
+            let classified = classify_upstream(text);
+            assert_eq!(classified.kind(), *kind, "{text:?}");
+            assert_eq!(
+                is_failover_worthy(&classified),
+                *may_move_on,
+                "{text:?} ({kind:?})"
+            );
+        }
     }
 
     /// AH-008: a run's id is its own, across processes as well as within one.

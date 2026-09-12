@@ -512,6 +512,18 @@ scenario. The real-provider lanes were unavailable again for this batch
 (`v100` does not resolve; see `/c/tmp/jan-p4-evidence/v100-probe-1.log`), so
 the CLI evidence above is against local fixtures, not 8555.
 
+## Provider fallback, hardened (AH-193)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real CLI run, three lanes | `jan cli agent run` with `[agent].fallback` naming two providers that are not listening, then one that answers, with a repeat and the primary in the chain | the record holds the first dispatch and its failure, two `fell-back` entries naming from, to and the failure's kind, each attempt under its own invocation, and the answer attributed to the provider that actually produced it; the repeated entry and the primary are not tried again. Kept in `/c/tmp/jan-p4-evidence/ah193-chain-record.jsonl` |
+| Rust tests | `loop.rs::a_fallback_chain_never_repeats_a_provider`, `the_chain_only_moves_on_from_a_provider_that_never_answered` | a chain drops the primary, repeats (in any case) and blanks while keeping the written order; ten failure shapes are each classified and each either earns the next provider or does not -- connection failure, timeout, rate limit and an unavailable gateway move on; authentication, a refusal, a context overflow, an unsupported capability, a malformed stream and a cancellation stay where they happened |
+
+The malformed-stream case is the one worth naming: a reply that arrived broken
+may already have put text on the screen, so sending the same request to another
+provider could duplicate it. It is classified `invalid_response` and the chain
+stops.
+
 ## One context classification (AH-087)
 
 | Evidence | Where | Covers |
