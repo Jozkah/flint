@@ -1123,6 +1123,9 @@ async fn run_subagent(
     let mut child_args = parent_args;
     child_args.system_prompt_override = Some(resolved.definition.system_prompt.clone());
     child_args.subagents_enabled = false;
+    // AH-008: the dispatch this run answers, so the parent's record of asking
+    // for it and this run's own events name each other.
+    child_args.dispatch_id = Some(run_id.clone());
     // AH-007: the child asks the permission gate as itself, so a rule
     // qualified `agent:<name>` binds this subagent and not its parent. An
     // unqualified rule still covers every subject, so a project that never
@@ -2607,6 +2610,8 @@ mod tests {
         use std::sync::Arc;
         use tauri_plugin_agent_tools::permissions::ToolPermissions;
         OrchestrationArgs {
+            parent_run: None,
+            dispatch_id: None,
             fallback_models: Vec::new(),
             client: crate::core::agent::upstream::agent_http_client(),
             provider_configs: Arc::new(tokio::sync::Mutex::new(

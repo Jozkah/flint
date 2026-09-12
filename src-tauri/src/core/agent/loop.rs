@@ -84,6 +84,12 @@ pub(crate) struct OrchestrationArgs {
     /// shared project-context and tool-use prompt assembled for normal runs.
     /// Child turns remain excluded from project memory recall/indexing.
     pub system_prompt_override: Option<String>,
+    /// The run that dispatched this one, and the dispatch it came from
+    /// (AH-008). `None` for a top-level run. A child keeps its parent's
+    /// session, so without this its events would sit in the same log as the
+    /// parent's with nothing saying which run asked for them.
+    pub parent_run: Option<String>,
+    pub dispatch_id: Option<String>,
     /// Whether this run may dispatch subagents. `false` for child runs, which
     /// caps recursion depth at one (a subagent cannot spawn grandchildren).
     pub subagents_enabled: bool,
@@ -1032,10 +1038,41 @@ fn run_id_for_cancellation(session_id: Option<&str>) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
     static NEXT_RUN: AtomicU64 = AtomicU64::new(1);
     let n = NEXT_RUN.fetch_add(1, Ordering::Relaxed);
+    // AH-008: unique across processes, not only within one. A counter alone
+    // restarts at 1 with the process, so the second run of a resumed session
+    // would take the first run's id -- and since the record is keyed by event
+    // id, its start and end would be silently dropped as already-written and
+    // its work would read as the earlier run's. The time part is what makes
+    // the id new; the counter is what keeps two runs in the same millisecond
+    // apart. Base 36 so the id stays short and sorts by when it was minted.
+    let minted = format!("{}{}", base36(millis_now()), base36(n));
     match session_id {
-        Some(session) => format!("{session}#run-{n}"),
-        None => format!("run-{n}"),
+        Some(session) => format!("{session}#run-{minted}"),
+        None => format!("run-{minted}"),
     }
+}
+
+/// Milliseconds since the epoch, or 0 if the clock is before it.
+fn millis_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// Lowercase base 36, so an id stays short and orders by its time part.
+fn base36(mut value: u64) -> String {
+    const DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+    if value == 0 {
+        return "0".to_string();
+    }
+    let mut out = Vec::new();
+    while value > 0 {
+        out.push(DIGITS[(value % 36) as usize]);
+        value /= 36;
+    }
+    out.reverse();
+    String::from_utf8(out).expect("base36 digits are ASCII")
 }
 
 impl CompositeToolInvoker {
@@ -2110,6 +2147,8 @@ pub(crate) async fn run_server_side_openai_orchestration(
     let (tx, _rx) = mpsc::unbounded_channel();
     let args = OrchestrationArgs {
         fallback_models: Vec::new(),
+        parent_run: None,
+        dispatch_id: None,
         client: client.clone(),
         provider_configs,
         llama_state,
@@ -2552,6 +2591,8 @@ async fn orchestrate_inner(
     let OrchestrationArgs {
         client,
         fallback_models,
+        parent_run: _,
+        dispatch_id: _,
         provider_configs,
         #[cfg(not(feature = "cli"))]
         llama_state,
@@ -2861,7 +2902,11 @@ async fn orchestrate_inner(
         ));
         let _bg_guard = crate::core::agent::subagent::AbortOnDrop(bg.clone());
         let subagents = args.subagents_enabled.then(|| SubagentContext {
-            parent_args: args.clone(),
+            parent_args: {
+                let mut child = args.clone();
+                child.parent_run = Some(run_id.clone());
+                child
+            },
             model_id: model_id.clone(),
             max_session_tokens,
             send_reasoning: body_send_reasoning(json_body),
@@ -2944,7 +2989,18 @@ async fn orchestrate_inner(
                 );
             }
         };
-        record_run("run.started", serde_json::json!({ "model": model_id, "source": "agent-loop" }));
+        record_run(
+            "run.started",
+            serde_json::json!({
+                "model": model_id,
+                "source": "agent-loop",
+                // AH-008: a child run says whose it is, so the parent's
+                // `agent.dispatched` and this run's own events join in both
+                // directions even though they share one session log.
+                "parentRun": args.parent_run,
+                "dispatch": args.dispatch_id,
+            }),
+        );
         let result = tauri_plugin_agent_tools::lifecycle::with_current(
             run_registered.token().clone(),
             run_turn_cycle(
@@ -6573,6 +6629,35 @@ mod tests {
             "an empty stream was recorded as one"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AH-008: a run's id is its own, across processes as well as within one.
+    ///
+    /// A plain counter restarts at 1 with the process, so the first run after a
+    /// restart would take the id of the first run before it -- and the record,
+    /// which treats a repeated event id as one event, would drop that run's
+    /// start and end and read its work as the earlier run's.
+    #[test]
+    fn a_run_id_is_not_reused_by_the_next_process() {
+        let first = run_id_for_cancellation(Some("s-ident"));
+        let second = run_id_for_cancellation(Some("s-ident"));
+        assert_ne!(first, second, "two runs of one session share an id");
+        for id in [&first, &second] {
+            assert!(id.starts_with("s-ident#run-"), "{id}");
+            // The counter alone is what a restart resets, so an id that is
+            // only the counter is exactly the collision this guards against.
+            let minted = id.trim_start_matches("s-ident#run-");
+            assert!(minted.len() > 3, "the id carries no time part: {id}");
+            assert!(
+                minted.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()),
+                "{id}"
+            );
+        }
+        // A session-less run is still a run of its own.
+        assert_ne!(run_id_for_cancellation(None), run_id_for_cancellation(None));
+        // And ids sort by when they were minted, which is what makes a log
+        // readable by eye.
+        assert!(first < second, "{first} !< {second}");
     }
 
     /// AH-004: one id per provider request, shared by everything that request

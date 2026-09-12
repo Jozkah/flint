@@ -512,6 +512,21 @@ scenario. The real-provider lanes were unavailable again for this batch
 (`v100` does not resolve; see `/c/tmp/jan-p4-evidence/v100-probe-1.log`), so
 the CLI evidence above is against local fixtures, not 8555.
 
+## Run and session identity (AH-008, in progress)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real CLI session, seven resumed turns | `jan cli agent run` then six `--resume` runs, each its own process, against a local fixture | **one** session log, **one** session id, and seven run ids that differ and sort by when they were minted; the prompt log holds nine snapshots under that one session across the seven runs. Before the fix the same script produced seven session ids, seven logs, and seven runs all called `#run-1`. Kept in `/c/tmp/jan-p4-evidence/ah008-cli-resumed-session-record.jsonl` |
+| Real CLI run with a child agent | a run whose model dispatches the shipped `implementer` role | the parent records `agent.dispatched` naming the child dispatch and its own run; the child's `run.started` names the same `parentRun` and `dispatch`; both are in the one session log, and the child's `run.ended` lands after the parent's because it was never awaited -- which the record shows rather than hides. Kept in `/c/tmp/jan-p4-evidence/ah008-cli-parent-child-record.jsonl` |
+| Rust test | `loop.rs::a_run_id_is_not_reused_by_the_next_process` | two runs of one session never share an id, the id carries a time part rather than only a counter, a session-less run is still its own run, and ids sort by when they were minted |
+
+Still missing for AH-008: there is no single identity *type* that the surfaces
+construct and validate -- the ids are assembled where they are needed and
+checked by the record's own input rules (non-empty, bounded, no control
+characters, typed refusal) rather than by a parsing boundary of their own -- and
+the resumed-conversation join is proven on the CLI but not yet by a desktop
+scenario.
+
 ## Typed failures (AH-009)
 
 | Evidence | Where | Covers |

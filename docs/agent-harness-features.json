@@ -290,13 +290,17 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "missing",
+      "status": "in-progress",
       "priority": "P0",
       "dependencies": [
         "AH-003"
       ],
       "owner": "lane-01-architecture-registry",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/cli/mod.rs",
+        "src-tauri/src/core/agent/subagent.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "A run carries one stable id that correlates its thread, session, subagents, events, checkpoints and audit records.",
@@ -306,10 +310,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/loop.rs::a_run_id_is_not_reused_by_the_next_process"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (RunIdentity, RunId, ThreadId, SessionId, AgentId) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/identity.rs` if it is to be restored."
+      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (RunIdentity, RunId, ThreadId, SessionId, AgentId) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/identity.rs` if it is to be restored. 2026-09-12 (Phase 4): not restored from 7c48d71aa -- its prefixed newtypes (run_/thr_/ses_/agt_) would have renamed ids that Phase 1-3 records, prompt snapshots and the undo journal already carry, and the brief says a current contract wins. What was missing in behaviour was fixed instead, and two real defects were found doing it. (1) A --resume CLI run minted a fresh uuid session id, so seven turns of one conversation produced seven unrelated event logs, seven prompt histories and seven sets of changes; the session is now the thread, proven by a real seven-process run that produces one log, one session and seven distinct run ids (before: seven sessions, every run called #run-1). (2) A run id was a process counter, so the first run after a restart took the first run's id -- and since the record treats a repeated event id as one event, that run's start and end would be dropped and its work read as the earlier run's; ids now carry a base36 time part and sort by when they were minted. (3) A child run kept the parent's session but had no link to the parent run; it now records parentRun and the dispatch it answers, matching the parent's agent.dispatched, proven by a real CLI run that dispatches the shipped implementer role. Left in progress: there is no single identity type constructed and validated at a parsing boundary (ids are checked by the record's own input rules), and the resumed-conversation join has no desktop scenario yet."
     },
     {
       "id": "AH-009",

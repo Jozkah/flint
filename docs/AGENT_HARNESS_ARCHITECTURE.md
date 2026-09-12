@@ -1037,6 +1037,23 @@ over that log, and a line that no longer parses is left untouched rather than
 edited blind. `memory/` never logs the outcome -- a body could travel with the
 message -- so the snapshot module reports it instead.
 
+**One identity for a conversation (AH-008).** The session a run records under
+is the conversation, not the process: a `--resume` run adopts the thread's id,
+so its events, prompt snapshots, changes and audit records join the ones its
+earlier turns wrote. Before this each turn minted a fresh uuid, and seven turns
+of one conversation left seven unrelated logs with nothing to join them by.
+
+A run id is `<session>#run-<base36 time><counter>`. The time part is what makes
+it unique: a counter alone restarts at 1 with the process, so the first run
+after a restart would take the first run's id -- and because the record treats a
+repeated event id as one event, that run's start and end would be dropped and
+its work would read as the earlier run's.
+
+A child run keeps its parent's session (that is what puts their work in one
+place) and carries `parentRun` and the `dispatch` it answers, while the parent
+records `agent.dispatched` naming the same dispatch. The join holds in both
+directions without either side having to guess from timing.
+
 **Failures carry their classification (AH-009).** The orchestration loop's
 errors are `HarnessError`, not prose: a kind (26 of them, from `authentication`
 and `rate_limited` through `context_overflow`, `sandbox_denied` and

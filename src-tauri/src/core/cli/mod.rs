@@ -704,6 +704,9 @@ fn build_cli_orchestration_args(
 ) -> OrchestrationArgs {
     OrchestrationArgs {
         fallback_models,
+        // A CLI run is nobody's child.
+        parent_run: None,
+        dispatch_id: None,
         client: crate::core::agent::upstream::agent_http_client(),
         provider_configs: Arc::new(Mutex::new(provider_configs)),
         mcp_servers,
@@ -1093,6 +1096,22 @@ fn prepare_agent_run(
         }
     });
 
+    // AH-008: the record's session is the conversation the user sees, not the
+    // process that happened to run this turn. Without this a `--resume` run
+    // minted a fresh session id, so seven turns of one conversation left seven
+    // unrelated event logs, seven prompt histories and seven sets of changes,
+    // and nothing could join them.
+    let mut session = session;
+    if let Some(resumed) = resumed.as_ref() {
+        session.args.session_id = Some(resumed.thread_id.clone());
+    }
+    // A new conversation saves under the id its run already used, so the same
+    // join holds from the first turn rather than only from the second.
+    let thread_id = resumed
+        .as_ref()
+        .map(|r| r.thread_id.clone())
+        .or_else(|| session.args.session_id.clone());
+
     let mut history = resumed
         .as_ref()
         .map(|r| r.history.clone())
@@ -1116,7 +1135,7 @@ fn prepare_agent_run(
         // uses, so a run can later be continued with --resume from either side.
         persist: PersistTarget {
             agent_dir: agent_dir_for(&project_root),
-            thread_id: resumed.map(|r| r.thread_id),
+            thread_id,
             model: session.model,
             history,
         },
