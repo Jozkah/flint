@@ -229,6 +229,37 @@ struct SessionState {
 
 static STATE: Mutex<BTreeMap<String, SessionState>> = Mutex::new(BTreeMap::new());
 
+/// Someone watching events as they are recorded (AH-183).
+///
+/// The log is the record; this is the same thing arriving live, for a headless
+/// caller that wants to see a run as it happens rather than read it afterwards.
+/// One watcher, set by whoever owns the process: a library with several would
+/// have to decide whose output goes where, and nothing needs that.
+type Watcher = Box<dyn Fn(&Envelope) + Send + Sync>;
+static WATCHER: Mutex<Option<Watcher>> = Mutex::new(None);
+
+/// Hear every event this process records, in the order they are recorded.
+///
+/// The callback runs on the thread that recorded the event, after it is on
+/// disk, and outside the log's own lock -- so it can write, but it must not be
+/// slow: a watcher that blocks blocks the run it is watching.
+pub fn watch(watcher: impl Fn(&Envelope) + Send + Sync + 'static) {
+    *WATCHER.lock().unwrap_or_else(|p| p.into_inner()) = Some(Box::new(watcher));
+}
+
+/// Stop watching. Idempotent.
+pub fn unwatch() {
+    *WATCHER.lock().unwrap_or_else(|p| p.into_inner()) = None;
+}
+
+fn announce(envelope: &Envelope) {
+    if let Ok(watcher) = WATCHER.lock() {
+        if let Some(watcher) = watcher.as_ref() {
+            watcher(envelope);
+        }
+    }
+}
+
 /// Read a log, cutting off a torn final line first so the next append starts
 /// on a line of its own.
 fn load(path: &Path) -> Result<SessionState, LogError> {
@@ -387,6 +418,9 @@ pub fn append_within(
     if fresh {
         prune(&events_dir(data_folder), &path, limits.max_sessions);
     }
+    // After the write and outside the log's lock: a watcher sees what is
+    // already recorded, and cannot deadlock the next event behind itself.
+    announce(&envelope);
     Ok(envelope)
 }
 
@@ -572,6 +606,47 @@ mod tests {
         let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
         f.write_all(b"not an event\n{\"v\":1,\"id\":\"z\",\"session\":\"s1\",\"seq\":5,\"at\":\"t\",\"kind\":\"run.ended\"}\n").unwrap();
         assert!(matches!(read_session(&d, "s1"), Err(LogError::Corrupt(_))));
+    }
+
+    /// AH-183: a watcher hears every event as it is recorded, in order, and
+    /// only what was actually written -- a repeated id is one event, so it is
+    /// announced once.
+    #[test]
+    fn a_watcher_hears_every_event_once_in_order() {
+        let d = dir("watch");
+        let heard = std::sync::Arc::new(Mutex::new(Vec::<(String, u64)>::new()));
+        let sink = heard.clone();
+        // A watcher hears everything this *process* records, which is what a
+        // headless run wants; the other tests share the process, so only these
+        // sessions are counted here.
+        watch(move |e| {
+            if e.session.starts_with("watch-") {
+                sink.lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .push((e.kind.clone(), e.seq));
+            }
+        });
+        append(&d, ev("a", "watch-s1", "run.started", json!({}))).unwrap();
+        append(&d, ev("b", "watch-s1", "tool.requested", json!({}))).unwrap();
+        // The same id again is the same event: recorded once, announced once.
+        append(&d, ev("b", "watch-s1", "tool.requested", json!({}))).unwrap();
+        append(&d, ev("c", "watch-s2", "run.started", json!({}))).unwrap();
+        unwatch();
+        append(&d, ev("d", "watch-s1", "run.ended", json!({}))).unwrap();
+
+        let heard = heard.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        assert_eq!(
+            heard,
+            vec![
+                ("run.started".to_string(), 1),
+                ("tool.requested".to_string(), 2),
+                ("run.started".to_string(), 1),
+            ],
+            "a watcher heard the wrong events"
+        );
+        // Everything was still recorded, whether or not anyone was listening.
+        assert_eq!(read_session(&d, "watch-s1").unwrap().len(), 3);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// AH-004: a session's log is bounded. What is already there stays

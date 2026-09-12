@@ -1306,12 +1306,59 @@ async fn run_agent_loop(
             final_text.as_deref(),
         ));
     }
+    // The stream belongs to this run (AH-183); a later command in the same
+    // process is not it.
+    tauri_plugin_agent_tools::event_log::unwatch();
+    // The stream belongs to this run (AH-183); a later command in the same
+    // process is not it.
+    tauri_plugin_agent_tools::event_log::unwatch();
     // The one-shot CLI runs exactly one turn, so its session ends here: wipe
     // the persistent bash `/tmp` scratch this run used.
     if let Some(session) = args.session_id.as_deref() {
         let _ = workspace::remove_scratch_dir(session).await;
     }
     result.map(|_| ())
+}
+
+/// Send this run's canonical events somewhere as they happen (AH-183).
+///
+/// `-` is stdout, anything else a file that is created or truncated. The
+/// events are the same envelopes the session's log holds, one JSON line each,
+/// written as they are recorded rather than read back afterwards -- so a
+/// caller watching a headless run sees it happen.
+///
+/// Fails before the run starts when the destination cannot be written: a run
+/// whose output nobody can see is not what was asked for.
+pub fn stream_events_to(
+    destination: &str,
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
+    use std::io::Write;
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+
+    let sink: std::sync::Arc<std::sync::Mutex<Box<dyn Write + Send>>> = if destination == "-" {
+        std::sync::Arc::new(std::sync::Mutex::new(Box::new(std::io::stdout())))
+    } else {
+        let file = std::fs::File::create(destination).map_err(|e| {
+            HarnessError::new(
+                ErrorKind::Io,
+                format!("the event stream could not be opened: {e}"),
+            )
+            .at(Stage::Startup)
+        })?;
+        std::sync::Arc::new(std::sync::Mutex::new(Box::new(file)))
+    };
+    tauri_plugin_agent_tools::event_log::watch(move |envelope| {
+        let Ok(line) = serde_json::to_string(envelope) else {
+            return;
+        };
+        if let Ok(mut out) = sink.lock() {
+            // A stream nobody is reading any more must not fail the run: the
+            // record is on disk either way.
+            let _ = writeln!(out, "{line}");
+            let _ = out.flush();
+        }
+    });
+    Ok(())
 }
 
 /// Write the result envelope to stdout, the only thing `--output-format json`

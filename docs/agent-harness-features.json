@@ -6130,14 +6130,18 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-005",
         "AH-182"
       ],
       "owner": "lane-09-ux-observability",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/event_log.rs",
+        "src-tauri/src/core/cli/mod.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Canonical events stream out of a headless run as they occur.",
@@ -6146,10 +6150,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/event_log.rs::a_watcher_hears_every_event_once_in_order"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "StreamEvent is already Tauri-free but is never exposed over stdout or a socket."
+      "auditNote": "StreamEvent is already Tauri-free but is never exposed over stdout or a socket. 2026-09-12 (Phase 4): implemented on the canonical log rather than on StreamEvent. One watcher per process hears every event as it is recorded -- after the write, outside the log's lock -- and `jan cli agent run --events <path|->` writes those envelopes to a file or stdout as JSON lines, the same shape the session log holds. Proven by a real CLI run whose stream file matches the session log envelope for envelope and in order, and by a refusal: a destination that cannot be opened fails before the run starts with a typed io error and exit 74. A stream nobody reads never fails the run, and the watcher is removed when the run ends so a later command in the same process is not streamed into it."
     },
     {
       "id": "AH-184",

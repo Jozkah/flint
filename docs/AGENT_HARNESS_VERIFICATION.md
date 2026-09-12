@@ -512,6 +512,14 @@ scenario. The real-provider lanes were unavailable again for this batch
 (`v100` does not resolve; see `/c/tmp/jan-p4-evidence/v100-probe-1.log`), so
 the CLI evidence above is against local fixtures, not 8555.
 
+## A headless run's events, as they happen (AH-183)
+
+| Evidence | Where | Covers |
+| --- | --- | --- |
+| Real CLI run | `jan cli agent run --events <file>` against the streaming fixture | the file holds the same eight envelopes, in the same order, that the session's log holds -- `run.started`, the dispatch with its snapshot id, `message.started`, `message.reasoning`, usage, the reply, the answering model, `run.ended` -- written as they happened rather than read back. Kept in `/c/tmp/jan-p4-evidence/ah183-cli-event-stream.jsonl` |
+| Real CLI refusal | the same run with `--events` pointing into a directory that does not exist | the command fails **before the run starts**, with `Error [io]: the event stream could not be opened`, and exits **74** (`EX_IOERR`). Kept in `/c/tmp/jan-p4-evidence/ah183-cli-stream-refusal.err` |
+| Rust test | `event_log.rs::a_watcher_hears_every_event_once_in_order` | a watcher hears each recorded event once, in order, including a repeated id which is one event; unwatching stops it; and everything is recorded whether or not anyone is listening |
+
 ## Background jobs that outlive the app (AH-101/AH-102, in progress)
 
 | Evidence | Where | Covers |

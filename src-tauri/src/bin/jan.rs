@@ -323,6 +323,10 @@ enum AgentCommands {
         /// object on stdout when the run finishes
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         output_format: OutputFormat,
+        /// Stream this run's canonical events as JSON lines, as they happen:
+        /// a path, or `-` for stdout (AH-183)
+        #[arg(long, value_name = "PATH")]
+        events: Option<String>,
     },
     /// Run a single turn (debugging)
     Step {
@@ -816,7 +820,16 @@ async fn handle_agent(cmd: AgentCommands) {
             sandbox,
             resume,
             output_format,
+            events,
         } => {
+            // AH-183: before the run, so a destination that cannot be written
+            // fails the command instead of silently streaming nowhere.
+            if let Some(destination) = events.as_deref() {
+                if let Err(e) = app_lib::core::cli::stream_events_to(destination) {
+                    eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+                    std::process::exit(e.exit_code());
+                }
+            }
             cli_agent_run(
                 &project,
                 &task,

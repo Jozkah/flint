@@ -1153,6 +1153,16 @@ grows and an old reader must still see what happened. Exit statuses follow
 `sysexits.h`, so a script can tell a stopped run (130) from a rejected
 credential (77) from a provider that was not there (69) without parsing text.
 
+**Watching a headless run as it happens (AH-183).** The record is written
+first and read afterwards, which is no use to a caller that wants to watch. One
+watcher per process hears every event as it is recorded -- after it is on disk
+and outside the log's own lock -- and `jan cli agent run --events <path|->`
+writes those envelopes out as JSON lines, the same shape the session's log
+holds. A destination that cannot be written fails the command before the run
+starts, because a run whose output nobody can see is not what was asked for, and
+a stream nobody is reading any more never fails the run: the record is on disk
+either way.
+
 **What one run records (AH-004).** A run's canonical log holds what it did, not
 what it said. Per provider request: the dispatch and its prompt snapshot id,
 `message.started` when the reply first produces something (saying whether that
