@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import React from 'react'
 
@@ -24,6 +24,16 @@ vi.mock('@/hooks/useServiceHub', () => ({
 
 vi.mock('@/constants/routes', () => ({
   route: { appLogs: '/logs' },
+}))
+
+vi.mock('@/components/ui/sidebar', () => ({
+  useOptionalSidebar: () => null,
+}))
+
+vi.mock('@/containers/HeaderPage', () => ({
+  default: ({ children }: any) => (
+    <div data-testid="context-bar">{children}</div>
+  ),
 }))
 
 import { Route } from '../logs'
@@ -87,6 +97,37 @@ describe('LogsViewer route', () => {
       expect(screen.getByText('kept')).toBeInTheDocument()
     })
     expect(screen.queryByText('logs:noLogs')).not.toBeInTheDocument()
+  })
+
+  it('renders lines inside a scrolling log panel under its own bar', async () => {
+    h.readLogs.mockResolvedValue([
+      { timestamp: '2024-01-01T00:00:00Z', level: 'info', message: 'hello' },
+    ])
+    renderComponent()
+    await waitFor(() => {
+      expect(screen.getByText('hello')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('system-page-bar')).toHaveTextContent(
+      'logs:title'
+    )
+    expect(screen.getByRole('log')).toContainElement(screen.getByText('hello'))
+  })
+
+  it('copies the shown lines', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+    h.readLogs.mockResolvedValue([
+      { timestamp: '2024-01-01T00:00:00Z', level: 'error', message: 'boom' },
+    ])
+    renderComponent()
+    await waitFor(() => {
+      expect(screen.getByText('boom')).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByTestId('copy-logs'))
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('[00:00:00] ERROR boom')
+    })
+    expect(await screen.findByText('logs:copied')).toBeInTheDocument()
   })
 
   it('clears interval on unmount', async () => {
