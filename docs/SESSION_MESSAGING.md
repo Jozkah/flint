@@ -224,3 +224,65 @@ Commands reject with `MailboxError` serialized as `{ code, message }`.
 hook (`mailbox::set_emitter`) installed in the plugin's `setup`, after every
 successful append, whether it came from a command or a tool handler. Emitted
 with the recipient's `sessionId`. No hook is installed in tests or the CLI.
+
+## Implementation notes: frontend
+
+- Client: `lib/sessionMailbox.ts` invokes `plugin:agent-tools|mailbox_*` and
+  normalises rejections to `{ code, message }`. `lib/coworkTools.ts` requests
+  schemas with `scope: 'session'` (direct invoke, the guest binding has no
+  scope argument); the chat transport drops the four tools and
+  `coworkSubagent.ts` withholds them from subagents.
+- Presence (`lib/mailboxPresence.ts`, `hooks/useMailboxPresence.ts`) registers,
+  renames, reports running/idle with the run's own id, heartbeats and removes
+  deleted sessions. Delivery (`lib/mailboxDelivery.ts`,
+  `hooks/useMailboxDelivery.ts`) listens for `agent-mailbox-updated`, sweeps
+  every session once at startup and serialises work per session. Both are
+  mounted from `providers/GlobalEventHandler.tsx`.
+- Queue: running sessions get ready messages drained at the runner's safe
+  boundaries; idle sessions get held messages rendered by
+  `containers/AgentMessageCard.tsx` (Reply, Let the agent respond, Dismiss)
+  inside `CoworkHeldInput`. Mail still ready when a run ends is held again.
+  Queue ids are `mail:<messageId>` so dedupe survives restarts.
+- Automatic wake-ups (`containers/SessionMessagingToggle.tsx`) are persisted
+  per session, off by default, release only for the focused idle session, and
+  never release replies (`depth > 0`) while the last run was itself a wake-up.
+
+### Pending UI glue
+
+Three small hunks in files under restyle (`routes/cowork.tsx`,
+`containers/MessageItem.tsx`) are specified in
+`docs/SESSION_MESSAGING_UI_HUNKS.md`. Until they land, a delivered message's
+transcript row shows the wrapper text as an ordinary user turn (no "Message
+from" label or Reply) and an automatic wake-up for a session already idle and
+in view waits for a session switch or run end. They are applied after the
+restyle branch is pushed, by agreement with that session.
+
+### Known limitations
+
+- `mailbox_take_for_delivery` is per session, so releasing one held card marks
+  other queued envelopes for that session `delivered` (they are still returned
+  by `mailbox_pending` and still shown).
+- The renderer's drained/dismissed id set is in memory; if `mark_read` fails,
+  a message can reappear after restart.
+- Ordinary chat threads do not participate.
+- No end-to-end run of the desktop app against the real backend yet.
+
+## Verification (integration branch)
+
+| Check | Result |
+| --- | --- |
+| `cargo test -j 4 --lib mailbox` (plugin) | 18 passed, 0 failed |
+| Plugin full lib (backend lane) | 805 passed, 5 failed: bash sandbox tests that fail identically on the base commit (environment) |
+| App crate `mailbox_tools_are_never_advertised_by_the_rust_loop` | passed |
+| `tsc -b` (web-app) | exit 0 |
+| `scripts/local-only-guard.mjs` | exit 0 |
+| Full vitest (web-app) | 451 files, 6126 tests passed, 3 skipped, 0 failed |
+
+Coverage by requirement: mailbox persistence, torn-line recovery and restart
+limits (Rust `mailbox::tests`); concurrent delivery and each envelope taken
+once (Rust concurrency test, `mailboxDelivery`); project isolation and
+unavailable/deleted/stale targets (Rust); safe-boundary injection
+(`coworkRunner.mailbox`); reply correlation and `wait_for_reply` (Rust);
+loop protection (reply depth and rate limits in Rust, wake-up loop guard in
+`mailboxDelivery`); permission isolation (`AgentMessageCard` permission test,
+gate tests).
