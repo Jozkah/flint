@@ -892,6 +892,10 @@ describe('ThreadDetail route', () => {
       const allowOnceForServer = vi.fn().mockResolvedValue('ticket-42')
       const callTool = vi.fn().mockResolvedValue({ error: '', content: [] })
       hub.mcp = () => ({ callTool, allowOnceForServer }) as never
+      // The approval records which server definition it was for; the ticket
+      // must be bound to that same definition.
+      const takeApprovedFingerprint = vi.fn(() => 'sha256:files')
+      ;(h.toolApprovalState as any).takeApprovedFingerprint = takeApprovedFingerprint
       try {
         renderComponent()
         await act(async () => {
@@ -901,7 +905,11 @@ describe('ThreadDetail route', () => {
           await finishWithToolCalls()
         })
 
-        expect(allowOnceForServer).toHaveBeenCalledWith('files', 'fetch')
+        expect(allowOnceForServer).toHaveBeenCalledWith(
+          'files',
+          'fetch',
+          'sha256:files'
+        )
         expect(callTool).toHaveBeenCalledWith(
           expect.objectContaining({
             toolName: 'fetch',

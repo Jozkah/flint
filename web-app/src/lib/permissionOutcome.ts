@@ -21,6 +21,7 @@ export type PermissionOutcomeKind =
   | 'denied-by-user'
   | 'cancelled'
   | 'mcp-not-trusted'
+  | 'mcp-configuration-changed'
   | 'mcp-ticket-rejected'
   | 'policy'
   | 'hidden-state'
@@ -69,6 +70,15 @@ const RULES: Rule[] = [
     build: (x) => ({
       message: m('mcpNotTrusted', { server: x[1] }),
       nextStep: m('mcpNotTrustedNext'),
+    }),
+  },
+  {
+    // `Refusal::ConfigurationChanged`: approved for a different definition.
+    kind: 'mcp-configuration-changed',
+    pattern: /MCP server '([^']+)' changed its configuration since it was approved/,
+    build: (x) => ({
+      message: m('mcpConfigurationChanged', { server: x[1] }),
+      nextStep: m('mcpConfigurationChangedNext'),
     }),
   },
   {

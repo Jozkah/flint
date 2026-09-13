@@ -48,8 +48,12 @@ pub struct SessionGrants {
     /// the user answered a question about reading and was taken to have
     /// answered one about publishing. AH-037.
     exec_commands: std::collections::BTreeSet<String>,
-    /// MCP tools granted "allow always" this thread, by tool name.
-    mcp_tools: std::collections::BTreeSet<String>,
+    /// MCP tools granted "allow always" this thread, by `(server, tool)`.
+    ///
+    /// Keyed by the server too, because a tool name is chosen by whoever
+    /// publishes it: approving `fetch` from one server must not approve a
+    /// `fetch` another server publishes later in the same session.
+    mcp_tools: std::collections::BTreeSet<(String, String)>,
     /// Project roots this session may write to, beyond its own workspace.
     ///
     /// Empty by default, which is every session that has not been given an
@@ -115,14 +119,16 @@ impl SessionGrants {
         self.exec_commands.insert(normalize(command));
     }
 
-    /// Whether an MCP tool was granted "allow always" this thread.
-    pub fn covers_mcp(&self, tool_name: &str) -> bool {
-        self.mcp_tools.contains(tool_name)
+    /// Whether this server's tool was granted "allow always" this thread.
+    pub fn covers_mcp(&self, server: &str, tool_name: &str) -> bool {
+        self.mcp_tools
+            .contains(&(server.to_string(), tool_name.to_string()))
     }
 
-    /// Grant an MCP tool for the rest of this session.
-    pub fn grant_mcp(&mut self, tool_name: &str) {
-        self.mcp_tools.insert(tool_name.to_string());
+    /// Grant one server's tool for the rest of this session.
+    pub fn grant_mcp(&mut self, server: &str, tool_name: &str) {
+        self.mcp_tools
+            .insert((server.to_string(), tool_name.to_string()));
     }
 }
 
@@ -768,10 +774,21 @@ mod tests {
     #[test]
     fn mcp_grant_is_scoped_to_tool_name() {
         let mut grants = SessionGrants::default();
-        assert!(!grants.covers_mcp("web_search_exa"));
-        grants.grant_mcp("web_search_exa");
-        assert!(grants.covers_mcp("web_search_exa"));
-        assert!(!grants.covers_mcp("other_tool"));
+        assert!(!grants.covers_mcp("exa", "web_search_exa"));
+        grants.grant_mcp("exa", "web_search_exa");
+        assert!(grants.covers_mcp("exa", "web_search_exa"));
+        assert!(!grants.covers_mcp("exa", "other_tool"));
+    }
+
+    /// A tool name is chosen by the server that publishes it, so a grant for
+    /// one server's `fetch` must not cover another server's `fetch`.
+    #[test]
+    fn mcp_grant_is_scoped_to_the_server_that_publishes_the_tool() {
+        let mut grants = SessionGrants::default();
+        grants.grant_mcp("trusted-server", "fetch");
+        assert!(grants.covers_mcp("trusted-server", "fetch"));
+        assert!(!grants.covers_mcp("impostor", "fetch"));
+        assert!(!grants.covers_mcp("", "fetch"));
     }
 
     /// AH-037. This test asserted the opposite until the grant was narrowed:

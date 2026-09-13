@@ -16,6 +16,7 @@ import {
   permissionAuditRecent,
   type PermissionAuditRecord,
 } from '@/lib/permissionAudit'
+import type { MCPTrustReport } from '@/services/mcp/types'
 
 // `as any` matches every other settings route: the typed route tree is
 // generated during the build, after this file is typechecked.
@@ -27,21 +28,33 @@ export const Route = createFileRoute(route.settings.permissions as any)({
 /** How many recorded decisions the page shows. */
 const HISTORY_LIMIT = 50
 
+/** Whether a standing server grant still describes the configured server. */
+type GrantState = 'current' | 'changed' | 'missing' | 'unknown'
+
 type ServerRow = {
   name: string
   /** The backend gate trusts it: its tools run without a ticket. */
   inBackend: boolean
   /** The renderer store trusts it: its tools run without a prompt. */
   inApp: boolean
+  state: GrantState
+}
+
+type RenewalRow = {
+  name: string
+  reason: 'legacy' | 'changed'
 }
 
 function PermissionsSettings() {
   const { t } = useTranslation()
   const approvedTools = useToolApproval((s) => s.approvedTools)
+  const approvedMcpTools = useToolApproval((s) => s.approvedMcpTools)
   const approvedToolsGlobal = useToolApproval((s) => s.approvedToolsGlobal)
   const approvedServers = useToolApproval((s) => s.approvedServers)
+  const invalidatedServers = useToolApproval((s) => s.invalidatedServers)
   const allowAll = useToolApproval((s) => s.allowAllMCPPermissions)
   const revokeToolForThread = useToolApproval((s) => s.revokeToolForThread)
+  const revokeMcpToolForThread = useToolApproval((s) => s.revokeMcpToolForThread)
   const revokeToolEverywhere = useToolApproval((s) => s.revokeToolEverywhere)
   const revokeServerTrust = useToolApproval((s) => s.revokeServerTrust)
   const revokeAllowAll = useToolApproval((s) => s.revokeAllowAllMCPPermissions)
@@ -49,7 +62,12 @@ function PermissionsSettings() {
   const coworkSessions = useCoworkSessions((s) => s.sessions)
 
   /** `null` until the backend answers; kept on failure so nothing is hidden. */
-  const [backendServers, setBackendServers] = useState<string[] | null>(null)
+  const [report, setReport] = useState<MCPTrustReport | null>(null)
+  /** Current fingerprint per configured server; `null` until known. */
+  const [fingerprints, setFingerprints] = useState<Record<
+    string,
+    string
+  > | null>(null)
   const [serversError, setServersError] = useState<string | null>(null)
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({})
   const [busyServer, setBusyServer] = useState<string | null>(null)
@@ -59,14 +77,28 @@ function PermissionsSettings() {
 
   useEffect(() => {
     let cancelled = false
-    getServiceHub()
-      .mcp()
-      .trustedServers()
-      .then((servers) => {
-        if (!cancelled) setBackendServers(servers ?? [])
+    const mcp = getServiceHub().mcp()
+    mcp
+      .trustReport()
+      .then((next) => {
+        if (!cancelled) {
+          setReport({
+            trusted: next?.trusted ?? [],
+            invalidated: next?.invalidated ?? [],
+          })
+        }
       })
       .catch((error) => {
         if (!cancelled) setServersError(errorText(error))
+      })
+    Promise.resolve()
+      .then(() => mcp.serverFingerprints())
+      .then((next) => {
+        if (!cancelled) setFingerprints(next ?? {})
+      })
+      .catch(() => {
+        // Without fingerprints the page cannot say whether an app-side grant
+        // still matches; it says "unknown" rather than guessing.
       })
     return () => {
       cancelled = true
@@ -98,24 +130,59 @@ function PermissionsSettings() {
     [threads, coworkSessions, t]
   )
 
-  const conversations = useMemo(
-    () =>
-      Object.entries(approvedTools).filter(([, tools]) => tools.length > 0),
-    [approvedTools]
-  )
+  const conversations = useMemo(() => {
+    const ids = [
+      ...Object.keys(approvedTools),
+      ...Object.keys(approvedMcpTools ?? {}),
+    ].filter((id, index, all) => all.indexOf(id) === index)
+    return ids
+      .map((id) => ({
+        id,
+        tools: approvedTools[id] ?? [],
+        mcpTools: approvedMcpTools?.[id] ?? [],
+      }))
+      .filter((row) => row.tools.length > 0 || row.mcpTools.length > 0)
+  }, [approvedTools, approvedMcpTools])
 
   // The backend and the renderer store each keep a list; showing only one
   // would hide a server the other still trusts.
   const servers: ServerRow[] = useMemo(() => {
-    const names = [...(backendServers ?? []), ...approvedServers].filter(
-      (name, index, all) => all.indexOf(name) === index
-    )
-    return names.map((name) => ({
-      name,
-      inBackend: backendServers?.includes(name) ?? false,
-      inApp: approvedServers.includes(name),
-    }))
-  }, [backendServers, approvedServers])
+    const backend = report?.trusted ?? []
+    const names = [
+      ...backend.map((entry) => entry.name),
+      ...approvedServers.map((grant) => grant.name),
+    ].filter((name, index, all) => all.indexOf(name) === index)
+    return names.map((name) => {
+      const entry = backend.find((one) => one.name === name)
+      const grant = approvedServers.find((one) => one.name === name)
+      let state: GrantState = 'current'
+      if (entry) {
+        if (entry.currentFingerprint === null) state = 'missing'
+        else if (entry.currentFingerprint !== entry.fingerprint) state = 'changed'
+      }
+      if (state === 'current' && grant) {
+        if (!fingerprints) state = entry ? state : 'unknown'
+        else if (!(name in fingerprints)) state = 'missing'
+        else if (fingerprints[name] !== grant.fingerprint) state = 'changed'
+      }
+      return { name, inBackend: !!entry, inApp: !!grant, state }
+    })
+  }, [report, approvedServers, fingerprints])
+
+  // Approvals that stopped applying, from either record, once per name.
+  const renewals: RenewalRow[] = useMemo(() => {
+    const rows: RenewalRow[] = []
+    const add = (name: string, reason: string) => {
+      if (rows.some((row) => row.name === name)) return
+      rows.push({
+        name,
+        reason: reason === 'configuration-changed' ? 'changed' : 'legacy',
+      })
+    }
+    for (const entry of report?.invalidated ?? []) add(entry.name, entry.reason)
+    for (const entry of invalidatedServers ?? []) add(entry.name, entry.reason)
+    return rows
+  }, [report, invalidatedServers])
 
   const onRevokeServer = useCallback(
     async (name: string) => {
@@ -127,7 +194,16 @@ function PermissionsSettings() {
       })
       try {
         await revokeServerTrust(name)
-        setBackendServers((list) => list?.filter((s) => s !== name) ?? list)
+        setReport((current) =>
+          current
+            ? {
+                trusted: current.trusted.filter((entry) => entry.name !== name),
+                invalidated: current.invalidated.filter(
+                  (entry) => entry.name !== name
+                ),
+              }
+            : current
+        )
         toast.success(t('permissions:settings.revoked'))
       } catch (error) {
         // Still trusted where it counts, so it stays listed, with the reason.
@@ -145,6 +221,9 @@ function PermissionsSettings() {
 
   const hasGlobal =
     allowAll || approvedToolsGlobal.length > 0 || servers.length > 0
+
+  const errorId = (name: string) =>
+    `permissions-server-error-${name.replace(/[^a-zA-Z0-9_-]/g, '_')}`
 
   return (
     <div className="flex flex-col h-full">
@@ -174,7 +253,7 @@ function PermissionsSettings() {
                 </p>
               ) : (
                 <ul className="flex flex-col divide-y divide-border/40">
-                  {conversations.map(([threadId, tools]) => (
+                  {conversations.map(({ id: threadId, tools, mcpTools }) => (
                     <li key={threadId} className="py-2">
                       <p className="text-sm font-medium text-foreground">
                         {conversationTitle(threadId)}
@@ -195,6 +274,35 @@ function PermissionsSettings() {
                                 name: `${tool} (${conversationTitle(threadId)})`,
                               })}
                               onClick={() => revokeToolForThread(threadId, tool)}
+                            >
+                              {t('permissions:settings.revoke')}
+                            </Button>
+                          </li>
+                        ))}
+                        {mcpTools.map((grant) => (
+                          <li
+                            key={`${grant.server}::${grant.tool}`}
+                            className="flex items-center justify-between gap-3"
+                          >
+                            <span className="font-mono text-xs">
+                              {t('permissions:settings.mcpToolLabel', {
+                                server: grant.server,
+                                tool: grant.tool,
+                              })}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              aria-label={t('permissions:settings.revokeLabel', {
+                                name: `${grant.server} ${grant.tool} (${conversationTitle(threadId)})`,
+                              })}
+                              onClick={() =>
+                                revokeMcpToolForThread(
+                                  threadId,
+                                  grant.server,
+                                  grant.tool
+                                )
+                              }
                             >
                               {t('permissions:settings.revoke')}
                             </Button>
@@ -250,7 +358,17 @@ function PermissionsSettings() {
                               server: server.name,
                             })}
                           </p>
-                          {server.inApp && !server.inBackend && backendServers && (
+                          {server.state === 'changed' && (
+                            <p className="text-xs text-destructive">
+                              {t('permissions:settings.serverChanged')}
+                            </p>
+                          )}
+                          {server.state === 'missing' && (
+                            <p className="text-xs">
+                              {t('permissions:settings.serverMissing')}
+                            </p>
+                          )}
+                          {server.inApp && !server.inBackend && report && (
                             <p className="text-xs">
                               {t('permissions:settings.serverAppOnly')}
                             </p>
@@ -266,6 +384,11 @@ function PermissionsSettings() {
                           size="sm"
                           disabled={busyServer === server.name}
                           aria-busy={busyServer === server.name}
+                          aria-describedby={
+                            serverErrors[server.name]
+                              ? errorId(server.name)
+                              : undefined
+                          }
                           aria-label={t('permissions:settings.revokeLabel', {
                             name: server.name,
                           })}
@@ -275,7 +398,11 @@ function PermissionsSettings() {
                         </Button>
                       </div>
                       {serverErrors[server.name] && (
-                        <p role="alert" className="mt-1 text-xs text-destructive">
+                        <p
+                          id={errorId(server.name)}
+                          role="alert"
+                          className="mt-1 text-xs text-destructive"
+                        >
                           {serverErrors[server.name]}
                         </p>
                       )}
@@ -304,6 +431,69 @@ function PermissionsSettings() {
                 </ul>
               )}
             </Card>
+
+            {renewals.length > 0 && (
+              <Card title={t('permissions:settings.needsRenewal')}>
+                <CardItem
+                  anchor="settings-permissions-renewal"
+                  title={t('permissions:settings.needsRenewal')}
+                  description={t('permissions:settings.needsRenewalDesc')}
+                />
+                <ul className="flex flex-col divide-y divide-border/40">
+                  {renewals
+                    .filter(
+                      (row) =>
+                        !servers.some(
+                          (server) =>
+                            server.name === row.name && server.state === 'current'
+                        )
+                    )
+                    .map((row) => (
+                      <li key={`renewal-${row.name}`} className="py-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-mono text-xs text-foreground">
+                              {t('permissions:settings.needsRenewalLabel', {
+                                server: row.name,
+                              })}
+                            </p>
+                            <p className="text-xs">
+                              {row.reason === 'changed'
+                                ? t('permissions:settings.reasonChanged')
+                                : t('permissions:settings.reasonLegacy')}
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busyServer === row.name}
+                            aria-busy={busyServer === row.name}
+                            aria-describedby={
+                              serverErrors[row.name] ? errorId(row.name) : undefined
+                            }
+                            aria-label={t('permissions:settings.dismissLabel', {
+                              name: row.name,
+                            })}
+                            onClick={() => void onRevokeServer(row.name)}
+                          >
+                            {t('permissions:settings.dismiss')}
+                          </Button>
+                        </div>
+                        {serverErrors[row.name] &&
+                          !servers.some((server) => server.name === row.name) && (
+                            <p
+                              id={errorId(row.name)}
+                              role="alert"
+                              className="mt-1 text-xs text-destructive"
+                            >
+                              {serverErrors[row.name]}
+                            </p>
+                          )}
+                      </li>
+                    ))}
+                </ul>
+              </Card>
+            )}
 
             <Card title={t('permissions:settings.history')}>
               <CardItem

@@ -653,12 +653,17 @@ function ThreadDetail() {
               // happened here has to be handed over as something it issued.
               // Minted for every call rather than only untrusted ones: trust
               // can be withdrawn between the approval and the call, and an
-              // unused ticket simply expires.
+              // unused ticket simply expires. Bound to the server definition
+              // the approval was for, so a server edited in between is
+              // refused rather than called.
               const server = serverForTool(toolName)
+              const approvedFingerprint = useToolApprovalRequests
+                .getState()
+                .takeApprovedFingerprint?.(toolCall.toolCallId)
               const approvalTicket = server
                 ? await serviceHub
                     .mcp()
-                    .allowOnceForServer(server, toolName)
+                    .allowOnceForServer(server, toolName, approvedFingerprint)
                     .catch(() => undefined)
                 : undefined
               result = await serviceHub.mcp().callTool({

@@ -11,6 +11,8 @@
 
 pub mod activity;
 pub mod audit;
+/// The security identity (fingerprint) of an MCP server definition.
+pub mod mcp_identity;
 /// Which MCP servers the user has agreed to run tools from (AH-041).
 pub mod mcp_trust;
 /// A proposed change held as reviewable hunks (AH-146/147/148).

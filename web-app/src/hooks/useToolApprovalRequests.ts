@@ -3,6 +3,7 @@ import { useToolApproval } from './useToolApproval'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { toast } from 'sonner'
 import { errorText } from '@/lib/errorText'
+import { resolveServerFingerprint } from '@/lib/mcpServerIdentity'
 
 /**
  * What the prompt can say about a call beyond its name. All optional, so a
@@ -17,6 +18,11 @@ export type ApprovalRequestContext = {
   workspaceLabel?: string
   /** The thread id is reused by the next conversation (temporary chat). */
   threadIsEphemeral?: boolean
+  /**
+   * The server's security fingerprint, when the caller already has it. `null`
+   * means it was looked up and is unknown; left out, it is looked up here.
+   */
+  serverFingerprint?: string | null
 }
 
 export type PendingApproval = {
@@ -25,6 +31,11 @@ export type PendingApproval = {
   threadId: string
   /** MCP server the tool belongs to, so the prompt can offer to trust it. */
   serverName?: string
+  /**
+   * The definition of `serverName` the user is being asked about. A grant
+   * recorded from this prompt is bound to it.
+   */
+  serverFingerprint?: string
   input?: unknown
   taskContext?: string
   workspaceLabel?: string
@@ -59,6 +70,12 @@ type ToolApprovalRequestsState = {
    * prompt nobody answered. Bounded; read with {@link takeRefusal}.
    */
   refusals: Record<string, ApprovalRefusal>
+  /**
+   * toolCallId -> the server fingerprint an approved MCP call was approved
+   * for, so the one-time backend permission can be bound to the same
+   * definition. Bounded; read with {@link takeApprovedFingerprint}.
+   */
+  approvedFingerprints: Record<string, string>
 
   requestApproval: (
     toolCallId: string,
@@ -71,16 +88,18 @@ type ToolApprovalRequestsState = {
   clearPendingForThread: (threadId: string) => void
   /** Why this call's request was refused, once; `undefined` if it was not. */
   takeRefusal: (toolCallId: string) => ApprovalRefusal | undefined
+  /** The fingerprint this call was approved for, once. */
+  takeApprovedFingerprint: (toolCallId: string) => string | undefined
 }
 
-function remember(
-  refusals: Record<string, ApprovalRefusal>,
-  entries: [string, ApprovalRefusal][]
-): Record<string, ApprovalRefusal> {
-  const next = { ...refusals }
-  for (const [id, why] of entries) {
+function remember<T>(
+  map: Record<string, T>,
+  entries: [string, T][]
+): Record<string, T> {
+  const next = { ...map }
+  for (const [id, value] of entries) {
     delete next[id]
-    next[id] = why
+    next[id] = value
   }
   const keys = Object.keys(next)
   for (const key of keys.slice(0, Math.max(0, keys.length - REFUSAL_MEMORY))) {
@@ -93,18 +112,50 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
   (set, get) => ({
     pending: {},
     refusals: {},
+    approvedFingerprints: {},
 
     requestApproval: (toolCallId, toolName, threadId, serverName, context) => {
+      // An MCP call is approved for one definition of its server, so the
+      // backend's fingerprint is needed before any grant can be checked.
+      if (serverName && context?.serverFingerprint === undefined) {
+        return resolveServerFingerprint(serverName).then((fingerprint) =>
+          get().requestApproval(toolCallId, toolName, threadId, serverName, {
+            ...context,
+            serverFingerprint: fingerprint ?? null,
+          })
+        )
+      }
+      const serverFingerprint = context?.serverFingerprint ?? undefined
+
       return new Promise<boolean>((resolve) => {
         const settings = useToolApproval.getState()
+        const approve = () => {
+          if (serverName && serverFingerprint) {
+            set((s) => ({
+              approvedFingerprints: remember(s.approvedFingerprints, [
+                [toolCallId, serverFingerprint],
+              ]),
+            }))
+          }
+          resolve(true)
+        }
+        // Grants recorded for an older definition of this server stop
+        // applying now, and are listed as needing renewal.
+        if (serverName && serverFingerprint) {
+          settings.noteServerFingerprint(serverName, serverFingerprint)
+        }
         // A standing grant answers without a prompt: allow-all, a server the
         // user trusts, the tool everywhere, or the tool in this thread.
         if (settings.allowAllMCPPermissions) {
-          resolve(true)
+          approve()
           return
         }
-        if (settings.isToolApproved(threadId, toolName, serverName)) {
-          resolve(true)
+        if (
+          useToolApproval
+            .getState()
+            .isToolApproved(threadId, toolName, serverName, serverFingerprint)
+        ) {
+          approve()
           return
         }
         set((s) => ({
@@ -115,6 +166,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               toolName,
               threadId,
               serverName,
+              ...(serverFingerprint ? { serverFingerprint } : {}),
               ...(context?.input !== undefined ? { input: context.input } : {}),
               ...(context?.taskContext
                 ? { taskContext: context.taskContext }
@@ -134,20 +186,35 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       const entry = get().pending[toolCallId]
       if (!entry) return
       const approval = useToolApproval.getState()
+      const { serverName, serverFingerprint } = entry
       if (decision === 'allow-thread') {
-        approval.approveToolForThread(entry.threadId, entry.toolName)
+        if (!serverName) {
+          approval.approveToolForThread(entry.threadId, entry.toolName)
+        } else if (serverFingerprint) {
+          approval.approveMcpToolForThread(
+            entry.threadId,
+            serverName,
+            entry.toolName,
+            serverFingerprint
+          )
+        }
+        // A server tool whose definition is unknown is allowed this once and
+        // nothing is recorded: a grant bound to no identity would match none.
       } else if (decision === 'allow-always') {
-        if (entry.serverName) {
-          approval.approveServer(entry.serverName)
+        if (serverName) {
+          if (serverFingerprint) {
+            approval.approveServer(serverName, serverFingerprint)
+          }
           // AH-041. The backend holds the record the gate reads, so an answer
           // that only updated renderer state would be forgotten by the thing
-          // that enforces it. Failure is not swallowed silently: the user is
-          // told, because otherwise the next call prompts again with no
-          // explanation.
+          // that enforces it. It is bound to the definition the user was
+          // shown; if the backend refuses (the server changed meanwhile), the
+          // renderer grant is withdrawn too and the user is told.
           void getServiceHub()
             .mcp()
-            .trustServer(entry.serverName)
+            .trustServer(serverName, serverFingerprint)
             .catch((error) => {
+              useToolApproval.getState().revokeServer(serverName)
               toast.error('Could not remember that server', {
                 description: errorText(error),
               })
@@ -163,6 +230,13 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           pending: next,
           ...(decision === 'deny'
             ? { refusals: remember(s.refusals, [[toolCallId, 'denied']]) }
+            : {}),
+          ...(decision !== 'deny' && serverName && serverFingerprint
+            ? {
+                approvedFingerprints: remember(s.approvedFingerprints, [
+                  [toolCallId, serverFingerprint],
+                ]),
+              }
             : {}),
         }
       })
@@ -182,7 +256,9 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           pending: next,
           refusals: remember(
             s.refusals,
-            stranded.map((entry) => [entry.toolCallId, 'cancelled'])
+            stranded.map(
+              (entry) => [entry.toolCallId, 'cancelled'] as [string, ApprovalRefusal]
+            )
           ),
         }
       })
@@ -200,6 +276,18 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         })
       }
       return why
+    },
+
+    takeApprovedFingerprint: (toolCallId) => {
+      const fingerprint = get().approvedFingerprints[toolCallId]
+      if (fingerprint) {
+        set((s) => {
+          const next = { ...s.approvedFingerprints }
+          delete next[toolCallId]
+          return { approvedFingerprints: next }
+        })
+      }
+      return fingerprint
     },
   })
 )

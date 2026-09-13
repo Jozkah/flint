@@ -19,14 +19,19 @@ vi.mock('zustand/middleware', () => ({
   }),
 }))
 
+const GH = 'sha256:github-v1'
+const FS = 'sha256:filesystem-v1'
+
 describe('useToolApproval', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Reset store state to defaults
     useToolApproval.setState({
       approvedTools: {},
+      approvedMcpTools: {},
       approvedServers: [],
       approvedToolsGlobal: [],
+      invalidatedServers: [],
       allowAllMCPPermissions: false,
     })
   })
@@ -35,8 +40,10 @@ describe('useToolApproval', () => {
     const { result } = renderHook(() => useToolApproval())
 
     expect(result.current.approvedTools).toEqual({})
+    expect(result.current.approvedMcpTools).toEqual({})
     expect(result.current.approvedServers).toEqual([])
     expect(result.current.approvedToolsGlobal).toEqual([])
+    expect(result.current.invalidatedServers).toEqual([])
     expect(result.current.allowAllMCPPermissions).toBe(false)
     expect(typeof result.current.approveToolForThread).toBe('function')
     expect(typeof result.current.approveServer).toBe('function')
@@ -154,6 +161,45 @@ describe('useToolApproval', () => {
       const isApproved = result.current.isToolApproved('thread-2', 'tool-a')
       expect(isApproved).toBe(false)
     })
+
+    // A tool name is chosen by whoever publishes it, so a name-only grant
+    // must never answer for a server's tool.
+    it('does not let a name-only grant cover a server tool of the same name', () => {
+      const { result } = renderHook(() => useToolApproval())
+
+      act(() => {
+        result.current.approveToolForThread('thread-1', 'fetch')
+        result.current.approveToolEverywhere('fetch')
+      })
+
+      expect(result.current.isToolApproved('thread-1', 'fetch', 'github', GH)).toBe(
+        false
+      )
+    })
+
+    it('binds a conversation grant for a server tool to that server and definition', () => {
+      const { result } = renderHook(() => useToolApproval())
+
+      act(() => {
+        result.current.approveMcpToolForThread('thread-1', 'github', 'create_issue', GH)
+      })
+
+      expect(
+        result.current.isToolApproved('thread-1', 'create_issue', 'github', GH)
+      ).toBe(true)
+      expect(
+        result.current.isToolApproved('thread-1', 'create_issue', 'impostor', GH)
+      ).toBe(false)
+      expect(
+        result.current.isToolApproved('thread-1', 'create_issue', 'github', 'sha256:other')
+      ).toBe(false)
+      expect(
+        result.current.isToolApproved('thread-2', 'create_issue', 'github', GH)
+      ).toBe(false)
+      expect(result.current.isToolApproved('thread-1', 'create_issue', 'github')).toBe(
+        false
+      )
+    })
   })
 
   describe('approveServer', () => {
@@ -161,14 +207,14 @@ describe('useToolApproval', () => {
       const { result } = renderHook(() => useToolApproval())
 
       act(() => {
-        result.current.approveServer('github')
+        result.current.approveServer('github', GH)
       })
 
       expect(
-        result.current.isToolApproved('thread-1', 'create_issue', 'github')
+        result.current.isToolApproved('thread-1', 'create_issue', 'github', GH)
       ).toBe(true)
       expect(
-        result.current.isToolApproved('thread-9', 'list_repos', 'github')
+        result.current.isToolApproved('thread-9', 'list_repos', 'github', GH)
       ).toBe(true)
     })
 
@@ -176,11 +222,11 @@ describe('useToolApproval', () => {
       const { result } = renderHook(() => useToolApproval())
 
       act(() => {
-        result.current.approveServer('github')
+        result.current.approveServer('github', GH)
       })
 
       expect(
-        result.current.isToolApproved('thread-1', 'read_file', 'filesystem')
+        result.current.isToolApproved('thread-1', 'read_file', 'filesystem', FS)
       ).toBe(false)
     })
 
@@ -188,11 +234,23 @@ describe('useToolApproval', () => {
       const { result } = renderHook(() => useToolApproval())
 
       act(() => {
-        result.current.approveServer('github')
-        result.current.approveServer('github')
+        result.current.approveServer('github', GH)
+        result.current.approveServer('github', GH)
       })
 
-      expect(result.current.approvedServers).toEqual(['github'])
+      expect(result.current.approvedServers).toEqual([
+        { name: 'github', fingerprint: GH },
+      ])
+    })
+
+    it('records nothing without a fingerprint', () => {
+      const { result } = renderHook(() => useToolApproval())
+
+      act(() => {
+        result.current.approveServer('github', '')
+      })
+
+      expect(result.current.approvedServers).toEqual([])
     })
   })
 
@@ -201,17 +259,17 @@ describe('useToolApproval', () => {
       const { result } = renderHook(() => useToolApproval())
 
       act(() => {
-        result.current.approveServer('github')
+        result.current.approveServer('github', GH)
       })
-      expect(result.current.isServerApproved('github')).toBe(true)
+      expect(result.current.isServerApproved('github', GH)).toBe(true)
 
       act(() => {
         result.current.revokeServer('github')
       })
 
-      expect(result.current.isServerApproved('github')).toBe(false)
+      expect(result.current.isServerApproved('github', GH)).toBe(false)
       expect(
-        result.current.isToolApproved('thread-1', 'create_issue', 'github')
+        result.current.isToolApproved('thread-1', 'create_issue', 'github', GH)
       ).toBe(false)
     })
 
@@ -219,12 +277,14 @@ describe('useToolApproval', () => {
       const { result } = renderHook(() => useToolApproval())
 
       act(() => {
-        result.current.approveServer('github')
-        result.current.approveServer('filesystem')
+        result.current.approveServer('github', GH)
+        result.current.approveServer('filesystem', FS)
         result.current.revokeServer('github')
       })
 
-      expect(result.current.approvedServers).toEqual(['filesystem'])
+      expect(result.current.approvedServers).toEqual([
+        { name: 'filesystem', fingerprint: FS },
+      ])
     })
   })
 

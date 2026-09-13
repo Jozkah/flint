@@ -2139,6 +2139,80 @@ mod registration_decision_tests {
 
         assert_eq!(definition_identity(&before), definition_identity(&after));
     }
+
+    /// The registration identity and the trust fingerprint are one definition:
+    /// two configs that are "the same running server" must also be "the same
+    /// approved server", and vice versa.
+    #[test]
+    fn registration_identity_and_trust_fingerprint_agree() {
+        use tauri_plugin_agent_tools::mcp_identity::fingerprint;
+        let a = json!({ "command": "node", "args": ["s.js"], "headers": { "Authorization": "one" } });
+        let b = json!({ "type": "stdio", "command": "node", "args": ["s.js"], "headers": { "authorization": "two" }, "active": true });
+        let c = json!({ "command": "node", "args": ["evil.js"] });
+        assert_eq!(definition_identity(&a), definition_identity(&b));
+        assert_eq!(fingerprint(&a), fingerprint(&b));
+        assert_ne!(definition_identity(&a), definition_identity(&c));
+        assert_ne!(fingerprint(&a), fingerprint(&c));
+    }
+}
+
+/// Which definition the trust gate fingerprints for a server name.
+#[cfg(test)]
+mod trust_fingerprint_source_tests {
+    use super::super::commands::server_fingerprint_from;
+    use serde_json::{json, Map, Value};
+    use std::collections::HashMap;
+    use tauri_plugin_agent_tools::mcp_identity::fingerprint;
+
+    fn saved(entries: &[(&str, Value)]) -> Map<String, Value> {
+        entries
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect()
+    }
+
+    /// A call reaches the program that is running, so its definition is the
+    /// one an approval must match, even when the saved file was edited since.
+    #[test]
+    fn the_running_definition_wins_over_the_saved_one() {
+        let running = json!({ "command": "node", "args": ["old.js"] });
+        let edited = json!({ "command": "node", "args": ["new.js"] });
+        let active = HashMap::from([("notes".to_string(), running.clone())]);
+        let file = saved(&[("notes", edited.clone())]);
+        assert_eq!(
+            server_fingerprint_from(&active, &file, "notes"),
+            Some(fingerprint(&running))
+        );
+        assert_eq!(
+            server_fingerprint_from(&HashMap::new(), &file, "notes"),
+            Some(fingerprint(&edited))
+        );
+    }
+
+    /// A deleted server has no identity, so no grant or ticket can match it.
+    #[test]
+    fn an_unconfigured_server_has_no_fingerprint() {
+        assert_eq!(
+            server_fingerprint_from(&HashMap::new(), &Map::new(), "gone"),
+            None
+        );
+    }
+
+    /// Changing the endpoint or the executable changes what the gate compares;
+    /// rotating a secret does not.
+    #[test]
+    fn endpoint_and_executable_changes_are_visible_to_the_gate() {
+        let base = json!({ "type": "http", "url": "https://mcp.example.com/v1", "headers": { "Authorization": "a" } });
+        let rotated = json!({ "type": "http", "url": "https://mcp.example.com/v1", "headers": { "Authorization": "b" } });
+        let moved = json!({ "type": "http", "url": "https://mcp.attacker.test/v1", "headers": { "Authorization": "a" } });
+        let fp = |v: &Value| server_fingerprint_from(&HashMap::new(), &saved(&[("s", v.clone())]), "s");
+        assert_eq!(fp(&base), fp(&rotated));
+        assert_ne!(fp(&base), fp(&moved));
+
+        let exe = json!({ "command": "npx", "args": ["notes"] });
+        let swapped = json!({ "command": "/tmp/evil", "args": ["notes"] });
+        assert_ne!(fp(&exe), fp(&swapped));
+    }
 }
 
 /// The manager's own bookkeeping, driven through a real Tauri app handle.

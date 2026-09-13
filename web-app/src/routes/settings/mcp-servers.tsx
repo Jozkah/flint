@@ -25,6 +25,8 @@ import { twMerge } from 'tailwind-merge'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { toast } from 'sonner'
+import { errorText } from '@/lib/errorText'
+import { resolveServerFingerprints } from '@/lib/mcpServerIdentity'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useAppState } from '@/hooks/useAppState'
 import { listen } from '@tauri-apps/api/event'
@@ -130,8 +132,11 @@ function MCPServersDesktop() {
     allowAllMCPPermissions,
     setAllowAllMCPPermissions,
     isServerApproved,
-    approveServer,
-    revokeServer,
+    approveServerTrust,
+    revokeServerTrust,
+    forgetServer,
+    approvedServers,
+    invalidatedServers,
   } = useToolApproval()
 
   const [open, setOpen] = useState(false)
@@ -182,6 +187,75 @@ function MCPServersDesktop() {
 
   /** In-flight activation and last failure per server; see mcpConnectionState. */
   const [runtime, setRuntime] = useState<Record<string, McpServerRuntime>>({})
+  /**
+   * Each server's security fingerprint, as the backend computes it from the
+   * saved or running definition. Auto-approve is bound to it, so an edit that
+   * changes what runs shows as needing renewed approval.
+   */
+  const [fingerprints, setFingerprints] = useState<Record<string, string>>({})
+  const refreshFingerprints = useCallback(async () => {
+    const next = await resolveServerFingerprints()
+    setFingerprints(next)
+    return next
+  }, [])
+  const serversSignature = JSON.stringify(mcpServers)
+  useEffect(() => {
+    void refreshFingerprints()
+  }, [serversSignature, refreshFingerprints])
+
+  /**
+   * A server name is going away (deleted or renamed): its approvals and stored
+   * sign-in go with it, so nothing is inherited by a server added under that
+   * name later. The renderer part always happens; a backend failure is shown.
+   */
+  const forgetServerGrants = (
+    name: string,
+    reason: 'deleted' | 'renamed',
+    newName?: string
+  ) => {
+    void Promise.resolve()
+      .then(() => forgetServer(name, reason))
+      .then(() => {
+        if (reason === 'renamed') {
+          toast(
+            t('mcp-servers:renameServer.approvalsReset', {
+              oldName: name,
+              newName,
+            }),
+            { description: t('mcp-servers:renameServer.approvalsResetDesc') }
+          )
+        }
+      })
+      .catch((error) => {
+        toast.error(
+          reason === 'renamed'
+            ? t('mcp-servers:renameServer.forgetFailed', { oldName: name })
+            : t('mcp-servers:deleteServer.forgetFailed', { serverName: name }),
+          { description: errorText(error) }
+        )
+      })
+  }
+
+  const handleAutoApprove = async (serverKey: string, checked: boolean) => {
+    try {
+      if (checked) {
+        // Read fresh rather than from the cached map: a definition saved a
+        // moment ago must be the one approved, not the one before it.
+        const fingerprint = (await refreshFingerprints())[serverKey]
+        if (!fingerprint) {
+          throw new Error(`'${serverKey}' is not saved yet`)
+        }
+        await approveServerTrust(serverKey, fingerprint)
+      } else {
+        await revokeServerTrust(serverKey)
+      }
+    } catch (error) {
+      toast.error(
+        t('mcp-servers:approval.autoApproveFailed', { serverName: serverKey }),
+        { description: errorText(error) }
+      )
+    }
+  }
   /**
    * Tool names per connected server: `undefined` while loading, `null` when
    * the list could not be read.
@@ -305,6 +379,9 @@ function MCPServersDesktop() {
         toggleServer(editingKey, false)
         renameServer(editingKey, name, config)
         toggleServer(name, true)
+        // Grants never follow a rename: the approval was for the old name,
+        // and its OAuth tokens may belong to an endpoint the edit changed.
+        forgetServerGrants(editingKey, 'renamed', name)
         // Restart servers to update tool references with new server name
         syncServersAndRestart()
       } else {
@@ -320,6 +397,21 @@ function MCPServersDesktop() {
       toggleServer(name, true)
       syncServers()
     }
+  }
+
+  /** Whether an approval this server had no longer matches its configuration. */
+  const approvalChanged = (serverKey: string) => {
+    const current = fingerprints[serverKey]
+    const staleGrant =
+      !!current &&
+      (approvedServers ?? []).some(
+        (grant) => grant.name === serverKey && grant.fingerprint !== current
+      )
+    const invalidated = (invalidatedServers ?? []).some(
+      (entry) =>
+        entry.name === serverKey && entry.reason === 'configuration-changed'
+    )
+    return staleGrant || invalidated
   }
 
   const handleEdit = (serverKey: string) => {
@@ -341,6 +433,7 @@ function MCPServersDesktop() {
       }
 
       deleteServer(serverToDelete)
+      forgetServerGrants(serverToDelete, 'deleted')
       setRuntime((prev) => ({ ...prev, [serverToDelete]: runtimeCleared() }))
       toast.success(
         t('mcp-servers:deleteServer.success', { serverName: serverToDelete })
@@ -414,6 +507,13 @@ function MCPServersDesktop() {
         toggleServer(serverKey, false)
         deleteServer(serverKey)
       })
+
+      // A name that is not in the edited JSON is gone, whatever else was
+      // added: forget its grants. A name that stays keeps them, and any edit
+      // to what it runs is caught by its fingerprint instead.
+      Object.keys(mcpServers)
+        .filter((serverKey) => !(serverKey in nextServers))
+        .forEach((serverKey) => forgetServerGrants(serverKey, 'deleted'))
 
       // Add all servers from the JSON
       Object.entries(nextServers).forEach(([key, config]) => {
@@ -926,15 +1026,27 @@ function MCPServersDesktop() {
                           />
                           <div className="flex items-center gap-2 mt-2">
                             <Switch
-                              checked={isServerApproved(key)}
+                              checked={isServerApproved(key, fingerprints[key])}
+                              aria-label={t('mcp-servers:autoApproveServer')}
+                              aria-describedby={
+                                approvalChanged(key)
+                                  ? `mcp-approval-changed-${key.replace(/[^a-zA-Z0-9_-]/g, '_')}`
+                                  : undefined
+                              }
                               onCheckedChange={(checked) =>
-                                checked
-                                  ? approveServer(key)
-                                  : revokeServer(key)
+                                void handleAutoApprove(key, checked)
                               }
                             />
                             <span>{t('mcp-servers:autoApproveServer')}</span>
                           </div>
+                          {approvalChanged(key) && (
+                            <p
+                              id={`mcp-approval-changed-${key.replace(/[^a-zA-Z0-9_-]/g, '_')}`}
+                              className="mt-1 text-xs text-destructive"
+                            >
+                              {t('mcp-servers:approval.changedSinceApproval')}
+                            </p>
+                          )}
                         </div>
                       }
                       actions={
