@@ -58,6 +58,14 @@ pub fn project_id_read_only(project_root: &Path) -> String {
     read_written_id(project_root).unwrap_or_else(|| derived_project_id(project_root))
 }
 
+/// The id derived from the folder's canonical path alone, ignoring any
+/// written id file. Memory does not use this; cross-session messaging does,
+/// because a written id is repository content and can be copied into an
+/// unrelated folder.
+pub fn project_path_id(project_root: &Path) -> String {
+    derived_project_id(project_root)
+}
+
 /// The id written into the project, when there is a non-empty one.
 fn read_written_id(project_root: &Path) -> Option<String> {
     let existing = std::fs::read_to_string(identity_path(project_root)).ok()?;

@@ -889,3 +889,137 @@ async fn execute_tool_binds_the_mailbox_only_in_session_scope() {
     assert!(thread.is_error);
     assert_eq!(error_code(&thread.content), code::NOT_AVAILABLE);
 }
+
+// ---------------------------------------------------------------------------
+// Review fixes
+// ---------------------------------------------------------------------------
+
+#[test]
+fn claim_returns_an_id_once_and_not_after_a_tool_read() {
+    let fx = Fixture::new("claim");
+    let mb = Mailbox::open(&fx.data);
+    pair(&fx, &mb);
+    let m1 = mb.send("a", "b", "one", None, Origin::Agent).unwrap().message_id;
+    let m2 = mb.send("a", "b", "two", None, Origin::Agent).unwrap().message_id;
+    assert_eq!(mb.take_for_delivery("b").unwrap().len(), 2);
+
+    // First claim wins; a second claim of the same id gets nothing.
+    let ids = vec![m1.clone(), m1.clone(), "msg-not-here".to_string()];
+    assert_eq!(mb.claim("b", &ids).unwrap(), vec![m1.clone()]);
+    assert!(mb.claim("b", &[m1.clone()]).unwrap().is_empty());
+
+    // A tool consumed m2 first: the renderer's claim must not get it.
+    assert_eq!(mb.read_messages("b", true).unwrap().len(), 1);
+    assert!(mb.claim("b", &[m2.clone()]).unwrap().is_empty());
+    assert!(mb.pending("b").unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_reply_consumed_by_wait_for_reply_cannot_be_claimed_and_vice_versa() {
+    let fx = Fixture::new("claimwait");
+    let mb = Mailbox::open(&fx.data);
+    pair(&fx, &mb);
+
+    // wait_for_reply consumes the reply: a later claim gets nothing.
+    let q1 = mb.send("a", "b", "q1", None, Origin::Agent).unwrap().message_id;
+    let r1 = mb.send("b", "a", "r1", Some(&q1), Origin::Agent).unwrap().message_id;
+    assert_eq!(mb.take_for_delivery("a").unwrap().len(), 1);
+    match mb.wait_for_reply("a", &q1, Duration::from_secs(1), None).await.unwrap() {
+        WaitOutcome::Reply(e) => assert_eq!(e.id, r1),
+        other => panic!("expected the reply, got {other:?}"),
+    }
+    assert!(mb.claim("a", &[r1.clone()]).unwrap().is_empty());
+
+    // The renderer claimed the reply first: wait_for_reply does not return it again.
+    let q2 = mb.send("a", "b", "q2", None, Origin::Agent).unwrap().message_id;
+    let r2 = mb.send("b", "a", "r2", Some(&q2), Origin::Agent).unwrap().message_id;
+    assert_eq!(mb.claim("a", &[r2.clone()]).unwrap(), vec![r2.clone()]);
+    assert_eq!(
+        mb.wait_for_reply("a", &q2, Duration::from_secs(1), None).await.unwrap(),
+        WaitOutcome::AlreadyDelivered(r2)
+    );
+}
+
+#[test]
+fn a_credential_in_a_message_is_scrubbed_before_it_is_stored() {
+    let fx = Fixture::new("scrub");
+    let mb = Mailbox::open(&fx.data);
+    pair(&fx, &mb);
+    mb.send(
+        "a",
+        "b",
+        "the header was Authorization: Bearer sk-not-a-real-key-1234567890",
+        None,
+        Origin::Agent,
+    )
+    .unwrap();
+    let inbox = mb.pending("b").unwrap();
+    assert!(!inbox[0].text.contains("sk-not-a-real-key-1234567890"), "{}", inbox[0].text);
+    let raw = std::fs::read_to_string(fx.data.join("mailbox").join("inbox").join("b.jsonl")).unwrap();
+    assert!(!raw.contains("sk-not-a-real-key-1234567890"));
+}
+
+#[test]
+fn registering_again_after_a_crash_mid_run_resets_the_stale_running_record() {
+    let fx = Fixture::new("crashrun");
+    let old = Mailbox::open(&fx.data).with_epoch("previous-process");
+    old.register("b", "Beta", fx.folder()).unwrap();
+    old.set_status("b", true, Some("run-1")).unwrap();
+
+    // Same process re-registering mid-run (a rename) keeps the run.
+    let again = old.register("b", "Beta renamed", fx.folder()).unwrap();
+    assert_eq!(again.status, SessionStatus::Running);
+    assert_eq!(again.run_id.as_deref(), Some("run-1"));
+
+    let current = Mailbox::open(&fx.data).with_epoch("this-process");
+    assert_eq!(current.session("b").unwrap().status, SessionStatus::Unavailable);
+    let record = current.register("b", "Beta", fx.folder()).unwrap();
+    assert_eq!(record.status, SessionStatus::Idle);
+    assert_eq!(record.run_id, None);
+    assert_eq!(record.heartbeat_at, None);
+    assert_eq!(record.epoch, None);
+    assert_eq!(current.session("b").unwrap().status, SessionStatus::Idle);
+}
+
+#[test]
+fn a_copied_project_id_file_does_not_join_another_project() {
+    let fx = Fixture::new("spoof");
+    for dir in [&fx.project, &fx.other_project] {
+        let id_dir = dir.join(".jan").join("agent");
+        std::fs::create_dir_all(&id_dir).unwrap();
+        std::fs::write(id_dir.join("project-id"), "proj-shared").unwrap();
+    }
+    let mb = Mailbox::open(&fx.data);
+    mb.register("a", "Alpha", fx.folder()).unwrap();
+    mb.register("x", "Intruder", fx.other()).unwrap();
+    mb.register("c", "Same folder", fx.folder()).unwrap();
+
+    let listed: Vec<String> = mb.list_sessions("a").unwrap().into_iter().map(|s| s.id).collect();
+    assert_eq!(listed, vec!["c".to_string()]);
+    assert_eq!(
+        code_of(mb.send("x", "a", "let me in", None, Origin::Agent)),
+        code::NOT_SAME_PROJECT
+    );
+    mb.send("c", "a", "hello", None, Origin::Agent).unwrap();
+}
+
+#[test]
+fn a_corrupt_registry_refuses_writes_and_is_left_untouched() {
+    let fx = Fixture::new("corrupt");
+    let mb = Mailbox::open(&fx.data);
+    pair(&fx, &mb);
+    mb.remove("b").unwrap();
+    let path = fx.data.join("mailbox").join("sessions.json");
+    let damaged = b"{\"a\": {\"id\": \"a\", trunc".to_vec();
+    std::fs::write(&path, &damaged).unwrap();
+
+    assert_eq!(code_of(mb.register("n", "New", fx.folder())), code::IO);
+    assert_eq!(code_of(mb.remove("z")), code::IO);
+    assert_eq!(code_of(mb.set_status("a", true, Some("r"))), code::IO);
+    assert_eq!(code_of(mb.send("a", "b", "hi", None, Origin::Agent)), code::IO);
+    assert_eq!(std::fs::read(&path).unwrap(), damaged);
+
+    // A missing registry is still an empty one.
+    std::fs::remove_file(&path).unwrap();
+    mb.register("n", "New", fx.folder()).unwrap();
+}

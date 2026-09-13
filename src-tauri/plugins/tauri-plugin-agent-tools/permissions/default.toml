@@ -77,6 +77,7 @@ permissions = [
     "allow-mailbox-take-for-delivery",
     "allow-mailbox-pending",
     "allow-mailbox-mark-read",
+    "allow-mailbox-claim",
     "allow-mailbox-reply",
     "allow-mailbox-list-sessions",
 ]

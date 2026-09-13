@@ -270,8 +270,20 @@ pub struct SendReceipt {
 #[derive(Debug, Clone, PartialEq)]
 pub enum WaitOutcome {
     Reply(MailEnvelope),
+    /// The reply (this message id) exists but was already consumed: read by
+    /// `read_messages` or delivered into the conversation by the renderer.
+    AlreadyDelivered(String),
     Timeout,
     TargetUnavailable,
+}
+
+/// The project key sessions are grouped by for messaging.
+///
+/// Derived from the canonical folder path only. Memory lets a checked-in
+/// `.jan/agent/project-id` win, but that file is content anyone can commit, so
+/// for messaging it would let an unrelated folder join another project.
+pub fn messaging_project_key(folder: &Path) -> String {
+    crate::memory::identity::project_path_id(folder)
 }
 
 // ---------------------------------------------------------------------------
@@ -461,8 +473,17 @@ impl Mailbox {
         self.root.join("outbox").join(format!("{session_id}.jsonl"))
     }
 
-    fn read_registry(&self) -> BTreeMap<String, SessionRecord> {
-        read_json_or_default(&self.registry_path())
+    /// The registry. A missing file is an empty registry; a file that exists
+    /// but does not parse is an `io` error, so no writer replaces a damaged
+    /// registry (and its deletion tombstones) with an empty one.
+    fn read_registry(&self) -> Result<BTreeMap<String, SessionRecord>> {
+        let path = self.registry_path();
+        match std::fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice(&bytes)
+                .map_err(|e| MailboxError::io("session registry is unreadable", e)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BTreeMap::new()),
+            Err(e) => Err(MailboxError::io("read session registry", e)),
+        }
     }
 
     fn write_registry(&self, registry: &BTreeMap<String, SessionRecord>) -> Result<()> {
@@ -500,7 +521,10 @@ impl Mailbox {
 
     /// One session's record with its current status, if registered.
     pub fn session(&self, session_id: &str) -> Option<SessionRecord> {
-        self.read_registry().get(session_id).map(|r| self.view(r))
+        self.read_registry()
+            .ok()?
+            .get(session_id)
+            .map(|r| self.view(r))
     }
 
     /// Upsert a session. The project is recomputed from `folder` every time,
@@ -515,13 +539,13 @@ impl Mailbox {
         let project = folder
             .map(str::trim)
             .filter(|f| !f.is_empty())
-            .map(|f| crate::memory::identity::project_id_read_only(Path::new(f)));
+            .map(|f| messaging_project_key(Path::new(f)));
         let name: String = match display_name.trim() {
             "" => session_id.to_string(),
             n => n.chars().take(MAX_DISPLAY_NAME_CHARS).collect(),
         };
         let _guard = lock();
-        let mut registry = self.read_registry();
+        let mut registry = self.read_registry()?;
         let now = self.now();
         let record = match registry.get_mut(session_id) {
             Some(existing) if existing.deleted => {
@@ -534,6 +558,17 @@ impl Mailbox {
                 existing.display_name = name;
                 existing.project = project;
                 existing.updated_at = now;
+                // A run recorded by a process that is gone (quit or crash
+                // mid-run) never reported its end. Registering again in this
+                // process means the session is here and not running that run.
+                if existing.status == SessionStatus::Running
+                    && existing.epoch.as_deref() != Some(self.epoch.as_str())
+                {
+                    existing.status = SessionStatus::Idle;
+                    existing.run_id = None;
+                    existing.heartbeat_at = None;
+                    existing.epoch = None;
+                }
                 existing.clone()
             }
             None => {
@@ -563,7 +598,7 @@ impl Mailbox {
     ) -> Result<()> {
         check_session_id(session_id)?;
         let _guard = lock();
-        let mut registry = self.read_registry();
+        let mut registry = self.read_registry()?;
         let now = self.now();
         let record = registry.get_mut(session_id).ok_or_else(|| {
             MailboxError::new(code::UNKNOWN_SESSION, "this session is not registered")
@@ -623,7 +658,7 @@ impl Mailbox {
     pub fn remove(&self, session_id: &str) -> Result<()> {
         check_session_id(session_id)?;
         let _guard = lock();
-        let mut registry = self.read_registry();
+        let mut registry = self.read_registry()?;
         let now = self.now();
         let record = registry
             .entry(session_id.to_string())
@@ -675,7 +710,7 @@ impl Mailbox {
 
     /// Other live sessions in the caller's project.
     pub fn list_sessions(&self, caller_id: &str) -> Result<Vec<SessionSummary>> {
-        let registry = self.read_registry();
+        let registry = self.read_registry()?;
         let (_, project) = self.caller(&registry, caller_id)?;
         let mut out: Vec<SessionSummary> = registry
             .values()
@@ -708,9 +743,12 @@ impl Mailbox {
     ) -> Result<SendReceipt> {
         let (receipt, to) = {
             let _guard = lock();
-            let registry = self.read_registry();
+            let registry = self.read_registry()?;
             let (caller, project) = self.caller(&registry, from_id)?;
             check_text(text)?;
+            // Same scrubber as the run-to-run mailbox (AH-103): a credential
+            // pasted into a message never reaches disk or another session.
+            let text = crate::harness_error::scrub(text);
             check_session_id(to_id)
                 .map_err(|_| MailboxError::new(code::UNKNOWN_SESSION, "no session has that id"))?;
             if to_id == from_id {
@@ -796,7 +834,7 @@ impl Mailbox {
                     session_id: to_id.to_string(),
                 },
                 project,
-                text: text.to_string(),
+                text,
                 created_at: now,
                 reply_to: reply_to.map(str::to_string),
                 depth,
@@ -934,6 +972,38 @@ impl Mailbox {
         self.mark_read_locked(session_id, ids)
     }
 
+    /// Claim envelopes for delivery into the conversation: each named id that
+    /// is in this inbox and not yet `read` becomes `read`, under the lock, and
+    /// is returned. An id already read (a tool consumed it, or an earlier
+    /// claim) is not returned, so it must not be delivered again.
+    pub fn claim(&self, session_id: &str, ids: &[String]) -> Result<Vec<String>> {
+        check_session_id(session_id)?;
+        let _guard = lock();
+        let (inbox, mut state) = self.inbox_with_state(session_id);
+        let now = self.now();
+        let mut claimed = Vec::new();
+        for id in ids {
+            if claimed.contains(id)
+                || Self::status_in(&state, id) == DeliveryStatus::Read
+                || !inbox.iter().any(|e| &e.id == id)
+            {
+                continue;
+            }
+            state.insert(
+                id.clone(),
+                DeliveryEntry {
+                    status: DeliveryStatus::Read,
+                    at: now,
+                },
+            );
+            claimed.push(id.clone());
+        }
+        if !claimed.is_empty() {
+            write_json_atomically(&self.state_path(session_id), &state)?;
+        }
+        Ok(claimed)
+    }
+
     /// The `read_messages` tool: unread envelopes, optionally marked read in
     /// the same locked step so a concurrent delivery cannot interleave.
     pub fn read_messages(&self, session_id: &str, mark_read: bool) -> Result<Vec<MailEnvelope>> {
@@ -966,7 +1036,7 @@ impl Mailbox {
         cancel: Option<crate::lifecycle::Token>,
     ) -> Result<WaitOutcome> {
         {
-            let registry = self.read_registry();
+            let registry = self.read_registry()?;
             self.caller(&registry, caller_id)?;
         }
         let unknown = || {
@@ -987,15 +1057,25 @@ impl Mailbox {
         loop {
             {
                 let _guard = lock();
-                let reply = read_jsonl::<MailEnvelope>(&self.inbox_path(caller_id))
+                let (inbox, state) = self.inbox_with_state(caller_id);
+                let replies: Vec<MailEnvelope> = inbox
                     .into_iter()
-                    .find(|e| e.reply_to.as_deref() == Some(message_id));
-                if let Some(reply) = reply {
+                    .filter(|e| e.reply_to.as_deref() == Some(message_id))
+                    .collect();
+                let unread = replies
+                    .iter()
+                    .find(|e| Self::status_in(&state, &e.id) != DeliveryStatus::Read);
+                if let Some(reply) = unread {
+                    // Claimed here, under the lock: a reply this call returns
+                    // cannot also be claimed by the renderer's steering drain.
                     self.mark_read_locked(caller_id, std::slice::from_ref(&reply.id))?;
-                    return Ok(WaitOutcome::Reply(reply));
+                    return Ok(WaitOutcome::Reply(reply.clone()));
+                }
+                if let Some(reply) = replies.first() {
+                    return Ok(WaitOutcome::AlreadyDelivered(reply.id.clone()));
                 }
             }
-            let target_gone = match self.read_registry().get(&original.to) {
+            let target_gone = match self.read_registry()?.get(&original.to) {
                 None => true,
                 Some(r) => self.status_of(r) == SessionStatus::Unavailable,
             };
@@ -1142,6 +1222,11 @@ pub async fn run_tool(
                         "untrusted": true,
                         "notice": UNTRUSTED_NOTICE,
                         "message": envelope_for_model(&e),
+                    }),
+                    WaitOutcome::AlreadyDelivered(id) => serde_json::json!({
+                        "outcome": "already_delivered",
+                        "message_id": id,
+                        "note": "The reply already reached this session (through read_messages or as a message in the conversation). It is not returned twice.",
                     }),
                     WaitOutcome::Timeout => serde_json::json!({
                         "outcome": code::TIMEOUT,
