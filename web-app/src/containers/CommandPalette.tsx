@@ -6,11 +6,18 @@
  * own routes, the settings registry and the conversation list, and are ranked
  * locally (`rankCommands`); nothing is looked up over the network.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { useNavigate } from '@tanstack/react-router'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Search } from 'lucide-react'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { route } from '@/constants/routes'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -177,7 +184,9 @@ export function CommandPalette() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent
-        className="sm:max-w-xl p-0 gap-0 overflow-hidden"
+        // Phone: a full-screen sheet rather than a bottom sheet under the
+        // keyboard.
+        className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-xl sm:pb-0 max-sm:top-0 max-sm:h-(--app-vvh,100dvh) max-sm:max-h-none max-sm:rounded-none max-sm:border-0 max-sm:pb-[env(safe-area-inset-bottom)]"
         showCloseButton={false}
         aria-describedby={undefined}
         data-testid="command-palette"
@@ -185,53 +194,84 @@ export function CommandPalette() {
         <VisuallyHidden>
           <DialogTitle>{t('common:commandPalette.title')}</DialogTitle>
         </VisuallyHidden>
-        <input
-          ref={inputRef}
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder={t('common:commandPalette.placeholder')}
-          className="h-12 border-b px-4 bg-transparent placeholder:text-muted-foreground focus:outline-none"
-          data-testid="command-palette-input"
-          role="combobox"
-          aria-expanded
-          aria-controls="command-palette-list"
-          aria-activedescendant={
-            results[active] ? `palette-${results[active].id}` : undefined
-          }
-        />
+        <div className="flex shrink-0 items-center gap-1 border-b border-border px-3">
+          <Search className="size-4 shrink-0 text-muted-foreground" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder={t('common:commandPalette.placeholder')}
+            className="h-12 min-w-0 flex-1 bg-transparent px-2 text-base placeholder:text-muted-foreground focus:outline-none md:text-sm"
+            data-testid="command-palette-input"
+            role="combobox"
+            aria-expanded
+            aria-controls="command-palette-list"
+            aria-activedescendant={
+              results[active] ? `palette-${results[active].id}` : undefined
+            }
+          />
+          <DialogClose asChild>
+            <Button variant="ghost" size="sm" className="h-11 sm:hidden">
+              {t('common:cancel')}
+            </Button>
+          </DialogClose>
+        </div>
         <ul
           id="command-palette-list"
           role="listbox"
-          className="max-h-80 overflow-y-auto p-1"
+          aria-label={t('common:commandPalette.title')}
+          className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5 sm:max-h-80 sm:flex-none"
         >
           {results.length === 0 ? (
-            <li className="px-3 py-6 text-center text-sm text-muted-foreground">
+            <li
+              role="presentation"
+              className="px-3 py-6 text-center text-sm text-muted-foreground"
+            >
               {t('common:commandPalette.empty')}
             </li>
           ) : null}
-          {results.map((command, index) => (
-            <li
-              key={command.id}
-              id={`palette-${command.id}`}
-              role="option"
-              aria-selected={index === active}
-              data-testid="command-palette-item"
-              data-command={command.id}
-              onMouseEnter={() => setActive(index)}
-              onClick={() => runAt(index)}
-              className={cn(
-                'flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm',
-                index === active && 'bg-secondary/60'
-              )}
-            >
-              <span className="min-w-0 flex-1 truncate">{command.title}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {command.hint ?? sectionLabel(command.section)}
-              </span>
-            </li>
-          ))}
+          {results.map((command, index) => {
+            // Ranking decides the order; a label marks where a run of one
+            // section starts, so keyboard order and visual order stay one.
+            const startsGroup =
+              index === 0 || results[index - 1].section !== command.section
+            const selected = index === active
+            return (
+              <Fragment key={command.id}>
+                {startsGroup && (
+                  <li
+                    role="presentation"
+                    className="px-3 pb-0.5 pt-2 text-xs font-medium tracking-wide text-muted-foreground [font-variant-caps:all-small-caps]"
+                  >
+                    {t(`common:commandPalette.group.${command.section}`)}
+                  </li>
+                )}
+                <li
+                  id={`palette-${command.id}`}
+                  role="option"
+                  aria-selected={selected}
+                  data-testid="command-palette-item"
+                  data-command={command.id}
+                  onMouseEnter={() => setActive(index)}
+                  onClick={() => runAt(index)}
+                  className={cn(
+                    'relative flex min-h-10 cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm pointer-coarse:min-h-11',
+                    selected &&
+                      'bg-brand-tint before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-brand'
+                  )}
+                >
+                  <span className="min-w-0 flex-1 truncate">
+                    {command.title}
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {command.hint ?? sectionLabel(command.section)}
+                  </span>
+                </li>
+              </Fragment>
+            )
+          })}
         </ul>
       </DialogContent>
     </Dialog>

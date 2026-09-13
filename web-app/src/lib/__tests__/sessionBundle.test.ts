@@ -166,3 +166,78 @@ describe('importSession', () => {
     expect(useCoworkSessions.getState().sessions).toHaveLength(0)
   })
 })
+
+// AH-211: an exported session keeps the provider's usage, cache breakdown
+// included; a hand-edited file cannot plant nonsense; an older file without
+// usage imports with none rather than a zero.
+describe('token usage across export and import', () => {
+  beforeEach(() => useCoworkSessions.setState({ sessions: [], currentId: null }))
+
+  const withUsage = (lastUsage: unknown) =>
+    JSON.parse(
+      JSON.stringify(
+        buildBundle({
+          session: session({
+            lastUsage: lastUsage as CoworkSession['lastUsage'],
+            subagents: [
+              {
+                runId: 'r1',
+                name: 'researcher',
+                status: 'done',
+                startedAt: 0,
+                turns: [],
+                usage: {
+                  prompt_tokens: 900,
+                  completion_tokens: 40,
+                  total_tokens: 940,
+                  cached_prompt_tokens: 800,
+                  uncached_prompt_tokens: 100,
+                },
+              },
+            ],
+          }),
+          toolActivity: [],
+          fileActivity: [],
+        })
+      )
+    ) as SessionBundle
+
+  it('keeps the session and subagent cache breakdown', () => {
+    const usage = {
+      prompt_tokens: 5900,
+      completion_tokens: 32,
+      total_tokens: 5932,
+      cached_prompt_tokens: 5863,
+      uncached_prompt_tokens: 37,
+      cache_source: 'openai-chat' as const,
+    }
+    const result = useCoworkSessions.getState().importSession(withUsage(usage))
+    expect(result.ok).toBe(true)
+    const s = useCoworkSessions.getState().sessions[0]
+    expect(s.lastUsage).toEqual(usage)
+    expect(s.subagents?.[0].usage?.cached_prompt_tokens).toBe(800)
+  })
+
+  it('normalises an edited usage instead of trusting it', () => {
+    useCoworkSessions.getState().importSession(
+      withUsage({
+        prompt_tokens: 100,
+        completion_tokens: 1,
+        total_tokens: 101,
+        cached_prompt_tokens: 250,
+        uncached_prompt_tokens: -5,
+      })
+    )
+    const s = useCoworkSessions.getState().sessions[0]
+    expect(s.lastUsage?.cached_prompt_tokens).toBe(100)
+    expect(s.lastUsage?.uncached_prompt_tokens).toBe(0)
+    expect(s.lastUsage?.reported).toEqual({ cachedInputTokens: 250 })
+  })
+
+  it('imports an older export without usage as no usage, not zero', () => {
+    const legacy = withUsage(undefined)
+    delete (legacy.session as { lastUsage?: unknown }).lastUsage
+    useCoworkSessions.getState().importSession(legacy)
+    expect(useCoworkSessions.getState().sessions[0].lastUsage).toBeUndefined()
+  })
+})

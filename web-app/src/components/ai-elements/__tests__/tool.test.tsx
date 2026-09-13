@@ -16,6 +16,10 @@ const resolveApproval = vi.fn()
 vi.mock('@/hooks/useToolApprovalRequests', () => ({
   useToolApprovalRequests: (selector: (s: unknown) => unknown) =>
     selector({ ...approvalState, resolveApproval }),
+  usePendingApprovalCount: (threadId?: string) =>
+    Object.values(approvalState.pending).filter(
+      (e) => (e as { threadId?: string }).threadId === threadId
+    ).length,
 }))
 
 vi.mock('../code-block', () => ({
@@ -79,7 +83,7 @@ describe('ToolApprovalActions', () => {
   it('renders nothing when no approval is pending', () => {
     renderApproval({})
     expect(
-      screen.queryByText('tools:toolApproval.deny')
+      screen.queryByText('permissions:scope.deny')
     ).not.toBeInTheDocument()
   })
 
@@ -87,13 +91,18 @@ describe('ToolApprovalActions', () => {
   // offers the server rather than the single tool.
   it('offers to trust the whole server by name', () => {
     renderApproval({
-      tc1: { toolCallId: 'tc1', toolName: 'create_issue', serverName: 'github' },
+      tc1: {
+        toolCallId: 'tc1',
+        toolName: 'create_issue',
+        serverName: 'github',
+        threadId: 't1',
+      },
     })
     expect(
-      screen.getByText('tools:toolApproval.allowServerAlways:github')
+      screen.getByText('permissions:scope.allowAlwaysServer:github')
     ).toBeInTheDocument()
     expect(
-      screen.queryByText(/tools:toolApproval.allowToolAlways/)
+      screen.queryByText(/permissions:scope.allowAlwaysTool/)
     ).not.toBeInTheDocument()
   })
 
@@ -120,28 +129,85 @@ describe('ToolApprovalActions', () => {
   })
 
   it('falls back to the tool name when it has no server', () => {
-    renderApproval({ tc1: { toolCallId: 'tc1', toolName: 'do_thing' } })
+    renderApproval({
+      tc1: { toolCallId: 'tc1', toolName: 'do_thing', threadId: 't1' },
+    })
     expect(
-      screen.getByText('tools:toolApproval.allowToolAlways:do_thing')
+      screen.getByText('permissions:scope.allowAlwaysTool:do_thing')
     ).toBeInTheDocument()
   })
 
   it('grants each scope the reader picked', () => {
     renderApproval({
-      tc1: { toolCallId: 'tc1', toolName: 'create_issue', serverName: 'github' },
+      tc1: {
+        toolCallId: 'tc1',
+        toolName: 'create_issue',
+        serverName: 'github',
+        threadId: 't1',
+      },
     })
-    fireEvent.click(screen.getByText('tools:toolApproval.allowOnce'))
-    fireEvent.click(screen.getByText('tools:toolApproval.allowInThread'))
+    fireEvent.click(screen.getByText('permissions:scope.allowOnce'))
+    fireEvent.click(screen.getByText('permissions:scope.allowThread'))
     fireEvent.click(
-      screen.getByText('tools:toolApproval.allowServerAlways:github')
+      screen.getByText('permissions:scope.allowAlwaysServer:github')
     )
-    fireEvent.click(screen.getByText('tools:toolApproval.deny'))
+    fireEvent.click(screen.getByText('permissions:scope.deny'))
     expect(resolveApproval.mock.calls.map((c) => c[1])).toEqual([
       'allow-once',
       'allow-thread',
       'allow-always',
       'deny',
     ])
+  })
+
+  // A reflexive Enter must never widen a permission.
+  it('starts focus on Deny, not on the broadest grant', () => {
+    renderApproval({
+      tc1: { toolCallId: 'tc1', toolName: 'bash', threadId: 't1' },
+    })
+    expect(document.activeElement).toHaveTextContent('permissions:scope.deny')
+  })
+
+  it('describes the call from its input and marks the broader scope', () => {
+    renderApproval({
+      tc1: {
+        toolCallId: 'tc1',
+        toolName: 'bash',
+        threadId: 't1',
+        input: { command: 'npm test' },
+      },
+    })
+    expect(screen.getByText('permissions:action.runCommand')).toBeInTheDocument()
+    expect(screen.getByText('npm test')).toBeInTheDocument()
+    expect(screen.getByText('permissions:scope.broader')).toBeInTheDocument()
+  })
+
+  it('announces how many requests wait in the thread, once', () => {
+    renderApproval({
+      tc1: { toolCallId: 'tc1', toolName: 'bash', threadId: 't1' },
+      tc2: { toolCallId: 'tc2', toolName: 'write', threadId: 't1' },
+      tc3: { toolCallId: 'tc3', toolName: 'write', threadId: 't2' },
+    })
+    const status = screen.getByRole('status')
+    expect(status).toHaveAttribute('aria-live', 'polite')
+    expect(status).toHaveTextContent('permissions:pending.many')
+  })
+})
+
+describe('ToolOutput refusal explanation', () => {
+  it('explains a refusal with its next step', () => {
+    renderOutput({
+      output: undefined,
+      errorText: "tool 'bash' is denied by policy",
+    })
+    const note = screen.getByTestId('permission-outcome')
+    expect(note).toHaveTextContent('permissions:outcome.policy')
+    expect(note).toHaveTextContent('permissions:outcome.policyNext')
+  })
+
+  it('adds nothing to an ordinary error', () => {
+    renderOutput({ output: undefined, errorText: 'boom' })
+    expect(screen.queryByTestId('permission-outcome')).not.toBeInTheDocument()
   })
 })
 

@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 interface AddProviderDialogProps {
   onCreateProvider: (
@@ -78,7 +79,7 @@ export function AddProviderDialog({
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent
-        className="sm:max-w-[460px] max-w-[90vw]"
+        className="sm:max-w-[460px]"
         onOpenAutoFocus={(e) => {
           e.preventDefault()
           nameInputRef.current?.focus()
@@ -97,7 +98,7 @@ export function AddProviderDialog({
             onKeyDown={(e) => e.stopPropagation()}
           />
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs text-muted-foreground">
+            <label className="text-xs font-medium text-ink-2">
               {t('provider:apiTypeLabel')}
             </label>
             <RadioGroup
@@ -105,21 +106,22 @@ export function AddProviderDialog({
               onValueChange={(v) => setApiType(v as ProviderApiType)}
               className="flex flex-row gap-4"
             >
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer sm:min-h-0">
                 <RadioGroupItem value="openai" />
                 {t('provider:apiTypeOpenAI')}
               </label>
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <label className="flex min-h-11 items-center gap-2 text-sm cursor-pointer sm:min-h-0">
                 <RadioGroupItem value="anthropic" />
                 {t('provider:apiTypeAnthropic')}
               </label>
             </RadioGroup>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground">
+            <label className="text-xs font-medium text-ink-2">
               {t('provider:baseUrlLabel')}
             </label>
             <Input
+              className="font-mono"
               value={baseUrl}
               onChange={(e) => {
                 setBaseUrl(e.target.value)
@@ -130,7 +132,7 @@ export function AddProviderDialog({
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground">
+            <label className="text-xs font-medium text-ink-2">
               {t('provider:apiKeyLabel')}
             </label>
             <Input
@@ -148,16 +150,18 @@ export function AddProviderDialog({
             />
           </div>
           {error && (
-            <p className="text-xs text-destructive">{error}</p>
+            <p role="alert" className="text-xs text-destructive">
+              {error}
+            </p>
           )}
         </div>
 
-        <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 mt-2">
+        <DialogFooter className={STICKY_DIALOG_FOOTER}>
           <DialogClose asChild>
             <Button
-              variant="link"
+              variant="ghost"
               size="sm"
-              className="hover:no-underline w-full sm:w-auto"
+              className="w-full sm:w-auto pointer-coarse:h-11"
             >
               {t('common:cancel')}
             </Button>
@@ -165,7 +169,7 @@ export function AddProviderDialog({
           <Button
             disabled={!canSubmit}
             onClick={handleCreate}
-            className="w-full sm:w-auto"
+            className="w-full sm:w-auto pointer-coarse:h-11"
             size="sm"
             aria-label={t('common:create')}
           >

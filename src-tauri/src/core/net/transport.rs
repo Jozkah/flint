@@ -111,25 +111,79 @@ fn endpoint_of(url: &str) -> Result<(String, u16), String> {
 }
 
 fn client_for(host: &str, port: u16) -> Result<Client, String> {
+    // AH-190: clients built under another CA bundle are not reused.
+    static BUILT_FOR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let bundle = crate::core::net::tls::fingerprint();
+    if BUILT_FOR.swap(bundle, Ordering::SeqCst) != bundle {
+        if let Ok(mut cache) = clients().lock() {
+            cache.clear();
+        }
+    }
     let key = (host.to_ascii_lowercase(), port);
     if let Some(existing) = clients().lock().ok().and_then(|c| c.get(&key).cloned()) {
         return Ok(existing);
     }
-    let client = Client::builder()
-        .dns_resolver(Arc::new(EndpointResolver {
-            port,
-            cache: resolver::shared().clone(),
-        }))
-        // A local server that is down should fail quickly enough that the next
-        // candidate is tried while the user is still watching.
-        .connect_timeout(Duration::from_secs(10))
-        .pool_idle_timeout(Duration::from_secs(30))
-        .build()
+    let client = crate::core::net::tls::apply12(
+        Client::builder()
+            .dns_resolver(Arc::new(EndpointResolver {
+                port,
+                cache: resolver::shared().clone(),
+            }))
+            // A local server that is down should fail quickly enough that the next
+            // candidate is tried while the user is still watching.
+            .connect_timeout(Duration::from_secs(10))
+            .pool_idle_timeout(Duration::from_secs(30))
+            .redirect(same_origin_redirects()),
+    )
+    .build()
         .map_err(|e| format!("could not build an HTTP client for {host}:{port}: {e}"))?;
     if let Ok(mut cache) = clients().lock() {
         cache.insert(key, client.clone());
     }
     Ok(client)
+}
+
+/// How many redirects a request may follow, as reqwest's default allowed.
+const MAX_REDIRECTS: usize = 10;
+
+/// Whether `next` is the same server as `first`, or the same host moved from
+/// `http` to `https` on the default ports.
+fn same_origin(first: &url::Url, next: &url::Url) -> bool {
+    if first.host_str() != next.host_str() {
+        return false;
+    }
+    let (a, b) = (first.port_or_known_default(), next.port_or_known_default());
+    (first.scheme() == next.scheme() && a == b)
+        || (first.scheme() == "http" && next.scheme() == "https" && a == Some(80) && b == Some(443))
+}
+
+/// Follow a redirect only while it stays on the server the request was sent
+/// to. janhq/jan#8208.
+///
+/// reqwest's default follows any redirect and drops only `Authorization`,
+/// `Cookie` and the proxy credentials when the host changes. Every other
+/// header went on to the new host: `x-api-key`, `x-goog-api-key` and every
+/// custom header, a subscription key or a tenant token among them. A provider
+/// that answers with a redirect to somewhere else now gets an error naming
+/// where it tried to send the request, and nothing is sent there.
+fn same_origin_redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() > MAX_REDIRECTS {
+            return attempt.error("too many redirects");
+        }
+        let Some(first) = attempt.previous().first() else {
+            return attempt.follow();
+        };
+        if same_origin(first, attempt.url()) {
+            return attempt.follow();
+        }
+        let to = attempt.url().origin().ascii_serialization();
+        attempt.error(format!(
+            "refused to follow a redirect to another server ({to}): the request's \
+             headers, its keys among them, would have gone there too. Point the \
+             provider's base URL at the server that answers."
+        ))
+    })
 }
 
 /// Forget an endpoint: a provider was edited, the network changed, or the user
@@ -413,7 +467,24 @@ fn transport_failed(host: &str, port: u16, e: &reqwest::Error) -> String {
     } else {
         "failed"
     };
-    format!("{host}:{port} {what}{diag}: {e}")
+    // reqwest's own text stops at the kind of failure ("error following
+    // redirect"); the reason is in the source chain.
+    let mut reason = e.to_string();
+    let mut source = std::error::Error::source(e);
+    while let Some(s) = source {
+        let text = s.to_string();
+        if !reason.contains(&text) {
+            reason.push_str(": ");
+            reason.push_str(&text);
+        }
+        source = s.source();
+    }
+    // R13: a certificate failure is named as one, not left to be read out of
+    // an operating system message.
+    if let Some(certificate) = crate::core::net::tls::certificate_failure(e) {
+        reason.push_str(&format!(" [certificate: {certificate}]"));
+    }
+    format!("{host}:{port} {what}{diag}: {reason}")
 }
 
 /// A credential-free, one-line account of what was resolved and chosen.
@@ -439,6 +510,18 @@ pub fn describe(host: &str, port: u16) -> Option<String> {
     Some(format!("resolved {candidates}; selected {selected}"))
 }
 
+/// An error response's body with every value the user marked secret replaced.
+/// janhq/jan#8208. A success body is the model's output and is left alone.
+fn redact_error_body(status: reqwest::StatusCode, body: String) -> String {
+    if status.is_success() {
+        return body;
+    }
+    match crate::core::secret_values::scrub(&body) {
+        std::borrow::Cow::Owned(redacted) => redacted,
+        std::borrow::Cow::Borrowed(_) => body,
+    }
+}
+
 /// Send a provider request and read the whole response.
 pub async fn send(req: ProviderRequest) -> Result<ProviderResponse, String> {
     let (host, port) = endpoint_of(&req.url)?;
@@ -459,6 +542,7 @@ pub async fn send(req: ProviderRequest) -> Result<ProviderResponse, String> {
         .text()
         .await
         .map_err(|e| format!("{host}:{port} answered but the body could not be read: {e}"))?;
+    let body = redact_error_body(status, body);
 
     Ok(ProviderResponse {
         status: status.as_u16(),
@@ -502,6 +586,29 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
         peer: peer.map(|p| p.to_string()),
         snapshot,
     });
+
+    // An error body is read whole and redacted before the webview sees it:
+    // it is shown to the user and kept in the thread, and a gateway that
+    // echoes the request back would otherwise put a secret header's value in
+    // both. Error bodies are small; a chunk-by-chunk redaction could miss a
+    // value split across two chunks.
+    if !status.is_success() {
+        let body = match response.text().await {
+            Ok(body) => redact_error_body(status, body),
+            Err(e) => {
+                let message = transport_failed(&host, port, &e);
+                sink.send(StreamChunk::Error {
+                    message: message.clone(),
+                });
+                return Err(message);
+            }
+        };
+        sink.send(StreamChunk::Data {
+            b64: base64::engine::general_purpose::STANDARD.encode(body.as_bytes()),
+        });
+        sink.send(StreamChunk::End);
+        return Ok(());
+    }
 
     let mut stream = response.bytes_stream();
     loop {
@@ -1063,5 +1170,206 @@ mod tests {
         assert!(text.contains("selected 100.86.12.4"), "{text}");
         assert!(!text.to_lowercase().contains("bearer"));
         assert!(!text.to_lowercase().contains("authorization"));
+    }
+
+    /// Serves `responses` in order, one per connection, reporting each
+    /// request head it received.
+    fn serve_each(responses: Vec<String>) -> (u16, mpsc::Receiver<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            for response in responses {
+                let Ok((mut stream, _)) = listener.accept() else {
+                    return;
+                };
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let _ = tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
+                let _ = stream.write_all(response.as_bytes());
+                let _ = stream.flush();
+            }
+        });
+        (port, rx)
+    }
+
+    fn redirect_to(location: &str) -> String {
+        format!(
+            "HTTP/1.1 307 Temporary Redirect\r\nLocation: {location}\r\n\
+             Content-Length: 0\r\nConnection: close\r\n\r\n"
+        )
+    }
+
+    fn with_credentials() -> HashMap<String, String> {
+        HashMap::from([
+            ("x-api-key".to_string(), "key-that-must-not-travel".to_string()),
+            ("X-Subscription".to_string(), "header-that-must-not-travel".to_string()),
+        ])
+    }
+
+    /// janhq/jan#8208. A redirect to another server carried every header but
+    /// `Authorization` there -- API keys in `x-api-key`, custom credentials.
+    /// The other server here records whatever reaches it; nothing may.
+    #[tokio::test]
+    async fn a_redirect_to_another_server_is_refused_and_nothing_is_sent_there() {
+        let (elsewhere, reached_elsewhere) = serve_each(vec![OK_JSON.to_string()]);
+        let (port, requests) = serve_each(vec![redirect_to(&format!(
+            "http://127.0.0.1:{elsewhere}/v1/models"
+        ))]);
+        let _guard = pin(vec![ip("127.0.0.1")]);
+
+        let err = send(ProviderRequest {
+            url: format!("http://v100:{port}/v1/models"),
+            method: "GET".into(),
+            headers: with_credentials(),
+            timeout_secs: Some(10),
+            ..Default::default()
+        })
+        .await
+        .unwrap_err();
+
+        assert!(err.contains("refused to follow a redirect to another server"), "{err}");
+        assert!(err.contains(&format!("127.0.0.1:{elsewhere}")), "{err}");
+        assert!(!err.contains("must-not-travel"), "{err}");
+        // The configured server was asked; the other one never was.
+        requests.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(
+            reached_elsewhere.recv_timeout(Duration::from_millis(500)).is_err(),
+            "the request, credentials and all, reached the other server"
+        );
+    }
+
+    /// The streaming path uses the same client, so the same refusal.
+    #[tokio::test]
+    async fn a_streamed_request_refuses_the_same_redirect() {
+        struct Collect(mpsc::Sender<StreamChunk>);
+        impl ChunkSink for Collect {
+            fn send(&self, chunk: StreamChunk) {
+                let _ = self.0.send(chunk);
+            }
+        }
+        let (elsewhere, reached_elsewhere) = serve_each(vec![OK_JSON.to_string()]);
+        let (port, _requests) = serve_each(vec![redirect_to(&format!(
+            "http://127.0.0.1:{elsewhere}/v1/chat/completions"
+        ))]);
+        let _guard = pin(vec![ip("127.0.0.1")]);
+        let (tx, chunks) = mpsc::channel();
+
+        let err = send_stream(
+            ProviderRequest {
+                url: format!("http://v100:{port}/v1/chat/completions"),
+                method: "POST".into(),
+                headers: with_credentials(),
+                body: Some("{}".into()),
+                timeout_secs: Some(10),
+                ..Default::default()
+            },
+            Collect(tx),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.contains("refused to follow a redirect"), "{err}");
+        assert!(matches!(chunks.recv().unwrap(), StreamChunk::Error { .. }));
+        assert!(reached_elsewhere.recv_timeout(Duration::from_millis(500)).is_err());
+    }
+
+    /// A redirect that stays on the same server is still followed.
+    #[tokio::test]
+    async fn a_redirect_on_the_same_server_is_followed() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        // Rebind on the same port with the two answers in order.
+        let listener = TcpListener::bind(("127.0.0.1", port)).unwrap();
+        let responses = vec![
+            redirect_to(&format!("http://v100:{port}/v1/models-moved")),
+            OK_JSON.to_string(),
+        ];
+        let (tx, requests) = mpsc::channel();
+        std::thread::spawn(move || {
+            for response in responses {
+                let Ok((mut stream, _)) = listener.accept() else {
+                    return;
+                };
+                let mut buf = [0u8; 4096];
+                let n = stream.read(&mut buf).unwrap_or(0);
+                let _ = tx.send(String::from_utf8_lossy(&buf[..n]).to_string());
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        let _guard = pin(vec![ip("127.0.0.1")]);
+
+        let response = send(ProviderRequest {
+            url: format!("http://v100:{port}/v1/models"),
+            method: "GET".into(),
+            headers: with_credentials(),
+            timeout_secs: Some(10),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(response.status, 200);
+        requests.recv().unwrap();
+        assert!(requests.recv().unwrap().starts_with("GET /v1/models-moved"));
+    }
+
+    /// janhq/jan#8208. A gateway that echoes the request in its error body
+    /// would put a secret header's value in the UI and the thread; the body is
+    /// redacted before it leaves the transport, on both paths.
+    #[tokio::test]
+    async fn an_error_body_echoing_a_secret_header_comes_back_redacted() {
+        let secret = "transport-8208-echoed-secret";
+        crate::core::secret_values::register(secret);
+        let body = format!("{{\"error\":\"bad key {secret}\"}}");
+        let reply = format!(
+            "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\n\
+             Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let (port, _requests) = serve_each(vec![reply.clone(), reply]);
+        let _guard = pin(vec![ip("127.0.0.1")]);
+        let request = || ProviderRequest {
+            url: format!("http://v100:{port}/v1/chat/completions"),
+            method: "POST".into(),
+            body: Some("{}".into()),
+            timeout_secs: Some(10),
+            ..Default::default()
+        };
+
+        let whole = send(request()).await.unwrap();
+        assert_eq!(whole.status, 401);
+        assert!(!whole.body.contains(secret), "{}", whole.body);
+        assert!(whole.body.contains("bad key <redacted>"), "{}", whole.body);
+
+        struct Collect(mpsc::Sender<StreamChunk>);
+        impl ChunkSink for Collect {
+            fn send(&self, chunk: StreamChunk) {
+                let _ = self.0.send(chunk);
+            }
+        }
+        let (tx, chunks) = mpsc::channel();
+        send_stream(request(), Collect(tx)).await.unwrap();
+        let mut streamed = String::new();
+        for chunk in chunks.try_iter() {
+            if let StreamChunk::Data { b64 } = chunk {
+                let bytes = base64::engine::general_purpose::STANDARD.decode(b64).unwrap();
+                streamed.push_str(&String::from_utf8_lossy(&bytes));
+            }
+        }
+        assert!(!streamed.contains(secret), "{streamed}");
+        assert!(streamed.contains("bad key <redacted>"), "{streamed}");
+    }
+
+    #[test]
+    fn only_the_same_server_counts_as_the_same_origin() {
+        let u = |s: &str| url::Url::parse(s).unwrap();
+        assert!(same_origin(&u("https://api.x.com/v1"), &u("https://api.x.com/v2")));
+        assert!(same_origin(&u("http://api.x.com/v1"), &u("https://api.x.com/v1")));
+        assert!(!same_origin(&u("https://api.x.com/v1"), &u("http://api.x.com/v1")));
+        assert!(!same_origin(&u("https://api.x.com/v1"), &u("https://evil.com/v1")));
+        assert!(!same_origin(&u("https://api.x.com/v1"), &u("https://api.x.com:8443/v1")));
+        assert!(!same_origin(&u("http://h:8080/"), &u("https://h:8443/")));
     }
 }

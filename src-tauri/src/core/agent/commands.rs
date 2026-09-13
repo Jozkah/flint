@@ -26,6 +26,50 @@ fn ui_error(e: String) -> String {
     e.strip_prefix("ERROR: ").map(str::to_string).unwrap_or(e)
 }
 
+/// What `project_tooling` hands the webview: the structured facts for the
+/// readiness card, and the exact prompt block the CLI would give the model.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectToolingReport {
+    #[serde(flatten)]
+    tooling: crate::core::agent::tooling::ProjectTooling,
+    prompt: Option<String>,
+}
+
+/// A detection that could not run, typed for the surface to branch on.
+#[derive(serde::Serialize)]
+pub struct ProjectToolingError {
+    kind: &'static str,
+    message: String,
+}
+
+/// Detect the attached project's frameworks, build systems and test runners.
+/// AH-068 / AH-069 / AH-070.
+///
+/// Read-only and bounded (see `core::agent::tooling`); runs off the UI thread.
+/// Nothing here can block attaching or using a folder: a failure comes back
+/// typed and the caller carries on without the facts.
+#[tauri::command]
+pub async fn project_tooling(folder: String) -> Result<ProjectToolingReport, ProjectToolingError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let never = std::sync::atomic::AtomicBool::new(false);
+        crate::core::agent::tooling::detect(std::path::Path::new(&folder), &never)
+    })
+    .await
+    .map_err(|e| ProjectToolingError {
+        kind: "internal",
+        message: e.to_string(),
+    })?
+    .map(|tooling| ProjectToolingReport {
+        prompt: tooling.render(),
+        tooling,
+    })
+    .map_err(|e| ProjectToolingError {
+        kind: e.kind(),
+        message: e.to_string(),
+    })
+}
+
 /// List the skills under `<project>/.jan/agent/skills/` (folder `<name>/SKILL.md`
 /// and legacy flat `<name>.md`). These are the same skills `load_skills` injects
 /// into the agent's system prompt; managing them here is CRUD over that
@@ -34,6 +78,51 @@ fn ui_error(e: String) -> String {
 pub async fn agent_skill_list(project: String) -> Result<Vec<SkillMeta>, String> {
     let root = std::path::PathBuf::from(&project);
     Ok(skills::list_meta(&workspace::project_store(&root)))
+}
+
+/// The effective compaction policy (AH-076): defaults, the user's file, then
+/// the project's when one is given.
+#[tauri::command]
+pub async fn get_compaction_policy(
+    app: tauri::AppHandle,
+    project: Option<String>,
+) -> Result<tauri_plugin_agent_tools::compaction_policy::Policy, String> {
+    let data = get_jan_data_folder_path(app);
+    tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
+        Some(&data),
+        project.as_deref().map(std::path::Path::new),
+        None,
+    )
+    .map_err(|e| e.message().to_string())
+}
+
+/// Change the user's compaction policy (AH-076). Only the fields given are
+/// changed; the rest of the user's file is kept. Validated before writing.
+#[tauri::command]
+pub async fn set_compaction_policy(
+    app: tauri::AppHandle,
+    layer: tauri_plugin_agent_tools::compaction_policy::Layer,
+) -> Result<tauri_plugin_agent_tools::compaction_policy::Policy, String> {
+    use tauri_plugin_agent_tools::compaction_policy::{save_user, user_path, Layer, Policy};
+    let data = get_jan_data_folder_path(app);
+    let mut current = Layer::read(&user_path(&data)).map_err(|e| e.message().to_string())?;
+    if layer.auto.is_some() {
+        current.auto = layer.auto;
+    }
+    if layer.reserve_tokens.is_some() {
+        current.reserve_tokens = layer.reserve_tokens;
+    }
+    if layer.keep_recent.is_some() {
+        current.keep_recent = layer.keep_recent;
+    }
+    if layer.strategy.is_some() {
+        current.strategy = layer.strategy;
+    }
+    if layer.summary_max_tokens.is_some() {
+        current.summary_max_tokens = layer.summary_max_tokens;
+    }
+    save_user(&data, &current).map_err(|e| e.message().to_string())?;
+    Policy::resolve(Some(&data), None, None).map_err(|e| e.message().to_string())
 }
 
 /// Read one skill's raw SKILL.md (frontmatter included) for the editor.
@@ -114,39 +203,99 @@ pub async fn agent_skill_invoke(
         .map_err(ui_error)
 }
 
-/// List installed plugins under `<project>/.jan/agent/plugins/` with metadata
-/// and skill counts.
-#[tauri::command]
-pub async fn agent_plugin_list(project: String) -> Result<Vec<plugins::InstalledPlugin>, String> {
-    let root = std::path::PathBuf::from(&project);
-    Ok(plugins::installed(&root))
+// Plugin lifecycle. Every command returns a typed `PluginError`
+// (`{ code, message }`) so the UI can map a refusal to actionable text rather
+// than parse a sentence. Plugins are per project: `project` is the folder whose
+// `.jan/agent/plugins/` is managed. `id` is the plugin's directory name.
+
+/// Run blocking plugin filesystem work off the async runtime.
+async fn plugin_blocking<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, plugins::PluginError> + Send + 'static,
+) -> Result<T, plugins::PluginError> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| {
+            plugins::PluginError::new(plugins::PluginErrorCode::Io, e.to_string())
+        })?
 }
 
-/// Install a plugin from a git URL or configured marketplace name.
+/// List installed plugins with metadata, enabled state and component counts.
+#[tauri::command]
+pub async fn agent_plugin_list(
+    project: String,
+) -> Result<Vec<plugins::InstalledPlugin>, plugins::PluginError> {
+    plugin_blocking(move || Ok(plugins::installed(std::path::Path::new(&project)))).await
+}
+
+/// Full details of one installed plugin: identity, provenance, component
+/// names, whether it ships an (unloaded) `.mcp.json`, and its script files.
+#[tauri::command]
+pub async fn agent_plugin_details(
+    project: String,
+    id: String,
+) -> Result<plugins::PluginDetails, plugins::PluginError> {
+    plugin_blocking(move || plugins::details(std::path::Path::new(&project), &id)).await
+}
+
+/// Which install sources are usable: the configured marketplace (if any) and
+/// whether git can run. Reads config and runs `git --version`; no network.
+#[tauri::command]
+pub async fn agent_plugin_sources(
+    project: String,
+) -> Result<plugins::PluginSources, plugins::PluginError> {
+    plugin_blocking(move || Ok(plugins::sources(std::path::Path::new(&project)))).await
+}
+
+/// Install a plugin from an explicit source (`local` folder copy, `git` clone,
+/// or configured `marketplace` name). `operation_id` is chosen by the caller so
+/// `agent_plugin_install_cancel` can stop this install; a cancelled install
+/// leaves no files behind.
 #[tauri::command]
 pub async fn agent_plugin_install(
     project: String,
-    spec: String,
-) -> Result<plugins::InstalledPlugin, String> {
+    source: plugins::InstallSource,
+    operation_id: String,
+) -> Result<plugins::InstalledPlugin, plugins::PluginError> {
+    let guard = plugins::begin_install(&operation_id)?;
     let root = std::path::PathBuf::from(&project);
-    plugins::install(&root, &spec).await.map_err(ui_error)
+    plugins::install_from_source(&root, source, guard.ctx()).await
 }
 
-/// Remove an installed plugin by directory name.
+/// Cancel a running install. `false` when no install of that id is running.
 #[tauri::command]
-pub async fn agent_plugin_remove(project: String, name: String) -> Result<(), String> {
-    let root = std::path::PathBuf::from(&project);
-    plugins::remove(&root, &name).map_err(ui_error)
+pub fn agent_plugin_install_cancel(operation_id: String) -> bool {
+    plugins::cancel_install(&operation_id)
 }
 
-/// Search the configured plugin marketplace.
+/// Enable or disable an installed plugin for this project
+/// (`[plugins].disabled` in agent.toml). Returns the plugin's new state.
+#[tauri::command]
+pub async fn agent_plugin_set_enabled(
+    project: String,
+    id: String,
+    enabled: bool,
+) -> Result<plugins::InstalledPlugin, plugins::PluginError> {
+    plugin_blocking(move || plugins::set_enabled(std::path::Path::new(&project), &id, enabled))
+        .await
+}
+
+/// Remove an installed plugin and the config entries that name it.
+#[tauri::command]
+pub async fn agent_plugin_remove(
+    project: String,
+    id: String,
+) -> Result<plugins::RemoveReport, plugins::PluginError> {
+    plugin_blocking(move || plugins::remove_plugin(std::path::Path::new(&project), &id)).await
+}
+
+/// Search the configured plugin marketplace (contacts the index URL).
 #[tauri::command]
 pub async fn agent_plugin_search(
     project: String,
     query: String,
-) -> Result<Vec<plugins::MarketEntry>, String> {
+) -> Result<Vec<plugins::MarketEntry>, plugins::PluginError> {
     let root = std::path::PathBuf::from(&project);
-    plugins::search(&root, &query).await.map_err(ui_error)
+    plugins::search_typed(&root, &query).await
 }
 
 /// Return the git branch name for the project at `project`, or `None` when the
@@ -213,10 +362,14 @@ pub struct SubagentDefinitionDto {
     /// it never widens. `None` inherits the parent's set.
     pub allowed_tools: Option<Vec<String>>,
     pub model: Option<String>,
+    /// `builtin` for a role Jan ships, `user` for one saved on this machine.
+    pub scope: subagent::SubagentScope,
 }
 
-/// Every subagent saved for the desktop, from the single
-/// `<jan_data>/agent-workspace/subagents/` directory.
+/// The roles Jan ships (AH-094..099), then every subagent saved for the
+/// desktop, from the single `<jan_data>/agent-workspace/subagents/` directory.
+/// A saved definition replaces a built-in role of the same name, and only the
+/// winner is listed, because the renderer resolves a name to its first match.
 ///
 /// Deliberately not the CLI's plugin/user/project merge: Cowork has no project
 /// root in a default session, and an attached folder is mounted read-only, so
@@ -228,19 +381,28 @@ pub async fn agent_subagent_list<R: tauri::Runtime>(
     app_handle: tauri::AppHandle<R>,
 ) -> Result<Vec<SubagentDefinitionDto>, String> {
     let dir = subagent::desktop_subagents_dir(&get_jan_data_folder_path(app_handle));
-    Ok(
+    let saved: Vec<subagent::SubagentDefinition> =
         subagent::SubagentRegistry::load_one(&dir, subagent::SubagentScope::User)
             .list()
             .into_iter()
-            .map(|d| SubagentDefinitionDto {
-                name: d.name.clone(),
-                description: d.description.clone(),
-                system_prompt: d.system_prompt.clone(),
-                allowed_tools: d.allowed_tools.clone(),
-                model: d.model.clone(),
-            })
-            .collect(),
-    )
+            .cloned()
+            .collect();
+    let builtins: Vec<subagent::SubagentDefinition> = crate::core::agent::roles::definitions()
+        .into_iter()
+        .filter(|b| !saved.iter().any(|s| s.name == b.name))
+        .collect();
+    Ok(builtins
+        .into_iter()
+        .chain(saved)
+        .map(|d| SubagentDefinitionDto {
+            name: d.name,
+            description: d.description,
+            system_prompt: d.system_prompt,
+            allowed_tools: d.allowed_tools,
+            model: d.model,
+            scope: d.scope,
+        })
+        .collect())
 }
 
 /// Create, or reuse, the managed worktree for a Cowork session.
@@ -672,12 +834,27 @@ pub fn agent_checkpoint_plan(
 /// Refuses a checkpoint taken in the user's checkout, whatever the caller
 /// says: that path leads to deleting work whose only sin was being in the same
 /// directory as the run.
+///
+/// In a managed tree, refuses before writing anything unless the tree on disk
+/// is exactly what a checkpoint holds: `safety` when given (the point taken
+/// immediately before this restore), otherwise `latest`. `allow_overwrite`
+/// names paths the caller has explicitly agreed to lose. Both are optional, so
+/// a caller that predates them gets the strict check rather than none.
 #[tauri::command]
 pub fn agent_checkpoint_restore(
     checkpoint: checkpoint::Checkpoint,
     latest: String,
+    safety: Option<String>,
+    allow_overwrite: Option<Vec<String>>,
 ) -> Result<(), String> {
-    checkpoint::restore(&checkpoint, &latest)
+    checkpoint::restore(
+        &checkpoint,
+        &latest,
+        &checkpoint::RestoreGuard {
+            safety,
+            allow_overwrite: allow_overwrite.unwrap_or_default(),
+        },
+    )
 }
 
 /// Forget a session's snapshot chain.
@@ -835,6 +1012,21 @@ pub async fn agent_prompt_snapshots(
     )
 }
 
+/// Delete every prompt snapshot of one session. AH-078.
+///
+/// What the model was sent is kept only as long as the conversation it
+/// belongs to: deleting a Chat thread or a Cowork session calls this, and it
+/// is how a user removes that record on purpose. Scoped to the one session it
+/// names; an empty name is refused rather than read as "all".
+#[tauri::command]
+pub async fn agent_prompt_snapshots_delete(
+    app: tauri::AppHandle,
+    session: String,
+) -> Result<usize, String> {
+    let data_folder = crate::core::app::commands::get_jan_data_folder_path(app);
+    tauri_plugin_agent_tools::snapshot::delete_session(&data_folder, &session)
+}
+
 /// Export a managed worktree as a patch bundle under `<data>/exports`. AH-168.
 ///
 /// The record arrives over IPC and is checked the way a proposal checks it:
@@ -961,6 +1153,247 @@ async fn replay_blocking<T: Send + 'static>(
     })?
 }
 
+/// What a session's runs started, as a tree. AH-173.
+///
+/// Built from what was recorded -- runs, their tool calls, the children they
+/// dispatched and the background jobs they left -- never from the machine's
+/// process list, which cannot say which run asked for anything.
+#[tauri::command]
+pub async fn agent_run_tree(
+    app: tauri::AppHandle,
+    session: String,
+) -> Result<
+    Vec<tauri_plugin_agent_tools::run_tree::Node>,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::run_tree::of_session(&data_folder, &session)
+    })
+    .await
+    .map_err(|e| {
+        tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!(
+            "the run tree did not finish: {e}"
+        ))
+    })?
+}
+
+/// Start background work that outlives the app. AH-101/AH-102.
+///
+/// The job is run by a supervisor process of its own, so closing the window
+/// leaves it running and a later app process can find it, read it and stop it.
+#[tauri::command]
+pub async fn agent_job_start(
+    app: tauri::AppHandle,
+    session: String,
+    command: String,
+    run: Option<String>,
+    invocation: Option<String>,
+    agent: Option<String>,
+) -> Result<
+    tauri_plugin_agent_tools::job_record::JobRecord,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        let supervisor = tauri_plugin_agent_tools::worker::supervisor_binary()?;
+        tauri_plugin_agent_tools::worker::start(
+            &data_folder,
+            &supervisor,
+            &session,
+            &command,
+            (
+                run.as_deref().unwrap_or_default(),
+                invocation.as_deref().unwrap_or_default(),
+                agent.as_deref().unwrap_or_default(),
+            ),
+        )
+    })
+    .await
+    .map_err(|e| {
+        tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!(
+            "the job could not be started: {e}"
+        ))
+    })?
+}
+
+/// What one background job has produced so far. AH-102.
+#[tauri::command]
+pub async fn agent_job_output(
+    app: tauri::AppHandle,
+    session: String,
+    id: String,
+    bytes: Option<usize>,
+) -> Result<String, tauri_plugin_agent_tools::harness_error::HarnessError> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::worker::output(
+            &data_folder,
+            &session,
+            &id,
+            bytes.unwrap_or(64 * 1024),
+        )
+    })
+    .await
+    .map_err(|e| {
+        tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!(
+            "the job's output could not be read: {e}"
+        ))
+    })?
+}
+
+/// Stop one background job, and only that one. AH-102.
+#[tauri::command]
+pub async fn agent_job_cancel(
+    app: tauri::AppHandle,
+    session: String,
+    id: String,
+) -> Result<String, tauri_plugin_agent_tools::harness_error::HarnessError> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::worker::cancel(&data_folder, &session, &id)
+            .map(|state| state.tag().to_string())
+    })
+    .await
+    .map_err(|e| {
+        tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!(
+            "the job could not be stopped: {e}"
+        ))
+    })?
+}
+
+/// One conversation's background jobs, including those an earlier process
+/// started. AH-101/AH-102.
+///
+/// Read from the durable record, so a job that outlived the app -- or that the
+/// app outlived -- is still listed, with what became of it. Another
+/// conversation's jobs are not listed at all.
+#[tauri::command]
+pub async fn agent_background_jobs(
+    app: tauri::AppHandle,
+    session: String,
+) -> Result<Vec<tauri_plugin_agent_tools::job_record::JobRecord>, String> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        // What an earlier process left is settled before it is listed, so a
+        // job nobody is running is never shown as running.
+        tauri_plugin_agent_tools::worker::reconcile(&data_folder, &session);
+        let mut records = tauri_plugin_agent_tools::job_record::read_owner(&data_folder, &session);
+        // Newest first, the order a panel shows them in.
+        records.reverse();
+        records
+    })
+    .await
+    .map_err(|e| format!("the background jobs could not be read: {e}"))
+}
+
+/// What one dispatched request was made of, by category. AH-087.
+///
+/// Read from the stored request itself -- the exact bytes the provider
+/// received -- so every surface answers "what is filling the window?" from the
+/// same place instead of each re-deriving it. `snapshotId` names the request;
+/// omitted, it is the session's most recent one. A request of another session
+/// names nothing here.
+#[tauri::command]
+pub async fn agent_context_breakdown(
+    app: tauri::AppHandle,
+    session: String,
+    snapshot_id: Option<String>,
+    window_tokens: Option<u64>,
+    deferred_tools: Option<u64>,
+) -> Result<
+    tauri_plugin_agent_tools::context_report::Breakdown,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::context_report::of_snapshot(
+            &data_folder,
+            &session,
+            snapshot_id.as_deref(),
+            window_tokens,
+            deferred_tools.unwrap_or(0),
+        )
+    })
+    .await
+    .map_err(|e| {
+        tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!(
+            "the context breakdown did not finish: {e}"
+        ))
+    })?
+}
+
+/// What replaying a recorded run would do, before anything is sent. AH-032.
+///
+/// Read from the session's canonical record: the run's provider requests, the
+/// snapshot behind each, whether each can be sent again and why not when it
+/// cannot, and the tools the original asked for -- which a replay shows and
+/// never runs.
+#[tauri::command]
+pub async fn agent_replay_plan(
+    app: tauri::AppHandle,
+    session: String,
+    run: String,
+) -> Result<crate::core::agent::replay::ReplayPlan, crate::core::agent::replay::ReplayError> {
+    let data_folder = get_jan_data_folder_path(app);
+    replay_blocking(move || crate::core::agent::replay::plan(&data_folder, &session, &run)).await
+}
+
+/// A recorded run's own events, in order. AH-032.
+///
+/// The deterministic half of replay: what happened, re-read from the record.
+/// Nothing is sent and nothing is run, so it is the same every time.
+#[tauri::command]
+pub async fn agent_replay_recorded(
+    app: tauri::AppHandle,
+    session: String,
+    run: String,
+) -> Result<
+    Vec<tauri_plugin_agent_tools::event_log::Envelope>,
+    crate::core::agent::replay::ReplayError,
+> {
+    let data_folder = get_jan_data_folder_path(app);
+    replay_blocking(move || crate::core::agent::replay::recorded(&data_folder, &session, &run)).await
+}
+
+/// Start a fresh replay of one request of a recorded run. AH-032.
+///
+/// The replay is its own run in the record and says which run and request it
+/// came from, so neither is mistaken for the other.
+#[tauri::command]
+pub async fn agent_replay_run_begin(
+    app: tauri::AppHandle,
+    session: String,
+    run: String,
+    invocation: Option<String>,
+) -> Result<crate::core::agent::replay::ReplayStart, crate::core::agent::replay::ReplayError> {
+    let data_folder = get_jan_data_folder_path(app);
+    replay_blocking(move || {
+        crate::core::agent::replay::begin_for_run(
+            &data_folder,
+            &session,
+            &run,
+            invocation.as_deref(),
+        )
+    })
+    .await
+}
+
+/// Record how a run replay ended, in the canonical record as well. AH-032.
+#[tauri::command]
+pub async fn agent_replay_run_settle(
+    app: tauri::AppHandle,
+    session: String,
+    replay_id: String,
+    outcome: crate::core::agent::replay::SettleInput,
+) -> Result<crate::core::agent::replay::ReplayRecord, crate::core::agent::replay::ReplayError> {
+    let data_folder = get_jan_data_folder_path(app);
+    replay_blocking(move || {
+        crate::core::agent::replay::settle_for_run(&data_folder, &session, &replay_id, outcome)
+    })
+    .await
+}
+
 /// Start replaying a prompt snapshot. AH-079.
 ///
 /// The renderer names the snapshot and the session it belongs to; the payload
@@ -1020,41 +1453,14 @@ pub async fn tool_activity_record(
 ) -> Result<(), String> {
     let data_folder = get_jan_data_folder_path(app);
     // Redacted here rather than trusting the caller: the caller is renderer
-    // code, and the file outlives the window.
+    // code, and the file outlives the window. Written once, to the session's
+    // canonical event log (AH-005); the activity timeline is folded from it.
     let event = event.redacted();
-    tauri_plugin_agent_tools::activity::append(&data_folder, &event);
-    // AH-005: the same transition in the session's canonical event log. One
-    // id per call and phase, so a retried record is not a second event.
-    if !event.session.is_empty() {
-        let phase = serde_json::to_value(event.phase)
-            .ok()
-            .and_then(|v| v.as_str().map(str::to_string))
-            .unwrap_or_default();
-        let _ = tauri_plugin_agent_tools::event_log::append(
-            &data_folder,
-            tauri_plugin_agent_tools::event_log::NewEvent {
-                id: format!("tool:{}:{phase}", event.call),
-                session: event.session.clone(),
-                run: event.run.clone(),
-                invocation: event.invocation.clone(),
-                kind: format!("tool.{phase}"),
-                payload: serde_json::json!({
-                    "tool": event.tool,
-                    "phase": phase,
-                    "capability": event.capability,
-                    "resourceKind": event.kind,
-                    "agent": event.agent,
-                    "elapsedMs": event.elapsed_ms,
-                    "exitCode": event.exit_code,
-                    "call": event.call,
-                    "resource": event.resource,
-                    "summary": event.summary,
-                    "detail": event.detail,
-                }),
-            },
-        );
-    }
-    Ok(())
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::activity::append(&data_folder, &event)
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -1122,6 +1528,84 @@ pub fn agent_events_export_cancel(token: String) -> bool {
     }
 }
 
+/// One page of a session's canonical events, oldest first, for the desktop
+/// execution timeline. AH-172.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventsPage {
+    pub events: Vec<tauri_plugin_agent_tools::event_log::Envelope>,
+    /// The highest `seq` in the session's log, so a caller polling with
+    /// `after_seq` knows whether it has caught up.
+    pub last_seq: u64,
+    /// More events after `after_seq` than `limit` allowed.
+    pub truncated: bool,
+}
+
+/// A session's events after `after_seq`, at most `limit` (default and cap
+/// 5000). Scoped to the one session named; payloads were redacted and bounded
+/// when they were written. A log that cannot be read is a typed error, not an
+/// empty page.
+#[tauri::command]
+pub async fn agent_events_list(
+    app: tauri::AppHandle,
+    session: String,
+    after_seq: Option<u64>,
+    limit: Option<usize>,
+) -> Result<EventsPage, String> {
+    if session.trim().is_empty() {
+        return Err("listing events needs the session they belong to".to_string());
+    }
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        let all = tauri_plugin_agent_tools::event_log::read_session(&data_folder, &session)
+            .map_err(|e| e.message())?;
+        let last_seq = all.last().map_or(0, |e| e.seq);
+        let after = after_seq.unwrap_or(0);
+        let cap = limit.unwrap_or(5000).clamp(1, 5000);
+        let newer: Vec<_> = all.into_iter().filter(|e| e.seq > after).collect();
+        let truncated = newer.len() > cap;
+        Ok(EventsPage { events: newer.into_iter().take(cap).collect(), last_seq, truncated })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The session's finished runs, each one steppable in the timeline. AH-176.
+#[tauri::command]
+pub async fn agent_events_runs(
+    app: tauri::AppHandle,
+    session: String,
+) -> Result<
+    Vec<tauri_plugin_agent_tools::run_replay::FinishedRun>,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::run_replay::finished_runs(&data_folder, &session)
+    })
+    .await
+    .map_err(|e| tauri_plugin_agent_tools::harness_error::HarnessError::internal(e.to_string()))?
+}
+
+/// One finished run's recorded events, to step through. A run that has not
+/// ended, or is not in the log, is refused by kind. AH-176.
+#[tauri::command]
+pub async fn agent_events_run(
+    app: tauri::AppHandle,
+    session: String,
+    run: String,
+) -> Result<
+    tauri_plugin_agent_tools::run_replay::RunRecording,
+    tauri_plugin_agent_tools::harness_error::HarnessError,
+> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::run_replay::recording(&data_folder, &session, &run)
+    })
+    .await
+    .map_err(|e| tauri_plugin_agent_tools::harness_error::HarnessError::internal(e.to_string()))?
+}
+
 /// Read an export back as untrusted input and summarize it. Nothing in it is
 /// run or replayed.
 #[tauri::command]
@@ -1145,10 +1629,54 @@ pub async fn tool_activity_items(
     session: Option<String>,
 ) -> Result<Vec<tauri_plugin_agent_tools::activity::ToolActivityItem>, String> {
     let data_folder = get_jan_data_folder_path(app);
-    Ok(tauri_plugin_agent_tools::activity::items(
-        &data_folder,
-        session.as_deref(),
-    ))
+    // Off the async workers: a long session's log is real parsing work.
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::activity::items(&data_folder, session.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// The unified diff one call produced, as it was stored when the call ended.
+///
+/// Scoped by session and call, which is also how it was stored: an edit's diff
+/// is that edit's, never the repository's current aggregate. `None` when the
+/// call stored none -- it changed no file, the diff was oversized, or it ran
+/// before diffs were recorded -- and the timeline says which from the item.
+#[tauri::command]
+pub async fn tool_activity_diff(
+    app: tauri::AppHandle,
+    session: String,
+    call: String,
+) -> Result<Option<String>, String> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        tauri_plugin_agent_tools::activity::read_diff(&data_folder, &session, &call)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Everything the audit holds for one session -- permission decisions and the
+/// execution record -- as one reviewable JSON document. AH-200.
+///
+/// A session is required: an export of every conversation at once is not
+/// something a caller should get by omitting an argument.
+#[tauri::command]
+pub async fn audit_export(app: tauri::AppHandle, session: String) -> Result<String, String> {
+    if session.trim().is_empty() {
+        return Err("an audit export needs the session it is for".to_string());
+    }
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        serde_json::to_string_pretty(&tauri_plugin_agent_tools::activity::export(
+            &data_folder,
+            Some(&session),
+        ))
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Record what one dispatched payload cost. AH-073.

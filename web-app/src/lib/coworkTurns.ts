@@ -105,6 +105,8 @@ export function coworkTurnsToUIMessages(
         id: `${idPrefix}-user-${i}`,
         role: 'user',
         parts: [{ type: 'text', text: turn.content }],
+        // janhq/jan#8864: marked where it entered a run as steering.
+        ...(turn.steered ? { metadata: { steered: true } } : {}),
       } as any)
       return
     }
@@ -117,6 +119,15 @@ export function coworkTurnsToUIMessages(
         ensureAssistant(i).parts.push({
           type: 'data-prompt-snapshot',
           data: turn.promptSnapshot,
+        } as never)
+      }
+      // The request's own usage and the memory ids it carried, so this turn's
+      // breakdown is shown for this turn. Display only: `data-` parts are not
+      // sent to the model.
+      if (turn.usage || turn.memory) {
+        ensureAssistant(i).parts.push({
+          type: 'data-turn-usage',
+          data: { usage: turn.usage, memory: turn.memory },
         } as never)
       }
       // Questions the run asked here. They stay in the transcript after they

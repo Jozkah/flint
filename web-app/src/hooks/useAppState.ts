@@ -14,6 +14,8 @@ export type LiveTokenStats = {
   completionTokens: number
   tokensPerSecond: number | null
   promptPerSecond: number | null
+  /** The engine's `cache_n`, when it reported one. Never defaulted to 0. */
+  cachedPromptTokens?: number
 }
 
 export type ModelLoadProgress = {

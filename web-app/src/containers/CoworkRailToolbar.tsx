@@ -1,4 +1,5 @@
-import { Activity, Code2, Eye, FileDiff, Loader2 } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { Activity, Code2, Eye, FileDiff, ListTree, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -9,8 +10,11 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ActivityProgress } from '@/lib/coworkActivity'
 
-/** The four mutually-exclusive Cowork rail panels. */
-export type RailMode = 'code' | 'preview' | 'changes' | 'activity'
+/** The mutually-exclusive Cowork rail panels. */
+export type RailMode = 'code' | 'preview' | 'changes' | 'activity' | 'timeline'
+
+/** The tab a keyboard user just pressed, to be focused again after a move. */
+let refocusMode: RailMode | null = null
 
 /**
  * The stable, always-visible control for the Cowork right rail.
@@ -35,7 +39,11 @@ export function CoworkRailToolbar({
   deletions,
   activity,
   changeSummary,
+  presentation = 'toolbar',
 }: {
+  /** `toolbar` in the composer row; `tabs` in the output panel header. The
+   * buttons, their names and `aria-pressed` are the same in both. */
+  presentation?: 'toolbar' | 'tabs'
   active: RailMode | null
   onSelect: (mode: RailMode) => void
   /** Files this session changed. The user's own uncommitted work is not
@@ -52,24 +60,59 @@ export function CoworkRailToolbar({
   const { t } = useTranslation()
   const inFlight = activity.running + activity.queued
   const hasActivity = inFlight > 0 || activity.finished > 0
+  const tabs = presentation === 'tabs'
+  const buttons = useRef<Partial<Record<RailMode, HTMLButtonElement | null>>>(
+    {}
+  )
+
+  // The toolbar moves between the composer row and the panel header as a panel
+  // opens or closes, which remounts it. A keyboard user who pressed a tab is
+  // put back on that same tab rather than dropped at the top of the page.
+  useEffect(() => {
+    const mode = refocusMode
+    if (!mode) return
+    refocusMode = null
+    const target = buttons.current[mode]
+    if (target && document.activeElement !== target) target.focus()
+  })
 
   const item = (
     mode: RailMode,
     label: string,
     icon: React.ReactNode,
-    badge?: React.ReactNode
+    badge?: React.ReactNode,
+    name?: string
   ) => (
     <Tooltip key={mode}>
       <TooltipTrigger asChild>
         <Button
+          ref={(el) => {
+            buttons.current[mode] = el
+          }}
           variant="ghost"
           size="xs"
           aria-pressed={active === mode}
           aria-label={label}
-          onClick={() => onSelect(mode)}
-          className={cn('shrink-0 gap-1', active === mode && 'text-primary')}
+          onClick={(event) => {
+            if (document.activeElement === event.currentTarget) {
+              refocusMode = mode
+            }
+            onSelect(mode)
+          }}
+          className={cn(
+            'shrink-0 gap-1',
+            tabs
+              ? 'h-auto rounded-none border-b-2 px-2.5 text-xs hover:bg-transparent pointer-coarse:min-h-11'
+              : 'pointer-coarse:h-11 pointer-coarse:px-3',
+            tabs && active === mode
+              ? 'border-brand text-foreground'
+              : tabs
+                ? 'border-transparent text-muted-foreground hover:text-foreground'
+                : active === mode && 'bg-brand-tint text-brand-text'
+          )}
         >
           {icon}
+          {tabs && name ? <span>{name}</span> : null}
           {badge}
         </Button>
       </TooltipTrigger>
@@ -84,36 +127,60 @@ export function CoworkRailToolbar({
       // Kept `shrink-0` so the icons never squash; the composer's control row
       // wraps instead (see ChatInput), which is what stops this group from
       // overflowing to the right and sliding under the send button.
-      className="flex shrink-0 items-center"
+      className={cn('flex shrink-0', tabs ? 'items-stretch' : 'items-center')}
     >
-      {item('code', t('common:rail.code'), <Code2 className="size-3.5 shrink-0" />)}
-      {item('preview', t('common:rail.preview'), <Eye className="size-3.5 shrink-0" />)}
+      {item(
+        'preview',
+        t('common:rail.preview'),
+        <Eye className="size-3.5 shrink-0" aria-hidden />,
+        undefined,
+        t('common:rail.preview')
+      )}
+      {item(
+        'code',
+        t('common:rail.code'),
+        <Code2 className="size-3.5 shrink-0" aria-hidden />,
+        undefined,
+        t('common:rail.code')
+      )}
       {item(
         'changes',
         changeCount > 0 && changeSummary
           ? `${t('common:rail.changes')} — ${changeSummary}`
           : t('common:rail.changes'),
-        <FileDiff className="size-3.5 shrink-0" />,
+        <FileDiff className="size-3.5 shrink-0" aria-hidden />,
         changeCount > 0 ? (
-          <span className="flex items-center gap-1 font-mono text-[11px] tabular-nums text-muted-foreground">
-            <span>+{additions}</span>
-            <span>-{deletions}</span>
+          <span className="flex items-center gap-1 font-mono text-[11px] tabular-nums">
+            <span className="text-success">+{additions}</span>
+            <span className="text-destructive">-{deletions}</span>
           </span>
-        ) : undefined
+        ) : undefined,
+        t('common:rail.changes')
       )}
       {item(
         'activity',
         t('common:rail.activity'),
         inFlight > 0 ? (
-          <Loader2 className="size-3.5 shrink-0 animate-spin" />
+          <Loader2
+            className="size-3.5 shrink-0 motion-safe:animate-spin"
+            aria-hidden
+          />
         ) : (
-          <Activity className="size-3.5 shrink-0" />
+          <Activity className="size-3.5 shrink-0" aria-hidden />
         ),
         hasActivity ? (
           <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
             {inFlight > 0 ? inFlight : activity.finished}
           </span>
-        ) : undefined
+        ) : undefined,
+        t('common:rail.activity')
+      )}
+      {item(
+        'timeline',
+        t('common:rail.timeline'),
+        <ListTree className="size-3.5 shrink-0" aria-hidden />,
+        undefined,
+        t('common:rail.timeline')
       )}
     </div>
   )

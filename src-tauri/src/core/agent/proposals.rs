@@ -55,6 +55,9 @@ fn git_bytes(repo: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     let out = Command::new("git")
         .arg("-C")
         .arg(repo)
+        .args(crate::core::agent::vcs::HARDENED)
+        .args(["-c", "diff.external="])
+        .env("GIT_TERMINAL_PROMPT", "0")
         // Paths are read as bytes and split on NUL; never quoted or escaped.
         .args(["-c", "core.quotepath=off"])
         .args(args)

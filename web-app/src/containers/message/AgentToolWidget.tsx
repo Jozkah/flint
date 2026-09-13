@@ -1,15 +1,16 @@
 import { memo, useMemo } from 'react'
 import type { ToolUIPart } from 'ai'
 import {
-  IconTerminal2,
-  IconFile,
-  IconFolder,
-  IconSearch,
-  IconNotebook,
-  IconBook,
-  IconLock,
-  IconFilePencil,
-} from '@tabler/icons-react'
+  BookOpen,
+  File as FileIcon,
+  FilePen,
+  Folder,
+  Lock,
+  NotebookText,
+  Search,
+  SquareTerminal,
+  type LucideIcon,
+} from 'lucide-react'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
@@ -31,7 +32,7 @@ const asText = (output: unknown): string =>
       : ''
 
 const OutputBlock = ({ children }: { children: React.ReactNode }) => (
-  <pre className="mt-1.5 max-h-56 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md border bg-card/40 px-2 py-1.5 font-mono text-xs text-muted-foreground">
+  <pre className="mt-1.5 max-h-56 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md border border-border bg-sunken px-2 py-1.5 font-mono text-xs text-muted-foreground">
     {children}
   </pre>
 )
@@ -74,27 +75,27 @@ export const TerminalWidget = memo(
 
     return (
       <div
-        className="overflow-hidden rounded-md border bg-card/60"
+        className="overflow-hidden rounded-lg border border-border bg-card"
         data-testid="tool-activity-item"
         data-tool-state={state}
       >
-        <div className="flex items-center gap-1.5 border-b px-2 py-1 text-xs text-muted-foreground">
-          <IconTerminal2 size={14} className="shrink-0" />
+        <div className="flex items-center gap-1.5 border-b border-border bg-sunken px-2 py-1 text-xs text-muted-foreground">
+          <SquareTerminal className="size-3.5 shrink-0" />
           <span className="font-medium">{t('tools:toolCall.terminal')}</span>
           {result?.exit !== undefined && (
             <span
               className={cn(
-                'ml-auto shrink-0 rounded px-1.5 py-0.5 font-mono',
+                'ml-auto shrink-0 rounded px-1.5 py-0.5 font-mono tabular-nums',
                 failed
-                  ? 'bg-destructive/10 text-destructive'
-                  : 'bg-primary/10 text-primary'
+                  ? 'bg-destructive-tint text-destructive'
+                  : 'bg-success-tint text-success'
               )}
             >
               {t('tools:toolCall.exitCode', { code: result.exit })}
             </span>
           )}
           {result?.signaled && (
-            <span className="ml-auto shrink-0 rounded bg-destructive/10 px-1.5 py-0.5 text-destructive">
+            <span className="ml-auto shrink-0 rounded bg-destructive-tint px-1.5 py-0.5 text-destructive">
               {t('tools:toolCall.terminated')}
             </span>
           )}
@@ -132,7 +133,7 @@ export const TerminalWidget = memo(
               command, the limits are the actual explanation for the exit code. */}
           {result?.sandboxNote && (
             <p className="mt-1 flex items-start gap-1.5 text-muted-foreground/70">
-              <IconLock size={13} className="mt-0.5 shrink-0" />
+              <Lock className="mt-0.5 size-3.5 shrink-0" />
               <span>{result.sandboxNote}</span>
             </p>
           )}
@@ -144,19 +145,19 @@ export const TerminalWidget = memo(
 
 TerminalWidget.displayName = 'TerminalWidget'
 
-const TOOL_ICONS: Record<string, typeof IconFile> = {
-  read: IconFile,
-  ls: IconFolder,
-  find: IconSearch,
-  grep: IconSearch,
-  write: IconFilePencil,
-  edit: IconFilePencil,
-  memory_list: IconNotebook,
-  memory_read: IconNotebook,
-  memory_write: IconNotebook,
-  skill_list: IconBook,
-  skill_read: IconBook,
-  skill_write: IconBook,
+const TOOL_ICONS: Record<string, LucideIcon> = {
+  read: FileIcon,
+  ls: Folder,
+  find: Search,
+  grep: Search,
+  write: FilePen,
+  edit: FilePen,
+  memory_list: NotebookText,
+  memory_read: NotebookText,
+  memory_write: NotebookText,
+  skill_list: BookOpen,
+  skill_read: BookOpen,
+  skill_write: BookOpen,
 }
 
 /** Tools whose whole call is the verb: there is no argument worth a bar. */
@@ -183,7 +184,7 @@ export const AgentToolWidget = memo(
     const diff = useToolCallRuntime((s) =>
       toolCallId ? s.diffs[toolCallId] : undefined
     )
-    const Icon = TOOL_ICONS[bar.tool] ?? IconFile
+    const Icon = TOOL_ICONS[bar.tool] ?? FileIcon
     const body = asText(output)
     // `ls` with no path lists the workspace root; show that rather than a bar
     // that reads as though an argument failed to stream.
@@ -222,7 +223,7 @@ export const AgentToolWidget = memo(
         />
 
         {errorText && (
-          <div className="rounded-md bg-destructive/10 px-2 py-1.5 text-sm text-destructive">
+          <div className="rounded-md border border-destructive/30 bg-destructive-tint px-2 py-1.5 text-sm text-destructive">
             {errorText}
           </div>
         )}

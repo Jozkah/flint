@@ -113,7 +113,7 @@ describe('useCoworkActivity', () => {
       store().recoverOnLoad('interrupted:restart')
 
       expect(store().tasks[idOf('call-1')]).toMatchObject({
-        status: 'cancelled',
+        status: 'interrupted',
         detail: 'interrupted:restart',
       })
     })

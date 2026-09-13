@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   sidebarWidth: 260,
   setLeftPanel: vi.fn(),
   setLeftPanelWidth: vi.fn(),
+  chrome: 'native' as 'native' | 'mac-overlay' | 'custom',
 }))
 
 // Tanstack router — avoid real router internals.
@@ -99,8 +100,26 @@ vi.mock('@/containers/GlobalError', () => ({
 vi.mock('@/components/left-sidebar', () => ({
   LeftSidebar: () => <div data-testid="left-sidebar" />,
 }))
+vi.mock('@/components/shell/AppRail', () => ({
+  AppRail: () => <nav data-testid="app-rail" />,
+}))
+vi.mock('@/components/shell/StatusBar', () => ({
+  StatusBar: () => <footer data-testid="status-bar" />,
+}))
+vi.mock('@/hooks/useAppViewport', () => ({
+  useAppViewport: () => {},
+}))
 vi.mock('@/components/WindowControls', () => ({
   WindowControls: () => <div data-testid="window-controls" />,
+}))
+vi.mock('@/components/WindowResizeGrips', () => ({
+  WindowResizeGrips: () => <div data-testid="resize-grips" />,
+}))
+vi.mock('@/hooks/useWindowTitle', () => ({
+  useWindowTitle: () => 'Jan',
+}))
+vi.mock('@/lib/titlebar', () => ({
+  detectWindowChrome: () => h.chrome,
 }))
 vi.mock('@/components/ui/sidebar', () => ({
   SidebarProvider: ({ children }: any) => (
@@ -145,6 +164,7 @@ describe('__root route', () => {
     vi.clearAllMocks()
     h.productAnalyticPrompt = false
     h.isOnboarding = false
+    h.chrome = 'native'
     // reset document state
     document.body.className = ''
     const loader = document.getElementById('initial-loader')
@@ -166,6 +186,41 @@ describe('__root route', () => {
     expect(screen.getByTestId('left-sidebar')).toBeInTheDocument()
     expect(screen.getByTestId('outlet')).toBeInTheDocument()
     expect(screen.getByTestId('sidebar-provider')).toBeInTheDocument()
+  })
+
+  it('renders one shell: rail, sidebar, page and status bar', () => {
+    renderComponent()
+    const shell = screen.getByTestId('app-shell')
+    expect(shell).toContainElement(screen.getByTestId('app-rail'))
+    expect(shell).toContainElement(screen.getByTestId('left-sidebar'))
+    expect(shell).toContainElement(screen.getByTestId('outlet'))
+    expect(shell).toContainElement(screen.getByTestId('status-bar'))
+  })
+
+  /**
+   * With a native title bar (Windows) the operating system draws the caption
+   * buttons and owns dragging. The layout used to draw a second set of buttons
+   * and a full-width strip across the top of the page on Windows too.
+   */
+  it('draws no caption buttons, grips or top strip under a native title bar', () => {
+    const { container } = renderComponent()
+    expect(screen.queryByTestId('window-controls')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('resize-grips')).not.toBeInTheDocument()
+    expect(container.querySelector('[data-tauri-drag-region]')).toBeNull()
+    expect(container.querySelector('.fixed.top-0.w-full')).toBeNull()
+  })
+
+  it('draws its own caption buttons and grips only for a borderless window', () => {
+    h.chrome = 'custom'
+    renderComponent()
+    expect(screen.getByTestId('window-controls')).toBeInTheDocument()
+    expect(screen.getByTestId('resize-grips')).toBeInTheDocument()
+  })
+
+  it('leaves the macOS overlay to its native traffic lights', () => {
+    h.chrome = 'mac-overlay'
+    renderComponent()
+    expect(screen.queryByTestId('window-controls')).not.toBeInTheDocument()
   })
 
   it('renders all persistent dialogs', () => {

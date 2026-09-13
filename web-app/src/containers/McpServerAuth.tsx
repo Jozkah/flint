@@ -23,12 +23,49 @@ interface McpServerAuthProps {
 
 /** Badge tint per state: green means usable, amber needs attention, red is absent. */
 const TONE: Record<MCPAuthStatus['state'], string> = {
-  notApplicable: 'text-muted-foreground bg-secondary',
-  staticHeader: 'text-green-700 dark:text-green-500 bg-secondary',
-  authenticated: 'text-green-700 dark:text-green-500 bg-secondary',
-  expired: 'text-amber-700 dark:text-amber-500 bg-secondary',
-  staleResource: 'text-amber-700 dark:text-amber-500 bg-secondary',
-  unauthenticated: 'text-red-700 dark:text-red-500 bg-secondary',
+  notApplicable: 'text-ink-2 bg-sunken',
+  staticHeader: 'text-success bg-success-tint',
+  authenticated: 'text-success bg-success-tint',
+  expired: 'text-warning bg-warning-tint',
+  staleResource: 'text-warning bg-warning-tint',
+  scopeMismatch: 'text-warning bg-warning-tint',
+  invalidScopes: 'text-destructive bg-destructive-tint',
+  unauthenticated: 'text-destructive bg-destructive-tint',
+}
+
+/**
+ * What a sign-in asks for and what the stored token was granted (AH-135).
+ * Shown whenever there is anything to say, because the scopes are the
+ * authority the server's token carries: a person consenting should see them
+ * here as well as on the provider's page.
+ */
+function ScopeLine({ status }: { status: MCPAuthStatus }) {
+  const { t } = useTranslation()
+  const declared = status.declaredScopes ?? []
+  const granted = status.grantedScopes ?? []
+  const list = (scopes: string[]) =>
+    scopes.length > 0 ? scopes.join(' ') : t('mcp-servers:auth.scopesNone')
+  if (declared.length === 0 && granted.length === 0 && !status.detail) {
+    return null
+  }
+  return (
+    <div
+      className="flex w-full flex-wrap gap-x-3 text-xs text-muted-foreground"
+      data-testid="mcp-auth-scopes"
+    >
+      <span data-testid="mcp-auth-scopes-declared">
+        {t('mcp-servers:auth.scopesDeclared', { scopes: list(declared) })}
+      </span>
+      {status.hasCredentials && (
+        <span data-testid="mcp-auth-scopes-granted">
+          {t('mcp-servers:auth.scopesGranted', { scopes: list(granted) })}
+        </span>
+      )}
+      {status.detail && (
+        <span data-testid="mcp-auth-detail">{status.detail}</span>
+      )}
+    </div>
+  )
 }
 
 /** A coarse "42m" / "3h" distance from now; the exact second is never useful. */
@@ -59,7 +96,7 @@ export function McpServerAuth({
       <span className="text-muted-foreground">{t('mcp-servers:auth.label')}</span>
       <span
         className={cn(
-          'rounded-sm border px-2 py-0.5 text-xs',
+          'rounded-full px-2 py-0.5 text-xs font-medium',
           TONE[status.state]
         )}
       >
@@ -105,6 +142,8 @@ export function McpServerAuth({
         </Button>
       )}
 
+      <ScopeLine status={status} />
+
       {/* The flow is already waiting on the redirect by the time this shows, so
           a browser that failed to launch is still recoverable by hand. */}
       {authorizing && consentUrl && (
@@ -112,7 +151,7 @@ export function McpServerAuth({
           href={consentUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-blue-500 hover:underline"
+          className="text-xs text-brand-text underline-offset-4 hover:underline"
         >
           {t('mcp-servers:auth.openSignInPage')}
         </a>

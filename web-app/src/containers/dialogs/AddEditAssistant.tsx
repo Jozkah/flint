@@ -8,7 +8,8 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { IconMoodSmile } from '@tabler/icons-react'
+import { SmilePlus } from 'lucide-react'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react'
 
 import { Textarea } from '@/components/ui/textarea'
@@ -176,11 +177,11 @@ export default function AddEditAssistant({
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <div className="relative">
-              <label className="text-sm mb-2 inline-block">
+              <label className="mb-2 inline-block text-sm font-medium text-ink-2">
                 {t('assistants:emoji')}
               </label>
               <div
-                className="border rounded-sm p-1 size-9 flex items-center justify-center cursor-pointer"
+                className="flex size-9 cursor-pointer items-center justify-center rounded-md border border-border bg-card p-1 hover:bg-sunken pointer-coarse:size-11"
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                 ref={emojiPickerTriggerRef}
               >
@@ -191,7 +192,7 @@ export default function AddEditAssistant({
                     textClassName=""
                   />
                 ) : (
-                  <IconMoodSmile size={18} className="text-muted-foreground" />
+                  <SmilePlus size={18} className="text-muted-foreground" aria-hidden />
                 )}
               </div>
               <div className="relative" ref={emojiPickerRef}>
@@ -216,7 +217,7 @@ export default function AddEditAssistant({
             </div>
 
             <div className="space-y-2 w-full">
-              <label className="text-sm mb-2 inline-block">
+              <label className="mb-2 inline-block text-sm font-medium text-ink-2">
                 {t(`common:name`)}
               </label>
               <Input
@@ -238,7 +239,7 @@ export default function AddEditAssistant({
           )}
 
           <div className="space-y-2">
-            <label className="text-sm mb-2 inline-block">
+            <label className="mb-2 inline-block text-sm font-medium text-ink-2">
               {t('assistants:description')}
             </label>
             <Textarea
@@ -254,7 +255,7 @@ export default function AddEditAssistant({
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm mb-2 inline-block">
+            <label className="mb-2 inline-block text-sm font-medium text-ink-2">
               {t('assistants:instructions')}
             </label>
             <Textarea
@@ -274,7 +275,7 @@ export default function AddEditAssistant({
           </div>
 
           <div className="space-y-2 my-4 mt-6">
-            <label className="text-sm">{t('assistants:parameters')}</label>
+            <label className="text-sm font-medium text-ink-2">{t('assistants:parameters')}</label>
             <ParametersSection
               params={params}
               providers={activeProviders}
@@ -287,7 +288,7 @@ export default function AddEditAssistant({
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className={STICKY_DIALOG_FOOTER}>
           <Button onClick={handleSave}>{t('assistants:save')}</Button>
         </DialogFooter>
       </DialogContent>

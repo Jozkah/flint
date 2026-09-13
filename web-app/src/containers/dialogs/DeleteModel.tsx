@@ -17,7 +17,8 @@ import {
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 
-import { IconTrash } from '@tabler/icons-react'
+import { Trash2 } from 'lucide-react'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 import { useState, useEffect } from 'react'
 import { toast } from 'sonner'
@@ -97,14 +98,14 @@ export const DialogDeleteModel = ({
       <Tooltip>
         <TooltipTrigger asChild>
           <DialogTrigger asChild>
-            <div
-              role="button"
-              tabIndex={0}
+            <Button
+              variant="ghost"
+              size="icon-sm"
               aria-label={t('providers:deleteModel.delete')}
-              className="size-6 cursor-pointer flex items-center justify-center rounded transition-all duration-200 ease-in-out hover:bg-main-view-fg/8"
+              className="text-muted-foreground hover:text-destructive pointer-coarse:size-11"
             >
-              <IconTrash size={18} className="text-muted-foreground" />
-            </div>
+              <Trash2 aria-hidden />
+            </Button>
           </DialogTrigger>
         </TooltipTrigger>
         <TooltipContent>
@@ -123,14 +124,20 @@ export const DialogDeleteModel = ({
           </DialogDescription>
         </DialogHeader>
 
-        <DialogFooter className="mt-2">
+        <DialogFooter className={STICKY_DIALOG_FOOTER}>
           <DialogClose asChild>
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" className="pointer-coarse:h-11">
               {t('providers:deleteModel.cancel')}
             </Button>
           </DialogClose>
           <DialogClose asChild>
-            <Button variant="destructive" size="sm" onClick={removeModel} autoFocus>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="pointer-coarse:h-11"
+              onClick={removeModel}
+              autoFocus
+            >
               {selectedModel.imported
                 ? t('providers:deleteModel.removeFromJan')
                 : t('providers:deleteModel.delete')}

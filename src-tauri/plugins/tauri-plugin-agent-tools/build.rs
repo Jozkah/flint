@@ -45,6 +45,11 @@ const COMMANDS: &[&str] = &[
     "memory_settings_get",
     "memory_settings_update",
     "memory_retrieve",
+    "memory_conflicts",
+    "memory_scope_clear",
+    "memory_export",
+    "memory_import",
+    "memory_record_uses",
     "tool_schemas",
     "sandbox_status",
     "environment_readiness",
@@ -52,6 +57,7 @@ const COMMANDS: &[&str] = &[
     "advertised_tool_schemas",
     "execute_tool",
     "execute_tool_streaming",
+    "tool_resources_finish_run",
     "undo_journal",
     "undo_turn",
     "redo_turn",
@@ -62,6 +68,7 @@ const COMMANDS: &[&str] = &[
     "project_init_accept",
     "bash_jobs_list",
     "bash_job_kill",
+    "permission_audit_recent",
 ];
 
 fn main() {

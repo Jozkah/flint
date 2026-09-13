@@ -1,7 +1,32 @@
 /** A skill's summary as returned by `skillList`. */
 export interface SkillMeta {
+  /** `name` for a store skill, `<plugin>:<skill>` for a plugin skill. */
   name: string
   description: string
+  /** The installed plugin this skill ships in; absent for a store skill. */
+  plugin?: string
+}
+
+/**
+ * What a command used, or why it was not measured (AH-174). `measured` false
+ * carries `reason` and no figures: an unmeasured command is never zero.
+ */
+export interface ToolResources {
+  measured: boolean
+  cpuMs?: number
+  peakMemoryBytes?: number
+  processes?: number
+  reason?: string
+}
+
+/** What all of a run's commands used (AH-174). */
+export interface RunResources {
+  commands: number
+  measuredCommands: number
+  cpuMs: number
+  peakMemoryBytes: number
+  processes: number
+  unmeasuredReason?: string
 }
 
 /** Outcome of a built-in tool execution. */
@@ -10,6 +35,8 @@ export interface ToolResult {
   /** Display-only diff for write/edit; never part of model context. */
   diff: string | null
   isError: boolean
+  /** Present for a call that ran a command under a run (AH-174). */
+  resources?: ToolResources
 }
 
 /**
@@ -57,12 +84,24 @@ export interface ProjectFile {
  * `bashJobsList`. Listing never consumes a job's output. */
 export interface BashJobStatus {
   jobId: string
+  /** Redacted: a command line is where a credential most often appears. */
   command: string
   elapsedMs: number
   /** The command has produced its output; the agent has not collected it yet. */
   finished: boolean
   /** The tool call that backgrounded it, when known. */
   callId: string | null
+  /** Wall-clock start and end, epoch milliseconds. */
+  startedAtMs: number
+  finishedAtMs: number | null
+  /** From the output's `[exit N]` marker, once finished. */
+  exitCode: number | null
+  /** Killed by a signal rather than exiting. */
+  signalled: boolean
+  /** Stopped on request (the Stop control, or the agent's own cancel). */
+  stoppedByRequest: boolean
+  /** The output is waiting to be collected. */
+  outputAvailable: boolean
 }
 
 /** One fragment of a tool's live output. */

@@ -65,16 +65,16 @@ function FileFlags({
   if (flags.length === 0) return null
   return (
     <div
-      className="mt-1 rounded border border-amber-500/30 bg-amber-500/5 p-1.5 text-xs"
+      className="mt-1 rounded-md border border-warning/40 bg-warning-tint p-1.5 text-xs"
       data-testid="proposal-flags"
     >
       {flags.map((flag, i) => (
         <div key={i} data-testid="proposal-flag" data-kind={flag.kind}>
-          <p className="font-medium text-amber-700 dark:text-amber-300">
+          <p className="font-medium text-warning">
             {FLAG_LABEL[flag.kind]}: {flag.summary}
           </p>
           {flag.details.length > 0 ? (
-            <ul className="ml-4 list-disc text-main-view-fg/70">
+            <ul className="ml-4 list-disc text-ink-2">
               {flag.details.map((d) => (
                 <li key={d} className="font-mono text-[11px]">
                   {d}
@@ -114,18 +114,18 @@ function HunkPreview({
   ]
   const shown = lines.slice(0, PREVIEW_LINES)
   return (
-    <pre className="mt-1 overflow-x-auto rounded bg-main-view-fg/[0.03] p-1 font-mono text-[11px] leading-4">
+    <pre className="mt-1 overflow-x-auto rounded-md bg-sunken/60 p-1 font-mono text-[11px] leading-4">
       {shown.map((l, i) => (
         <div
           key={i}
-          className={l.sign === '+' ? 'text-green-600' : 'text-red-600'}
+          className={l.sign === '+' ? 'text-success' : 'text-destructive'}
         >
           {l.sign}
           {l.text}
         </div>
       ))}
       {lines.length > shown.length ? (
-        <div className="text-main-view-fg/50">
+        <div className="text-muted-foreground">
           … {lines.length - shown.length} more line(s)
         </div>
       ) : null}
@@ -155,7 +155,7 @@ function FileReview({
   const fileConflict = conflicts.find((c) => c.hunk === '')
   return (
     <li
-      className="rounded border border-main-view-fg/10 p-2"
+      className="rounded-md border border-border p-2"
       data-testid="proposal-file"
       data-path={file.path}
     >
@@ -170,11 +170,11 @@ function FileReview({
           data-testid="proposal-file-toggle"
         />
         <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
-        <span className="shrink-0 text-main-view-fg/60">{file.change}</span>
-        <span className="shrink-0 font-mono text-green-600">
+        <span className="shrink-0 text-muted-foreground">{file.change}</span>
+        <span className="shrink-0 font-mono text-success">
           +{file.additions}
         </span>
-        <span className="shrink-0 font-mono text-red-600">
+        <span className="shrink-0 font-mono text-destructive">
           -{file.deletions}
         </span>
       </label>
@@ -183,7 +183,7 @@ function FileReview({
           Looks like it holds a credential, so it is never applied.
         </p>
       ) : whole ? (
-        <p className="mt-1 text-xs text-main-view-fg/60">
+        <p className="mt-1 text-xs text-muted-foreground">
           {file.binary ? 'Binary' : 'Too large to split'}: applied or left
           whole.
         </p>
@@ -208,7 +208,7 @@ function FileReview({
             const conflict = conflicts.find((c) => c.hunk === h.id)
             return (
               <li key={h.id} data-testid="proposal-hunk" data-hunk={h.id}>
-                <label className="flex items-center gap-2 text-[11px] text-main-view-fg/70">
+                <label className="flex items-center gap-2 text-[11px] text-ink-2">
                   <input
                     type="checkbox"
                     checked={chosen?.includes(h.id) ?? false}
@@ -405,12 +405,12 @@ export function CoworkProposalReview({
 
   return (
     <section
-      className="mb-2 rounded-md border border-main-view-fg/10 p-2"
+      className="mb-2 rounded-md border border-border p-2"
       data-testid="proposal-review"
     >
       <div className="flex items-center gap-2">
-        <GitPullRequestArrow size={14} className="text-main-view-fg/60" />
-        <p className="flex-1 text-xs font-medium text-main-view-fg/80">
+        <GitPullRequestArrow size={14} className="text-muted-foreground" />
+        <p className="flex-1 text-xs font-medium text-ink-2">
           {proposal
             ? `${title ?? 'Proposed changes'} to ${worktree.sourceRoot}`
             : (title ??
@@ -441,7 +441,7 @@ export function CoworkProposalReview({
       </div>
       {exported ? (
         <p
-          className="mt-1 break-all text-xs text-main-view-fg/70"
+          className="mt-1 break-all text-xs text-ink-2"
           data-testid="worktree-export-path"
         >
           Patch bundle written to {exported}
@@ -459,7 +459,7 @@ export function CoworkProposalReview({
       ) : null}
       {message ? (
         <p
-          className="mt-1 text-xs text-main-view-fg/70"
+          className="mt-1 text-xs text-ink-2"
           data-testid="proposal-message"
         >
           {message}
@@ -469,7 +469,7 @@ export function CoworkProposalReview({
         <>
           {proposal.scope.subject ? (
             <p
-              className="mt-1 text-[11px] text-main-view-fg/60"
+              className="mt-1 text-[11px] text-muted-foreground"
               data-testid="proposal-subject"
             >
               {proposal.scope.subject}
@@ -507,7 +507,7 @@ export function CoworkProposalReview({
                 <ul className="mt-2 flex flex-col gap-1">{source.map(row)}</ul>
                 {locks.length > 0 ? (
                   <div className="mt-2" data-testid="proposal-lockfiles">
-                    <p className="text-[11px] font-medium text-main-view-fg/60">
+                    <p className="text-[11px] font-medium text-muted-foreground">
                       Lock files ({locks.length}), kept apart from the source
                       changes above
                     </p>
@@ -519,7 +519,7 @@ export function CoworkProposalReview({
           })()}
           {waiting.length > 0 ? (
             <p
-              className="mt-2 text-xs text-amber-700 dark:text-amber-300"
+              className="mt-2 text-xs text-warning"
               data-testid="proposal-needs-ack"
             >
               Mark {waiting.join(', ')} as reviewed, or leave {waiting.length === 1 ? 'it' : 'them'} out, to apply.

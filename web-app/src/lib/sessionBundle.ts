@@ -38,6 +38,12 @@ export type SessionBundle = {
     goal?: CoworkSession['goal']
     todos?: CoworkSession['todos']
     forkedFrom?: CoworkSession['forkedFrom']
+    /**
+     * The provider's usage for the session's last request, cache breakdown
+     * included. Absent from bundles written before AH-211, which import with
+     * no usage rather than a zero one.
+     */
+    lastUsage?: CoworkSession['lastUsage']
     updated: number
   }
   toolActivity: ToolActivityItem[]
@@ -78,6 +84,7 @@ export function buildBundle(input: {
       goal: session.goal,
       todos: session.todos,
       forkedFrom: session.forkedFrom,
+      lastUsage: session.lastUsage,
       updated: session.updated,
     },
     toolActivity: input.toolActivity.filter((i) => i.session === session.id),

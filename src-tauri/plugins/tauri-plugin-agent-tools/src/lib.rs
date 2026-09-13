@@ -11,8 +11,22 @@
 
 pub mod activity;
 pub mod audit;
+pub mod format;
 pub mod event_export;
 pub mod event_log;
+pub mod resources;
+pub mod run_replay;
+/// How a harness failure is classified: kind, retryability, audience (AH-009).
+pub mod compaction_policy;
+pub mod context_report;
+pub mod harness_error;
+pub mod hooks;
+pub mod mailbox;
+pub mod org_policy;
+pub mod identity;
+pub mod job_record;
+/// The security identity (fingerprint) of an MCP server definition.
+pub mod mcp_identity;
 /// Which MCP servers the user has agreed to run tools from (AH-041).
 pub mod mcp_trust;
 /// A proposed change held as reviewable hunks (AH-146/147/148).
@@ -22,11 +36,14 @@ pub mod lifecycle;
 pub mod memory;
 pub mod permissions;
 pub mod policy;
+pub mod policy_transfer;
+pub mod run_tree;
 pub mod project_browse;
 pub mod project_init;
 pub mod proposal;
 pub mod readiness;
 pub mod resource;
+pub mod retention;
 pub mod review_flags;
 pub mod secrets;
 pub mod skills;
@@ -36,6 +53,7 @@ pub mod tools;
 pub mod undo;
 pub mod usage;
 pub mod utility;
+pub mod worker;
 pub mod workspace;
 
 #[cfg(feature = "tauri")]
@@ -93,6 +111,11 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             memory::commands::memory_settings_get,
             memory::commands::memory_settings_update,
             memory::commands::memory_retrieve,
+            memory::commands::memory_conflicts,
+            memory::commands::memory_scope_clear,
+            memory::commands::memory_export,
+            memory::commands::memory_import,
+            memory::commands::memory_record_uses,
             commands::memory_list,
             commands::memory_read,
             commands::memory_write,
@@ -104,6 +127,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::advertised_tool_schemas,
             commands::execute_tool,
             commands::execute_tool_streaming,
+            commands::tool_resources_finish_run,
             commands::undo_journal,
             commands::undo_turn,
             commands::redo_turn,
@@ -113,7 +137,8 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::project_survey,
             commands::project_init_accept,
             commands::bash_jobs_list,
-            commands::bash_job_kill
+            commands::bash_job_kill,
+            commands::permission_audit_recent
         ])
         .build()
 }

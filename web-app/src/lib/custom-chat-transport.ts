@@ -13,6 +13,7 @@ import {
 } from 'ai'
 import { repairToolArgs } from './toolCallRepair'
 import { streamCutOff } from './streamFinish'
+import { recordMemoryUses } from './memoryUses'
 import { getServiceHub, useServiceStore } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import { DISPATCH_PARAM_KEY, ModelFactory } from './model-factory'
@@ -33,8 +34,24 @@ import { getAgentToolSchemas, sandboxEnforces } from '@/lib/agentTools'
 import { errorText } from '@/lib/errorText'
 import {
   memoryRetrieve,
-  type MemoryRetrieved,
+  type MemoryInstruction,
 } from '@janhq/tauri-plugin-agent-tools-api'
+import { TEMPORARY_CHAT_ID } from '@/constants/chat'
+import {
+  chatMemoryBinding,
+  memoryLocation,
+  type MemoryBinding,
+  type ScopedMemoryRetrieved,
+} from '@/lib/memoryBinding'
+import {
+  assembleAttribution,
+  attributionMetadata,
+  bindUsageAtFinish,
+  newRequestId,
+  requestAttributions,
+  type RequestAttribution,
+} from '@/lib/requestAttribution'
+import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { useAppState } from '@/hooks/useAppState'
 import { unloadLlamaModel, getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import { engineFailure } from '@/lib/engineError'
@@ -58,6 +75,10 @@ import {
   estimateTokens,
   type ContextManagerConfig,
 } from './context-manager'
+import { recordLifecycle } from '@/lib/toolActivity'
+import { getCompactionPolicy, outputHeadroom, DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
+import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, endChatRun, markChatAwaitingTools, nextChatInvocation, recordChatMessage, recordChatUsage } from '@/lib/chatRun'
+import { usageEventPayload } from '@/lib/executionTimeline'
 import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import { encodeAudioSentinel, parseAudioDataUrl } from '@/lib/audio-sentinel'
@@ -66,9 +87,14 @@ import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
 import { paramsSettings } from '@/lib/predefinedParams'
 import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
+import {
+  createUsageCollector,
+  readTokenUsage,
+  type TokenUsage,
+} from '@/lib/tokenUsage'
 
 export type TokenUsageCallback = (
-  usage: LanguageModelUsage,
+  usage: TokenUsage,
   messageId: string
 ) => void
 export type StreamingTokenSpeedCallback = (
@@ -798,6 +824,8 @@ function prependContinuationToUIStream(
 }
 
 export class CustomChatTransport implements ChatTransport<UIMessage> {
+  /** Record memory uses when a reply finishes. Cowork records its own. */
+  protected recordsMemoryUsesOnFinish = true
   public model: LanguageModel | null = null
   private routerModel: LanguageModel | null = null
   private routerModelKey = ''
@@ -823,24 +851,35 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * would attribute the wrong memories to it. Cleared and refetched at the top
    * of each `sendMessages`.
    */
-  protected memorySelection: MemoryRetrieved | null = null
+  protected memorySelection: ScopedMemoryRetrieved | null = null
   /**
-   * The project this chat belongs to, when it belongs to one.
+   * The project folder this conversation belongs to, when it has one.
    *
-   * Undefined for an ordinary chat, which is the common case and means project
-   * memories simply do not apply -- not that they are hidden. Cowork sets it,
-   * which is what makes a project memory cross that project's chats and no
-   * others.
+   * Set by Cowork from the folder attached to the run (see
+   * `CoworkChatTransport.syncMemoryBinding`). An ordinary chat has no folder;
+   * its project, if any, is `janProjectId`.
    */
   protected projectRoot?: string
+  /**
+   * The Jan sidebar project an ordinary chat belongs to. Read from the thread
+   * at send time, so moving the chat or deleting the project changes the next
+   * request's scope and never the one already running.
+   */
+  protected janProjectId?: string
+  protected janProjectName?: string
   /**
    * A temporary chat neither reads nor records memory.
    *
    * Carried here rather than inferred from the absence of a thread id: an
    * unsaved chat and a deliberately temporary one are different things, and
-   * only the second should be denied its own memory.
+   * only the second should be denied its own memory. The temporary chat's own
+   * id binds it from construction, so no caller has to remember to.
    */
   protected temporary = false
+  /** The binding the last retrieval actually used, for the context panel. */
+  private memoryBindingUsed: MemoryBinding | null = null
+  /** The request id of the last `sendMessages`, for attribution lookups. */
+  private lastRequestId: string | null = null
   private continueFromContent: ContinuationContent | null = null
   /** Latest user message text — used by the MCP orchestrator for tool routing. */
   private lastUserMessage = ''
@@ -854,8 +893,52 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   constructor(systemMessage?: string, threadId?: string) {
     this.systemMessage = systemMessage
     this.threadId = threadId
+    this.temporary = threadId === TEMPORARY_CHAT_ID
     this.serviceHub = useServiceStore.getState().serviceHub
     // Tools will be loaded when updateRagToolsAvailability is called with model capabilities
+  }
+
+  /**
+   * The provider and model this transport sends with.
+   *
+   * The global picker for chat. A subclass bound to a run of its own -- a
+   * Cowork session -- answers with the model that run captured, so a model
+   * chosen elsewhere mid-run does not change a run already under way
+   * (janhq/jan#8905).
+   */
+  protected getModelSelection(): Pick<
+    ReturnType<typeof useModelProvider.getState>,
+    'selectedProvider' | 'selectedModel'
+  > {
+    // A conversation shown as one of two split panes sends with its own
+    // thread's model; the global picker follows whichever pane is active.
+    const scoped = this.modelSelectionResolver?.()
+    if (scoped) return scoped
+    const { selectedProvider, selectedModel } = useModelProvider.getState()
+    return { selectedProvider, selectedModel }
+  }
+
+  private modelSelectionResolver?: () =>
+    | Pick<
+        ReturnType<typeof useModelProvider.getState>,
+        'selectedProvider' | 'selectedModel'
+      >
+    | undefined
+
+  /**
+   * Answer `getModelSelection` from somewhere other than the global picker, or
+   * pass `undefined` to go back to it. Set by a split conversation pane for as
+   * long as it shows this transport's thread.
+   */
+  setModelSelectionResolver(
+    resolver?: () =>
+      | Pick<
+          ReturnType<typeof useModelProvider.getState>,
+          'selectedProvider' | 'selectedModel'
+        >
+      | undefined
+  ): void {
+    this.modelSelectionResolver = resolver
   }
 
   setLastUserMessage(message: string): void {
@@ -870,10 +953,54 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    */
   setMemoryBinding(binding: {
     projectRoot?: string
+    janProjectId?: string
+    janProjectName?: string
     temporary?: boolean
   }): void {
     this.projectRoot = binding.projectRoot
-    this.temporary = binding.temporary ?? false
+    this.janProjectId = binding.janProjectId
+    this.janProjectName = binding.janProjectName
+    // Defaulting to "not temporary" would let a caller that forgot the flag
+    // read memory into the temporary chat.
+    this.temporary = binding.temporary ?? this.threadId === TEMPORARY_CHAT_ID
+  }
+
+  /**
+   * Re-read the binding from its source just before retrieval.
+   *
+   * For chat that is the thread: its project can change between requests
+   * (moved in the sidebar, project deleted) while this transport lives on in
+   * the session store. A thread not in the store keeps the last explicit
+   * binding.
+   */
+  protected syncMemoryBinding(): void {
+    if (!this.threadId) return
+    const thread = useThreads.getState().threads[this.threadId]
+    if (!thread && this.threadId !== TEMPORARY_CHAT_ID) return
+    this.setMemoryBinding(chatMemoryBinding(this.threadId, thread))
+  }
+
+  /** The binding the next request will use. */
+  currentMemoryBinding(): MemoryBinding {
+    this.syncMemoryBinding()
+    return {
+      projectRoot: this.projectRoot,
+      janProjectId: this.janProjectId,
+      janProjectName: this.janProjectName,
+      temporary: this.temporary,
+    }
+  }
+
+  /** The binding the last request used; `null` before the first request. */
+  memoryBindingForLastRequest(): MemoryBinding | null {
+    return this.memoryBindingUsed
+  }
+
+  /** What the last request from this transport was assembled from. */
+  lastAttribution(): RequestAttribution | undefined {
+    return this.lastRequestId
+      ? requestAttributions.get(this.lastRequestId)
+      : undefined
   }
 
   updateSystemMessage(systemMessage: string | undefined) {
@@ -945,9 +1072,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const raw =
       [
         this.systemMessage,
-        // Remembered facts are data the model may use, not instructions it must
-        // follow. The block arrives already delimited from the backend, which
-        // is what keeps that distinction visible in the prompt itself.
+        // The precedence chain (AH-084), stated by the backend so every surface
+        // says the same thing, then the remembered facts it ranks. Remembered
+        // facts are data the model may use, not instructions it must follow;
+        // the block arrives delimited and sealed from the backend.
+        this.memorySelection?.block ? this.memorySelection.precedence : undefined,
         this.memorySelection?.block ?? undefined,
         this.buildFilesSystemInstruction(messages),
         this.buildWebSearchSystemInstruction(),
@@ -984,6 +1113,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    */
   protected async refreshMemory(): Promise<void> {
     this.memorySelection = null
+    this.syncMemoryBinding()
+    const binding: MemoryBinding = {
+      projectRoot: this.projectRoot,
+      janProjectId: this.janProjectId,
+      janProjectName: this.janProjectName,
+      temporary: this.temporary,
+    }
+    this.memoryBindingUsed = binding
     let dataFolder: string | null = null
     try {
       // Guarded rather than optional-chained one level: a hub without an app
@@ -995,21 +1132,29 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
     if (!dataFolder) return
     try {
-      this.memorySelection = await memoryRetrieve(
+      this.memorySelection = (await memoryRetrieve(
+        memoryLocation(dataFolder, binding, this.threadId),
         {
-          dataFolder,
-          projectRoot: this.projectRoot,
-          sessionId: this.threadId,
-        },
-        { temporary: this.temporary }
-      )
+          temporary: binding.temporary,
+          instructions: this.memoryInstructions(),
+        }
+      )) as ScopedMemoryRetrieved
     } catch (e) {
       console.warn('[memory] retrieval failed:', errorText(e))
     }
   }
 
+  /**
+   * Instruction text above memory for this request (AH-084): a memory that
+   * contradicts it is withheld and reported. Chat has none of its own; Cowork
+   * supplies its project's JAN.md and approved compatibility files.
+   */
+  protected memoryInstructions(): MemoryInstruction[] {
+    return []
+  }
+
   /** The memories the last dispatch carried, for the snapshot and accounting. */
-  memoryUsed(): MemoryRetrieved | null {
+  memoryUsed(): ScopedMemoryRetrieved | null {
     return this.memorySelection
   }
 
@@ -1028,7 +1173,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       return disabledToolKeys.includes(toolKey)
     }
 
-    const selectedModel = useModelProvider.getState().selectedModel
+    const selectedModel = this.getModelSelection().selectedModel
     const modelSupportsTools = selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools
 
     // Only load tools if model supports them
@@ -1273,12 +1418,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     provider: ProviderObject,
     parameters: Record<string, unknown>,
     providerId: string,
-    abortSignal: AbortSignal | undefined
+    abortSignal: AbortSignal | undefined,
+    runId?: string
   ): Promise<LanguageModel> {
     // Which conversation this model's requests belong to, so the transport can
     // record what was sent and the timeline can find that record again. Set on
     // the model instance, which is per conversation -- a shared "current
-    // dispatch" would race between two sessions streaming at once.
+    // dispatch" would race between two sessions streaming at once. The run is
+    // this request, so its snapshot can be attributed to it and not merely to
+    // "the thread's latest dispatch".
     const modelPromise = ModelFactory.createModel(modelId, provider, {
       ...parameters,
       ...(this.threadId
@@ -1286,6 +1434,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             [DISPATCH_PARAM_KEY]: {
               session: this.threadId,
               provider: providerId,
+              ...(runId ? { run: runId } : {}),
             },
           }
         : {}),
@@ -1342,12 +1491,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   ): Promise<ReadableStream<UIMessageChunk>> {
     const threadId = this.threadId ?? options.chatId
     const myGeneration = ++this.streamGeneration
+    const requestId = newRequestId()
     useAppState.getState().setCurrentStreamThreadId(threadId)
     // Capture the effective provider name early so the Anthropic serial
     // tool-use repair later uses the same value that was used to create the
     // model, even if the user switches provider mid-request.
-    const modelId = useModelProvider.getState().selectedModel?.id
-    const providerId = useModelProvider.getState().selectedProvider
+    const selection = this.getModelSelection()
+    const modelId = selection.selectedModel?.id
+    const providerId = selection.selectedProvider
     const effectiveProviderName = providerId
     const provider = useModelProvider.getState().getProviderByName(providerId)
     if (!this.serviceHub || !modelId || !provider) {
@@ -1355,6 +1506,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
 
     this.lastUserMessage = extractLatestUserText(options.messages)
+    // AH-004: the turn, in the session's canonical record. Opened before the
+    // request goes out, so a turn cancelled before its first token is in the
+    // record rather than missing from it, and continued -- not reopened --
+    // when this request is the one carrying tool results back.
+    continueOrBeginChatRun(threadId, { model: modelId })
 
     try {
       const updatedProvider = useModelProvider
@@ -1368,7 +1524,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       // thinking budget — has to see the chat's own overrides, or a control
       // the composer shows as set would never reach the request.
       const selectedModel = resolveModel(
-        useModelProvider.getState().selectedModel,
+        selection.selectedModel,
         useModelOverrides.getState().forThread(threadId)
       )
       const reasoningParams = buildLlamacppReasoningParams(
@@ -1435,7 +1591,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         updatedProvider ?? provider,
         mergedParams,
         providerId,
-        options.abortSignal
+        options.abortSignal,
+        requestId
       )
       useAppState.getState().updateLoadingModel(false)
       useAppState.getState().updateThreadLoadingModel(threadId, false)
@@ -1463,7 +1620,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const inferenceParams = this.getActiveInferenceParams()
 
-    const selectedModel = useModelProvider.getState().selectedModel
+    const selectedModel = this.getModelSelection().selectedModel
 
     await this.refreshMemory()
     const effectiveSystem = this.buildSystemPrompt(messagesToConvert)
@@ -1503,7 +1660,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       liveContextTokens,
       contextShiftEnabled
     )
+    // AH-076: the shared compaction policy -- the same file the desktop agent
+    // loop and the CLI read. A policy file the backend refuses fails the
+    // request rather than silently compacting at a default point.
+    const compaction =
+      maxContextTokens > 0 ? await getCompactionPolicy() : DEFAULT_COMPACTION_POLICY
+    // The per-model parameter still opts a model in; the policy opts every
+    // surface in or out.
     const autoCompact =
+      compaction.auto ||
       inferenceParams.auto_compact === true ||
       inferenceParams.auto_compact === 'true'
 
@@ -1511,7 +1676,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     if (maxContextTokens > 0) {
       const contextConfig: ContextManagerConfig = {
         maxContextTokens,
-        maxOutputTokens: maxOutputTokens ?? 2048,
+        // The reserve is headroom kept free; a model's own output cap, when
+        // larger, still wins.
+        maxOutputTokens: outputHeadroom(maxContextTokens, maxOutputTokens ?? 2048, compaction),
         autoCompact: !!autoCompact,
       }
 
@@ -1520,19 +1687,33 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       const systemPromptTokens = effectiveSystem
         ? estimateTokens(effectiveSystem) + 4
         : 0
-      if (autoCompact && !contextShiftEnabled && this.model) {
+      if (autoCompact && compaction.strategy === 'summarize' && !contextShiftEnabled && this.model) {
         const compactResult = await compactMessages(
           messagesToConvert,
           contextConfig,
           this.model,
           systemPromptTokens,
-          { session: options.chatId ?? '', modelId: selectedModel?.id ?? '' }
+          { session: options.chatId ?? '', modelId: selectedModel?.id ?? '' },
+          compaction.summaryMaxTokens
         )
         effectiveMessages = compactResult.messages
         if (compactResult.trimmedCount > 0) {
           console.debug(
             `[context-manager] Compacted ${compactResult.trimmedCount} messages` +
               (compactResult.compactedSummary ? ' with summary' : ' (trim fallback)')
+          )
+          // A compaction changes what the model sees from here on, so it is
+          // part of what the conversation did and goes in its record.
+          void recordLifecycle(
+            { session: options.chatId ?? '', run: '', source: 'chat' },
+            {
+              id: `compaction:${Date.now()}`,
+              lifecycle: 'compaction',
+              phase: 'succeeded',
+              summary: compactResult.compactedSummary
+                ? `Compacted ${compactResult.trimmedCount} messages into a summary`
+                : `Dropped ${compactResult.trimmedCount} oldest messages (summary unavailable)`,
+            }
           )
         }
       } else {
@@ -1545,6 +1726,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         if (trimResult.trimmedCount > 0) {
           console.debug(
             `[context-manager] Trimmed ${trimResult.trimmedCount} oldest messages to fit context budget`
+          )
+          void recordLifecycle(
+            { session: options.chatId ?? '', run: '', source: 'chat' },
+            {
+              id: `context-trim:${Date.now()}`,
+              lifecycle: 'compaction',
+              phase: 'succeeded',
+              summary: `Left out ${trimResult.trimmedCount} oldest messages to fit the context window`,
+            }
           )
         }
       }
@@ -1612,10 +1802,32 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const reasoningProviderOptions = buildReasoningProviderOptions(
       providerId,
       resolveModel(
-        useModelProvider.getState().selectedModel,
+        this.getModelSelection().selectedModel,
         useModelOverrides.getState().forThread(threadId)
       )
     )
+
+    // The assembled request, by reference: ids and hashes of what went in,
+    // never the content. Dispatch events move it to sent / response-started /
+    // failed, and it rides on the assistant message's metadata.
+    requestAttributions.begin(
+      threadId,
+      assembleAttribution({
+        requestId,
+        memory: this.memorySelection,
+        binding: this.memoryBindingUsed ?? {
+          projectRoot: this.projectRoot,
+          janProjectId: this.janProjectId,
+          janProjectName: this.janProjectName,
+          temporary: this.temporary,
+        },
+        tools: shouldEnableTools ? Object.keys(this.tools) : [],
+        messages: effectiveMessages,
+        provider: providerId,
+        model: modelId,
+      })
+    )
+    this.lastRequestId = requestId
 
     let streamStartTime: number | undefined
     useAppState.getState().updatePromptProgress(undefined)
@@ -1647,6 +1859,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     let tokensPerSecond = 0
     let promptPerSecond = 0
+    // Per step, with the provider's raw usage: the `finish` part's total has
+    // already been summed by the SDK and no longer says whether a cache count
+    // was reported or defaulted to zero.
+    const usageCollector = createUsageCollector()
 
     const uiStream = result.toUIMessageStream({
       messageMetadata: ({ part }) => {
@@ -1675,6 +1891,30 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           streamStartTime = Date.now()
         }
 
+        usageCollector.observe(part)
+
+        // One invocation per model request, minted when the step starts, so
+        // everything the step does -- its tools, its usage, its message -- is
+        // recorded against the request that asked for it.
+        if (part.type === 'start-step') {
+          nextChatInvocation(threadId)
+        }
+        if (part.type === 'finish-step') {
+          const step = part as { type: 'finish-step'; usage?: LanguageModelUsage }
+          const invocation = chatRunOf(threadId)?.invocation ?? ''
+          const reported = readTokenUsage(usageCollector.total(step.usage))
+          if (reported) {
+            recordChatUsage(threadId, invocation, usageEventPayload(reported))
+          }
+        }
+
+        // The attribution travels with the message from its first part, and
+        // again once the provider has answered (the snapshot reference is
+        // known by then), so a reply persisted at any point carries it.
+        if (part.type === 'start' || part.type === 'start-step') {
+          return attributionMetadata(requestAttributions, requestId, part.type)
+        }
+
         if (part.type === 'finish-step') {
           tokensPerSecond =
             (part.providerMetadata?.providerMetadata
@@ -1691,13 +1931,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             totalUsage: LanguageModelUsage
             finishReason: string
           }
-          const usage = finishPart.totalUsage
+          const usage = usageCollector.total(finishPart.totalUsage)
           const durationMs = streamStartTime ? Date.now() - streamStartTime : 0
           const durationSec = durationMs / 1000
 
-          // Use provider's outputTokens, or llama.cpp completionTokens, or fall back to text delta count
-          const outputTokens = usage?.outputTokens ?? 0
-          const inputTokens = usage?.inputTokens
+          // Only for the speed figure; the stored usage keeps an unreported
+          // count unreported rather than zero.
+          const outputTokens = usage.outputTokens ?? 0
 
           // Use llama.cpp's tokens per second if available, otherwise calculate from duration
           let tokenSpeed: number
@@ -1708,15 +1948,81 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             tokenSpeed = 0
           }
 
+          // AH-083: where each carried memory was used -- now naming the
+          // exact request it went out in, the way Cowork's does, because the
+          // transport's snapshot reaches Chat as well (AH-032). Without the
+          // snapshot a use could say only "this chat, some turn".
+          if (this.recordsMemoryUsesOnFinish && this.memorySelection?.injectedIds.length) {
+            const snapshotId = chatSnapshotId(this.threadId)
+            void recordMemoryUses({
+              sessionId: this.threadId,
+              projectRoot: this.projectRoot,
+              janProjectId: this.janProjectId,
+              memory: {
+                injectedIds: this.memorySelection.injectedIds,
+                conflictIds: this.memorySelection.conflictIds,
+                recall: this.memorySelection.recall ?? [],
+              },
+              ...(snapshotId
+                ? { snapshotId, turnId: `turn-${snapshotId}` }
+                : {}),
+            })
+          }
+
+          // Bind the provider's own count to the dispatch it counted, the
+          // way Cowork does. Only with an invocation: an unbound count is
+          // what the usage record exists to refuse.
+          bindUsageAtFinish({
+            registry: requestAttributions,
+            requestId,
+            session: threadId,
+            model: modelId,
+            usage: usage
+              ? {
+                  inputTokens: usage.inputTokens,
+                  outputTokens,
+                  totalTokens: usage.totalTokens,
+                }
+              : undefined,
+            record: recordPayloadUsage,
+          })
+
           return {
+            ...attributionMetadata(requestAttributions, requestId, 'finish'),
             finishReason: finishPart.finishReason,
             streamCutOff: streamCutOff(part),
-            usage: {
-              inputTokens: inputTokens,
-              outputTokens: outputTokens,
-              totalTokens:
-                usage?.totalTokens ?? (inputTokens ?? 0) + outputTokens,
-            },
+            usage,
+            // Which remembered records this request carried, and which were
+            // withheld as conflicting: ids only, never their text.
+            ...(this.memorySelection
+              ? {
+                  memory: {
+                    injectedIds: this.memorySelection.injectedIds,
+                    conflictIds: this.memorySelection.conflictIds,
+                    storageIssues: this.memorySelection.storageIssues ?? [],
+                    recallOff: this.memorySelection.recallOff ?? [],
+                    recall: (this.memorySelection.recall ?? []).map((r) => ({
+                      id: r.id,
+                      rank: r.rank,
+                      reason: r.reason,
+                    })),
+                    overridden: this.memorySelection.overridden ?? [],
+                    refused: this.memorySelection.refused ?? [],
+                  },
+                }
+              : {}),
+            ...(() => {
+              // What the reply was made of: sizes and counts, never the words.
+              recordChatMessage(threadId, chatRunOf(threadId)?.invocation ?? '', {
+                finishReason: finishPart.finishReason,
+                outputTokens,
+                durationMs,
+              })
+              // A reply that asked for tools leaves the turn open: the tools
+              // run next, and their results come back in another request.
+              markChatAwaitingTools(threadId, finishPart.finishReason === 'tool-calls')
+              return {}
+            })(),
             tokenSpeed: {
               tokenSpeed: Math.round(tokenSpeed * 100) / 100,
               promptSpeed: promptPerSecond
@@ -1731,6 +2037,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         return undefined
       },
       onError: (error) => {
+        requestAttributions.fail(requestId)
         // A superseded request (e.g. after Reload) must not clear loading/stream
         // state the newer request already owns.
         if (this.streamGeneration === myGeneration) {
@@ -1744,6 +2051,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             useAppState.getState().setCurrentStreamThreadId(undefined)
           }
         }
+        endChatRun(threadId, 'error')
         const unwrapped = unwrapRetryError(error)
         const rawMessage = unwrapped == null
           ? 'Unknown error'
@@ -1761,6 +2069,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         return baseMessage
       },
       onFinish: ({ responseMessage }) => {
+        if (options.abortSignal?.aborted) endChatRun(threadId, 'cancelled')
+        // Left open when tools are still to run: the turn ends with the reply
+        // that needs none.
+        else if (!chatAwaitsTools(threadId)) endChatRun(threadId, 'done')
         if (this.streamGeneration === myGeneration) {
           useAppState.getState().updatePromptProgress(undefined)
           useAppState.getState().updateLoadingModel(false)
@@ -1776,7 +2088,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           const metadata = responseMessage.metadata as
             | Record<string, unknown>
             | undefined
-          const usage = metadata?.usage as LanguageModelUsage | undefined
+          const usage = readTokenUsage(metadata?.usage)
           if (usage) {
             this.onTokenUsage?.(usage, responseMessage.id)
           }

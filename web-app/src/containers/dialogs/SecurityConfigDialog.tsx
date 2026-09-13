@@ -15,19 +15,19 @@ import { Switch } from '@/components/ui/switch'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { cn } from '@/lib/utils'
 import {
-  IconShield,
-  IconKey,
-  IconDevices,
-  IconHistory,
-  IconLoader2,
-  IconCopy,
-  IconCheck,
-  IconTrash,
-  IconRefresh,
-  IconAlertTriangle,
-  IconEye,
-  IconEyeOff,
-} from '@tabler/icons-react'
+  Shield,
+  Key,
+  MonitorSmartphone,
+  History,
+  Loader2,
+  Copy,
+  Check,
+  Trash2,
+  RefreshCw,
+  TriangleAlert,
+  Eye,
+  EyeOff,
+} from 'lucide-react'
 
 // Types
 type AuthMode = 'token' | 'password' | 'none'
@@ -344,7 +344,7 @@ export function SecurityConfigDialog({
             : 'text-muted-foreground hover:text-foreground'
         )}
       >
-        <IconKey size={16} />
+        <Key size={16} />
         Authentication
       </button>
       <button
@@ -356,7 +356,7 @@ export function SecurityConfigDialog({
             : 'text-muted-foreground hover:text-foreground'
         )}
       >
-        <IconDevices size={16} />
+        <MonitorSmartphone size={16} />
         Devices
       </button>
       <button
@@ -368,7 +368,7 @@ export function SecurityConfigDialog({
             : 'text-muted-foreground hover:text-foreground'
         )}
       >
-        <IconHistory size={16} />
+        <History size={16} />
         Logs
       </button>
     </div>
@@ -456,7 +456,7 @@ export function SecurityConfigDialog({
                     size="icon-sm"
                     onClick={() => setShowToken(!showToken)}
                   >
-                    {showToken ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+                    {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
                   </Button>
                   <Button
                     variant="ghost"
@@ -464,15 +464,15 @@ export function SecurityConfigDialog({
                     onClick={handleCopyToken}
                   >
                     {tokenCopied ? (
-                      <IconCheck size={16} className="text-green-500" />
+                      <Check size={16} className="text-green-500" />
                     ) : (
-                      <IconCopy size={16} />
+                      <Copy size={16} />
                     )}
                   </Button>
                 </div>
               </div>
               <div className="flex items-start gap-2 text-amber-500 text-sm">
-                <IconAlertTriangle size={16} className="shrink-0 mt-0.5" />
+                <TriangleAlert size={16} className="shrink-0 mt-0.5" />
                 <span>
                   Save this token now. It cannot be retrieved later. You will
                   need to generate a new one if lost.
@@ -495,12 +495,12 @@ export function SecurityConfigDialog({
           >
             {isGeneratingToken ? (
               <>
-                <IconLoader2 className="animate-spin mr-2 h-4 w-4" />
+                <Loader2 className="animate-spin mr-2 h-4 w-4" />
                 Generating...
               </>
             ) : (
               <>
-                <IconKey className="mr-2 h-4 w-4" />
+                <Key className="mr-2 h-4 w-4" />
                 Generate New Token
               </>
             )}
@@ -533,7 +533,7 @@ export function SecurityConfigDialog({
                 className="absolute right-1 top-1/2 -translate-y-1/2"
                 onClick={() => setShowPassword(!showPassword)}
               >
-                {showPassword ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </Button>
             </div>
             <Input
@@ -564,7 +564,7 @@ export function SecurityConfigDialog({
           >
             {isSettingPassword ? (
               <>
-                <IconLoader2 className="animate-spin mr-2 h-4 w-4" />
+                <Loader2 className="animate-spin mr-2 h-4 w-4" />
                 Setting...
               </>
             ) : (
@@ -605,7 +605,7 @@ export function SecurityConfigDialog({
             onClick={fetchDevices}
             disabled={isLoadingDevices}
           >
-            <IconRefresh
+            <RefreshCw
               size={16}
               className={cn(isLoadingDevices && 'animate-spin')}
             />
@@ -614,11 +614,11 @@ export function SecurityConfigDialog({
 
         {isLoadingDevices ? (
           <div className="flex items-center justify-center py-8">
-            <IconLoader2 className="animate-spin h-6 w-6 text-muted-foreground" />
+            <Loader2 className="animate-spin h-6 w-6 text-muted-foreground" />
           </div>
         ) : devices.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
-            <IconDevices size={32} className="mx-auto mb-2 opacity-50" />
+            <MonitorSmartphone size={32} className="mx-auto mb-2 opacity-50" />
             <p>No approved devices</p>
           </div>
         ) : (
@@ -659,9 +659,9 @@ export function SecurityConfigDialog({
                   className="shrink-0 text-destructive hover:text-destructive"
                 >
                   {revokingDeviceId === device.id ? (
-                    <IconLoader2 className="animate-spin h-4 w-4" />
+                    <Loader2 className="animate-spin h-4 w-4" />
                   ) : (
-                    <IconTrash size={16} />
+                    <Trash2 size={16} />
                   )}
                 </Button>
               </div>
@@ -685,7 +685,7 @@ export function SecurityConfigDialog({
             onClick={fetchLogs}
             disabled={isLoadingLogs}
           >
-            <IconRefresh
+            <RefreshCw
               size={16}
               className={cn(isLoadingLogs && 'animate-spin')}
             />
@@ -697,7 +697,7 @@ export function SecurityConfigDialog({
             disabled={isClearingLogs || logs.length === 0}
             className="text-destructive hover:text-destructive"
           >
-            <IconTrash size={16} className="mr-1" />
+            <Trash2 size={16} className="mr-1" />
             Clear
           </Button>
         </div>
@@ -706,11 +706,11 @@ export function SecurityConfigDialog({
       {/* Logs list */}
       {isLoadingLogs ? (
         <div className="flex items-center justify-center py-8">
-          <IconLoader2 className="animate-spin h-6 w-6 text-muted-foreground" />
+          <Loader2 className="animate-spin h-6 w-6 text-muted-foreground" />
         </div>
       ) : logs.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground">
-          <IconHistory size={32} className="mx-auto mb-2 opacity-50" />
+          <History size={32} className="mx-auto mb-2 opacity-50" />
           <p>No access logs</p>
         </div>
       ) : (
@@ -823,7 +823,7 @@ export function SecurityConfigDialog({
         <DialogContent className="sm:max-w-[560px] max-w-[90vw] max-h-[85vh] flex flex-col">
           <DialogHeader>
             <div className="flex items-center gap-2">
-              <IconShield size={24} className="text-primary" />
+              <Shield size={24} className="text-primary" />
               <DialogTitle>Security Settings</DialogTitle>
             </div>
             <DialogDescription>
@@ -833,7 +833,7 @@ export function SecurityConfigDialog({
 
           {isLoadingStatus ? (
             <div className="flex items-center justify-center py-12">
-              <IconLoader2 className="animate-spin h-8 w-8 text-muted-foreground" />
+              <Loader2 className="animate-spin h-8 w-8 text-muted-foreground" />
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto">

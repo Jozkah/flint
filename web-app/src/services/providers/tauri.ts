@@ -17,6 +17,7 @@ import {
   providerRemoteApiKeyChain,
 } from '@/lib/provider-api-keys'
 import { ensureAnthropicHeaders } from '@/lib/anthropicHeaders'
+import { applyCustomHeaders } from '@/lib/customHeaders'
 import {
   EndpointError,
   describeEndpointFailure,
@@ -182,11 +183,9 @@ export class TauriProvidersService extends DefaultProvidersService {
           headers['Authorization'] = `Bearer ${key}`
         }
 
-        if (provider.custom_header) {
-          provider.custom_header.forEach((header) => {
-            headers[header.header] = header.value
-          })
-        }
+        // After the key: reserved names are never applied, so a custom header
+        // cannot replace it. janhq/jan#8208.
+        applyCustomHeaders(headers, provider)
 
         ensureAnthropicHeaders(provider, headers)
 

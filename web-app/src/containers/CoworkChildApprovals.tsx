@@ -55,18 +55,57 @@ export function CoworkChildApprovals({
       {mine.map((entry) => (
         <div
           key={entry.requestId}
-          className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3"
+          // Paper, with the warning colour carried by the side marker only:
+          // the request is waiting on a person, not failing.
+          className="space-y-3 rounded-lg border border-border border-l-2 border-l-warning bg-card p-3 text-xs"
           data-testid="child-approval"
           data-origin={entry.origin}
           data-tool={entry.toolName}
         >
-          <div className="flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-300">
-            <ShieldAlertIcon className="size-4" />
+          <div className="flex items-start gap-2 font-medium text-foreground">
+            <ShieldAlertIcon
+              className="mt-0.5 size-4 shrink-0 text-warning"
+              aria-hidden
+            />
             <span>
               {entry.origin}: <span className="font-mono">{entry.toolName}</span>{' '}
               {t('tools:toolApproval.needsApproval')}
             </span>
           </div>
+          {/* What answering does, in plain words, before the buttons. */}
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+            <dt className="text-muted-foreground">
+              {t('tools:toolApproval.childActionLabel')}
+            </dt>
+            <dd className="text-foreground">
+              {t('tools:toolApproval.childAction', {
+                origin: entry.origin,
+                tool: entry.toolName,
+              })}
+            </dd>
+            {entry.serverName ? (
+              <>
+                <dt className="text-muted-foreground">
+                  {t('tools:toolApproval.childResourcesLabel')}
+                </dt>
+                <dd className="break-all font-mono text-foreground">
+                  {entry.serverName}
+                </dd>
+              </>
+            ) : null}
+            <dt className="text-muted-foreground">
+              {t('tools:toolApproval.childScopeLabel')}
+            </dt>
+            <dd className="text-foreground">
+              {t('tools:toolApproval.childScope')}
+            </dd>
+            <dt className="text-muted-foreground">
+              {t('tools:toolApproval.childDenyLabel')}
+            </dt>
+            <dd className="text-foreground">
+              {t('tools:toolApproval.childDeny')}
+            </dd>
+          </dl>
           {entry.preview && (
             <ChangeDiff
               diff={entry.preview}
@@ -78,6 +117,7 @@ export function CoworkChildApprovals({
             <Button
               size="sm"
               variant="destructive"
+              className="pointer-coarse:h-11"
               disabled={!armed}
               onClick={() =>
                 resolveApproval(entry.toolCallId, 'deny', entry.requestId)
@@ -88,6 +128,7 @@ export function CoworkChildApprovals({
             <Button
               size="sm"
               variant="outline"
+              className="pointer-coarse:h-11"
               disabled={!armed}
               onClick={() =>
                 resolveApproval(entry.toolCallId, 'allow-once', entry.requestId)

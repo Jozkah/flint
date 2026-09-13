@@ -25,6 +25,13 @@ export type PayloadUsage = {
   prompt_tokens: number | null
   completion_tokens: number | null
   total_tokens: number | null
+  /**
+   * The provider's own cache counts for this dispatch. Omitted, not zeroed,
+   * when the provider did not report them; records written before these
+   * existed lack them entirely. AH-211.
+   */
+  cached_prompt_tokens?: number | null
+  cache_write_tokens?: number | null
   source: UsageSource
 }
 
@@ -32,6 +39,8 @@ export type ProviderUsage = {
   prompt_tokens?: number
   completion_tokens?: number
   total_tokens?: number
+  cached_prompt_tokens?: number
+  cache_write_tokens?: number
 } | null
 
 const positive = (value: unknown): number | null =>
@@ -44,7 +53,8 @@ const positive = (value: unknown): number | null =>
  *
  * Never rejects and never throws: a run must not fail because its accounting
  * line could not be written, and a caller should not have to guard it. Outside
- * Tauri there is nowhere to write and this is a no-op.
+ * Tauri there is nowhere to write and this is a no-op. Resolves `true` only
+ * when the backend accepted the record.
  */
 export async function recordPayloadUsage(input: {
   session: string
@@ -52,15 +62,19 @@ export async function recordPayloadUsage(input: {
   snapshot: PromptSnapshotRef | null
   model?: string
   usage: ProviderUsage
-}): Promise<void> {
+}): Promise<boolean> {
   const invocation = input.snapshot?.invocation ?? ''
   // Without an invocation there is nothing to bind the count to, and an
   // unbound count is exactly what this record exists to stop.
-  if (!invocation) return
+  if (!invocation) return false
 
+  const cached = positive(input.usage?.cached_prompt_tokens)
+  const cacheWrite = positive(input.usage?.cache_write_tokens)
   try {
     await invoke('payload_usage_record', {
       usage: {
+        ...(cached !== null ? { cached_prompt_tokens: cached } : {}),
+        ...(cacheWrite !== null ? { cache_write_tokens: cacheWrite } : {}),
         v: 1,
         at: new Date().toISOString(),
         session: input.session,
@@ -76,8 +90,10 @@ export async function recordPayloadUsage(input: {
         source: input.usage ? 'provider' : 'estimated',
       } satisfies PayloadUsage,
     })
+    return true
   } catch {
     // Reported by the backend; never fatal here.
+    return false
   }
 }
 

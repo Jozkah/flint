@@ -78,7 +78,11 @@ vi.mock('@/constants/localStorage', () => ({
 vi.mock('@/constants/routes', () => ({
   route: {
     home: '/',
-    settings: { providers: '/settings/providers/$providerName' },
+    cowork: '/cowork',
+    settings: {
+      providers: '/settings/providers/$providerName',
+      model_providers: '/settings/providers',
+    },
   },
 }))
 
@@ -98,6 +102,8 @@ vi.mock('@/components/ui/button', () => ({
 }))
 
 import SetupScreen from '../SetupScreen'
+import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
+import { INITIAL_GUIDE_STATE } from '@/lib/onboarding'
 
 // The readiness probes resolve after mount, so flush them before asserting to
 // keep pending state updates out of the test.
@@ -161,6 +167,8 @@ describe('SetupScreen', () => {
       dimension: 384,
     })
     localStorage.clear()
+    // The guide store is a module singleton; each test starts a fresh setup.
+    useOnboardingGuide.setState({ ...INITIAL_GUIDE_STATE })
   })
 
   it('renders the header page component', async () => {
@@ -646,6 +654,98 @@ describe('SetupScreen', () => {
         fireEvent.click(screen.getByTestId('setup-finish-start'))
       })
       expect(hoisted.navigateMock).toHaveBeenCalled()
+    })
+  })
+
+  describe('first-run guide', () => {
+    it('offers three intentions and starts the guide with the chosen one', async () => {
+      await renderSetup()
+      expect(screen.getAllByRole('radio')).toHaveLength(3)
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('setup-intent-documents'))
+      })
+      expect(screen.getByTestId('setup-intent-documents')).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      await start()
+      expect(useOnboardingGuide.getState()).toMatchObject({
+        status: 'in-progress',
+        intent: 'documents',
+        setupPage: 'setup',
+      })
+    })
+
+    it('moves and selects intentions with arrow keys, as a radio group does', async () => {
+      await renderSetup()
+      const group = screen.getByRole('radiogroup')
+      await act(async () => {
+        fireEvent.keyDown(group, { key: 'ArrowDown' })
+      })
+      expect(screen.getByTestId('setup-intent-question')).toHaveAttribute('aria-checked', 'true')
+      expect(screen.getByTestId('setup-intent-question')).toHaveFocus()
+      await act(async () => {
+        fireEvent.keyDown(group, { key: 'ArrowUp' })
+      })
+      expect(screen.getByTestId('setup-intent-project')).toHaveAttribute('aria-checked', 'true')
+      expect(useOnboardingGuide.getState().intent).toBe('project')
+    })
+
+    it('lets the user skip the guide without skipping setup', async () => {
+      await renderSetup()
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('setup-skip-guide'))
+      })
+      expect(useOnboardingGuide.getState().status).toBe('skipped')
+      expect(hoisted.startEngineSetupMock).toHaveBeenCalledTimes(1)
+      expect(currentPage()).not.toBe('welcome')
+    })
+
+    it('explains local and remote processing and links to remote setup', async () => {
+      await renderPastSetup()
+      expect(screen.getByTestId('setup-processing')).toHaveTextContent(
+        'onboarding:processingLocal'
+      )
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('setup-connect-remote'))
+      })
+      expect(hoisted.navigateMock).toHaveBeenCalledWith({
+        to: '/settings/providers',
+      })
+    })
+
+    it('resumes on the page it was left on', async () => {
+      useOnboardingGuide.setState({ setupPage: 'finish', status: 'in-progress' })
+      await renderSetup()
+      expect(currentPage()).toBe('finish')
+      expect(screen.getByTestId('setup-resumed')).toBeInTheDocument()
+    })
+
+    it('takes project work to Cowork with the chosen local model', async () => {
+      hoisted.providersMock.getProviderByName.mockReturnValue({
+        models: [{ id: 'local-a.gguf' }],
+      })
+      await renderSetup()
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('setup-intent-project'))
+      })
+      await start()
+      await continueSetup()
+      await act(async () => {
+        fireEvent.click(screen.getAllByTestId('setup-local-model')[0])
+      })
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('setup-finish-start'))
+      })
+      expect(hoisted.providersMock.selectModelProvider).toHaveBeenCalledWith(
+        'llamacpp',
+        'local-a.gguf'
+      )
+      expect(hoisted.navigateMock).toHaveBeenCalledWith({
+        to: '/cowork',
+        replace: true,
+      })
+      expect(useOnboardingGuide.getState().setupPage).toBe('welcome')
     })
   })
 })

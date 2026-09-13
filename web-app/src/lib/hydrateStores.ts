@@ -25,6 +25,9 @@ import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import { useKeybindings } from '@/hooks/useKeybindings'
 import { useReferenceAliases } from '@/lib/referenceAliases'
 import { useProjectInitDrafts } from '@/lib/projectInit'
+import { useModelEvidence } from '@/hooks/useModelEvidence'
+import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
+import { useSplitConversation } from '@/hooks/useSplitConversation'
 
 /**
  * Stores persisted through `backendStorage` set `skipHydration: true` so they
@@ -63,6 +66,9 @@ const secondaryStores = [
   useKeybindings,
   useReferenceAliases,
   useProjectInitDrafts,
+  useModelEvidence,
+  useOnboardingGuide,
+  useSplitConversation,
 ] as const
 
 export async function hydrateBackendStores(): Promise<void> {

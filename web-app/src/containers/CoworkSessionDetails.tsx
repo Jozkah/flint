@@ -26,14 +26,44 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 export function CoworkSessionDetails({
   children,
   summary,
+  inline = false,
 }: {
   /** The detail surfaces, rendered only while the dialog is open. */
   children: ReactNode
   /** Named on the trigger's tooltip and label, not on its face. */
   summary?: string
+  /**
+   * On phones the details are a view of their own rather than a dialog over
+   * the conversation: the same surfaces, mounted in the page.
+   */
+  inline?: boolean
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+
+  if (inline) {
+    return (
+      <section
+        aria-labelledby="cowork-session-details-heading"
+        className="flex flex-col gap-3"
+      >
+        <header className="flex flex-col gap-1">
+          <h2
+            id="cowork-session-details-heading"
+            className="text-base font-medium text-foreground"
+          >
+            {t('common:sessionDetails.title')}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {summary || t('common:sessionDetails.description')}
+          </p>
+        </header>
+        <div className="flex flex-col gap-3" data-testid="session-details-body">
+          {children}
+        </div>
+      </section>
+    )
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -45,6 +75,7 @@ export function CoworkSessionDetails({
         <Button
           variant="ghost"
           size="icon-sm"
+          className="pointer-coarse:size-11"
           data-testid="session-details-trigger"
           title={summary || t('common:sessionDetails.title')}
           aria-label={

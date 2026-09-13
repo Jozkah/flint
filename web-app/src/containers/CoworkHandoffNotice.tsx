@@ -58,7 +58,7 @@ export function CoworkHandoffNotice({
 
   return (
     <section
-      className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-xs"
+      className="mb-2 rounded-md border border-warning/40 bg-warning-tint p-2 text-xs"
       aria-label="Handed off from another computer"
       data-testid="handoff-notice"
     >

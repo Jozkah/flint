@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { IconChevronDown, IconUser } from '@tabler/icons-react'
+import { ChevronDown, User } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -100,12 +100,12 @@ export function AssistantSwitcher({
                   textClassName="text-sm"
                 />
               ) : (
-                <IconUser size={14} className="text-muted-foreground" />
+                <User size={14} className="text-muted-foreground" />
               )}
               <span className="text-sm font-medium truncate max-w-32">
                 {activeAssistant?.name ?? t('common:noAssistant')}
               </span>
-              <IconChevronDown size={14} className="text-muted-foreground" />
+              <ChevronDown size={14} className="text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>

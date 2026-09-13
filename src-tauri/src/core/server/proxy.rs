@@ -1059,7 +1059,7 @@ async fn proxy_request(
                                     &origin_header,
                                     &config.trusted_hosts,
                                 );
-                                return Ok(error_response.body(full(e)).unwrap());
+                                return Ok(error_response.body(full(e.message().to_string())).unwrap());
                             }
                         }
                     }
@@ -1580,7 +1580,7 @@ async fn proxy_request(
                                     &origin_header,
                                     &config.trusted_hosts,
                                 );
-                                return Ok(error_response.body(full(e)).unwrap());
+                                return Ok(error_response.body(full(e.message().to_string())).unwrap());
                             }
                         }
                     }
@@ -2141,7 +2141,7 @@ async fn proxy_request(
                     log::info!("Fallback to chat completions: {chat_url}");
 
                     // Create a fresh client for the fallback to avoid connection pool issues
-                    let fallback_client = Client::builder()
+                    let fallback_client = crate::core::net::tls::apply12(Client::builder())
                         .build()
                         .expect("Failed to create fallback client");
 
@@ -2504,11 +2504,13 @@ async fn start_server_internal(
         cors_enabled,
     };
 
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(proxy_timeout))
-        .pool_max_idle_per_host(10)
-        .pool_idle_timeout(std::time::Duration::from_secs(30))
-        .build()?;
+    let client = crate::core::net::tls::apply12(
+        Client::builder()
+            .timeout(std::time::Duration::from_secs(proxy_timeout))
+            .pool_max_idle_per_host(10)
+            .pool_idle_timeout(std::time::Duration::from_secs(30)),
+    )
+    .build()?;
 
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,

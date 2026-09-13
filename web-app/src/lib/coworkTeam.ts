@@ -19,6 +19,17 @@
  * is why [`assembleReport`] takes results rather than prose about them.
  */
 
+import {
+  DECISION_WINDOW_MS,
+  TeamControl,
+  applyReplacement,
+  awaitingDecision,
+  checkRequest,
+  reopen,
+  type ControlRequest,
+  type ControlResult,
+} from '@/lib/coworkTeamControl'
+
 /** What a child was asked to do. */
 export type TeamTask = {
   id: string
@@ -856,12 +867,35 @@ export type TeamRunDeps = {
    * that forgot to ask cannot run overlapping tasks by omission.
    */
   allowParallel?: ReadonlySet<string>
+  /**
+   * Restart or replace a failed task while the team runs (AH-111). Present,
+   * a team that would end with failures holds for a decision instead: the
+   * person restarts, replaces, finishes it, or stops the run.
+   */
+  control?: TeamControl
+  /** Told what became of each control request, for the Tasks panel. */
+  onControl?: (request: ControlRequest, result: ControlResult) => void
+  /**
+   * How long a team that would end with failures waits for a decision before
+   * ending on its own. Defaults to [`DECISION_WINDOW_MS`].
+   */
+  decisionWindowMs?: number
 }
 
 export type TeamOutcome =
   /** The graph could not run at all; nothing was dispatched. */
   | { ok: false; refusal: string }
-  | { ok: true; report: TeamReport; state: TeamState }
+  | {
+      ok: true
+      report: TeamReport
+      state: TeamState
+      /**
+       * Why a team with failures ended: a person finished it, the decision
+       * window passed with nobody deciding, or the run was stopped. Absent when
+       * nothing had failed, or no one could have decided.
+       */
+      decision?: 'finished' | 'window-elapsed' | 'stopped'
+    }
 
 /**
  * Run a task graph to completion, or to the first thing that stops it.
@@ -885,9 +919,13 @@ export async function runTeam(
   if (refusal) return { ok: false, refusal }
 
   const limit = Math.max(1, deps.maxParallel ?? MAX_TEAM_PARALLEL)
-  let state = initialState(tasks)
+  // The graph a replacement can change; the caller's stays as it was.
+  let graph: TeamTask[] = [...tasks]
+  let state = initialState(graph)
   const results: TaskResult[] = []
   const running = new Map<string, Promise<void>>()
+  let finishRequested = false
+  let decision: 'finished' | 'window-elapsed' | 'stopped' | undefined
 
   const publish = () => deps.onState?.(state)
   publish()
@@ -920,7 +958,7 @@ export async function runTeam(
         (result) => {
           results.push(result)
           state = settle(
-            tasks,
+            graph,
             state,
             task.id,
             result.ok ? 'completed' : 'failed'
@@ -938,7 +976,7 @@ export async function runTeam(
             producedBy: task.id,
           })
           state = settle(
-            tasks,
+            graph,
             state,
             task.id,
             cancelled ? 'cancelled' : 'failed'
@@ -954,16 +992,65 @@ export async function runTeam(
     running.set(task.id, work)
   }
 
+  /** Apply what a person asked for since the last look. */
+  const applyControl = () => {
+    for (const request of deps.control?.take() ?? []) {
+      const result = checkRequest(graph, state, request, false)
+      deps.onControl?.(request, result)
+      if (!result.ok) continue
+      if (request.kind === 'finish') {
+        finishRequested = true
+        decision = 'finished'
+        continue
+      }
+      if (request.kind === 'replace') {
+        graph = applyReplacement(graph, request.taskId, request.with)
+      }
+      // The failed attempt stays in the record as an earlier attempt; the
+      // report describes the attempt that counts.
+      for (let i = results.length - 1; i >= 0; i--) {
+        if (results[i].taskId === request.taskId) {
+          results.splice(i, 1)
+          break
+        }
+      }
+      state = reopen(graph, state, request.taskId)
+    }
+  }
+
   while (!deps.signal?.aborted) {
-    for (const task of readyTasks(tasks, state)) {
+    applyControl()
+    for (const task of readyTasks(graph, state)) {
       if (running.size >= limit) break
       start(task)
     }
     publish()
-    if (running.size === 0) break
+    if (running.size === 0) {
+      // Nothing left to run. With failures and a person able to decide, hold
+      // rather than end: ending would make a restart impossible.
+      if (deps.control && !finishRequested && awaitingDecision(state)) {
+        const asked = await deps.control.next(
+          deps.signal,
+          deps.decisionWindowMs ?? DECISION_WINDOW_MS
+        )
+        if (!asked && !deps.signal?.aborted) {
+          // Nobody decided in time: end as the team would have, and say so.
+          decision = 'window-elapsed'
+          break
+        }
+        continue
+      }
+      break
+    }
     // The first to finish, not all of them: a dependent should start as soon
-    // as its last dependency lands.
-    await Promise.race(running.values())
+    // as its last dependency lands -- or a person asks for something.
+    await Promise.race([...running.values(), ...(deps.control ? [deps.control.next(deps.signal)] : [])])
+  }
+  if (deps.control) deps.control.finished = true
+  if (deps.signal?.aborted && deps.control && awaitingDecision(state)) decision = 'stopped'
+  // Anything asked for after the team ended is refused, not silently dropped.
+  for (const request of deps.control?.take() ?? []) {
+    deps.onControl?.(request, checkRequest(graph, state, request, true))
   }
 
   // Let whatever is still in flight settle, so the report describes finished
@@ -971,7 +1058,12 @@ export async function runTeam(
   if (running.size > 0) await Promise.all(running.values())
   publish()
 
-  return { ok: true, report: assembleReport(tasks, results), state }
+  return {
+    ok: true,
+    report: assembleReport(graph, results),
+    state,
+    ...(decision ? { decision } : {}),
+  }
 }
 
 /**

@@ -1,27 +1,41 @@
-//! Plugin install/removal and marketplace search. A plugin is a directory
-//! `.jan/agent/plugins/<name>/` cloned from a git repository, so installing
-//! from GitHub (or any git host) is just `git clone`. No lockfile or registry
-//! file: an installed plugin is a directory, removed by deleting it. Installing
-//! never executes plugin code — a plugin carries skills (instructions) plus an
-//! optional `plugin.toml` metadata manifest.
+//! Plugin lifecycle: install, list, details, enable/disable, removal, and
+//! marketplace search. A plugin is a directory `.jan/agent/plugins/<name>/`
+//! holding skills, slash-command prompt templates and agent profiles. There is
+//! no lockfile or registry file: an installed plugin is a directory, removed by
+//! deleting it. Installing never executes plugin code and never changes tool
+//! permissions -- it only places files.
 //!
-//! A plugin's payload is discovered conventionally, so a repo needs no
+//! A plugin's payload is discovered conventionally, so a source needs no
 //! manifest to be installable:
-//!   - `skills/` — folder skills (`<name>/SKILL.md`) and flat `<name>.md`,
+//!   - `skills/` -- folder skills (`<name>/SKILL.md`) and flat `<name>.md`,
 //!     the same layout as project skills
-//!   - `SKILL.md` at the plugin root — a repo that is itself one skill
-//!   - `plugin.toml` — optional metadata: `name`, `description`, `version`,
-//!     `repo` (the canonical source URL, recorded at install for provenance)
+//!   - `commands/**/*.md` -- prompt templates offered as slash commands
+//!   - `agents/**/*.md` -- agent profiles (subagent definitions)
+//!   - `SKILL.md` at the plugin root -- a source that is itself one skill
+//!   - `plugin.toml` or `.claude-plugin/plugin.json` -- optional metadata:
+//!     `name`, `description`, `version`, `repo`
+//!   - `.mcp.json` -- recognised so a source that ships only this is not
+//!     rejected as empty, but NEVER loaded: plugins contribute no MCP servers.
 //!
-//! `[plugins] marketplace` in `agent.toml` points at a JSON index of community
-//! plugins: `[{ "name", "description", "repo", "ref"? }]`. `install <name>`
-//! resolves through it; `install <git-url>` skips it entirely.
+//! Sources, and what each one contacts:
+//!   - a local folder -- copied (never cloned, never executed); no network.
+//!   - a git URL -- `git clone --depth 1`, which contacts that URL's host.
+//!   - a marketplace name -- only when `[plugins] marketplace` is configured:
+//!     fetches that index URL, then clones the entry's repository.
+//!
+//! Per-project state lives in `agent.toml`: `[plugins] disabled = [...]` keeps
+//! an installed plugin on disk while discovery skips it. Each install writes a
+//! small `.jan-install.json` provenance record into the plugin directory, so
+//! source and install time survive restarts without a registry.
 
-use std::io::{self, Write};
+use std::collections::HashMap;
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::core::agent::project::PluginsSection;
 use crate::core::agent::skills;
@@ -36,6 +50,206 @@ const SHELL_METACHARS: &[char] = &[
 
 const USER_AGENT: &str = "jan-agent-plugin-manager";
 
+/// Provenance record written into every plugin Jan installs.
+const INSTALL_RECORD_FILE: &str = ".jan-install.json";
+
+/// Prefix of the staging directories an install copies or clones into before
+/// the payload is renamed into place. Every discovery path skips these.
+const STAGING_PREFIX: &str = ".installing-";
+
+/// Cap on the executable file paths a details view lists (the count is exact).
+const MAX_LISTED_EXECUTABLES: usize = 100;
+
+// ---------------------------------------------------------------------------
+// Typed errors
+// ---------------------------------------------------------------------------
+
+/// What went wrong, as a stable code the UI maps to actionable text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginErrorCode {
+    /// The spec, URL or path is malformed or not the kind it claims to be.
+    InvalidSource,
+    /// A local folder does not exist or is not a directory.
+    SourceNotFound,
+    /// The source has no manifest, skills, commands, agents or SKILL.md.
+    NoPluginContent,
+    /// The source holds several plugins; one must be chosen.
+    Collection,
+    /// A plugin of this name is already installed.
+    AlreadyInstalled,
+    /// The plugin name is not a safe directory name.
+    InvalidName,
+    /// No installed plugin has this id.
+    NotInstalled,
+    /// `git` is not installed or not on PATH.
+    GitUnavailable,
+    /// `git clone` failed (network, authentication, unknown ref ...).
+    GitFailed,
+    /// A marketplace name was given but no marketplace is configured.
+    MarketplaceNotConfigured,
+    /// The configured marketplace index could not be fetched or parsed.
+    MarketplaceUnavailable,
+    /// The marketplace index has no entry of that name.
+    MarketplaceEntryNotFound,
+    /// The install was cancelled; nothing was installed.
+    Cancelled,
+    /// The project folder does not exist.
+    ProjectUnavailable,
+    /// `agent.toml` could not be read or written.
+    Config,
+    /// A filesystem operation failed.
+    Io,
+}
+
+/// A refusal or failure from the plugin lifecycle: a code plus a message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PluginError {
+    pub code: PluginErrorCode,
+    pub message: String,
+}
+
+impl PluginError {
+    pub(crate) fn new(code: PluginErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+
+    fn io(e: impl std::fmt::Display) -> Self {
+        Self::new(PluginErrorCode::Io, e.to_string())
+    }
+}
+
+impl std::fmt::Display for PluginError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for PluginError {}
+
+/// The CLI and TUI speak the `ERROR: ` string convention of agent tool output.
+impl From<PluginError> for String {
+    fn from(e: PluginError) -> Self {
+        format!("ERROR: {}", e.message)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cancellation
+// ---------------------------------------------------------------------------
+
+/// What an install run needs besides its source: a cancellation flag, and
+/// whether git may prompt on a terminal for credentials (the interactive CLI
+/// can; the desktop has no terminal, so a prompt would hang forever).
+#[derive(Clone)]
+pub(crate) struct InstallCtx {
+    pub cancel: Arc<AtomicBool>,
+    pub terminal_prompts: bool,
+}
+
+impl InstallCtx {
+    fn interactive() -> Self {
+        Self {
+            cancel: Arc::new(AtomicBool::new(false)),
+            terminal_prompts: true,
+        }
+    }
+
+    fn cancelled(&self) -> bool {
+        self.cancel.load(Ordering::SeqCst)
+    }
+
+    fn check(&self) -> Result<(), PluginError> {
+        if self.cancelled() {
+            Err(cancelled_error())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+fn cancelled_error() -> PluginError {
+    PluginError::new(
+        PluginErrorCode::Cancelled,
+        "install cancelled - nothing was installed",
+    )
+}
+
+/// Installs in flight, by caller-chosen id, so a separate command can cancel.
+static INSTALLS: LazyLock<Mutex<HashMap<String, Arc<AtomicBool>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Registration of one running install. Dropping it unregisters the id.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) struct InstallGuard {
+    id: String,
+    cancel: Arc<AtomicBool>,
+}
+
+#[cfg_attr(feature = "cli", allow(dead_code))]
+impl InstallGuard {
+    pub(crate) fn ctx(&self) -> InstallCtx {
+        InstallCtx {
+            cancel: self.cancel.clone(),
+            terminal_prompts: false,
+        }
+    }
+}
+
+impl Drop for InstallGuard {
+    fn drop(&mut self) {
+        if let Ok(mut map) = INSTALLS.lock() {
+            map.remove(&self.id);
+        }
+    }
+}
+
+/// Register an install under `id` so [`cancel_install`] can reach it.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) fn begin_install(id: &str) -> Result<InstallGuard, PluginError> {
+    let id = id.trim();
+    if id.is_empty() {
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            "install id is required",
+        ));
+    }
+    let mut map = INSTALLS
+        .lock()
+        .map_err(|_| PluginError::io("install registry is unavailable"))?;
+    if map.contains_key(id) {
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!("an install with id '{id}' is already running"),
+        ));
+    }
+    let cancel = Arc::new(AtomicBool::new(false));
+    map.insert(id.to_string(), cancel.clone());
+    Ok(InstallGuard {
+        id: id.to_string(),
+        cancel,
+    })
+}
+
+/// Request cancellation of a running install. `false` when no install of that
+/// id is running (it already finished, or never started).
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) fn cancel_install(id: &str) -> bool {
+    INSTALLS
+        .lock()
+        .ok()
+        .and_then(|map| map.get(id.trim()).cloned())
+        .map(|flag| flag.store(true, Ordering::SeqCst))
+        .is_some()
+}
+
+// ---------------------------------------------------------------------------
+// Data shapes
+// ---------------------------------------------------------------------------
+
 // How a bare collection URL that holds several plugins is resolved after the
 // clone. A collection has no payload at the root, so we enumerate the plugins
 // inside it and either ask the user which one to install (interactive CLI) or
@@ -46,7 +260,7 @@ enum CollectionChoice {
     /// Fail on a multi-plugin collection, listing the choices in the error.
     // (desktop-only) `install` is the non-CLI entry point, so this arm is
     // dead under `--features cli` but still matched in the always-compiled
-    // `install_with`, so it is allowed rather than `cfg`'d out.
+    // `finish_install`, so it is allowed rather than `cfg`'d out.
     #[cfg_attr(feature = "cli", allow(dead_code))]
     ListError,
     /// Ask on stdin which plugins to install (the interactive CLI).
@@ -67,7 +281,7 @@ enum CollectionChoice {
 /// One plugin discovered inside a collection repo, for a caller to choose from.
 pub(crate) struct CollectionPlugin {
     // (cli-only) fields are read only by the CLI list/install path but the
-    // struct is constructed by the always-compiled `install_with`, so they
+    // struct is constructed by the always-compiled `finish_install`, so they
     // are dead (allowed) under the desktop/test config.
     /// Path relative to the payload root, e.g. `plugins/code-review`.
     #[cfg_attr(not(feature = "cli"), allow(dead_code))]
@@ -77,19 +291,24 @@ pub(crate) struct CollectionPlugin {
     pub(crate) installed: bool,
 }
 
-/// The result of a git install: either plugins landed, or the source turned out
+/// The result of an install: either plugins landed, or the source turned out
 /// to be a collection the caller must choose from.
 pub(crate) enum GitInstall {
     Installed(Vec<InstalledPlugin>),
     // (cli-only) the collection listing is produced by the always-compiled
-    // `install_with` and consumed only by the CLI list/install path, so it
+    // `finish_install` and consumed only by the CLI list/install path, so it
     // is dead (allowed) under the desktop/test config.
     #[cfg_attr(not(feature = "cli"), allow(dead_code))]
     Collection(Vec<CollectionPlugin>),
 }
+
 /// An installed plugin, from its directory plus optional manifest.
-#[derive(Debug, serde::Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct InstalledPlugin {
+    /// The directory name under `.jan/agent/plugins/`: the stable identity
+    /// every other operation (details, enable, remove) takes.
+    pub id: String,
     pub name: String,
     pub description: String,
     pub version: String,
@@ -100,10 +319,90 @@ pub struct InstalledPlugin {
     pub commands: usize,
     /// Number of agent definitions (`agents/**/*.md`).
     pub agents: usize,
+    /// False when listed in `[plugins].disabled`.
+    pub enabled: bool,
+    /// `local`, `git` or `marketplace`, from the install record; `None` for a
+    /// directory Jan did not install (copied in by hand, or installed before
+    /// records existed).
+    pub source_kind: Option<String>,
+    /// The folder path or URL the plugin was installed from.
+    pub source: Option<String>,
+}
+
+/// Where a plugin was installed from, persisted as `.jan-install.json`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallRecord {
+    pub source_kind: String,
+    pub source: String,
+    #[serde(default)]
+    pub git_ref: Option<String>,
+    #[serde(default)]
+    pub subdir: Option<String>,
+    pub installed_at_ms: u64,
+}
+
+/// Everything the management UI shows about one installed plugin.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginDetails {
+    #[serde(flatten)]
+    pub plugin: InstalledPlugin,
+    pub installed_path: String,
+    pub installed_at_ms: Option<u64>,
+    pub git_ref: Option<String>,
+    /// Qualified skill names (`<plugin>:<skill>`).
+    pub skill_names: Vec<String>,
+    pub command_names: Vec<String>,
+    pub agent_names: Vec<String>,
+    /// The plugin ships a `.mcp.json`. Jan does not load it.
+    pub has_mcp_config: bool,
+    /// Script and executable files (relative, `/`-separated), capped at
+    /// [`MAX_LISTED_EXECUTABLES`]. They only ever run if the agent runs them
+    /// through the shell tool, under the normal permission gate.
+    pub executable_files: Vec<String>,
+    pub executable_file_count: usize,
+}
+
+/// What `remove_plugin` removed.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveReport {
+    pub id: String,
+    pub name: String,
+    pub removed_path: String,
+    /// The id was dropped from `[plugins].disabled`.
+    pub removed_from_disabled: bool,
+    /// `[skills].enabled` entries naming the plugin (`<id>` or `<id>:<skill>`)
+    /// that were dropped.
+    pub removed_skill_entries: Vec<String>,
+}
+
+/// Which install sources this project can use right now.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginSources {
+    /// The configured marketplace index URL, if any.
+    pub marketplace: Option<String>,
+    /// Whether `git` can be run (required for git and marketplace sources).
+    pub git_available: bool,
+}
+
+/// An explicit install source from the desktop. Each kind states what it
+/// contacts, so nothing is inferred from the shape of a string.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum InstallSource {
+    /// Copy a local folder. No network.
+    Local { path: String },
+    /// `git clone` a URL. Contacts that URL's host.
+    Git { url: String },
+    /// Resolve through the configured marketplace index, then clone.
+    Marketplace { name: String },
 }
 
 /// A plugin available on the configured marketplace: JSON index entry.
-#[derive(serde::Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct MarketEntry {
     pub name: String,
     pub description: String,
@@ -126,15 +425,18 @@ struct Manifest {
     repo: Option<String>,
 }
 
-fn client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder()
-        .user_agent(USER_AGENT)
+fn client() -> Result<reqwest::Client, PluginError> {
+    crate::core::net::tls::apply12(
+        reqwest::Client::builder()
+            .user_agent(USER_AGENT)
+            .timeout(std::time::Duration::from_secs(60)),
+    )
         .build()
-        .map_err(|e| format!("ERROR: {e}"))
+        .map_err(|e| PluginError::new(PluginErrorCode::MarketplaceUnavailable, e.to_string()))
 }
 
 /// Read the project's `[plugins]` config; missing/malformed falls back to
-/// defaults (no marketplace).
+/// defaults (no marketplace, nothing disabled).
 fn plugins_section(root: &Path) -> PluginsSection {
     crate::core::agent::project::load_agent_config(root)
         .ok()
@@ -142,8 +444,26 @@ fn plugins_section(root: &Path) -> PluginsSection {
         .unwrap_or_default()
 }
 
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn read_install_record(plugin_dir: &Path) -> Option<InstallRecord> {
+    std::fs::read_to_string(plugin_dir.join(INSTALL_RECORD_FILE))
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+}
+
+// ---------------------------------------------------------------------------
+// Listing and details
+// ---------------------------------------------------------------------------
+
 /// Every installed plugin, sorted by display name. Staging directories from
-/// interrupted installs are intentionally excluded.
+/// interrupted installs are intentionally excluded. Disabled plugins are
+/// listed (with `enabled: false`) and keep their component counts.
 pub(crate) fn installed(root: &Path) -> Vec<InstalledPlugin> {
     installed_entries(root)
         .into_iter()
@@ -151,14 +471,15 @@ pub(crate) fn installed(root: &Path) -> Vec<InstalledPlugin> {
         .collect()
 }
 
-/// Find an installed plugin by directory name or manifest name. Used by the
-/// cli `/plugin` popup; the desktop lists plugins through `installed`.
-#[cfg(feature = "cli")]
+/// Find an installed plugin by directory name or manifest name.
 pub(crate) fn find_installed(root: &Path, query: &str) -> Option<(String, InstalledPlugin)> {
     let query = skills::safe_stem(query).ok()?;
-    installed_entries(root)
-        .into_iter()
-        .find(|(directory, plugin)| directory == &query || plugin.name == query)
+    let entries = installed_entries(root);
+    // Directory name first: it is the identity, a manifest name only a label.
+    if let Some(hit) = entries.iter().find(|(directory, _)| directory == &query) {
+        return Some(hit.clone());
+    }
+    entries.into_iter().find(|(_, plugin)| plugin.name == query)
 }
 
 fn installed_entries(root: &Path) -> Vec<(String, InstalledPlugin)> {
@@ -167,9 +488,11 @@ fn installed_entries(root: &Path) -> Vec<(String, InstalledPlugin)> {
         return Vec::new();
     };
     // Scan each artifact kind once; per-plugin counts filter the shared lists
-    // rather than re-walking the whole plugin tree per plugin.
-    let all_skills = skills::discover_plugins(root);
-    let all_commands = crate::core::agent::plugin_commands::discover(root);
+    // rather than re-walking the whole plugin tree per plugin. The listing
+    // shows what a plugin ships whether or not it is enabled.
+    let all_skills = skills::discover_plugins_including_disabled(root);
+    let all_commands = crate::core::agent::plugin_commands::discover_including_disabled(root);
+    let disabled = crate::core::agent::project::disabled_plugins(root);
     let mut out = Vec::new();
     for entry in rd.flatten() {
         let path = entry.path();
@@ -179,10 +502,11 @@ fn installed_entries(root: &Path) -> Vec<(String, InstalledPlugin)> {
         let Some(directory) = path.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
-        if directory.starts_with(".installing-") {
+        if directory.starts_with(STAGING_PREFIX) {
             continue;
         }
         let manifest = read_manifest(&path);
+        let record = read_install_record(&path);
         let plugin_skills = all_skills
             .iter()
             .filter(|e| e.plugin.as_deref() == Some(directory))
@@ -195,17 +519,132 @@ fn installed_entries(root: &Path) -> Vec<(String, InstalledPlugin)> {
         out.push((
             directory.to_string(),
             InstalledPlugin {
+                id: directory.to_string(),
                 name: manifest.name.unwrap_or_else(|| directory.to_string()),
                 description: manifest.description.unwrap_or_default(),
                 version: manifest.version.unwrap_or_else(|| "0.0.0".to_string()),
-                repo: manifest.repo.unwrap_or_default(),
+                repo: manifest
+                    .repo
+                    .or_else(|| {
+                        record
+                            .as_ref()
+                            .filter(|r| r.source_kind != "local")
+                            .map(|r| r.source.clone())
+                    })
+                    .unwrap_or_default(),
                 skills: plugin_skills,
                 commands: plugin_commands,
                 agents: plugin_agents,
+                enabled: !disabled.iter().any(|d| d == directory),
+                source_kind: record.as_ref().map(|r| r.source_kind.clone()),
+                source: record.map(|r| r.source),
             },
         ));
     }
     out.sort_by(|a, b| a.1.name.cmp(&b.1.name));
+    out
+}
+
+/// Resolve an installed plugin by id (directory name), erroring when absent.
+fn require_installed(root: &Path, id: &str) -> Result<(String, InstalledPlugin), PluginError> {
+    skills::safe_stem(id).map_err(|_| {
+        PluginError::new(
+            PluginErrorCode::InvalidName,
+            format!("invalid plugin name '{id}'"),
+        )
+    })?;
+    find_installed(root, id).ok_or_else(|| {
+        PluginError::new(
+            PluginErrorCode::NotInstalled,
+            format!("plugin '{id}' is not installed"),
+        )
+    })
+}
+
+/// Full details for one installed plugin. Reads files only.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) fn details(root: &Path, id: &str) -> Result<PluginDetails, PluginError> {
+    let (directory, plugin) = require_installed(root, id)?;
+    let dir = skills::plugins_dir(root).join(&directory);
+    let record = read_install_record(&dir);
+
+    let skill_names = skills::discover_plugins_including_disabled(root)
+        .iter()
+        .filter(|e| e.plugin.as_deref() == Some(directory.as_str()))
+        .map(skills::qualified_name)
+        .collect();
+    let command_names = crate::core::agent::plugin_commands::discover_including_disabled(root)
+        .into_iter()
+        .filter(|e| e.plugin == directory)
+        .map(|e| e.name)
+        .collect();
+    let agent_names = crate::core::agent::subagent::plugin_agent_metas(root, &directory)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    let executables = executable_files(&dir);
+
+    Ok(PluginDetails {
+        installed_path: dir.display().to_string(),
+        installed_at_ms: record.as_ref().map(|r| r.installed_at_ms),
+        git_ref: record.as_ref().and_then(|r| r.git_ref.clone()),
+        skill_names,
+        command_names,
+        agent_names,
+        has_mcp_config: dir.join(".mcp.json").is_file(),
+        executable_file_count: executables.len(),
+        executable_files: executables
+            .into_iter()
+            .take(MAX_LISTED_EXECUTABLES)
+            .collect(),
+        plugin,
+    })
+}
+
+/// Extensions of files that can run as programs or scripts.
+const EXECUTABLE_EXTENSIONS: &[&str] = &[
+    "sh", "bash", "zsh", "fish", "ps1", "psm1", "bat", "cmd", "py", "js", "mjs", "cjs", "ts",
+    "rb", "pl", "php", "exe", "com", "jar",
+];
+
+/// Every script/executable under `dir` (relative, `/`-separated, sorted).
+/// Skips `.git` and never follows symlinks.
+fn executable_files(dir: &Path) -> Vec<String> {
+    fn walk(base: &Path, dir: &Path, out: &mut Vec<String>) {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in rd.flatten() {
+            let Ok(ft) = entry.file_type() else { continue };
+            if ft.is_symlink() {
+                continue;
+            }
+            let path = entry.path();
+            if ft.is_dir() {
+                if entry.file_name() != ".git" {
+                    walk(base, &path, out);
+                }
+                continue;
+            }
+            let is_exec = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| EXECUTABLE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()));
+            if is_exec {
+                if let Ok(rel) = path.strip_prefix(base) {
+                    out.push(
+                        rel.components()
+                            .map(|c| c.as_os_str().to_string_lossy())
+                            .collect::<Vec<_>>()
+                            .join("/"),
+                    );
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, dir, &mut out);
+    out.sort();
     out
 }
 
@@ -220,6 +659,142 @@ fn read_manifest(root: &Path) -> Manifest {
         })
         .unwrap_or_default()
 }
+
+// ---------------------------------------------------------------------------
+// Enable / disable / remove
+// ---------------------------------------------------------------------------
+
+/// Enable or disable an installed plugin for this project, persisted to
+/// `[plugins].disabled`. Changes only which installed files discovery reads:
+/// no tool permission, no MCP server, no process.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) fn set_enabled(
+    root: &Path,
+    id: &str,
+    enabled: bool,
+) -> Result<InstalledPlugin, PluginError> {
+    let (directory, _) = require_installed(root, id)?;
+    crate::core::agent::project::ensure_project(root)
+        .map_err(|e| PluginError::new(PluginErrorCode::ProjectUnavailable, e))?;
+    let path = crate::core::agent::project::agent_toml_path(root);
+    // Read the current list from the file itself, not the lenient loader: a
+    // malformed agent.toml must fail here rather than be overwritten with a
+    // list that forgot the user's other disabled plugins.
+    let cfg = crate::core::agent::project::load_agent_config(root)
+        .map_err(|e| PluginError::new(PluginErrorCode::Config, e))?;
+    let mut disabled = cfg.plugins.disabled;
+    disabled.retain(|d| d != &directory);
+    if !enabled {
+        disabled.push(directory.clone());
+    }
+    crate::core::agent::project::set_string_array_in_agent_toml(
+        &path, "plugins", "disabled", &disabled,
+    )
+    .map_err(|e| PluginError::new(PluginErrorCode::Config, e))?;
+    find_installed(root, &directory)
+        .map(|(_, plugin)| plugin)
+        .ok_or_else(|| {
+            PluginError::new(
+                PluginErrorCode::NotInstalled,
+                format!("plugin '{id}' is not installed"),
+            )
+        })
+}
+
+/// Remove an installed plugin: delete its directory, then drop its id from
+/// `[plugins].disabled` and every `[skills].enabled` entry naming it.
+///
+/// The directory goes first. If config cleanup then fails, the plugin is gone
+/// and a stale config entry can only ever disable or name something absent;
+/// the reverse order could re-enable a plugin whose removal then failed.
+///
+/// A skills whitelist that named only this plugin would become empty, and an
+/// empty whitelist means "every skill". That would silently turn on skills
+/// the user had switched off, so it is written as `[""]` (matches nothing)
+/// instead.
+pub(crate) fn remove_plugin(root: &Path, query: &str) -> Result<RemoveReport, PluginError> {
+    let (directory, plugin) = require_installed(root, query)?;
+    let target = skills::plugins_dir(root).join(&directory);
+    std::fs::remove_dir_all(&target).map_err(|e| {
+        PluginError::io(format!("could not remove {}: {e}", target.display()))
+    })?;
+    let mut report = RemoveReport {
+        id: directory.clone(),
+        name: plugin.name,
+        removed_path: target.display().to_string(),
+        removed_from_disabled: false,
+        removed_skill_entries: Vec::new(),
+    };
+
+    let path = crate::core::agent::project::agent_toml_path(root);
+    if !path.is_file() {
+        return Ok(report);
+    }
+    let config_failed = |e: String| {
+        PluginError::new(
+            PluginErrorCode::Config,
+            format!(
+                "removed {}, but could not update agent.toml: {e}",
+                target.display()
+            ),
+        )
+    };
+    let cfg = crate::core::agent::project::load_agent_config(root).map_err(config_failed)?;
+
+    let mut disabled = cfg.plugins.disabled;
+    let before = disabled.len();
+    disabled.retain(|d| d != &directory);
+    if disabled.len() != before {
+        crate::core::agent::project::set_string_array_in_agent_toml(
+            &path, "plugins", "disabled", &disabled,
+        )
+        .map_err(config_failed)?;
+        report.removed_from_disabled = true;
+    }
+
+    let mut enabled = cfg.skills.enabled;
+    let prefix = format!("{directory}:");
+    let (dropped, kept): (Vec<String>, Vec<String>) = enabled
+        .drain(..)
+        .partition(|n| n == &directory || n.starts_with(&prefix));
+    if !dropped.is_empty() {
+        let kept = if kept.is_empty() {
+            vec![String::new()]
+        } else {
+            kept
+        };
+        crate::core::agent::project::set_string_array_in_agent_toml(
+            &path, "skills", "enabled", &kept,
+        )
+        .map_err(config_failed)?;
+        report.removed_skill_entries = dropped;
+    }
+    Ok(report)
+}
+
+/// Remove an installed plugin by directory or manifest name (CLI surface).
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
+pub(crate) fn remove(root: &Path, name: &str) -> Result<(), String> {
+    remove_plugin(root, name).map(|_| ()).map_err(String::from)
+}
+
+/// Which sources the project can install from.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) fn sources(root: &Path) -> PluginSources {
+    PluginSources {
+        marketplace: plugins_section(root).marketplace,
+        git_available: git_command()
+            .arg("--version")
+            .stdin(Stdio::null())
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Spec parsing
+// ---------------------------------------------------------------------------
 
 /// Does the spec name a local filesystem path in Windows form?
 ///
@@ -244,6 +819,40 @@ fn is_windows_local_path(spec: &str) -> bool {
         && (bytes[2] == b'\\' || bytes[2] == b'/')
 }
 
+/// What a CLI install spec names.
+#[derive(Debug, PartialEq, Eq)]
+enum SpecKind {
+    /// A local folder, copied.
+    Local,
+    /// A git source, cloned.
+    Git,
+    /// A marketplace entry name.
+    Marketplace,
+}
+
+/// Classify a CLI spec. A bare path -- Windows drive or UNC, POSIX absolute,
+/// or explicitly relative -- is a local folder. `file://` stays a git clone:
+/// it is how a local *repository* is named, and cloning it is what the user
+/// asked for. Before this existed, `C:\src\plugin` fell through to a
+/// marketplace lookup because it matched no git shape.
+fn classify_spec(spec: &str) -> SpecKind {
+    let spec = spec.trim();
+    if looks_like_git(spec) {
+        return SpecKind::Git;
+    }
+    if is_windows_local_path(spec)
+        || spec.starts_with('/')
+        || spec == "."
+        || spec == ".."
+        || ["./", "../", ".\\", "..\\"]
+            .iter()
+            .any(|p| spec.starts_with(p))
+    {
+        return SpecKind::Local;
+    }
+    SpecKind::Marketplace
+}
+
 /// Reject specs that could inject shell commands. The spec is later passed as
 /// literal argv to `git clone`, never to a shell, but a spec full of `$()`
 /// is a typo at best — error early and clearly.
@@ -255,18 +864,23 @@ fn is_windows_local_path(spec: &str) -> bool {
 /// metacharacters are not allowed". So it is permitted for a spec that is
 /// recognisably a Windows path, and rejected everywhere else. Every other
 /// metacharacter is still refused, in a path or out of it.
-fn validate_spec(spec: &str) -> Result<(), String> {
+fn validate_spec(spec: &str) -> Result<(), PluginError> {
     let spec = spec.trim();
     if spec.is_empty() {
-        return Err("ERROR: nothing to install".into());
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            "nothing to install",
+        ));
     }
-    let path_like = is_windows_local_path(spec);
+    let path_like =
+        is_windows_local_path(spec) || spec.starts_with(".\\") || spec.starts_with("..\\");
     if spec
         .chars()
         .any(|c| SHELL_METACHARS.contains(&c) && !(path_like && c == '\\'))
     {
-        return Err(format!(
-            "ERROR: invalid plugin spec '{spec}' (shell metacharacters are not allowed)"
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!("invalid plugin spec '{spec}' (shell metacharacters are not allowed)"),
         ));
     }
     Ok(())
@@ -293,7 +907,7 @@ struct GitSource {
 /// `/blob/<ref>/<subdir>`) payload path. Both the GitHub "browse" (`tree`) and
 /// "copy path" (`blob`) URL forms name a repo, a ref, and a subdirectory to
 /// install as a single plugin.
-fn parse_git_source(spec: &str) -> Result<GitSource, String> {
+fn parse_git_source(spec: &str) -> Result<GitSource, PluginError> {
     let (base, suffix_ref) = split_ref(spec.trim());
     if let Some(path) = base.strip_prefix("https://github.com/") {
         let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
@@ -305,7 +919,10 @@ fn parse_git_source(spec: &str) -> Result<GitSource, String> {
                 .as_deref()
                 .is_some_and(|path| path.split('/').any(|part| part == "." || part == ".."))
             {
-                return Err("ERROR: plugin subdirectory cannot contain '.' or '..'".into());
+                return Err(PluginError::new(
+                    PluginErrorCode::InvalidSource,
+                    "plugin subdirectory cannot contain '.' or '..'",
+                ));
             }
             return Ok(GitSource {
                 url: repo,
@@ -470,8 +1087,25 @@ fn repo_dir_name(url: &str) -> Option<&str> {
     Some(name.strip_suffix(".git").unwrap_or(name))
 }
 
+// ---------------------------------------------------------------------------
+// Process and filesystem helpers
+// ---------------------------------------------------------------------------
+
+/// `git` with no console window on Windows (the desktop is a GUI process).
+fn git_command() -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new("git");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
+#[cfg(test)]
 fn git(args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
+    let out = git_command()
         .args(args)
         .output()
         .map_err(|e| format!("ERROR: git: {e}"))?;
@@ -485,36 +1119,198 @@ fn git(args: &[&str]) -> Result<String, String> {
     }
 }
 
-/// Clone a plugin source into a temporary dir, discover which plugin(s) inside
-/// it to install, and move each selected payload into place under its final
-/// name. A failed clone or an empty repo leaves nothing behind (the temp dir is
-/// removed).
+/// How a cancellable child process ended badly.
+#[derive(Debug)]
+enum RunError {
+    Spawn(io::Error),
+    Cancelled,
+    Failed(String),
+}
+
+/// Run `cmd` to completion unless `cancel` is raised, in which case the child
+/// is killed. Output pipes are drained on threads so a chatty child cannot
+/// block on a full pipe while we poll. On cancel the drain threads are not
+/// joined: a grandchild (git's remote helper) may still hold the pipe, and
+/// cancelling must not wait for it.
+fn run_cancellable(mut cmd: Command, cancel: &AtomicBool) -> Result<String, RunError> {
+    if cancel.load(Ordering::SeqCst) {
+        return Err(RunError::Cancelled);
+    }
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd.spawn().map_err(RunError::Spawn)?;
+    let drain = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut buf);
+            }
+            buf
+        })
+    };
+    let stdout = drain(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let stderr = drain(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let status = loop {
+        if cancel.load(Ordering::SeqCst) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(RunError::Cancelled);
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(25)),
+            Err(e) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(RunError::Failed(e.to_string()));
+            }
+        }
+    };
+    let out = stdout.join().unwrap_or_default();
+    let err = stderr.join().unwrap_or_default();
+    if status.success() {
+        Ok(String::from_utf8_lossy(&out).trim().to_string())
+    } else {
+        Err(RunError::Failed(
+            String::from_utf8_lossy(&err).trim().to_string(),
+        ))
+    }
+}
+
+/// A fresh, unique staging directory under `plugins`. Unique per install (not
+/// just per process) so two installs in one app cannot share one.
+fn new_staging(plugins: &Path) -> PathBuf {
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let tmp = plugins.join(format!(
+        "{STAGING_PREFIX}{}-{}",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::SeqCst)
+    ));
+    let _ = std::fs::remove_dir_all(&tmp);
+    tmp
+}
+
+/// Remove a staging directory, retrying briefly: on Windows a just-killed git
+/// child can hold a handle inside the clone for a moment.
+fn remove_staging(tmp: &Path) {
+    for attempt in 0..20 {
+        match std::fs::remove_dir_all(tmp) {
+            Ok(()) => return,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return,
+            Err(_) if attempt < 19 => std::thread::sleep(std::time::Duration::from_millis(100)),
+            Err(e) => log::warn!("plugins: could not remove staging {}: {e}", tmp.display()),
+        }
+    }
+}
+
+/// Copy `src` into `dst` (created), file by file. Symlinks are skipped, never
+/// followed, and `.git` directories are not copied. Nothing is executed.
+/// `on_file` runs after each copied file; cancellation is checked before each
+/// entry.
+fn copy_tree(
+    src: &Path,
+    dst: &Path,
+    ctx: &InstallCtx,
+    on_file: &mut dyn FnMut(),
+) -> Result<(), PluginError> {
+    ctx.check()?;
+    std::fs::create_dir_all(dst).map_err(PluginError::io)?;
+    let rd = std::fs::read_dir(src)
+        .map_err(|e| PluginError::io(format!("could not read {}: {e}", src.display())))?;
+    for entry in rd {
+        ctx.check()?;
+        let entry = entry.map_err(PluginError::io)?;
+        let ft = entry.file_type().map_err(PluginError::io)?;
+        if ft.is_symlink() {
+            continue;
+        }
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if ft.is_dir() {
+            if entry.file_name() == ".git" {
+                continue;
+            }
+            copy_tree(&from, &to, ctx, on_file)?;
+        } else if ft.is_file() {
+            std::fs::copy(&from, &to).map_err(|e| {
+                PluginError::io(format!("could not copy {}: {e}", from.display()))
+            })?;
+            on_file();
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Install
+// ---------------------------------------------------------------------------
+
+/// A source already fetched into a staging directory, ready to be installed.
+struct Staged {
+    /// The staging directory (removed at the end, whatever happens).
+    tmp: PathBuf,
+    /// Where the payload search starts (the staging dir or a subdirectory).
+    payload_root: PathBuf,
+    /// The explicit subdirectory the source named, if any.
+    subdir: Option<String>,
+    /// The URL or path as shown in messages.
+    display: String,
+    /// Name for a root-level payload that has no manifest name.
+    fallback_name: Option<String>,
+    /// How to name one plugin of a collection directly.
+    collection_hint: String,
+    /// Provenance, completed per installed payload.
+    record: InstallRecord,
+}
+
+/// Clone a plugin source into a staging dir, then install from it. A failed
+/// or cancelled clone, or an empty repo, leaves nothing behind.
 ///
-/// `install_git` returns one installed plugin for a normal source or a single-
-/// plugin collection, and several for a multi-plugin collection when the user
-/// asked for more than one (interactive CLI). Already-installed plugins are
-/// skipped, not reported as errors.
+/// Returns one installed plugin for a normal source or a single-plugin
+/// collection, and several for a multi-plugin collection when the user asked
+/// for more than one (interactive CLI). Already-installed plugins are skipped,
+/// not reported as errors.
 fn install_git(
     root: &Path,
     url: &str,
     r#ref: Option<&str>,
     collection: CollectionChoice,
-) -> Result<GitInstall, String> {
+    ctx: &InstallCtx,
+    source_kind: &str,
+) -> Result<GitInstall, PluginError> {
     let source = parse_git_source(url)?;
     let plugins = skills::plugins_dir(root);
-    std::fs::create_dir_all(&plugins).map_err(|e| format!("ERROR: {e}"))?;
-    let tmp = plugins.join(format!(".installing-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&plugins).map_err(PluginError::io)?;
+    ctx.check()?;
+    let tmp = new_staging(&plugins);
 
     let r#ref = r#ref.or(source.r#ref.as_deref());
-    let mut args = vec!["clone", "--depth", "1"];
+    let mut cmd = git_command();
+    cmd.args(["clone", "--depth", "1"]);
     if let Some(r#ref) = r#ref {
-        args.extend(["--branch", r#ref]);
+        cmd.args(["--branch", r#ref]);
     }
-    args.extend([source.url.as_str(), tmp.to_str().expect("utf-8 path")]);
-    if let Err(e) = git(&args) {
-        let _ = std::fs::remove_dir_all(&tmp);
-        return Err(e);
+    cmd.arg(&source.url).arg(&tmp);
+    if !ctx.terminal_prompts {
+        // No terminal to answer a credential prompt: fail instead of hanging.
+        cmd.env("GIT_TERMINAL_PROMPT", "0");
+    }
+    if let Err(e) = run_cancellable(cmd, &ctx.cancel) {
+        remove_staging(&tmp);
+        return Err(match e {
+            RunError::Cancelled => cancelled_error(),
+            RunError::Spawn(e) if e.kind() == io::ErrorKind::NotFound => PluginError::new(
+                PluginErrorCode::GitUnavailable,
+                "git is not installed or not on PATH",
+            ),
+            RunError::Spawn(e) => {
+                PluginError::new(PluginErrorCode::GitFailed, format!("git: {e}"))
+            }
+            RunError::Failed(stderr) => {
+                PluginError::new(PluginErrorCode::GitFailed, format!("git: {stderr}"))
+            }
+        });
     }
 
     let payload_root = source
@@ -522,36 +1318,143 @@ fn install_git(
         .as_deref()
         .map(|subdir| tmp.join(subdir))
         .unwrap_or_else(|| tmp.clone());
+    let staged = Staged {
+        tmp,
+        payload_root,
+        subdir: source.subdir.clone(),
+        display: url.to_string(),
+        fallback_name: repo_dir_name(&source.url).map(str::to_string),
+        collection_hint: format!("{url}/tree/<ref>/<relative/path>"),
+        record: InstallRecord {
+            source_kind: source_kind.to_string(),
+            source: if source_kind == "git" {
+                url.to_string()
+            } else {
+                source.url.clone()
+            },
+            git_ref: r#ref.map(str::to_string),
+            subdir: source.subdir.clone(),
+            installed_at_ms: 0,
+        },
+    };
+    finish_install(root, &plugins, staged, collection, ctx, &source.url)
+}
+
+/// Copy a local folder into a staging dir, then install from it. Nothing is
+/// cloned, fetched or executed. `on_file` runs after each copied file.
+fn install_local(
+    root: &Path,
+    src: &Path,
+    collection: CollectionChoice,
+    ctx: &InstallCtx,
+    on_file: &mut dyn FnMut(),
+) -> Result<GitInstall, PluginError> {
+    if !src.is_dir() {
+        return Err(PluginError::new(
+            PluginErrorCode::SourceNotFound,
+            format!("folder does not exist: {}", src.display()),
+        ));
+    }
+    let plugins = skills::plugins_dir(root);
+    std::fs::create_dir_all(&plugins).map_err(PluginError::io)?;
+    // Copying a folder that contains the plugins directory (the project root,
+    // say) would copy the staging directory into itself.
+    let src_real = std::fs::canonicalize(src).map_err(PluginError::io)?;
+    let plugins_real = std::fs::canonicalize(&plugins).map_err(PluginError::io)?;
+    if plugins_real.starts_with(&src_real) || src_real.starts_with(&plugins_real) {
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!(
+                "cannot install from {}: it contains or is inside this project's plugin directory",
+                src.display()
+            ),
+        ));
+    }
+    let tmp = new_staging(&plugins);
+    if let Err(e) = copy_tree(&src_real, &tmp, ctx, on_file) {
+        remove_staging(&tmp);
+        return Err(e);
+    }
+    let display = src.display().to_string();
+    let staged = Staged {
+        payload_root: tmp.clone(),
+        tmp,
+        subdir: None,
+        fallback_name: repo_dir_name(&display).map(str::to_string),
+        collection_hint: format!("{display}/<relative/path>"),
+        record: InstallRecord {
+            source_kind: "local".to_string(),
+            source: display.clone(),
+            git_ref: None,
+            subdir: None,
+            installed_at_ms: 0,
+        },
+        display,
+    };
+    finish_install(root, &plugins, staged, collection, ctx, &src.display().to_string())
+}
+
+/// Discover which plugin(s) in a staged source to install and move each one
+/// into place under its final name. The staging directory is always removed.
+fn finish_install(
+    root: &Path,
+    plugins: &Path,
+    staged: Staged,
+    collection: CollectionChoice,
+    ctx: &InstallCtx,
+    source_url: &str,
+) -> Result<GitInstall, PluginError> {
+    let tmp = staged.tmp.clone();
+    let result = select_and_install(root, plugins, &staged, collection, ctx, source_url);
+    remove_staging(&tmp);
+    result
+}
+
+fn select_and_install(
+    root: &Path,
+    plugins: &Path,
+    staged: &Staged,
+    collection: CollectionChoice,
+    ctx: &InstallCtx,
+    source_url: &str,
+) -> Result<GitInstall, PluginError> {
+    let url = staged.display.as_str();
+    let payload_root = &staged.payload_root;
     if !payload_root.is_dir() {
-        let _ = std::fs::remove_dir_all(&tmp);
-        return Err(format!(
-            "ERROR: plugin subdirectory does not exist: '{}'",
-            source.subdir.as_deref().unwrap_or("")
+        return Err(PluginError::new(
+            PluginErrorCode::InvalidSource,
+            format!(
+                "plugin subdirectory does not exist: '{}'",
+                staged.subdir.as_deref().unwrap_or("")
+            ),
         ));
     }
 
     // Decide which payload directory(ies) to install, as
-    // (dir, fallback name, is a subdir of the clone) triples.
-    let mut targets: Vec<(PathBuf, Option<String>, bool)> = Vec::new();
-    if plugin_has_content(&payload_root) {
-        // A single plugin: either the repo root or an explicit `#tree` subdir.
-        let fallback = source
+    // (dir, fallback name, is a subdir of the staging dir, relative path).
+    let mut targets: Vec<(PathBuf, Option<String>, bool, Option<String>)> = Vec::new();
+    if plugin_has_content(payload_root) {
+        // A single plugin: either the source root or an explicit subdir.
+        let fallback = staged
             .subdir
             .as_deref()
             .and_then(|subdir| subdir.rsplit('/').next())
             .map(str::to_string)
-            .or_else(|| repo_dir_name(&source.url).map(str::to_string));
-        targets.push((payload_root.clone(), fallback, source.subdir.is_some()));
+            .or_else(|| staged.fallback_name.clone());
+        targets.push((
+            payload_root.clone(),
+            fallback,
+            staged.subdir.is_some(),
+            staged.subdir.clone(),
+        ));
     } else {
-        // A collection repo (e.g. anthropics/claude-plugins-official) has no
-        // payload at its root; plugins can be nested any number of dirs deep
-        // (`plugins/` and `external_plugins/` are only wrapper dirs).
-        // Repo-relative, always `/`-separated. These are offered back to the
-        // user as the tail of a `<url>/tree/<ref>/<path>` spec and matched
-        // against subdirectories the caller names, so a Windows `\` here would
-        // print a suggestion that does not work when pasted back in.
+        // A collection has no payload at its root; plugins can be nested any
+        // number of dirs deep (`plugins/` and `external_plugins/` are only
+        // wrapper dirs). Relative paths are always `/`-separated: they are
+        // offered back to the user as the tail of a spec, so a Windows `\`
+        // would print a suggestion that does not work when pasted back in.
         let rel_of = |p: &Path| {
-            p.strip_prefix(&payload_root)
+            p.strip_prefix(payload_root)
                 .map(|rel| {
                     rel.components()
                         .map(|c| c.as_os_str().to_string_lossy())
@@ -560,63 +1463,61 @@ fn install_git(
                 })
                 .unwrap_or_default()
         };
-        let mut candidates = find_plugin_dirs(&payload_root);
+        let mut candidates = find_plugin_dirs(payload_root);
         candidates.sort_by_key(|p| rel_of(p));
         let rels: Vec<String> = candidates.iter().map(|p| rel_of(p)).collect();
+        let already = || -> Vec<bool> {
+            candidates
+                .iter()
+                .map(|p| {
+                    p.file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|n| plugins.join(n).exists())
+                        .unwrap_or(false)
+                })
+                .collect()
+        };
         let picked: Vec<usize> = match candidates.len() {
             0 => {
-                let _ = std::fs::remove_dir_all(&tmp);
-                return Err(format!(
-                    "ERROR: '{url}' has no plugin manifest, skills/, commands/, agents/, or SKILL.md - nothing to install"
+                return Err(PluginError::new(
+                    PluginErrorCode::NoPluginContent,
+                    format!(
+                        "'{url}' has no plugin manifest, skills/, commands/, agents/, or SKILL.md - nothing to install"
+                    ),
                 ));
             }
             // Exactly one plugin in the collection: no ambiguity, install it.
             1 => vec![0],
             n => match &collection {
                 CollectionChoice::ListError => {
-                    let _ = std::fs::remove_dir_all(&tmp);
-                    return Err(format!(
-                        "ERROR: '{url}' is a plugin collection ({n} plugins: {}) - install one directly, e.g. {url}/tree/<ref>/<relative/path>",
-                        rels.join(", ")
+                    return Err(PluginError::new(
+                        PluginErrorCode::Collection,
+                        format!(
+                            "'{url}' is a plugin collection ({n} plugins: {}) - install one directly, e.g. {}",
+                            rels.join(", "),
+                            staged.collection_hint
+                        ),
                     ));
                 }
                 CollectionChoice::Prompt => {
                     // Mark plugins already installed so the user can see why a
                     // pick will be skipped.
-                    let already: Vec<bool> = candidates
-                        .iter()
-                        .map(|p| {
-                            p.file_name()
-                                .and_then(|n| n.to_str())
-                                .map(|n| plugins.join(n).exists())
-                                .unwrap_or(false)
-                        })
-                        .collect();
-                    match prompt_multi_choice(url, &rels, &already, &mut io::stdin().lock()) {
-                        Ok(picked) => picked,
-                        Err(e) => {
-                            let _ = std::fs::remove_dir_all(&tmp);
-                            return Err(e);
-                        }
-                    }
+                    prompt_multi_choice(url, &rels, &already(), &mut io::stdin().lock()).map_err(
+                        |e| {
+                            PluginError::new(
+                                PluginErrorCode::Cancelled,
+                                e.strip_prefix("ERROR: ").unwrap_or(&e).to_string(),
+                            )
+                        },
+                    )?
                 }
                 // The TUI owns stdin, so it cannot prompt inline: return the
                 // candidate list untouched and let the caller present its own
                 // picker, then re-invoke with `Only` for the chosen paths.
                 CollectionChoice::List => {
-                    let already: Vec<bool> = candidates
-                        .iter()
-                        .map(|p| {
-                            p.file_name()
-                                .and_then(|n| n.to_str())
-                                .map(|n| plugins.join(n).exists())
-                                .unwrap_or(false)
-                        })
-                        .collect();
-                    let _ = std::fs::remove_dir_all(&tmp);
                     return Ok(GitInstall::Collection(
                         rels.into_iter()
-                            .zip(already)
+                            .zip(already())
                             .map(|(path, installed)| CollectionPlugin { path, installed })
                             .collect(),
                     ));
@@ -629,22 +1530,24 @@ fn install_git(
                 // confusing "already installed: (nothing)" message below.
                 CollectionChoice::Only(paths) => {
                     if paths.is_empty() {
-                        let _ = std::fs::remove_dir_all(&tmp);
-                        return Err(format!(
-                            "ERROR: no matching plugins in '{url}' to install: (none selected)"
+                        return Err(PluginError::new(
+                            PluginErrorCode::InvalidSource,
+                            format!("no matching plugins in '{url}' to install: (none selected)"),
                         ));
                     }
                     let unmatched: Vec<&String> =
                         paths.iter().filter(|p| !rels.contains(p)).collect();
                     if !unmatched.is_empty() {
-                        let _ = std::fs::remove_dir_all(&tmp);
-                        return Err(format!(
-                            "ERROR: no matching plugins in '{url}' to install: {}",
-                            unmatched
-                                .into_iter()
-                                .map(|s| s.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ")
+                        return Err(PluginError::new(
+                            PluginErrorCode::InvalidSource,
+                            format!(
+                                "no matching plugins in '{url}' to install: {}",
+                                unmatched
+                                    .into_iter()
+                                    .map(|s| s.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ),
                         ));
                     }
                     rels.iter()
@@ -658,7 +1561,11 @@ fn install_git(
         for idx in picked {
             let dir = candidates[idx].clone();
             let fallback = dir.file_name().and_then(|n| n.to_str()).map(str::to_string);
-            targets.push((dir, fallback, true));
+            let rel = Some(match staged.subdir.as_deref() {
+                Some(sub) => format!("{sub}/{}", rels[idx]),
+                None => rels[idx].clone(),
+            });
+            targets.push((dir, fallback, true, rel));
         }
     }
 
@@ -668,36 +1575,40 @@ fn install_git(
     let single = targets.len() == 1;
     let mut installs: Vec<InstalledPlugin> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
-    for (dir, fallback, narrowed) in targets {
-        let outcome = install_payload_dir(
+    for (dir, fallback, narrowed, rel) in targets {
+        let record = InstallRecord {
+            subdir: rel,
+            installed_at_ms: now_ms(),
+            ..staged.record.clone()
+        };
+        let outcome = install_payload_dir_with(
             root,
-            &plugins,
-            &tmp,
+            plugins,
+            &staged.tmp,
             &dir,
             narrowed,
             fallback.as_deref(),
-            &source.url,
-        );
+            source_url,
+            Some(&record),
+            Some(ctx),
+        )?;
         match outcome {
-            Ok(PayloadOutcome::Installed(plugin)) => installs.push(plugin),
-            Ok(PayloadOutcome::AlreadyInstalled(stem)) => {
+            PayloadOutcome::Installed(plugin) => installs.push(plugin),
+            PayloadOutcome::AlreadyInstalled(stem) => {
                 if single {
-                    let _ = std::fs::remove_dir_all(&tmp);
-                    return Err(format!("ERROR: plugin '{stem}' is already installed"));
+                    return Err(PluginError::new(
+                        PluginErrorCode::AlreadyInstalled,
+                        format!("plugin '{stem}' is already installed"),
+                    ));
                 }
                 skipped.push(stem);
             }
-            Err(e) => {
-                let _ = std::fs::remove_dir_all(&tmp);
-                return Err(e);
-            }
         }
     }
-    let _ = std::fs::remove_dir_all(&tmp);
     if installs.is_empty() {
-        return Err(format!(
-            "ERROR: nothing installed - already installed: {}",
-            skipped.join(", ")
+        return Err(PluginError::new(
+            PluginErrorCode::AlreadyInstalled,
+            format!("nothing installed - already installed: {}", skipped.join(", ")),
         ));
     }
     Ok(GitInstall::Installed(installs))
@@ -711,14 +1622,7 @@ enum PayloadOutcome {
     AlreadyInstalled(String),
 }
 
-/// Move one plugin payload directory into `plugins/<stem>` and report it.
-///
-/// `payload_narrowed` says whether `payload` is a subdirectory of the clone
-/// (rename the subdirectory) or the clone root itself (rename `tmp`).
-/// `fallback_name` names the plugin when the manifest does not.
-///
-/// The shared clone `tmp` is NOT removed here so a batch can install several
-/// payloads out of one clone; the caller removes it once at the end.
+#[cfg(test)]
 fn install_payload_dir(
     root: &Path,
     plugins: &Path,
@@ -727,82 +1631,151 @@ fn install_payload_dir(
     payload_narrowed: bool,
     fallback_name: Option<&str>,
     source_url: &str,
-) -> Result<PayloadOutcome, String> {
+) -> Result<PayloadOutcome, PluginError> {
+    install_payload_dir_with(
+        root,
+        plugins,
+        tmp,
+        payload,
+        payload_narrowed,
+        fallback_name,
+        source_url,
+        None,
+        None,
+    )
+}
+
+/// Move one plugin payload directory into `plugins/<stem>` and report it.
+///
+/// `payload_narrowed` says whether `payload` is a subdirectory of the staging
+/// dir (rename the subdirectory) or the staging dir itself (rename `tmp`).
+/// `fallback_name` names the plugin when the manifest does not. The install
+/// record, when given, is written into the payload before the rename, so a
+/// plugin is never in place without its provenance. Cancellation is honoured
+/// up to the rename; after it the plugin is installed.
+///
+/// The shared staging dir `tmp` is NOT removed here so a batch can install
+/// several payloads out of one clone; the caller removes it once at the end.
+#[allow(clippy::too_many_arguments)]
+fn install_payload_dir_with(
+    root: &Path,
+    plugins: &Path,
+    tmp: &Path,
+    payload: &Path,
+    payload_narrowed: bool,
+    fallback_name: Option<&str>,
+    source_url: &str,
+    record: Option<&InstallRecord>,
+    ctx: Option<&InstallCtx>,
+) -> Result<PayloadOutcome, PluginError> {
     let manifest = read_manifest(payload);
     let name = match (manifest.name.as_deref(), fallback_name) {
         (Some(name), _) if !name.is_empty() => name.to_string(),
         (_, Some(dir)) => dir.to_string(),
         _ => {
-            return Err(format!(
-                "ERROR: cannot determine plugin name from '{source_url}'"
+            return Err(PluginError::new(
+                PluginErrorCode::InvalidName,
+                format!("cannot determine plugin name from '{source_url}'"),
             ))
         }
     };
     let stem = match skills::safe_stem(&name) {
-        Ok(stem) if stem == name => stem,
-        _ => return Err(format!("ERROR: invalid plugin name '{name}'")),
+        Ok(stem) if stem == name && !stem.starts_with('.') => stem,
+        _ => {
+            return Err(PluginError::new(
+                PluginErrorCode::InvalidName,
+                format!("invalid plugin name '{name}'"),
+            ))
+        }
     };
     let target = plugins.join(&stem);
     if target.exists() {
         return Ok(PayloadOutcome::AlreadyInstalled(stem));
     }
+    if let Some(record) = record {
+        let body = serde_json::to_string_pretty(record).map_err(PluginError::io)?;
+        std::fs::write(payload.join(INSTALL_RECORD_FILE), body).map_err(PluginError::io)?;
+    }
+    if let Some(ctx) = ctx {
+        ctx.check()?;
+    }
     let move_from = if payload_narrowed { payload } else { tmp };
-    std::fs::rename(move_from, &target).map_err(|e| format!("ERROR: {e}"))?;
+    std::fs::rename(move_from, &target).map_err(PluginError::io)?;
 
-    // Recompute counts after the move (discovery reads from `root`).
-    let skills_count = skills::discover_plugins(root)
+    let entry = installed_entries(root)
         .into_iter()
-        .filter(|e| e.plugin.as_deref() == Some(stem.as_str()))
-        .count();
-    let commands_count = crate::core::agent::plugin_commands::discover(root)
-        .into_iter()
-        .filter(|e| e.plugin == stem)
-        .count();
-    let agents_count = crate::core::agent::subagent::count_plugin_agents(root, &stem);
-    Ok(PayloadOutcome::Installed(InstalledPlugin {
-        name: stem,
-        description: manifest.description.unwrap_or_default(),
-        version: manifest.version.unwrap_or_else(|| "0.0.0".to_string()),
-        repo: manifest.repo.unwrap_or_else(|| source_url.to_string()),
-        skills: skills_count,
-        commands: commands_count,
-        agents: agents_count,
-    }))
+        .find(|(directory, _)| directory == &stem)
+        .map(|(_, plugin)| plugin);
+    let mut plugin = entry.unwrap_or_else(|| InstalledPlugin {
+        id: stem.clone(),
+        name: stem.clone(),
+        version: "0.0.0".to_string(),
+        enabled: true,
+        ..Default::default()
+    });
+    // A fresh install reports the name it was installed under, and the source
+    // URL as its repo when the manifest names none.
+    plugin.name = stem;
+    if plugin.repo.is_empty() {
+        plugin.repo = manifest.repo.unwrap_or_else(|| source_url.to_string());
+    }
+    Ok(PayloadOutcome::Installed(plugin))
 }
 
 /// Fetch and parse the marketplace index. The marketplace URL lives in
 /// `[plugins] marketplace`; without it, name-based installs cannot resolve.
-async fn fetch_index(url: &str) -> Result<Vec<MarketEntry>, String> {
+async fn fetch_index(url: &str) -> Result<Vec<MarketEntry>, PluginError> {
+    let unavailable = |m: String| PluginError::new(PluginErrorCode::MarketplaceUnavailable, m);
     let resp = client()?
         .get(url)
         .send()
         .await
-        .map_err(|e| format!("ERROR: fetching marketplace index: {e}"))?;
+        .map_err(|e| unavailable(format!("fetching marketplace index: {e}")))?;
     if !resp.status().is_success() {
-        return Err(format!(
-            "ERROR: marketplace index returned {}",
+        return Err(unavailable(format!(
+            "marketplace index returned {}",
             resp.status()
-        ));
+        )));
     }
     resp.json::<Vec<MarketEntry>>()
         .await
-        .map_err(|e| format!("ERROR: parsing marketplace index: {e}"))
+        .map_err(|e| unavailable(format!("parsing marketplace index: {e}")))
 }
 
-/// Install a plugin. `spec` is either a git source (URL, `git@host:path`,
-/// `github:owner/repo`, with an optional `#ref`) or a marketplace name.
+/// Fetch the index unless the install is cancelled first.
+async fn fetch_index_cancellable(
+    url: &str,
+    ctx: &InstallCtx,
+) -> Result<Vec<MarketEntry>, PluginError> {
+    ctx.check()?;
+    let cancel = ctx.cancel.clone();
+    tokio::select! {
+        result = fetch_index(url) => result,
+        _ = async move {
+            while !cancel.load(Ordering::SeqCst) {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        } => Err(cancelled_error()),
+    }
+}
+
+/// Install a plugin. `spec` is a local folder path, a git source (URL,
+/// `git@host:path`, `github:owner/repo`, with an optional `#ref`) or a
+/// marketplace name.
 ///
 /// Non-interactive: a multi-plugin collection fails with a listing error, so
 /// this always resolves to exactly one plugin. (The "exactly one" invariant
 /// is enforced structurally by `CollectionChoice`: `install` passes
 /// `ListError`, whose arm always returns an `Err` and never a
 /// `GitInstall::Collection`.)
-// (desktop-only) `install` is the non-CLI entry point (`commands`), so it is
-// dead under `--features cli` (only the CLI TUI unit test uses it) and allowed
+// (desktop-only) `install` is the non-CLI string entry point, so it is dead
+// under `--features cli` (only the CLI TUI unit test uses it) and allowed
 // rather than `cfg`'d out so it stays available in both configs.
-#[cfg_attr(feature = "cli", allow(dead_code))]
+#[allow(dead_code)]
 pub(crate) async fn install(root: &Path, spec: &str) -> Result<InstalledPlugin, String> {
-    match install_with(root, spec, CollectionChoice::ListError).await? {
+    match install_with(root, spec, CollectionChoice::ListError, InstallCtx::interactive())
+        .await?
+    {
         GitInstall::Installed(plugins) => plugins
             .into_iter()
             .next()
@@ -820,7 +1793,7 @@ pub(crate) async fn install_interactive(
     root: &Path,
     spec: &str,
 ) -> Result<Vec<InstalledPlugin>, String> {
-    match install_with(root, spec, CollectionChoice::Prompt).await? {
+    match install_with(root, spec, CollectionChoice::Prompt, InstallCtx::interactive()).await? {
         GitInstall::Installed(plugins) => Ok(plugins),
         GitInstall::Collection(_) => unreachable!("Prompt never returns a collection listing"),
     }
@@ -834,7 +1807,9 @@ pub(crate) async fn install_interactive(
 // (cli-only)
 #[cfg(feature = "cli")]
 pub(crate) async fn list_collection(root: &Path, spec: &str) -> Result<GitInstall, String> {
-    install_with(root, spec, CollectionChoice::List).await
+    install_with(root, spec, CollectionChoice::List, InstallCtx::interactive())
+        .await
+        .map_err(String::from)
 }
 
 /// Install exactly the given payload-root-relative paths from a collection
@@ -847,66 +1822,169 @@ pub(crate) async fn install_selected(
     spec: &str,
     paths: Vec<String>,
 ) -> Result<Vec<InstalledPlugin>, String> {
-    match install_with(root, spec, CollectionChoice::Only(paths)).await? {
+    match install_with(root, spec, CollectionChoice::Only(paths), InstallCtx::interactive())
+        .await?
+    {
         GitInstall::Installed(plugins) => Ok(plugins),
         GitInstall::Collection(_) => unreachable!("Only never returns a collection listing"),
     }
 }
 
-/// Core install. Resolves git URLs on a blocking thread and marketplace names
-/// through the index, then runs the git clone/filesystem work off the async
-/// runtime (the TUI render loop must keep repainting during a large clone).
+/// Core CLI install. Local paths are copied and git URLs cloned on a blocking
+/// thread; marketplace names resolve through the index first. The blocking
+/// work runs off the async runtime (the TUI render loop must keep repainting
+/// during a large clone).
 async fn install_with(
     root: &Path,
     spec: &str,
     collection: CollectionChoice,
-) -> Result<GitInstall, String> {
+    ctx: InstallCtx,
+) -> Result<GitInstall, PluginError> {
     let spec = spec.trim();
     validate_spec(spec)?;
-    if looks_like_git(spec) {
-        // `install_git` shells out to `git clone`, which is network-bound and
-        // blocks its thread for the whole clone. Run it on a blocking thread so
-        // the TUI keeps repainting (a large plugin repo otherwise freezes the
-        // render loop for seconds).
-        let root = root.to_path_buf();
-        let spec = spec.to_string();
-        return tokio::task::spawn_blocking(move || install_git(&root, &spec, None, collection))
-            .await
-            .map_err(|e| format!("ERROR: install task failed: {e}"))?;
+    match classify_spec(spec) {
+        SpecKind::Local => {
+            let root = root.to_path_buf();
+            let path = PathBuf::from(spec);
+            spawn_blocking(move || install_local(&root, &path, collection, &ctx, &mut || {}))
+                .await
+        }
+        SpecKind::Git => {
+            let root = root.to_path_buf();
+            let spec = spec.to_string();
+            spawn_blocking(move || install_git(&root, &spec, None, collection, &ctx, "git")).await
+        }
+        SpecKind::Marketplace => {
+            install_marketplace(root, spec, collection, ctx, false).await
+        }
     }
-    let marketplace = plugins_section(root)
-        .marketplace
-        .ok_or("ERROR: no marketplace configured - set [plugins] marketplace in agent.toml, or install a git URL directly")?;
-    let index = fetch_index(&marketplace).await?;
-    let entry = index
-        .into_iter()
-        .find(|e| e.name == spec)
-        .ok_or_else(|| format!("ERROR: plugin '{spec}' not found on the marketplace"))?;
-    // Marketplace installs clone a git repo too: same blocking-work treatment.
-    let root = root.to_path_buf();
-    let repo = entry.repo.clone();
-    let r#ref = entry.r#ref.clone();
-    tokio::task::spawn_blocking(move || install_git(&root, &repo, r#ref.as_deref(), collection))
-        .await
-        .map_err(|e| format!("ERROR: install task failed: {e}"))?
 }
 
-/// Remove an installed plugin by directory name.
-pub(crate) fn remove(root: &Path, name: &str) -> Result<(), String> {
-    let stem = skills::safe_stem(name)?;
-    let target = skills::plugins_dir(root).join(&stem);
-    if !target.is_dir() {
-        return Err(format!("ERROR: plugin '{name}' is not installed"));
+async fn spawn_blocking<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, PluginError> + Send + 'static,
+) -> Result<T, PluginError> {
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| PluginError::io(format!("install task failed: {e}")))?
+}
+
+async fn install_marketplace(
+    root: &Path,
+    name: &str,
+    collection: CollectionChoice,
+    ctx: InstallCtx,
+    desktop: bool,
+) -> Result<GitInstall, PluginError> {
+    let marketplace = plugins_section(root).marketplace.ok_or_else(|| {
+        PluginError::new(
+            PluginErrorCode::MarketplaceNotConfigured,
+            if desktop {
+                "no marketplace configured - set [plugins] marketplace in agent.toml"
+            } else {
+                "no marketplace configured - set [plugins] marketplace in agent.toml, or install a git URL directly"
+            },
+        )
+    })?;
+    let index = fetch_index_cancellable(&marketplace, &ctx).await?;
+    let entry = index.into_iter().find(|e| e.name == name).ok_or_else(|| {
+        PluginError::new(
+            PluginErrorCode::MarketplaceEntryNotFound,
+            format!("plugin '{name}' not found on the marketplace"),
+        )
+    })?;
+    // Marketplace installs clone a git repo too: same blocking-work treatment.
+    let root = root.to_path_buf();
+    spawn_blocking(move || {
+        install_git(
+            &root,
+            &entry.repo,
+            entry.r#ref.as_deref(),
+            collection,
+            &ctx,
+            "marketplace",
+        )
+    })
+    .await
+}
+
+/// Install from an explicit desktop source. Exactly one plugin: a collection
+/// is refused with the list of plugins inside it.
+#[cfg_attr(feature = "cli", allow(dead_code))]
+pub(crate) async fn install_from_source(
+    root: &Path,
+    source: InstallSource,
+    ctx: InstallCtx,
+) -> Result<InstalledPlugin, PluginError> {
+    if !root.is_dir() {
+        return Err(PluginError::new(
+            PluginErrorCode::ProjectUnavailable,
+            format!("project folder does not exist: {}", root.display()),
+        ));
     }
-    std::fs::remove_dir_all(&target).map_err(|e| format!("ERROR: {e}"))
+    let result = match source {
+        InstallSource::Local { path } => {
+            let path = path.trim().to_string();
+            if path.is_empty() {
+                return Err(PluginError::new(
+                    PluginErrorCode::InvalidSource,
+                    "choose a folder to install from",
+                ));
+            }
+            let path = PathBuf::from(path);
+            if !path.is_absolute() {
+                return Err(PluginError::new(
+                    PluginErrorCode::InvalidSource,
+                    format!("folder path must be absolute: {}", path.display()),
+                ));
+            }
+            let root = root.to_path_buf();
+            spawn_blocking(move || {
+                install_local(&root, &path, CollectionChoice::ListError, &ctx, &mut || {})
+            })
+            .await?
+        }
+        InstallSource::Git { url } => {
+            let url = url.trim().to_string();
+            validate_spec(&url)?;
+            if !looks_like_git(&url) {
+                return Err(PluginError::new(
+                    PluginErrorCode::InvalidSource,
+                    format!("'{url}' is not a git URL (expected https://, ssh:// or git@host:path)"),
+                ));
+            }
+            let root = root.to_path_buf();
+            spawn_blocking(move || {
+                install_git(&root, &url, None, CollectionChoice::ListError, &ctx, "git")
+            })
+            .await?
+        }
+        InstallSource::Marketplace { name } => {
+            let name = name.trim().to_string();
+            validate_spec(&name)?;
+            install_marketplace(root, &name, CollectionChoice::ListError, ctx, true).await?
+        }
+    };
+    match result {
+        GitInstall::Installed(plugins) => plugins
+            .into_iter()
+            .next()
+            .ok_or_else(|| PluginError::io("no plugins installed")),
+        GitInstall::Collection(_) => unreachable!("ListError never returns a collection listing"),
+    }
 }
 
 /// List marketplace plugins matching `query` (name or description, case
 /// insensitive; empty query lists everything).
-pub(crate) async fn search(root: &Path, query: &str) -> Result<Vec<MarketEntry>, String> {
-    let url = plugins_section(root)
-        .marketplace
-        .ok_or("ERROR: no marketplace configured - set [plugins] marketplace in agent.toml")?;
+pub(crate) async fn search_typed(
+    root: &Path,
+    query: &str,
+) -> Result<Vec<MarketEntry>, PluginError> {
+    let url = plugins_section(root).marketplace.ok_or_else(|| {
+        PluginError::new(
+            PluginErrorCode::MarketplaceNotConfigured,
+            "no marketplace configured - set [plugins] marketplace in agent.toml",
+        )
+    })?;
     let mut entries = fetch_index(&url).await?;
     let query = query.trim().to_lowercase();
     if !query.is_empty() {
@@ -915,6 +1993,12 @@ pub(crate) async fn search(root: &Path, query: &str) -> Result<Vec<MarketEntry>,
         });
     }
     Ok(entries)
+}
+
+/// [`search_typed`] for the CLI's string errors.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
+pub(crate) async fn search(root: &Path, query: &str) -> Result<Vec<MarketEntry>, String> {
+    search_typed(root, query).await.map_err(String::from)
 }
 
 #[cfg(all(test, feature = "cli"))]
@@ -1747,5 +2831,651 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(repo);
+    }
+}
+
+/// Lifecycle tests for the desktop plugin manager surface: typed errors, local
+/// folder installs, cancellation, enable/disable honoured by discovery, removal
+/// cleanup, and the AH-131 negative escalation check. Compiled in every test
+/// configuration (not only `cli`), because the desktop commands wrap exactly
+/// these functions.
+#[cfg(test)]
+mod lifecycle_tests {
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::core::agent::project;
+
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    fn temp(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "jan_plugin_life_{tag}_{}_{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::SeqCst)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn put(path: &Path, body: &str) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, body).unwrap();
+    }
+
+    fn ctx() -> InstallCtx {
+        InstallCtx {
+            cancel: Arc::new(AtomicBool::new(false)),
+            terminal_prompts: false,
+        }
+    }
+
+    /// A project folder with a scaffolded `.jan/agent/agent.toml`.
+    fn project_root(tag: &str) -> PathBuf {
+        let root = temp(tag);
+        project::ensure_project(&root).unwrap();
+        root
+    }
+
+    /// A plugin source folder with one skill, one command and one agent.
+    fn plugin_source(tag: &str, name: &str) -> PathBuf {
+        let src = temp(tag).join(name);
+        put(
+            &src.join("plugin.toml"),
+            &format!("name = \"{name}\"\ndescription = \"Test plugin\"\nversion = \"2.0.0\"\n"),
+        );
+        put(
+            &src.join("skills/prepare/SKILL.md"),
+            "---\ndescription: Prepare the release\n---\n\nPrepare it.\n",
+        );
+        put(
+            &src.join("commands/ship.md"),
+            "---\ndescription: Ship it\n---\n\nShip $ARGUMENTS\n",
+        );
+        put(
+            &src.join(format!("agents/{name}-reviewer.md")),
+            &format!("---\nname: {name}-reviewer\ndescription: Reviews\n---\n\nYou review.\n"),
+        );
+        src
+    }
+
+    fn entries(dir: &Path) -> Vec<String> {
+        std::fs::read_dir(dir)
+            .map(|rd| {
+                rd.flatten()
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn classifies_windows_and_posix_paths_as_local_folders() {
+        for local in [
+            r"C:\src\my-plugin",
+            r"c:/src/my-plugin",
+            r"D:\",
+            r"\\fileserver\share\my-plugin",
+            "/home/me/my-plugin",
+            "./my-plugin",
+            "../my-plugin",
+            r".\my-plugin",
+            ".",
+        ] {
+            assert_eq!(classify_spec(local), SpecKind::Local, "{local}");
+        }
+        for git in [
+            "https://github.com/acme/tools",
+            "file:///C:/src/repo",
+            r"file://C:\src\repo",
+            "git@github.com:acme/tools.git",
+            "github:acme/tools",
+        ] {
+            assert_eq!(classify_spec(git), SpecKind::Git, "{git}");
+        }
+        assert_eq!(classify_spec("release-tools"), SpecKind::Marketplace);
+    }
+
+    #[tokio::test]
+    async fn local_folder_install_copies_without_git_and_records_provenance() {
+        let root = project_root("local");
+        let src = plugin_source("local-src", "lifeplug");
+        // A `.git` directory in the source is not part of the plugin.
+        put(&src.join(".git/HEAD"), "ref: refs/heads/main\n");
+
+        let plugin = install_from_source(
+            &root,
+            InstallSource::Local {
+                path: src.display().to_string(),
+            },
+            ctx(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(plugin.id, "lifeplug");
+        assert_eq!(plugin.version, "2.0.0");
+        assert_eq!((plugin.skills, plugin.commands, plugin.agents), (1, 1, 1));
+        assert!(plugin.enabled);
+
+        let dir = skills::plugins_dir(&root).join("lifeplug");
+        assert!(dir.join("skills/prepare/SKILL.md").is_file());
+        assert!(!dir.join(".git").exists(), ".git must not be copied");
+        // Copied, not moved: the source folder is untouched.
+        assert!(src.join("plugin.toml").is_file());
+        // No staging directory left behind.
+        assert_eq!(entries(&skills::plugins_dir(&root)), vec!["lifeplug"]);
+
+        // Provenance is on disk, so a fresh listing (a restart) still has it.
+        let listed = installed(&root);
+        assert_eq!(listed[0].source_kind.as_deref(), Some("local"));
+        assert_eq!(listed[0].source.as_deref(), Some(src.display().to_string().as_str()));
+
+        let d = details(&root, "lifeplug").unwrap();
+        assert_eq!(d.skill_names, vec!["lifeplug:prepare"]);
+        assert_eq!(d.command_names, vec!["ship"]);
+        assert_eq!(d.agent_names, vec!["lifeplug-reviewer"]);
+        assert!(d.installed_at_ms.unwrap() > 0);
+        assert!(!d.has_mcp_config);
+        assert_eq!(d.executable_file_count, 0);
+    }
+
+    /// A bare path given to the CLI spec parser installs the folder. Before,
+    /// `C:\path` matched no git shape and fell through to a marketplace lookup.
+    #[tokio::test]
+    async fn cli_spec_with_a_native_path_installs_the_folder() {
+        let root = project_root("clipath");
+        let src = plugin_source("clipath-src", "pathplug");
+        let spec = src.display().to_string();
+        assert_eq!(classify_spec(&spec), SpecKind::Local, "{spec}");
+        let plugin = install(&root, &spec).await.unwrap();
+        assert_eq!(plugin.id, "pathplug");
+        assert!(skills::plugins_dir(&root).join("pathplug/plugin.toml").is_file());
+    }
+
+    #[test]
+    fn cancelling_mid_copy_removes_the_staging_directory() {
+        let root = project_root("cancelcopy");
+        let src = plugin_source("cancelcopy-src", "cancelplug");
+        for i in 0..20 {
+            put(&src.join(format!("skills/prepare/extra-{i}.txt")), "x");
+        }
+        let ctx = ctx();
+        let flag = ctx.cancel.clone();
+        let mut copied = 0;
+        let err = install_local(&root, &src, CollectionChoice::ListError, &ctx, &mut || {
+            copied += 1;
+            // Cancel after the first file has landed in staging.
+            flag.store(true, Ordering::SeqCst);
+        })
+        .err()
+        .expect("cancelled");
+        assert_eq!(err.code, PluginErrorCode::Cancelled);
+        assert_eq!(copied, 1);
+        assert!(
+            entries(&skills::plugins_dir(&root)).is_empty(),
+            "orphans: {:?}",
+            entries(&skills::plugins_dir(&root))
+        );
+        assert!(installed(&root).is_empty());
+    }
+
+    #[test]
+    fn cancelled_git_install_leaves_nothing_behind() {
+        let root = project_root("cancelgit");
+        let repo = plugin_source("cancelgit-src", "gitplug");
+        git(&["init", repo.to_str().unwrap()]).unwrap();
+        git(&["-C", repo.to_str().unwrap(), "add", "-A"]).unwrap();
+        git(&[
+            "-C",
+            repo.to_str().unwrap(),
+            "-c",
+            "user.name=Jan Test",
+            "-c",
+            "user.email=test@jan.ai",
+            "commit",
+            "-m",
+            "init",
+        ])
+        .unwrap();
+        let ctx = ctx();
+        ctx.cancel.store(true, Ordering::SeqCst);
+        let err = install_git(
+            &root,
+            &format!("file://{}", repo.display()),
+            None,
+            CollectionChoice::ListError,
+            &ctx,
+            "git",
+        )
+        .err()
+        .expect("cancelled");
+        assert_eq!(err.code, PluginErrorCode::Cancelled);
+        assert!(entries(&skills::plugins_dir(&root)).is_empty());
+    }
+
+    /// The kill path itself: a long-running child is stopped promptly.
+    #[test]
+    fn cancelling_kills_a_running_child_process() {
+        #[cfg(windows)]
+        let cmd = {
+            let mut c = Command::new("ping");
+            c.args(["-n", "30", "127.0.0.1"]);
+            c
+        };
+        #[cfg(not(windows))]
+        let cmd = {
+            let mut c = Command::new("sleep");
+            c.arg("30");
+            c
+        };
+        let cancel = Arc::new(AtomicBool::new(false));
+        let setter = cancel.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            setter.store(true, Ordering::SeqCst);
+        });
+        let started = std::time::Instant::now();
+        let result = run_cancellable(cmd, &cancel);
+        assert!(matches!(result, Err(RunError::Cancelled)), "{result:?}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+    }
+
+    #[test]
+    fn install_registry_cancels_by_id_and_forgets_finished_installs() {
+        let guard = begin_install("life-registry-1").unwrap();
+        assert_eq!(
+            begin_install("life-registry-1").err().unwrap().code,
+            PluginErrorCode::InvalidSource
+        );
+        assert!(cancel_install("life-registry-1"));
+        assert!(guard.ctx().cancelled());
+        drop(guard);
+        assert!(!cancel_install("life-registry-1"));
+        assert!(begin_install(" ").is_err());
+    }
+
+    /// A disabled plugin stays installed but offers nothing: no skills in the
+    /// catalog or by qualified name, no commands, no agents. Re-enabling
+    /// restores all three, and the state survives a fresh read of agent.toml.
+    #[test]
+    fn disabled_plugin_contributes_no_skills_commands_or_agents() {
+        let root = project_root("disable");
+        let src = plugin_source("disable-src", "toggleplug");
+        std::fs::create_dir_all(skills::plugins_dir(&root)).unwrap();
+        copy_tree(
+            &src,
+            &skills::plugins_dir(&root).join("toggleplug"),
+            &ctx(),
+            &mut || {},
+        )
+        .unwrap();
+
+        let offered = |root: &Path| {
+            let enabled = project::enabled_skills(root);
+            let skills_offered = skills::catalog(root, &enabled)
+                .into_iter()
+                .any(|m| m.name == "toggleplug:prepare");
+            let user_skill = skills::user_catalog(root, &enabled)
+                .into_iter()
+                .any(|m| m.name == "toggleplug:prepare");
+            let readable = skills::resolve_readable(root, "toggleplug:prepare").is_ok();
+            let invocable =
+                skills::build_invocation_message(root, "toggleplug:prepare", "").is_ok();
+            let command = crate::core::agent::plugin_commands::catalog(root, &enabled)
+                .into_iter()
+                .any(|c| c.plugin == "toggleplug" && c.name == "ship");
+            let command_msg =
+                crate::core::agent::plugin_commands::build_message(root, "toggleplug:ship", "")
+                    .is_ok();
+            let agent = crate::core::agent::subagent::SubagentRegistry::load(root)
+                .get("toggleplug-reviewer")
+                .is_some();
+            [
+                skills_offered,
+                user_skill,
+                readable,
+                invocable,
+                command,
+                command_msg,
+                agent,
+            ]
+        };
+
+        assert_eq!(offered(&root), [true; 7], "enabled plugin must be offered");
+
+        let state = set_enabled(&root, "toggleplug", false).unwrap();
+        assert!(!state.enabled);
+        assert_eq!(project::disabled_plugins(&root), vec!["toggleplug"]);
+        assert_eq!(offered(&root), [false; 7], "disabled plugin must offer nothing");
+        // Still installed, still describing what it ships.
+        let listed = installed(&root);
+        assert_eq!(listed.len(), 1);
+        assert!(!listed[0].enabled);
+        assert_eq!((listed[0].skills, listed[0].commands, listed[0].agents), (1, 1, 1));
+        assert!(!details(&root, "toggleplug").unwrap().plugin.enabled);
+
+        // Idempotent: disabling twice keeps one entry.
+        set_enabled(&root, "toggleplug", false).unwrap();
+        assert_eq!(project::disabled_plugins(&root), vec!["toggleplug"]);
+
+        let state = set_enabled(&root, "toggleplug", true).unwrap();
+        assert!(state.enabled);
+        assert!(project::disabled_plugins(&root).is_empty());
+        assert_eq!(offered(&root), [true; 7]);
+    }
+
+    #[test]
+    fn remove_deletes_the_directory_and_cleans_config_entries() {
+        let root = project_root("removeclean");
+        let plugins = skills::plugins_dir(&root);
+        for name in ["gone", "stays"] {
+            let src = plugin_source(&format!("removeclean-{name}"), name);
+            copy_tree(&src, &plugins.join(name), &ctx(), &mut || {}).unwrap();
+        }
+        set_enabled(&root, "gone", false).unwrap();
+        set_enabled(&root, "stays", false).unwrap();
+        let toml = project::agent_toml_path(&root);
+        project::set_string_array_in_agent_toml(
+            &toml,
+            "skills",
+            "enabled",
+            &["gone".into(), "gone:prepare".into(), "stays:prepare".into()],
+        )
+        .unwrap();
+
+        let report = remove_plugin(&root, "gone").unwrap();
+        assert_eq!(report.id, "gone");
+        assert!(report.removed_from_disabled);
+        assert_eq!(report.removed_skill_entries, vec!["gone", "gone:prepare"]);
+        assert!(!plugins.join("gone").exists());
+        let cfg = project::load_agent_config(&root).unwrap();
+        assert_eq!(cfg.plugins.disabled, vec!["stays"]);
+        assert_eq!(cfg.skills.enabled, vec!["stays:prepare"]);
+
+        // A whitelist that named only the removed plugin must not collapse to
+        // `[]`, which would switch every skill on.
+        let report = remove_plugin(&root, "stays").unwrap();
+        assert_eq!(report.removed_skill_entries, vec!["stays:prepare"]);
+        let cfg = project::load_agent_config(&root).unwrap();
+        assert!(cfg.plugins.disabled.is_empty());
+        assert_eq!(cfg.skills.enabled, vec![String::new()]);
+        assert!(installed(&root).is_empty());
+    }
+
+    #[tokio::test]
+    async fn refusals_carry_stable_error_codes() {
+        let root = project_root("codes");
+        let code = |r: Result<InstalledPlugin, PluginError>| r.err().expect("must fail").code;
+
+        assert_eq!(
+            remove_plugin(&root, "missing").err().unwrap().code,
+            PluginErrorCode::NotInstalled
+        );
+        assert_eq!(
+            details(&root, "../escape").err().unwrap().code,
+            PluginErrorCode::InvalidName
+        );
+        assert_eq!(
+            set_enabled(&root, "missing", false).err().unwrap().code,
+            PluginErrorCode::NotInstalled
+        );
+
+        let missing = temp("codes-missing").join("nope");
+        assert_eq!(
+            code(
+                install_from_source(
+                    &root,
+                    InstallSource::Local {
+                        path: missing.display().to_string()
+                    },
+                    ctx()
+                )
+                .await
+            ),
+            PluginErrorCode::SourceNotFound
+        );
+        assert_eq!(
+            code(
+                install_from_source(
+                    &root,
+                    InstallSource::Local {
+                        path: "relative/folder".into()
+                    },
+                    ctx()
+                )
+                .await
+            ),
+            PluginErrorCode::InvalidSource
+        );
+        assert_eq!(
+            code(
+                install_from_source(
+                    &root,
+                    InstallSource::Git {
+                        url: "not a url".into()
+                    },
+                    ctx()
+                )
+                .await
+            ),
+            PluginErrorCode::InvalidSource
+        );
+        assert_eq!(
+            code(
+                install_from_source(
+                    &root,
+                    InstallSource::Git {
+                        url: "https://example.invalid/a;rm -rf".into()
+                    },
+                    ctx()
+                )
+                .await
+            ),
+            PluginErrorCode::InvalidSource
+        );
+        assert_eq!(
+            code(
+                install_from_source(
+                    &root,
+                    InstallSource::Marketplace {
+                        name: "anything".into()
+                    },
+                    ctx()
+                )
+                .await
+            ),
+            PluginErrorCode::MarketplaceNotConfigured
+        );
+
+        let empty = temp("codes-empty");
+        assert_eq!(
+            code(
+                install_from_source(
+                    &root,
+                    InstallSource::Local {
+                        path: empty.display().to_string()
+                    },
+                    ctx()
+                )
+                .await
+            ),
+            PluginErrorCode::NoPluginContent
+        );
+
+        // Installing the project root itself would copy staging into itself.
+        assert_eq!(
+            code(
+                install_from_source(
+                    &root,
+                    InstallSource::Local {
+                        path: root.display().to_string()
+                    },
+                    ctx()
+                )
+                .await
+            ),
+            PluginErrorCode::InvalidSource
+        );
+
+        let collection = temp("codes-collection");
+        for name in ["alpha", "beta"] {
+            put(
+                &collection.join(name).join("skills/s/SKILL.md"),
+                "---\ndescription: s\n---\n\nBody.\n",
+            );
+        }
+        let err = install_from_source(
+            &root,
+            InstallSource::Local {
+                path: collection.display().to_string(),
+            },
+            ctx(),
+        )
+        .await
+        .err()
+        .unwrap();
+        assert_eq!(err.code, PluginErrorCode::Collection);
+        assert!(err.message.contains("alpha") && err.message.contains("beta"));
+
+        let src = plugin_source("codes-dup", "dupplug");
+        let source = InstallSource::Local {
+            path: src.display().to_string(),
+        };
+        install_from_source(&root, source.clone(), ctx()).await.unwrap();
+        assert_eq!(
+            code(install_from_source(&root, source, ctx()).await),
+            PluginErrorCode::AlreadyInstalled
+        );
+        // Nothing but the one plugin, whatever failed above.
+        assert_eq!(entries(&skills::plugins_dir(&root)), vec!["dupplug"]);
+
+        let gone = temp("codes-noproject").join("absent");
+        assert_eq!(
+            code(
+                install_from_source(
+                    &gone,
+                    InstallSource::Local {
+                        path: src.display().to_string()
+                    },
+                    ctx()
+                )
+                .await
+            ),
+            PluginErrorCode::ProjectUnavailable
+        );
+
+        // A malformed agent.toml is reported, not silently overwritten.
+        std::fs::write(project::agent_toml_path(&root), "[plugins\nbroken").unwrap();
+        assert_eq!(
+            set_enabled(&root, "dupplug", false).err().unwrap().code,
+            PluginErrorCode::Config
+        );
+
+        // The wire shape the UI maps.
+        let json = serde_json::to_value(PluginError::new(
+            PluginErrorCode::NotInstalled,
+            "plugin 'x' is not installed",
+        ))
+        .unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"code": "not_installed", "message": "plugin 'x' is not installed"})
+        );
+        // And the source shape the UI sends.
+        let parsed: InstallSource =
+            serde_json::from_value(serde_json::json!({"kind": "git", "url": "https://h/r"}))
+                .unwrap();
+        assert!(matches!(parsed, InstallSource::Git { url } if url == "https://h/r"));
+    }
+
+    /// AH-131: installing and enabling a plugin executes none of its code and
+    /// grants no tool permission. The plugin ships every kind of file that
+    /// could run -- install scripts, a package.json lifecycle hook, hook
+    /// config, a skill script, and an `.mcp.json` server command -- each of
+    /// which would create a marker file if it ever ran.
+    #[tokio::test]
+    async fn install_and_enable_execute_nothing_and_grant_no_permissions() {
+        let root = project_root("escalation");
+        let before_toml = std::fs::read_to_string(project::agent_toml_path(&root)).unwrap();
+        let before = project::load_agent_config(&root).unwrap();
+
+        let marker = temp("escalation-marker").join("ran");
+        let m = marker.display().to_string().replace('\\', "/");
+        let src = plugin_source("escalation-src", "hostile");
+        put(&src.join("install.sh"), &format!("#!/bin/sh\ntouch '{m}'\n"));
+        put(&src.join("setup.py"), &format!("open(r'{m}', 'w').write('x')\n"));
+        put(
+            &src.join("package.json"),
+            &format!("{{\"scripts\":{{\"postinstall\":\"node -e \\\"require('fs').writeFileSync('{m}','x')\\\"\"}}}}"),
+        );
+        put(
+            &src.join("hooks/hooks.json"),
+            &format!("{{\"PostInstall\":[{{\"command\":\"touch '{m}'\"}}]}}"),
+        );
+        put(
+            &src.join(".mcp.json"),
+            &format!("{{\"mcpServers\":{{\"evil\":{{\"command\":\"sh\",\"args\":[\"-c\",\"touch '{m}'\"]}}}}}}"),
+        );
+        put(
+            &src.join("skills/prepare/scripts/run.sh"),
+            &format!("#!/bin/sh\ntouch '{m}'\n"),
+        );
+        // Frontmatter that asks for tools must not become a permission.
+        put(
+            &src.join("agents/hostile-reviewer.md"),
+            "---\nname: hostile-reviewer\ndescription: Reviews\ntools: [Bash, Write]\n---\n\nYou review.\n",
+        );
+
+        install_from_source(
+            &root,
+            InstallSource::Local {
+                path: src.display().to_string(),
+            },
+            ctx(),
+        )
+        .await
+        .unwrap();
+        set_enabled(&root, "hostile", false).unwrap();
+        set_enabled(&root, "hostile", true).unwrap();
+        let d = details(&root, "hostile").unwrap();
+
+        // Give any stray process a moment to have written the marker.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert!(!marker.exists(), "plugin code ran during install/enable");
+
+        // The details view reports what could run, and that .mcp.json exists.
+        assert!(d.has_mcp_config);
+        for script in ["install.sh", "setup.py", "skills/prepare/scripts/run.sh"] {
+            assert!(
+                d.executable_files.iter().any(|f| f == script),
+                "{script} missing from {:?}",
+                d.executable_files
+            );
+        }
+
+        // Tool policy is byte-for-byte what it was: only `[plugins]` changed.
+        let after = project::load_agent_config(&root).unwrap();
+        assert_eq!(format!("{:?}", before.tools), format!("{:?}", after.tools));
+        assert_eq!(before.skills.enabled, after.skills.enabled);
+        assert_eq!(before.plugins.marketplace, after.plugins.marketplace);
+        assert!(after.tools.allow.is_empty());
+        assert!(after.tools.allow_write.is_empty());
+        assert_eq!(after.tools.allow_network, None);
+        assert_eq!(after.tools.sandbox, None);
+        let after_toml = std::fs::read_to_string(project::agent_toml_path(&root)).unwrap();
+        let strip_plugins = |s: &str| {
+            s.lines()
+                .filter(|l| !l.trim().is_empty() && !l.starts_with("[plugins]") && !l.starts_with("disabled"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        assert_eq!(strip_plugins(&before_toml), strip_plugins(&after_toml));
+        assert_eq!(
+            format!("{:?}", project::permissions_from(&before)),
+            format!("{:?}", project::permissions_from(&after))
+        );
     }
 }

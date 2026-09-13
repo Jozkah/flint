@@ -9,6 +9,7 @@ import {
   DialogHeader,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 interface DeleteAssistantDialogProps {
   open: boolean
@@ -41,7 +42,7 @@ export function DeleteAssistantDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-[425px] max-w-[90vw]"
+        className="sm:max-w-[425px]"
         onOpenAutoFocus={(e) => {
           e.preventDefault()
           deleteButtonRef.current?.focus()
@@ -53,12 +54,12 @@ export function DeleteAssistantDialog({
             {t('assistants:deleteConfirmationDesc')}
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+        <DialogFooter className={STICKY_DIALOG_FOOTER}>
           <Button
             variant="ghost"
             size="sm"
             onClick={handleCancel}
-            className="w-full sm:w-auto"
+            className="w-full sm:w-auto pointer-coarse:h-11"
           >
             {t('assistants:cancel')}
           </Button>
@@ -68,7 +69,7 @@ export function DeleteAssistantDialog({
             onClick={handleConfirm}
             size="sm"
             onKeyDown={handleKeyDown}
-            className="w-full sm:w-auto"
+            className="w-full sm:w-auto pointer-coarse:h-11"
             aria-label={t('assistants:delete')}
           >
             {t('assistants:delete')}

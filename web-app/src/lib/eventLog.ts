@@ -17,6 +17,8 @@ export type RunEvent = {
   id: string
   session: string
   run: string
+  /** The model request this belongs to, when there is one. */
+  invocation?: string
   kind:
     | 'run.started'
     | 'run.ended'
@@ -24,21 +26,69 @@ export type RunEvent = {
     | 'agent.ended'
     | 'job.started'
     | 'job.ended'
+    | 'usage.reported'
+    | 'message.completed'
   payload?: Record<string, unknown>
 }
 
-export function recordEvents(events: RunEvent[]): void {
-  if (events.length === 0) return
-  void invoke('agent_events_record', {
-    events: events.map((e) => ({
-      id: e.id,
-      session: e.session,
-      run: e.run,
-      invocation: '',
-      kind: e.kind,
-      payload: e.payload ?? {},
-    })),
-  }).catch((e) => console.warn('event log: could not record', errorText(e)))
+/**
+ * Records go out one after another, in the order they were made: the backend
+ * numbers them as they arrive, and two concurrent invokes could otherwise
+ * land a step's response after the run's end.
+ */
+let queue: Promise<unknown> = Promise.resolve()
+
+export function recordEvents(events: RunEvent[]): Promise<void> {
+  if (events.length === 0) return queue as Promise<void>
+  const write = () =>
+    invoke('agent_events_record', {
+      events: events.map((e) => ({
+        id: e.id,
+        session: e.session,
+        run: e.run,
+        invocation: e.invocation ?? '',
+        kind: e.kind,
+        payload: e.payload ?? {},
+      })),
+    }).catch((e) => console.warn('event log: could not record', errorText(e)))
+  queue = queue.then(write, write)
+  return queue as Promise<void>
+}
+
+/** One envelope of the session's canonical log (`event_log::Envelope`). */
+export type EventEnvelope = {
+  v: number
+  id: string
+  session: string
+  run: string
+  invocation: string
+  seq: number
+  at: string
+  kind: string
+  payload: Record<string, unknown>
+  redactions: string[]
+}
+
+export type EventsPage = {
+  events: EventEnvelope[]
+  lastSeq: number
+  truncated: boolean
+}
+
+/**
+ * A session's events after `afterSeq`. Throws the backend's message when the
+ * log cannot be read, so the timeline can say so rather than look empty.
+ */
+export async function listEvents(
+  session: string,
+  afterSeq = 0,
+  limit?: number
+): Promise<EventsPage> {
+  return await invoke<EventsPage>('agent_events_list', {
+    session,
+    afterSeq,
+    limit: limit ?? null,
+  })
 }
 
 export type ExportErrorKind =

@@ -295,6 +295,19 @@ async fn test_modify_and_delete_thread() {
     assert!(found_thread.is_some(), "Modified thread should exist");
     assert_eq!(found_thread.unwrap()["title"], "Modified Title");
 
+    // Requests this thread sent, and one from another thread that must survive.
+    let jan_data = get_jan_data_folder_path(app.handle().clone());
+    for session in [thread_id.as_str(), "some-other-thread"] {
+        let snap = tauri_plugin_agent_tools::snapshot::capture(
+            &json!({ "model": "m", "messages": [{ "role": "user", "content": "hi" }] }),
+            &tauri_plugin_agent_tools::snapshot::Identity {
+                session: session.to_string(),
+                ..Default::default()
+            },
+        );
+        tauri_plugin_agent_tools::snapshot::append(&jan_data, &snap);
+    }
+
     // Delete the thread
     delete_thread(app.handle().clone(), thread_id.clone())
         .await
@@ -305,6 +318,15 @@ async fn test_modify_and_delete_thread() {
     {
         let thread_dir = data_dir.join(&thread_id);
         assert!(!thread_dir.exists(), "Thread directory should be deleted");
+        assert!(
+            tauri_plugin_agent_tools::snapshot::by_session(&jan_data, &thread_id).is_empty(),
+            "a deleted thread's request snapshots must go with it"
+        );
+        assert_eq!(
+            tauri_plugin_agent_tools::snapshot::by_session(&jan_data, "some-other-thread").len(),
+            1,
+            "another thread's snapshots must survive"
+        );
     }
 
     // Clean up
@@ -599,6 +621,34 @@ fn test_write_and_read_messages_round_trip() {
     assert_eq!(read.len(), 2);
     assert_eq!(read[0]["id"], "m1");
     assert_eq!(read[1]["role"], "assistant");
+}
+
+/// A message's provider usage, cache breakdown included, is stored verbatim:
+/// messages.jsonl keeps metadata as opaque JSON, so neither a cache count nor
+/// its absence is rewritten on the way through. AH-211.
+#[test]
+fn test_message_usage_cache_breakdown_survives_the_round_trip() {
+    let tmp = tempfile::tempdir().unwrap();
+    let base = tmp.path();
+    ensure_thread_dir_exists(base, "usage").unwrap();
+    let path = get_messages_path(base, "usage");
+
+    let cached = json!({
+        "inputTokens": 5974, "outputTokens": 8, "totalTokens": 5982,
+        "cachedInputTokens": 5957, "uncachedInputTokens": 17,
+        "cacheSource": "openai-chat"
+    });
+    let legacy = json!({ "inputTokens": 10, "outputTokens": 5, "totalTokens": 15 });
+    let msgs = vec![
+        json!({"id": "m1", "role": "assistant", "metadata": {"usage": cached}}),
+        json!({"id": "m2", "role": "assistant", "metadata": {"usage": legacy}}),
+    ];
+    write_messages_to_file(&msgs, &path).unwrap();
+
+    let read = read_messages_from_file(base, "usage").unwrap();
+    assert_eq!(read[0]["metadata"]["usage"], cached);
+    assert_eq!(read[1]["metadata"]["usage"], legacy);
+    assert!(read[1]["metadata"]["usage"].get("cachedInputTokens").is_none());
 }
 
 #[test]

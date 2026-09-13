@@ -23,10 +23,12 @@ pub mod identity;
 pub mod inferred;
 pub mod migrate;
 pub mod record;
+pub mod precedence;
 pub mod retrieve;
 pub mod service;
 pub mod settings;
 pub mod store;
+pub mod transfer;
 
 use std::path::{Path, PathBuf};
 

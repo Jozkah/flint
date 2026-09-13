@@ -148,6 +148,84 @@ pub struct PromptSnapshot {
 }
 
 impl PromptSnapshot {
+    /// The payload as a person reads it (AH-087): every message in order with
+    /// its role and full text, each tool call the model made with its
+    /// arguments, and the tools offered. Nothing is summarised or truncated;
+    /// what redaction replaced is already replaced in the payload, and the
+    /// header says how many values that was. A snapshot with no payload says
+    /// why instead of printing an empty conversation.
+    pub fn render_text(&self) -> String {
+        use std::fmt::Write;
+        let mut out = String::new();
+        let _ = writeln!(out, "snapshot {} at {}", self.id, self.at);
+        let _ = writeln!(
+            out,
+            "model {} · {:?} dispatch · hash {} · {} redaction(s)",
+            if self.model.is_empty() { "unknown" } else { &self.model },
+            self.kind,
+            self.hash,
+            self.redactions.len()
+        );
+        if let Some(why) = &self.unavailable {
+            let _ = writeln!(out, "\nno payload was kept: {why:?}");
+            return out;
+        }
+        let text_of = |content: &Value| -> String {
+            match content {
+                Value::String(s) => s.clone(),
+                Value::Array(parts) => parts
+                    .iter()
+                    .map(|p| match p.get("type").and_then(Value::as_str) {
+                        Some("text") => p.get("text").and_then(Value::as_str).unwrap_or("").to_string(),
+                        Some(other) => format!("[{other} part]"),
+                        None => p.to_string(),
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                Value::Null => String::new(),
+                other => other.to_string(),
+            }
+        };
+        let messages = self.payload.get("messages").and_then(Value::as_array);
+        for (i, m) in messages.into_iter().flatten().enumerate() {
+            let role = m.get("role").and_then(Value::as_str).unwrap_or("?");
+            let _ = write!(out, "\n--- {} · {role}", i + 1);
+            if let Some(id) = m.get("tool_call_id").and_then(Value::as_str) {
+                let _ = write!(out, " · result of {id}");
+            }
+            let _ = writeln!(out, " ---");
+            let body = text_of(m.get("content").unwrap_or(&Value::Null));
+            if !body.is_empty() {
+                let _ = writeln!(out, "{body}");
+            }
+            for call in m.get("tool_calls").and_then(Value::as_array).into_iter().flatten() {
+                let f = call.get("function");
+                let _ = writeln!(
+                    out,
+                    "[tool call {}] {}({})",
+                    call.get("id").and_then(Value::as_str).unwrap_or("?"),
+                    f.and_then(|f| f.get("name")).and_then(Value::as_str).unwrap_or("?"),
+                    f.and_then(|f| f.get("arguments")).and_then(Value::as_str).unwrap_or("")
+                );
+            }
+        }
+        let tools: Vec<&str> = self
+            .payload
+            .get("tools")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|t| t.get("function").and_then(|f| f.get("name")).and_then(Value::as_str))
+            .collect();
+        let _ = writeln!(
+            out,
+            "\n--- tools offered: {} ---\n{}",
+            tools.len(),
+            if tools.is_empty() { "(none)".to_string() } else { tools.join(", ") }
+        );
+        out
+    }
+
     /// How many messages the payload carried, for a summary view.
     pub fn message_count(&self) -> usize {
         self.payload
@@ -418,10 +496,24 @@ pub fn log_path(data_folder: &Path) -> PathBuf {
 pub fn append(data_folder: &Path, snapshot: &PromptSnapshot) {
     if let Err(e) = try_append(data_folder, snapshot) {
         eprintln!("prompt snapshot: could not record a dispatch: {e}");
+        return;
+    }
+    // Bounded by count, checked cheaply: only a log big enough to possibly
+    // hold more than the cap is read back and counted.
+    let big = std::fs::metadata(log_path(data_folder))
+        .map(|m| m.len() > 8 * 1024 * 1024)
+        .unwrap_or(false);
+    if big {
+        if let Err(e) = prune(data_folder, MAX_SNAPSHOTS) {
+            eprintln!("prompt snapshot: could not apply retention: {e}");
+        }
     }
 }
 
 fn try_append(data_folder: &Path, snapshot: &PromptSnapshot) -> Result<(), String> {
+    // Shared with compaction and deletion, so a record appended while the log
+    // is being rewritten is not lost between the read and the rename.
+    let _guard = crate::retention::lock();
     let path = log_path(data_folder);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -451,6 +543,181 @@ pub fn read_all(data_folder: &Path) -> Vec<PromptSnapshot> {
         .collect()
 }
 
+/// How many snapshots the log keeps. Older ones are dropped first when an
+/// append takes it over this, so the log is bounded without a timer.
+pub const MAX_SNAPSHOTS: usize = 2_000;
+
+/// Rewrite the log keeping only the lines `keep` accepts, atomically: a temp
+/// file beside it, then a rename. A crash mid-rewrite leaves the old log whole.
+/// Lines that no longer parse cannot be attributed to anyone and are kept.
+fn rewrite(data_folder: &Path, keep: impl Fn(usize, &PromptSnapshot) -> bool) -> Result<usize, String> {
+    let path = log_path(data_folder);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(0);
+    };
+    let mut out = String::with_capacity(text.len());
+    let mut removed = 0;
+    let mut index = 0;
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        match serde_json::from_str::<PromptSnapshot>(line) {
+            Ok(s) => {
+                let kept = keep(index, &s);
+                index += 1;
+                if !kept {
+                    removed += 1;
+                    continue;
+                }
+            }
+            Err(_) => {}
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if removed == 0 {
+        return Ok(0);
+    }
+    let temp = path.with_extension(format!("jsonl.tmp-{}", std::process::id()));
+    std::fs::write(&temp, out).map_err(|e| e.to_string())?;
+    std::fs::rename(&temp, &path).map_err(|e| {
+        let _ = std::fs::remove_file(&temp);
+        e.to_string()
+    })?;
+    Ok(removed)
+}
+
+/// Take some text out of every snapshot that carries it, keeping the record
+/// of the request itself.
+///
+/// Forgetting a memory has to reach the prompts it was already sent in: a
+/// snapshot is the exact payload, so leaving it there would keep the forgotten
+/// words readable in the inspector, the CLI, the audit export and the session
+/// export for as long as the log lives. What is left in their place is a
+/// marker naming why, so the record still shows that something was there and
+/// that it was removed on purpose -- a redaction, not a hole.
+///
+/// Returns how many snapshots changed. Rewrites atomically, like every other
+/// pass over this log; a line that no longer parses is left exactly as it is,
+/// because text that cannot be attributed must not be edited either.
+pub fn redact_text(data_folder: &Path, needles: &[&str], why: &str) -> Result<usize, String> {
+    let needles: Vec<&str> = needles
+        .iter()
+        .copied()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .collect();
+    if needles.is_empty() {
+        return Ok(0);
+    }
+    let path = log_path(data_folder);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(0);
+    };
+    let marker = format!("[redacted: {why}]");
+    let mut out = String::with_capacity(text.len());
+    let mut changed = 0usize;
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let mut snapshot = match serde_json::from_str::<PromptSnapshot>(line) {
+            Ok(s) => s,
+            Err(_) => {
+                out.push_str(line);
+                out.push('\n');
+                continue;
+            }
+        };
+        let Ok(mut payload) = serde_json::to_string(&snapshot.payload) else {
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        };
+        let mut hit = false;
+        for needle in &needles {
+            // The payload is JSON text, so the needle is matched as it appears
+            // once serialized -- with the escaping a JSON string would have.
+            let Ok(encoded) = serde_json::to_string(needle) else {
+                continue;
+            };
+            let encoded = encoded.trim_matches('"');
+            if !encoded.is_empty() && payload.contains(encoded) {
+                payload = payload.replace(encoded, &marker);
+                hit = true;
+            }
+        }
+        if !hit {
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+        match serde_json::from_str::<Value>(&payload) {
+            Ok(redacted) => {
+                snapshot.payload = redacted;
+                snapshot.redactions.push(Redaction {
+                    path: "payload".to_string(),
+                    why: why.to_string(),
+                });
+                changed += 1;
+                match serde_json::to_string(&snapshot) {
+                    Ok(encoded) => {
+                        out.push_str(&encoded);
+                        out.push('\n');
+                    }
+                    Err(_) => {
+                        out.push_str(line);
+                        out.push('\n');
+                    }
+                }
+            }
+            // A replacement that broke the JSON is not written: the snapshot
+            // stays as it was rather than becoming unreadable.
+            Err(_) => {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+    }
+    if changed == 0 {
+        return Ok(0);
+    }
+    let temp = path.with_extension(format!("jsonl.tmp-redact-{}", std::process::id()));
+    std::fs::write(&temp, out).map_err(|e| e.to_string())?;
+    std::fs::rename(&temp, &path).map_err(|e| {
+        let _ = std::fs::remove_file(&temp);
+        e.to_string()
+    })?;
+    Ok(changed)
+}
+
+/// [`redact_text`], reporting instead of returning.
+///
+/// The caller is `memory/`, which may not log at all -- a memory body could
+/// travel with the message -- so the reporting happens here, where the text
+/// being handled is already known not to be one.
+pub fn redact_text_reporting(data_folder: &Path, needles: &[&str], why: &str) {
+    match redact_text(data_folder, needles, why) {
+        Ok(0) => {}
+        Ok(n) => eprintln!("prompt snapshots: redacted {why} from {n} snapshot(s)"),
+        Err(e) => eprintln!("prompt snapshots: could not redact {why}: {e}"),
+    }
+}
+
+/// Forget every snapshot of one session. The user's way to delete what the
+/// model was sent, and what deleting the session does to its snapshots.
+pub fn delete_session(data_folder: &Path, session: &str) -> Result<usize, String> {
+    if session.trim().is_empty() {
+        return Err("name the session whose snapshots to delete".into());
+    }
+    rewrite(data_folder, |_, s| s.session != session)
+}
+
+/// Keep only the newest `max` snapshots.
+pub fn prune(data_folder: &Path, max: usize) -> Result<usize, String> {
+    let total = read_all(data_folder).len();
+    if total <= max {
+        return Ok(0);
+    }
+    let cut = total - max;
+    rewrite(data_folder, move |index, _| index >= cut)
+}
+
 pub fn find(data_folder: &Path, id: &str) -> Option<PromptSnapshot> {
     read_all(data_folder).into_iter().find(|s| s.id == id)
 }
@@ -473,6 +740,128 @@ pub fn by_session(data_folder: &Path, session: &str) -> Vec<PromptSnapshot> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// AH-083: forgetting has to reach the prompts the memory was already
+    /// sent in. What is left behind says a redaction happened, so the record
+    /// still shows that something was there.
+    #[test]
+    fn forgotten_text_leaves_the_prompts_it_was_sent_in() {
+        let dir = std::env::temp_dir().join(format!(
+            "jan-snap-redact-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let secret = "the staging host is called larkspur";
+        let carrying = capture(
+            &json!({ "messages": [
+                { "role": "system", "content": format!("<remembered_facts>\n- [mem-1] (user) {secret}\n</remembered_facts>") },
+                { "role": "user", "content": "deploy it" },
+            ] }),
+            &Identity { session: "s1".into(), ..Default::default() },
+        );
+        let other = capture(
+            &json!({ "messages": [{ "role": "user", "content": "nothing to do with it" }] }),
+            &Identity { session: "s2".into(), ..Default::default() },
+        );
+        append(&dir, &carrying);
+        append(&dir, &other);
+
+        let changed = redact_text(&dir, &[secret], "forgotten memory").expect("a rewrite");
+        assert_eq!(changed, 1, "only the snapshot that carried it is rewritten");
+
+        let raw = std::fs::read_to_string(log_path(&dir)).unwrap();
+        assert!(!raw.contains(secret), "the forgotten words are still on disk: {raw}");
+        assert!(raw.contains("[redacted: forgotten memory]"), "{raw}");
+
+        let back = find(&dir, &carrying.id).expect("the snapshot is still there");
+        // The request is still readable: what it asked, and that something was
+        // taken out of it.
+        assert!(back.render_text().contains("deploy it"));
+        assert!(back.render_text().contains("[redacted: forgotten memory]"));
+        assert!(back.redactions.iter().any(|r| r.why == "forgotten memory"));
+        assert!(back.payload.get("messages").is_some(), "the payload is still a payload");
+        // And nobody else's snapshot was touched.
+        let untouched = find(&dir, &other.id).expect("the other session's snapshot");
+        assert_eq!(untouched.payload, other.payload);
+        assert!(untouched.redactions.is_empty());
+
+        // Idempotent: a second forget of the same words changes nothing more.
+        assert_eq!(redact_text(&dir, &[secret], "forgotten memory").unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Nothing to redact, nothing to rewrite -- and a needle that is only
+    /// whitespace is not a needle at all.
+    #[test]
+    fn redaction_refuses_to_rewrite_for_nothing() {
+        let dir = std::env::temp_dir().join(format!(
+            "jan-snap-redact-none-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::UNIX_EPOCH.elapsed().unwrap().as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let snap = capture(
+            &json!({ "messages": [{ "role": "user", "content": "keep me" }] }),
+            &Identity { session: "s1".into(), ..Default::default() },
+        );
+        append(&dir, &snap);
+        let before = std::fs::read_to_string(log_path(&dir)).unwrap();
+        assert_eq!(redact_text(&dir, &["   "], "forgotten memory").unwrap(), 0);
+        assert_eq!(redact_text(&dir, &[], "forgotten memory").unwrap(), 0);
+        assert_eq!(redact_text(&dir, &["never sent"], "forgotten memory").unwrap(), 0);
+        assert_eq!(std::fs::read_to_string(log_path(&dir)).unwrap(), before);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// AH-087: the text view carries every message whole, in order, with its
+    /// role, each tool call with its arguments, and the tools offered.
+    #[test]
+    fn the_text_view_is_what_the_model_saw() {
+        let long = "x".repeat(5_000);
+        let payload = json!({
+            "model": "m",
+            "messages": [
+                { "role": "system", "content": "You are Jan. Today is 2026-09-11." },
+                { "role": "user", "content": [{ "type": "text", "text": format!("read it {long}") }, { "type": "image_url", "image_url": { "url": "data:x" } }] },
+                { "role": "assistant", "content": null, "tool_calls": [{ "id": "c1", "type": "function", "function": { "name": "read", "arguments": "{\"path\":\"README.md\"}" } }] },
+                { "role": "tool", "tool_call_id": "c1", "content": "# Readme" },
+            ],
+            "tools": [{ "type": "function", "function": { "name": "read" } }, { "type": "function", "function": { "name": "ls" } }],
+        });
+        let snap = capture(&payload, &Identity { session: "s1".into(), ..Default::default() });
+        let text = snap.render_text();
+        let order = ["1 · system", "Today is 2026-09-11", "2 · user", "3 · assistant", "4 · tool · result of c1", "# Readme"];
+        let mut at = 0;
+        for needle in order {
+            let found = text[at..].find(needle).unwrap_or_else(|| panic!("{needle} missing or out of order:\n{text}"));
+            at += found;
+        }
+        assert!(text.contains(&long), "a long message was cut");
+        assert!(text.contains("[image_url part]"));
+        assert!(text.contains("[tool call c1] read({\"path\":\"README.md\"})"));
+        assert!(text.contains("tools offered: 2 ---\nread, ls"));
+        assert!(text.contains(&snap.hash));
+    }
+
+    /// A credential is not in the text view: it was redacted before the
+    /// snapshot was written, and the header says a redaction was made.
+    #[test]
+    fn the_text_view_shows_redactions_not_secrets() {
+        let payload = json!({ "messages": [{ "role": "user", "content": "key sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }] });
+        let snap = capture(&payload, &Identity::default());
+        let text = snap.render_text();
+        assert!(!text.contains("AAAAAAAAAAAAAAAAAAAA"), "{text}");
+        assert!(!text.contains(" 0 redaction(s)"), "{text}");
+    }
+
+    #[test]
+    fn a_snapshot_without_a_payload_says_why() {
+        let snap = unavailable(&Identity::default(), Unavailable::TooLarge);
+        let text = snap.render_text();
+        assert!(text.contains("no payload was kept: TooLarge"), "{text}");
+        assert!(!text.contains("tools offered"));
+    }
 
     fn dir(tag: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!(
@@ -509,6 +898,61 @@ mod tests {
                 { "type": "function", "function": { "name": "bash", "parameters": {} } }
             ]
         })
+    }
+
+    // ---- retention and deletion (AH-078) ---------------------------------
+
+    fn seeded(tag: &str, sessions: &[&str]) -> PathBuf {
+        let d = dir(tag);
+        for (i, s) in sessions.iter().enumerate() {
+            let mut id = ident();
+            id.session = (*s).into();
+            id.run = format!("r{i}");
+            append(&d, &capture(&payload(), &id));
+        }
+        d
+    }
+
+    #[test]
+    fn deleting_a_session_removes_only_its_snapshots() {
+        let d = seeded("del", &["a", "b", "a", "c"]);
+        assert_eq!(delete_session(&d, "a").unwrap(), 2);
+        let left: Vec<String> = read_all(&d).into_iter().map(|s| s.session).collect();
+        assert_eq!(left, vec!["b", "c"]);
+        assert!(by_session(&d, "a").is_empty());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn deleting_needs_a_session() {
+        let d = seeded("del-empty", &["a"]);
+        assert!(delete_session(&d, "  ").is_err());
+        assert_eq!(read_all(&d).len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn retention_keeps_the_newest() {
+        let d = seeded("prune", &["s0", "s1", "s2", "s3", "s4"]);
+        assert_eq!(prune(&d, 2).unwrap(), 3);
+        let left: Vec<String> = read_all(&d).into_iter().map(|s| s.session).collect();
+        assert_eq!(left, vec!["s3", "s4"]);
+        assert_eq!(prune(&d, 2).unwrap(), 0, "nothing more to drop");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_torn_line_survives_a_rewrite() {
+        let d = seeded("torn", &["a", "b"]);
+        let path = log_path(&d);
+        let mut raw = std::fs::read_to_string(&path).unwrap();
+        raw.push_str("{\"v\":1,\"id\":\"half\n");
+        std::fs::write(&path, raw).unwrap();
+        delete_session(&d, "a").unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"half"), "an unattributable line was dropped");
+        assert_eq!(read_all(&d).len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     // ---- ids ------------------------------------------------------------

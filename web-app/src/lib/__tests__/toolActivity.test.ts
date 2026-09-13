@@ -185,7 +185,8 @@ describe('recordToolActivity', () => {
   it('fills the fields a caller did not name', async () => {
     await recordToolActivity({ call: 'c1', tool: 'bash', phase: 'refused' })
     expect(events()[0]).toMatchObject({
-      v: 1,
+      // Version 2: sequence, input/output, lifecycle and change fields.
+      v: 2,
       call: 'c1',
       tool: 'bash',
       capability: 'exec',

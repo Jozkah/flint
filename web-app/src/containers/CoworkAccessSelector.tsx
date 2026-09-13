@@ -113,7 +113,7 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
               'shrink-0 gap-1',
               // Editing the user's own checkout is the state worth noticing.
               active === 'edit-folder'
-                ? 'text-primary'
+                ? 'text-brand-text'
                 : 'text-muted-foreground'
             )}
           >
@@ -150,7 +150,7 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
                     {t(accessDescriptionKey(option))}
                   </span>
                   {blocked && (
-                    <span className="mt-0.5 block text-xs text-main-view-fg/50">
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
                       {t(blocked)}
                     </span>
                   )}

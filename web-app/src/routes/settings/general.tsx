@@ -1,8 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
+import { useThreads } from '@/hooks/useThreads'
 import { invoke } from '@tauri-apps/api/core'
 import { route } from '@/constants/routes'
-import SettingsMenu from '@/containers/SettingsMenu'
-import HeaderPage from '@/containers/HeaderPage'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Card, CardItem } from '@/containers/Card'
@@ -13,12 +14,7 @@ import ChangeDataFolderLocation from '@/containers/dialogs/ChangeDataFolderLocat
 import { FactoryResetDialog } from '@/containers/dialogs'
 import type { FactoryResetOptions } from '@/services/app/types'
 import { useServiceHub } from '@/hooks/useServiceHub'
-import {
-  IconFolder,
-  IconLogs,
-  IconCopy,
-  IconCopyCheck,
-} from '@tabler/icons-react'
+import { Copy, CopyCheck, Folder, ScrollText } from 'lucide-react'
 import { toast } from 'sonner'
 import { SystemEvent } from '@/types/events'
 import { Input } from '@/components/ui/input'
@@ -41,6 +37,7 @@ function General() {
     setHuggingfaceToken,
   } = useGeneralSetting()
   const serviceHub = useServiceHub()
+  const navigate = useNavigate()
 
   const openFileTitle = (): string => {
     if (IS_MACOS) {
@@ -189,16 +186,11 @@ function General() {
   }
 
   return (
-    <div className="flex flex-col h-svh w-full">
-      <HeaderPage>
-        <div className="flex items-center gap-2 w-full">
-          <span className='font-medium text-base font-studio'>{t('common:settings')}</span>
-        </div>
-      </HeaderPage>
-      <div className="flex h-[calc(100%-60px)]">
-        <SettingsMenu />
-        <div className="p-4 pt-0 w-full overflow-y-auto">
-          <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+    <div className="flex flex-col h-full w-full">
+      <SettingsPageHeader />
+      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
+        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
+          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
 
             {/* General */}
             <Card title={t('common:general')}>
@@ -215,6 +207,27 @@ function General() {
                 title={t('common:language')}
                 actions={<LanguageSwitcher />}
               />
+              <CardItem
+                title={t('onboarding:reopenGuide')}
+                description={t('onboarding:reopenGuideDescription')}
+                actions={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      useOnboardingGuide
+                        .getState()
+                        .start(
+                          useOnboardingGuide.getState().intent,
+                          Object.keys(useThreads.getState().threads).length
+                        )
+                      navigate({ to: route.home })
+                    }}
+                  >
+                    {t('onboarding:reopenGuideAction')}
+                  </Button>
+                }
+              />
             </Card>
 
             {/* Data folder - Desktop only */}
@@ -225,7 +238,7 @@ function General() {
                   ns: 'settings',
                 })}
                 align="start"
-                className="items-start flex-row gap-2"
+                className="items-start"
                 description={
                   <>
                     <span>
@@ -234,11 +247,11 @@ function General() {
                       })}
                       &nbsp;
                     </span>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="max-w-100 bg-secondary rounded-sm px-1 py-0.5">
+                    <div className="mt-1 flex min-w-0 items-center gap-2">
+                      <div className="min-w-0 max-w-100 rounded-sm bg-sunken px-1.5 py-0.5">
                         <span
                           title={janDataFolder}
-                          className="text-xs line-clamp-1 break-all"
+                          className="line-clamp-1 break-all font-mono text-xs text-ink-2"
                         >
                           {janDataFolder}
                         </span>
@@ -247,7 +260,7 @@ function General() {
                         onClick={() =>
                           janDataFolder && copyToClipboard(janDataFolder)
                         }
-                        className="cursor-pointer flex items-center justify-center rounded-sm bg-secondary transition-all duration-200 ease-in-out p-1"
+                        className="flex shrink-0 cursor-pointer items-center justify-center rounded-sm p-1 transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                         title={
                           isCopied
                             ? t('settings:general.copied')
@@ -256,15 +269,16 @@ function General() {
                       >
                         {isCopied ? (
                           <div className="flex items-center gap-1">
-                            <IconCopyCheck size={14} className="text-green-500 dark:text-green-600" />
+                            <CopyCheck size={14} className="text-success" aria-hidden />
                             <span className="text-xs leading-0">
                               {t('settings:general.copied')}
                             </span>
                           </div>
                         ) : (
-                          <IconCopy
+                          <Copy
                             size={14}
                             className="text-muted-foreground"
+                            aria-hidden
                           />
                         )}
                       </button>
@@ -286,7 +300,7 @@ function General() {
                       title={t('settings:dataFolder.appData')}
                       onClick={handleDataFolderChange}
                     >
-                        <IconFolder
+                        <Folder
                           size={12}
                           className="text-muted-foreground"
                         />
@@ -316,13 +330,13 @@ function General() {
                   ns: 'settings',
                 })}
                 description={t('settings:dataFolder.appLogsDesc')}
-                className="items-start flex-row gap-y-2"
+                className="items-start"
                 actions={
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="p-0"
+                      className="pointer-coarse:h-11"
                       onClick={async () => {
                         if (janDataFolder) {
                           try {
@@ -341,7 +355,7 @@ function General() {
                       }}
                       title={t('settings:general.revealLogs')}
                     >
-                      <IconFolder
+                      <Folder
                         size={12}
                         className="text-muted-foreground"
                       />
@@ -353,7 +367,7 @@ function General() {
                       onClick={handleOpenLogs}
                       title={t('settings:dataFolder.appLogs')}
                     >
-                      <IconLogs size={12} className="text-muted-foreground" />
+                      <ScrollText size={12} className="text-muted-foreground" aria-hidden />
                       <span>{t('settings:general.openLogs')}</span>
                     </Button>
                   </div>
@@ -437,9 +451,10 @@ function General() {
                   ns: 'settings',
                 })}
                 actions={
-                  <div className="flex items-center gap-2">
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                     <Input
                       id="hf-token"
+                      className="font-mono sm:w-56"
                       value={huggingfaceToken || ''}
                       onChange={(e) => setHuggingfaceToken(e.target.value)}
                       placeholder={'hf_xxx_xxx'}

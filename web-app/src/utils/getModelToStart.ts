@@ -1,5 +1,6 @@
 import { localStorageKey } from '@/constants/localStorage'
 import type { ModelInfo } from '@janhq/core'
+import { useModelEvidence } from '@/hooks/useModelEvidence'
 
 export const getLastUsedModel = (): {
   provider: string
@@ -21,6 +22,15 @@ export const getModelToStart = (params: {
   getProviderByName: (name: string) => ModelProvider | undefined
 }): { model: string; provider: ModelProvider } | null => {
   const { selectedModel, selectedProvider, getProviderByName } = params
+
+  // The user's chosen default comes first, when it is still installed.
+  const preferred = useModelEvidence.getState().preferredModel
+  if (preferred) {
+    const provider = getProviderByName(preferred.provider)
+    if (provider && provider.models.some((m) => m.id === preferred.model)) {
+      return { model: preferred.model, provider }
+    }
+  }
 
   // Use last used model if available
   const lastUsedModel = getLastUsedModel()

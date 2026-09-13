@@ -8,6 +8,11 @@ import {
 } from '@/lib/llamacppRouterProps'
 import { useModelProvider } from './useModelProvider'
 import { useAppState } from './useAppState'
+import {
+  finalizeTokenUsage,
+  readTokenUsage,
+  type TokenUsage,
+} from '@/lib/tokenUsage'
 
 export type ModelProps = LlamacppModelProps
 
@@ -15,6 +20,12 @@ export interface TokenCountData {
   tokenCount: number
   inputTokens?: number
   outputTokens?: number
+  /**
+   * The breakdown behind the counter's popover: input, the cached and
+   * uncached parts of it, cache writes, output and total — each only when the
+   * provider reported it.
+   */
+  usage?: TokenUsage
   maxTokens?: number
   percentage?: number
   isNearLimit: boolean
@@ -28,11 +39,8 @@ export interface TokenCountData {
   isOverflow?: boolean
 }
 
-export interface UsageMeta {
-  inputTokens?: number
-  outputTokens?: number
-  totalTokens?: number
-}
+/** The usage a message or session carries. See `lib/tokenUsage.ts`. */
+export type UsageMeta = TokenUsage
 
 /**
  * Usage for a surface that keeps no `ThreadMessage`s.
@@ -44,6 +52,8 @@ export interface UsageMeta {
 export interface TokenUsageSource {
   threadId?: string
   usage?: UsageMeta
+  /** Every request in this session, added up (see `summarizeUsage`). */
+  session?: UsageMeta
 }
 
 // The token-usage popup normally reflects the last *successful* turn. When a
@@ -60,10 +70,14 @@ const getActiveContextOverflow = (messages: ThreadMessage[]) => {
   return null
 }
 
+// Read through `readTokenUsage`, so a message saved before cache accounting
+// existed comes back with its cache fields absent — "not reported" — rather
+// than zero.
 const getLatestServerUsage = (messages: ThreadMessage[]): UsageMeta => {
   for (let i = messages.length - 1; i >= 0; i--) {
-    const usage = (messages[i].metadata as { usage?: UsageMeta } | undefined)
-      ?.usage
+    const usage = readTokenUsage(
+      (messages[i].metadata as { usage?: unknown } | undefined)?.usage
+    )
     if (usage && typeof usage.totalTokens === 'number' && usage.totalTokens > 0)
       return usage
   }
@@ -155,6 +169,7 @@ export const useTokensCount = (
         tokenCount: usage.totalTokens ?? 0,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
+        usage,
         loading: false,
         isNearLimit: false,
         fitEnabled: false,
@@ -170,12 +185,14 @@ export const useTokensCount = (
       }
     }
     const overflow = getActiveContextOverflow(messages)
-    const usage = liveStats
-      ? {
+    const usage: UsageMeta = liveStats
+      ? finalizeTokenUsage({
           inputTokens: liveStats.promptTokens,
           outputTokens: liveStats.completionTokens,
           totalTokens: liveStats.promptTokens + liveStats.completionTokens,
-        }
+          cachedInputTokens: liveStats.cachedPromptTokens,
+          cacheSource: 'engine-timings',
+        })
       : (source?.usage ?? getLatestServerUsage(messages))
     const tokenCount = overflow?.requestTokens ?? usage.totalTokens ?? 0
     // A runtime that reports `n_ctx: 0`, or a server whose overflow error
@@ -207,6 +224,11 @@ export const useTokensCount = (
       tokenCount,
       inputTokens: overflow ? overflow.requestTokens : usage.inputTokens,
       outputTokens: overflow ? 0 : usage.outputTokens,
+      // An overflowed request was refused before anything was generated or
+      // cached, so all that is known about it is its size.
+      usage: overflow
+        ? finalizeTokenUsage({ inputTokens: overflow.requestTokens })
+        : usage,
       maxTokens,
       percentage,
       isNearLimit,

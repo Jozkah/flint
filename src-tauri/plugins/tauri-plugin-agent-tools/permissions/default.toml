@@ -42,6 +42,11 @@ permissions = [
     "allow-memory-settings-get",
     "allow-memory-settings-update",
     "allow-memory-retrieve",
+    "allow-memory-conflicts",
+    "allow-memory-scope-clear",
+    "allow-memory-export",
+    "allow-memory-import",
+    "allow-memory-record-uses",
     "allow-tool-schemas",
     "allow-sandbox-status",
     "allow-environment-readiness",
@@ -49,6 +54,7 @@ permissions = [
     "allow-advertised-tool-schemas",
     "allow-execute-tool",
     "allow-execute-tool-streaming",
+    "allow-tool-resources-finish-run",
     "allow-undo-journal",
     "allow-undo-turn",
     "allow-redo-turn",
@@ -59,4 +65,7 @@ permissions = [
     "allow-project-init-accept",
     "allow-bash-jobs-list",
     "allow-bash-job-kill",
+    # Read-only view of the permission decision log for Settings > Permissions.
+    # Bounded, and redacted before it is returned.
+    "allow-permission-audit-recent",
 ]

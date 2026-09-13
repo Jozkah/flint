@@ -1,6 +1,6 @@
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { AvatarEmoji } from '@/containers/AvatarEmoji'
-import { IconUser } from '@tabler/icons-react'
+import { User } from 'lucide-react'
 
 type AssistantMenuProps = {
   selectedAssistant: string | undefined
@@ -39,7 +39,7 @@ export function AssistantsMenu({
                 textClassName="text-sm"
               />
             ) : (
-              <IconUser size={18} className="text-muted-foreground" />
+              <User size={18} className="text-muted-foreground" />
             )}
             <span>
               {deletedAssistant.name || 'Unnamed Assistant'} (deleted)

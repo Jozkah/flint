@@ -1,11 +1,15 @@
+import type { TeamControl } from '@/lib/coworkTeamControl'
+import { useTeamControls } from '@/hooks/useTeamControls'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bot,
   ChevronDown,
   CircleAlert,
   CircleCheck,
+  CircleOff,
   CircleSlash,
   Clock,
+  Copy,
   Loader2,
   Square,
   Terminal,
@@ -30,6 +34,8 @@ import {
 import { CANCELLED_BY_USER } from '@/lib/coworkCancel'
 import { INTERRUPTED_BY_RESTART } from '@/lib/hydrateStores'
 import type { CoworkTurn } from '@/types/coworkSession'
+import { describeTokenUsage, fromCoworkUsage } from '@/lib/tokenUsage'
+import { CacheReuseBadge } from '@/components/CacheReuseBadge'
 
 /** How often running rows re-render so their elapsed time advances. A second
  * is the resolution the duration label shows, so anything finer is wasted
@@ -39,6 +45,10 @@ const TICK_MS = 1000
 /** Output lines kept in view. A build log can be megabytes; the tail is the
  * part that says what happened, and the rest would freeze the panel. */
 const MAX_OUTPUT_LINES = 200
+
+/** Finished workflows rendered before "show more". A long session collects
+ * hundreds; rendering every row at once is what makes a panel sluggish. */
+export const FINISHED_PAGE = 50
 
 type Props = {
   /** This session's workflows, newest first, from the canonical store. */
@@ -194,8 +204,18 @@ export function CoworkTasksPanel({
   // workflow whose backgrounded command is still running stays under Running
   // even though its model turn is over, because the process is.
   const [showFinished, setShowFinished] = useState(true)
+  const [finishedLimit, setFinishedLimit] = useState(FINISHED_PAGE)
   const running = workflows.filter((view) => isLive(view.status))
   const finished = workflows.filter((view) => !isLive(view.status))
+  // A focused workflow is always rendered, even past the page, so "show in
+  // Activity" never scrolls to nothing.
+  const focusIndex = workflowOfFocus
+    ? finished.findIndex((v) => v.workflow.id === workflowOfFocus.workflow.id)
+    : -1
+  const finishedShown = finished.slice(
+    0,
+    Math.max(finishedLimit, focusIndex + 1)
+  )
 
   const section = (view: WorkflowView) => (
     <WorkflowSection
@@ -223,7 +243,7 @@ export function CoworkTasksPanel({
       title={t('common:tasks.title')}
       summary={
         totals.total > 0 ? (
-          <span className="shrink-0 font-mono text-xs tabular-nums text-main-view-fg/60">
+          <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
             {totals.tokens > 0
               ? t('common:tasks.summary', {
                   count: totals.total,
@@ -237,14 +257,14 @@ export function CoworkTasksPanel({
     >
       <div className="flex h-full min-h-0 flex-col">
         {workflows.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-main-view-fg/50">
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">
             {t('common:tasks.empty')}
           </p>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">
             {running.length > 0 && (
               <>
-                <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+                <p className="px-3 pb-1 pt-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   {t('common:tasks.running', { count: running.length })}
                 </p>
                 {running.map(section)}
@@ -263,11 +283,11 @@ export function CoworkTasksPanel({
                     <ChevronDown
                       size={12}
                       className={cn(
-                        'shrink-0 text-main-view-fg/40 transition-transform',
+                        'shrink-0 text-muted-foreground transition-transform',
                         !showFinished && '-rotate-90'
                       )}
                     />
-                    <span className="text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+                    <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                       {t('common:tasks.finished', { count: finished.length })}
                     </span>
                   </button>
@@ -277,7 +297,25 @@ export function CoworkTasksPanel({
                     {t('common:tasks.clearFinished')}
                   </Button>
                 </div>
-                {showFinished && finished.map(section)}
+                {showFinished && finishedShown.map(section)}
+                {showFinished && finished.length > finishedShown.length && (
+                  <div className="px-3 py-2">
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      onClick={() =>
+                        setFinishedLimit((n) => n + FINISHED_PAGE)
+                      }
+                    >
+                      {t('common:tasks.showMoreFinished', {
+                        count: Math.min(
+                          FINISHED_PAGE,
+                          finished.length - finishedShown.length
+                        ),
+                      })}
+                    </Button>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -325,10 +363,14 @@ function WorkflowSection({
   const stopping = cancelling.has(workflow.id)
   const isFocus = focusWorkflowId === workflow.id
 
+  const titles = new Map(view.tasks.map((one) => [one.id, one.title]))
+  const byCall = new Map(view.tasks.map((one) => [one.callId, one.id]))
   const taskRow = (task: ActivityTask) => (
     <TaskItem
+      teamControl={teamControlFor(task, byCall)}
       key={task.id}
       task={task}
+      parentTitle={task.parentTaskId ? titles.get(task.parentTaskId) : undefined}
       now={now}
       expanded={expandedTasks.has(task.id)}
       onToggle={() => onToggleTask(task.id)}
@@ -362,7 +404,7 @@ function WorkflowSection({
           >
             {workflow.title}
           </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-main-view-fg/50">
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
             <span className="tabular-nums">
               {t('common:tasks.progress', {
                 finished: progress.finished,
@@ -387,7 +429,7 @@ function WorkflowSection({
         <ChevronDown
           size={12}
           className={cn(
-            'mt-1 shrink-0 text-main-view-fg/40 transition-transform',
+            'mt-1 shrink-0 text-muted-foreground transition-transform',
             !expanded && '-rotate-90'
           )}
         />
@@ -402,7 +444,7 @@ function WorkflowSection({
           onClick={onCancelWorkflow}
         >
           {stopping ? (
-            <Loader2 size={11} className="shrink-0 animate-spin" />
+            <Loader2 size={11} className="shrink-0 motion-safe:animate-spin" />
           ) : (
             <Square size={11} className="shrink-0" />
           )}
@@ -414,7 +456,7 @@ function WorkflowSection({
         <div className="pb-1">
           {view.phases.map(({ phase, tasks }) => (
             <div key={phase.id}>
-              <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+              <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 {t('common:tasks.phase', { name: phase.name })}
               </p>
               {tasks.map(taskRow)}
@@ -423,7 +465,7 @@ function WorkflowSection({
           {view.unphased.length > 0 && (
             <div>
               {view.phases.length > 0 && (
-                <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+                <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   {t('common:tasks.unphased')}
                 </p>
               )}
@@ -475,7 +517,7 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
         <Loader2
           size={13}
           aria-label={t('common:tasks.statusRunning')}
-          className={cn(shared, 'animate-spin text-primary')}
+          className={cn(shared, 'motion-safe:animate-spin text-brand-text')}
           data-testid="task-status-running"
         />
       )
@@ -484,7 +526,7 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
         <Clock
           size={13}
           aria-label={t('common:tasks.statusQueued')}
-          className={cn(shared, 'text-main-view-fg/40')}
+          className={cn(shared, 'text-muted-foreground')}
           data-testid="task-status-queued"
         />
       )
@@ -502,8 +544,17 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
         <CircleSlash
           size={13}
           aria-label={t('common:tasks.statusCancelled')}
-          className={cn(shared, 'text-main-view-fg/40')}
+          className={cn(shared, 'text-muted-foreground')}
           data-testid="task-status-cancelled"
+        />
+      )
+    case 'interrupted':
+      return (
+        <CircleOff
+          size={13}
+          aria-label={t('common:tasks.statusInterrupted')}
+          className={cn(shared, 'text-warning')}
+          data-testid="task-status-interrupted"
         />
       )
     default:
@@ -511,15 +562,113 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
         <CircleCheck
           size={13}
           aria-label={t('common:tasks.statusDone')}
-          className={cn(shared, 'text-main-view-fg/40')}
+          className={cn(shared, 'text-muted-foreground')}
           data-testid="task-status-done"
         />
       )
   }
 }
 
+/** A wall-clock time, short: what a row shows for when work began and ended. */
+function clockTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
+/** The live control of the team a failed member belongs to, if it has one. */
+export function teamControlFor(task: ActivityTask, byCall: Map<string, string>): TeamControl | undefined {
+  if (task.status !== 'error' || !task.parentTaskId) return undefined
+  const controls = useTeamControls.getState().controls
+  const parent = byCall.get(task.parentTaskId) ?? task.parentTaskId
+  const control = controls[parent] ?? controls[task.parentTaskId]
+  return control && !control.finished ? control : undefined
+}
+
+/** A team member's own id within its team: the part of its call id after the team's. */
+function memberIdOf(task: ActivityTask): string {
+  const at = task.callId.lastIndexOf(':')
+  return at >= 0 ? task.callId.slice(at + 1) : task.callId
+}
+
+export function TeamMemberControls({ task, control }: { task: ActivityTask; control: TeamControl }) {
+  const { t } = useTranslation()
+  const [replacing, setReplacing] = useState(false)
+  const [brief, setBrief] = useState(task.description ?? '')
+  const [agent, setAgent] = useState(task.agentName ?? '')
+  const memberId = memberIdOf(task)
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2 pl-5 pb-2" data-testid={`team-member-controls-${memberId}`}>
+      <Button
+        variant="outline"
+        size="xs"
+        data-testid="team-member-restart"
+        onClick={() => control.request({ kind: 'restart', taskId: memberId })}
+      >
+        {t('common:tasks.restartMember')}
+      </Button>
+      <Button
+        variant="ghost"
+        size="xs"
+        data-testid="team-member-replace-open"
+        onClick={() => setReplacing((open) => !open)}
+      >
+        {t('common:tasks.replaceMember')}
+      </Button>
+      <Button
+        variant="ghost"
+        size="xs"
+        data-testid="team-finish"
+        onClick={() => control.request({ kind: 'finish' })}
+      >
+        {t('common:tasks.finishTeam')}
+      </Button>
+      {replacing && (
+        <form
+          className="flex w-full flex-col gap-1"
+          data-testid="team-member-replace-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            control.request({
+              kind: 'replace',
+              taskId: memberId,
+              with: {
+                ...(brief !== (task.description ?? '') ? { description: brief } : {}),
+                ...(agent !== (task.agentName ?? '') ? { subagentName: agent } : {}),
+              },
+            })
+            setReplacing(false)
+          }}
+        >
+          <textarea
+            aria-label={t('common:tasks.replaceBrief')}
+            data-testid="team-member-replace-brief"
+            className="min-h-12 rounded-md border bg-transparent px-2 py-1 text-[11px]"
+            value={brief}
+            onChange={(e) => setBrief(e.target.value)}
+          />
+          <input
+            aria-label={t('common:tasks.replaceAgent')}
+            data-testid="team-member-replace-agent"
+            className="rounded-md border bg-transparent px-2 py-1 text-[11px]"
+            value={agent}
+            onChange={(e) => setAgent(e.target.value)}
+          />
+          <Button type="submit" size="xs" variant="outline" data-testid="team-member-replace-submit">
+            {t('common:tasks.replaceSubmit')}
+          </Button>
+        </form>
+      )}
+    </div>
+  )
+}
+
 function TaskItem({
+  teamControl,
   task,
+  parentTitle,
   now,
   expanded,
   onToggle,
@@ -528,7 +677,10 @@ function TaskItem({
   onCancel,
   containerRef,
 }: {
+  teamControl?: TeamControl
   task: ActivityTask
+  /** The task that dispatched this one, when it was nested. */
+  parentTitle?: string
   now: number
   expanded: boolean
   onToggle: () => void
@@ -540,6 +692,9 @@ function TaskItem({
   const { t } = useTranslation()
   const ms = taskElapsedMs(task, now)
   const tokens = task.usage?.total_tokens ?? 0
+  // The row has room for one number; the rest, cache counts included, is on
+  // hover, and says so when the provider reported none.
+  const usageDetail = describeTokenUsage(fromCoworkUsage(task.usage))
 
   return (
     <div
@@ -560,9 +715,9 @@ function TaskItem({
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
               {task.kind === 'shell' ? (
-                <Terminal size={12} className="shrink-0 text-main-view-fg/40" />
+                <Terminal size={12} className="shrink-0 text-muted-foreground" />
               ) : (
-                <Bot size={12} className="shrink-0 text-main-view-fg/40" />
+                <Bot size={12} className="shrink-0 text-muted-foreground" />
               )}
               <span
                 className={cn(
@@ -574,7 +729,14 @@ function TaskItem({
                 {task.title}
               </span>
             </span>
-            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-main-view-fg/50">
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
+              {/* Kind in words as well as the icon, so it is read out and
+                does not rest on telling two glyphs apart. */}
+              <span className="uppercase tracking-wider">
+                {task.kind === 'shell'
+                  ? t('common:tasks.kindShell')
+                  : t('common:tasks.kindAgent')}
+              </span>
               {task.status === 'queued' && task.waiting != null && (
                 <span>
                   {t('common:tasks.queuePosition', { position: task.waiting })}
@@ -584,9 +746,20 @@ function TaskItem({
                 {formatCompactDuration(Math.round(ms / 1000), t)}
               </span>
               {tokens > 0 && (
-                <span className="font-mono tabular-nums">
+                <span
+                  className="font-mono tabular-nums"
+                  title={usageDetail || undefined}
+                  data-testid="task-token-usage"
+                >
                   {t('common:tasks.tokens', { tokens: formatTokens(tokens) })}
                 </span>
+              )}
+              {tokens > 0 && (
+                <CacheReuseBadge
+                  usage={fromCoworkUsage(task.usage)}
+                  hideUnreported
+                  testId="task-cache-status"
+                />
               )}
               {task.toolCount != null && task.toolCount > 0 && (
                 <span>
@@ -603,12 +776,31 @@ function TaskItem({
                   {t('common:tasks.background', { jobId: task.jobId })}
                 </span>
               )}
+              {task.exitCode != null && (
+                <span
+                  className={cn(
+                    'font-mono',
+                    task.exitCode !== 0 && 'text-destructive'
+                  )}
+                >
+                  {t('common:tasks.exitCode', { code: task.exitCode })}
+                </span>
+              )}
+              {task.signalled && <span>{t('common:tasks.signalled')}</span>}
             </span>
+            {task.cancelError && (
+              <span
+                role="status"
+                className="mt-0.5 block text-[11px] text-destructive"
+              >
+                {t('common:tasks.stopFailedOnRow', { error: task.cancelError })}
+              </span>
+            )}
           </span>
           <ChevronDown
             size={12}
             className={cn(
-              'mt-1 shrink-0 text-main-view-fg/40 transition-transform',
+              'mt-1 shrink-0 text-muted-foreground transition-transform',
               !expanded && '-rotate-90'
             )}
           />
@@ -626,7 +818,7 @@ function TaskItem({
             onClick={onCancel}
           >
             {cancelling ? (
-              <Loader2 size={11} className="shrink-0 animate-spin" />
+              <Loader2 size={11} className="shrink-0 motion-safe:animate-spin" />
             ) : (
               <Square size={11} className="shrink-0" />
             )}
@@ -634,21 +826,38 @@ function TaskItem({
         )}
       </div>
 
+      {teamControl && <TeamMemberControls task={task} control={teamControl} />}
+      {(task.attempts ?? 0) > 0 && (
+        <p className="pb-2 pl-5 text-[11px] text-muted-foreground" data-testid="team-member-attempts">
+          {task.replacedWith
+            ? t('common:tasks.replacedAttempts', { count: task.attempts })
+            : t('common:tasks.restartedAttempts', { count: task.attempts })}
+        </p>
+      )}
       {expanded && (
         <div className="border-t bg-background px-3 py-2 pl-5">
+          <p className="mb-2 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
+            <span>{t('common:tasks.startedAt', { time: clockTime(task.startedAt) })}</span>
+            {task.endedAt != null && (
+              <span>{t('common:tasks.finishedAt', { time: clockTime(task.endedAt) })}</span>
+            )}
+            {parentTitle && (
+              <span>{t('common:tasks.fromTask', { name: parentTitle })}</span>
+            )}
+          </p>
           {task.description && (
-            <p className="mb-2 text-[11px] text-main-view-fg/70">
+            <p className="mb-2 text-[11px] text-ink-2">
               {task.description}
             </p>
           )}
           {task.detail && (
-            <p className="mb-2 text-[11px] text-main-view-fg/50">
+            <p className="mb-2 text-[11px] text-muted-foreground">
               {reasonLabel(task.detail, t)}
             </p>
           )}
           {task.transcript && task.transcript.length > 0 && (
             <>
-              <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-main-view-fg/40">
+              <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 {t('common:tasks.transcript')}
               </p>
               <ol className="mb-2 space-y-1">
@@ -657,7 +866,7 @@ function TaskItem({
                     key={`${task.id}-${i}`}
                     className="flex items-baseline gap-2 text-[11px]"
                   >
-                    <span className="w-14 shrink-0 text-main-view-fg/40">
+                    <span className="w-14 shrink-0 text-muted-foreground">
                       {turn.role === 'tool' ? turn.name : turn.role}
                     </span>
                     <span
@@ -689,10 +898,11 @@ function TaskItem({
  */
 function TaskOutput({ task }: { task: ActivityTask }) {
   const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
   const output = task.output
   if (!output) {
     return (
-      <p className="text-[11px] text-main-view-fg/40">
+      <p className="text-[11px] text-muted-foreground">
         {task.status === 'queued' || task.status === 'running'
           ? t('common:tasks.noOutput')
           : t('common:tasks.detailsUnavailable')}
@@ -702,13 +912,36 @@ function TaskOutput({ task }: { task: ActivityTask }) {
   const lines = output.split('\n')
   const truncated = lines.length > MAX_OUTPUT_LINES
   const shown = truncated ? lines.slice(-MAX_OUTPUT_LINES) : lines
+  const copy = () => {
+    // The whole kept output, not just the lines in view.
+    void navigator.clipboard?.writeText(output).then(
+      () => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      },
+      () => setCopied(false)
+    )
+  }
   return (
     <>
-      {truncated && (
-        <p className="mb-1 text-[11px] text-main-view-fg/40">
-          {t('common:tasks.outputTruncated', { lines: MAX_OUTPUT_LINES })}
-        </p>
-      )}
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-[11px] text-muted-foreground">
+          {task.outputTruncated && t('common:tasks.outputPartial')}{' '}
+          {truncated &&
+            t('common:tasks.outputTruncated', { lines: MAX_OUTPUT_LINES })}
+        </span>
+        <Button
+          variant="ghost"
+          size="xs"
+          onClick={copy}
+          aria-label={t('common:tasks.copyOutput')}
+        >
+          <Copy size={11} className="shrink-0" />
+          <span className="sr-only" aria-live="polite">
+            {copied ? t('common:tasks.copied') : ''}
+          </span>
+        </Button>
+      </div>
       <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-muted/40 p-2 font-mono text-[11px]">
         {shown.join('\n')}
       </pre>

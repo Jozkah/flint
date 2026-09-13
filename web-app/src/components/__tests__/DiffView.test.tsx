@@ -51,7 +51,7 @@ describe('the diff view', () => {
   it('tints added and removed rows differently, and both faintly', () => {
     const { container } = render(<DiffView diff={DIFF} />)
     const rows = [...container.querySelectorAll('tr')].map((r) => r.className)
-    const add = rows.find((c) => c.includes('emerald'))
+    const add = rows.find((c) => c.includes('success'))
     const remove = rows.find((c) => c.includes('destructive'))
     expect(add).toBeTruthy()
     expect(remove).toBeTruthy()

@@ -17,10 +17,16 @@ import { SystemEvent } from '@/types/events'
 import { sweepThreadWorkspaces } from '@/lib/agentTools'
 import { invoke } from '@tauri-apps/api/core'
 import { providerHasRemoteApiKeys, providerRemoteApiKeyChain } from '@/lib/provider-api-keys'
+import {
+  fillSecretHeaderValues,
+  loadSecretHeaderValues,
+} from '@/lib/providerHeaderSecrets'
 
-type ProviderCustomHeader = {
+type RegisteredCustomHeader = {
   header: string
   value: string
+  /** The backend redacts this value from everything it logs. */
+  secret: boolean
 }
 
 type RegisterProviderRequest = {
@@ -28,7 +34,7 @@ type RegisterProviderRequest = {
   api_key?: string
   api_keys?: string[]
   base_url?: string
-  custom_headers: ProviderCustomHeader[]
+  custom_headers: RegisteredCustomHeader[]
   models: string[]
 }
 
@@ -50,6 +56,7 @@ async function registerRemoteProvider(provider: ModelProvider) {
     custom_headers: (provider.custom_header || []).map((h) => ({
       header: h.header,
       value: h.value,
+      secret: !!h.secret,
     })),
     models: provider.models.map(e => e.id)
   }
@@ -109,6 +116,23 @@ async function applyKeyringKeys(): Promise<void> {
       })
     }
   }
+}
+
+// Secret custom header values are not persisted either (stripProviderSecrets
+// blanks them); read them back from the credential store the same way.
+// janhq/jan#8208.
+async function applySecretHeaderValues(): Promise<void> {
+  const store = useModelProvider.getState()
+  await Promise.all(
+    store.providers.map(async (provider) => {
+      const rows = provider.custom_header ?? []
+      if (!rows.some((h) => h.secret)) return
+      const values = await loadSecretHeaderValues(provider.provider)
+      store.updateProvider(provider.provider, {
+        custom_header: fillSecretHeaderValues(rows, values),
+      })
+    })
+  )
 }
 
 // Track which providers have been registered so we can unregister stale ones
@@ -211,6 +235,7 @@ export function DataProvider() {
       setProviders(fetched)
       // Seed keyring keys into the merged store (predefined + engine + custom).
       await applyKeyringKeys()
+      await applySecretHeaderValues()
       // Register active remote providers with the backend, keys now in place.
       useModelProvider.getState().providers.forEach((provider) => {
         if (provider.active) {

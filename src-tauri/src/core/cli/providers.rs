@@ -306,8 +306,7 @@ pub async fn fetch_missing_models(
         return Ok(false);
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(15))
+    let client = crate::core::net::tls::apply12(reqwest::Client::builder().timeout(Duration::from_secs(15)))
         .build()
         .map_err(|e| e.to_string())?;
     // Probe providers concurrently so a batch of dead upstreams cannot stall

@@ -26,7 +26,7 @@ describe('CoworkChildApprovals', () => {
     act(() => {
       answer = useToolApprovalRequests
         .getState()
-        .requestApproval('call_1', 'write', 's1', undefined, '+beta line', 'worker (its own checkout)')
+        .requestApproval('call_1', 'write', 's1', undefined, { preview: '+beta line', origin: 'worker (its own checkout)' })
     })
     const card = await screen.findByTestId('child-approval')
     expect(card.getAttribute('data-origin')).toBe('worker (its own checkout)')
@@ -49,8 +49,8 @@ describe('CoworkChildApprovals', () => {
       let second!: Promise<boolean>
       act(() => {
         const store = useToolApprovalRequests.getState()
-        first = store.requestApproval('call_0', 'write', 's1', undefined, '+alpha', 'alpha')
-        second = store.requestApproval('call_0', 'write', 's1', undefined, '+beta', 'beta')
+        first = store.requestApproval('call_0', 'write', 's1', undefined, { preview: '+alpha', origin: 'alpha' })
+        second = store.requestApproval('call_0', 'write', 's1', undefined, { preview: '+beta', origin: 'beta' })
       })
       const allow = () =>
         within(screen.getAllByTestId('child-approval')[0]).getByRole('button', {
@@ -78,8 +78,8 @@ describe('CoworkChildApprovals', () => {
     let mine!: Promise<boolean>
     act(() => {
       const store = useToolApprovalRequests.getState()
-      void store.requestApproval('call_0', 'write', 's2', undefined, undefined, 'elsewhere')
-      mine = store.requestApproval('call_0', 'write', 's1', undefined, '+mine', 'worker')
+      void store.requestApproval('call_0', 'write', 's2', undefined, { origin: 'elsewhere' })
+      mine = store.requestApproval('call_0', 'write', 's1', undefined, { preview: '+mine', origin: 'worker' })
     })
     const card = await screen.findByTestId('child-approval')
     expect(card.getAttribute('data-origin')).toBe('worker')
@@ -94,7 +94,7 @@ describe('CoworkChildApprovals', () => {
       void useToolApprovalRequests.getState().requestApproval('own', 'write', 's1')
       void useToolApprovalRequests
         .getState()
-        .requestApproval('other', 'write', 's2', undefined, undefined, 'worker')
+        .requestApproval('other', 'write', 's2', undefined, { origin: 'worker' })
     })
     expect(screen.queryByTestId('child-approval')).toBeNull()
   })

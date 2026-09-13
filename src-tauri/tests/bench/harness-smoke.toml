@@ -1,0 +1,28 @@
+# A small fixed task set for `jan cli bench run` (AH-196): objective checks only,
+# so a change to the harness can be compared run against run.
+name = "harness-smoke"
+
+[[task]]
+id = "write-greeting"
+prompt = "Create a file named hello.txt whose entire content is exactly the word hello, with no newline. Use the write tool. Then stop."
+checks = [
+  { kind = "file_equals", path = "hello.txt", text = "hello" },
+]
+
+[[task]]
+id = "fix-the-sum"
+prompt = "calc.py has a bug: add(a, b) returns the wrong value. Fix only that function so add(2, 3) returns 5. Do not create other files."
+files = { "calc.py" = "def add(a, b):\n    return a - b\n" }
+checks = [
+  { kind = "file_contains", path = "calc.py", text = "a + b" },
+  { kind = "file_absent", path = "calc_fixed.py" },
+]
+
+[[task]]
+id = "answer-from-a-file"
+prompt = "Read notes.txt and answer with the release codename it names. Do not change any file."
+files = { "notes.txt" = "Release planning\nThe codename for this release is AMBERLEAF.\n" }
+checks = [
+  { kind = "result_contains", text = "AMBERLEAF" },
+  { kind = "file_equals", path = "notes.txt", text = "Release planning\nThe codename for this release is AMBERLEAF.\n" },
+]

@@ -1,11 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
-import { IconSearch } from '@tabler/icons-react'
-import { ChevronsUpDown, FolderOpen, SquareArrowOutUpRight } from 'lucide-react'
+import {
+  ChevronDown,
+  Eye,
+  FolderOpen,
+  MessagesSquare,
+  MoreHorizontal,
+  Search,
+  SquareArrowOutUpRight,
+} from 'lucide-react'
 import HeaderPage from '@/containers/HeaderPage'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,7 +38,32 @@ export const Route = createFileRoute(route.artifacts as any)({
 
 const PAGE = 24
 
-type Row = CoworkArtifact & { sessionId: string; root: string | null }
+type Row = CoworkArtifact & {
+  sessionId: string
+  sessionTitle: string
+  /** The attached project folder, when the session has one. */
+  folder: string | null
+  updated: number
+  root: string | null
+}
+
+/** The last path segment, for naming a project folder on a card. */
+function folderName(folder: string): string {
+  const parts = folder.split(/[\\/]/).filter(Boolean)
+  return parts[parts.length - 1] ?? folder
+}
+
+function formatUpdated(updated: number): string {
+  if (!updated) return ''
+  try {
+    return new Date(updated).toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    })
+  } catch {
+    return ''
+  }
+}
 
 /**
  * Each session's sandbox, keyed by id.
@@ -103,6 +134,9 @@ function ArtifactsPage() {
         return artifactsFromTurns(session.turns, root).map((artifact) => ({
           ...artifact,
           sessionId: session.id,
+          sessionTitle: session.title,
+          folder: session.folder ?? null,
+          updated: session.updated,
           root,
         }))
       }),
@@ -129,26 +163,38 @@ function ArtifactsPage() {
     navigate({ to: route.cowork })
   }
 
+  /** The session that made the artifact, without opening a preview. */
+  const goToSession = (row: Row) => {
+    useCoworkSessions.getState().selectSession(row.sessionId)
+    navigate({ to: route.cowork })
+  }
+
   return (
-    <div className="flex h-svh w-full flex-col">
-      {/* Search in the header, dropdown filter on the right — the hub page's
-          layout, so this reads as part of Jan rather than its own thing. */}
+    <div className="flex h-full w-full flex-col">
       <HeaderPage>
-        <div className="relative z-20 flex h-10 w-full items-center justify-between py-3 pr-3">
-          <div className="flex w-full items-center gap-2">
-            <IconSearch size={14} className="shrink-0 text-muted-foreground" />
+        <div className="relative z-20 flex w-full min-w-0 items-center gap-2 sm:gap-3">
+          <h1 className="hidden shrink-0 font-display text-lg leading-none text-foreground sm:block">
+            {t('common:appRail.library')}
+          </h1>
+          <label className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-border bg-sunken px-2.5 focus-within:outline-2 focus-within:outline-ring sm:max-w-sm pointer-coarse:h-11">
+            <Search className="size-3.5 shrink-0 text-muted-foreground" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={t('common:artifactsSearch')}
-              className="w-full focus:outline-none"
+              aria-label={t('common:artifactsSearch')}
+              className="w-full min-w-0 bg-transparent text-base placeholder:text-muted-foreground focus:outline-none md:text-sm"
             />
-          </div>
+          </label>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 pointer-coarse:h-11"
+              >
                 {group ?? t('common:artifactsAll')}
-                <ChevronsUpDown className="ml-2 size-4 shrink-0 text-muted-foreground" />
+                <ChevronDown className="size-3.5 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="bottom" align="end">
@@ -165,17 +211,38 @@ function ArtifactsPage() {
         </div>
       </HeaderPage>
 
-      <div className="h-[calc(100%-60px)] w-full overflow-y-auto p-4">
-        <div className="mx-auto w-full md:w-4/5 xl:w-4/6">
+      <div className="min-h-0 w-full flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6">
+        <div className="mx-auto w-full max-w-6xl">
           {shown.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {/* Distinct: nothing made yet vs nothing matching the filter. */}
-              {rows.length === 0
-                ? t('common:artifactsEmpty')
-                : t('common:artifactsNoMatch')}
-            </p>
+            rows.length === 0 ? (
+              // Distinct: nothing made yet vs nothing matching the filter.
+              <div
+                className="mx-auto mt-10 flex max-w-md flex-col items-start gap-3 rounded-lg border border-border bg-card p-6"
+                data-testid="artifacts-empty"
+              >
+                <h2 className="font-display text-2xl leading-tight text-foreground">
+                  {t('common:artifactsEmptyTitle')}
+                </h2>
+                <p className="text-sm leading-relaxed text-ink-2">
+                  {t('common:artifactsEmpty')}
+                </p>
+                <Button
+                  className="pointer-coarse:h-11"
+                  onClick={() => navigate({ to: route.cowork })}
+                >
+                  {t('common:artifactsOpenCowork')}
+                </Button>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {t('common:artifactsNoMatch')}
+              </p>
+            )
           ) : (
-            <div className="grid auto-rows-min gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <ul
+              className="grid auto-rows-min grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+              data-testid="artifacts-gallery"
+            >
               {shown.slice(0, limit).map((row) => {
                 const Icon = ARTIFACT_ICON[row.group]
                 const kind = previewKindFor(row.path)
@@ -186,98 +253,156 @@ function ArtifactsPage() {
                   abs && (kind === 'image' || kind === 'svg')
                     ? serviceHub.core().convertFileSrc(abs)
                     : null
+                const project = row.folder
+                  ? folderName(row.folder)
+                  : t('common:artifactSandbox')
+                const updated = formatUpdated(row.updated)
                 return (
-                  <Card
+                  <li
                     key={`${row.sessionId}:${row.path}`}
-                    className="flex items-center gap-3 p-3 transition-colors hover:border-accent"
+                    data-testid="artifact-card"
+                    className="flex min-w-0 flex-col rounded-lg border border-border bg-card transition-colors hover:border-line-strong"
                   >
-                    <button
-                      type="button"
-                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
-                      onClick={() => open(row)}
-                      title={t('common:artifactOpenPreview')}
-                    >
+                    <div className="flex min-w-0 items-start gap-3 p-3.5">
                       {thumb ? (
                         <img
                           src={thumb}
                           alt=""
-                          className="size-10 shrink-0 rounded-md border object-contain"
+                          className="size-12 shrink-0 rounded-md border border-border bg-sunken object-contain"
                         />
                       ) : (
-                        <div className="flex size-10 shrink-0 items-center justify-center rounded-md border">
-                          <Icon size={18} className="text-muted-foreground" />
+                        <div className="flex size-12 shrink-0 items-center justify-center rounded-md border border-border bg-sunken">
+                          <Icon className="size-5 text-muted-foreground" />
                         </div>
                       )}
                       {/* min-w-0 on a block box: `truncate` is inert otherwise. */}
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium">
-                          {row.title}
-                        </span>
-                        <span className="block truncate text-xs text-muted-foreground">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                           {row.group} · {row.label}
-                        </span>
-                        <span className="block truncate text-xs text-muted-foreground/70">
-                          {row.path}
-                        </span>
-                      </span>
-                    </button>
-                    {abs && (
-                      <div className="flex shrink-0 items-center rounded-md border">
-                        <button
-                          type="button"
-                          onClick={() => void serviceHub.opener().openPath(abs)}
-                          className="flex items-center gap-1.5 rounded-l-md px-2.5 py-1.5 text-xs hover:bg-accent"
-                          title={t('common:artifactOpenExternal')}
+                        </p>
+                        <h2
+                          className="mt-0.5 truncate text-sm font-semibold text-foreground"
+                          title={row.title}
                         >
-                          <SquareArrowOutUpRight
-                            size={13}
-                            className="text-muted-foreground"
-                          />
-                        </button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              aria-label={t('common:artifactMoreActions')}
-                              className="rounded-r-md border-l px-1.5 py-1.5 hover:bg-accent"
-                            >
-                              <ChevronsUpDown
-                                size={13}
-                                className="text-muted-foreground"
-                              />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() =>
-                                void serviceHub.opener().openPath(abs)
-                              }
-                            >
-                              <SquareArrowOutUpRight size={14} />
-                              {t('common:artifactOpenExternal')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() =>
-                                void serviceHub.opener().revealItemInDir(abs)
-                              }
-                            >
-                              <FolderOpen size={14} />
-                              {t('common:artifactShowInFolder')}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                          {row.title}
+                        </h2>
+                        <p
+                          className="mt-0.5 truncate font-mono text-xs text-muted-foreground"
+                          title={row.path}
+                        >
+                          {row.path}
+                        </p>
                       </div>
-                    )}
-                  </Card>
+                    </div>
+                    <dl className="mx-3.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-border py-2.5 text-xs">
+                      <dt className="text-muted-foreground">
+                        {t('common:artifactSession')}
+                      </dt>
+                      <dd
+                        className="min-w-0 truncate text-ink-2"
+                        title={row.sessionTitle}
+                      >
+                        {row.sessionTitle}
+                      </dd>
+                      <dt className="text-muted-foreground">
+                        {t('common:artifactProject')}
+                      </dt>
+                      <dd
+                        className="min-w-0 truncate text-ink-2"
+                        title={row.folder ?? project}
+                      >
+                        {project}
+                      </dd>
+                      {updated && (
+                        <>
+                          <dt className="text-muted-foreground">
+                            {t('common:artifactUpdated')}
+                          </dt>
+                          <dd className="min-w-0 truncate tabular-nums text-ink-2">
+                            {updated}
+                          </dd>
+                        </>
+                      )}
+                    </dl>
+                    <div className="mt-auto flex flex-wrap items-center gap-1.5 border-t border-border p-2.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="pointer-coarse:h-11"
+                        onClick={() => open(row)}
+                        data-testid="artifact-open"
+                      >
+                        <Eye />
+                        {t('common:artifactOpenPreview')}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="pointer-coarse:h-11"
+                        onClick={() => goToSession(row)}
+                        data-testid="artifact-go-to-session"
+                      >
+                        <MessagesSquare />
+                        {t('common:artifactGoToSession')}
+                      </Button>
+                      {abs && (
+                        <div className="ml-auto flex items-center">
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            className="pointer-coarse:size-11"
+                            onClick={() =>
+                              void serviceHub.opener().openPath(abs)
+                            }
+                            title={t('common:artifactOpenExternal')}
+                            aria-label={t('common:artifactOpenExternal')}
+                          >
+                            <SquareArrowOutUpRight className="text-muted-foreground" />
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                className="pointer-coarse:size-11"
+                                aria-label={t('common:artifactMoreActions')}
+                              >
+                                <MoreHorizontal className="text-muted-foreground" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  void serviceHub.opener().openPath(abs)
+                                }
+                              >
+                                <SquareArrowOutUpRight />
+                                {t('common:artifactOpenExternal')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  void serviceHub.opener().revealItemInDir(abs)
+                                }
+                              >
+                                <FolderOpen />
+                                {t('common:artifactShowInFolder')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      )}
+                    </div>
+                  </li>
                 )
               })}
-            </div>
+            </ul>
           )}
           {shown.length > limit && (
-            <div className="mt-3 flex justify-center">
+            <div className="mt-4 flex justify-center">
               <Button
                 variant="outline"
                 size="sm"
+                className="pointer-coarse:h-11"
                 onClick={() => setLimit((n) => n + PAGE)}
               >
                 {t('common:artifactsShowMore', { count: shown.length - limit })}

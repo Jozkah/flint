@@ -15,13 +15,19 @@ import {
 import { classifyModelLocation } from '@/lib/modelLocation'
 import { highlightFzfMatch } from '@/utils/highlight'
 import Capabilities from './Capabilities'
-import { IconArrowsSort, IconSettings, IconX } from '@tabler/icons-react'
+import { ArrowUpDown, Settings, X } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { useThreads } from '@/hooks/useThreads'
+import {
+  selectionForThreadModel,
+  useConversationPane,
+} from '@/hooks/useConversationPane'
 import { ModelSetting } from '@/containers/ModelSetting'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import { ModelSupportStatus } from '@/containers/ModelSupportStatus'
+import { ModelEvidenceBadges } from '@/containers/ModelEvidenceBadges'
+import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { Fzf } from 'fzf'
 import { localStorageKey } from '@/constants/localStorage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -58,6 +64,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 type DropdownModelProviderProps = {
   model?: ThreadModel
   useLastUsedModel?: boolean
+  /**
+   * Where a choice is recorded, in place of the current chat thread. Cowork
+   * passes its session's setter, so a choice belongs to the session in view
+   * and to no other (janhq/jan#8905).
+   */
+  onModelChange?: (model: ThreadModel) => void
 }
 
 interface SearchableModel {
@@ -92,6 +104,25 @@ const OfflineBadge = ({ label, tooltip }: { label: string; tooltip: string }) =>
     {label}
   </span>
 )
+
+/**
+ * Where a provider's requests are processed. Stated on the section header so
+ * choosing a model also says whether messages leave this device.
+ */
+const ProcessingLocationLabel = ({ provider }: { provider: ModelProvider }) => {
+  const { t } = useTranslation()
+  const location = classifyModelLocation({
+    baseUrl: provider.base_url,
+    builtInEngine: Boolean(isLocalProvider(provider.provider)),
+  })
+  if (location !== 'local' && location !== 'remote') return null
+  const text = t(`model-fit:location.${location}`)
+  return (
+    <span className="truncate text-[10px] text-muted-foreground" title={text}>
+      · {text}
+    </span>
+  )
+}
 
 /**
  * The identifier a renamed model is still addressed by.
@@ -163,18 +194,48 @@ function offersModels(provider: {
 const DropdownModelProvider = memo(function DropdownModelProvider({
   model,
   useLastUsedModel = false,
+  onModelChange,
 }: DropdownModelProviderProps) {
   const {
     providers,
     getProviderByName,
     selectModelProvider,
     getModelBy,
-    selectedProvider,
-    selectedModel,
+    selectedProvider: globalProvider,
+    selectedModel: globalModel,
     updateProvider,
   } = useModelProvider()
   const [displayModel, setDisplayModel] = useState<string>('')
-  const { updateCurrentThreadModel } = useThreads()
+  const { updateCurrentThreadModel, updateThreadModel, threads } = useThreads()
+  // In a split conversation each pane shows, and changes, its own thread's
+  // model. Only the pane the user is working in moves the global picker, which
+  // the rest of the app -- and a conversation shown on its own -- reads.
+  const pane = useConversationPane()
+  const inSplitPane = Boolean(pane?.isSplit)
+  const drivesGlobalSelection = !pane?.isSplit || pane.isActive
+  const paneThreadModel = pane?.isSplit
+    ? threads?.[pane.threadId]?.model
+    : undefined
+  const { selectedProvider, selectedModel } = useMemo(
+    () =>
+      inSplitPane
+        ? selectionForThreadModel(paneThreadModel, {
+            selectedProvider: globalProvider,
+            selectedModel: globalModel,
+            getProviderByName,
+          })
+        : { selectedProvider: globalProvider, selectedModel: globalModel },
+    // `providers` is why getProviderByName's answer can change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      inSplitPane,
+      paneThreadModel,
+      globalProvider,
+      globalModel,
+      getProviderByName,
+      providers,
+    ]
+  )
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { favoriteModels } = useFavoriteModel()
@@ -276,6 +337,9 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   // Initialize model provider - avoid race conditions with manual selections
   useEffect(() => {
     const initializeModel = async () => {
+      // A split pane the user is not working in leaves the global picker to
+      // the pane they are; it becomes the one deciding when it is activated.
+      if (!drivesGlobalSelection) return
       // Auto select model when existing thread is passed
       if (model) {
         selectModelProvider(model?.provider as string, model?.id as string)
@@ -306,8 +370,13 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
         // fails with an error the user can act on, which is better than a
         // composer that silently does nothing.
         if (useModelProvider.getState().selectedModel) return
-        // Try to use last used model only when explicitly requested (for new chat)
-        const lastUsed = getLastUsedModel()
+        // A default the user set wins over whatever was used last; when it is
+        // no longer available, the last-used model applies as before.
+        const preferred = useModelEvidence.getState().preferredModel
+        const lastUsed =
+          preferred && checkModelExists(preferred.provider, preferred.model)
+            ? preferred
+            : getLastUsedModel()
         if (lastUsed && checkModelExists(lastUsed.provider, lastUsed.model)) {
           selectModelProvider(lastUsed.provider, lastUsed.model)
           if (lastUsed.provider === 'llamacpp') {
@@ -348,6 +417,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     updateProvider,
     getProviderByName,
     checkAndUpdateModelVisionCapability,
+    drivesGlobalSelection,
 
     // selectedModel and selectedProvider intentionally excluded to prevent race conditions
   ])
@@ -458,7 +528,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       const highlightedId = highlightFzfMatch(
         item.model.id,
         positions,
-        'text-accent'
+        'text-brand-text'
       )
 
       return {
@@ -553,14 +623,18 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       setSearchValue('')
       setOpen(false)
 
-      selectModelProvider(
-        searchableModel.provider.provider,
-        searchableModel.model.id
-      )
-      updateCurrentThreadModel({
+      const choice = {
         id: searchableModel.model.id,
         provider: searchableModel.provider.provider,
-      })
+      }
+      if (drivesGlobalSelection) {
+        selectModelProvider(choice.provider, choice.id)
+      }
+      if (onModelChange) onModelChange(choice)
+      // A split pane records the choice on its own thread, not on whichever
+      // thread happens to be current.
+      else if (pane?.isSplit) updateThreadModel(pane.threadId, choice)
+      else updateCurrentThreadModel(choice)
 
       // Store the selected model as last used
       setLastUsedModel(
@@ -604,6 +678,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     [
       selectModelProvider,
       updateCurrentThreadModel,
+      onModelChange,
+      updateThreadModel,
+      drivesGlobalSelection,
+      pane,
       updateProvider,
       getProviderByName,
       checkAndUpdateModelVisionCapability,
@@ -611,6 +689,22 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       markUsed,
     ]
   )
+
+  /** Rows are selectable with Enter or Space, not only with a pointer. */
+  const selectableRow = (item: SearchableModel, isSelected: boolean) => ({
+    role: 'button' as const,
+    tabIndex: 0,
+    'aria-pressed': isSelected,
+    onClick: () => handleSelect(item),
+    onKeyDown: (event: React.KeyboardEvent) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        handleSelect(item)
+      }
+    },
+  })
+
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const currentModel = selectedModel?.id
     ? getModelBy(selectedModel?.id)
@@ -624,10 +718,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>
-          <div className="border relative z-20 px-4 py-1.5 flex items-center gap-1.5 rounded-full">
+          <div className="relative z-20 flex h-8 min-w-0 max-w-full items-center gap-1.5 rounded-md border border-line-strong bg-card px-2.5 text-sm transition-colors hover:bg-sunken pointer-coarse:h-11">
             <button
               type="button"
-              className="font-medium cursor-pointer flex items-center gap-1.5 relative z-20 min-w-0"
+              className="relative z-20 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm font-medium outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               {provider && (
                 <div className="shrink-0">
@@ -656,6 +750,8 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                 <ModelSetting
                   model={currentModel as Model}
                   provider={provider}
+                  open={settingsOpen}
+                  onOpenChange={setSettingsOpen}
                 />
               </div>
             )}
@@ -664,6 +760,11 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
             provider={selectedProvider}
             contextSize={getContextSize()}
             className="ml-0.5 shrink-0"
+            onAdjustSettings={
+              currentModel?.settings && provider?.provider === 'llamacpp'
+                ? () => setSettingsOpen(true)
+                : undefined
+            }
           />
         </div>
         </PopoverTrigger>
@@ -671,7 +772,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       <PopoverContent
         className={cn(
           // Use auto width to fit long model names; keep a sensible minimum.
-          'w-auto min-w-70 max-w-[90vw] p-0 backdrop-blur-2xl bg-background/95 border',
+          'w-auto min-w-70 max-w-[90vw] p-0 bg-card border border-line-strong',
           searchValue.length === 0 && 'h-80'
         )}
         align="start"
@@ -682,20 +783,23 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       >
         <div className="flex flex-col size-full">
           {/* Search input */}
-          <div className="flex items-center gap-1 p-2 border-b">
+          <div className="flex items-center gap-1 p-2 border-b border-border">
             <input
               ref={searchInputRef}
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               placeholder={t('common:searchModels')}
-              className="min-w-0 flex-1 bg-transparent text-sm font-normal outline-0"
+              className="min-w-0 flex-1 bg-transparent text-base font-normal outline-0 md:text-sm"
             />
             {searchValue.length > 0 && (
-              <IconX
-                size={16}
-                className="shrink-0 text-muted-foreground cursor-pointer"
+              <button
+                type="button"
+                aria-label={t('common:dismiss')}
+                className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
                 onClick={onClearSearch}
-              />
+              >
+                <X className="size-4" />
+              </button>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -703,13 +807,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                   type="button"
                   aria-label={t('common:sortModels')}
                   title={t('common:sortModels')}
-                  className="size-6 shrink-0 cursor-pointer flex items-center justify-center rounded-sm bg-secondary-foreground/8 transition-all duration-200 ease-in-out"
+                  className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md bg-sunken transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <IconArrowsSort
-                    size={14}
-                    className="text-muted-foreground"
-                  />
+                  <ArrowUpDown className="size-3.5 text-muted-foreground" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-52">
@@ -738,7 +839,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
               <div className="py-1">
                 {/* Favorites section - only show when not searching */}
                 {!searchValue && favoriteItems.length > 0 && (
-                  <div className="bg-secondary/30 rounded-sm m-2 py-1">
+                  <div className="bg-sunken/60 rounded-md m-2 py-1">
                     {/* Favorites header */}
                     <div className="flex items-center gap-1.5 px-2 py-1">
                       <span className="text-sm font-medium text-muted-foreground">
@@ -757,14 +858,14 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                       return (
                         <div
                           key={`fav-${searchableModel.value}`}
-                          onClick={() => handleSelect(searchableModel)}
+                          {...selectableRow(searchableModel, isSelected)}
                           className={cn(
                             'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                            'hover:bg-secondary/40',
+                            'hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                             modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                             // Selected state needs stronger contrast than the surrounding secondary tint.
                             isSelected &&
-                              'bg-primary/15 hover:bg-primary/15 ring-1 ring-primary/40'
+                              'relative bg-brand-tint hover:bg-brand-tint font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand'
                           )}
                         >
                           <div className="flex items-center gap-1 flex-1 min-w-0">
@@ -796,6 +897,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                                 {searchableModel.model.id}
                               </TooltipContent>
                             </Tooltip>
+                            <ModelEvidenceBadges
+                              provider={searchableModel.provider.provider}
+                              model={searchableModel.model}
+                            />
                             {capabilities.length > 0 && (
                               <div className="shrink-0 -mr-1.5">
                                 <Capabilities capabilities={capabilities} />
@@ -810,12 +915,12 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
 
                 {/* Divider between favorites and regular providers */}
                 {favoriteItems.length > 0 && (
-                  <div className="border-b mx-2"></div>
+                  <div className="border-b border-border mx-2"></div>
                 )}
 
                 {/* One ordered list, or a section per provider */}
                 {!isGrouped ? (
-                  <div className="bg-secondary/30 rounded-sm my-1.5 mx-1.5 py-1">
+                  <div className="bg-sunken/60 rounded-md my-1.5 mx-1.5 py-1">
                     {flatItems.map((searchableModel) => {
                       const isSelected =
                         selectedModel?.id === searchableModel.model.id &&
@@ -829,13 +934,13 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                       return (
                         <div
                           key={searchableModel.value}
-                          onClick={() => handleSelect(searchableModel)}
+                          {...selectableRow(searchableModel, isSelected)}
                           className={cn(
                             'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                            'hover:bg-secondary/40',
+                            'hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                             modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                             isSelected &&
-                              'bg-primary/15 hover:bg-primary/15 ring-1 ring-primary/40'
+                              'relative bg-brand-tint hover:bg-brand-tint font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand'
                           )}
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -873,6 +978,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                                 {searchableModel.model.id}
                               </TooltipContent>
                             </Tooltip>
+                            <ModelEvidenceBadges
+                              provider={searchableModel.provider.provider}
+                              model={searchableModel.model}
+                            />
                             {capabilities.length > 0 && (
                               <div className="shrink-0 -mr-1.5">
                                 <Capabilities capabilities={capabilities} />
@@ -894,19 +1003,24 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                   return (
                     <div
                       key={providerKey}
-                      className="bg-secondary/30 first:mt-0 rounded-sm my-1.5 mx-1.5 first:mb-0 py-1"
+                      className="bg-sunken/60 first:mt-0 rounded-md my-1.5 mx-1.5 first:mb-0 py-1"
                     >
                       {/* Provider header */}
                       <div className="flex items-center justify-between px-2 py-1">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex min-w-0 items-center gap-1.5">
                           <ProvidersAvatar provider={providerInfo} />
                           <span className="capitalize text-sm font-medium text-muted-foreground">
                             {getProviderTitle(providerInfo.provider)}
                           </span>
+                          <ProcessingLocationLabel provider={providerInfo} />
                         </div>
 
-                        <div
-                          className="size-6 cursor-pointer flex items-center justify-center rounded-sm bg-secondary-foreground/8 transition-all duration-200 ease-in-out"
+                        <button
+                          type="button"
+                          aria-label={t('model-fit:providerSettings', {
+                            provider: getProviderTitle(providerInfo.provider),
+                          })}
+                          className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-card focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
                           onClick={(e) => {
                             e.stopPropagation()
                             navigate({
@@ -916,11 +1030,8 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                             setOpen(false)
                           }}
                         >
-                          <IconSettings
-                            size={16}
-                            className="text-muted-foreground"
-                          />
-                        </div>
+                          <Settings className="size-4 text-muted-foreground" />
+                        </button>
                       </div>
 
                       {/* Models for this provider */}
@@ -939,13 +1050,13 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                           return (
                             <div
                               key={searchableModel.value}
-                              onClick={() => handleSelect(searchableModel)}
+                              {...selectableRow(searchableModel, isSelected)}
                               className={cn(
                                 'mx-1 mb-1 px-2 py-1.5 rounded-sm cursor-pointer flex items-center gap-2 transition-all duration-200',
-                                'hover:bg-secondary/40',
+                                'hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                                 modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
                                 isSelected &&
-                                  'bg-primary/15 hover:bg-primary/15 ring-1 ring-primary/40'
+                                  'relative bg-brand-tint hover:bg-brand-tint font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-brand'
                               )}
                             >
                               <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -976,7 +1087,11 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                                     {searchableModel.model.id}
                                   </TooltipContent>
                                 </Tooltip>
-                                {capabilities.length > 0 && (
+                                <ModelEvidenceBadges
+                              provider={searchableModel.provider.provider}
+                              model={searchableModel.model}
+                            />
+                            {capabilities.length > 0 && (
                                   <div className="shrink-0 -mr-1.5">
                                     <Capabilities capabilities={capabilities} />
                                   </div>

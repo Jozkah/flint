@@ -42,6 +42,14 @@ pub const MAX_EXPORT_BYTES: u64 = 64 * 1024 * 1024;
 pub const METADATA_FIELDS: &[&str] = &[
     "status", "phase", "stoppedBy", "tool", "capability", "resourceKind", "agent", "elapsedMs",
     "exitCode", "index", "max", "count", "model", "decision",
+    // The same facts as the tool-activity payload names them (`activity`).
+    "kind", "elapsed_ms", "exit_code", "event_type", "lifecycle", "source", "output_truncated",
+    "refusal",
+    // usage.reported and message.completed: counts and sizes, never content.
+    // Named apart from the activity payload's `input`/`output`, which are a
+    // tool's arguments and result and must never pass as metadata.
+    "inputTokens", "cachedTokens", "uncachedTokens", "cacheWriteTokens", "outputTokens",
+    "totalTokens", "cacheStatus", "requests", "textChars", "reasoningChars", "toolCalls",
 ];
 
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,6 +80,37 @@ pub enum ExportErrorKind {
 pub struct ExportError {
     pub kind: ExportErrorKind,
     pub message: String,
+}
+
+/// What this failure is, in the harness's own vocabulary (AH-009).
+///
+/// Written out case by case rather than defaulted: this enum says what went
+/// wrong *here*, and the mapping is the place to decide what that means
+/// everywhere else -- whether it may be retried, who it is for, what the
+/// process exits with. A blanket "everything is internal" would be the same
+/// as having no taxonomy at all.
+impl From<&ExportError> for crate::harness_error::HarnessError {
+    fn from(error: &ExportError) -> Self {
+        use crate::harness_error::{ErrorKind, HarnessError, Stage};
+        let kind = match error.kind {
+            // Nothing to export is not a failure of the export.
+            ExportErrorKind::NoEvents => ErrorKind::NotFound,
+            ExportErrorKind::TooLarge => ErrorKind::InvalidInput,
+            ExportErrorKind::Cancelled => ErrorKind::Cancelled,
+            // What is on disk cannot be read as what it claims to be.
+            ExportErrorKind::LogUnreadable
+            | ExportErrorKind::NotAnExport
+            | ExportErrorKind::ManifestInvalid
+            | ExportErrorKind::Truncated
+            | ExportErrorKind::OutOfOrder
+            | ExportErrorKind::HashMismatch => ErrorKind::MalformedState,
+            ExportErrorKind::UnsupportedVersion => ErrorKind::Unsupported,
+            // Somebody else's events: a refusal, not a malformed file.
+            ExportErrorKind::CrossSession => ErrorKind::PolicyViolation,
+            ExportErrorKind::Io => ErrorKind::Io,
+        };
+        HarnessError::new(kind, &error.message).at(Stage::Export)
+    }
 }
 
 impl ExportError {
@@ -322,6 +361,52 @@ pub fn inspect(path: &Path) -> Result<InspectReport, ExportError> {
 }
 
 #[cfg(test)]
+mod harness_error_bridge {
+    use super::*;
+    use crate::harness_error::{ErrorKind, HarnessError, Stage};
+
+    /// AH-009: an export failure has one meaning in the harness's vocabulary,
+    /// and the distinctions that matter survive the crossing.
+    #[test]
+    fn an_export_failure_keeps_its_meaning() {
+        let of = |kind: ExportErrorKind| -> HarnessError {
+            (&ExportError { kind, message: "why".into() }).into()
+        };
+        assert_eq!(of(ExportErrorKind::Cancelled).kind(), ErrorKind::Cancelled);
+        assert!(of(ExportErrorKind::Cancelled).is_cancellation(), "a stop became a failure");
+        // Another session's events: refused, never "corrupt file".
+        assert_eq!(of(ExportErrorKind::CrossSession).kind(), ErrorKind::PolicyViolation);
+        assert_eq!(of(ExportErrorKind::HashMismatch).kind(), ErrorKind::MalformedState);
+        assert_eq!(of(ExportErrorKind::UnsupportedVersion).kind(), ErrorKind::Unsupported);
+        assert_eq!(of(ExportErrorKind::NoEvents).kind(), ErrorKind::NotFound);
+        for kind in [
+            ExportErrorKind::NoEvents,
+            ExportErrorKind::TooLarge,
+            ExportErrorKind::Cancelled,
+            ExportErrorKind::LogUnreadable,
+            ExportErrorKind::NotAnExport,
+            ExportErrorKind::UnsupportedVersion,
+            ExportErrorKind::ManifestInvalid,
+            ExportErrorKind::HashMismatch,
+            ExportErrorKind::Truncated,
+            ExportErrorKind::CrossSession,
+            ExportErrorKind::OutOfOrder,
+            ExportErrorKind::Io,
+        ] {
+            let crossed = of(kind);
+            assert_eq!(crossed.stage(), Stage::Export, "{kind:?}");
+            assert_eq!(crossed.message(), "why", "{kind:?}");
+            // Crossing never *earns* a retry: an export that failed on what is
+            // on disk fails the same way again. The one exception is the
+            // filesystem itself, where a single retry is the kind's own policy.
+            if kind != ExportErrorKind::Io {
+                assert!(!crossed.retry().is_allowed(), "{kind:?}");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::event_log::{append, NewEvent};
@@ -389,6 +474,40 @@ mod tests {
         let err = export(&d, "s1", None, false, &AtomicBool::new(true)).unwrap_err();
         assert_eq!(err.kind, ExportErrorKind::Cancelled);
         assert_eq!(std::fs::read_dir(exports_dir(&d)).unwrap().count(), 0, "a stopped export left something");
+    }
+
+    /// AH-200 negative authority: naming another session's run, or a session
+    /// id shaped like a path, reaches nothing of any other session.
+    #[test]
+    fn another_sessions_run_or_a_path_shaped_session_exports_nothing() {
+        let d = dir("authority");
+        seed(&d);
+        let refused = |session: &str, run: Option<&str>| {
+            export(&d, session, run, true, &AtomicBool::new(false)).unwrap_err().kind
+        };
+        // r9 is s2's run: asking for it under s1 finds nothing.
+        assert_eq!(refused("s1", Some("r9")), ExportErrorKind::NoEvents);
+        for session in ["../s1", "s1/../s2", "..\\s1", "S1", "s1 ", "s", "s10"] {
+            assert_eq!(refused(session, None), ExportErrorKind::NoEvents, "{session:?} reached a log");
+        }
+        assert!(!exports_dir(&d).exists() || std::fs::read_dir(exports_dir(&d)).unwrap().count() == 0);
+    }
+
+    /// A line claiming another session, planted in a session's log, makes the
+    /// export refuse rather than carry it out under the wrong session.
+    #[test]
+    fn a_planted_event_of_another_session_is_refused_not_exported() {
+        let d = dir("planted");
+        seed(&d);
+        let log = crate::event_log::log_path(&d, "s1");
+        let other = std::fs::read_to_string(crate::event_log::log_path(&d, "s2")).unwrap();
+        let mut body = std::fs::read_to_string(&log).unwrap();
+        body.push_str(&other);
+        std::fs::write(&log, body).unwrap();
+        crate::event_log::forget_loaded();
+        let err = export(&d, "s1", None, true, &AtomicBool::new(false)).unwrap_err();
+        assert_eq!(err.kind, ExportErrorKind::LogUnreadable, "{err:?}");
+        assert!(!exports_dir(&d).exists() || std::fs::read_dir(exports_dir(&d)).unwrap().count() == 0);
     }
 
     #[test]

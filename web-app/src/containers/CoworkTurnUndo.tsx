@@ -17,6 +17,7 @@ import {
   type UndoTurnSummary,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { Button } from '@/components/ui/button'
+import { changedByText, turnActors } from '@/lib/changeActor'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { errorText } from '@/lib/errorText'
 import { getServiceHub } from '@/hooks/useServiceHub'
@@ -114,12 +115,17 @@ export function CoworkTurnUndo({
   const ordered = [...turns].reverse()
   return (
     <section
-      className="mb-2 rounded-md border border-main-view-fg/10 p-2"
+      className="border-b border-border px-3 py-2.5"
       aria-label={t('common:turnUndo.title')}
       data-testid="turn-undo"
     >
-      <p className="mb-1 text-xs font-medium text-main-view-fg/80">
+      <p className="text-xs font-medium text-ink-2">
         {t('common:turnUndo.title')}
+      </p>
+      {/* The recovery boundary, stated before the buttons rather than learned
+          from a refusal. */}
+      <p className="mt-0.5 mb-1.5 text-xs text-muted-foreground">
+        {t('common:turnUndo.scope')}
       </p>
       <ul className="flex flex-col gap-1">
         {ordered.map((turn, i) => {
@@ -128,6 +134,11 @@ export function CoworkTurnUndo({
             n: turns.length - i,
             files: turn.paths.map(baseName).join(', '),
           })
+          // AH-110: who changed these files, in words rather than by colour,
+          // and inside the row's own label so it is announced with it.
+          const who = turnActors(turn)
+            .map((actor) => changedByText(actor, t))
+            .join('; ')
           return (
             <li
               key={turn.run}
@@ -141,14 +152,27 @@ export function CoworkTurnUndo({
                 title={turn.paths.join('\n')}
               >
                 {label}
+                {who && (
+                  <span
+                    className="ml-1 text-muted-foreground"
+                    data-testid="turn-undo-actor"
+                    data-actor-ids={turnActors(turn)
+                      .map((a) => a?.id ?? 'unknown')
+                      .join(' ')}
+                  >
+                    {'\u2014 '}
+                    {who}
+                  </span>
+                )}
               </span>
               {undone ? (
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
+                  className="h-7 pointer-coarse:h-11"
                   disabled={busy !== null}
                   onClick={() => void act(turn, false)}
-                  aria-label={`${t('common:turnUndo.redo')}: ${label}`}
+                  aria-label={`${t('common:turnUndo.redo')}: ${label}. ${who}`}
                   data-testid="turn-redo"
                 >
                   <Redo2 size={12} />
@@ -157,10 +181,11 @@ export function CoworkTurnUndo({
               ) : (
                 <Button
                   size="sm"
-                  variant="ghost"
+                  variant="outline"
+                  className="h-7 pointer-coarse:h-11"
                   disabled={busy !== null}
                   onClick={() => void act(turn, true)}
-                  aria-label={`${t('common:turnUndo.undo')}: ${label}`}
+                  aria-label={`${t('common:turnUndo.undo')}: ${label}. ${who}`}
                   data-testid="turn-undo-button"
                 >
                   <Undo2 size={12} />
@@ -178,7 +203,7 @@ export function CoworkTurnUndo({
         className={
           status?.ok === false
             ? 'mt-1 text-xs text-destructive'
-            : 'mt-1 text-xs text-main-view-fg/70'
+            : 'mt-1 text-xs text-ink-2'
         }
         data-testid="turn-undo-status"
       >

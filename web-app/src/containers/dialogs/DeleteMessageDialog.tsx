@@ -11,7 +11,7 @@ import {
   DialogHeader,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { IconTrash } from '@tabler/icons-react'
+import { Trash2 } from 'lucide-react'
 
 interface DeleteMessageDialogProps {
   onDelete: () => void
@@ -39,6 +39,8 @@ export function DeleteMessageDialog({ onDelete }: DeleteMessageDialogProps) {
       size="icon-xs"
       role="button"
       tabIndex={0}
+      aria-label={t('common:deleteMessage')}
+      className="size-7 text-ink-2 hover:text-foreground pointer-coarse:size-11"
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -46,7 +48,7 @@ export function DeleteMessageDialog({ onDelete }: DeleteMessageDialogProps) {
         }
       }}
     >
-      <IconTrash size={16} />
+      <Trash2 className="size-4" />
     </Button>
   )
 

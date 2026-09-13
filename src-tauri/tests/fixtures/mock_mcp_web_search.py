@@ -34,7 +34,24 @@ def reply(message_id, result=None, error=None):
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--log", required=True)
+    # Optional: every method received, one JSON line each, so the harness can
+    # see which requests the app sends (AH-139 liveness), and this process's
+    # id, so the harness can stop exactly this server and nothing else.
+    parser.add_argument("--methods")
+    parser.add_argument("--pid")
     args = parser.parse_args()
+
+    # AH-140: one line on stderr, carrying a credential-shaped value, so the
+    # server's own log in the app has something real to show -- and something
+    # it must not show verbatim.
+    sys.stderr.write("smoke web search ready api_key=sk-smoke-AAAABBBBCCCCDDDDEEEE\n")
+    sys.stderr.flush()
+
+    if args.pid:
+        import os
+
+        with open(args.pid, "w", encoding="utf-8") as pid_file:
+            pid_file.write(str(os.getpid()))
 
     for line in sys.stdin:
         line = line.strip()
@@ -46,6 +63,11 @@ def main() -> int:
             continue
         method = message.get("method")
         message_id = message.get("id")
+        if args.methods:
+            import time
+
+            with open(args.methods, "a", encoding="utf-8") as seen:
+                seen.write(json.dumps({"method": method, "at": time.time()}) + "\n")
         if message_id is None:
             # A notification (`notifications/initialized` and the like).
             continue

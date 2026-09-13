@@ -140,9 +140,9 @@ export const ChainOfThought = memo(
       <ChainOfThoughtContext.Provider value={contextValue}>
         <Collapsible
           className={cn(
-            'not-prose rounded-2xl transition-colors',
+            'not-prose rounded-lg transition-colors',
             // Card frame only while expanded; collapsed shows a bare summary row.
-            'data-[state=open]:border data-[state=open]:border-border/50 data-[state=open]:bg-main-view-fg/2 data-[state=open]:p-3',
+            'data-[state=open]:border data-[state=open]:border-border data-[state=open]:bg-card data-[state=open]:p-3',
             className
           )}
           onOpenChange={handleOpenChange}
@@ -326,9 +326,9 @@ export type ChainOfThoughtStepProps = ComponentProps<'div'> & {
 }
 
 const statusIcons: Record<ChainOfThoughtStepStatus, ReactNode> = {
-  complete: <CheckCircle2Icon className="size-4 text-green-500 shrink-0" />,
+  complete: <CheckCircle2Icon className="size-4 text-success shrink-0" />,
   active: (
-    <CircleDotIcon className="size-4 text-blue-500 animate-pulse shrink-0" />
+    <CircleDotIcon className="size-4 text-brand motion-safe:animate-pulse shrink-0" />
   ),
   pending: <CircleIcon className="size-4 text-muted-foreground/50 shrink-0" />,
 }
@@ -394,7 +394,7 @@ export const ChainOfThoughtSearchResult = memo(
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground',
+        'inline-flex items-center gap-1 rounded-full border border-border bg-card px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-sunken hover:text-foreground',
         className
       )}
       {...props}

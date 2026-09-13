@@ -31,6 +31,26 @@
   "importModelError": "Failed to import model:",
   "stop": "Stop",
   "start": "Start",
+  "status": {
+    "loading": "Loading",
+    "loaded": "Loaded",
+    "failed": "Failed",
+    "available": "Available · not loaded",
+    "needsApiKey": "Needs API key",
+    "connected": "Connected"
+  },
+  "table": {
+    "name": "Name",
+    "file": "File",
+    "size": "Size",
+    "context": "Context",
+    "status": "Status",
+    "actions": "Actions"
+  },
+  "openProvider": "Open {{provider}} settings",
+  "useProvider": "Use {{provider}}",
+  "editModelLabel": "Edit {{modelId}}",
+  "addModelLabel": "Add a model",
   "noModelFound": "No model found",
   "noModelFoundDesc": "Available models will be listed here. If you don't have any models yet, visit the Hub to download.",
   "noModelFoundRemoteDesc": "Available models will be listed here. Use the refresh button above to fetch models from the provider, or add one manually with the + button.",
@@ -121,5 +141,29 @@
     "oneKeyHint": "Optional fallback keys are configured in Advanced.",
     "addKey": "Add key",
     "removeKey": "Remove key"
+  },
+  "dataFolderUnavailable": "The data folder {{path}} could not be used this run, so Jan is showing the models in its default folder. Models stored there are not deleted: they come back once that folder is available again. See Settings > General.",
+  "customHeaders": {
+    "title": "Custom headers",
+    "description": "Extra HTTP headers sent with every request to this provider, such as a gateway tenant or subscription key. They cannot replace the API key.",
+    "namePlaceholder": "Header name",
+    "valuePlaceholder": "Value",
+    "enabled": "Send this header",
+    "enabledHint": "Switch off to stop sending the header without removing it.",
+    "secret": "Secret",
+    "secretHint": "Stored in the system credential store, never in settings, and hidden in logs.",
+    "add": "Add header",
+    "remove": "Remove header",
+    "saveFailed": "The header could not be saved: {{error}}",
+    "errors": {
+      "empty-name": "Enter a header name.",
+      "invalid-name": "A header name can only use letters, digits and ! # $ % & ' * + - . ^ _ ` | ~, with no spaces.",
+      "reserved": "Jan sets this header itself; it cannot be replaced here.",
+      "duplicate": "This header is already set above.",
+      "empty-value": "Enter a value.",
+      "invalid-value": "A value cannot contain line breaks or other control characters.",
+      "too-long": "Too long.",
+      "too-many": "Too many headers."
+    }
   }
 }

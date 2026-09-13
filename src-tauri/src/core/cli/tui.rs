@@ -48,7 +48,7 @@ use super::{sort_threads_recent, AgentSession, ResumeTarget, SessionLimits};
 use crate::core::agent::events::{describe_tool_call, StreamEvent, Usage};
 use crate::core::agent::git;
 use crate::core::agent::r#loop::{
-    run_orchestration_streamed, OrchestrationArgs, PermissionRegistry,
+    run_orchestration_steered, OrchestrationArgs, PermissionRegistry, SteeringRequest,
 };
 use serde_json::Value;
 use tauri_plugin_agent_tools::tools::gate::PermissionDecision;
@@ -857,7 +857,36 @@ impl AccountLoginPrompt {
 /// A spawned agent run: the event stream and its abort handle.
 struct CurrentRun {
     rx: mpsc::UnboundedReceiver<StreamEvent>,
+    steering: mpsc::UnboundedReceiver<SteeringRequest>,
     handle: JoinHandle<()>,
+}
+
+enum RunEvent {
+    Stream(Option<StreamEvent>),
+    Steering(SteeringRequest),
+}
+
+struct PendingMessage {
+    text: String,
+    message: serde_json::Value,
+    images: Vec<String>,
+    display: bool,
+    invocation: Option<(String, String, String)>,
+    run_mode: Option<crate::core::agent::plan::RunMode>,
+}
+
+#[cfg(test)]
+impl From<&str> for PendingMessage {
+    fn from(text: &str) -> Self {
+        Self {
+            text: text.to_string(),
+            message: serde_json::json!({ "role": "user", "content": text }),
+            images: Vec::new(),
+            display: true,
+            invocation: None,
+            run_mode: None,
+        }
+    }
 }
 
 /// One folded call's retained detail, so an expanded group can reconstruct each
@@ -1626,6 +1655,10 @@ struct App {
     configured_context_window: Option<u64>,
     /// Tokens to reserve for the model's response (compaction triggers at limit - reserve).
     reserve_tokens: u64,
+    /// Whether to compact proactively, and the tail an automatic compaction
+    /// keeps, from the shared policy (AH-076).
+    compaction_auto: bool,
+    compaction_keep_recent: usize,
     /// Per-request output cap forwarded to the model as OpenAI `max_tokens`.
     /// `None` omits the field (model default).
     max_tokens: Option<u64>,
@@ -1883,6 +1916,10 @@ struct App {
     /// Overflow retries spent in the current user turn, capped so a model that
     /// overflows no matter how small the context cannot spin forever.
     overflow_retries: u8,
+    /// The context-pressure warning (AH-077) has been shown for this fill;
+    /// cleared when the fill drops back below the line, so it is said once per
+    /// approach rather than every turn.
+    context_warned: bool,
     /// Lines scrolled back from the tail; 0 pins the view to the bottom so new
     /// content follows. Non-zero survives streaming so scroll-back stays usable.
     scrollback: u16,
@@ -1975,9 +2012,8 @@ struct App {
     copy_request: Option<String>,
     /// (when, line count) of the last copy, for the transient dock notice.
     copied: Option<(Instant, usize)>,
-    /// Messages queued while a run is in progress, dequeued automatically
-    /// when the current turn finishes.
-    message_queue: std::collections::VecDeque<String>,
+    /// Pending input, consumed at the next safe loop boundary or next run.
+    message_queue: std::collections::VecDeque<PendingMessage>,
     /// Canonical session todo list projection, kept in sync via
     /// `StreamEvent::TodoUpdate`. Empty = no todos declared this session.
     todos: crate::core::agent::todo::TodoList,
@@ -2258,6 +2294,8 @@ impl App {
                 _ => None,
             },
             reserve_tokens: limits.reserve_tokens,
+            compaction_auto: limits.compaction.auto,
+            compaction_keep_recent: limits.compaction.keep_recent,
             max_tokens: limits.max_tokens,
             max_session_tokens: limits.max_session_tokens,
             repo_root,
@@ -2347,6 +2385,7 @@ impl App {
             compact_started: None,
             retry_after_compact: false,
             overflow_retries: 0,
+            context_warned: false,
             scrollback: 0,
             repaint: false,
             pending_bug_report: None,
@@ -3621,11 +3660,6 @@ impl App {
         self.refresh_path_hints();
     }
 
-    /// Queue a user message: record it in history and the transcript, and ask
-    /// the loop to start a run. Flips to `Running` synchronously so further keys
-    /// in the same input batch can't slip through as a second submit.
-    /// When already running, the message is enqueued instead and auto-submitted
-    /// when the current turn finishes.
     /// Advance the spinner by however many whole `SPINNER_ADVANCE_MS` frames
     /// have elapsed since the last advance (0 if under one frame, >1 on catch-up
     /// after a stalled tick). The baseline moves forward by whole frames only so
@@ -3658,24 +3692,6 @@ impl App {
             self.note("not signed in — run /login to choose a provider first");
             return;
         }
-        // If a turn is already in progress, enqueue the message instead
-        if self.status == Status::Running {
-            self.message_queue.push_back(text.clone());
-            self.note(&format!(
-                "⏳ message queued ({} in queue)",
-                self.message_queue.len()
-            ));
-            return;
-        }
-        // Mid-prompt `/skill:<name>` token: dispatch to the skill, threading
-        // the surrounding prose as its arguments (queued messages re-enter
-        // this method via `dequeue_next`, so the token is re-parsed there too).
-        if let Some((name, args)) = crate::core::agent::skills::parse_invocation(&text) {
-            if self.dispatch_skill(&name, &args) {
-                return;
-            }
-        }
-        self.ensure_base_snapshot();
         let images = if display {
             std::mem::take(&mut self.pending_images)
         } else {
@@ -3690,16 +3706,58 @@ impl App {
         } else {
             format!("{clean_text}\n\n---\nReferenced file contents:\n\n{injected_contents}")
         };
-        self.history.push(build_user_message(&final_text, &images));
-        if display {
-            self.push_user_line(&text, &names);
-            // The typed text, not `final_text`: `@path` expansions are context
-            // for the model, and the row never showed them.
+        let invocation =
+            crate::core::agent::skills::parse_invocation(&text).and_then(|(name, args)| {
+                crate::core::agent::skills::build_invocation_message(
+                    &self.project_root,
+                    &name,
+                    &args,
+                )
+                .ok()
+                .map(|(message, description)| (name, args, message, description))
+            });
+        let model_text = invocation
+            .as_ref()
+            .map_or(final_text.as_str(), |(_, _, message, _)| message.as_str());
+        let pending = PendingMessage {
+            message: build_user_message(model_text, &images),
+            invocation: invocation.map(|(name, args, _, description)| (name, args, description)),
+            text,
+            images: names,
+            display,
+            run_mode: Some(self.run_mode),
+        };
+        if self.status == Status::Running {
+            self.message_queue.push_back(pending);
+            self.note(&format!(
+                "message pending for next agent step ({} pending)",
+                self.message_queue.len()
+            ));
+            return;
+        }
+        self.start_pending_message(pending);
+    }
+
+    fn record_pending_message(&mut self, pending: PendingMessage) {
+        self.history.push(pending.message);
+        if pending.display {
+            let text = if let Some((name, args, description)) = pending.invocation {
+                self.push_invocation_row(&format!("[skill:{name}]"), &args, &description);
+                format!("[skill:{name}] {args}")
+            } else {
+                self.push_user_line(&pending.text, &pending.images);
+                pending.text
+            };
             self.display_log.push(DisplayEntry::User {
-                text: text.clone(),
-                images: names,
+                text,
+                images: pending.images,
             });
         }
+    }
+
+    fn start_pending_message(&mut self, pending: PendingMessage) {
+        self.ensure_base_snapshot();
+        self.record_pending_message(pending);
         self.begin_turn();
         // A fresh user turn is new context: allow the next boundary to remind
         // again even if the open work is unchanged (dedup is "twice in a row"),
@@ -3864,13 +3922,51 @@ impl App {
             .message_queue
             .pop_front()
             .expect("checked non-empty above");
-        if !next.is_empty() {
+        if !next.text.is_empty() || !next.images.is_empty() {
             self.note(&format!(
                 "⏩ dequeuing next message ({} remaining)",
                 self.message_queue.len()
             ));
-            self.submit_user(next);
+            self.start_pending_message(next);
         }
+    }
+
+    fn steer_run(&mut self, request: SteeringRequest) {
+        // A plan-mode transition needs a fresh run with rebuilt tool policy.
+        // Dedicated permission/ask replies remain separate from chat input.
+        let count = if self.pending_queue.is_empty() && self.ask_queue.is_empty() {
+            self.message_queue
+                .iter()
+                .take_while(|m| {
+                    m.run_mode.is_none_or(|mode| mode == request.run_mode) && !self.want_start
+                })
+                .count()
+        } else {
+            0
+        };
+        let messages = self
+            .message_queue
+            .iter()
+            .take(count)
+            .map(|m| m.message.clone())
+            .collect();
+        if request.reply.send(messages).is_err() || count == 0 {
+            return;
+        }
+        self.flush_assistant();
+        self.finalize_tool_group();
+        self.history = request.messages;
+        for _ in 0..count {
+            let pending = self
+                .message_queue
+                .pop_front()
+                .expect("counted pending messages");
+            self.record_pending_message(pending);
+        }
+        self.last_todo_reminder = None;
+        self.reminder_count = 0;
+        self.reminder_awaiting_progress = false;
+        self.persist();
     }
 
     /// Render a user turn: the prompt line, then one dotted connector row per
@@ -4269,6 +4365,16 @@ struct ContextSnapshot {
 /// path the compaction gauge uses), which is why the section is headed
 /// "Context breakdown (estimated)" regardless of the headline's source.
 async fn compute_context_report(snapshot: ContextSnapshot) -> ContextReport {
+    // AH-087: what the last request was actually made of, read from the
+    // request itself. Every surface reads this same classification, so the
+    // TUI, the headless CLI and the desktop cannot disagree about what is
+    // filling the window -- and what is reported is what went out, not a
+    // rebuild of it from whatever is on disk now.
+    if let Some(report) = report_from_the_last_request(&snapshot) {
+        return report;
+    }
+    // Nothing has been sent yet in this session, so there is no request to
+    // read. Fall back to sizing what the next one would carry.
     let mut segments = Vec::new();
     let args = snapshot.args.as_ref();
     let root = args.and_then(|a| a.project_root.clone());
@@ -4377,6 +4483,76 @@ async fn compute_context_report(snapshot: ContextSnapshot) -> ContextReport {
         fill_reported: reported,
         segments,
     }
+}
+
+/// The `/context` view built from the session's last dispatched request
+/// (AH-087), or `None` when the session has not sent one.
+fn report_from_the_last_request(snapshot: &ContextSnapshot) -> Option<ContextReport> {
+    use tauri_plugin_agent_tools::context_report::Category;
+    let session = snapshot.args.as_ref()?.session_id.clone()?;
+    let data = crate::core::app::commands::resolve_jan_data_folder();
+    let window = (snapshot.context_window > 0).then_some(snapshot.context_window);
+    let breakdown =
+        tauri_plugin_agent_tools::context_report::of_snapshot(&data, &session, None, window, 0)
+            .ok()?;
+
+    // The same marker letters the legend has always used, so a reader who
+    // knows the view still knows it.
+    let key = |category: Category| match category {
+        Category::SystemPrompt => Some(('P', "System prompt")),
+        Category::ProjectContext => Some(('C', "Project context")),
+        Category::Skills => Some(('K', "Skills")),
+        Category::Memory => Some(('Y', "Memory")),
+        Category::CustomAgents => Some(('A', "Custom agents")),
+        Category::ToolsTransmitted => Some(('T', "System tools")),
+        Category::CompactedHistory => Some(('H', "Compacted history")),
+        Category::Messages => Some(('M', "Messages")),
+        Category::Attachments => Some(('F', "Attachments")),
+        // Reported by the breakdown, but not part of the window's fill: a
+        // definition that was not sent cost nothing, and free space and the
+        // reserve are added below in the view's own terms.
+        Category::ToolsDeferred | Category::ReservedOutput | Category::FreeSpace => None,
+    };
+    let mut segments: Vec<ContextSegment> = breakdown
+        .slices
+        .iter()
+        .filter_map(|slice| {
+            key(slice.category).map(|(key, label)| ContextSegment {
+                key,
+                label,
+                tokens: slice.tokens,
+            })
+        })
+        .collect();
+
+    // The provider's own count for the last turn is the authority on the fill
+    // when the history it measured is still the history (`tokens_estimated`
+    // goes true the moment a compaction rewrites it).
+    let reported = !snapshot.tokens_estimated && snapshot.turn_prompt_tokens > 0;
+    let used: u64 = segments.iter().map(|s| s.tokens).sum();
+    let buffer = snapshot.reserve_tokens.min(snapshot.context_window);
+    let free = snapshot.context_window.saturating_sub(used + buffer);
+    segments.push(ContextSegment {
+        key: '.',
+        label: "Available",
+        tokens: free,
+    });
+    segments.push(ContextSegment {
+        key: 'B',
+        label: "Auto-compact reserve",
+        tokens: buffer,
+    });
+    Some(ContextReport {
+        model_id: snapshot.model.clone(),
+        window: snapshot.context_window,
+        fill: if reported {
+            snapshot.turn_prompt_tokens
+        } else {
+            used
+        },
+        fill_reported: reported,
+        segments,
+    })
 }
 
 impl App {
@@ -4748,7 +4924,9 @@ impl App {
             // wildcard, so a new event breaks this build rather than being
             // silently dropped from the interface.
             StreamEvent::PromptSnapshot { .. } => {}
-            StreamEvent::Done { .. } | StreamEvent::Error { .. } => {}
+            // AH-174: the run's resource figures are recorded with its end and
+            // shown on the timeline; the TUI's transcript does not repeat them.
+            StreamEvent::Done { .. } | StreamEvent::Error { .. } | StreamEvent::RunResources { .. } => {}
             StreamEvent::MessagesUpdated { messages } => {
                 self.history = messages;
                 self.persist();
@@ -4999,8 +5177,40 @@ impl App {
     /// override, catalog, or fallback), so proactive compaction never silently
     /// stands down on accepted prompt usage.
     fn should_auto_compact(&self) -> bool {
-        let limit = self.context_window.saturating_sub(self.reserve_tokens);
-        self.tokens > limit && self.tokens > 0 && self.history.len() > 4
+        // AH-076: `auto = false` in the shared policy turns this off on every
+        // surface; an overflow still compacts reactively.
+        // The reserve never exceeds a quarter of the window, the same rule
+        // `compaction_policy::Policy::effective_reserve` applies everywhere.
+        let reserve = self.reserve_tokens.min(self.context_window / 4);
+        let limit = self.context_window.saturating_sub(reserve);
+        self.compaction_auto && self.tokens > limit && self.tokens > 0 && self.history.len() > 4
+    }
+
+    /// Warn once as the context window fills (AH-077), before auto-compaction
+    /// or an overflow takes the decision out of the user's hands. Said again
+    /// only after the fill has dropped back below the line. Nothing is said
+    /// when the window is unknown: there is no fraction to report.
+    fn check_context_pressure(&mut self) {
+        use crate::core::agent::context_pressure::{line, pressure};
+        // `tokens_estimated` is the difference between "the provider counted
+        // this" and "Jan measured the history itself", and the warning says
+        // which it is rather than letting an estimate read as a measurement.
+        let Some(found) = pressure(
+            self.tokens,
+            self.context_window,
+            self.reserve_tokens,
+            !self.tokens_estimated,
+        ) else {
+            // Below the line again (a compaction, a new conversation, a bigger
+            // window): the next approach is worth saying out loud.
+            self.context_warned = false;
+            return;
+        };
+        if self.context_warned {
+            return;
+        }
+        self.context_warned = true;
+        self.system(Level::Warn, &line(&found));
     }
 
     /// Queue a compaction and a retry for a context-overflow error, reporting
@@ -5051,9 +5261,10 @@ impl App {
     /// paths cannot drift.
     fn halt_turn(&mut self) {
         // A run that died on an error rather than Esc is still an abnormal exit:
-        // it may well have run tools whose side effects exist on disk, but a
-        // mid-turn `MessagesUpdated` was never published (the stream errored
-        // before a natural stop), so those calls are absent from `history`.
+        // it may well have run tools whose side effects exist on disk, and the
+        // calls of a step still in progress when the stream errored were never
+        // published (the loop publishes after each completed step), so they
+        // are absent from `history`.
         // Fold them in exactly as a hard cancel does, so a later prompt or
         // /resume sees the tools it ran and what they returned. The overflow-
         // retry path deliberately avoids this (see `on_error`): that turn
@@ -7085,17 +7296,28 @@ fn drain_trailing_sgr_mouse_reports(buf: &mut String, cursor: &mut usize) {
 
 fn spawn_run(args: &Arc<OrchestrationArgs>, body: serde_json::Value) -> CurrentRun {
     let (tx, rx) = mpsc::unbounded_channel::<StreamEvent>();
+    let (steering_tx, steering) = mpsc::unbounded_channel();
     let args = Arc::clone(args);
     let handle = tokio::spawn(async move {
-        let _ = run_orchestration_streamed(&tx, &body, &args).await;
+        let _ = run_orchestration_steered(&tx, &body, &args, Some(&steering_tx)).await;
     });
-    CurrentRun { rx, handle }
+    CurrentRun {
+        rx,
+        steering,
+        handle,
+    }
 }
 
 /// Await the next event of the active run, or park forever when idle.
-async fn next_event(current: &mut Option<CurrentRun>) -> Option<StreamEvent> {
+async fn next_event(current: &mut Option<CurrentRun>) -> RunEvent {
     match current {
-        Some(c) => c.rx.recv().await,
+        Some(c) => tokio::select! {
+            // Preserve event order: commit streamed prose/tool results before
+            // showing the user message accepted at their boundary.
+            biased;
+            event = c.rx.recv() => RunEvent::Stream(event),
+            Some(request) = c.steering.recv() => RunEvent::Steering(request),
+        },
         None => pending().await,
     }
 }
@@ -7561,6 +7783,7 @@ async fn apply_stream_event(
         Some(StreamEvent::Done { stop_reason, usage }) => {
             app.on_done(stop_reason, usage);
             *current = None;
+            app.check_context_pressure();
             // Auto-compact when approaching the context limit. Handed to
             // the loop like `/compact` so the summarizing call runs off
             // the render loop.
@@ -7588,10 +7811,10 @@ async fn apply_stream_event(
             if app.status == Status::Running {
                 app.flush_assistant();
                 app.abort_tool_rows();
-                // The task was killed without a natural stop, so the
-                // mid-turn `MessagesUpdated` that would have folded the
-                // completed tool calls never fired -- fold them here,
-                // exactly as the cancel/error paths do.
+                // The task was killed without a natural stop, so calls of the
+                // step in progress were never published -- fold them here,
+                // exactly as the cancel/error paths do; calls already
+                // published are skipped by id.
                 app.append_cancelled_turn_tools();
                 app.status = Status::Idle;
                 app.run_started = None;
@@ -7694,7 +7917,11 @@ async fn chat_loop<B: Backend>(
 
     // Compaction is a summarizing model call, so it runs off the render loop
     // too; `compact_base` is the history length it was computed from.
-    let mut compact_task: Option<tokio::task::JoinHandle<Result<Vec<serde_json::Value>, String>>> =
+    let mut compact_task: Option<
+        tokio::task::JoinHandle<
+            Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError>,
+        >,
+    > =
         None;
     let mut compact_base = 0usize;
 
@@ -7872,6 +8099,7 @@ async fn chat_loop<B: Backend>(
                 let args = args.clone();
                 let model = app.model.clone();
                 let history = app.history.clone();
+                let keep = kind.keep_recent(app.compaction_keep_recent);
                 compact_base = history.len();
                 app.compacting = Some(kind);
                 app.compact_started = Some(Instant::now());
@@ -7880,7 +8108,7 @@ async fn chat_loop<B: Backend>(
                         &args,
                         &model,
                         &history,
-                        kind.keep_recent(),
+                        keep,
                     )
                     .await
                 }));
@@ -8092,7 +8320,10 @@ async fn chat_loop<B: Backend>(
                 }
             }
             ev = next_event(&mut current) => {
-                apply_stream_event(app, ev, &mut current).await;
+                match ev {
+                    RunEvent::Stream(ev) => apply_stream_event(app, ev, &mut current).await,
+                    RunEvent::Steering(request) => app.steer_run(request),
+                }
                 drain_stream_events(app, &mut current).await;
             }
         }
@@ -9897,7 +10128,7 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
     SlashCommand {
         name: "/cancel",
         hint: "[N]",
-        description: "Cancel queued messages (bare: all, or index)",
+        description: "Cancel pending messages (bare: all, or index)",
         alias_of: None,
     },
     SlashCommand {
@@ -10252,10 +10483,11 @@ enum CompactKind {
 }
 
 impl CompactKind {
-    fn keep_recent(self) -> usize {
+    fn keep_recent(self, auto_keep: usize) -> usize {
         match self {
             CompactKind::Manual => crate::core::agent::compaction::MANUAL_KEEP_RECENT,
-            CompactKind::Auto => crate::core::agent::compaction::DEFAULT_KEEP_RECENT,
+            // AH-076: the automatic tail is the shared policy's.
+            CompactKind::Auto => auto_keep,
         }
     }
 
@@ -10277,8 +10509,8 @@ impl CompactKind {
 /// Await an in-flight compaction, parking forever when none is running so this
 /// can sit in the loop's `select!` unconditionally.
 async fn await_compaction(
-    task: &mut Option<tokio::task::JoinHandle<Result<Vec<serde_json::Value>, String>>>,
-) -> Result<Vec<serde_json::Value>, String> {
+    task: &mut Option<tokio::task::JoinHandle<Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError>>>,
+) -> Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError> {
     let joined = match task.as_mut() {
         Some(h) => h.await,
         None => return pending().await,
@@ -10286,7 +10518,7 @@ async fn await_compaction(
     *task = None;
     match joined {
         Ok(inner) => inner,
-        Err(e) => Err(format!("compaction task failed: {e}")),
+        Err(e) => Err(tauri_plugin_agent_tools::harness_error::HarnessError::internal(format!("compaction task failed: {e}"))),
     }
 }
 
@@ -10295,7 +10527,7 @@ async fn await_compaction(
 /// in flight) is carried over rather than dropped.
 fn finish_compaction(
     app: &mut App,
-    result: Result<Vec<serde_json::Value>, String>,
+    result: Result<Vec<serde_json::Value>, tauri_plugin_agent_tools::harness_error::HarnessError>,
     base_len: usize,
 ) {
     let kind = app.compacting.take().unwrap_or(CompactKind::Manual);
@@ -10337,7 +10569,9 @@ fn finish_compaction(
             }
         }
         Err(e) => {
-            app.note(&format!("{} failed: {e}", kind.label()));
+            // The words, not the classification: the kind drives what happens
+            // next (below), and repeating it here only reads as noise.
+            app.note(&format!("{} failed: {}", kind.label(), e.message()));
             // A target-model compaction (model switch) that itself overflows
             // must block the oversized ordinary request: history stays
             // untouched, the target model stays selected, and the turn is
@@ -10346,7 +10580,10 @@ fn finish_compaction(
             // disarm a queued `want_start`, so a gated ordinary request is
             // explicitly deferred too -- otherwise the loop would re-send the
             // oversized history the moment the compaction task clears.
-            let overflow = crate::core::agent::upstream::is_context_overflow_error(&e);
+            // AH-009: the kind says what happened; the TUI does not read the
+            // wording to decide whether the history may be reused.
+            let overflow =
+                e.kind() == tauri_plugin_agent_tools::harness_error::ErrorKind::ContextOverflow;
             if retrying || overflow {
                 app.halt_turn();
             }
@@ -10723,6 +10960,13 @@ impl McpPrompt {
             Some(self.url.trim()).filter(|s| !s.is_empty()),
             super::mcp::parse_pairs(self.headers.trim(), "header")?,
             self.active,
+            // The form has no field for OAuth scopes (AH-135); an edit keeps
+            // the ones the entry already declares instead of dropping them.
+            self.editing
+                .as_deref()
+                .and_then(super::mcp::get_server)
+                .map(|e| crate::core::mcp::oauth::declared_scopes(&e.config).unwrap_or_default())
+                .unwrap_or_default(),
         )?;
         // Read the *previous* active flag before the write. `upsert_server` has
         // already replaced the entry by the time it lands on disk, so reading it
@@ -11766,13 +12010,13 @@ async fn todo_command(app: &mut App, arg: &str) {
 /// message. Notes the result or when the queue is empty.
 fn cancel_command(app: &mut App, arg: &str) {
     if app.message_queue.is_empty() {
-        app.note("no queued messages to cancel");
+        app.note("no pending messages to cancel");
         return;
     }
     if arg.is_empty() {
         let n = app.message_queue.len();
         app.message_queue.clear();
-        app.note(&format!("cancelled all {n} queued message(s)"));
+        app.note(&format!("cancelled all {n} pending message(s)"));
         return;
     }
     // Try to parse as a 1-indexed position
@@ -11786,7 +12030,7 @@ fn cancel_command(app: &mut App, arg: &str) {
         }
         let removed = app.message_queue.remove(idx - 1);
         if let Some(text) = removed {
-            let preview = truncate(&text, 40);
+            let preview = truncate(&text.text, 40);
             app.note(&format!(
                 "cancelled message #{idx}: \"{preview}\" ({} remaining)",
                 app.message_queue.len()
@@ -12144,8 +12388,12 @@ async fn open_mcp_picker(app: &mut App, mcp_servers: &crate::core::state::Shared
                     match super::mcp::auth_status(&s.name, &s.config) {
                         crate::core::mcp::oauth::AuthStatus::Unauthenticated
                         | crate::core::mcp::oauth::AuthStatus::Expired { .. }
-                        | crate::core::mcp::oauth::AuthStatus::StaleResource => {
+                        | crate::core::mcp::oauth::AuthStatus::StaleResource
+                        | crate::core::mcp::oauth::AuthStatus::ScopeMismatch { .. } => {
                             "needs auth".to_string()
+                        }
+                        crate::core::mcp::oauth::AuthStatus::InvalidScopes { .. } => {
+                            "invalid oauth scopes".to_string()
                         }
                         _ => "not connected".to_string(),
                     }
@@ -12215,9 +12463,13 @@ fn mcp_action_items(server: &super::mcp::ServerDetail) -> Vec<PickerItem> {
         AuthStatus::NotApplicable | AuthStatus::StaticHeader => {}
         // Anything with tokens on disk can be renewed *and* forgotten, whether
         // they still work or not.
+        // A configuration that cannot be read has to be fixed first: signing in
+        // under scopes nobody can state would authorize nothing sensible.
+        AuthStatus::InvalidScopes { .. } => {}
         AuthStatus::Authenticated { .. }
         | AuthStatus::Expired { .. }
-        | AuthStatus::StaleResource => {
+        | AuthStatus::StaleResource
+        | AuthStatus::ScopeMismatch { .. } => {
             actions.push((MCP_ACTION_AUTH, "Re-authenticate".to_string()));
             actions.push((MCP_ACTION_CLEAR_AUTH, "Clear authentication".to_string()));
         }
@@ -12275,13 +12527,18 @@ fn mcp_detail_lines(detail: &McpDetail, width: u16) -> Vec<Line<'static>> {
         AuthStatus::StaticHeader => {
             vec![Span::styled("✓ Authorization header (configured)", good)]
         }
-        AuthStatus::Authenticated { expires_at } => {
+        AuthStatus::Authenticated { expires_at, granted } => {
             let mut spans = vec![Span::styled("✓ authenticated", good)];
             if let Some(at) = expires_at {
                 spans.push(Span::styled(
                     format!("  (expires in {})", until_label(*at)),
                     dim,
                 ));
+            }
+            // AH-135: the authority the token carries, next to the fact that it
+            // works.
+            if !granted.is_empty() {
+                spans.push(Span::styled(format!("  scopes: {}", granted.join(" ")), dim));
             }
             spans
         }
@@ -12297,6 +12554,17 @@ fn mcp_detail_lines(detail: &McpDetail, width: u16) -> Vec<Line<'static>> {
             "! tokens were issued for a different url",
             warn,
         )],
+        AuthStatus::ScopeMismatch { declared, requested, .. } => vec![Span::styled(
+            format!(
+                "! token asked for [{}], configuration declares [{}] - re-authenticate",
+                requested.join(" "),
+                declared.join(" ")
+            ),
+            warn,
+        )],
+        AuthStatus::InvalidScopes { detail } => {
+            vec![Span::styled(format!("✗ {detail}"), bad)]
+        }
         AuthStatus::Unauthenticated => vec![Span::styled("✗ not authenticated", bad)],
     };
     rows.push(("Auth", auth));
@@ -16190,7 +16458,7 @@ fn input_box(app: &App) -> Paragraph<'static> {
                 }
             }
             spans.push(Span::styled(
-                " (Esc to cancel, type to queue next message)",
+                " (Esc to cancel, type to steer the agent)",
                 Style::new().dim().italic(),
             ));
             Paragraph::new(Line::from(spans)).block(block)
@@ -16199,7 +16467,7 @@ fn input_box(app: &App) -> Paragraph<'static> {
             Paragraph::new(Line::from(vec![
                 Span::styled(format!("{} ", app.spinner()), Style::new().yellow()),
                 Span::styled(
-                    format!("⏳ Queued ({n}) — Esc to cancel, type to add more"),
+                    format!("⏳ Pending ({n}) — /cancel to remove, type to steer"),
                     Style::new().yellow(),
                 ),
             ]))
@@ -16217,7 +16485,7 @@ fn input_box(app: &App) -> Paragraph<'static> {
         // Same `> ` prompt as the typing view, then a fixed (non-blinking)
         // block cursor in front of the placeholder.
         let placeholder = if app.status == Status::Running {
-            "Type to queue next message"
+            "Type to steer the agent"
         } else {
             "Type here to chat with agent"
         };
@@ -16352,7 +16620,7 @@ fn footer_spans(app: &App) -> Vec<Span<'static>> {
                 s.insert(
                     0,
                     Span::styled(
-                        format!("⏳ Queued ({queue_count})  "),
+                        format!("⏳ Pending ({queue_count})  "),
                         Style::new().yellow().bold(),
                     ),
                 );
@@ -16371,7 +16639,7 @@ fn footer_spans(app: &App) -> Vec<Span<'static>> {
                 s.insert(
                     0,
                     Span::styled(
-                        format!("⏳ Queued ({queue_count})  "),
+                        format!("⏳ Pending ({queue_count})  "),
                         Style::new().yellow().bold(),
                     ),
                 );
@@ -16400,7 +16668,8 @@ mod tests {
         std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()))
     }
     use super::journal::{self, DisplayEntry};
-    use super::SessionLimits;
+    use super::{cancel_command, next_event, RunEvent, SessionLimits, SteeringRequest};
+    use tokio::sync::mpsc;
     use super::{
         age_closed_todos, alt_scroll_restore, alt_scroll_save_off, answer_without_reasoning,
         apply_repaint, apply_resume, apply_stream_event, assistant_is_awaiting_user_answer, assistant_runs,
@@ -16506,6 +16775,7 @@ mod tests {
             context_window_source:
                 crate::core::cli::model_capabilities::ContextWindowSource::Fallback,
             reserve_tokens: 16_384,
+            compaction: Default::default(),
             max_tokens: None,
             max_session_tokens: 128_000,
         };
@@ -16518,6 +16788,251 @@ mod tests {
             None,
         );
         TestApp { app, _dir: dir }
+    }
+
+    fn steering_request(
+        messages: Vec<serde_json::Value>,
+    ) -> (
+        SteeringRequest,
+        tokio::sync::oneshot::Receiver<Vec<serde_json::Value>>,
+    ) {
+        let (reply, receiver) = tokio::sync::oneshot::channel();
+        (
+            SteeringRequest {
+                messages,
+                reply,
+                run_mode: crate::core::agent::plan::RunMode::Normal,
+            },
+            receiver,
+        )
+    }
+
+    #[test]
+    fn steering_preserves_images_paths_order_and_transcript_once() {
+        let mut app = test_app();
+        let files = tempfile::tempdir().unwrap();
+        app.project_root = files.path().to_path_buf();
+        std::fs::write(files.path().join("note.txt"), "original context").unwrap();
+        app.submit_user("start".into());
+        app.want_start = false;
+        app.pending_images.push(PendingImage {
+            name: "pic.png".into(),
+            data_url: "data:image/png;base64,AAAA".into(),
+        });
+        app.submit_user("read @note.txt".into());
+        app.submit_user("then test".into());
+        assert!(app.pending_images.is_empty());
+        assert_eq!(app.history.len(), 1);
+        std::fs::write(files.path().join("note.txt"), "changed later").unwrap();
+        let (request, mut receiver) = steering_request(app.history.clone());
+        app.steer_run(request);
+        let messages = receiver.try_recv().unwrap();
+        assert_eq!(messages.len(), 2);
+        assert!(messages[0]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("original context"));
+        assert_eq!(
+            messages[0]["content"][1]["image_url"]["url"],
+            "data:image/png;base64,AAAA"
+        );
+        assert_eq!(messages[1]["content"], "then test");
+        assert_eq!(app.history.len(), 3);
+        assert!(app.message_queue.is_empty());
+        assert_eq!(
+            app.display_log
+                .iter()
+                .filter(|e| matches!(e, DisplayEntry::User { .. }))
+                .count(),
+            3
+        );
+        let (request, mut receiver) = steering_request(app.history.clone());
+        app.steer_run(request);
+        assert!(receiver.try_recv().unwrap().is_empty());
+        assert_eq!(app.history.len(), 3);
+    }
+
+    #[test]
+    fn steering_cancel_removes_only_pending_input() {
+        let mut app = test_app();
+        app.submit_user("start".into());
+        app.want_start = false;
+        app.submit_user("remove me".into());
+        app.submit_user("keep me".into());
+        cancel_command(&mut app, "1");
+        let (request, mut receiver) = steering_request(app.history.clone());
+        app.steer_run(request);
+        assert_eq!(
+            receiver.try_recv().unwrap(),
+            vec![json!({"role": "user", "content": "keep me"})]
+        );
+    }
+
+    #[test]
+    fn steering_does_not_answer_or_bypass_a_permission_prompt() {
+        let mut app = test_app();
+        app.submit_user("start".into());
+        app.want_start = false;
+        app.submit_user("correction".into());
+        app.pending_queue.push_back(pending(false));
+        let (request, mut receiver) = steering_request(app.history.clone());
+        app.steer_run(request);
+        assert!(receiver.try_recv().unwrap().is_empty());
+        assert_eq!(app.pending_queue.len(), 1);
+        assert_eq!(app.message_queue.len(), 1);
+    }
+
+    #[test]
+    fn steering_failed_handoff_keeps_input_for_next_turn() {
+        let mut app = test_app();
+        app.submit_user("start".into());
+        app.want_start = false;
+        app.submit_user("late follow-up".into());
+        let (request, receiver) = steering_request(app.history.clone());
+        drop(receiver);
+        app.steer_run(request);
+        assert_eq!(app.message_queue.len(), 1);
+        assert_eq!(app.history.len(), 1);
+        app.on_done("stop".into(), None);
+        assert!(app.message_queue.is_empty());
+        assert_eq!(app.history.last().unwrap()["content"], "late follow-up");
+        assert!(app.want_start);
+    }
+
+    #[test]
+    fn steering_plan_transition_waits_for_a_new_run() {
+        let mut app = test_app();
+        app.submit_user("start".into());
+        app.want_start = false;
+        app.run_mode = crate::core::agent::plan::RunMode::Plan;
+        app.submit_user("plan only".into());
+        let (request, mut receiver) = steering_request(app.history.clone());
+        app.steer_run(request);
+        assert!(receiver.try_recv().unwrap().is_empty());
+        assert_eq!(app.message_queue.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn steering_waits_until_earlier_stream_events_are_rendered() {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (steering_tx, steering) = mpsc::unbounded_channel();
+        tx.send(StreamEvent::Token {
+            text: "answer".into(),
+        })
+        .unwrap();
+        let (request, _receiver) = steering_request(vec![]);
+        steering_tx.send(request).unwrap();
+        let mut current = Some(CurrentRun {
+            rx,
+            steering,
+            handle: tokio::spawn(async {}),
+        });
+        assert!(matches!(
+            next_event(&mut current).await,
+            RunEvent::Stream(Some(StreamEvent::Token { .. }))
+        ));
+        assert!(matches!(
+            next_event(&mut current).await,
+            RunEvent::Steering(_)
+        ));
+    }
+
+    #[test]
+    fn steering_error_and_cancel_fallback_keep_attachments() {
+        for cancel in [false, true] {
+            let mut app = test_app();
+            app.submit_user("start".into());
+            app.want_start = false;
+            app.pending_images.push(PendingImage {
+                name: "pic.png".into(),
+                data_url: "data:image/png;base64,AAAA".into(),
+            });
+            app.submit_user("follow-up".into());
+            if cancel {
+                app.cancel_run();
+            } else {
+                app.on_error("error".into(), "offline".into());
+            }
+            assert!(app.message_queue.is_empty());
+            assert!(app.want_start);
+            assert_eq!(
+                app.history.last().unwrap()["content"][1]["image_url"]["url"],
+                "data:image/png;base64,AAAA"
+            );
+        }
+    }
+
+    #[test]
+    fn steering_session_reset_discards_old_pending_input() {
+        let mut app = test_app();
+        app.submit_user("start".into());
+        app.want_start = false;
+        app.submit_user("old session only".into());
+        app.reset_session();
+        let (request, mut receiver) = steering_request(vec![]);
+        app.steer_run(request);
+        assert!(receiver.try_recv().unwrap().is_empty());
+        assert!(app.history.is_empty());
+        assert!(app.message_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn steering_consumed_input_survives_resume_once() {
+        let mut app = test_app();
+        app.submit_user("start".into());
+        app.want_start = false;
+        app.submit_user("correction".into());
+        let (request, mut receiver) = steering_request(app.history.clone());
+        app.steer_run(request);
+        assert_eq!(receiver.try_recv().unwrap().len(), 1);
+        app.join_journal();
+        let mut restored = test_app();
+        restored.agent_dir = app.agent_dir.clone();
+        apply_resume(&mut restored, &ResumeTarget::Latest).await;
+        assert_eq!(
+            restored
+                .history
+                .iter()
+                .filter(|m| m["content"] == "correction")
+                .count(),
+            1
+        );
+        assert_eq!(
+            restored
+                .display_log
+                .iter()
+                .filter(|e| matches!(e, DisplayEntry::User { text, .. } if text == "correction"))
+                .count(),
+            1
+        );
+        assert!(restored.message_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn steering_expands_skill_input_without_resetting_the_run() {
+        let (mut app, root) = skill_test_app("deploy", "How to deploy.");
+        app.submit_user("start".into());
+        app.want_start = false;
+        app.pending_images.push(PendingImage {
+            name: "pic.png".into(),
+            data_url: "data:image/png;base64,AAAA".into(),
+        });
+        app.submit_user("please /skill:deploy carefully".into());
+        let (request, mut receiver) = steering_request(app.history.clone());
+        app.steer_run(request);
+        let messages = receiver.try_recv().unwrap();
+        assert!(messages[0]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("User: please carefully"));
+        assert_eq!(
+            messages[0]["content"][1]["image_url"]["url"],
+            "data:image/png;base64,AAAA"
+        );
+        assert!(!app.want_start);
+        assert!(transcript_text(&app).contains("[skill:deploy] please carefully"));
+        app.join_journal();
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     /// App whose project has one installed skill `<name>/SKILL.md` with the
@@ -16557,6 +17072,7 @@ mod tests {
                     context_window_source:
                         crate::core::cli::model_capabilities::ContextWindowSource::Fallback,
                     reserve_tokens: 16_384,
+            compaction: Default::default(),
                     max_tokens: None,
                     max_session_tokens: 128_000,
                 },
@@ -21255,6 +21771,10 @@ mod tests {
                 crate::core::state::ProviderConfig,
             > = std::collections::HashMap::new();
             let args = std::sync::Arc::new(super::OrchestrationArgs {
+                profile: None,
+            parent_run: None,
+            dispatch_id: None,
+                fallback_models: Vec::new(),
                 client: crate::core::agent::upstream::agent_http_client(),
                 provider_configs: std::sync::Arc::new(tokio::sync::Mutex::new(provider_configs)),
                 mcp_servers: std::sync::Arc::new(tokio::sync::Mutex::new(
@@ -23684,8 +24204,8 @@ mod tests {
             diff: None,
         });
         // The run dies on an upstream error before the model emits any answer
-        // prose. The backend never publishes a mid-turn `MessagesUpdated`, so
-        // the completed call must be folded into history by the error path
+        // prose. This stub stream publishes no `MessagesUpdated` for the step,
+        // so the completed call must be folded into history by the error path
         // (the same guarantee the Esc-cancel path already provides).
         app.on_error("upstream".into(), "connection reset".into());
         let wire = app
@@ -26115,6 +26635,7 @@ mod tests {
                         prompt_tokens: Some(12_800 + i as u64 * 12_800),
                         completion_tokens: Some(100),
                         total_tokens: Some(12_900),
+                        ..Default::default()
                     },
                 },
             );
@@ -26360,7 +26881,7 @@ mod tests {
             with_wave_glyph(None, || {
                 render_rows(app, 80, 12)
                     .into_iter()
-                    .find(|r| r.contains("(Esc to cancel, type to queue next message)"))
+                    .find(|r| r.contains("(Esc to cancel, type to steer the agent)"))
                     .expect("running placeholder present")
             })
         };
@@ -26388,7 +26909,7 @@ mod tests {
         assert_ne!(first, later, "row must change as the frame advances");
 
         assert!(
-            later.contains("(Esc to cancel, type to queue next message)"),
+            later.contains("(Esc to cancel, type to steer the agent)"),
             "{later:?}"
         );
     }
@@ -26407,7 +26928,7 @@ mod tests {
         let row = with_wave_glyph(None, || {
             render_rows(&mut app, 80, 12)
                 .into_iter()
-                .find(|r| r.contains("(Esc to cancel, type to queue next message)"))
+                .find(|r| r.contains("(Esc to cancel, type to steer the agent)"))
                 .expect("running placeholder present")
         });
         assert!(
@@ -26461,7 +26982,7 @@ mod tests {
             let row = with_wave_glyph(None, || {
                 render_rows(&mut app, 80, 12)
                     .into_iter()
-                    .find(|r| r.contains("(Esc to cancel, type to queue next message)"))
+                    .find(|r| r.contains("(Esc to cancel, type to steer the agent)"))
                     .expect("running placeholder present")
             });
             WORKING_WORDS
@@ -26484,7 +27005,7 @@ mod tests {
         app.spinner_frame = 5;
         let row = render_rows(&mut app, 80, 12)
             .into_iter()
-            .find(|r| r.contains("Queued"))
+            .find(|r| r.contains("Pending"))
             .expect("queued row present");
         assert!(row.contains(SPINNER[5]), "expected frame 5 glyph: {row:?}");
     }
@@ -26506,7 +27027,7 @@ mod tests {
         let row = with_wave_glyph(None, || {
             render_rows(&mut app, 80, 12)
                 .into_iter()
-                .find(|r| r.contains("(Esc to cancel, type to queue next message)"))
+                .find(|r| r.contains("(Esc to cancel, type to steer the agent)"))
                 .expect("running placeholder present")
         });
         assert!(
@@ -26737,6 +27258,7 @@ mod tests {
                     prompt_tokens: Some(40_000),
                     completion_tokens: Some(500),
                     total_tokens: Some(40_500),
+                    ..Default::default()
                 },
             });
         }
@@ -27120,6 +27642,7 @@ mod tests {
                 prompt_tokens: Some(90_000),
                 completion_tokens: Some(10),
                 total_tokens: Some(90_010),
+                ..Default::default()
             },
         });
         assert!(
@@ -27144,6 +27667,7 @@ mod tests {
                 prompt_tokens: Some(120_000),
                 completion_tokens: Some(10),
                 total_tokens: Some(120_010),
+                ..Default::default()
             },
         });
         assert!(app.context_report().await.fill_reported);
@@ -27557,6 +28081,7 @@ mod tests {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let mut current = Some(CurrentRun {
             rx,
+            steering: mpsc::unbounded_channel().1,
             handle: tokio::spawn(async {}),
         });
 
@@ -27590,6 +28115,7 @@ mod tests {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let mut current = Some(CurrentRun {
             rx,
+            steering: mpsc::unbounded_channel().1,
             handle: tokio::spawn(async {}),
         });
         for _ in 0..(super::EVENT_DRAIN_MAX + 50) {
@@ -27610,6 +28136,7 @@ mod tests {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let mut current = Some(CurrentRun {
             rx,
+            steering: mpsc::unbounded_channel().1,
             handle: tokio::spawn(async {}),
         });
         tx.send(StreamEvent::Token { text: "hi".into() })
@@ -29162,7 +29689,7 @@ mod tests {
         assert!(
             app.message_queue
                 .iter()
-                .any(|m| m.as_str() == "Proceed with the plan."),
+                .any(|m| m.text == "Proceed with the plan."),
             "execute must queue a continuation turn"
         );
         let answers = receiver.await.unwrap().unwrap();
@@ -30354,6 +30881,52 @@ mod tests {
         assert!(app.should_auto_compact());
     }
 
+    /// AH-077: the user is warned once as the window fills, before
+    /// auto-compaction or an overflow, and warned again only after the fill
+    /// has dropped back below the line (a compaction, a new conversation).
+    #[test]
+    fn context_pressure_is_warned_once_before_the_window_fills() {
+        let warnings =
+            |app: &App| transcript_text(app).matches("of the context window is in use").count();
+        let mut app = test_app();
+        app.context_window = 100_000;
+        app.reserve_tokens = 10_000;
+        app.tokens = 50_000;
+        app.check_context_pressure();
+        assert_eq!(warnings(&app), 0, "no warning with room to spare");
+
+        app.tokens = 82_000;
+        app.check_context_pressure();
+        assert_eq!(warnings(&app), 1);
+        let text = transcript_text(&app);
+        assert!(text.contains("82% of the context window is in use"), "{text}");
+        assert!(text.contains("8,000 tokens before auto-compact"), "{text}");
+        // The figures, and where they came from, are part of the warning.
+        // Wrapped in the transcript, so the fragment is short on purpose.
+        assert!(text.contains("82,000 of 100,000 tokens"), "{text}");
+        assert!(text.contains("/compact"), "{text}");
+
+        app.tokens = 86_000;
+        app.check_context_pressure();
+        assert_eq!(warnings(&app), 1, "not repeated every turn");
+
+        app.tokens = 30_000;
+        app.check_context_pressure();
+        app.tokens = 81_000;
+        app.check_context_pressure();
+        assert_eq!(warnings(&app), 2, "re-armed after the fill dropped");
+    }
+
+    /// With no known window there is no fraction to warn about.
+    #[test]
+    fn no_context_pressure_warning_without_a_window() {
+        let mut app = test_app();
+        app.context_window = 0;
+        app.tokens = 1_000_000;
+        app.check_context_pressure();
+        assert!(!transcript_text(&app).contains("of the context window is in use"));
+    }
+
     #[test]
     fn should_not_auto_compact_when_history_too_short() {
         let mut app = test_app();
@@ -30643,7 +31216,7 @@ mod tests {
             "[{}] Upstream returned HTTP 400: prompt is too long",
             crate::core::agent::upstream::CONTEXT_OVERFLOW_MARKER
         );
-        finish_compaction(&mut app, Err(overflow), 1);
+        finish_compaction(&mut app, Err(overflow.into()), 1);
 
         assert!(
             app.compacting.is_none(),

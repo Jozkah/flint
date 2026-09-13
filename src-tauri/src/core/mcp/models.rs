@@ -50,10 +50,23 @@ pub struct McpServerConfig {
 /// Parse a raw `mcp_config.json` server entry into typed connection params.
 pub fn extract_command_args(config: &Value) -> Option<McpServerConfig> {
     let obj = config.as_object()?;
-    let command = obj.get("command")?.as_str()?.to_string();
-    let args = obj.get("args")?.as_array()?.clone();
     let url = obj.get("url").and_then(|u| u.as_str()).map(String::from);
     let transport_type = obj.get("type").and_then(|t| t.as_str()).map(String::from);
+    // A remote server is a url; `command` and `args` describe a process and
+    // are required only when there is one to start. `jan cli mcp add --type
+    // http` writes neither, and requiring them made every server it added
+    // unconnectable.
+    let remote = matches!(transport_type.as_deref(), Some("http" | "sse")) && url.is_some();
+    let command = match obj.get("command") {
+        Some(c) => c.as_str()?.to_string(),
+        None if remote => String::new(),
+        None => return None,
+    };
+    let args = match obj.get("args") {
+        Some(a) => a.as_array()?.clone(),
+        None if remote => Vec::new(),
+        None => return None,
+    };
     let timeout = obj
         .get("timeout")
         .and_then(|t| t.as_u64())
@@ -309,6 +322,24 @@ mod tests {
         assert!(extract_command_args(&cfg).is_none());
     }
 
+    /// Found running the AH-134 CLI exercise: a server added with `jan cli mcp
+    /// add --type http` has no `command` or `args`, and was refused as an
+    /// invalid config before any request was made.
+    #[test]
+    fn a_remote_server_needs_no_command_or_args_but_a_local_one_does() {
+        let http = serde_json::json!({ "type": "http", "url": "http://127.0.0.1:1/mcp", "active": true });
+        let parsed = extract_command_args(&http).expect("an http server with a url parses");
+        assert_eq!(parsed.transport_type.as_deref(), Some("http"));
+        assert_eq!(parsed.url.as_deref(), Some("http://127.0.0.1:1/mcp"));
+        assert!(parsed.command.is_empty() && parsed.args.is_empty());
+        assert!(extract_command_args(&serde_json::json!({ "type": "sse", "url": "http://x/sse" })).is_some());
+        // Without a url it is not a remote server, and nothing to start either.
+        assert!(extract_command_args(&serde_json::json!({ "type": "http" })).is_none());
+        assert!(extract_command_args(&serde_json::json!({ "type": "stdio", "url": "http://x" })).is_none());
+        // A present but malformed field is still refused.
+        assert!(extract_command_args(&serde_json::json!({ "type": "http", "url": "http://x", "args": "oops" })).is_none());
+    }
+
     #[test]
     fn test_extract_command_args_parses_default_mcp_config_servers() {
         use crate::core::mcp::constants::DEFAULT_MCP_CONFIG;
@@ -372,44 +403,15 @@ pub enum RegistrationDecision {
 
 /// The identity of a server definition, for deciding whether two are the same.
 ///
-/// Compares what actually determines the program: transport, executable,
-/// argv, endpoint and the environment *names* it is handed. Ordering and
-/// unrelated keys (a description, an `active` flag) do not make it a different
-/// server, so they are excluded.
+/// The canonical, secret-free identity material from
+/// [`tauri_plugin_agent_tools::mcp_identity`] -- the same definition the trust
+/// gate fingerprints, so "is this the same server that is running" and "is
+/// this the server the user approved" can never disagree. It covers transport,
+/// executable, argv, normalized endpoint, working directory, environment and
+/// header *names*, and confinement. Presentation keys (a description, an
+/// `active` flag) and secret values do not make it a different server.
 pub fn definition_identity(config: &Value) -> String {
-    let obj = config.as_object();
-    let field = |key: &str| {
-        obj.and_then(|one| one.get(key))
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string()
-    };
-    let args: Vec<String> = obj
-        .and_then(|one| one.get("args"))
-        .and_then(Value::as_array)
-        .map(|items| {
-            items
-                .iter()
-                .filter_map(Value::as_str)
-                .map(String::from)
-                .collect()
-        })
-        .unwrap_or_default();
-    let mut env_names: Vec<String> = obj
-        .and_then(|one| one.get("env"))
-        .and_then(Value::as_object)
-        .map(|env| env.keys().cloned().collect())
-        .unwrap_or_default();
-    env_names.sort();
-
-    serde_json::json!({
-        "type": field("type"),
-        "command": field("command"),
-        "url": field("url"),
-        "args": args,
-        "env": env_names,
-    })
-    .to_string()
+    tauri_plugin_agent_tools::mcp_identity::identity_material(config).to_string()
 }
 
 /// Decide whether to start, skip, or refuse.
@@ -437,4 +439,27 @@ pub fn registration_decision(
             reason: "a server is already running under this name".to_string(),
         },
     }
+}
+
+/// A prompt's messages as plain text, for a surface that shows them.
+///
+/// Labelled by role, and never merged into the harness's own instructions: a
+/// server's words are a server's words.
+pub fn render_prompt(result: &rmcp::model::GetPromptResult) -> String {
+    let mut out = String::new();
+    if let Some(description) = &result.description {
+        out.push_str(&format!("{description}\n\n"));
+    }
+    for message in &result.messages {
+        let role = match message.role {
+            rmcp::model::PromptMessageRole::User => "user",
+            rmcp::model::PromptMessageRole::Assistant => "assistant",
+        };
+        let text = match &message.content {
+            rmcp::model::PromptMessageContent::Text { text } => text.clone(),
+            other => serde_json::to_string(other).unwrap_or_default(),
+        };
+        out.push_str(&format!("[{role}] {text}\n"));
+    }
+    out
 }

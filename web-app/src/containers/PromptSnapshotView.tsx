@@ -3,6 +3,12 @@ import { invoke } from '@tauri-apps/api/core'
 import { Button } from '@/components/ui/button'
 import { errorText } from '@/lib/errorText'
 import {
+  diffContext,
+  previousSnapshot,
+  type ContextDiff,
+  type ContextItem,
+} from '@/lib/contextDiff'
+import {
   cancelReplay,
   isReplaying,
   listReplays,
@@ -58,6 +64,8 @@ export type PromptSnapshotViewProps = {
   }) => Promise<PromptSnapshot[]>
   /** Injectable for tests; defaults to the real replay path (AH-079). */
   replayDeps?: ReplayDeps
+  /** Injectable for tests: every snapshot of a session (AH-086). */
+  onList?: (session: string) => Promise<PromptSnapshot[]>
 }
 
 const STATE_LABEL: Record<ReplayView['state'], string> = {
@@ -67,6 +75,106 @@ const STATE_LABEL: Record<ReplayView['state'], string> = {
   failed: 'Failed',
   cancelled: 'Stopped',
   refused: 'Refused',
+}
+
+/**
+ * What changed since the request sent just before this one, in the same
+ * session (AH-086): each message, system block and tool that entered or left
+ * the window, and why. Both sides are stored snapshots of what was actually
+ * sent; nothing is re-derived.
+ */
+function ContextDiffSection({
+  snapshot,
+  sessionId,
+  onList,
+}: {
+  snapshot: PromptSnapshot
+  sessionId?: string
+  onList?: (session: string) => Promise<PromptSnapshot[]>
+}) {
+  const [state, setState] = useState<
+    | { kind: 'idle' }
+    | { kind: 'loading' }
+    | { kind: 'first' }
+    | { kind: 'error'; message: string }
+    | { kind: 'ready'; previous: PromptSnapshot; diff: ContextDiff }
+  >({ kind: 'idle' })
+  if (!sessionId) return null
+
+  const compare = async () => {
+    setState({ kind: 'loading' })
+    try {
+      const list = await (onList
+        ? onList(sessionId)
+        : invoke<PromptSnapshot[]>('agent_prompt_snapshots', { session: sessionId }))
+      const previous = previousSnapshot(
+        list.filter((s) => s.session === sessionId),
+        snapshot.id
+      )
+      if (!previous) {
+        setState({ kind: 'first' })
+        return
+      }
+      setState({ kind: 'ready', previous, diff: diffContext(previous.payload, snapshot.payload) })
+    } catch (e) {
+      setState({ kind: 'error', message: errorText(e) })
+    }
+  }
+
+  const list = (items: ContextItem[], testId: string, empty: string) =>
+    items.length === 0 ? (
+      <p className="text-muted-foreground">{empty}</p>
+    ) : (
+      <ul className="flex flex-col gap-1" data-testid={testId}>
+        {items.map((item, i) => (
+          <li key={`${testId}-${i}`} data-part={item.part} data-reason={item.reason}>
+            <span className="font-medium">{item.label}</span>{' '}
+            <span className="text-muted-foreground">— {item.reason}</span>
+            <span className="block truncate font-mono text-muted-foreground">{item.preview}</span>
+          </li>
+        ))}
+      </ul>
+    )
+
+  return (
+    <div className="flex flex-col gap-1.5" data-testid="context-diff">
+      <Button
+        type="button"
+        size="sm"
+        variant="link"
+        className="self-start px-0"
+        onClick={() => void compare()}
+        data-testid="context-diff-run"
+      >
+        Compare with the previous request
+      </Button>
+      {state.kind === 'loading' && <p>Comparing…</p>}
+      {state.kind === 'first' && (
+        <p data-testid="context-diff-first">
+          This is the session's first stored request; there is nothing earlier to compare it with.
+        </p>
+      )}
+      {state.kind === 'error' && (
+        <p className="text-destructive" data-testid="context-diff-error">
+          {state.message}
+        </p>
+      )}
+      {state.kind === 'ready' && (
+        <div className="flex flex-col gap-1.5" data-testid="context-diff-result" data-previous={state.previous.id}>
+          <p className="text-muted-foreground" data-testid="context-diff-summary">
+            Against {state.previous.id}: {state.diff.entered.length} entered,{' '}
+            {state.diff.left.length} left, {state.diff.keptMessages} message(s) kept,{' '}
+            {state.diff.keptTools} tool(s) kept
+            {state.diff.systemChanged ? ', system prompt changed' : ''}.
+          </p>
+          <div className="font-medium">Entered</div>
+          {list(state.diff.entered, 'context-diff-entered', 'Nothing new.')}
+          <div className="font-medium">Left</div>
+          {list(state.diff.left, 'context-diff-left', 'Nothing left the window.')}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -135,7 +243,7 @@ function ReplaySection({
         >
           Replay this context
         </Button>
-        <span className="text-main-view-fg/50">
+        <span className="text-muted-foreground">
           Sends exactly this request again. Tools the model asks for are not run.
         </span>
       </div>
@@ -156,7 +264,7 @@ function ReplaySection({
           {replays.map((r) => (
             <li
               key={r.id}
-              className="rounded border border-border p-2"
+              className="rounded-md border border-border p-2"
               data-testid="prompt-replay"
               data-state={r.state}
               data-matched={r.matched === null ? '' : String(r.matched)}
@@ -164,7 +272,7 @@ function ReplaySection({
             >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{STATE_LABEL[r.state]}</span>
-                <span className="text-main-view-fg/50">{r.startedAt}</span>
+                <span className="text-muted-foreground">{r.startedAt}</span>
                 {r.matched === true && (
                   <span data-testid="prompt-replay-matched">
                     Same context as the turn (hashes match)
@@ -176,7 +284,7 @@ function ReplaySection({
                   </span>
                 )}
                 {r.finishReason && (
-                  <span className="text-main-view-fg/50">
+                  <span className="text-muted-foreground">
                     finish: {r.finishReason}
                   </span>
                 )}
@@ -193,7 +301,7 @@ function ReplaySection({
                 )}
               </div>
               {r.toolCalls.length > 0 && (
-                <p className="text-main-view-fg/60">
+                <p className="text-muted-foreground">
                   Asked for {r.toolCalls.join(', ')} (not run)
                 </p>
               )}
@@ -229,14 +337,14 @@ const UNAVAILABLE_REASON: Record<string, string> = {
 /** A readable tree of a JSON value, without pulling in a viewer library. */
 function Tree({ value, path = '' }: { value: unknown; path?: string }) {
   if (value === null || value === undefined) {
-    return <span className="text-main-view-fg/50">null</span>
+    return <span className="text-muted-foreground">null</span>
   }
   if (Array.isArray(value)) {
     return (
-      <ul className="ml-4 list-none border-l border-main-view-fg/10 pl-3">
+      <ul className="ml-4 list-none border-l border-border pl-3">
         {value.map((item, i) => (
           <li key={`${path}[${i}]`} className="py-0.5">
-            <span className="text-main-view-fg/50">[{i}] </span>
+            <span className="text-muted-foreground">[{i}] </span>
             <Tree value={item} path={`${path}[${i}]`} />
           </li>
         ))}
@@ -246,10 +354,10 @@ function Tree({ value, path = '' }: { value: unknown; path?: string }) {
   if (typeof value === 'object') {
     const entries = Object.entries(value as Record<string, unknown>)
     return (
-      <ul className="ml-4 list-none border-l border-main-view-fg/10 pl-3">
+      <ul className="ml-4 list-none border-l border-border pl-3">
         {entries.map(([key, child]) => (
           <li key={`${path}.${key}`} className="py-0.5">
-            <span className="font-medium text-main-view-fg/70">{key}: </span>
+            <span className="font-medium text-ink-2">{key}: </span>
             <Tree value={child} path={`${path}.${key}`} />
           </li>
         ))}
@@ -261,7 +369,7 @@ function Tree({ value, path = '' }: { value: unknown; path?: string }) {
     <span
       className={
         text === '[redacted]'
-          ? 'rounded bg-main-view-fg/10 px-1 font-mono text-main-view-fg/60'
+          ? 'rounded-md bg-sunken px-1 font-mono text-muted-foreground'
           : 'break-words whitespace-pre-wrap'
       }
     >
@@ -323,14 +431,14 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
 
   return (
     <details
-      className="rounded-md border border-border bg-main-view-fg/2 px-3 py-2 text-xs"
+      className="rounded-md border border-border bg-sunken/60 px-3 py-2 text-xs"
       data-testid="prompt-snapshot"
       onToggle={(e) => {
         if ((e.currentTarget as HTMLDetailsElement).open) void load()
       }}
     >
       <summary
-        className="cursor-pointer list-none text-main-view-fg/60 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 rounded-sm"
+        className="cursor-pointer list-none text-muted-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring rounded-sm"
         aria-controls={panelId}
         data-testid="prompt-snapshot-toggle"
       >
@@ -359,29 +467,29 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
               className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1"
               data-testid="prompt-snapshot-meta"
             >
-              <dt className="text-main-view-fg/50">Provider</dt>
+              <dt className="text-muted-foreground">Provider</dt>
               <dd className="min-w-0 truncate">{snapshot.provider || '—'}</dd>
-              <dt className="text-main-view-fg/50">Model</dt>
+              <dt className="text-muted-foreground">Model</dt>
               <dd className="min-w-0 truncate">{snapshot.model || '—'}</dd>
-              <dt className="text-main-view-fg/50">Reasoning</dt>
+              <dt className="text-muted-foreground">Reasoning</dt>
               <dd className="min-w-0 truncate">
                 {snapshot.reasoning ? JSON.stringify(snapshot.reasoning) : '—'}
               </dd>
-              <dt className="text-main-view-fg/50">Session</dt>
+              <dt className="text-muted-foreground">Session</dt>
               <dd className="min-w-0 truncate font-mono">
                 {snapshot.session || '—'}
               </dd>
-              <dt className="text-main-view-fg/50">Run</dt>
+              <dt className="text-muted-foreground">Run</dt>
               <dd className="min-w-0 truncate font-mono">
                 {snapshot.run || '—'}
               </dd>
-              <dt className="text-main-view-fg/50">Agent</dt>
+              <dt className="text-muted-foreground">Agent</dt>
               <dd className="min-w-0 truncate">{snapshot.agent || '—'}</dd>
-              <dt className="text-main-view-fg/50">Sent</dt>
+              <dt className="text-muted-foreground">Sent</dt>
               <dd className="min-w-0 truncate">{snapshot.at}</dd>
-              <dt className="text-main-view-fg/50">Hash</dt>
+              <dt className="text-muted-foreground">Hash</dt>
               <dd className="min-w-0 truncate font-mono">{snapshot.hash}</dd>
-              <dt className="text-main-view-fg/50">Redacted</dt>
+              <dt className="text-muted-foreground">Redacted</dt>
               <dd className="min-w-0" data-testid="prompt-snapshot-redactions">
                 {snapshot.redactions.length === 0
                   ? 'nothing'
@@ -390,6 +498,12 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
                       .join(', ')}`}
               </dd>
             </dl>
+
+            <ContextDiffSection
+              snapshot={snapshot}
+              sessionId={props.sessionId}
+              onList={props.onList}
+            />
 
             <div className="flex items-center gap-2">
               <div role="group" aria-label="View as" className="flex gap-1">
@@ -427,7 +541,7 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
 
             {/* Wide content scrolls inside its own box rather than pushing the
                 conversation sideways. */}
-            <div className="max-h-80 overflow-auto rounded border border-border bg-main-view-fg/2 p-2">
+            <div className="max-h-80 overflow-auto rounded-md border border-border bg-sunken/60 p-2">
               {view === 'json' ? (
                 <pre
                   className="whitespace-pre-wrap break-words font-mono text-[11px]"

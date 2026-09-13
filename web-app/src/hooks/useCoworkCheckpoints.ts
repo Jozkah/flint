@@ -51,25 +51,69 @@ export type CheckpointEntry = Checkpoint & {
    * agree to do, never from this.
    */
   access: string
+  /**
+   * Taken immediately before a restore, of the state that restore replaced.
+   *
+   * Kept when the restore succeeds, which is what makes a restore itself
+   * undoable: going back to this point puts the overwritten state back.
+   */
+  safety?: boolean
 }
 
 /** Mirrors the Rust `RewindPlan`. */
 export type RewindPlan =
-  | { kind: 'restore'; sha: string }
+  | {
+      kind: 'restore'
+      sha: string
+      /**
+       * Every path the restore would change. Absent from a backend that
+       * predates it, in which case the scope cannot be listed.
+       */
+      files?: string[]
+      /** Paths that differ from the state the tree was last known to be in. */
+      changedSinceLatest?: string[]
+    }
   | { kind: 'patch'; diff: string }
+
+type CaptureInput = {
+  sessionId: string
+  root: string
+  label: string
+  changed: string[]
+  destination: CheckpointDestination
+  access: string
+}
+
+type CaptureResult =
+  | { ok: true; entry: CheckpointEntry }
+  | { ok: false; reason: string }
 
 type CheckpointsState = {
   /** By session id, oldest first. */
   bySession: Record<string, CheckpointEntry[]>
+  /**
+   * The point each session's tree was last known to match, by session id.
+   *
+   * The newest capture, or the target of the last restore. Distinct from the
+   * newest entry: after a restore the newest entry is the safety point, whose
+   * state is exactly what the restore replaced — comparing the tree with it
+   * would report the restore itself as someone else's edits.
+   */
+  head: Record<string, string>
 
-  capture: (input: {
+  capture: (input: CaptureInput) => Promise<CheckpointEntry | null>
+  /**
+   * Record the tree as it stands, right before a restore.
+   *
+   * Unlike `capture`, a failure is returned with its reason: a restore must
+   * not go ahead without it, and the person asking needs to know why.
+   */
+  captureSafety: (input: {
     sessionId: string
     root: string
     label: string
-    changed: string[]
-    destination: CheckpointDestination
     access: string
-  }) => Promise<CheckpointEntry | null>
+  }) => Promise<CaptureResult>
   /** What rewinding to this point would do. Nothing is changed. */
   plan: (
     sessionId: string,
@@ -89,12 +133,20 @@ type CheckpointsState = {
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
 const messageOf = errorText
 
+const wire = (point: Checkpoint) => ({
+  sha: point.sha,
+  label: point.label,
+  destination: point.destination,
+  root: point.root,
+})
+
 export const useCoworkCheckpoints = create<CheckpointsState>()(
   persist(
-    (set, get) => ({
-      bySession: {},
-
-      capture: async (input) => {
+    (set, get) => {
+      const take = async (
+        input: CaptureInput,
+        extra: Partial<CheckpointEntry> = {}
+      ): Promise<CaptureResult> => {
         const chain = get().bySession[input.sessionId] ?? []
         // Chained to the previous point in the same tree, so the history reads
         // as one line of work rather than a set of unrelated snapshots.
@@ -114,110 +166,152 @@ export const useCoworkCheckpoints = create<CheckpointsState>()(
             ...made,
             at: Date.now(),
             access: input.access,
+            ...extra,
           }
           set((s) => ({
             bySession: {
               ...s.bySession,
-              [input.sessionId]: [...chain, entry],
+              [input.sessionId]: [...(s.bySession[input.sessionId] ?? []), entry],
             },
+            head: { ...s.head, [input.sessionId]: entry.sha },
           }))
-          return entry
-        } catch {
+          return { ok: true, entry }
+        } catch (e) {
+          return { ok: false, reason: messageOf(e) }
+        }
+      }
+
+      return {
+        bySession: {},
+        head: {},
+
+        capture: async (input) => {
+          const taken = await take(input)
           // A checkpoint that could not be taken is not a run that should
           // stop: the run is what the user asked for, and the absence of a way
           // back is reported by the list being empty rather than by a failure
           // here.
-          return null
-        }
-      },
+          return taken.ok ? taken.entry : null
+        },
 
-      plan: async (sessionId, sha) => {
-        const chain = get().bySession[sessionId] ?? []
-        const target = chain.find((one) => one.sha === sha)
-        if (!target) return { ok: false, reason: 'that point is not recorded' }
-        const latest = chain[chain.length - 1]?.sha ?? sha
-        try {
-          return {
-            ok: true,
-            plan: await invoke<RewindPlan>('agent_checkpoint_plan', {
-              checkpoint: {
-                sha: target.sha,
-                label: target.label,
-                destination: target.destination,
-                root: target.root,
-              },
-              latest,
-            }),
-          }
-        } catch (e) {
-          return { ok: false, reason: messageOf(e) }
-        }
-      },
+        captureSafety: (input) =>
+          // Only ever before a restore, and restores only happen where Jan
+          // owns the tree — which is also where the backend records the whole
+          // working tree rather than a list of reported paths.
+          take(
+            { ...input, changed: [], destination: 'managed' },
+            { safety: true }
+          ),
 
-      restore: async (sessionId, sha) => {
-        const chain = get().bySession[sessionId] ?? []
-        const target = chain.find((one) => one.sha === sha)
-        if (!target) return { ok: false, reason: 'that point is not recorded' }
-        const latest = chain[chain.length - 1]?.sha ?? sha
-        try {
-          await invoke('agent_checkpoint_restore', {
-            checkpoint: {
-              sha: target.sha,
-              label: target.label,
-              destination: target.destination,
-              root: target.root,
-            },
-            latest,
-          })
-        } catch (e) {
-          return { ok: false, reason: messageOf(e) }
-        }
-        // Everything after the restored point describes a tree that no longer
-        // exists. Keeping those entries would offer a way "forward" that
-        // resolves against nothing.
-        const at = chain.findIndex((one) => one.sha === sha)
-        set((s) => ({
-          bySession: {
-            ...s.bySession,
-            [sessionId]: chain.slice(0, at + 1),
-          },
-        }))
-        return { ok: true }
-      },
-
-      usable: (sessionId, tree) => {
-        if (!tree) return []
-        return [...(get().bySession[sessionId] ?? [])]
-          .filter((one) => one.root === tree)
-          .reverse()
-      },
-
-      forget: async (sessionId) => {
-        const chain = get().bySession[sessionId] ?? []
-        const roots = [...new Set(chain.map((one) => one.root))]
-        for (const root of roots) {
+        plan: async (sessionId, sha) => {
+          const chain = get().bySession[sessionId] ?? []
+          const target = chain.find((one) => one.sha === sha)
+          if (!target) return { ok: false, reason: 'that point is not recorded' }
+          // Compared with the state the tree was last known to be in, so
+          // edits after it — and only those — are reported as newer.
+          const known = get().head[sessionId]
+          const latest =
+            (known && chain.some((one) => one.sha === known) ? known : null) ??
+            chain[chain.length - 1]?.sha ??
+            sha
           try {
-            await invoke('agent_checkpoint_forget', {
-              root,
-              threadId: sessionId,
-            })
-          } catch {
-            // Git's own bookkeeping is best-effort here; what matters is that
-            // this session stops offering points it will not honour.
+            return {
+              ok: true,
+              plan: await invoke<RewindPlan>('agent_checkpoint_plan', {
+                checkpoint: wire(target),
+                latest,
+              }),
+            }
+          } catch (e) {
+            return { ok: false, reason: messageOf(e) }
           }
-        }
-        set((s) => {
-          const next = { ...s.bySession }
-          delete next[sessionId]
-          return { bySession: next }
-        })
-      },
-    }),
+        },
+
+        restore: async (sessionId, sha) => {
+          const chain = get().bySession[sessionId] ?? []
+          const target = chain.find((one) => one.sha === sha)
+          if (!target) return { ok: false, reason: 'that point is not recorded' }
+          // The newest point, not the known head: the backend removes files
+          // added between the target and this, and a safety point taken just
+          // now is what holds every file currently on disk.
+          const newest = chain[chain.length - 1]
+          const latest = newest?.sha ?? sha
+          // The safety point taken for this restore, named as such. The backend
+          // refuses to restore unless the tree on disk is exactly what that
+          // point holds, so an edit made between the capture and the restore —
+          // or a restore attempted without any capture — is refused rather than
+          // silently overwritten. Without it the backend applies the same check
+          // against `latest`.
+          const safety =
+            newest && newest.safety && newest.sha !== sha ? newest.sha : null
+          try {
+            await invoke('agent_checkpoint_restore', {
+              checkpoint: wire(target),
+              latest,
+              safety,
+            })
+          } catch (e) {
+            return { ok: false, reason: messageOf(e) }
+          }
+          // Everything after the restored point describes a tree that no longer
+          // exists, so it is dropped — except a safety point taken for this
+          // restore, which is the way back from it.
+          const at = chain.findIndex((one) => one.sha === sha)
+          const kept = chain.slice(0, at + 1)
+          if (newest && newest.safety && newest.sha !== sha) kept.push(newest)
+          set((s) => ({
+            bySession: { ...s.bySession, [sessionId]: kept },
+            head: { ...s.head, [sessionId]: sha },
+          }))
+          return { ok: true }
+        },
+
+        usable: (sessionId, tree) => {
+          if (!tree) return []
+          return [...(get().bySession[sessionId] ?? [])]
+            .filter((one) => one.root === tree)
+            .reverse()
+        },
+
+        forget: async (sessionId) => {
+          const chain = get().bySession[sessionId] ?? []
+          const roots = [...new Set(chain.map((one) => one.root))]
+          for (const root of roots) {
+            try {
+              await invoke('agent_checkpoint_forget', {
+                root,
+                threadId: sessionId,
+              })
+            } catch {
+              // Git's own bookkeeping is best-effort here; what matters is that
+              // this session stops offering points it will not honour.
+            }
+          }
+          set((s) => {
+            const next = { ...s.bySession }
+            delete next[sessionId]
+            const head = { ...s.head }
+            delete head[sessionId]
+            return { bySession: next, head }
+          })
+        },
+      }
+    },
     {
       name: localStorageKey.coworkCheckpoints,
       storage: createJSONStorage(() => backendStorage),
       skipHydration: true,
       version: 1,
+      // A chain persisted before `head` existed hydrates without it.
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<CheckpointsState>
+        return {
+          ...current,
+          ...saved,
+          bySession: saved.bySession ?? current.bySession,
+          head: saved.head ?? {},
+        }
+      },
     }
   )
 )

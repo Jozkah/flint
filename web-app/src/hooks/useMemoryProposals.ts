@@ -18,6 +18,7 @@ import {
   type PendingProposal,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { memoryLocation } from '@/lib/memoryBinding'
 
 /**
  * @param sessionId Show only the proposals raised in this chat. Omit to show
@@ -27,9 +28,19 @@ import { getServiceHub } from '@/hooks/useServiceHub'
  */
 export function useMemoryProposals({
   sessionId,
+  janProjectId,
+  projectRoot,
   enabled = true,
 }: {
   sessionId?: string
+  /**
+   * The Jan project the chat (or the Settings page's project picker) is in, so
+   * project-scoped proposals are listed and can be answered. Without it the
+   * backend has no project and refuses project scope.
+   */
+  janProjectId?: string
+  /** A project folder, for a surface bound to one. Wins over `janProjectId`. */
+  projectRoot?: string
   enabled?: boolean
 } = {}) {
   // `null` until fetched, so "not loaded yet" is distinguishable from "loaded
@@ -53,16 +64,18 @@ export function useMemoryProposals({
     }
   }, [])
 
+  // Named by the caller. This used to read `window.core.api.projectRoot`,
+  // which nothing defines, so no project was ever in scope here.
   const location: MemoryLocation | null = useMemo(
     () =>
       dataFolder == null
         ? null
-        : {
+        : memoryLocation(
             dataFolder,
-            projectRoot: window.core?.api?.projectRoot ?? undefined,
-            sessionId: sessionId ?? window.core?.api?.activeSessionId ?? undefined,
-          },
-    [dataFolder, sessionId]
+            { projectRoot, janProjectId },
+            sessionId ?? window.core?.api?.activeSessionId ?? undefined
+          ),
+    [dataFolder, sessionId, janProjectId, projectRoot]
   )
 
   const reload = useCallback(async () => {

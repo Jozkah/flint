@@ -35,10 +35,27 @@ The reply is chosen by ``--script``:
 ``length``
     Streams the reply and stops with ``finish_reason: "length"``, the way a
     server does when the output cap cuts a turn short.
+``reasoning``
+    Streams ``reasoning_content`` deltas and then the answer, the way a
+    provider that exposes reasoning as its own field does.
+``overflow``
+    Rejects the first chat request with a context-length error, then answers
+    normally -- so the run has to compact its history and retry, the way a
+    real overflow makes it.
 
 Every chat request body is kept (the last 20) and served back on
 ``GET /__requests``, so a scenario can assert what the app actually sent --
 the system prompt, the tool results -- rather than what the UI shows.
+
+Upstream pass-through
+---------------------
+Setting ``upstream`` (and ``upstream_model``) over ``/__control`` turns the
+chat endpoint into a transparent relay to a real OpenAI-compatible server: the
+request goes out with only its ``model`` renamed, and the reply comes back
+byte for byte. Nothing in the reply is synthesised. Each relayed exchange's
+final ``usage`` and ``timings`` are recorded, keyed by the last user message,
+and ``GET /__usage`` returns them -- so a scenario can compare what the app
+shows against what the provider actually reported for that exact request.
 """
 
 from __future__ import annotations
@@ -48,11 +65,39 @@ import json
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ARGS = argparse.Namespace()
 REQUESTS: list = []
 REQUESTS_LOCK = threading.Lock()
+# How many chat requests were seen in all, since the log keeps only the last 20.
+REQUEST_TOTAL = [0]
+# What each relayed exchange's provider reported. See "Upstream pass-through".
+RECORDS: list[dict] = []
+RECORDS_LOCK = threading.Lock()
+# Whether the ``overflow`` script has already rejected a request.
+OVERFLOWED = False
+
+
+def last_user_text(body: dict) -> str:
+    for message in reversed(body.get("messages", [])):
+        if message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "".join(
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict) and part.get("type") == "text"
+            )
+    return ""
+# The request headers of each chat completion, names lower-cased, so a
+# scenario can check what actually reached the provider (janhq/jan#8208).
+HEADERS: list = []
 
 
 def sse(payload: dict) -> bytes:
@@ -125,10 +170,87 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _relay(self, body: dict):
+        """Pass one chat request through to the real upstream, unchanged."""
+        if ARGS.upstream_model:
+            body = {**body, "model": ARGS.upstream_model}
+        record = {
+            "marker": last_user_text(body),
+            "stream": bool(body.get("stream")),
+            "usage": None,
+            "timings": None,
+        }
+        request = urllib.request.Request(
+            ARGS.upstream.rstrip("/") + "/chat/completions",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            upstream = urllib.request.urlopen(request, timeout=900)
+        except urllib.error.HTTPError as e:
+            raw = e.read()
+            self.send_response(e.code)
+            self.send_header("Content-Type", e.headers.get("Content-Type", "application/json"))
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(raw)
+            return
+
+        def note(payload: dict):
+            if payload.get("usage"):
+                record["usage"] = payload["usage"]
+            if payload.get("timings"):
+                record["timings"] = payload["timings"]
+
+        if not body.get("stream"):
+            raw = upstream.read()
+            try:
+                note(json.loads(raw))
+            except json.JSONDecodeError:
+                pass
+            with RECORDS_LOCK:
+                RECORDS.append(record)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(raw)
+            return
+
+        self._begin_stream()
+        try:
+            for line in upstream:
+                self.wfile.write(line)
+                self.wfile.flush()
+                text = line.decode("utf-8", "replace").strip()
+                if not text.startswith("data:"):
+                    continue
+                payload = text[5:].strip()
+                if not payload or payload == "[DONE]":
+                    continue
+                try:
+                    note(json.loads(payload))
+                except json.JSONDecodeError:
+                    continue
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            with RECORDS_LOCK:
+                RECORDS.append(record)
+            self.close_connection = True
+
     def do_GET(self):  # noqa: N802
         if self.path.rstrip("/").endswith("/__requests"):
             with REQUESTS_LOCK:
-                return self._json(200, {"requests": list(REQUESTS)})
+                return self._json(200, {"requests": list(REQUESTS), "total": REQUEST_TOTAL[0]})
+        if self.path.rstrip("/").endswith("/__usage"):
+            with RECORDS_LOCK:
+                return self._json(200, {"records": list(RECORDS)})
+        if self.path.rstrip("/").endswith("/__headers"):
+            with REQUESTS_LOCK:
+                return self._json(200, {"headers": list(HEADERS)})
         if ARGS.script == "proxy-403":
             return self._forbidden()
         if not self.path.rstrip("/").endswith("/models"):
@@ -155,10 +277,23 @@ class Handler(BaseHTTPRequestHandler):
                 control = json.loads(self.rfile.read(length) or b"{}")
             except json.JSONDecodeError:
                 return self._json(400, {"error": "invalid JSON"})
-            for field in ("script", "tools", "reply", "summary", "delay", "routes"):
+            for field in (
+                "script",
+                "tools",
+                "reply",
+                "summary",
+                "delay",
+                "routes",
+                "upstream",
+                "upstream_model",
+                "fresh_turns",
+            ):
                 if field in control:
                     setattr(ARGS, field, control[field])
-            return self._json(200, {"script": ARGS.script, "tools": ARGS.tools})
+            return self._json(
+                200,
+                {"script": ARGS.script, "tools": ARGS.tools, "upstream": ARGS.upstream},
+            )
 
         if ARGS.script == "proxy-403":
             return self._forbidden()
@@ -172,13 +307,58 @@ class Handler(BaseHTTPRequestHandler):
 
         with REQUESTS_LOCK:
             REQUESTS.append(body)
+            REQUEST_TOTAL[0] += 1
             del REQUESTS[:-20]
+            HEADERS.append({k.lower(): v for k, v in self.headers.items()})
+            del HEADERS[:-20]
+
+        # A gateway that rejects the request and echoes its headers back in
+        # the error body, as some do: nothing configured as secret may reach
+        # the user or the disk from here (janhq/jan#8208).
+        if ARGS.script == "echo-401":
+            echoed = json.dumps(dict(self.headers.items()))
+            return self._json(401, {"error": {"message": "rejected: " + echoed}})
+
+        if ARGS.upstream:
+            return self._relay(body)
+
+        # One rejection, then business as usual: the first request overflows
+        # the window, and whatever the run sends next (the summarizer call,
+        # then the compacted retry) is answered.
+        if ARGS.script == "overflow":
+            global OVERFLOWED
+            # Only once, and only once the conversation is long enough that
+            # compacting it can actually drop something -- otherwise the run
+            # correctly reports that there was nothing to compact.
+            if not OVERFLOWED and len(body.get("messages", [])) >= ARGS.overflow_after:
+                OVERFLOWED = True
+                return self._json(
+                    400,
+                    {
+                        "error": {
+                            "message": "This model's maximum context length is 8192 tokens",
+                            "code": "context_length_exceeded",
+                        }
+                    },
+                )
 
         # A request whose messages already carry tool results is the follow-up
         # turn: answer in words rather than asking for the tools again.
         carries_results = any(
             m.get("role") == "tool" for m in body.get("messages", [])
         )
+        # `fresh_turns` (opt-in): only results after the latest user message
+        # count, so a resumed conversation's new turn is answered as a new turn
+        # rather than as the follow-up to tool calls from an earlier run.
+        if getattr(ARGS, "fresh_turns", False):
+            messages = body.get("messages", [])
+            last_user = max(
+                (i for i, m in enumerate(messages) if m.get("role") == "user"),
+                default=-1,
+            )
+            carries_results = any(
+                m.get("role") == "tool" for m in messages[last_user + 1 :]
+            )
 
         if not body.get("stream"):
             return self._json(
@@ -244,6 +424,59 @@ class Handler(BaseHTTPRequestHandler):
                         }
                     )
                 )
+
+            # janhq/jan#8864: a first step long enough to type into -- it
+            # streams for a while and then asks for one tool -- so input typed
+            # meanwhile has a boundary to arrive at before the follow-up call.
+            if ARGS.script == "steer" and not carries_results:
+                self.wfile.write(sse(chunk({"role": "assistant", "content": ""})))
+                for _ in range(20):
+                    self.wfile.write(sse(chunk({"content": "working "})))
+                    self.wfile.flush()
+                    time.sleep(ARGS.delay)
+                self.wfile.write(
+                    sse(
+                        chunk(
+                            {
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "id": "call_steer",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "todo",
+                                            "arguments": json.dumps(
+                                                {"op": "init", "list": [{"phase": "Work", "items": ["Steered task"]}]}
+                                            ),
+                                        },
+                                    }
+                                ]
+                            }
+                        )
+                    )
+                )
+                self.wfile.write(sse(chunk({}, finish="tool_calls")))
+                send_usage()
+                self.wfile.write(b"data: [DONE]\n\n")
+                self.wfile.flush()
+                return
+
+            # A provider that supplies reasoning as its own field, the way
+            # DeepSeek-style endpoints do: reasoning first, then the answer,
+            # so a reader can tell which arrived first.
+            if ARGS.script == "reasoning":
+                self.wfile.write(sse(chunk({"role": "assistant", "content": ""})))
+                for part in ("weighing ", "the options"):
+                    self.wfile.write(sse(chunk({"reasoning_content": part})))
+                    self.wfile.flush()
+                for part in ("the answer ", "is 4"):
+                    self.wfile.write(sse(chunk({"content": part})))
+                    self.wfile.flush()
+                self.wfile.write(sse(chunk({}, finish="stop")))
+                send_usage()
+                self.wfile.write(b"data: [DONE]\n\n")
+                self.wfile.flush()
+                return
 
             if ARGS.script == "tools" and not carries_results:
                 self.wfile.write(sse(chunk({"role": "assistant", "content": ""})))
@@ -399,7 +632,26 @@ def main() -> int:
     parser.add_argument(
         "--script",
         default="plain",
-        choices=["plain", "tools", "fail", "slow", "proxy-403", "no-models", "length"],
+        choices=[
+            "plain",
+            "tools",
+            "fail",
+            "slow",
+            "proxy-403",
+            "no-models",
+            "length",
+            "echo-401",
+            "steer",
+            "reasoning",
+            "overflow",
+        ],
+    )
+    parser.add_argument(
+        # How many messages a request must carry before the `overflow` script
+        # rejects it.
+        "--overflow-after",
+        type=int,
+        default=1,
     )
     parser.add_argument(
         "--tools",
@@ -410,6 +662,12 @@ def main() -> int:
     parser.add_argument("--reply", default="Hello from the smoke model.")
     parser.add_argument("--summary", default="Done. I used the tools you allowed.")
     parser.add_argument("--delay", type=float, default=0.4)
+    parser.add_argument(
+        "--upstream",
+        default=None,
+        help="Relay chat requests to this real OpenAI-compatible base URL",
+    )
+    parser.add_argument("--upstream-model", dest="upstream_model", default=None)
     parser.parse_args(namespace=ARGS)
 
     server = ThreadingHTTPServer((ARGS.host, ARGS.port), Handler)

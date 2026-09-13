@@ -1,0 +1,109 @@
+{
+  "status": {
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed",
+    "cancelled": "Cancelled",
+    "partial": "Partly done"
+  },
+  "sections": {
+    "happened": "What happened",
+    "where": "Where the result is",
+    "checked": "What was checked",
+    "unresolved": "Unresolved",
+    "next": "Next steps"
+  },
+  "headline": {
+    "running": "The run is still going.",
+    "completedWithChanges": "The run finished and Jan changed files.",
+    "completedNoChanges": "The run finished without Jan changing any files.",
+    "completedChecksFailed": "The run finished, but a check Jan ran did not pass.",
+    "partial": "The run stopped before finishing. Some work was done first.",
+    "failed": "The run stopped before finishing, and nothing was completed.",
+    "cancelled": "The run was stopped before anything was completed."
+  },
+  "kept": "These changes were kept. Stopping a run does not undo what it already did.",
+  "location": {
+    "sandbox": "In this session's sandbox, not in your repository.",
+    "worktree": "In a separate worktree Jan manages, not in your checkout.",
+    "userCheckout": "Directly in your attached folder.",
+    "none": "No working tree was attached to this run.",
+    "noFiles": "Jan did not write any files.",
+    "open": "Open {{path}}"
+  },
+  "checks": {
+    "none": "No tests or checks were run by Jan.",
+    "noneVerified": "No test or check run by Jan produced a result.",
+    "kind": {
+      "test": "Test",
+      "build": "Build",
+      "lint": "Check",
+      "command": "Command"
+    },
+    "outcome": {
+      "passed": "Passed",
+      "failed": "Failed",
+      "notRun": "Not run",
+      "unknown": "Result unknown"
+    },
+    "exit": "exit {{code}}",
+    "passNotProof": "A passing check means the command reported success. It does not prove the task is correct or that everything relevant was checked.",
+    "otherCommands": "{{count}} other command(s) also ran. They are not counted as checks.",
+    "completion": {
+      "not-started": "not started",
+      "running": "still running",
+      "completed": "ran to completion",
+      "cancelled": "cancelled",
+      "timed-out": "timed out",
+      "interrupted": "interrupted"
+    },
+    "limitation": {
+      "exit-status-only": "Judged only by its exit status.",
+      "compound-command": "Several commands were chained; the status covers the chain, not each step.",
+      "output-truncated": "Output was cut off, so later failures may not be visible.",
+      "background": "Started in the background; the status may not be the job's.",
+      "subset-selected": "Only part of the test suite was selected.",
+      "no-exit-status": "No exit status was recorded."
+    },
+    "observedNote": "Observed by Jan from the command's own exit status.",
+    "claimsTitle": "Mentioned by the assistant, not verified by Jan:"
+  },
+  "unresolved": {
+    "stop": {
+      "error": "The run ended with an error.",
+      "aborted": "The run was stopped.",
+      "deadline": "The run reached its time limit.",
+      "timeout": "The model stopped responding in time.",
+      "loop": "The run was stopped for repeating itself.",
+      "steps": "The run used all of its steps.",
+      "tokens": "The run reached its token budget."
+    },
+    "refused": "Not allowed: {{tool}} {{target}}",
+    "cancelled": "Cancelled: {{tool}} {{target}}",
+    "failed": "Failed: {{tool}} {{target}}",
+    "interrupted": "Did not finish: {{tool}} {{target}}",
+    "checkFailed": "Did not pass: {{command}}"
+  },
+  "actions": {
+    "openResult": "Open result",
+    "reviewChanges": "Review changes",
+    "continue": "Continue",
+    "retry": "Try again",
+    "retryNote": "Try again sends the last request again. It does not undo changes the run already made.",
+    "restore": "Go back to an earlier point"
+  },
+  "rewind": {
+    "scopeTitle": "What this restore changes",
+    "scopeTree": "Worktree: {{tree}}",
+    "filesHeading": "Files that will be put back ({{count}})",
+    "noFiles": "No files differ from this point.",
+    "filesUnknown": "Jan could not list which files will change.",
+    "safetyNote": "Before restoring, Jan saves the current state as a new point, so this restore can be undone.",
+    "boundaries": "Restoring files does not undo messages, remote pushes, published content, installed packages, or other effects outside this worktree. Commands that already ran are not reversed.",
+    "unrelatedTitle": "These files changed after the latest point and were not written by Jan. Restoring will overwrite them:",
+    "unrelatedConfirm": "I understand these edits will be overwritten. They stay available in the saved point.",
+    "safetyLabel": "Before restore {{time}}",
+    "safetyFailed": "The current state could not be saved first, so nothing was restored: {{reason}}",
+    "restored": "Restored. The state before it was saved as \"{{label}}\"."
+  }
+}

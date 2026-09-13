@@ -52,10 +52,40 @@ export type PromptSnapshotRef = {
  * timeline; unset outside that.
  */
 type SnapshotSink = (session: string, ref: PromptSnapshotRef) => void
-let snapshotSink: SnapshotSink | null = null
+const snapshotSinks = new Set<SnapshotSink>()
 
+/**
+ * Hear about every snapshot this process takes, until the returned function is
+ * called.
+ *
+ * More than one listener, because more than one surface needs the same fact:
+ * Cowork stamps it onto the turn it is drawing, Chat records the dispatch it
+ * belongs to and the memory that went out in it. A single slot meant whichever
+ * route mounted last silently took the reference away from the other.
+ */
+export function addSnapshotSink(sink: SnapshotSink): () => void {
+  snapshotSinks.add(sink)
+  return () => {
+    snapshotSinks.delete(sink)
+  }
+}
+
+/** Replace every listener with this one, or clear them. Tests and the legacy
+ * single-listener call site. */
 export function setSnapshotSink(sink: SnapshotSink | null): void {
-  snapshotSink = sink
+  snapshotSinks.clear()
+  if (sink) snapshotSinks.add(sink)
+}
+
+/** Tell every listener, and let one that throws not stop the others. */
+function announceSnapshot(session: string, ref: PromptSnapshotRef): void {
+  for (const sink of [...snapshotSinks]) {
+    try {
+      sink(session, ref)
+    } catch (e) {
+      console.warn('prompt snapshot: a listener threw', e)
+    }
+  }
 }
 
 /**
@@ -70,6 +100,44 @@ const responseSnapshots = new WeakMap<Response, PromptSnapshotRef>()
 /** The snapshot the transport took of the request that produced `response`. */
 export function snapshotOf(response: Response): PromptSnapshotRef | undefined {
   return responseSnapshots.get(response)
+}
+
+/**
+ * The lifecycle of one model dispatch, as the transport sees it.
+ *
+ * Separate from the single snapshot sink above, which Cowork owns and replaces
+ * on mount: several surfaces follow dispatches at once, and one registering
+ * must not unhook another. Only dispatches that carry a session are reported.
+ */
+export type DispatchEvent =
+  | { phase: 'sent'; session: string; run?: string; invocation?: string }
+  | {
+      phase: 'response-started'
+      session: string
+      run?: string
+      /** `null` when the transport captured no snapshot for this request. */
+      snapshot: PromptSnapshotRef | null
+    }
+  | { phase: 'failed'; session: string; run?: string }
+
+type DispatchListener = (event: DispatchEvent) => void
+const dispatchListeners = new Set<DispatchListener>()
+
+export function addDispatchListener(listener: DispatchListener): () => void {
+  dispatchListeners.add(listener)
+  return () => {
+    dispatchListeners.delete(listener)
+  }
+}
+
+function emitDispatch(event: DispatchEvent): void {
+  for (const listener of dispatchListeners) {
+    try {
+      listener(event)
+    } catch {
+      // A listener is an observer; it must never break the request.
+    }
+  }
 }
 
 /** Header names carrying the dispatch identity. Consumed here, never sent. */
@@ -211,6 +279,13 @@ export const providerFetch: typeof globalThis.fetch = async (
     ...(invocationId ? { invocationId } : {}),
   }
 
+  const session = identity.session
+  const run = identity.run
+  if (session) emitDispatch({ phase: 'sent', session, run, invocation: invocationId })
+  const failedBeforeResponse = () => {
+    if (session) emitDispatch({ phase: 'failed', session, run })
+  }
+
   const signal = init?.signal ?? request?.signal
   let stopped = false
   const stop = () => {
@@ -245,6 +320,7 @@ export const providerFetch: typeof globalThis.fetch = async (
       if (signal.aborted) {
         settled = true
         stop()
+        failedBeforeResponse()
         reject(new DOMException('The request was aborted.', 'AbortError'))
         return
       }
@@ -255,6 +331,7 @@ export const providerFetch: typeof globalThis.fetch = async (
           const error = new DOMException('The request was aborted.', 'AbortError')
           if (!settled) {
             settled = true
+            failedBeforeResponse()
             reject(error)
           } else {
             failure = error
@@ -276,7 +353,15 @@ export const providerFetch: typeof globalThis.fetch = async (
             identity.session &&
             identity.agent !== REPLAY_AGENT
           ) {
-            snapshotSink?.(identity.session, chunk.snapshot)
+            announceSnapshot(identity.session, chunk.snapshot)
+          }
+          if (session) {
+            emitDispatch({
+              phase: 'response-started',
+              session,
+              run,
+              snapshot: chunk.snapshot ?? null,
+            })
           }
           const body = new ReadableStream<Uint8Array>({
             start(c) {
@@ -315,6 +400,7 @@ export const providerFetch: typeof globalThis.fetch = async (
           const error = new Error(chunk.message)
           if (!settled) {
             settled = true
+            failedBeforeResponse()
             reject(error)
           } else {
             failure = error
@@ -333,6 +419,7 @@ export const providerFetch: typeof globalThis.fetch = async (
             : new Error(typeof e === 'string' ? e : String(e))
         if (!settled) {
           settled = true
+          failedBeforeResponse()
           reject(error)
         } else {
           failure = error

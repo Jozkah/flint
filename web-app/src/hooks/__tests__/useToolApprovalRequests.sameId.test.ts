@@ -20,9 +20,9 @@ describe('approval requests that share a call id', () => {
 
   it('shows each in turn, and every one of them gets an answer', async () => {
     const store = useToolApprovalRequests.getState()
-    const first = store.requestApproval('call_0', 'write', 's1', undefined, 'first diff')
-    const second = store.requestApproval('call_0', 'write', 's1', undefined, 'second diff')
-    const third = store.requestApproval('call_0', 'edit', 's1', undefined, 'third diff')
+    const first = store.requestApproval('call_0', 'write', 's1', undefined, { preview: 'first diff' })
+    const second = store.requestApproval('call_0', 'write', 's1', undefined, { preview: 'second diff' })
+    const third = store.requestApproval('call_0', 'edit', 's1', undefined, { preview: 'third diff' })
 
     expect(useToolApprovalRequests.getState().pending.call_0.preview).toBe('first diff')
     useToolApprovalRequests.getState().resolveApproval('call_0', 'allow-once')
@@ -44,8 +44,8 @@ describe('approval requests that share a call id', () => {
   // request is gone and the next one is shown under the same call id.
   it('an answer names its request, so a repeated answer cannot reach the next one', async () => {
     const store = useToolApprovalRequests.getState()
-    const first = store.requestApproval('call_0', 'write', 's1', undefined, 'first diff')
-    const second = store.requestApproval('call_0', 'write', 's1', undefined, 'second diff')
+    const first = store.requestApproval('call_0', 'write', 's1', undefined, { preview: 'first diff' })
+    const second = store.requestApproval('call_0', 'write', 's1', undefined, { preview: 'second diff' })
     const firstId = useToolApprovalRequests.getState().pending.call_0.requestId
 
     useToolApprovalRequests.getState().resolveApproval('call_0', 'allow-once', firstId)
@@ -65,8 +65,8 @@ describe('approval requests that share a call id', () => {
 
   it('a request still queued can be answered by its id, and the one shown stays', async () => {
     const store = useToolApprovalRequests.getState()
-    const shown = store.requestApproval('call_0', 'write', 's2', undefined, 'other session')
-    const waiting = store.requestApproval('call_0', 'write', 's1', undefined, 'mine', 'worker')
+    const shown = store.requestApproval('call_0', 'write', 's2', undefined, { preview: 'other session' })
+    const waiting = store.requestApproval('call_0', 'write', 's1', undefined, { preview: 'mine', origin: 'worker' })
     const queuedId = useToolApprovalRequests.getState().queued.call_0[0].requestId
 
     useToolApprovalRequests.getState().resolveApproval('call_0', 'allow-once', queuedId)

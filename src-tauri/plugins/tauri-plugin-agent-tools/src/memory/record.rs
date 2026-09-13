@@ -170,6 +170,81 @@ pub struct Provenance {
     /// Sessions that have used this memory, for "which chats used it".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub used_by_sessions: Vec<String>,
+    /// The run that created it, when one did. `None` for a memory written on
+    /// the settings page and for records saved before this was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    /// The project the creator was in, whatever scope the memory has. A user
+    /// memory saved while working in a project keeps that fact here, though it
+    /// applies everywhere.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_project_id: Option<String>,
+    /// The most recent dispatches that carried this memory, newest last.
+    /// Bounded: this is "where was it used", not an audit log.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub uses: Vec<MemoryUse>,
+    /// Where an imported memory came from: the export it arrived in and its
+    /// provenance there. `None` for anything not imported (AH-083).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported_from: Option<ImportedFrom>,
+}
+
+/// An imported memory's origin, as its export described it. Kept verbatim so
+/// "why does Jan remember this?" can say "imported from export X, where it was
+/// written by the user in session Y", and never mistaken for this machine's
+/// own provenance.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ImportedFrom {
+    pub export_id: String,
+    /// Unix seconds the export was made.
+    pub exported_at: i64,
+    /// The scope it was exported from (`chat`, `project`, `user`).
+    pub exported_scope: String,
+    /// Its id in the export's own store.
+    pub original_id: String,
+    /// `user-authored`, `agent-authored`, `extracted`, `imported`, `system`.
+    pub original_source_type: String,
+    pub original_created_at: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_version: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_project_id: Option<String>,
+}
+
+/// How many uses a record keeps. Older ones fall off; the count keeps going.
+pub const MAX_USES: usize = 20;
+
+/// One dispatch that carried a memory.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryUse {
+    pub session_id: String,
+    /// The turn or message it went out with, when the caller knows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+    /// The prompt snapshot of that dispatch (AH-078), when one was taken.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snapshot_id: Option<String>,
+    /// Why retrieval chose it, e.g. "applies to this chat" or a precedence
+    /// reason when it displaced another record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// Unix seconds.
+    pub at: i64,
+}
+
+/// One earlier state of a memory's text. The text itself is not kept: a
+/// revision is evidence that it changed and when, and keeping old words would
+/// undo what forgetting and editing a secret out are for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Revision {
+    pub version: u32,
+    pub content_hash: String,
+    /// Unix seconds when this revision was replaced.
+    pub replaced_at: i64,
 }
 
 /// One remembered thing.
@@ -224,6 +299,58 @@ pub struct MemoryRecord {
     /// True when the redactor changed the content on the way in.
     #[serde(default)]
     pub redacted: bool,
+    /// 1 when created, +1 on every edit. `None` for a record saved before
+    /// versions were kept: unknown, not assumed to be 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<u32>,
+    /// Earlier versions, oldest first, as hashes and times only.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub history: Vec<Revision>,
+}
+
+impl MemoryRecord {
+    /// Replace the text, recording the version it replaces.
+    ///
+    /// A record with no known version (saved before versions existed) starts
+    /// its history at the edit: the replaced state is recorded as version 0,
+    /// meaning "whatever it was before versions were kept", and the edit
+    /// becomes version 1 -- honest about what is not known rather than
+    /// inventing a count.
+    pub fn revise(&mut self, content: String, now: i64) {
+        let previous = self.version.unwrap_or(0);
+        self.history.push(Revision {
+            version: previous,
+            content_hash: self.content_hash.clone(),
+            replaced_at: now,
+        });
+        self.content_hash = content_hash(&content);
+        self.content = content;
+        self.version = Some(previous + 1);
+        self.updated_at = now;
+    }
+
+    /// Record that a dispatch carried this memory.
+    pub fn record_use(&mut self, used: MemoryUse) {
+        self.use_count = self.use_count.saturating_add(1);
+        self.last_used_at = Some(used.at);
+        if !self.provenance.used_by_sessions.contains(&used.session_id) {
+            self.provenance.used_by_sessions.push(used.session_id.clone());
+        }
+        self.provenance.uses.push(used);
+        let over = self.provenance.uses.len().saturating_sub(MAX_USES);
+        self.provenance.uses.drain(..over);
+    }
+
+    /// Where the record came from, in the four words the UI and export use.
+    pub fn source_type(&self) -> &'static str {
+        match (&self.creator, &self.origin) {
+            (Creator::Import, _) => "imported",
+            (_, Origin::Inferred) => "extracted",
+            (Creator::Agent, _) => "agent-authored",
+            (Creator::System, _) => "system",
+            (Creator::User, Origin::Explicit) => "user-authored",
+        }
+    }
 }
 
 /// Normalise content so two spellings of the same thing hash alike.
@@ -290,6 +417,8 @@ impl MemoryRecord {
             expires_at: None,
             supersedes: None,
             redacted: false,
+            version: Some(1),
+            history: Vec::new(),
         }
     }
 
@@ -333,8 +462,9 @@ impl MemoryRecord {
 /// rather than merely made.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrecedenceReason {
-    /// Different scopes: the more specific one wins.
-    MoreSpecificScope,
+    /// Different scopes: the one higher in the precedence chain wins
+    /// (user above project above session, AH-084).
+    HigherPrecedenceScope,
     /// Same scope, one is pinned.
     Pinned,
     /// The user said it; the other was inferred or imported.
@@ -351,7 +481,7 @@ pub enum PrecedenceReason {
 impl PrecedenceReason {
     pub fn as_str(&self) -> &'static str {
         match self {
-            PrecedenceReason::MoreSpecificScope => "more specific scope",
+            PrecedenceReason::HigherPrecedenceScope => "higher-precedence scope (user > project > session)",
             PrecedenceReason::Pinned => "pinned",
             PrecedenceReason::MoreTrustedCreator => "saved by the user",
             PrecedenceReason::ExplicitOverInferred => "explicitly saved rather than inferred",
@@ -371,10 +501,11 @@ pub fn prefer<'a>(
     a: &'a MemoryRecord,
     b: &'a MemoryRecord,
 ) -> (&'a MemoryRecord, PrecedenceReason) {
-    // 1. Scope. A session memory beats a project memory beats a user memory.
+    // 1. Scope, in the precedence chain's order (AH-084): user memory above
+    //    project memory above session memory. Lower specificity ranks higher.
     match a.scope.specificity().cmp(&b.scope.specificity()) {
-        std::cmp::Ordering::Greater => return (a, PrecedenceReason::MoreSpecificScope),
-        std::cmp::Ordering::Less => return (b, PrecedenceReason::MoreSpecificScope),
+        std::cmp::Ordering::Less => return (a, PrecedenceReason::HigherPrecedenceScope),
+        std::cmp::Ordering::Greater => return (b, PrecedenceReason::HigherPrecedenceScope),
         std::cmp::Ordering::Equal => {}
     }
 
@@ -436,7 +567,38 @@ const INCOMPATIBLE: &[(&str, &str, &str)] = &[
     ("brief", "verbose", "response length"),
     ("concise", "verbose", "response length"),
     ("tabs", "spaces", "indentation"),
+    ("jest", "vitest", "test runner"),
+    ("jest", "mocha", "test runner"),
+    ("vitest", "mocha", "test runner"),
+    ("rebase", "merge", "branch integration"),
+    ("lf", "crlf", "line endings"),
+    ("black", "ruff", "Python formatter"),
+    ("prettier", "biome", "formatter"),
 ];
+
+/// The subject two texts disagree about, and the word each used, if they do.
+///
+/// Shared by conflicts between memories and by memory checked against the
+/// instructions above it, so both disagree about exactly the same things.
+pub fn incompatible_subject(
+    a: &str,
+    b: &str,
+) -> Option<(&'static str, &'static str, &'static str)> {
+    let (ta, tb) = (a.to_lowercase(), b.to_lowercase());
+    for (left, right, subject) in INCOMPATIBLE {
+        let a_left = mentions(&ta, left) && !mentions(&ta, right);
+        let b_right = mentions(&tb, right) && !mentions(&tb, left);
+        let a_right = mentions(&ta, right) && !mentions(&ta, left);
+        let b_left = mentions(&tb, left) && !mentions(&tb, right);
+        if a_left && b_right {
+            return Some((subject, left, right));
+        }
+        if a_right && b_left {
+            return Some((subject, right, left));
+        }
+    }
+    None
+}
 
 /// Find conflicts among applicable records.
 ///
@@ -453,20 +615,12 @@ pub fn detect_conflicts(records: &[MemoryRecord]) -> Vec<Conflict> {
             if a.scope != b.scope && a.project_id != b.project_id && a.session_id != b.session_id {
                 continue;
             }
-            let (ta, tb) = (a.content.to_lowercase(), b.content.to_lowercase());
-            for (left, right, subject) in INCOMPATIBLE {
-                let a_left = mentions(&ta, left) && !mentions(&ta, right);
-                let b_right = mentions(&tb, right) && !mentions(&tb, left);
-                let a_right = mentions(&ta, right) && !mentions(&ta, left);
-                let b_left = mentions(&tb, left) && !mentions(&tb, right);
-                if (a_left && b_right) || (a_right && b_left) {
-                    out.push(Conflict {
-                        left: a.id.clone(),
-                        right: b.id.clone(),
-                        subject: (*subject).to_string(),
-                    });
-                    break;
-                }
+            if let Some((subject, _, _)) = incompatible_subject(&a.content, &b.content) {
+                out.push(Conflict {
+                    left: a.id.clone(),
+                    right: b.id.clone(),
+                    subject: subject.to_string(),
+                });
             }
         }
     }
@@ -606,26 +760,31 @@ mod tests {
     }
 
     #[test]
-    fn scope_specificity_orders_session_over_project_over_user() {
+    fn scope_precedence_orders_user_over_project_over_session() {
         let session = rec("a", "x", Scope::Session);
         let project = rec("b", "x", Scope::Project);
         let user = rec("c", "x", Scope::User);
         assert_eq!(
             prefer(&session, &project).1,
-            PrecedenceReason::MoreSpecificScope
+            PrecedenceReason::HigherPrecedenceScope
         );
-        assert_eq!(prefer(&session, &project).0.id, session.id);
-        assert_eq!(prefer(&project, &user).0.id, project.id);
-        assert_eq!(prefer(&user, &session).0.id, session.id);
+        assert_eq!(prefer(&session, &project).0.id, project.id);
+        assert_eq!(prefer(&project, &user).0.id, user.id);
+        assert_eq!(prefer(&user, &session).0.id, user.id);
     }
 
     #[test]
     fn pinning_ranks_within_a_scope_and_does_not_widen_reach() {
-        let mut pinned_user = rec("a", "x", Scope::User);
-        pinned_user.pinned = true;
+        let mut pinned_session = rec("a", "x", Scope::Session);
+        pinned_session.pinned = true;
         let project = rec("b", "x", Scope::Project);
-        // Pinning does not lift a user memory above a project one.
-        assert_eq!(prefer(&pinned_user, &project).0.id, project.id);
+        // Pinning does not lift a session memory above a project one.
+        assert_eq!(prefer(&pinned_session, &project).0.id, project.id);
+        let pinned_user = {
+            let mut u = rec("d", "x", Scope::User);
+            u.pinned = true;
+            u
+        };
 
         let plain_user = rec("c", "x", Scope::User);
         assert_eq!(prefer(&pinned_user, &plain_user).0.id, pinned_user.id);
@@ -696,7 +855,7 @@ mod tests {
 
         assert_eq!(forward, reversed);
         assert_eq!(forward, swapped);
-        assert_eq!(forward, MemoryId::new("c"), "session memory should win");
+        assert_eq!(forward, MemoryId::new("a"), "user memory should win (AH-084 chain)");
     }
 
     /// `prefer` must be symmetric, or a fold over a set could produce different
@@ -759,7 +918,7 @@ mod tests {
 
         let kept = deduplicate(vec![user, project]);
         assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].id, MemoryId::new("b"), "kept the broader record");
+        assert_eq!(kept[0].id, MemoryId::new("a"), "kept the higher-precedence (user) record");
     }
 
     #[test]

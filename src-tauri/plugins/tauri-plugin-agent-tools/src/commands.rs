@@ -63,6 +63,12 @@ impl From<String> for AgentToolsError {
 }
 
 /// Outcome of a built-in tool execution.
+///
+/// `error` is the failure's classification (AH-009) when there was one: the
+/// kind, the stage, whether another attempt could help and who it is for. The
+/// surfaces read that rather than the words, so Chat, Cowork, the Timeline and
+/// the CLI cannot disagree about whether a call was refused, timed out or
+/// failed.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolResult {
@@ -70,6 +76,13 @@ pub struct ToolResult {
     /// Display-only diff for `write`/`edit`; never part of model context.
     pub diff: Option<String>,
     pub is_error: bool,
+    /// The classified failure, when this is one. Versioned and scrubbed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<serde_json::Value>,
+    /// What the command this call ran used, or why that was not measured
+    /// (AH-174). Present only for a call that ran a command under a run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resources: Option<crate::resources::Resources>,
 }
 
 /// The permanent store root holding `memory/` and `skills/`.
@@ -554,6 +567,12 @@ pub async fn execute_tool(
     scope: Option<WorkspaceScope>,
     call_id: Option<String>,
     undo_run: Option<String>,
+    // Who is making this call (AH-110): the subject spelling of the agent
+    // (`agent`, `agent:<name>`, `role:<name>`) plus a display label and, for a
+    // subagent, its parent. Journaled with every file the call changes, so a
+    // change can always name the agent that made it. `None` records the change
+    // without an actor, which reads as unknown rather than as anyone.
+    actor: Option<ActorInput>,
 ) -> Result<ToolResult, AgentToolsError> {
     execute_tool_inner(
         data_folder,
@@ -568,6 +587,7 @@ pub async fn execute_tool(
         scope,
         call_id,
         undo_run,
+        actor,
         None,
     )
     .await
@@ -593,6 +613,12 @@ pub async fn execute_tool_streaming(
     scope: Option<WorkspaceScope>,
     call_id: Option<String>,
     undo_run: Option<String>,
+    // Who is making this call (AH-110): the subject spelling of the agent
+    // (`agent`, `agent:<name>`, `role:<name>`) plus a display label and, for a
+    // subagent, its parent. Journaled with every file the call changes, so a
+    // change can always name the agent that made it. `None` records the change
+    // without an actor, which reads as unknown rather than as anyone.
+    actor: Option<ActorInput>,
     on_output: tauri::ipc::Channel<ToolOutputChunk>,
 ) -> Result<ToolResult, AgentToolsError> {
     let sink = output_sink(on_output, call_id.clone());
@@ -609,6 +635,7 @@ pub async fn execute_tool_streaming(
         scope,
         call_id,
         undo_run,
+        actor,
         Some(sink),
     )
     .await
@@ -636,8 +663,29 @@ async fn execute_tool_inner(
     // The run this call belongs to. Given, the files a `write` or `edit`
     // changes are journaled against it so the turn can be undone (AH-202).
     undo_run: Option<String>,
+    // Who is making this call (AH-110): the subject spelling of the agent
+    // (`agent`, `agent:<name>`, `role:<name>`) plus a display label and, for a
+    // subagent, its parent. Journaled with every file the call changes, so a
+    // change can always name the agent that made it. `None` records the change
+    // without an actor, which reads as unknown rather than as anyone.
+    actor: Option<ActorInput>,
     sink: Option<crate::tools::OutputSink>,
 ) -> Result<ToolResult, AgentToolsError> {
+    // Refused before the tool runs, not after it has changed a file: a call
+    // that cannot say who it is acting for must not leave a change that will
+    // later be attributed to someone.
+    let actor = actor
+        .map(|a| {
+            crate::undo::Actor::new(
+                &a.id,
+                a.label.as_deref().unwrap_or_default(),
+                a.parent.as_deref(),
+                a.invocation.as_deref(),
+                a.task.as_deref(),
+            )
+        })
+        .transpose()
+        .map_err(|e| AgentToolsError::from(e.message()))?;
     // Created here rather than trusted to exist: `escapes_project` canonicalizes
     // the sandbox root and treats a missing one as an escape, so every tool call
     // would be refused if the thread's first tool call arrived before any UI
@@ -815,15 +863,33 @@ async fn execute_tool_inner(
     }
 
     let enabled = enabled_skills.unwrap_or_default();
+    // The attached folder is the project, for skills as for policy: its own
+    // skills and its enabled plugins' skills are offered to the skill tools,
+    // with `[skills].enabled` and `[plugins].disabled` read from its agent.toml
+    // here rather than trusted from the renderer. Only when no explicit
+    // `project` store was named, which would already be that project's store.
+    let skill_project: Option<PathBuf> = match project.as_deref().map(str::trim) {
+        Some(p) if !p.is_empty() => None,
+        _ => read_roots.first().map(|r| workspace::project_store(r)),
+    };
     let mut ctx = ToolContext::new(&root, &store, &enabled)
         .with_network(allow_network.unwrap_or(false))
         .with_confined_writes(true)
         .with_mask_root(Path::new(&data_folder))
         .with_scratch_root(&scratch)
         .with_read_roots(&read_roots)
-        .with_write_roots(&write_roots);
+        .with_write_roots(&write_roots)
+        // The thread is the conversation: its background commands are its own.
+        .with_job_owner(&thread_id)
+        // ... and survive the app that started them, as a record (AH-101).
+        .with_job_record_to(Path::new(&data_folder))
+        .with_skill_project(skill_project.as_deref());
     if let Some(id) = call_id.as_deref() {
         ctx = ctx.with_call_id(id);
+    }
+    // AH-174: the run a command's CPU and memory are kept against.
+    if let Some(run) = undo_run.as_deref() {
+        ctx = ctx.with_measured_run(run);
     }
     if let Some(sink) = sink {
         ctx = ctx.with_output_sink(sink);
@@ -843,8 +909,19 @@ async fn execute_tool_inner(
         _ => None,
     };
     let (content, diff, _images) = handlers::execute_builtin_with_diff(tool, &args, &ctx).await;
-    let is_error =
-        content.starts_with("ERROR") || (name == "bash" && handlers::bash_result_failed(&content));
+    // AH-009: what the call was is decided once, by classification. A shell
+    // command that exited non-zero is a tool failure even though it said so in
+    // its own words rather than in the tool protocol's.
+    let failure = crate::harness_error::classify_tool(&name, &content).or_else(|| {
+        (name == "bash" && handlers::bash_result_failed(&content)).then(|| {
+            crate::harness_error::HarnessError::new(
+                crate::harness_error::ErrorKind::ToolFailed,
+                "the command exited with a failure status",
+            )
+            .at(crate::harness_error::Stage::Tool)
+        })
+    });
+    let is_error = failure.is_some();
     if let (Some((run, target, before)), false) = (journaled, is_error) {
         let after = std::fs::read(&target).ok();
         if let Err(e) = crate::undo::record(
@@ -854,17 +931,31 @@ async fn execute_tool_inner(
             &target,
             before.as_deref(),
             after.as_deref(),
+            actor.as_ref(),
         ) {
             // The change stands; only its undo is unavailable, and that is
             // said where someone debugging it will look.
             eprintln!("undo journal: could not record {}: {e}", target.display());
         }
     }
+    let resources = match (undo_run.as_deref(), call_id.as_deref()) {
+        (Some(run), Some(call)) => crate::resources::take_call(run, call),
+        _ => None,
+    };
     Ok(ToolResult {
         content,
         diff,
         is_error,
+        error: failure.as_ref().map(crate::harness_error::HarnessError::to_wire),
+        resources,
     })
+}
+
+/// What the commands a run started used, taken as the run ends (AH-174).
+/// `None` for a run that started no command. Forgotten once taken.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub async fn tool_resources_finish_run(run: String) -> Option<crate::resources::RunResources> {
+    crate::resources::finish_run(&run)
 }
 
 /// One turn's journaled file changes, as the UI lists them. AH-202.
@@ -875,6 +966,45 @@ pub struct UndoTurnSummary {
     pub at: String,
     pub state: crate::undo::TurnState,
     pub paths: Vec<String>,
+    /// Every distinct agent whose change this turn holds (AH-110), in the
+    /// order they first changed something.
+    pub actors: Vec<crate::undo::Actor>,
+    /// One entry per file, so a turn several agents wrote into says which
+    /// agent left which file. `actor` is absent for a record written before
+    /// provenance existed.
+    pub changes: Vec<UndoChangeSummary>,
+}
+
+/// Who a caller says is making a tool call (AH-110).
+///
+/// Deliberately a claim, not a capability: it decides what a change is
+/// attributed to, never what the call may do. The permission gate keeps its
+/// own subject, so a caller cannot widen its authority by naming a different
+/// agent here.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActorInput {
+    /// `agent`, `agent:<name>` or `role:<name>`.
+    pub id: String,
+    /// What to show. Falls back to a description of the id.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// The agent that dispatched this one, in the same spelling.
+    #[serde(default)]
+    pub parent: Option<String>,
+    #[serde(default)]
+    pub invocation: Option<String>,
+    #[serde(default)]
+    pub task: Option<String>,
+}
+
+/// One changed file and who changed it.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UndoChangeSummary {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actor: Option<crate::undo::Actor>,
 }
 
 /// The roots this session may write *now*: its own workspace, its scratch,
@@ -904,10 +1034,19 @@ pub fn undo_journal(data_folder: String, session_id: String) -> Vec<UndoTurnSumm
         .turns
         .into_iter()
         .map(|t| UndoTurnSummary {
-            run: t.run,
-            at: t.at,
+            run: t.run.clone(),
+            at: t.at.clone(),
             state: t.state,
-            paths: t.files.into_iter().map(|f| f.path).collect(),
+            paths: t.files.iter().map(|f| f.path.clone()).collect(),
+            actors: t.actors(),
+            changes: t
+                .files
+                .iter()
+                .map(|f| UndoChangeSummary {
+                    path: f.path.clone(),
+                    actor: f.actor.clone(),
+                })
+                .collect(),
         })
         .collect()
 }
@@ -1226,14 +1365,15 @@ pub async fn project_init_accept(
     .map_err(AgentToolsError::from)
 }
 
-/// Every shell command still running in the background, newest first.
+/// The background shell commands one conversation started, newest first.
 ///
 /// Read-only and non-consuming: a caller polling this can never take the
-/// output the agent is waiting to collect with `bash {"job_id": ...}`. The
-/// jobs are process-global, matching where the shell actually runs them.
+/// output the agent is waiting to collect with `bash {"job_id": ...}`.
+/// `session` is the conversation (the `thread_id` its tool calls ran under);
+/// another conversation's jobs are not listed.
 #[tauri::command]
-pub fn bash_jobs_list() -> Vec<crate::tools::handlers::BashJobStatus> {
-    crate::tools::handlers::list_bash_jobs()
+pub fn bash_jobs_list(session: String) -> Vec<crate::tools::handlers::BashJobStatus> {
+    crate::tools::handlers::list_bash_jobs(Some(&session))
 }
 
 /// Kill one backgrounded shell command and every process it spawned.
@@ -1243,9 +1383,33 @@ pub fn bash_jobs_list() -> Vec<crate::tools::handlers::BashJobStatus> {
 /// printed before it died rather than failing with an unknown id. The reported
 /// outcome distinguishes a kill from "already finished" and "no such job", so a
 /// UI never claims to have stopped something it did not.
+///
+/// Confined to `session`: another conversation's job reports `unknown`, the
+/// same as no job, so an id cannot be used to probe for work elsewhere.
 #[tauri::command]
-pub fn bash_job_kill(job_id: String) -> crate::tools::handlers::BashJobKill {
-    crate::tools::handlers::kill_bash_job(&job_id)
+pub fn bash_job_kill(job_id: String, session: String) -> crate::tools::handlers::BashJobKill {
+    crate::tools::handlers::kill_bash_job(&job_id, Some(&session))
+}
+
+/// The most recent permission decisions the gate recorded, newest first.
+///
+/// Read-only: it reads `<data folder>/audit/permissions.jsonl` and nothing
+/// else, returns at most `audit::RECENT_MAX` records, and redacts resource and
+/// reason again on the way out. A missing log is an empty list, not an error.
+#[tauri::command]
+pub async fn permission_audit_recent(
+    data_folder: String,
+    limit: Option<usize>,
+) -> Result<Vec<crate::audit::PermissionRecord>, AgentToolsError> {
+    if data_folder.trim().is_empty() {
+        return Err("no data folder to read the permission history from"
+            .to_string()
+            .into());
+    }
+    Ok(crate::audit::recent(
+        Path::new(&data_folder),
+        limit.unwrap_or(50),
+    ))
 }
 
 #[cfg(test)]
@@ -1327,6 +1491,108 @@ mod tests {
     /// Writes land in the thread's ephemeral sandbox and are allowed there. This
     /// pins the containment that makes that safe: the file appears where it was
     /// asked for, and nowhere else.
+    /// AH-110: a call that names who it is acting for has its changes
+    /// journaled under that agent; one that names something that is not an
+    /// agent is refused before the tool runs, so no change is left to be
+    /// attributed later.
+    #[tokio::test]
+    async fn a_tool_call_journals_its_agent_and_refuses_an_identity_that_is_not_one() {
+        let data = unique_data_folder();
+        let df = data.to_string_lossy().to_string();
+        let t1 = "s-actor";
+        let actor = |id: &str, label: &str| {
+            Some(ActorInput {
+                id: id.into(),
+                label: Some(label.into()),
+                parent: None,
+                invocation: Some("inv-1".into()),
+                task: None,
+            })
+        };
+
+        let out = execute_tool(
+            df.clone(),
+            t1.into(),
+            None,
+            "write".into(),
+            json!({"path": "by-main.txt", "content": "hello"}),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("run-1".into()),
+            actor("agent", ""),
+        )
+        .await
+        .expect("the write runs");
+        assert!(!out.is_error, "{}", out.content);
+
+        let out = execute_tool(
+            df.clone(),
+            t1.into(),
+            None,
+            "write".into(),
+            json!({"path": "by-child.txt", "content": "hello"}),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("run-1".into()),
+            actor("agent:explorer", "Explorer"),
+        )
+        .await
+        .expect("the write runs");
+        assert!(!out.is_error, "{}", out.content);
+
+        let turns = undo_journal(df.clone(), t1.into());
+        let turn = turns.iter().find(|t| t.run == "run-1").expect("the turn");
+        assert_eq!(turn.actors.len(), 2, "{:?}", turn.actors);
+        let of = |name: &str| {
+            turn.changes
+                .iter()
+                .find(|c| c.path.ends_with(name))
+                .and_then(|c| c.actor.clone())
+                .unwrap_or_else(|| panic!("no actor for {name}"))
+        };
+        assert_eq!(of("by-main.txt").kind, crate::undo::ActorKind::Primary);
+        assert_eq!(of("by-main.txt").label, "the primary agent");
+        let child = of("by-child.txt");
+        assert_eq!((child.id.as_str(), child.label.as_str()), ("agent:explorer", "Explorer"));
+        assert_eq!(child.invocation.as_deref(), Some("inv-1"));
+
+        // Not an agent: refused, and nothing written.
+        let err = execute_tool(
+            df.clone(),
+            t1.into(),
+            None,
+            "write".into(),
+            json!({"path": "forged.txt", "content": "hello"}),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some("run-1".into()),
+            actor("session:s-actor", "The user"),
+        )
+        .await
+        .expect_err("an identity that is not an agent is refused");
+        assert!(format!("{err:?}").contains("does not name an agent"), "{err:?}");
+        let sandbox = workspace::thread_workspace(&data, t1).unwrap();
+        assert!(!sandbox.join("forged.txt").exists(), "a refused call wrote a file");
+        let turns = undo_journal(df, t1.into());
+        assert!(
+            turns.iter().all(|t| t.changes.iter().all(|c| !c.path.ends_with("forged.txt"))),
+            "a refused call reached the journal"
+        );
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
     #[tokio::test]
     async fn writes_are_allowed_inside_the_ephemeral_sandbox() {
         let t1: &str = &unique_thread("writes_are_allowed_inside_the_ephemeral_sandbox");
@@ -1339,6 +1605,7 @@ mod tests {
             None,
             "write".into(),
             json!({"path": "a.txt", "content": "hello"}),
+            None,
             None,
             None,
             None,
@@ -1457,6 +1724,7 @@ mod tests {
             None,
             None,
             Some("run-1".into()),
+            None,
         )
         .await
         .expect("allowed");
@@ -1502,6 +1770,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("allowed");
@@ -1525,6 +1794,7 @@ mod tests {
             None,
             "edit".into(),
             json!({"path": "a.txt", "edits": [{"old_string": "before", "new_string": "after"}]}),
+            None,
             None,
             None,
             None,
@@ -1570,6 +1840,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect_err("an escaping read must be refused");
@@ -1600,6 +1871,7 @@ mod tests {
                 None,
                 "write".into(),
                 json!({"path": path, "content": "x"}),
+                None,
                 None,
                 None,
                 None,
@@ -1647,6 +1919,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("a scratch write is the session scratch and must succeed");
@@ -1664,6 +1937,7 @@ mod tests {
             None,
             "write".into(),
             json!({"path": "ok.txt", "content": "x"}),
+            None,
             None,
             None,
             None,
@@ -1704,6 +1978,7 @@ mod tests {
             None,
             "bash".into(),
             json!({"command": "echo hi"}),
+            None,
             None,
             None,
             None,
@@ -1764,6 +2039,7 @@ mod tests {
             // AppContainer -- it is a parse error, so the test failed on
             // syntax rather than on whether the network was reachable.
             json!({ "command": command }),
+            None,
             None,
             None,
             None,
@@ -1833,6 +2109,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1855,6 +2132,7 @@ mod tests {
             None,
             "read".to_string(),
             json!({"path": "a.txt"}),
+            None,
             None,
             None,
             None,
@@ -1896,6 +2174,7 @@ mod tests {
             None,
             "read".into(),
             json!({"path": "../isolation-thread-one/secret.txt"}),
+            None,
             None,
             None,
             None,
@@ -1950,6 +2229,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         {
@@ -1994,6 +2274,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -2010,6 +2291,7 @@ mod tests {
             None,
             "memory_read".into(),
             json!({"name": "prefs"}),
+            None,
             None,
             None,
             None,
@@ -2044,6 +2326,7 @@ mod tests {
             None,
             "read".into(),
             json!({"path": "../../memory/prefs.md"}),
+            None,
             None,
             None,
             None,
@@ -2111,6 +2394,7 @@ mod tests {
                     None,
                     None,
                     None,
+                    None,
                 )
                 .await
                 .is_err(),
@@ -2140,6 +2424,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect_err("agent config must be hard-denied");
@@ -2162,6 +2447,7 @@ mod tests {
             None,
             "rm_rf".to_string(),
             json!({}),
+            None,
             None,
             None,
             None,
@@ -2249,6 +2535,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -2262,6 +2549,7 @@ mod tests {
             None,
             "skill_read".into(),
             json!({"name": "deploy"}),
+            None,
             None,
             None,
             None,
@@ -2301,6 +2589,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -2316,6 +2605,7 @@ mod tests {
             None,
             None,
             attached,
+            None,
             None,
             None,
             None,
@@ -2357,6 +2647,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await;
         assert!(out.is_err() || out.unwrap().is_error);
@@ -2387,6 +2678,7 @@ mod tests {
             None,
             None,
             Some(inside.to_string_lossy().to_string()),
+            None,
             None,
             None,
             None,

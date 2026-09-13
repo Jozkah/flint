@@ -122,6 +122,48 @@ pub enum ImportErrorKind {
     Refused,
 }
 
+/// What this failure is, in the harness's own vocabulary (AH-009).
+///
+/// Written out case by case rather than defaulted: this enum says what went
+/// wrong *here*, and the mapping is the place to decide what that means
+/// everywhere else -- whether it may be retried, who it is for, what the
+/// process exits with. A blanket "everything is internal" would be the same
+/// as having no taxonomy at all.
+impl From<&ImportError> for tauri_plugin_agent_tools::harness_error::HarnessError {
+    fn from(error: &ImportError) -> Self {
+        use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+        let kind = match error.kind {
+            ImportErrorKind::UnsupportedContainer | ImportErrorKind::UnsupportedVersion => {
+                ErrorKind::Unsupported
+            }
+            // A bundle that is not what it says it is.
+            ImportErrorKind::ManifestInvalid
+            | ImportErrorKind::EntryMissing
+            | ImportErrorKind::EntryExtra
+            | ImportErrorKind::HashMismatch
+            | ImportErrorKind::PatchInvalid => ErrorKind::MalformedState,
+            // A bundle trying to write somewhere it may not: a refusal.
+            ImportErrorKind::EntryLink
+            | ImportErrorKind::PathRefused
+            | ImportErrorKind::PathCollision
+            | ImportErrorKind::DestinationInvalid => ErrorKind::PolicyViolation,
+            ImportErrorKind::TooLarge => ErrorKind::InvalidInput,
+            // The tree the bundle was made against is not the tree it is
+            // being applied to: state, not input.
+            ImportErrorKind::BaseMissing
+            | ImportErrorKind::DestinationChanged
+            | ImportErrorKind::AlreadyApplied => ErrorKind::MalformedState,
+            // What was approved is not what arrived, and the user said no.
+            ImportErrorKind::ApprovalMismatch => ErrorKind::PolicyViolation,
+            ImportErrorKind::Refused => ErrorKind::ApprovalRefused,
+            ImportErrorKind::NotFound => ErrorKind::NotFound,
+            ImportErrorKind::Cancelled => ErrorKind::Cancelled,
+            ImportErrorKind::Io => ErrorKind::Io,
+        };
+        HarnessError::new(kind, &error.message).at(Stage::Persistence)
+    }
+}
+
 #[derive(Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportError {

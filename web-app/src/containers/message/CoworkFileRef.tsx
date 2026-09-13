@@ -43,7 +43,7 @@ export function CoworkFileRef({
       onClick={() => open(ref.path)}
       title={label}
       className={cn(
-        'cursor-pointer rounded bg-muted/60 px-1 font-mono text-[0.9em] text-primary underline decoration-dotted underline-offset-2 hover:bg-muted',
+        'cursor-pointer rounded bg-sunken px-1 font-mono text-[0.9em] text-brand-text underline decoration-dotted underline-offset-2 hover:bg-brand-tint focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring',
         className
       )}
     >

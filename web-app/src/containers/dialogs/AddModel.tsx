@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useProviderModels } from '@/hooks/useProviderModels'
 import { ModelCombobox } from '@/containers/ModelCombobox'
-import { IconPlus } from '@tabler/icons-react'
+import { ExternalLink, Plus } from 'lucide-react'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { useState } from 'react'
 import { getProviderTitle } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -71,8 +72,14 @@ export const DialogAddModel = ({ provider, trigger }: DialogAddModelProps) => {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger || (
-          <Button variant="secondary" size="icon-xs">
-            <IconPlus size={18} className="text-muted-foreground" />
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="pointer-coarse:size-11"
+            aria-label={t('providers:addModelLabel')}
+            title={t('providers:addModel.title')}
+          >
+            <Plus className="text-muted-foreground" aria-hidden />
           </Button>
         )}
       </DialogTrigger>
@@ -121,21 +128,23 @@ export const DialogAddModel = ({ provider, trigger }: DialogAddModelProps) => {
               href={provider.explore_models_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 hover:underline"
+              className="inline-flex items-center gap-1 text-brand-text underline-offset-4 hover:underline"
             >
               <span>
                 {t('providers:addModel.exploreModels', {
                   provider: getProviderTitle(provider.provider),
                 })}
               </span>
+              <ExternalLink className="size-3.5" aria-hidden />
             </a>
           </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className={STICKY_DIALOG_FOOTER}>
           <Button
             variant="default"
             size="sm"
+            className="pointer-coarse:h-11"
             onClick={handleSubmit}
             disabled={!modelId.trim()}
           >

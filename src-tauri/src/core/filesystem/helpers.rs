@@ -179,6 +179,45 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// janhq/jan#8374 intake evidence. Models kept on another drive through a
+    /// junction under `<data>/llamacpp/models` -- a common way to move large
+    /// GGUFs -- resolve outside the data folder, so `read_yaml` refuses every
+    /// such `model.yml` and the llama.cpp extension's `list()` skips the model
+    /// with only a warning: the files are intact and the model is gone from the
+    /// UI. This pins the mechanism; whether to trust links inside the data
+    /// folder is a security decision recorded in the ledger, not made here.
+    #[cfg(windows)]
+    #[test]
+    fn a_model_behind_a_junction_resolves_outside_the_data_folder() {
+        let tmp = TempDir::new().unwrap();
+        let data = tmp.path().join("data");
+        let other_drive = tmp.path().join("other-drive-models");
+        fs::create_dir_all(data.join("llamacpp")).unwrap();
+        fs::create_dir_all(other_drive.join("org").join("model")).unwrap();
+        fs::write(other_drive.join("org").join("model").join("model.yml"), "model_path: x.gguf\n")
+            .unwrap();
+        let link = data.join("llamacpp").join("models");
+        // A directory junction needs no elevation, unlike a symlink.
+        let made = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&link)
+            .arg(&other_drive)
+            .output()
+            .unwrap();
+        assert!(made.status.success(), "mklink /J failed: {made:?}");
+
+        let lexical = link.join("org").join("model").join("model.yml");
+        assert!(lexical.is_file(), "the model is on disk through the junction");
+        let result = resolve_path_within_jan_data_folder(&data, &lexical.to_string_lossy());
+        assert!(
+            result.as_ref().is_err_and(|e| e.contains("outside of Jan data folder")),
+            "{result:?}"
+        );
+        // Remove the junction itself, never what it points at.
+        fs::remove_dir(&link).unwrap();
+        assert!(other_drive.join("org").join("model").join("model.yml").is_file());
+    }
+
     #[test]
     fn resolves_nonexistent_child_paths_under_data_folder() {
         // Used when creating new files; canonicalize must not fail.

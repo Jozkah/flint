@@ -13,6 +13,7 @@ import enCommon from '@/locales/en/common.json'
 import enSettings from '@/locales/en/settings.json'
 import enAssistants from '@/locales/en/assistants.json'
 import enMcpServers from '@/locales/en/mcp-servers.json'
+import enPermissions from '@/locales/en/permissions.json'
 
 // A fake translator, so the tests control the translated text the index is
 // built from and can tell "found the key" apart from "found the label".
@@ -263,6 +264,7 @@ describe('registry i18n keys', () => {
     settings: enSettings,
     assistants: enAssistants,
     'mcp-servers': enMcpServers,
+    permissions: enPermissions,
   }
 
   const resolve = (key: string): string | undefined => {
@@ -440,6 +442,7 @@ const ROUTE_FILES: Record<string, string> = {
   'https-proxy': 'routes/settings/https-proxy.tsx',
   'web-search': 'routes/settings/web-search.tsx',
   'agent-tools': 'routes/settings/agent-tools.tsx',
+  permissions: 'routes/settings/permissions.tsx',
   shortcuts: 'routes/settings/shortcuts.tsx',
   hardware: 'routes/settings/hardware.tsx',
   'mcp-servers': 'routes/settings/mcp-servers.tsx',

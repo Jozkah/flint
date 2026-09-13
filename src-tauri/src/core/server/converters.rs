@@ -156,6 +156,10 @@ pub struct StreamState {
     pub finished: bool,
     /// Prompt tokens captured early (Anthropic sends them in `message_start`).
     pub input_tokens: i64,
+    /// Anthropic's cache counts, as last reported. `None` until the provider
+    /// sends one: an absent count is unknown, not zero.
+    pub cache_read_input_tokens: Option<i64>,
+    pub cache_creation_input_tokens: Option<i64>,
 }
 
 /// Fronts OpenAI's `/v1/responses` API, exposing it as chat/completions so the
@@ -568,11 +572,18 @@ fn convert_gemini_usage(usage: Option<&Value>) -> Value {
         .get("totalTokenCount")
         .and_then(|v| v.as_i64())
         .unwrap_or(prompt + completion);
-    json!({
+    let mut out = json!({
         "prompt_tokens": prompt,
         "completion_tokens": completion,
         "total_tokens": total,
-    })
+    });
+    // `promptTokenCount` includes the cached content. Gemini only sends
+    // `cachedContentTokenCount` when some of the prompt came from a cache, so
+    // its absence says nothing and is not turned into a zero.
+    if let Some(cached) = u.get("cachedContentTokenCount").and_then(|v| v.as_i64()) {
+        out["prompt_tokens_details"] = json!({ "cached_tokens": cached });
+    }
+    out
 }
 
 impl UpstreamConverter for GoogleGenerateContentConverter {
@@ -933,12 +944,46 @@ fn map_anthropic_finish(reason: &str, saw_tool: bool) -> &'static str {
     }
 }
 
-fn anthropic_usage(input_tokens: i64, output_tokens: i64) -> Value {
-    json!({
-        "prompt_tokens": input_tokens,
+/// Anthropic usage in chat/completions terms.
+///
+/// Anthropic's `input_tokens` excludes both cache counts, while
+/// chat/completions' `prompt_tokens` is every prompt token, cached or not. So
+/// the prompt total is the sum of all three, the cache read goes where OpenAI
+/// puts it (`prompt_tokens_details.cached_tokens`), and the creation count is
+/// passed through under Anthropic's own name -- there is no chat/completions
+/// field for it. The creation count is part of the prompt total and of its
+/// uncached share; it is never added a second time.
+///
+/// A cache count the provider did not send is left out, not written as zero.
+fn anthropic_usage(
+    input_tokens: i64,
+    output_tokens: i64,
+    cache_read: Option<i64>,
+    cache_creation: Option<i64>,
+) -> Value {
+    let prompt = input_tokens + cache_read.unwrap_or(0) + cache_creation.unwrap_or(0);
+    let mut usage = json!({
+        "prompt_tokens": prompt,
         "completion_tokens": output_tokens,
-        "total_tokens": input_tokens + output_tokens,
-    })
+        "total_tokens": prompt + output_tokens,
+    });
+    if let Some(read) = cache_read {
+        usage["prompt_tokens_details"] = json!({ "cached_tokens": read });
+    }
+    if let Some(creation) = cache_creation {
+        usage["cache_creation_input_tokens"] = json!(creation);
+    }
+    usage
+}
+
+fn anthropic_cache_counts(usage: Option<&Value>) -> (Option<i64>, Option<i64>) {
+    let read = usage
+        .and_then(|u| u.get("cache_read_input_tokens"))
+        .and_then(|v| v.as_i64());
+    let creation = usage
+        .and_then(|u| u.get("cache_creation_input_tokens"))
+        .and_then(|v| v.as_i64());
+    (read, creation)
 }
 
 /// Append `blocks` to the last message when it shares `role`, else start a new
@@ -1181,6 +1226,7 @@ impl UpstreamConverter for AnthropicMessagesConverter {
             .and_then(|u| u.get("output_tokens"))
             .and_then(|v| v.as_i64())
             .unwrap_or(0);
+        let (cache_read, cache_creation) = anthropic_cache_counts(usage);
 
         json!({
             "id": upstream.get("id").cloned().unwrap_or_else(|| json!("chatcmpl-proxy")),
@@ -1192,7 +1238,7 @@ impl UpstreamConverter for AnthropicMessagesConverter {
                 "message": message,
                 "finish_reason": finish_reason,
             }],
-            "usage": anthropic_usage(input_tokens, output_tokens),
+            "usage": anthropic_usage(input_tokens, output_tokens, cache_read, cache_creation),
         })
     }
 
@@ -1227,6 +1273,9 @@ impl UpstreamConverter for AnthropicMessagesConverter {
                     {
                         state.input_tokens = t;
                     }
+                    let (read, creation) = anthropic_cache_counts(msg.get("usage"));
+                    state.cache_read_input_tokens = read;
+                    state.cache_creation_input_tokens = creation;
                 }
             }
             "content_block_start" => {
@@ -1307,12 +1356,32 @@ impl UpstreamConverter for AnthropicMessagesConverter {
                     .and_then(|r| r.as_str())
                     .unwrap_or("end_turn");
                 let finish = map_anthropic_finish(reason, state.saw_tool_call);
-                let output_tokens = data
-                    .get("usage")
+                let delta_usage = data.get("usage");
+                let output_tokens = delta_usage
                     .and_then(|u| u.get("output_tokens"))
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0);
-                let usage = anthropic_usage(state.input_tokens, output_tokens);
+                // `message_delta` usage is cumulative: a value here replaces
+                // the `message_start` one rather than adding to it.
+                if let Some(t) = delta_usage
+                    .and_then(|u| u.get("input_tokens"))
+                    .and_then(|v| v.as_i64())
+                {
+                    state.input_tokens = t;
+                }
+                let (read, creation) = anthropic_cache_counts(delta_usage);
+                if read.is_some() {
+                    state.cache_read_input_tokens = read;
+                }
+                if creation.is_some() {
+                    state.cache_creation_input_tokens = creation;
+                }
+                let usage = anthropic_usage(
+                    state.input_tokens,
+                    output_tokens,
+                    state.cache_read_input_tokens,
+                    state.cache_creation_input_tokens,
+                );
                 out.push(chunk_str_with_usage(
                     state,
                     json!({}),
@@ -1386,11 +1455,21 @@ fn convert_usage(usage: Option<&Value>) -> Value {
         .get("total_tokens")
         .and_then(|v| v.as_i64())
         .unwrap_or(prompt + completion);
-    json!({
+    let mut out = json!({
         "prompt_tokens": prompt,
         "completion_tokens": completion,
         "total_tokens": total,
-    })
+    });
+    // Responses already counts cached tokens inside `input_tokens`, exactly as
+    // chat/completions does inside `prompt_tokens`; only the name moves.
+    if let Some(cached) = u
+        .get("input_tokens_details")
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|v| v.as_i64())
+    {
+        out["prompt_tokens_details"] = json!({ "cached_tokens": cached });
+    }
+    out
 }
 
 #[cfg(test)]
@@ -1477,6 +1556,22 @@ mod openai_responses_tests {
 
     fn conv() -> OpenAIResponsesConverter {
         OpenAIResponsesConverter::new()
+    }
+
+    #[test]
+    fn response_carries_the_cached_input_count_and_omits_it_when_absent() {
+        let with_cache = convert_usage(Some(&json!({
+            "input_tokens": 2006, "output_tokens": 300, "total_tokens": 2306,
+            "input_tokens_details": {"cached_tokens": 1920}
+        })));
+        assert_eq!(with_cache["prompt_tokens"], json!(2006));
+        assert_eq!(
+            with_cache["prompt_tokens_details"],
+            json!({"cached_tokens": 1920})
+        );
+
+        let without = convert_usage(Some(&json!({"input_tokens": 3, "output_tokens": 4})));
+        assert!(without.get("prompt_tokens_details").is_none());
     }
 
     #[test]
@@ -1753,6 +1848,21 @@ mod google_generate_content_tests {
     }
 
     #[test]
+    fn usage_carries_cached_content_and_omits_it_when_absent() {
+        let with_cache = convert_gemini_usage(Some(&json!({
+            "promptTokenCount": 900, "candidatesTokenCount": 10,
+            "cachedContentTokenCount": 800, "totalTokenCount": 910
+        })));
+        assert_eq!(with_cache["prompt_tokens"], json!(900));
+        assert_eq!(with_cache["prompt_tokens_details"], json!({"cached_tokens": 800}));
+
+        let without = convert_gemini_usage(Some(&json!({
+            "promptTokenCount": 3, "candidatesTokenCount": 2, "totalTokenCount": 5
+        })));
+        assert!(without.get("prompt_tokens_details").is_none());
+    }
+
+    #[test]
     fn path_encodes_model_and_action() {
         let c = conv();
         assert_eq!(
@@ -1983,6 +2093,95 @@ mod anthropic_messages_tests {
 
     fn conv() -> AnthropicMessagesConverter {
         AnthropicMessagesConverter::new()
+    }
+
+    fn cache_ev(event: &str, data: Value) -> SseEvent {
+        SseEvent {
+            event: event.to_string(),
+            data: data.to_string(),
+        }
+    }
+
+    // Anthropic's `input_tokens` excludes both cache counts; chat/completions'
+    // `prompt_tokens` includes them. The creation count is part of that total
+    // and must not be added twice.
+    #[test]
+    fn response_folds_anthropic_cache_counts_into_the_prompt_total() {
+        let upstream = json!({
+            "id": "msg_1",
+            "model": "claude-sonnet-4",
+            "content": [{"type": "text", "text": "hi"}],
+            "stop_reason": "end_turn",
+            "usage": {
+                "input_tokens": 12,
+                "cache_read_input_tokens": 2000,
+                "cache_creation_input_tokens": 300,
+                "output_tokens": 6
+            }
+        });
+        let out = conv().convert_response(&upstream);
+        assert_eq!(
+            out["usage"],
+            json!({
+                "prompt_tokens": 2312,
+                "completion_tokens": 6,
+                "total_tokens": 2318,
+                "prompt_tokens_details": {"cached_tokens": 2000},
+                "cache_creation_input_tokens": 300
+            })
+        );
+    }
+
+    #[test]
+    fn response_without_cache_counts_reports_none_rather_than_zero() {
+        let upstream = json!({
+            "content": [{"type": "text", "text": "hi"}],
+            "usage": {"input_tokens": 12, "output_tokens": 6}
+        });
+        let out = conv().convert_response(&upstream);
+        assert!(out["usage"].get("prompt_tokens_details").is_none());
+        assert!(out["usage"].get("cache_creation_input_tokens").is_none());
+    }
+
+    #[test]
+    fn stream_keeps_the_final_cumulative_cache_counts_without_summing() {
+        let c = conv();
+        let mut state = StreamState::default();
+        c.convert_stream_event(
+            &cache_ev(
+                "message_start",
+                json!({"message": {"id": "m", "model": "c", "usage": {
+                    "input_tokens": 10,
+                    "cache_read_input_tokens": 100,
+                    "cache_creation_input_tokens": 50,
+                    "output_tokens": 1
+                }}}),
+            ),
+            &mut state,
+        );
+        // The delta restates the cumulative totals; they replace, not add.
+        let done = c.convert_stream_event(
+            &cache_ev(
+                "message_delta",
+                json!({"delta": {"stop_reason": "end_turn"}, "usage": {
+                    "output_tokens": 7,
+                    "cache_read_input_tokens": 100,
+                    "cache_creation_input_tokens": 50
+                }}),
+            ),
+            &mut state,
+        );
+        let finish: Value = serde_json::from_str(&done[0]).unwrap();
+        assert_eq!(
+            finish["usage"],
+            json!({
+                "prompt_tokens": 160,
+                "completion_tokens": 7,
+                "total_tokens": 167,
+                "prompt_tokens_details": {"cached_tokens": 100},
+                "cache_creation_input_tokens": 50
+            })
+        );
     }
 
     #[test]

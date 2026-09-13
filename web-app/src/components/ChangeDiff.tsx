@@ -8,8 +8,7 @@ import { cn } from '@/lib/utils'
  */
 const diffLineTone = (line: string): string => {
   if (line.startsWith('@@')) return 'text-muted-foreground/60'
-  if (line.startsWith('+'))
-    return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+  if (line.startsWith('+')) return 'bg-success-tint text-success'
   if (line.startsWith('-')) return 'bg-destructive/10 text-destructive'
   return 'text-muted-foreground'
 }
@@ -37,21 +36,21 @@ export const ChangeDiff = memo(
       aria-label={label}
       data-testid={testId}
       className={cn(
-        'mt-1.5 max-h-56 overflow-auto rounded-md border bg-card/40 py-1 font-mono text-xs',
+        'mt-1.5 max-h-56 overflow-auto rounded-md border border-border bg-card py-1 font-mono text-xs',
         className
       )}
     >
-      {diff.split('\n').map((line, i) => (
-        <div
-          key={i}
-          className={cn(
-            'whitespace-pre-wrap wrap-break-word px-2',
-            diffLineTone(line)
-          )}
-        >
-          {line || ' '}
-        </div>
-      ))}
+      {/* Lines keep their shape and scroll sideways inside this box. */}
+      <div className="w-max min-w-full">
+        {diff.split('\n').map((line, i) => (
+          <div
+            key={i}
+            className={cn('whitespace-pre px-2', diffLineTone(line))}
+          >
+            {line || ' '}
+          </div>
+        ))}
+      </div>
     </div>
   )
 )

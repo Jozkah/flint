@@ -78,6 +78,21 @@ export type CoworkSession = {
    */
   planMode?: boolean
   /**
+   * The provider/model this session runs on (janhq/jan#8905).
+   *
+   * The session's own, not the global picker's: changing the model while
+   * viewing one session no longer changes another's, and it survives a
+   * restart with the rest of the session. Absent on a session that has not
+   * chosen one yet; its first run records the model it used.
+   */
+  model?: { provider: string; id: string }
+  /**
+   * Input typed for this session that no run has taken yet, kept so a restart
+   * brings it back -- held, for the user to send or discard -- rather than
+   * losing it. janhq/jan#8864.
+   */
+  pendingInput?: { id: string; text: string; createdAt: number }[]
+  /**
    * What this session is allowed to do. Absent on sessions from before modes
    * existed, which `modeOf` reads from `planMode` instead.
    */
@@ -114,6 +129,15 @@ export type CoworkSession = {
    * run is outstanding".
    */
   runBudget?: RunBudgetRecord
+  /**
+   * The turn the run in progress is in the middle of (AH-026).
+   *
+   * Written while the run goes and cleared when its turns are committed, so a
+   * run the app was closed or killed under comes back as an interrupted turn
+   * -- its completed tool calls and its unfinished reply -- rather than as
+   * nothing. Absent on sessions with nothing in flight.
+   */
+  inFlight?: InFlightRecord
   /**
    * Where this session came from, when it was forked from another. AH-201.
    *
@@ -198,11 +222,25 @@ type CoworkSessionsState = {
   /** The user has read what a handoff could not restore. */
   dismissHandoff: (id: string) => void
   setFolder: (id: string, folder: string | null) => void
+  /** The session's own provider/model choice (janhq/jan#8905). */
+  setModel: (id: string, model: { provider: string; id: string }) => void
+  /** Record the input still pending for the session; empty clears it. */
+  setPendingInput: (
+    id: string,
+    pending: { id: string; text: string; createdAt: number }[]
+  ) => void
   setMode: (id: string, mode: CoworkMode) => void
   /** Record, or clear, where the session is in its opening exchange. */
   setContinuity: (id: string, continuity: ContinuityRecord | null) => void
   /** Record, or clear, what the run in progress has spent. */
   setRunBudget: (id: string, budget: RunBudgetRecord | null) => void
+  /** Keep, or clear, the turn the session's run is in the middle of. AH-026. */
+  setInFlight: (id: string, record: InFlightRecord | null) => void
+  /**
+   * Take an interrupted turn back into the session, as the user chose, so the
+   * next run continues from it. AH-026.
+   */
+  recoverInFlight: (id: string, choice: InterruptedChoice) => boolean
   setAccess: (id: string, access: AccessMode) => void
   /** Record the user's confirmation to edit `folder` in this session. */
   grantEditConsent: (id: string, folder: string) => void
@@ -236,6 +274,11 @@ type CoworkSessionsState = {
 }
 
 import { decideSessionStart } from '@/lib/coworkSessionStart'
+import {
+  recover as recoverInterrupted,
+  type InFlightRecord,
+  type InterruptedChoice,
+} from '@/lib/coworkInflight'
 import { defaultModeFor, type CoworkMode } from '@/lib/coworkMode'
 import type { AccessMode, EditConsent } from '@/lib/coworkAccess'
 import { useFileActivity } from '@/hooks/useFileActivity'
@@ -247,8 +290,18 @@ import {
   type ImportRefusal,
   type SessionBundle,
 } from '@/lib/sessionBundle'
+import { fromCoworkUsage, toCoworkUsage } from '@/lib/tokenUsage'
+import { deletePromptSnapshots } from '@/lib/promptSnapshotRetention'
 
 const now = () => Date.now()
+
+/** An imported session's usage, normalised the same way a live one is. */
+function importedUsage(raw: unknown): Usage | undefined {
+  const usage = fromCoworkUsage(
+    raw && typeof raw === 'object' ? (raw as Usage) : undefined
+  )
+  return usage && Object.keys(usage).length > 0 ? toCoworkUsage(usage) : undefined
+}
 
 export const useCoworkSessions = create<CoworkSessionsState>()(
   persist(
@@ -373,6 +426,9 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           goal: bundle.session.goal,
           todos: bundle.session.todos,
           forkedFrom: bundle.session.forkedFrom,
+          // Re-read rather than trusted: a hand-edited file cannot plant a
+          // negative, a string or a cached count larger than the input.
+          lastUsage: importedUsage(bundle.session.lastUsage),
           importedFrom: {
             exportId: bundle.exportId,
             sessionId: bundle.session.id,
@@ -389,10 +445,35 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
 
       deleteSession: (id) =>
         set((s) => {
+          void deletePromptSnapshots(id)
           const sessions = s.sessions.filter((x) => x.id !== id)
           const currentId =
             s.currentId === id ? (sessions[0]?.id ?? null) : s.currentId
           return { sessions, currentId }
+        }),
+
+      setModel: (id, model) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id ? { ...x, model: { ...model } } : x
+          ),
+        })),
+
+      setPendingInput: (id, pending) =>
+        set((s) => {
+          const current = s.sessions.find((x) => x.id === id)
+          if (!current) return s
+          const next = pending.map(({ id, text, createdAt }) => ({ id, text, createdAt }))
+          if (JSON.stringify(current.pendingInput ?? []) === JSON.stringify(next)) {
+            return s
+          }
+          return {
+            sessions: s.sessions.map((x) =>
+              x.id === id
+                ? { ...x, pendingInput: next.length > 0 ? next : undefined }
+                : x
+            ),
+          }
         }),
 
       // Attaching, switching and detaching all land here, so the code panel is
@@ -487,6 +568,40 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           ),
         })),
 
+      setInFlight: (id, record) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id ? { ...x, inFlight: record ?? undefined } : x
+          ),
+        })),
+
+      recoverInFlight: (id, choice) => {
+        const session = get().sessions.find((x) => x.id === id)
+        if (!session?.inFlight) return false
+        const { turns, messages } = recoverInterrupted(
+          session.messages ?? [],
+          session.inFlight,
+          choice,
+          id
+        )
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id
+              ? {
+                  ...x,
+                  turns: [...x.turns, ...turns],
+                  messages,
+                  inFlight: undefined,
+                  // The dead run's budget is not this one's.
+                  runBudget: undefined,
+                  updated: now(),
+                }
+              : x
+          ),
+        }))
+        return true
+      },
+
       setMode: (id, mode) =>
         set((s) => ({
           sessions: s.sessions.map((x) =>
@@ -538,6 +653,8 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
                 ...subagents,
               ],
               lastUsage: usage ?? x.lastUsage,
+              // Committed, so nothing of this run is in flight any more.
+              inFlight: undefined,
               updated: now(),
             }
           }),

@@ -33,7 +33,24 @@ pub(crate) struct ParsedCommand {
 /// Every command shipped by installed plugins, sorted by plugin then name.
 /// Discovery is recursive (`commands/**/*.md`), skips `README.md` and
 /// dotfiles, and ignores interrupted `.installing-*` staging directories.
+///
+/// Plugins listed in `[plugins].disabled` are skipped, so a disabled plugin's
+/// commands are neither offered nor resolvable.
+// Consumed by the cli slash popup and tests; the desktop lists commands
+// through `discover_including_disabled`.
+#[cfg_attr(not(any(feature = "cli", test)), allow(dead_code))]
 pub(crate) fn discover(root: &Path) -> Vec<CommandEntry> {
+    let disabled = crate::core::agent::project::disabled_plugins(root);
+    scan(root, &disabled)
+}
+
+/// Every plugin command on disk, disabled plugins included. For listings and
+/// details only.
+pub(crate) fn discover_including_disabled(root: &Path) -> Vec<CommandEntry> {
+    scan(root, &[])
+}
+
+fn scan(root: &Path, disabled: &[String]) -> Vec<CommandEntry> {
     let dir = crate::core::agent::skills::plugins_dir(root);
     let Ok(rd) = std::fs::read_dir(&dir) else {
         return Vec::new();
@@ -47,7 +64,7 @@ pub(crate) fn discover(root: &Path) -> Vec<CommandEntry> {
         let Some(plugin) = path.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
-        if plugin.starts_with(".installing-") {
+        if plugin.starts_with(".installing-") || disabled.iter().any(|d| d == plugin) {
             continue;
         }
         crate::core::agent::skills::walk_markdown_files(&path.join("commands"), &mut |path| {

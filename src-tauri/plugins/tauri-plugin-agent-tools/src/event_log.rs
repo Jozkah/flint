@@ -40,6 +40,24 @@ pub const MAX_PAYLOAD_BYTES: usize = 64 * 1024;
 pub const MAX_LOG_BYTES: u64 = 32 * 1024 * 1024;
 /// Session logs kept; the least recently written go first.
 pub const MAX_SESSIONS: usize = 500;
+/// The id of the line that says a log filled up. One per session: writing it
+/// twice is one event, like any other repeated id.
+const BOUNDARY_ID: &str = "log:truncated";
+
+/// What a log is written under. Production uses [`Limits::standard`]; a test
+/// uses a small one, so what happens at the bound is exercised directly rather
+/// than by writing 32 MB to find out.
+#[derive(Debug, Clone, Copy)]
+pub struct Limits {
+    pub max_log_bytes: u64,
+    pub max_sessions: usize,
+}
+
+impl Limits {
+    pub const fn standard() -> Self {
+        Self { max_log_bytes: MAX_LOG_BYTES, max_sessions: MAX_SESSIONS }
+    }
+}
 
 /// Kinds this build writes and understands. Others are kept as they are.
 pub const KNOWN_KINDS: &[&str] = &[
@@ -49,8 +67,26 @@ pub const KNOWN_KINDS: &[&str] = &[
     "agent.ended",
     "job.started",
     "job.ended",
-    // One per `activity::Phase`.
+    // One per model request: the provider's usage (counts only), and what the
+    // response was made of (sizes only; the words stay in the transcript).
+    "usage.reported",
+    // One reply, as it arrived: that it started streaming (and whether content
+    // or reasoning came first), how much reasoning the provider supplied, and
+    // what the finished message was made of. Sizes and counts only -- the words
+    // stay in the transcript, so the log is not a second place they can leak
+    // from.
+    "message.started",
+    "message.reasoning",
+    "message.completed",
+    // What the run did between provider requests, ordered by the log's own
+    // sequence rather than by any writer's clock.
+    "steering.received",
+    "compaction.started",
+    "compaction.succeeded",
+    "compaction.failed",
+    // One per `activity::Phase`, for a tool call ...
     "tool.requested",
+    "tool.queued",
     "tool.awaiting-permission",
     "tool.allowed",
     "tool.refused",
@@ -60,6 +96,23 @@ pub const KNOWN_KINDS: &[&str] = &[
     "tool.cancelled",
     "tool.stale",
     "tool.timed-out",
+    // The log said where it stopped. Not something the run did: something the
+    // record did, so a reader can tell a run that ended from one whose log
+    // filled up.
+    "log.truncated",
+    // ... and for something the run itself did (compaction, steering, a
+    // subagent or background job stopped): `activity::EventType::Lifecycle`.
+    "lifecycle.requested",
+    "lifecycle.queued",
+    "lifecycle.awaiting-permission",
+    "lifecycle.allowed",
+    "lifecycle.refused",
+    "lifecycle.running",
+    "lifecycle.succeeded",
+    "lifecycle.failed",
+    "lifecycle.cancelled",
+    "lifecycle.stale",
+    "lifecycle.timed-out",
 ];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -176,6 +229,37 @@ struct SessionState {
 
 static STATE: Mutex<BTreeMap<String, SessionState>> = Mutex::new(BTreeMap::new());
 
+/// Someone watching events as they are recorded (AH-183).
+///
+/// The log is the record; this is the same thing arriving live, for a headless
+/// caller that wants to see a run as it happens rather than read it afterwards.
+/// One watcher, set by whoever owns the process: a library with several would
+/// have to decide whose output goes where, and nothing needs that.
+type Watcher = Box<dyn Fn(&Envelope) + Send + Sync>;
+static WATCHER: Mutex<Option<Watcher>> = Mutex::new(None);
+
+/// Hear every event this process records, in the order they are recorded.
+///
+/// The callback runs on the thread that recorded the event, after it is on
+/// disk, and outside the log's own lock -- so it can write, but it must not be
+/// slow: a watcher that blocks blocks the run it is watching.
+pub fn watch(watcher: impl Fn(&Envelope) + Send + Sync + 'static) {
+    *WATCHER.lock().unwrap_or_else(|p| p.into_inner()) = Some(Box::new(watcher));
+}
+
+/// Stop watching. Idempotent.
+pub fn unwatch() {
+    *WATCHER.lock().unwrap_or_else(|p| p.into_inner()) = None;
+}
+
+fn announce(envelope: &Envelope) {
+    if let Ok(watcher) = WATCHER.lock() {
+        if let Some(watcher) = watcher.as_ref() {
+            watcher(envelope);
+        }
+    }
+}
+
 /// Read a log, cutting off a torn final line first so the next append starts
 /// on a line of its own.
 fn load(path: &Path) -> Result<SessionState, LogError> {
@@ -200,8 +284,8 @@ fn load(path: &Path) -> Result<SessionState, LogError> {
     Ok(state)
 }
 
-/// Keep only the newest `MAX_SESSIONS` logs.
-fn prune(dir: &Path, keep: &Path) {
+/// Keep only the newest `max_sessions` logs.
+fn prune(dir: &Path, keep: &Path, max_sessions: usize) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -210,11 +294,11 @@ fn prune(dir: &Path, keep: &Path) {
         .filter(|e| e.path().extension().is_some_and(|x| x == "jsonl"))
         .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
         .collect();
-    if logs.len() <= MAX_SESSIONS {
+    if logs.len() <= max_sessions {
         return;
     }
     logs.sort();
-    let excess = logs.len() - MAX_SESSIONS;
+    let excess = logs.len() - max_sessions;
     for (_, path) in logs.into_iter().take(excess) {
         if path != keep {
             let _ = std::fs::remove_file(path);
@@ -234,11 +318,34 @@ fn bounded(payload: Value) -> Value {
 /// Record an event. Returns the envelope as stored; an id already in the log
 /// returns without writing again.
 pub fn append(data_folder: &Path, event: NewEvent) -> Result<Envelope, LogError> {
-    if !valid_token(&event.id, 200) || !valid_token(&event.session, 200) {
-        return Err(LogError::InvalidInput("an event needs an id and a session".into()));
+    append_within(data_folder, event, Limits::standard())
+}
+
+/// [`append`], under explicit bounds.
+pub fn append_within(
+    data_folder: &Path,
+    event: NewEvent,
+    limits: Limits,
+) -> Result<Envelope, LogError> {
+    // AH-008: nothing is stored under an id that was not parsed. A separator,
+    // a control character or a `..` is refused here rather than sanitised into
+    // something else and written -- the id names a key in this file and, for
+    // the session, the file itself.
+    if !valid_token(&event.id, 200) {
+        return Err(LogError::InvalidInput("an event needs an id".into()));
     }
-    if event.run.len() > 200 || event.invocation.len() > 200 {
-        return Err(LogError::InvalidInput("an event's run or invocation is too long".into()));
+    if let Err(e) = crate::identity::SessionId::parse(event.session.as_str()) {
+        return Err(LogError::InvalidInput(e.message().to_string()));
+    }
+    if !event.run.is_empty() {
+        if let Err(e) = crate::identity::RunId::parse(event.run.as_str()) {
+            return Err(LogError::InvalidInput(e.message().to_string()));
+        }
+    }
+    if !event.invocation.is_empty() {
+        if let Err(e) = crate::identity::InvocationId::parse(event.invocation.as_str()) {
+            return Err(LogError::InvalidInput(e.message().to_string()));
+        }
     }
     if !valid_kind(&event.kind) {
         return Err(LogError::InvalidInput(format!("{:?} is not an event kind", event.kind)));
@@ -277,7 +384,41 @@ pub fn append(data_folder: &Path, event: NewEvent) -> Result<Envelope, LogError>
     };
     let mut line = serde_json::to_string(&envelope).map_err(|e| LogError::Io(e.to_string()))?;
     line.push('\n');
-    if state.bytes + line.len() as u64 > MAX_LOG_BYTES {
+    if state.bytes + line.len() as u64 > limits.max_log_bytes {
+        // A log that simply stops is indistinguishable from a run that did, so
+        // it says where it ended -- once, in the same envelope as every other
+        // line, so what is there stays readable JSONL and a reader that knows
+        // the kind can say why the record goes no further.
+        if !state.ids.contains(BOUNDARY_ID) {
+            let boundary = Envelope {
+                v: ENVELOPE_VERSION,
+                id: BOUNDARY_ID.to_string(),
+                session: envelope.session.clone(),
+                run: String::new(),
+                invocation: String::new(),
+                seq: envelope.seq,
+                at: crate::audit::now(),
+                kind: "log.truncated".to_string(),
+                payload: serde_json::json!({
+                    "reason": "the session's event log is full",
+                    "limitBytes": limits.max_log_bytes,
+                }),
+                redactions: Vec::new(),
+            };
+            if let Ok(mut mark) = serde_json::to_string(&boundary) {
+                mark.push('\n');
+                if let Ok(mut file) =
+                    std::fs::OpenOptions::new().create(true).append(true).open(&path)
+                {
+                    if file.write_all(mark.as_bytes()).is_ok() {
+                        let _ = file.flush();
+                        state.last_seq = boundary.seq;
+                        state.ids.insert(boundary.id);
+                        state.bytes += mark.len() as u64;
+                    }
+                }
+            }
+        }
         return Err(LogError::TooLarge);
     }
     let fresh = !path.exists();
@@ -289,8 +430,11 @@ pub fn append(data_folder: &Path, event: NewEvent) -> Result<Envelope, LogError>
     state.bytes += line.len() as u64;
     drop(states);
     if fresh {
-        prune(&events_dir(data_folder), &path);
+        prune(&events_dir(data_folder), &path, limits.max_sessions);
     }
+    // After the write and outside the log's lock: a watcher sees what is
+    // already recorded, and cannot deadlock the next event behind itself.
+    announce(&envelope);
     Ok(envelope)
 }
 
@@ -319,6 +463,49 @@ pub fn read_session(data_folder: &Path, session: &str) -> Result<Vec<Envelope>, 
     out.retain(|e| seen.insert(e.id.clone()));
     out.sort_by_key(|e| e.seq);
     Ok(out)
+}
+
+/// Forget what this process loaded, as a restart would. Tests only.
+#[cfg(test)]
+pub(crate) fn forget_loaded() {
+    STATE.lock().unwrap_or_else(|p| p.into_inner()).clear();
+}
+
+/// Every session's events, each log read under the same rules as
+/// [`read_session`]. A log that cannot be read is reported and skipped, so one
+/// damaged session never hides the others. Order: by session log, then `seq`.
+pub fn read_all_sessions(data_folder: &Path) -> Vec<Envelope> {
+    let Ok(entries) = std::fs::read_dir(events_dir(data_folder)) else {
+        return Vec::new();
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "jsonl"))
+        .collect();
+    paths.sort();
+    let mut out = Vec::new();
+    for path in paths {
+        // The session is named by the log's own first envelope; read_session
+        // then holds every line to it.
+        let first = std::fs::File::open(&path).ok().and_then(|f| {
+            std::io::BufReader::new(f)
+                .lines()
+                .map_while(Result::ok)
+                .find(|l| !l.trim().is_empty())
+                .and_then(|l| decode_line(&l).ok())
+        });
+        let Some(first) = first else { continue };
+        if log_path(data_folder, &first.session) != path {
+            eprintln!("event log: {} is not the log of the session it holds", path.display());
+            continue;
+        }
+        match read_session(data_folder, &first.session) {
+            Ok(events) => out.extend(events),
+            Err(e) => eprintln!("event log: {} cannot be read: {}", path.display(), e.message()),
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -352,6 +539,7 @@ mod tests {
         use crate::activity::Phase;
         for phase in [
             Phase::Requested,
+            Phase::Queued,
             Phase::AwaitingPermission,
             Phase::Allowed,
             Phase::Refused,
@@ -363,8 +551,10 @@ mod tests {
             Phase::TimedOut,
         ] {
             let name = serde_json::to_value(phase).unwrap();
-            let kind = format!("tool.{}", name.as_str().unwrap());
-            assert!(KNOWN_KINDS.contains(&kind.as_str()), "{kind} is not a known kind");
+            for prefix in ["tool", "lifecycle"] {
+                let kind = format!("{prefix}.{}", name.as_str().unwrap());
+                assert!(KNOWN_KINDS.contains(&kind.as_str()), "{kind} is not a known kind");
+            }
         }
     }
 
@@ -430,6 +620,163 @@ mod tests {
         let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
         f.write_all(b"not an event\n{\"v\":1,\"id\":\"z\",\"session\":\"s1\",\"seq\":5,\"at\":\"t\",\"kind\":\"run.ended\"}\n").unwrap();
         assert!(matches!(read_session(&d, "s1"), Err(LogError::Corrupt(_))));
+    }
+
+    /// AH-008: an event is only stored under an id that parses. What is
+    /// already recorded stays readable, and nothing is sanitised into a
+    /// different id and written.
+    #[test]
+    fn an_event_is_refused_rather_than_stored_under_an_unparsed_id() {
+        let d = dir("ids");
+        for bad in ["../escape", "a/b", "with\u{7}bell", "", " leading"] {
+            let refused = append(&d, ev("x", bad, "run.started", json!({})));
+            assert!(
+                matches!(refused, Err(LogError::InvalidInput(_))),
+                "{bad:?} was accepted: {refused:?}"
+            );
+        }
+        // A run or invocation that could escape is refused too, without
+        // touching what is already there.
+        append(&d, ev("a", "s-ids", "run.started", json!({}))).unwrap();
+        let mut bad_run = ev("b", "s-ids", "tool.requested", json!({}));
+        bad_run.run = "../elsewhere".to_string();
+        assert!(matches!(append(&d, bad_run), Err(LogError::InvalidInput(_))));
+        let mut bad_inv = ev("c", "s-ids", "tool.requested", json!({}));
+        bad_inv.invocation = "inv\u{0}".to_string();
+        assert!(matches!(append(&d, bad_inv), Err(LogError::InvalidInput(_))));
+        assert_eq!(read_session(&d, "s-ids").unwrap().len(), 1, "a refusal wrote something");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// AH-183: a watcher hears every event as it is recorded, in order, and
+    /// only what was actually written -- a repeated id is one event, so it is
+    /// announced once.
+    #[test]
+    fn a_watcher_hears_every_event_once_in_order() {
+        let d = dir("watch");
+        let heard = std::sync::Arc::new(Mutex::new(Vec::<(String, u64)>::new()));
+        let sink = heard.clone();
+        // A watcher hears everything this *process* records, which is what a
+        // headless run wants; the other tests share the process, so only these
+        // sessions are counted here.
+        watch(move |e| {
+            if e.session.starts_with("watch-") {
+                sink.lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .push((e.kind.clone(), e.seq));
+            }
+        });
+        append(&d, ev("a", "watch-s1", "run.started", json!({}))).unwrap();
+        append(&d, ev("b", "watch-s1", "tool.requested", json!({}))).unwrap();
+        // The same id again is the same event: recorded once, announced once.
+        append(&d, ev("b", "watch-s1", "tool.requested", json!({}))).unwrap();
+        append(&d, ev("c", "watch-s2", "run.started", json!({}))).unwrap();
+        unwatch();
+        append(&d, ev("d", "watch-s1", "run.ended", json!({}))).unwrap();
+
+        let heard = heard.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        assert_eq!(
+            heard,
+            vec![
+                ("run.started".to_string(), 1),
+                ("tool.requested".to_string(), 2),
+                ("run.started".to_string(), 1),
+            ],
+            "a watcher heard the wrong events"
+        );
+        // Everything was still recorded, whether or not anyone was listening.
+        assert_eq!(read_session(&d, "watch-s1").unwrap().len(), 3);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// AH-004: a session's log is bounded. What is already there stays
+    /// readable, one line says why the record goes no further, and nothing
+    /// after it is accepted -- a log that filled up must not look like a run
+    /// that ended.
+    #[test]
+    fn a_full_log_stops_at_a_readable_boundary() {
+        let d = dir("full");
+        // Room for the first event and nothing much more.
+        let first = append_within(&d, ev("a", "s1", "run.started", json!({})), Limits::standard())
+            .unwrap();
+        let used = std::fs::metadata(log_path(&d, "s1")).unwrap().len();
+        let tight = Limits { max_log_bytes: used + 8, max_sessions: MAX_SESSIONS };
+        assert_eq!(
+            append_within(&d, ev("b", "s1", "tool.requested", json!({})), tight),
+            Err(LogError::TooLarge)
+        );
+        // A second attempt is refused the same way and adds no second marker.
+        assert_eq!(
+            append_within(&d, ev("c", "s1", "tool.succeeded", json!({})), tight),
+            Err(LogError::TooLarge)
+        );
+        let back = read_session(&d, "s1").unwrap();
+        assert_eq!(
+            back.iter().map(|e| (e.id.as_str(), e.kind.as_str())).collect::<Vec<_>>(),
+            [("a", "run.started"), (BOUNDARY_ID, "log.truncated")],
+            "{back:?}"
+        );
+        assert_eq!(back[0], first, "what was already recorded is unchanged");
+        assert!(back[1].is_known(), "the boundary is a kind readers know");
+        let raw = std::fs::read_to_string(log_path(&d, "s1")).unwrap();
+        assert!(
+            raw.lines().filter(|l| !l.trim().is_empty()).all(|l| decode_line(l).is_ok()),
+            "the log stopped being JSONL: {raw}"
+        );
+        // And it is still the log it was after a restart.
+        restart();
+        assert_eq!(read_session(&d, "s1").unwrap().len(), 2);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// AH-004: the number of session logs is bounded, oldest first, and the
+    /// log being written is never the one removed.
+    #[test]
+    fn the_oldest_session_logs_are_removed_once_there_are_too_many() {
+        let d = dir("sessions");
+        let small = Limits { max_log_bytes: MAX_LOG_BYTES, max_sessions: 2 };
+        for session in ["s1", "s2"] {
+            append_within(&d, ev("a", session, "run.started", json!({})), small).unwrap();
+            // Distinct modification times: the oldest is removed by when it
+            // was last written, which needs the clock to have moved.
+            std::thread::sleep(std::time::Duration::from_millis(30));
+        }
+        append_within(&d, ev("a", "s3", "run.started", json!({})), small).unwrap();
+        assert!(read_session(&d, "s1").unwrap().is_empty(), "the oldest log survived");
+        for kept in ["s2", "s3"] {
+            assert_eq!(read_session(&d, kept).unwrap().len(), 1, "{kept} was removed instead");
+        }
+        // The standard bound removes nothing at this size.
+        append_within(&d, ev("b", "s4", "run.started", json!({})), Limits::standard()).unwrap();
+        assert_eq!(read_session(&d, "s2").unwrap().len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// A log written before this build's kinds existed still reads, and its
+    /// events keep their order beside new ones. The envelope is the contract;
+    /// the vocabulary is not.
+    #[test]
+    fn a_log_from_an_older_build_reads_and_continues() {
+        let d = dir("migrate");
+        let path = log_path(&d, "s1");
+        std::fs::create_dir_all(events_dir(&d)).unwrap();
+        // Written by a build that had no invocation ids and no `redactions`.
+        std::fs::write(
+            &path,
+            "{\"v\":1,\"id\":\"old-1\",\"session\":\"s1\",\"seq\":1,\"at\":\"2026-01-01T00:00:00Z\",\"kind\":\"run.started\",\"payload\":{}}\n",
+        )
+        .unwrap();
+        restart();
+        let back = read_session(&d, "s1").unwrap();
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0].invocation, "", "an absent field reads as empty, not as an error");
+        assert!(back[0].redactions.is_empty());
+        let next = append(&d, ev("new-1", "s1", "message.started", json!({ "first": "content" }))).unwrap();
+        assert_eq!(next.seq, 2, "the sequence continues from what was already there");
+        let after = read_session(&d, "s1").unwrap();
+        let kinds: Vec<&str> = after.iter().map(|e| e.kind.as_str()).collect();
+        assert_eq!(kinds, ["run.started", "message.started"]);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

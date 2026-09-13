@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { IconPlus, IconTrash } from '@tabler/icons-react'
+import { Plus, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -121,7 +121,7 @@ export function ChatTemplateKwargs({
             onClick={() => removeValue(key)}
             title={t('common:modelSettings.templateKwargs.remove')}
           >
-            <IconTrash size={16} className="text-muted-foreground" />
+            <Trash2 size={16} className="text-muted-foreground" />
           </Button>
         </div>
       ))}
@@ -171,7 +171,7 @@ export function ChatTemplateKwargs({
           className="px-0"
           onClick={() => setAdding(true)}
         >
-          <IconPlus size={14} className="mr-1" />
+          <Plus size={14} className="mr-1" />
           {t('common:modelSettings.templateKwargs.addCustom')}
         </Button>
       )}

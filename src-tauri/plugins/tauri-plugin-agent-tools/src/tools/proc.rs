@@ -818,6 +818,70 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
     outcome
 }
 
+/// When the process holding `pid` was created, or `None` if nothing does.
+///
+/// Opened for query only: asking which process something *is* must not require
+/// the right to end it, and a durable job record checks pids that may by then
+/// belong to strangers -- that check is exactly what stops one of them being
+/// mistaken for ours (AH-101).
+#[cfg(windows)]
+pub(crate) fn creation_time_of_pid(pid: u32) -> Option<u64> {
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        return None;
+    }
+    let zero = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+    let ok = unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) };
+    unsafe { CloseHandle(handle) };
+    if ok == 0 {
+        return None;
+    }
+    let ticks = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
+    (ticks != 0).then_some(ticks)
+}
+
+/// Whether the process holding `pid` has already ended, or `None` if nothing
+/// can be asked about that pid.
+///
+/// Needed beside the creation time: Windows keeps an ended process's record
+/// -- creation time included -- for as long as anything holds a handle to it,
+/// so a matching creation time alone reads a process that is gone as alive.
+#[cfg(windows)]
+pub(crate) fn has_exited_pid(pid: u32) -> Option<bool> {
+    use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0, WAIT_TIMEOUT};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+    };
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE, 0, pid) };
+    if handle.is_null() {
+        return None;
+    }
+    let waited = unsafe { WaitForSingleObject(handle, 0) };
+    unsafe { CloseHandle(handle) };
+    match waited {
+        WAIT_OBJECT_0 => Some(true),
+        WAIT_TIMEOUT => Some(false),
+        _ => None,
+    }
+}
+
+/// Whether the process holding `pid` has already ended, or `None` if unknown.
+/// A zombie -- ended, not yet reaped -- has ended.
+#[cfg(not(windows))]
+pub(crate) fn has_exited_pid(pid: u32) -> Option<bool> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let state = stat.rsplit_once(')')?.1.split_whitespace().next()?;
+    Some(matches!(state, "Z" | "X" | "x"))
+}
+
 /// When `handle`'s process was created, as a FILETIME count. `None` if unknown.
 #[cfg(all(windows, test))]
 pub(crate) fn creation_time(handle: windows_sys::Win32::Foundation::HANDLE) -> Option<u64> {

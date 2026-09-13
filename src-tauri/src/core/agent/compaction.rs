@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use tokio::sync::mpsc;
 
 use crate::core::agent::r#loop::ModelInvoker;
+use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError};
 use crate::core::agent::upstream::extract_choice_message;
 
 /// Default number of most-recent non-system messages kept verbatim.
@@ -80,7 +81,84 @@ pub(crate) async fn compact_conversation(
     model_id: &str,
     model: &dyn ModelInvoker,
     keep_recent: usize,
-) -> Result<Vec<Value>, String> {
+) -> Result<Vec<Value>, HarnessError> {
+    compact_conversation_with(
+        messages,
+        model_id,
+        model,
+        &CompactOptions { keep_recent, ..CompactOptions::default() },
+    )
+    .await
+}
+
+/// How one compaction runs, from the shared policy (AH-076).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CompactOptions {
+    pub keep_recent: usize,
+    /// Drop the span with a note instead of asking the model to summarise it.
+    pub trim: bool,
+    /// The longest summary asked for.
+    pub summary_max_tokens: u64,
+}
+
+impl Default for CompactOptions {
+    fn default() -> Self {
+        Self {
+            keep_recent: DEFAULT_KEEP_RECENT,
+            trim: false,
+            summary_max_tokens: tauri_plugin_agent_tools::compaction_policy::DEFAULT_SUMMARY_MAX_TOKENS,
+        }
+    }
+}
+
+impl CompactOptions {
+    /// The options a policy asks for, with the tail `keep_recent` chosen by the
+    /// caller (a manual `/compact` keeps a shorter one).
+    pub(crate) fn from_policy(
+        policy: &tauri_plugin_agent_tools::compaction_policy::Policy,
+        keep_recent: usize,
+    ) -> Self {
+        Self {
+            keep_recent,
+            trim: policy.strategy == tauri_plugin_agent_tools::compaction_policy::Strategy::Trim,
+            summary_max_tokens: policy.summary_max_tokens,
+        }
+    }
+
+    /// Read from a request body the orchestrator annotated (see
+    /// `r#loop::attach_compaction`). Anything absent is the default.
+    pub(crate) fn from_body(body: &Value) -> Self {
+        let d = Self::default();
+        Self {
+            keep_recent: body
+                .get(BODY_KEEP_RECENT)
+                .and_then(Value::as_u64)
+                .map(|v| v as usize)
+                .unwrap_or(d.keep_recent),
+            trim: body.get(BODY_TRIM).and_then(Value::as_bool).unwrap_or(d.trim),
+            summary_max_tokens: body
+                .get(BODY_SUMMARY_MAX_TOKENS)
+                .and_then(Value::as_u64)
+                .unwrap_or(d.summary_max_tokens),
+        }
+    }
+}
+
+/// Keys the orchestrator puts on a run's body for the turn cycle. Not chat
+/// parameters: `copy_optional_chat_params` forwards only the ones it names, so
+/// these never reach a provider.
+pub(crate) const BODY_KEEP_RECENT: &str = "jan_compaction_keep_recent";
+pub(crate) const BODY_TRIM: &str = "jan_compaction_trim";
+pub(crate) const BODY_SUMMARY_MAX_TOKENS: &str = "jan_compaction_summary_max_tokens";
+
+/// [`compact_conversation`], under explicit options (AH-076).
+pub(crate) async fn compact_conversation_with(
+    messages: &[Value],
+    model_id: &str,
+    model: &dyn ModelInvoker,
+    options: &CompactOptions,
+) -> Result<Vec<Value>, HarnessError> {
+    let keep_recent = options.keep_recent;
     let sys_end = messages.iter().take_while(|m| role(m) == "system").count();
     let (system_msgs, rest) = messages.split_at(sys_end);
 
@@ -93,7 +171,13 @@ pub(crate) async fn compact_conversation(
     };
 
     let kept = &rest[cut..];
-    let summary = summarize(&rest[..cut], model_id, model).await?;
+    // `trim` asks for no model call at all: the span is dropped and the model
+    // is told it was, rather than shown a summary nobody wrote.
+    let summary = if options.trim {
+        FALLBACK_NOTE.to_string()
+    } else {
+        summarize(&rest[..cut], model_id, model, options.summary_max_tokens).await?
+    };
 
     let mut out = Vec::with_capacity(system_msgs.len() + 1 + kept.len());
     out.extend_from_slice(system_msgs);
@@ -176,7 +260,8 @@ async fn summarize(
     dropped: &[Value],
     model_id: &str,
     model: &dyn ModelInvoker,
-) -> Result<String, String> {
+    max_tokens: u64,
+) -> Result<String, HarnessError> {
     let transcript = clamp_middle(&render_transcript(dropped), SUMMARY_INPUT_CHARS);
     if transcript.trim().is_empty() {
         return Ok(FALLBACK_NOTE.to_string());
@@ -187,6 +272,7 @@ async fn summarize(
             { "role": "system", "content": SUMMARY_SYSTEM_PROMPT },
             { "role": "user", "content": transcript },
         ],
+        "max_tokens": max_tokens,
     });
     // Discard the summarizer's streamed tokens: a dropped receiver means these
     // never reach the user-facing event stream.
@@ -205,7 +291,8 @@ async fn summarize(
             // A model-switch compaction targets the (smaller) new model: if the
             // summarizer itself overflows, a note is not safe -- the request
             // could still overflow and the dropped span would be lost. Propagate.
-            if crate::core::agent::upstream::is_context_overflow_error(&e) {
+            // AH-009: the kind decides, not the wording.
+            if e.kind() == ErrorKind::ContextOverflow {
                 Err(e)
             } else {
                 Ok(FALLBACK_NOTE.to_string())
@@ -231,7 +318,7 @@ mod tests {
             &self,
             request: &Value,
             _events: &mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
-        ) -> Result<Value, String> {
+        ) -> Result<Value, HarnessError> {
             self.requests.lock().await.push(request.clone());
             *self.calls.lock().unwrap() += 1;
             Ok(json!({ "choices": [{ "message": { "content": self.summary.clone() } }] }))
@@ -245,8 +332,8 @@ mod tests {
             &self,
             _request: &Value,
             _events: &mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
-        ) -> Result<Value, String> {
-            Err("boom".to_string())
+        ) -> Result<Value, HarnessError> {
+            Err("boom".to_string().into())
         }
     }
 
@@ -257,6 +344,57 @@ mod tests {
             v.push(json!({ "role": r, "content": format!("msg{i}") }));
         }
         v
+    }
+
+    /// AH-076: `strategy = trim` compacts without a model call, and the
+    /// summary cap from the policy reaches the summarizer's request.
+    #[tokio::test]
+    async fn the_policy_decides_whether_a_model_is_asked_and_for_how_long_a_summary() {
+        let model = StubModel {
+            summary: "S".into(),
+            calls: StdMutex::new(0),
+            requests: tokio::sync::Mutex::new(Vec::new()),
+        };
+        let input = convo(20);
+        let trimmed = compact_conversation_with(
+            &input,
+            "m",
+            &model,
+            &CompactOptions { keep_recent: 4, trim: true, summary_max_tokens: 512 },
+        )
+        .await
+        .unwrap();
+        assert!(trimmed.len() < input.len());
+        assert_eq!(*model.calls.lock().unwrap(), 0, "trim never calls the model");
+        assert!(trimmed.iter().any(|m| m["content"].as_str().unwrap_or("").contains(FALLBACK_NOTE)));
+
+        let summarized = compact_conversation_with(
+            &input,
+            "m",
+            &model,
+            &CompactOptions { keep_recent: 4, trim: false, summary_max_tokens: 200 },
+        )
+        .await
+        .unwrap();
+        assert!(summarized.len() < input.len());
+        assert_eq!(*model.calls.lock().unwrap(), 1);
+        assert_eq!(model.requests.lock().await[0]["max_tokens"], 200);
+        // The kept tail is the policy's.
+        assert_eq!(&summarized[summarized.len() - 4..], &input[input.len() - 4..]);
+    }
+
+    #[test]
+    fn options_travel_on_the_body_and_absent_keys_are_defaults() {
+        let body = json!({
+            BODY_KEEP_RECENT: 12,
+            BODY_TRIM: true,
+            BODY_SUMMARY_MAX_TOKENS: 300,
+        });
+        assert_eq!(
+            CompactOptions::from_body(&body),
+            CompactOptions { keep_recent: 12, trim: true, summary_max_tokens: 300 }
+        );
+        assert_eq!(CompactOptions::from_body(&json!({})), CompactOptions::default());
     }
 
     #[tokio::test]
@@ -460,11 +598,12 @@ mod tests {
             &self,
             _request: &Value,
             _events: &mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
-        ) -> Result<Value, String> {
+        ) -> Result<Value, HarnessError> {
             Err(format!(
                 "[{}] Upstream returned HTTP 400: prompt is too long",
                 crate::core::agent::upstream::CONTEXT_OVERFLOW_MARKER
-            ))
+            )
+            .into())
         }
     }
 
@@ -474,9 +613,7 @@ mod tests {
         let error = compact_conversation(&input, "m", &OverflowingModel, 4)
             .await
             .expect_err("a summarizer context overflow must not be swallowed");
-        assert!(crate::core::agent::upstream::is_context_overflow_error(
-            &error
-        ));
+        assert_eq!(error.kind(), ErrorKind::ContextOverflow);
     }
 
     /// One prompt driving a long agentic run is the normal shape here: a single

@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use tokio::sync::mpsc;
 
 use crate::core::agent::r#loop::ModelInvoker;
+use tauri_plugin_agent_tools::harness_error::HarnessError;
 use crate::core::agent::upstream::extract_choice_message;
 
 /// Hard cap on a goal condition, per the spec ("up to 4k chars").
@@ -265,7 +266,7 @@ pub(crate) async fn evaluate(
     condition: &str,
     messages: &[Value],
     model: &dyn ModelInvoker,
-) -> Result<GoalVerdict, String> {
+) -> Result<GoalVerdict, HarnessError> {
     let request = build_evaluator_request(model_id, condition, messages);
     // The evaluator's tokens are internal: a dropped receiver keeps them off the
     // user-facing stream.
@@ -303,7 +304,7 @@ mod tests {
             &self,
             _request: &Value,
             _events: &mpsc::UnboundedSender<StreamEvent>,
-        ) -> Result<Value, String> {
+        ) -> Result<Value, HarnessError> {
             Ok(json!({ "choices": [{ "message": { "content": self.reply.clone() } }] }))
         }
     }

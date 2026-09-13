@@ -86,6 +86,8 @@ macro_rules! invoke_commands_with_extras {
         core::server::commands::set_server_run_in_background,
         // Agent commands
         core::agent::commands::agent_emergency_stop,
+        core::agent::commands::get_compaction_policy,
+        core::agent::commands::set_compaction_policy,
         // One provider transport: every OpenAI-compatible request resolves
         // and dials through here, so there is one address-selection rule.
         core::net::commands::provider_http_request,
@@ -93,22 +95,40 @@ macro_rules! invoke_commands_with_extras {
         core::net::commands::provider_http_cancel,
         core::net::commands::provider_endpoint_diagnostics,
         core::net::commands::provider_endpoint_refresh,
+        core::net::commands::network_ca_status,
+        core::net::commands::network_ca_check,
         core::agent::commands::agent_prompt_snapshots,
+        core::agent::commands::agent_prompt_snapshots_delete,
         core::agent::commands::agent_worktree_export,
         core::agent::commands::agent_events_record,
+        core::agent::commands::agent_events_list,
         core::agent::commands::agent_events_export,
         core::agent::commands::agent_events_export_cancel,
         core::agent::commands::agent_events_inspect,
+        core::agent::commands::agent_events_runs,
+        core::agent::commands::agent_events_run,
         core::agent::commands::agent_bundle_import,
         core::agent::commands::agent_bundle_import_cancel,
         core::agent::commands::agent_bundle_imports_list,
         core::agent::commands::agent_bundle_apply,
         core::agent::commands::agent_bundle_abandon,
         core::agent::commands::agent_replay_begin,
+        core::agent::commands::agent_context_breakdown,
+        core::agent::commands::agent_background_jobs,
+        core::agent::commands::agent_job_start,
+        core::agent::commands::agent_job_output,
+        core::agent::commands::agent_job_cancel,
+        core::agent::commands::agent_run_tree,
+        core::agent::commands::agent_replay_plan,
+        core::agent::commands::agent_replay_recorded,
+        core::agent::commands::agent_replay_run_begin,
+        core::agent::commands::agent_replay_run_settle,
         core::agent::commands::agent_replay_settle,
         core::agent::commands::agent_replays_list,
         core::agent::commands::tool_activity_record,
         core::agent::commands::tool_activity_items,
+        core::agent::commands::tool_activity_diff,
+        core::agent::commands::audit_export,
         core::agent::commands::payload_usage_record,
         core::agent::commands::payload_usage_lookup,
         core::agent::commands::utility_agent_record,
@@ -117,6 +137,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::session_handoff_save,
         core::agent::commands::session_folder_identity,
         core::agent::commands::utility_agent_lookup,
+        core::agent::commands::project_tooling,
         core::agent::commands::agent_skill_list,
         core::agent::commands::agent_skill_read,
         core::agent::commands::agent_skill_write,
@@ -126,7 +147,11 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_skill_enabled_get,
         core::agent::commands::agent_skill_enabled_set,
         core::agent::commands::agent_plugin_list,
+        core::agent::commands::agent_plugin_details,
+        core::agent::commands::agent_plugin_sources,
         core::agent::commands::agent_plugin_install,
+        core::agent::commands::agent_plugin_install_cancel,
+        core::agent::commands::agent_plugin_set_enabled,
         core::agent::commands::agent_plugin_remove,
         core::agent::commands::agent_plugin_search,
         core::agent::commands::agent_git_branch,
@@ -158,14 +183,18 @@ macro_rules! invoke_commands_with_extras {
         core::server::remote_provider_commands::get_provider_config,
         core::server::remote_provider_commands::get_provider_keys,
         core::server::remote_provider_commands::list_provider_configs,
+        core::server::remote_provider_commands::register_secret_values,
         // MCP commands
         core::mcp::commands::get_tools,
         core::mcp::commands::get_tools_for_servers,
         core::mcp::commands::get_server_summaries,
         core::mcp::commands::call_tool,
         core::mcp::commands::mcp_trusted_servers,
+        core::mcp::commands::mcp_trust_report,
+        core::mcp::commands::mcp_server_fingerprints,
         core::mcp::commands::mcp_trust_server,
         core::mcp::commands::mcp_revoke_server,
+        core::mcp::commands::mcp_forget_server,
         core::mcp::commands::mcp_allow_once,
         core::mcp::commands::cancel_tool_call,
         core::mcp::commands::restart_mcp_servers,
@@ -175,6 +204,7 @@ macro_rules! invoke_commands_with_extras {
         core::mcp::commands::activate_mcp_server,
         core::mcp::commands::deactivate_mcp_server,
         core::mcp::commands::get_mcp_auth_status,
+        core::mcp::commands::get_mcp_server_log,
         core::mcp::commands::authorize_mcp_server,
         core::mcp::commands::clear_mcp_auth,
         core::mcp::commands::check_jan_browser_extension_connected,
@@ -397,9 +427,57 @@ pub fn build_app() -> tauri::App {
             tauri_plugin_agent_tools::activity::settle_unfinished(&get_jan_data_folder_path(
                 app.handle().clone(),
             ));
+            // AH-101/AH-102: and what became of the background jobs the last
+            // process left. A job whose process is gone is interrupted, never
+            // "still running"; one whose pid now belongs to something else is
+            // orphaned and is not touched. Nothing is adopted on a pid alone.
+            // AH-101: a job whose supervisor is still running is left alone --
+            // that is the point of the supervisor. Everything else is settled.
+            let settled = tauri_plugin_agent_tools::worker::reconcile_all(
+                &get_jan_data_folder_path(app.handle().clone()),
+            );
+            if !settled.is_empty() {
+                log::info!(
+                    "background jobs: {} left by an earlier process were settled",
+                    settled.len()
+                );
+            }
+            // Request snapshots and usage counts are bounded rather than kept
+            // forever. Off the main thread: a large log is a rewrite, and the
+            // window should not wait for it.
+            {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                std::thread::spawn(move || {
+                    if let Err(e) =
+                        tauri_plugin_agent_tools::retention::compact_default(&data_folder)
+                    {
+                        log::warn!("request log compaction failed: {e}");
+                    }
+                });
+            }
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
                     .level(log::LevelFilter::Debug)
+                    // The plugin's own layout, with values the user marked
+                    // secret (a custom provider header, janhq/jan#8208)
+                    // replaced before any target -- file, stdout, webview --
+                    // sees the line.
+                    .format(|out, message, record| {
+                        let now = tauri_plugin_log::TimezoneStrategy::UseUtc.get_now();
+                        let message = message.to_string();
+                        out.finish(format_args!(
+                            "[{:04}-{:02}-{:02}][{:02}:{:02}:{:02}][{}][{}] {}",
+                            now.year(),
+                            u8::from(now.month()),
+                            now.day(),
+                            now.hour(),
+                            now.minute(),
+                            now.second(),
+                            record.target(),
+                            record.level(),
+                            crate::core::secret_values::scrub(&message)
+                        ))
+                    })
                     .targets([
                         tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
                         tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
@@ -410,6 +488,15 @@ pub fn build_app() -> tauri::App {
                     ])
                     .build(),
             )?;
+            // The Windows window is created hidden and shown here, at the place
+            // it was last left, so it never paints at the default spot and then
+            // jumps. See core::window_state.
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                core::window_state::restore_and_show(&window, &data_folder);
+                core::window_state::install(&window, data_folder);
+            }
             // Start migration
             let mut store_path = get_jan_data_folder_path(app.handle().clone());
             store_path.push("store.json");

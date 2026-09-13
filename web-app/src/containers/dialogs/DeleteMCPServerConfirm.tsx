@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 interface DeleteMCPServerConfirmProps {
   open: boolean
@@ -32,13 +33,26 @@ export default function DeleteMCPServerConfirm({
             {t('mcp-servers:deleteServer.description', { serverName })}
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter>
-          <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
+        {/* Deleting revokes every approval for the name (renderer and backend
+            trust) and clears its OAuth tokens, so a server added later under
+            the same name inherits nothing. Audit history is kept. */}
+        <div className="space-y-2 rounded-md bg-sunken px-3 py-2 text-sm text-ink-2">
+          <p>{t('mcp-servers:deleteServer.approvalsRemoved')}</p>
+          <p>{t('mcp-servers:deleteServer.disableInstead')}</p>
+        </div>
+        <DialogFooter className={STICKY_DIALOG_FOOTER}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="pointer-coarse:h-11"
+            onClick={() => onOpenChange(false)}
+          >
             {t('common:cancel')}
           </Button>
           <Button
             size="sm"
             variant="destructive"
+            className="pointer-coarse:h-11"
             autoFocus
             onClick={() => {
               onConfirm()

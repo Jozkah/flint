@@ -58,6 +58,8 @@ const h = vi.hoisted(() => ({
     mcp: [],
     inert: [],
   })),
+  /** Every transport the route built, newest last. */
+  transports: [] as any[],
   /** The last run's dispatcher, captured from `runTurn`. */
   deps: null as any,
   runTurn: vi.fn(),
@@ -143,16 +145,24 @@ vi.mock('@/hooks/useServiceHub', () => {
   return { useServiceHub: () => hub, getServiceHub: () => hub }
 })
 
-vi.mock('@/hooks/useModelProvider', () => ({
-  useModelProvider: () => ({
-    selectedModel: {
-      id: 'local/qwen',
-      capabilities: ['tools'],
-      settings: { ctx_len: { controller_props: { value: 8192 } } },
-    },
+vi.mock('@/hooks/useModelProvider', () => {
+  const selectedModel = {
+    id: 'local/qwen',
+    capabilities: ['tools'],
+    settings: { ctx_len: { controller_props: { value: 8192 } } },
+  }
+  const state = {
+    selectedModel,
     selectedProvider: 'llamacpp',
-  }),
-}))
+    // A run resolves its model from the providers (janhq/jan#8905), not
+    // from the bare selection.
+    providers: [{ provider: 'llamacpp', active: true, models: [selectedModel] }],
+    selectModelProvider: () => {},
+  }
+  const useModelProvider: any = () => state
+  useModelProvider.getState = () => state
+  return { useModelProvider }
+})
 
 /** The model, replaced. Everything between the composer and the gate is real. */
 vi.mock('@/lib/coworkTransport', () => ({
@@ -171,11 +181,17 @@ vi.mock('@/lib/coworkTransport', () => ({
     constructor(
       public sessionId: string,
       public config: any
-    ) {}
+    ) {
+      h.transports.push(this)
+    }
     setConfig(config: any) {
       this.config = config
     }
     unfreezeTools() {}
+    memoryBinding: { projectRoot?: string; temporary?: boolean } | undefined
+    setMemoryBinding(binding: { projectRoot?: string; temporary?: boolean }) {
+      this.memoryBinding = binding
+    }
     async refreshTools() {}
     measureContext() {
       return {
@@ -199,6 +215,13 @@ vi.mock('@/lib/coworkTransport', () => ({
   },
 }))
 
+// AH-111: a team that ends with failures waits for a person to restart or
+// replace a member. Nobody is at the Tasks panel in these tests, so the wait
+// is made immediate; its own behaviour is tested in coworkTeamRunControl.
+vi.mock('@/lib/coworkTeamControl', async (orig) => ({
+  ...(await orig<typeof import('@/lib/coworkTeamControl')>()),
+  DECISION_WINDOW_MS: 0,
+}))
 vi.mock('@/lib/coworkRunner', async (orig) => {
   const actual = await orig<typeof import('@/lib/coworkRunner')>()
   return {
@@ -405,6 +428,120 @@ afterEach(() => {
 })
 
 /**
+ * The window width the route sees, through the same `matchMedia` its media
+ * queries read. Only `max-width` queries are answered, which is all it asks.
+ */
+function setViewport(width: number) {
+  ;(window.matchMedia as any).mockImplementation((query: string) => {
+    const max = /max-width:\s*(\d+)px/.exec(query)?.[1]
+    return {
+      matches: max !== undefined && width <= Number(max),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }
+  })
+}
+
+/** The `hidden` utility itself, not a class that merely contains the word. */
+const isHidden = (el: HTMLElement) => el.classList.contains('hidden')
+
+describe('the layout at each width', () => {
+  afterEach(() => setViewport(4000))
+
+  it('docks the output panel on a wide window, with one set of rail tabs', async () => {
+    setViewport(1440)
+    await renderRoute()
+    // Closed: the rail buttons are in the composer row.
+    expect(screen.getAllByRole('button', { name: 'common:rail.code' })).toHaveLength(1)
+    await userEvent.click(screen.getByRole('button', { name: 'common:rail.code' }))
+
+    const inspector = await screen.findByTestId('cowork-inspector')
+    expect(inspector).toHaveAttribute('data-layout', 'docked')
+    // Open: the same buttons, once, in the panel header, still pressed.
+    const code = screen.getAllByRole('button', { name: 'common:rail.code' })
+    expect(code).toHaveLength(1)
+    expect(inspector.contains(code[0])).toBe(true)
+    expect(code[0]).toHaveAttribute('aria-pressed', 'true')
+
+    // Pressing the open tab again closes it, as the toolbar always did.
+    await userEvent.click(code[0])
+    await waitFor(() =>
+      expect(screen.queryByTestId('cowork-inspector')).toBeNull()
+    )
+  })
+
+  it('puts the panel in a drawer below 1100px that its scrim closes', async () => {
+    setViewport(900)
+    await renderRoute()
+    await userEvent.click(screen.getByRole('button', { name: 'common:rail.code' }))
+    const inspector = await screen.findByTestId('cowork-inspector')
+    expect(inspector).toHaveAttribute('data-layout', 'drawer')
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'common:rail.closeOverlay' })
+    )
+    await waitFor(() =>
+      expect(screen.queryByTestId('cowork-inspector')).toBeNull()
+    )
+    expect(
+      screen.getByRole('button', { name: 'common:rail.code' })
+    ).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('shows one view at a time on a phone, keeping the composer mounted', async () => {
+    setViewport(390)
+    await renderRoute()
+    const switcher = await screen.findByRole('group', {
+      name: 'common:coworkLayout.views',
+    })
+    expect(switcher).toBeInTheDocument()
+    expect(screen.getByTestId('cowork-view-content')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    // The details control is a view here, not a dialog in the bar.
+    expect(screen.queryByTestId('session-details-trigger')).toBeNull()
+
+    await userEvent.click(screen.getByTestId('cowork-view-output'))
+    const inspector = await screen.findByTestId('cowork-inspector')
+    expect(inspector).toHaveAttribute('data-layout', 'full')
+    expect(isHidden(screen.getByTestId('cowork-content-view'))).toBe(true)
+    // Hidden, not unmounted: the draft lives in the composer.
+    expect(screen.getByTestId('composer')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'common:rail.code' })).toHaveLength(1)
+
+    // Choosing a tab keeps the output view and marks the tab.
+    await userEvent.click(screen.getByRole('button', { name: 'common:rail.code' }))
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'common:rail.code' })
+      ).toHaveAttribute('aria-pressed', 'true')
+    )
+    expect(screen.getByTestId('cowork-view-output')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'common:coworkLayout.back' })
+    )
+    await waitFor(() =>
+      expect(isHidden(screen.getByTestId('cowork-content-view'))).toBe(false)
+    )
+    expect(screen.queryByTestId('cowork-inspector')).toBeNull()
+
+    await userEvent.click(screen.getByTestId('cowork-view-details'))
+    expect(await screen.findByTestId('cowork-details-view')).toBeInTheDocument()
+    expect(screen.getByTestId('session-details-body')).toBeInTheDocument()
+  })
+})
+
+/**
  * A session that has already had a turn.
  *
  * The opening turn of a bound session is deliberately review-only — the
@@ -519,6 +656,13 @@ describe('what a run carries, decided by the route', () => {
         writeGrant: 'grant-1',
       })
     )
+    // Memory follows the project, not the tree this run reads: a managed
+    // worktree is the same project, so it must recall the attached folder's
+    // memory rather than start a project of its own.
+    expect(h.transports.at(-1)?.memoryBinding).toEqual({
+      projectRoot: FOLDER,
+      temporary: false,
+    })
   })
 
   it('does not start a run against a worktree that is no longer there', async () => {

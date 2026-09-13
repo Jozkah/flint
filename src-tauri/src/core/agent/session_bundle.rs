@@ -19,7 +19,12 @@ pub const MAX_BYTES: u64 = 32 * 1024 * 1024;
 /// Session fields that are never exported: authority (access, consent,
 /// continuity), machine paths (folder, code panel), in-flight state (run
 /// budget), and what is rebuilt from the turns on import (messages).
-const DROPPED_SESSION_KEYS: [&str; 9] = [
+///
+/// `lastUsage` is deliberately *not* here. It is the provider's own count for
+/// the session's last request, cache breakdown included (AH-211): no path, no
+/// authority, nothing this machine granted -- and dropping it made an imported
+/// session's token counter come back empty.
+const DROPPED_SESSION_KEYS: [&str; 8] = [
     "folder",
     "access",
     "editConsent",
@@ -28,7 +33,6 @@ const DROPPED_SESSION_KEYS: [&str; 9] = [
     "runBudget",
     "messages",
     "history",
-    "lastUsage",
 ];
 
 pub fn check_header(bundle: &Value) -> Result<(), String> {
@@ -273,6 +277,21 @@ mod tests {
             assert!(!session.contains_key(key), "{key} was exported");
         }
         assert_eq!(out["session"]["turns"].as_array().unwrap().len(), 2);
+    }
+
+    /// AH-211: the session's provider usage is data, not authority, and an
+    /// export that dropped it brought the session back with an empty counter.
+    #[test]
+    fn the_provider_usage_is_carried_with_its_cache_breakdown() {
+        let mut b = bundle();
+        let usage = json!({
+            "prompt_tokens": 5900, "completion_tokens": 32, "total_tokens": 5932,
+            "cached_prompt_tokens": 5863, "uncached_prompt_tokens": 37,
+            "cache_source": "openai-chat"
+        });
+        b["session"]["lastUsage"] = usage.clone();
+        let (out, _) = prepare_export(b).unwrap();
+        assert_eq!(out["session"]["lastUsage"], usage);
     }
 
     #[test]
