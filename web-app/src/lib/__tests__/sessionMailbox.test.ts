@@ -58,6 +58,10 @@ describe('sessionMailbox', () => {
     expect(toMailboxError({ code: 'self_target', message: 'no' }).code).toBe(
       'self_target'
     )
+    // The backend's own additions beyond the contract table.
+    for (const code of ['invalid_session_id', 'unknown_message', 'invalid_timeout', 'cancelled', 'invalid_arguments', 'not_available', 'io']) {
+      expect(toMailboxError({ code, message: 'x' }).code).toBe(code)
+    }
     expect(toMailboxError(new Error('boom')).code).toBe('unknown')
     const typed = new MailboxError('no_project', 'x')
     expect(toMailboxError(typed)).toBe(typed)
@@ -66,19 +70,19 @@ describe('sessionMailbox', () => {
   it('calls the contract commands with the data folder', async () => {
     invoke.mockResolvedValue([])
     await sessionMailbox.takeForDelivery('S2')
-    expect(invoke).toHaveBeenCalledWith('mailbox_take_for_delivery', {
+    expect(invoke).toHaveBeenCalledWith('plugin:agent-tools|mailbox_take_for_delivery', {
       dataFolder: '/mock/jan/data',
       sessionId: 'S2',
     })
     await sessionMailbox.register({ sessionId: 'S2', displayName: 'T' })
-    expect(invoke).toHaveBeenLastCalledWith('mailbox_session_register', {
+    expect(invoke).toHaveBeenLastCalledWith('plugin:agent-tools|mailbox_session_register', {
       dataFolder: '/mock/jan/data',
       sessionId: 'S2',
       displayName: 'T',
       folder: null,
     })
     await sessionMailbox.reply({ fromSessionId: 'S2', replyTo: 'm1', text: 'ok' })
-    expect(invoke).toHaveBeenLastCalledWith('mailbox_reply', {
+    expect(invoke).toHaveBeenLastCalledWith('plugin:agent-tools|mailbox_reply', {
       dataFolder: '/mock/jan/data',
       fromSessionId: 'S2',
       replyTo: 'm1',

@@ -36,7 +36,7 @@ export type MailEnvelope = {
   id: string
   from: { sessionId: string; displayName: string }
   to: { sessionId: string }
-  project: string | null
+  project: string
   text: string
   createdAt: number
   replyTo?: string | null
@@ -56,6 +56,15 @@ export type MailboxErrorCode =
   | 'unknown_session'
   | 'session_deleted'
   | 'unknown_reply_target'
+  | 'timeout'
+  | 'target_unavailable'
+  | 'invalid_session_id'
+  | 'unknown_message'
+  | 'invalid_timeout'
+  | 'cancelled'
+  | 'invalid_arguments'
+  | 'not_available'
+  | 'io'
   | 'no_data_folder'
   | 'unknown'
 
@@ -70,6 +79,15 @@ const KNOWN_CODES: ReadonlySet<string> = new Set<MailboxErrorCode>([
   'unknown_session',
   'session_deleted',
   'unknown_reply_target',
+  'timeout',
+  'target_unavailable',
+  'invalid_session_id',
+  'unknown_message',
+  'invalid_timeout',
+  'cancelled',
+  'invalid_arguments',
+  'not_available',
+  'io',
   'no_data_folder',
 ])
 
@@ -85,10 +103,10 @@ export class MailboxError extends Error {
 /**
  * Normalize a rejected invoke into a `MailboxError`.
  *
- * The backend's serialized error shape is not fixed by the contract, so both
- * forms seen in this codebase are accepted: an object carrying `code`
- * (optionally `message`), or a string that starts with the code
- * (`"rate_limited: ..."` / `"rate_limited"`).
+ * The backend serializes refusals as `{code, message}` (mailbox.rs
+ * `MailboxError`). A string or Error starting with the code
+ * (`"rate_limited: ..."`, the Display form) is accepted too, so a failure
+ * that went through a string conversion somewhere keeps its code.
  */
 export function toMailboxError(raw: unknown): MailboxError {
   if (raw instanceof MailboxError) return raw
@@ -125,42 +143,74 @@ async function dataFolder(): Promise<string> {
   return folder
 }
 
+/** The registry record `mailbox_session_register` returns. */
+export type SessionRecord = {
+  id: string
+  displayName: string
+  project: string | null
+  status: SessionStatus
+  runId?: string | null
+  heartbeatAt?: number | null
+  epoch?: string | null
+  updatedAt: number
+  deleted: boolean
+}
+
+/** What `mailbox_reply` returns. */
+export type SendReceipt = {
+  messageId: string
+  deliveredToStatus: SessionStatus
+}
+
+/** Every mailbox command is a command of the agent-tools plugin. */
+const PLUGIN = 'plugin:agent-tools|'
+
 async function call<T>(
   command: string,
   args: Record<string, unknown>
 ): Promise<T> {
   const folder = await dataFolder()
   try {
-    return await invoke<T>(command, { dataFolder: folder, ...args })
+    return await invoke<T>(`${PLUGIN}${command}`, {
+      dataFolder: folder,
+      ...args,
+    })
   } catch (e) {
     throw toMailboxError(e)
   }
 }
 
 export const sessionMailbox = {
+  /** Refused with `session_deleted` for an id that was removed. */
   register: (input: {
     sessionId: string
     displayName: string
     folder?: string | null
   }) =>
-    call<void>('mailbox_session_register', {
+    call<SessionRecord>('mailbox_session_register', {
       sessionId: input.sessionId,
       displayName: input.displayName,
       folder: input.folder ?? null,
     }),
 
+  /**
+   * A run started or ended. Always pass the run id the run started with: an
+   * ending that names another run is ignored by the backend.
+   */
   setStatus: (input: { sessionId: string; running: boolean; runId?: string }) =>
-    call<void>('mailbox_session_status', {
+    call<null>('mailbox_session_status', {
       sessionId: input.sessionId,
       running: input.running,
       runId: input.runId ?? null,
     }),
 
+  /** Refreshes only a running record whose run id matches. */
   heartbeat: (input: { sessionId: string; runId: string }) =>
-    call<void>('mailbox_session_heartbeat', input),
+    call<null>('mailbox_session_heartbeat', input),
 
+  /** Marks deleted; an unknown id gets a tombstone. */
   remove: (sessionId: string) =>
-    call<void>('mailbox_session_remove', { sessionId }),
+    call<null>('mailbox_session_remove', { sessionId }),
 
   takeForDelivery: (sessionId: string) =>
     call<MailEnvelope[]>('mailbox_take_for_delivery', { sessionId }),
@@ -168,14 +218,12 @@ export const sessionMailbox = {
   pending: (sessionId: string) =>
     call<MailEnvelope[]>('mailbox_pending', { sessionId }),
 
+  /** Resolves to how many envelopes changed state. */
   markRead: (sessionId: string, messageIds: string[]) =>
-    call<void>('mailbox_mark_read', { sessionId, messageIds }),
+    call<number>('mailbox_mark_read', { sessionId, messageIds }),
 
   reply: (input: { fromSessionId: string; replyTo: string; text: string }) =>
-    call<{ message_id?: string; messageId?: string } | void>(
-      'mailbox_reply',
-      input
-    ),
+    call<SendReceipt>('mailbox_reply', input),
 
   listSessions: (sessionId: string) =>
     call<MailSessionSummary[]>('mailbox_list_sessions', { sessionId }),

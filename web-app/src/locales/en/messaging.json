@@ -25,6 +25,15 @@
     "unknown_session": "That session no longer exists.",
     "session_deleted": "That session was deleted.",
     "unknown_reply_target": "The message being replied to could not be found.",
+    "timeout": "No reply arrived in time.",
+    "target_unavailable": "That session is not available right now.",
+    "invalid_session_id": "That session id is not valid.",
+    "unknown_message": "That message could not be found.",
+    "invalid_timeout": "The wait time must be between 1 and 120 seconds.",
+    "cancelled": "The request was cancelled.",
+    "invalid_arguments": "The request was not valid.",
+    "not_available": "Messaging is not available here.",
+    "io": "The mailbox could not be read or written.",
     "no_data_folder": "Jan's data folder is unavailable.",
     "unknown": "The reply could not be sent."
   }

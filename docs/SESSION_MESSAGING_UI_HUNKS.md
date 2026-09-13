@@ -20,6 +20,14 @@ What already works without these hunks:
   wrapped text.
 - `pendingInput` persistence carries `from` (`useCoworkSessions.setPendingInput`).
 
+- The mailbox tools are requested with `scope: 'session'`: `buildCoworkTools`
+  (`lib/coworkTools.ts`) passes it to `getAgentToolSchemas`, which calls
+  `plugin:agent-tools|advertised_tool_schemas` directly because the guest
+  binding has no `scope` parameter. The call site is in lib code, so no route
+  hunk is needed for it. Chat threads keep the unscoped (`thread`) request.
+- All mailbox commands are invoked as `plugin:agent-tools|mailbox_*`, matching
+  the plugin's `build.rs` command list on `feature/session-messaging-backend`.
+
 What is missing until the hunks land: the transcript row for delivered mail
 is shown as an ordinary user message (no "Message from" label, no Reply), and
 an automatic wake-up for a session that is *already* idle and in view waits

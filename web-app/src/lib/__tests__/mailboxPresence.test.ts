@@ -83,9 +83,19 @@ describe('mailbox presence', () => {
     expect(mailbox.heartbeat).toHaveBeenCalledTimes(2)
     expect(mailbox.heartbeat).toHaveBeenCalledWith({ sessionId: 'A', runId: 'r1' })
     useCoworkRun.getState().finishRun('A', 'r1', null)
-    expect(mailbox.setStatus).toHaveBeenLastCalledWith({ sessionId: 'A', running: false })
+    expect(mailbox.setStatus).toHaveBeenLastCalledWith({ sessionId: 'A', running: false, runId: 'r1' })
     vi.advanceTimersByTime(90_000)
     expect(mailbox.heartbeat).toHaveBeenCalledTimes(2)
+  })
+
+  it('ends a replaced run by its own id before reporting the new one', () => {
+    useCoworkRun.getState().startRun('A', 'r1')
+    useCoworkRun.getState().startRun('A', 'r2')
+    expect(mailbox.setStatus.mock.calls.map((c) => (c as unknown[])[0])).toEqual([
+      { sessionId: 'A', running: true, runId: 'r1' },
+      { sessionId: 'A', running: false, runId: 'r1' },
+      { sessionId: 'A', running: true, runId: 'r2' },
+    ])
   })
 
   it('never throws into the UI when the backend fails', async () => {

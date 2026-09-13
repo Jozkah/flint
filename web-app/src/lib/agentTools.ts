@@ -10,7 +10,10 @@ import {
   type ToolSchema,
   type WorkspaceScope,
 } from '@janhq/tauri-plugin-agent-tools-api'
+import { invoke } from '@tauri-apps/api/core'
 import { getServiceHub } from '@/hooks/useServiceHub'
+
+type AdvertisedTools = Awaited<ReturnType<typeof advertisedToolSchemas>>
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { errorText } from '@/lib/errorText'
 import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
@@ -81,6 +84,26 @@ export function getSandboxStatus(): Promise<SandboxStatus> {
 let enforcesNow = false
 
 /**
+ * `advertised_tool_schemas` with its `scope` argument.
+ *
+ * The generated guest binding predates `scope`, so a scoped request goes to the
+ * plugin command directly; an unscoped one keeps using the binding, which is
+ * exactly the backend's `thread` default.
+ */
+function advertisedFor(
+  projectRoot: string | undefined,
+  reported: ComponentReport[] | undefined,
+  scope: WorkspaceScope | undefined
+): Promise<AdvertisedTools> {
+  if (!scope) return advertisedToolSchemas(projectRoot, reported)
+  return invoke<AdvertisedTools>('plugin:agent-tools|advertised_tool_schemas', {
+    projectRoot,
+    reported,
+    scope,
+  })
+}
+
+/**
  * Re-probe the environment, dropping every cache.
  *
  * Installing a sandbox backend, fixing a permission or attaching a folder
@@ -134,15 +157,21 @@ export function omittedAgentTools(): OmittedTool[] {
  */
 export async function getAgentToolSchemas(
   projectRoot?: string,
-  reported?: ComponentReport[]
+  reported?: ComponentReport[],
+  /**
+   * Which surface is asking. `'session'` (Cowork) is the only scope the
+   * backend offers the session-messaging tools to; omitted means `'thread'`.
+   */
+  scope?: WorkspaceScope
 ): Promise<ToolSchema[]> {
   const key = JSON.stringify([
     projectRoot ?? '',
     (reported ?? []).map((r) => `${r.component}:${r.state}`),
+    scope ?? 'thread',
   ])
   if (schemaCache && schemaCacheKey === key) return schemaCache
   const [advertised] = await Promise.all([
-    advertisedToolSchemas(projectRoot, reported).catch((e) => {
+    advertisedFor(projectRoot, reported, scope).catch((e) => {
       console.warn('[agentTools] Failed to read readiness:', messageOf(e))
       return null
     }),

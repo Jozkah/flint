@@ -114,7 +114,15 @@ export function createPresenceSync(
     current: Record<string, { runId: string; startedAt: number }>
   ) => {
     for (const [sid, run] of Object.entries(current)) {
-      if (runs.get(sid) === run.runId) continue
+      const previousRun = runs.get(sid)
+      if (previousRun === run.runId) continue
+      // Replaced without an idle in between: end the old run by its own id
+      // first, so the record never names a run that is gone.
+      if (previousRun) {
+        safe('status', () =>
+          mailbox.setStatus({ sessionId: sid, running: false, runId: previousRun })
+        )
+      }
       runs.set(sid, run.runId)
       stopHeartbeat(sid)
       safe('status', () =>
@@ -129,11 +137,15 @@ export function createPresenceSync(
         }, heartbeatMs)
       )
     }
-    for (const sid of [...runs.keys()]) {
+    for (const [sid, runId] of [...runs.entries()]) {
       if (current[sid]) continue
       runs.delete(sid)
       stopHeartbeat(sid)
-      safe('status', () => mailbox.setStatus({ sessionId: sid, running: false }))
+      // The run id it started with: the backend ignores an ending that names
+      // any other run, so a late ending cannot idle a newer run.
+      safe('status', () =>
+        mailbox.setStatus({ sessionId: sid, running: false, runId })
+      )
     }
   }
 

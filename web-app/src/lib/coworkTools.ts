@@ -298,7 +298,13 @@ export function allowedToolNames(
 export async function buildCoworkTools(
   opts: CoworkToolOptions
 ): Promise<Record<string, Tool>> {
-  const schemas = await getAgentToolSchemas(opts.projectRoot, opts.reported)
+  // `session` scope: Cowork is the surface the backend offers the
+  // session-messaging tools to. Without it they are never advertised.
+  const schemas = await getAgentToolSchemas(
+    opts.projectRoot,
+    opts.reported,
+    'session'
+  )
   const tools: Record<string, Tool> = {}
 
   for (const s of schemas) {

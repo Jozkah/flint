@@ -57,6 +57,18 @@ describe('buildCoworkTools', () => {
     expect(tools[ASK_TOOL_NAME]).toBeDefined()
   })
 
+  it('asks for the session scope, where the messaging tools are offered', async () => {
+    getAgentToolSchemas.mockResolvedValue(
+      [...ALL, 'list_sessions', 'send_message', 'read_messages', 'wait_for_reply'].map(schema)
+    )
+    const tools = await buildCoworkTools(opts({ planMode: true, projectRoot: '/p' } as never))
+    expect(getAgentToolSchemas).toHaveBeenCalledWith('/p', undefined, 'session')
+    // Read capability: plan mode keeps them.
+    for (const n of ['list_sessions', 'send_message', 'read_messages', 'wait_for_reply']) {
+      expect(tools[n]).toBeDefined()
+    }
+  })
+
   it('withholds task when subagents are not allowed', async () => {
     const tools = await buildCoworkTools(opts({ allowSubagents: false }))
     expect(tools[TASK_TOOL_NAME]).toBeUndefined()
