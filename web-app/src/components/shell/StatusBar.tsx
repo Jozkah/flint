@@ -30,8 +30,9 @@ export function StatusBar({ className }: { className?: string }) {
       data-testid="status-bar"
       aria-label={t('common:statusBar.label')}
       className={cn(
-        'flex h-(--status-h) shrink-0 items-center overflow-hidden border-t border-border bg-sidebar pl-4 pr-3 text-xs text-ink-2 kb-hidden',
-        'pb-[env(safe-area-inset-bottom)] box-content',
+        // 28px including its top border, plus the home-indicator inset on phones.
+        'flex h-[calc(var(--status-h)+env(safe-area-inset-bottom))] shrink-0 items-center overflow-hidden border-t border-border bg-sidebar pl-4 pr-3 text-xs text-ink-2 kb-hidden',
+        'pb-[env(safe-area-inset-bottom)]',
         className
       )}
     >
