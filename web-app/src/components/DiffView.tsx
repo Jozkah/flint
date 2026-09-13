@@ -43,11 +43,13 @@ export function DiffView({
   return (
     <div
       className={cn(
-        'max-h-96 overflow-auto rounded-md border font-mono text-xs',
+        // Long lines scroll sideways inside the diff rather than wrapping into
+        // the gutter or widening whatever panel holds it.
+        'max-h-96 overflow-auto rounded-md border border-border bg-card font-mono text-xs',
         className
       )}
     >
-      <table className="w-full border-collapse">
+      <table className="w-max min-w-full border-collapse">
         <tbody>
           {parsed.hunks.map((hunk, hunkIndex) => (
             <Fragment key={`hunk-${hunkIndex}`}>
@@ -90,7 +92,7 @@ export function DiffView({
 }
 
 const ROW_TONE: Record<DiffLine['kind'], string> = {
-  add: 'bg-emerald-500/[0.08] dark:bg-emerald-400/[0.10]',
+  add: 'bg-success/[0.08] dark:bg-success/[0.14]',
   remove: 'bg-destructive/[0.07] dark:bg-destructive/[0.12]',
   context: '',
   meta: 'text-muted-foreground italic',
@@ -124,13 +126,13 @@ function DiffRow({
       >
         {line.newNumber ?? ''}
       </td>
-      <td className="whitespace-pre-wrap break-all px-2 align-top">
+      <td className="whitespace-pre px-2 align-top">
         {/* The marker is what makes the row readable without colour. */}
         <span
           aria-hidden
           className={cn(
             'select-none pr-1',
-            line.kind === 'add' && 'text-emerald-600 dark:text-emerald-400',
+            line.kind === 'add' && 'text-success',
             line.kind === 'remove' && 'text-destructive'
           )}
         >

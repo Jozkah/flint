@@ -91,14 +91,14 @@ export function TurnUsageDetails({
               <p className="mt-1 text-muted-foreground">No memory was sent.</p>
             )}
             {withheld.length > 0 && (
-              <p className="mt-1 text-amber-600" data-testid="turn-memory-withheld">
+              <p className="mt-1 text-warning" data-testid="turn-memory-withheld">
                 Withheld as conflicting: {withheld.join(', ')}
               </p>
             )}
             {overridden.map((o) => (
               <div
                 key={`o-${o.memoryId}`}
-                className="mt-1 text-amber-600"
+                className="mt-1 text-warning"
                 data-testid="turn-memory-overridden"
                 data-memory-id={o.memoryId}
               >

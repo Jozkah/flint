@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
-import { IconPlayerStopFilled } from '@tabler/icons-react'
+import { Square } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -154,9 +154,9 @@ export function CoworkStopMenu({
           data-testid="cowork-stop"
           // Fixed size so it cannot grow or shift the token and context
           // indicators beside it while a response streams.
-          className="flex size-7 shrink-0 items-center justify-center rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md bg-destructive text-destructive-foreground outline-none hover:bg-destructive/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:size-11"
         >
-          <IconPlayerStopFilled size={13} />
+          <Square className="size-3 fill-current" aria-hidden />
         </button>
       </PopoverTrigger>
       {/* Anchored and small. No overlay: stopping is not a modal decision, and
@@ -186,12 +186,12 @@ export function CoworkStopMenu({
           data-testid="stop-current"
           onKeyDown={(e) => onItemKeyDown(e, 0)}
           onClick={() => void run('current')}
-          className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-main-view-fg/5 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+          className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-sunken outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
         >
           <span className="text-[13px] leading-5">
             {t('common:stopMenu.current')}
           </span>
-          <span className="text-[11px] leading-4 text-main-view-fg/55">
+          <span className="text-[11px] leading-4 text-muted-foreground">
             {t('common:stopMenu.currentDescription')}
           </span>
         </button>
@@ -207,7 +207,7 @@ export function CoworkStopMenu({
             data-testid="stop-all"
             onKeyDown={(e) => onItemKeyDown(e, 1)}
             onClick={() => setConfirming(true)}
-            className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left text-destructive hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+            className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left text-destructive hover:bg-destructive/10 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
           >
             <span className="text-[13px] leading-5">
               {t('common:stopMenu.all')}

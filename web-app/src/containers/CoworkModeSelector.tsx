@@ -51,7 +51,7 @@ export function CoworkModeSelector({ mode, onChange }: Props) {
               'shrink-0 gap-1',
               // Autonomous is the mode that can change things without asking,
               // so it is the one that does not sit quietly in the row.
-              mode === 'auto' ? 'text-primary' : 'text-muted-foreground'
+              mode === 'auto' ? 'text-brand-text' : 'text-muted-foreground'
             )}
           >
             <Icon aria-hidden className="size-3.5 shrink-0" />

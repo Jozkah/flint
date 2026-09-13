@@ -4,12 +4,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import {
-  IconArrowUp,
-  IconArrowDown,
-  IconSum,
-  IconInfoCircle,
-} from '@tabler/icons-react'
+import { ArrowDown, ArrowUp, Info, Sigma } from 'lucide-react'
 import { CacheReuseBadge } from '@/components/CacheReuseBadge'
 import {
   cacheSourceLabel,
@@ -100,7 +95,7 @@ export function TokenUsageBreakdown({
       {input !== undefined && (
         <Row
           testId={id('input')}
-          icon={<IconArrowUp className="size-3.5" />}
+          icon={<ArrowUp className="size-3.5" aria-hidden />}
           label="Input"
           value={input}
           kind={kinds.input}
@@ -119,7 +114,7 @@ export function TokenUsageBreakdown({
         <>
           <Row
             testId={id('cached')}
-            swatch="bg-emerald-500"
+            swatch="bg-chart-1"
             label="Cached input"
             value={cached}
             kind={kinds.cached}
@@ -129,7 +124,7 @@ export function TokenUsageBreakdown({
           {uncached !== undefined && (
             <Row
               testId={id('uncached')}
-              swatch="bg-sky-500"
+              swatch="bg-chart-3"
               label="Uncached input"
               value={uncached}
               kind={kinds.uncached}
@@ -154,7 +149,7 @@ export function TokenUsageBreakdown({
       {cacheWrite !== undefined && (
         <Row
           testId={id('cache-write')}
-          swatch="bg-violet-500"
+          swatch="bg-chart-2"
           label="Cache write"
           value={cacheWrite}
           kind={kinds.cacheWrite}
@@ -166,7 +161,7 @@ export function TokenUsageBreakdown({
       {usage.outputTokens !== undefined && (
         <Row
           testId={id('output')}
-          icon={<IconArrowDown className="size-3.5" />}
+          icon={<ArrowDown className="size-3.5" aria-hidden />}
           label="Output"
           value={usage.outputTokens}
           kind={kinds.output}
@@ -176,7 +171,7 @@ export function TokenUsageBreakdown({
       {usage.totalTokens !== undefined && (
         <Row
           testId={id('total')}
-          icon={<IconSum className="size-3.5" />}
+          icon={<Sigma className="size-3.5" aria-hidden />}
           label="Total"
           value={usage.totalTokens}
           kind={kinds.total}
@@ -186,7 +181,7 @@ export function TokenUsageBreakdown({
 
       {usage.reported && (
         <div
-          className="text-[11px] leading-snug text-amber-600"
+          className="text-[11px] leading-snug text-warning"
           data-testid={id('clamped')}
           role="note"
         >
@@ -230,9 +225,9 @@ function CacheBar({
       aria-hidden="true"
       data-testid={testId}
     >
-      <div className="h-full bg-emerald-500" style={{ width: `${cachedPct}%` }} />
+      <div className="h-full bg-chart-1" style={{ width: `${cachedPct}%` }} />
       <div
-        className="h-full bg-sky-500"
+        className="h-full bg-chart-3"
         style={{ width: `${100 - cachedPct}%` }}
       />
     </div>
@@ -301,7 +296,7 @@ function Row({
                 aria-label={note}
                 data-testid={`${testId}-note`}
               >
-                <IconInfoCircle className="size-3" />
+                <Info className="size-3" aria-hidden />
               </button>
             </TooltipTrigger>
             <TooltipContent
@@ -319,7 +314,7 @@ function Row({
           <span
             className={cn(
               'text-[10px] uppercase tracking-wide',
-              kind === 'clamped' ? 'text-amber-600' : 'text-muted-foreground'
+              kind === 'clamped' ? 'text-warning' : 'text-muted-foreground'
             )}
             aria-hidden="true"
           >

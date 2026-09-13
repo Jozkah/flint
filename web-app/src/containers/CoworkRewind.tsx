@@ -148,9 +148,9 @@ export function CoworkRewind(props: RewindProps) {
     <section
       data-testid="cowork-rewind"
       aria-label={t('common:rewind.title')}
-      className="border-b border-border px-3 py-2 text-xs"
+      className="border-b border-border px-3 py-2.5 text-xs"
     >
-      <p className="mb-1 flex items-center gap-1.5 text-main-view-fg/70">
+      <p className="mb-1.5 flex items-center gap-1.5 font-medium text-ink-2">
         <History aria-hidden className="size-3.5 shrink-0" />
         {t('common:rewind.title')}
       </p>
@@ -163,7 +163,7 @@ export function CoworkRewind(props: RewindProps) {
             <Button
               variant="outline"
               size="sm"
-              className="h-6"
+              className="h-7 pointer-coarse:h-11"
               disabled={busy}
               onClick={(event) => void ask(point, event.currentTarget)}
             >
@@ -178,7 +178,7 @@ export function CoworkRewind(props: RewindProps) {
         </p>
       ) : null}
       {notice ? (
-        <p role="status" className="mt-1 text-main-view-fg/70">
+        <p role="status" className="mt-1 text-ink-2">
           {notice}
         </p>
       ) : null}
@@ -198,37 +198,39 @@ export function CoworkRewind(props: RewindProps) {
               close()
             }
           }}
-          className="mt-2 rounded border border-border p-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="mt-2 rounded-lg border border-border border-l-2 border-l-warning bg-card p-3 outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
         >
           {open.plan.kind === 'restore' ? (
             <>
-              <p>
+              <p className="text-sm text-foreground">
                 {t('common:rewind.willRestore', { label: open.point.label })}
               </p>
               <div
-                className="mt-2 grid gap-1"
+                className="mt-3 grid gap-1.5"
                 data-testid="cowork-rewind-scope"
               >
-                <p className="font-medium">{t('results:rewind.scopeTitle')}</p>
-                <p className="break-all font-mono text-main-view-fg/70">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t('results:rewind.scopeTitle')}
+                </p>
+                <p className="break-all font-mono text-ink-2">
                   {t('results:rewind.scopeTree', { tree: open.point.root })}
                 </p>
                 {files === undefined ? (
-                  <p className="text-main-view-fg/70">
+                  <p className="text-ink-2">
                     {t('results:rewind.filesUnknown')}
                   </p>
                 ) : files.length === 0 ? (
-                  <p className="text-main-view-fg/70">
+                  <p className="text-ink-2">
                     {t('results:rewind.noFiles')}
                   </p>
                 ) : (
                   <>
-                    <p className="text-main-view-fg/70">
+                    <p className="text-ink-2">
                       {t('results:rewind.filesHeading', {
                         count: files.length,
                       })}
                     </p>
-                    <ul className="max-h-32 overflow-auto rounded bg-main-view-fg/5 p-1 font-mono">
+                    <ul className="max-h-32 overflow-auto rounded-md border border-border bg-sunken px-2 py-1 font-mono">
                       {files.map((path) => (
                         <li key={path} className="break-all">
                           {path}
@@ -237,10 +239,13 @@ export function CoworkRewind(props: RewindProps) {
                     </ul>
                   </>
                 )}
-                <p className="text-main-view-fg/70">
+                <p className="text-ink-2">
                   {t('results:rewind.safetyNote')}
                 </p>
-                <p id={`${ids}-boundaries`} className="text-main-view-fg/70">
+                <p
+                  id={`${ids}-boundaries`}
+                  className="rounded-md bg-warning-tint px-2 py-1.5 text-foreground"
+                >
                   {t('results:rewind.boundaries')}
                 </p>
                 {unrelated.length > 0 ? (
@@ -248,7 +253,7 @@ export function CoworkRewind(props: RewindProps) {
                     role="group"
                     aria-labelledby={`${ids}-unrelated`}
                     data-testid="cowork-rewind-unrelated"
-                    className="mt-1 grid gap-1 rounded border border-destructive/40 p-2"
+                    className="mt-1 grid gap-1 rounded-md border border-destructive/40 bg-destructive-tint p-2"
                   >
                     <p id={`${ids}-unrelated`} className="text-destructive">
                       {t('results:rewind.unrelatedTitle')}
@@ -263,7 +268,7 @@ export function CoworkRewind(props: RewindProps) {
                     <label className="flex items-start gap-2">
                       <input
                         type="checkbox"
-                        className="mt-0.5 rounded-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        className="mt-0.5 rounded-sm accent-[var(--brand-fill)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                         checked={acknowledged}
                         disabled={busy}
                         onChange={(event) =>
@@ -275,11 +280,11 @@ export function CoworkRewind(props: RewindProps) {
                   </div>
                 ) : null}
               </div>
-              <div className="mt-2 flex gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Button
                   variant="destructive"
                   size="sm"
-                  className="h-6"
+                  className="pointer-coarse:h-11"
                   disabled={busy || blockedByUnrelated}
                   onClick={() => void doRestore()}
                 >
@@ -288,7 +293,7 @@ export function CoworkRewind(props: RewindProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6"
+                  className="pointer-coarse:h-11"
                   disabled={busy}
                   onClick={close}
                 >
@@ -301,14 +306,16 @@ export function CoworkRewind(props: RewindProps) {
               {/* No button, because there is no such operation here. Jan does
                   not own this tree, so the only honest offer is the change
                   itself. */}
-              <p>{t('common:rewind.patchOnly')}</p>
-              <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded bg-main-view-fg/5 p-2">
+              <p className="text-sm text-foreground">
+                {t('common:rewind.patchOnly')}
+              </p>
+              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre rounded-md border border-border bg-sunken p-2 font-mono">
                 {open.plan.diff.trim() || t('common:rewind.patchEmpty')}
               </pre>
               <Button
                 variant="ghost"
                 size="sm"
-                className="mt-1 h-6"
+                className="mt-2 pointer-coarse:h-11"
                 onClick={close}
               >
                 {t('common:rewind.close')}

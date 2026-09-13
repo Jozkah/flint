@@ -51,14 +51,14 @@ export const TIMELINE_FULL_RENDER_LIMIT = 200
 const POLL_MS = 1500
 
 const STATUS_ICON: Record<TimelineStatus, React.ReactNode> = {
-  running: <Loader2 className="size-3.5 animate-spin" aria-hidden />,
+  running: <Loader2 className="size-3.5 motion-safe:animate-spin" aria-hidden />,
   queued: <Clock className="size-3.5" aria-hidden />,
   awaiting: <Hand className="size-3.5" aria-hidden />,
-  completed: <CheckCircle2 className="size-3.5 text-emerald-600" aria-hidden />,
+  completed: <CheckCircle2 className="size-3.5 text-success" aria-hidden />,
   failed: <XCircle className="size-3.5 text-destructive" aria-hidden />,
-  refused: <Ban className="size-3.5 text-amber-600" aria-hidden />,
+  refused: <Ban className="size-3.5 text-warning" aria-hidden />,
   cancelled: <CircleDot className="size-3.5 text-muted-foreground" aria-hidden />,
-  interrupted: <PauseCircle className="size-3.5 text-amber-600" aria-hidden />,
+  interrupted: <PauseCircle className="size-3.5 text-warning" aria-hidden />,
 }
 
 /**
@@ -289,7 +289,7 @@ export function CoworkTimelinePanel({
     <CoworkSidePanel
       title={t('common:timeline.title')}
       summary={
-        <span className="shrink-0 font-mono text-xs tabular-nums text-main-view-fg/60">
+        <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
           {t('common:timeline.count', { count: rows.length })}
         </span>
       }
@@ -317,7 +317,7 @@ export function CoworkTimelinePanel({
                 })
               }
               className={cn(
-                'rounded border px-1.5 py-0.5 text-[11px]',
+                'rounded-md border px-1.5 py-0.5 text-[11px]',
                 enabled.has(c) ? 'bg-muted text-foreground' : 'text-muted-foreground line-through'
               )}
             >
@@ -339,7 +339,7 @@ export function CoworkTimelinePanel({
               data-testid="timeline-replay"
               disabled={running}
               title={running ? t('common:timeline.replay.whileRunning') : undefined}
-              className="rounded border px-1.5 py-0.5 text-foreground disabled:opacity-50"
+              className="rounded-md border px-1.5 py-0.5 text-foreground disabled:opacity-50"
               onClick={() => void openRun(null)}
             >
               {t('common:timeline.replay.start')}
@@ -349,7 +349,7 @@ export function CoworkTimelinePanel({
             <button
               type="button"
               data-testid="timeline-replay-exit"
-              className="rounded border px-1.5 py-0.5 text-foreground"
+              className="rounded-md border px-1.5 py-0.5 text-foreground"
               onClick={exitReplay}
             >
               {t('common:timeline.replay.exit')}
@@ -359,7 +359,7 @@ export function CoworkTimelinePanel({
             <button
               type="button"
               data-testid="timeline-follow"
-              className="rounded border px-1.5 py-0.5 text-foreground"
+              className="rounded-md border px-1.5 py-0.5 text-foreground"
               onClick={() => setFollowing(true)}
             >
               {t('common:timeline.followLive')}
@@ -369,7 +369,7 @@ export function CoworkTimelinePanel({
             <button
               type="button"
               data-testid="timeline-unlink"
-              className="rounded border px-1.5 py-0.5"
+              className="rounded-md border px-1.5 py-0.5"
               onClick={() => setLinked(null)}
             >
               {t('common:timeline.clearLink')}
@@ -473,7 +473,7 @@ function ReplayControls({
     e.preventDefault()
     onStep(to)
   }
-  const button = 'rounded border px-1.5 py-0.5 text-foreground disabled:opacity-40'
+  const button = 'rounded-md border px-1.5 py-0.5 text-foreground disabled:opacity-40'
   return (
     <div
       role="group"
@@ -491,7 +491,7 @@ function ReplayControls({
           data-testid="timeline-replay-run"
           value={replay.recording.run}
           onChange={(e) => onRun(e.target.value)}
-          className="w-full rounded border bg-transparent px-1 py-0.5"
+          className="w-full rounded-md border bg-transparent px-1 py-0.5"
         >
           {replay.runs.map((r) => (
             <option key={r.run} value={r.run}>
@@ -614,7 +614,7 @@ function TimelineItem({
       data-row-id={row.id}
       data-current={current}
       aria-current={current ? 'step' : undefined}
-      className={cn('border-b', linked && 'bg-primary/5', current && 'bg-amber-500/10')}
+      className={cn('border-b', linked && 'bg-brand-tint', current && 'bg-warning-tint')}
     >
       <div className="flex items-start gap-1 px-2 py-1.5">
         <button
@@ -663,7 +663,7 @@ function TimelineItem({
             aria-pressed={linked}
             title={t('common:timeline.linkHint')}
             onClick={() => onLink(row.invocation!)}
-            className="shrink-0 rounded border px-1 font-mono text-[10px] text-muted-foreground"
+            className="shrink-0 rounded-md border px-1 font-mono text-[10px] text-muted-foreground"
           >
             {row.invocation.slice(-8)}
           </button>
@@ -774,7 +774,7 @@ function TimelineDetail({ row, sessionId }: { row: TimelineRow; sessionId: strin
       {row.input && (
         <details>
           <summary>{t('common:timeline.input')}</summary>
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-1.5">
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-1.5">
             {row.input}
           </pre>
         </details>
@@ -785,7 +785,7 @@ function TimelineDetail({ row, sessionId }: { row: TimelineRow; sessionId: strin
             {t('common:timeline.output')}
             {row.outputTruncated ? ` (${t('common:timeline.truncated')})` : ''}
           </summary>
-          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-1.5">
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-1.5">
             {row.output}
           </pre>
         </details>

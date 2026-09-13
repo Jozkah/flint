@@ -100,10 +100,10 @@ function ConflictRow({
   )
   const reviseField = (id: string, value: Choice) =>
     choice === value ? (
-      <label className="ml-5 flex flex-col gap-1 text-[11px] text-main-view-fg/70">
+      <label className="ml-5 flex flex-col gap-1 text-[11px] text-ink-2">
         What {id} may change (comma-separated)
         <input
-          className="rounded border border-main-view-fg/15 bg-transparent px-2 py-1 font-mono text-xs"
+          className="rounded-md border border-border bg-transparent px-2 py-1 font-mono text-xs"
           value={scopes[id] ?? ''}
           onChange={(e) => onScope(id, e.target.value)}
           data-testid="team-conflict-scope"
@@ -114,7 +114,7 @@ function ConflictRow({
 
   return (
     <li
-      className="rounded border border-main-view-fg/10 p-2"
+      className="rounded-md border border-border p-2"
       data-testid="team-conflict"
       data-tasks={conflict.tasks.join(',')}
     >
@@ -126,15 +126,15 @@ function ConflictRow({
         {conflict.overlaps.map((o) => (
           <li
             key={`${o.paths[0]}>${o.paths[1]}`}
-            className="font-mono text-[11px] text-main-view-fg/80"
+            className="font-mono text-[11px] text-ink-2"
             data-testid="team-conflict-path"
             data-kind={o.kind}
           >
-            {o.note} <span className="text-main-view-fg/50">({KIND[o.kind]})</span>
+            {o.note} <span className="text-muted-foreground">({KIND[o.kind]})</span>
           </li>
         ))}
       </ul>
-      <p className="mt-1 text-[11px] text-main-view-fg/60">
+      <p className="mt-1 text-[11px] text-muted-foreground">
         {a}: {describe(a)}
         <br />
         {b}: {describe(b)}
@@ -199,19 +199,19 @@ function ConflictForm({ request }: { request: ConflictRequest }) {
 
   return (
     <section
-      className="my-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3"
+      className="my-2 rounded-md border border-warning/40 bg-warning-tint p-3"
       role="region"
       aria-label="Overlapping team tasks"
       data-testid="team-conflicts"
     >
       <div className="flex items-center gap-2">
-        <GitFork size={14} className="text-amber-600" />
+        <GitFork size={14} className="text-warning" />
         <p className="text-xs font-medium">
           These tasks would change the same paths with nothing ordering them.
           Nothing has run yet.
         </p>
       </div>
-      <p className="mt-1 text-[11px] text-main-view-fg/60">
+      <p className="mt-1 text-[11px] text-muted-foreground">
         Compared by the paths each task declared, not by reading the code: no
         overlap here does not mean the changes fit together.
       </p>

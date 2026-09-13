@@ -53,17 +53,17 @@ export function CoworkAskEntry({
     >
       <div
         className={cn(
-          'flex items-start gap-2 rounded-md border border-border bg-main-view-fg/2 px-3 py-2 text-xs',
+          'flex items-start gap-2 rounded-md border border-border bg-sunken/60 px-3 py-2 text-xs',
           state === 'stale' && 'opacity-70'
         )}
       >
-        <Icon size={13} className="mt-0.5 shrink-0 text-main-view-fg/50" />
+        <Icon size={13} className="mt-0.5 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
           {questions.map((question) => {
             const answer = record.answers?.find((a) => a.id === question.id)
             return (
               <div key={question.id} className="flex flex-col gap-0.5 py-0.5">
-                <span className="text-main-view-fg/60 text-pretty">
+                <span className="text-muted-foreground text-pretty">
                   {question.question}
                 </span>
                 <span

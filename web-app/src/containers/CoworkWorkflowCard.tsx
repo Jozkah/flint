@@ -48,7 +48,7 @@ export function CoworkWorkflowCard({
   return (
     <div
       data-testid="workflow-card"
-      className="my-2 rounded-md border bg-main-view-fg/[0.02] text-xs"
+      className="my-2 rounded-lg border border-border bg-card text-xs"
     >
       <div className="flex items-start gap-2 px-3 py-2">
         <span className="pt-0.5">
@@ -58,7 +58,7 @@ export function CoworkWorkflowCard({
           <p className="truncate font-medium" title={workflow.title}>
             {workflow.title}
           </p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-main-view-fg/50">
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
             <span className="tabular-nums">
               {t('common:tasks.progress', {
                 finished: progress.finished,
@@ -83,8 +83,8 @@ export function CoworkWorkflowCard({
             >
               <span
                 className={cn(
-                  'block h-full rounded-full transition-[width]',
-                  progress.error > 0 ? 'bg-destructive' : 'bg-primary'
+                  'block h-full rounded-full motion-safe:transition-[width]',
+                  progress.error > 0 ? 'bg-destructive' : 'bg-brand'
                 )}
                 style={{ width: `${Math.round(progress.fraction * 100)}%` }}
               />
@@ -94,7 +94,7 @@ export function CoworkWorkflowCard({
         <Button
           variant="ghost"
           size="xs"
-          className="shrink-0"
+          className="shrink-0 text-brand-text pointer-coarse:h-11"
           onClick={() => onOpenPanel(workflow.id)}
         >
           {t('common:tasks.openPanel')}
@@ -104,26 +104,28 @@ export function CoworkWorkflowCard({
       {tasks.length === 0 ? (
         // A workflow exists because a dispatch happened; its children arrive a
         // moment later. Saying so beats an empty box that looks broken.
-        <p className="border-t px-3 py-2 text-[11px] text-main-view-fg/40">
+        <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">
           {t('common:tasks.noOutput')}
         </p>
       ) : (
-        <ul className="border-t">
+        // A quiet timeline: one hairline down the status column, each step a
+        // row on it, so the order reads without boxes around every task.
+        <ul className="relative border-t border-border py-1 before:absolute before:inset-y-2 before:left-[1.1rem] before:w-px before:bg-border">
           {tasks.map((task) => (
-            <li key={task.id}>
+            <li key={task.id} className="relative">
               <button
                 type="button"
                 onClick={() => onOpenTask(task)}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/50"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left outline-none hover:bg-sunken/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
               >
                 <StatusIcon status={task.status} />
                 {task.kind === 'shell' ? (
                   <Terminal
                     size={11}
-                    className="shrink-0 text-main-view-fg/40"
+                    className="shrink-0 text-muted-foreground"
                   />
                 ) : (
-                  <Bot size={11} className="shrink-0 text-main-view-fg/40" />
+                  <Bot size={11} className="shrink-0 text-muted-foreground" />
                 )}
                 <span
                   className={cn(
@@ -134,7 +136,7 @@ export function CoworkWorkflowCard({
                 >
                   {task.title}
                 </span>
-                <span className="shrink-0 font-mono text-[11px] tabular-nums text-main-view-fg/40">
+                <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
                   {Math.round(taskElapsedMs(task, now) / 1000)}s
                 </span>
               </button>
@@ -148,20 +150,21 @@ export function CoworkWorkflowCard({
 
 function StatusIcon({ status }: { status: ActivityStatus }) {
   const { t } = useTranslation()
-  const common = 'size-3 shrink-0'
+  // A card background behind each icon, so the timeline rule stops at it.
+  const common = 'relative size-3 shrink-0 rounded-full bg-card'
   switch (status) {
     case 'running':
       return (
         <Loader2
           aria-label={t('common:tasks.statusRunning')}
-          className={cn(common, 'animate-spin text-primary')}
+          className={cn(common, 'motion-safe:animate-spin text-ink-2')}
         />
       )
     case 'queued':
       return (
         <Clock
           aria-label={t('common:tasks.statusQueued')}
-          className={cn(common, 'text-main-view-fg/40')}
+          className={cn(common, 'text-muted-foreground')}
         />
       )
     case 'error':
@@ -175,21 +178,21 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
       return (
         <CircleSlash
           aria-label={t('common:tasks.statusCancelled')}
-          className={cn(common, 'text-main-view-fg/40')}
+          className={cn(common, 'text-muted-foreground')}
         />
       )
     case 'interrupted':
       return (
         <CircleOff
           aria-label={t('common:tasks.statusInterrupted')}
-          className={cn(common, 'text-amber-600 dark:text-amber-400')}
+          className={cn(common, 'text-warning')}
         />
       )
     default:
       return (
         <CircleCheck
           aria-label={t('common:tasks.statusDone')}
-          className={cn(common, 'text-main-view-fg/40')}
+          className={cn(common, 'text-success')}
         />
       )
   }

@@ -2,6 +2,13 @@
   "toolApproval": {
     "needsApproval": "This tool needs your approval before it runs.",
     "proposedChange": "The change this would make",
+    "childActionLabel": "Action",
+    "childAction": "{{origin}} wants to run {{tool}}",
+    "childResourcesLabel": "Server",
+    "childScopeLabel": "Scope",
+    "childScope": "Allow Once permits this one call only. The next call asks again.",
+    "childDenyLabel": "If you deny",
+    "childDeny": "The tool does not run, and the run is told the call was refused.",
     "deny": "Deny",
     "allowOnce": "Allow Once",
     "allowInThread": "Allow in thread",
