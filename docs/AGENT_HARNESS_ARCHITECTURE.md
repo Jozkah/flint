@@ -1987,3 +1987,35 @@ cost.
 It reads both records that carry a dispatch: the desktop's payload-usage log
 and the `usage.reported` events a headless run writes, joined on the
 invocation so a dispatch in both is counted once.
+
+
+## A child that starts from this conversation (AH-100)
+
+A subagent has always started from a single message: the task, and nothing
+else. That is the right default and it stays the default -- a child that
+inherits everything the parent has read pays for all of it on every turn, and
+most dispatches are clearer without it. But some tasks cannot be stated in one
+message, because what makes them intelligible is the exchange that led to them.
+
+So `dispatch_subagent` takes `fork_context: true`, and the child is then
+started from a copy of the conversation the dispatch was made in, with the task
+as its final message.
+
+What travels, and what deliberately does not:
+
+* The parent's **system prompt** stays with the parent. The child has its own,
+  which is the reason it is a different agent.
+* The **tail**, not the whole: at most 40 messages and 96 KB. When that cut is
+  real the child is told plainly that what it holds is the recent part of
+  another conversation and not the whole of it. Nothing else is announced as
+  truncation -- a note claiming a cut that did not happen is a false claim.
+* **No half of a tool exchange.** A result whose call fell outside the tail has
+  nothing to answer, and the call being dispatched has no result yet, because
+  the result is the child. Both are dropped, and an assistant turn left with
+  nothing at all goes with them. Providers reject either half, and a model
+  imitates a tool that appears never to have answered.
+* It is a **copy**. What the child says happens in the child's own history and
+  reaches the parent only as the result it returns. Nothing flows back.
+
+The conversation is read at the moment of dispatch, from the turn loop that is
+dispatching, so what the child receives is what the parent had when it asked.

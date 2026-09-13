@@ -3601,14 +3601,15 @@
       "category": "orchestration",
       "phase": 5,
       "phaseName": "Agent orchestration",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-078"
       ],
       "owner": "lane-06-agents-worktrees",
       "files": [
-        "src-tauri/src/core/agent/subagent.rs"
+        "src-tauri/src/core/agent/subagent.rs",
+        "src-tauri/src/core/agent/loop.rs"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -3619,10 +3620,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/subagent.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Children are isolated, not forked: they start from a fresh single-message history."
+      "auditNote": "Implemented 2026-09-13 (Phase 5). `dispatch_subagent` takes `fork_context`: the child then starts from a copy of the conversation the dispatch was made in, with the task as its final message. The default is unchanged -- a clean single-message brief. The copy carries the tail only (40 messages, 96 KB) and says so when that bound really cut; it leaves behind the parent's system prompt, orphan tool results, and the unanswered dispatch call itself, because a provider rejects either half of a tool exchange. It is a copy: nothing the child says returns to the parent except its result. The conversation is read by the turn loop at the moment of dispatch. Refusal, cancellation and restart are the existing subagent paths, unchanged by the fork. A defect the real run found: the copy announced truncation whenever anything had been left out, including the system prompt; it now announces only a real tail cut."
     },
     {
       "id": "AH-101",

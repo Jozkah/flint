@@ -201,6 +201,13 @@ impl ToolOutcome {
 
 #[async_trait]
 pub(crate) trait ToolInvoker: Send + Sync {
+    /// The conversation this turn is dispatching from (AH-100).
+    ///
+    /// A default that does nothing: only the invoker that can dispatch a
+    /// subagent has any use for it, and one that cannot fork should not have
+    /// to say so.
+    fn observe_conversation(&self, _messages: &[serde_json::Value]) {}
+
     async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError>;
 }
 
@@ -756,6 +763,7 @@ struct McpToolInvoker {
 
 #[async_trait]
 impl ToolInvoker for McpToolInvoker {
+    // The MCP invoker forks nothing; the default is what it wants.
     async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError> {
         let results = execute_mcp_tool_calls(
             tool_calls,
@@ -790,6 +798,10 @@ struct SubagentContext {
 /// and everything else to the existing `McpToolInvoker`, preserving input order.
 struct CompositeToolInvoker {
     mcp: McpToolInvoker,
+    /// The conversation as it stood when this turn's calls were dispatched
+    /// (AH-100), so a dispatch asked to fork has something to copy. Shared
+    /// rather than passed because the turn loop sees only the trait.
+    live_conversation: std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
     /// The run's tool allowlist (`allowed_tools`), enforced when a call is
     /// made, not only when tools are advertised. A child run's model can still
     /// emit a call to a tool it was never offered; without this, a role's
@@ -1571,11 +1583,21 @@ impl CompositeToolInvoker {
                     Err(e) => return format!("ERROR: {e}"),
                 };
                 let child_name = req.subagent_name.clone();
+                // AH-100: a fork copies the conversation this turn is
+                // dispatching from. Read here rather than held by the child,
+                // so what it gets is what the parent had when it asked.
+                let forked = req.fork_context.then(|| {
+                    self.live_conversation
+                        .lock()
+                        .map(|live| live.clone())
+                        .unwrap_or_default()
+                });
                 match spawn_subagent(
                     &ctx.bg,
                     &ctx.parent_args,
                     req,
                     &crate::core::agent::subagent::ParentRun {
+                        conversation: forked,
                         model: ctx.model_id.clone(),
                         budget_remaining: ctx.max_session_tokens,
                         send_reasoning: ctx.send_reasoning,
@@ -1956,6 +1978,12 @@ fn plan_mode_read_only_msg(name: &str) -> String {
 
 #[async_trait]
 impl ToolInvoker for CompositeToolInvoker {
+    fn observe_conversation(&self, messages: &[serde_json::Value]) {
+        if let Ok(mut live) = self.live_conversation.lock() {
+            *live = messages.to_vec();
+        }
+    }
+
     async fn invoke(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError> {
         self.record_requested(tool_calls);
         let out = self.dispatch_calls(tool_calls).await;
@@ -3555,6 +3583,7 @@ async fn orchestrate_inner(
             tauri_plugin_agent_tools::workspace::ensure_scratch_dir_path(&scratch_root).await?;
         }
         let tools = CompositeToolInvoker {
+            live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             allowed_tools: allowed_names.clone(),
             record_to: (!jan_data_folder.is_empty())
                 .then(|| std::path::PathBuf::from(jan_data_folder.as_str())),
@@ -4477,6 +4506,10 @@ async fn run_turn_cycle(
         let mut tool_results: Vec<ToolOutcome> = if executable.is_empty() {
             Vec::new()
         } else {
+            // AH-100: show the invoker the conversation these calls are being
+            // dispatched from, so a dispatch that asks to fork has the
+            // parent's history to copy rather than an empty one.
+            tools.observe_conversation(&conversation_messages);
             tools.invoke(&executable).await?
         };
         // Results are matched to calls by id, so appending the failed calls
@@ -6800,6 +6833,7 @@ mod tests {
         subject: tauri_plugin_agent_tools::subject::Subject,
     ) -> CompositeToolInvoker {
         CompositeToolInvoker {
+            live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             allowed_tools: None,
             record_to: None,
             invocations: std::sync::Arc::new(Invocations::default()),

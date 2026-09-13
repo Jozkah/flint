@@ -1979,3 +1979,38 @@ the provider's prefix; an estimate counted and named as one; periods read
 (`30m`, `24h`, `7d`) and refused (`7x`, `d`, `-3d`, `0h`, `lots`); a window
 leaving out what is older than it; and a price file that is malformed or
 negative refused whole, while no price file at all is simply no prices.
+
+
+### Forked contexts (AH-100)
+
+Nine tests plus a real headless run against the mock provider, reading the
+request bodies the provider was actually sent (`GET /__requests`). The same
+dispatch, with and without the flag:
+
+```
+=== no fork: the child is sent the task alone
+child request, non-system messages: 1
+  user      'say what colour the sky is'
+
+=== fork_context: the child is sent a copy of this conversation
+child request, non-system messages: 2
+  user      'read fact.txt, then hand the finding to a note taker'
+  user      'say what colour the sky is'
+```
+
+The parent's own user turn is there; the parent's system prompt is not, and
+neither is the unanswered `dispatch_subagent` call that turn carried.
+
+A defect the real run found: the copy announced itself as truncated whenever
+anything at all had been left out -- including the system prompt and the
+dispatch call, neither of which the child could have used. The note is now
+written only when the tail bound actually cut the conversation.
+
+Covered by test: a short conversation carried whole and ending with the task; a
+long one cut to its tail, saying so; the character bound cutting where the
+message count would not; an orphan tool result and an unanswered tool call both
+dropped, while an answered pair survives; an assistant turn that was only the
+dispatch not travelling; the parent's system prompt left behind; the fork being
+a copy, so a child's edit changes nothing the parent holds; and `fork_context`
+being an explicit boolean, with the default and any non-boolean both meaning a
+clean brief.

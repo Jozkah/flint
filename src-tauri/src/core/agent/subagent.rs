@@ -537,6 +537,15 @@ pub struct SubagentRequest {
     /// means the default: yes, when the project is a git repository and the
     /// child can change files. See [`isolation_for`].
     pub isolate: Option<bool>,
+    /// Start the child from a copy of this conversation rather than from a
+    /// single message (AH-100).
+    ///
+    /// Off by default, and deliberately: a child that inherits everything the
+    /// parent has read is a child paying for all of it, on every turn, and
+    /// most dispatches are better served by a clean brief. It is worth asking
+    /// for when the task only makes sense in the light of what was already
+    /// discussed.
+    pub fork_context: bool,
 }
 
 /// The resolved plan for a dispatch: the winning definition plus the effective
@@ -1062,6 +1071,9 @@ impl Drop for AbortOnDrop {
 /// its `send_reasoning` answer.
 #[derive(Clone)]
 pub(crate) struct ParentRun {
+    /// The parent's conversation, when the dispatch asked to fork it
+    /// (AH-100). `None` is the default: a clean brief.
+    pub(crate) conversation: Option<Vec<serde_json::Value>>,
     pub(crate) model: String,
     pub(crate) budget_remaining: Option<u64>,
     pub(crate) send_reasoning: bool,
@@ -1072,6 +1084,7 @@ fn child_body(
     resolved: &ResolvedDispatch,
     description: &str,
     parent: &ParentRun,
+    forked: Option<&[serde_json::Value]>,
 ) -> serde_json::Value {
     let model = resolved
         .definition
@@ -1080,10 +1093,13 @@ fn child_body(
         .unwrap_or_else(|| parent.model.clone());
     let mut body = serde_json::Map::new();
     body.insert("model".to_string(), serde_json::json!(model));
-    body.insert(
-        "messages".to_string(),
-        serde_json::json!([{ "role": "user", "content": description }]),
-    );
+    // AH-100: a fork starts from a copy of the parent's conversation; the
+    // default is still a clean brief.
+    let messages = match forked {
+        Some(parent_history) => forked_history(parent_history, description),
+        None => vec![serde_json::json!({ "role": "user", "content": description })],
+    };
+    body.insert("messages".to_string(), serde_json::json!(messages));
     // Unbounded turns: guarded by the inherited budget and parent teardown.
     body.insert("max_turns".to_string(), serde_json::json!(0));
     body.insert("stream".to_string(), serde_json::json!(true));
@@ -1152,7 +1168,7 @@ async fn run_subagent(
     // context, matching ask_requests above).
     child_args.todo_registry = None;
 
-    let body = child_body(&resolved, &description, &parent);
+    let body = child_body(&resolved, &description, &parent, parent.conversation.as_deref());
 
     let _ = events.send(StreamEvent::SubagentStart {
         run_id: run_id.clone(),
@@ -1529,7 +1545,8 @@ pub fn subagent_tool_schemas(
                             "items": { "type": "string" },
                             "description": "Tool allowlist. For a saved subagent this further narrows its own allowed_tools (never widens); for a one-off it is the subagent's toolset."
                         },
-                        "isolate": { "type": "boolean", "description": "Whether the subagent works in a checkout of its own. Default: yes when the project is a git repository and the subagent can change files, so concurrent subagents never edit the same tree. Its changes then wait for the user's review instead of landing in the project. Pass false only for work that must change the project directly." }
+                        "isolate": { "type": "boolean", "description": "Whether the subagent works in a checkout of its own. Default: yes when the project is a git repository and the subagent can change files, so concurrent subagents never edit the same tree. Its changes then wait for the user's review instead of landing in the project. Pass false only for work that must change the project directly." },
+                        "fork_context": { "type": "boolean", "description": "Whether the subagent starts from a copy of this conversation instead of from the task alone. Default: false, a clean brief, which is cheaper and usually clearer. Pass true only when the task cannot be understood without what was already discussed here; the subagent then receives a copy of the recent messages, and nothing it says comes back into this conversation." }
                     },
                     "required": ["subagent_name", "description"]
                 }
@@ -1636,7 +1653,124 @@ pub fn parse_dispatch_args(args: &serde_json::Value) -> Result<SubagentRequest, 
             .filter(|s| !s.trim().is_empty()),
         // Only a real boolean is a choice; anything else is the default.
         isolate: args.get("isolate").and_then(|v| v.as_bool()),
+        fork_context: args
+            .get("fork_context")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
     })
+}
+
+/// The most messages and characters a fork carries.
+///
+/// A fork is a copy, and a copy of an hour-long conversation is an expensive
+/// thing to hand a child that was asked one question. The most recent
+/// exchanges are what the task usually depends on, so the tail is what is
+/// kept, and the child is told plainly that it is a tail rather than the whole
+/// conversation.
+pub const MAX_FORK_MESSAGES: usize = 40;
+pub const MAX_FORK_CHARS: usize = 96 * 1024;
+
+/// The parent's conversation, as a child should receive it (AH-100).
+///
+/// Copied, never shared: what the child then says happens in its own history
+/// and reaches the parent only as the result it returns. Tool calls are kept
+/// with their results -- a call whose result was dropped would read as a tool
+/// that never answered, which is the shape a model imitates.
+pub fn forked_history(parent: &[serde_json::Value], task: &str) -> Vec<serde_json::Value> {
+    let mut kept: Vec<serde_json::Value> = Vec::new();
+    let mut chars = 0usize;
+    // The parent's system prompt stays with the parent. The child has its own,
+    // which is the whole reason it is a different agent; carrying the parent's
+    // as well would tell the child to be two things at once.
+    let parent: Vec<&serde_json::Value> = parent
+        .iter()
+        .filter(|m| m.get("role").and_then(|v| v.as_str()) != Some("system"))
+        .collect();
+    let mut cut = false;
+    for message in parent.iter().rev() {
+        let size = serde_json::to_string(*message).map(|s| s.len()).unwrap_or(0);
+        if kept.len() >= MAX_FORK_MESSAGES || chars + size > MAX_FORK_CHARS {
+            cut = true;
+            break;
+        }
+        chars += size;
+        kept.push((*message).clone());
+    }
+    kept.reverse();
+    // A `tool` message whose call is no longer here has nothing to answer, and
+    // a provider rejects it outright; drop the orphans rather than send a
+    // history that cannot be replayed.
+    let call_ids: std::collections::BTreeSet<String> = kept
+        .iter()
+        .filter_map(|m| m.get("tool_calls").and_then(|v| v.as_array()))
+        .flatten()
+        .filter_map(|c| c.get("id").and_then(|v| v.as_str()).map(str::to_string))
+        .collect();
+    kept.retain(|m| {
+        if m.get("role").and_then(|v| v.as_str()) != Some("tool") {
+            return true;
+        }
+        m.get("tool_call_id")
+            .and_then(|v| v.as_str())
+            .is_some_and(|id| call_ids.contains(id))
+    });
+    // The other half of the same invariant, and the one the dispatching turn
+    // always trips: the assistant message carrying this very `dispatch_subagent`
+    // call has no result yet, because the result is what the child is about to
+    // produce. An assistant message whose tool calls are unanswered is rejected
+    // just as firmly as an orphan result, so the unanswered calls are dropped,
+    // and an assistant message left with nothing at all goes with them.
+    let answered: std::collections::BTreeSet<String> = kept
+        .iter()
+        .filter(|m| m.get("role").and_then(|v| v.as_str()) == Some("tool"))
+        .filter_map(|m| m.get("tool_call_id").and_then(|v| v.as_str()).map(str::to_string))
+        .collect();
+    for message in kept.iter_mut() {
+        let Some(calls) = message.get("tool_calls").and_then(|v| v.as_array()).cloned() else {
+            continue;
+        };
+        let live: Vec<serde_json::Value> = calls
+            .into_iter()
+            .filter(|c| {
+                c.get("id")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|id| answered.contains(id))
+            })
+            .collect();
+        let object = message.as_object_mut().expect("a message is an object");
+        if live.is_empty() {
+            object.remove("tool_calls");
+        } else {
+            object.insert("tool_calls".to_string(), serde_json::Value::Array(live));
+        }
+    }
+    kept.retain(|m| {
+        if m.get("role").and_then(|v| v.as_str()) != Some("assistant") {
+            return true;
+        }
+        let has_calls = m.get("tool_calls").is_some();
+        let has_text = m
+            .get("content")
+            .and_then(|v| v.as_str())
+            .is_some_and(|t| !t.trim().is_empty());
+        has_calls || has_text
+    });
+    // Only a real cut is announced. Dropping the parent's system prompt, or the
+    // dispatch call the child is the answer to, removes nothing the child could
+    // have used, and a note saying otherwise would be a claim that is not true.
+    let truncated = cut;
+    let mut out = Vec::with_capacity(kept.len() + 2);
+    if truncated {
+        out.push(serde_json::json!({
+            "role": "user",
+            "content": "What follows is the most recent part of another conversation, copied \
+                        here so you have its context. It is not the whole of it, and it is a \
+                        copy: nothing you say goes back into it.",
+        }));
+    }
+    out.extend(kept);
+    out.push(serde_json::json!({ "role": "user", "content": task }));
+    out
 }
 
 /// Parse an `await_subagent` tool-call argument object, returning the run_id.
@@ -1706,6 +1840,197 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
     use tauri_plugin_agent_tools::permissions::{PermissionDefault, ToolPermissions};
+
+    /// A conversation of `n` plain user/assistant turns, for the fork tests.
+    fn plain_turns(n: usize) -> Vec<serde_json::Value> {
+        (0..n)
+            .map(|i| {
+                serde_json::json!({
+                    "role": if i % 2 == 0 { "user" } else { "assistant" },
+                    "content": format!("message {i}")
+                })
+            })
+            .collect()
+    }
+
+    /// A fork is a copy of the recent conversation, and the task is what the
+    /// child is finally asked. A short conversation travels whole, with no
+    /// note claiming it was cut.
+    #[test]
+    fn a_fork_carries_the_conversation_and_ends_with_the_task() {
+        let parent = plain_turns(4);
+        let forked = forked_history(&parent, "do the thing");
+        assert_eq!(forked.len(), parent.len() + 1, "{forked:#?}");
+        assert_eq!(forked[0], parent[0]);
+        assert_eq!(forked[3], parent[3]);
+        let last = &forked[4];
+        assert_eq!(last["role"], "user");
+        assert_eq!(last["content"], "do the thing");
+        assert!(
+            !serde_json::to_string(&forked).unwrap().contains("most recent part"),
+            "an untruncated fork claims no truncation"
+        );
+    }
+
+    /// A long conversation is cut to its tail, and the child is told plainly
+    /// that what it has is a tail rather than the whole.
+    #[test]
+    fn a_long_conversation_is_forked_as_its_tail_and_says_so() {
+        let parent = plain_turns(MAX_FORK_MESSAGES + 10);
+        let forked = forked_history(&parent, "task");
+        // The note, the tail, and the task.
+        assert_eq!(forked.len(), MAX_FORK_MESSAGES + 2, "{}", forked.len());
+        assert_eq!(forked[0]["role"], "user");
+        assert!(
+            forked[0]["content"]
+                .as_str()
+                .unwrap()
+                .contains("most recent part"),
+            "{:?}",
+            forked[0]
+        );
+        // The tail is the end of the parent, not its beginning.
+        assert_eq!(forked[1], parent[10]);
+        assert_eq!(forked[MAX_FORK_MESSAGES], parent[parent.len() - 1]);
+    }
+
+    /// The character bound holds even when the message count does not: a few
+    /// enormous messages are cut the same way many small ones are.
+    #[test]
+    fn a_fork_is_bounded_by_characters_as_well_as_messages() {
+        let big = "x".repeat(MAX_FORK_CHARS / 4);
+        let parent: Vec<serde_json::Value> = (0..8)
+            .map(|_| serde_json::json!({ "role": "user", "content": big.clone() }))
+            .collect();
+        let forked = forked_history(&parent, "task");
+        let carried = forked.len() - 2; // the note and the task are not parent messages
+        assert!(carried < parent.len(), "carried {carried} of {}", parent.len());
+        let size: usize = forked[1..forked.len() - 1]
+            .iter()
+            .map(|m| serde_json::to_string(m).unwrap().len())
+            .sum();
+        assert!(size <= MAX_FORK_CHARS, "{size} characters");
+    }
+
+    /// A tool result whose call was cut away has nothing to answer, and a
+    /// tool call whose result has not happened yet -- the dispatch itself --
+    /// is answered by nobody. Both are dropped: a provider rejects either.
+    #[test]
+    fn a_fork_carries_no_half_of_a_tool_exchange() {
+        let parent = vec![
+            serde_json::json!({ "role": "user", "content": "start" }),
+            // An orphan result: its call is not in this history.
+            serde_json::json!({ "role": "tool", "tool_call_id": "gone", "content": "old" }),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    { "id": "answered", "type": "function",
+                      "function": { "name": "read", "arguments": "{}" } },
+                    { "id": "pending", "type": "function",
+                      "function": { "name": "dispatch_subagent", "arguments": "{}" } }
+                ]
+            }),
+            serde_json::json!({ "role": "tool", "tool_call_id": "answered", "content": "file" }),
+        ];
+        let forked = forked_history(&parent, "task");
+        let text = serde_json::to_string(&forked).unwrap();
+        assert!(!text.contains("gone"), "{text}");
+        assert!(!text.contains("pending"), "{text}");
+        assert!(text.contains("answered"), "{text}");
+        let calls = forked
+            .iter()
+            .find(|m| m["role"] == "assistant")
+            .and_then(|m| m["tool_calls"].as_array())
+            .expect("the assistant message keeps its answered call");
+        assert_eq!(calls.len(), 1);
+    }
+
+    /// An assistant message left with no live tool call and nothing said goes
+    /// with them, rather than travelling as an empty turn.
+    #[test]
+    fn an_assistant_turn_that_was_only_the_dispatch_does_not_travel() {
+        let parent = vec![
+            serde_json::json!({ "role": "user", "content": "start" }),
+            serde_json::json!({
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    { "id": "pending", "type": "function",
+                      "function": { "name": "dispatch_subagent", "arguments": "{}" } }
+                ]
+            }),
+        ];
+        let forked = forked_history(&parent, "task");
+        assert!(
+            !forked.iter().any(|m| m["role"] == "assistant"),
+            "{forked:#?}"
+        );
+        assert_eq!(forked.last().unwrap()["content"], "task");
+    }
+
+    /// The child has its own system prompt; the parent's does not travel with
+    /// the fork, and its absence is not counted as truncation.
+    #[test]
+    fn a_fork_leaves_the_parents_system_prompt_behind() {
+        let mut parent = vec![serde_json::json!({ "role": "system", "content": "be the parent" })];
+        parent.extend(plain_turns(2));
+        let forked = forked_history(&parent, "task");
+        assert!(
+            !forked.iter().any(|m| m["role"] == "system"),
+            "{forked:#?}"
+        );
+        assert_eq!(forked.len(), 3, "{forked:#?}");
+        assert_eq!(forked[0]["content"], "message 0");
+    }
+
+    /// The fork is a copy. Changing what the child holds changes nothing the
+    /// parent holds, which is the whole point of forking rather than sharing.
+    #[test]
+    fn a_fork_is_a_copy_not_a_shared_history() {
+        let parent = plain_turns(3);
+        let mut forked = forked_history(&parent, "task");
+        forked[0]["content"] = serde_json::json!("rewritten by the child");
+        assert_eq!(parent[0]["content"], "message 0");
+    }
+
+    /// A dispatch asks for a fork explicitly; the default is a clean brief.
+    #[test]
+    fn forking_is_asked_for_and_never_assumed() {
+        let base = serde_json::json!({ "subagent_name": "s", "description": "d" });
+        assert!(!parse_dispatch_args(&base).unwrap().fork_context);
+        let asked = serde_json::json!({
+            "subagent_name": "s", "description": "d", "fork_context": true
+        });
+        assert!(parse_dispatch_args(&asked).unwrap().fork_context);
+        // Anything that is not a boolean is not a choice.
+        let junk = serde_json::json!({
+            "subagent_name": "s", "description": "d", "fork_context": "yes"
+        });
+        assert!(!parse_dispatch_args(&junk).unwrap().fork_context);
+    }
+
+    /// What the child is actually sent: a fork puts the parent's messages in
+    /// the request body, and the default puts only the task there.
+    #[test]
+    fn the_child_body_carries_the_fork_when_one_was_asked_for() {
+        let reg = registry_with("reviewer", None);
+        let permissions = ToolPermissions::allow_all();
+        let resolved =
+            resolve_dispatch(&reg, &req("reviewer", None), &permissions).expect("resolves");
+        let parent = parent_run();
+        let plain = child_body(&resolved, "the task", &parent, None);
+        let messages = plain["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0]["content"], "the task");
+
+        let history = plain_turns(3);
+        let forked = child_body(&resolved, "the task", &parent, Some(&history));
+        let messages = forked["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 4, "{messages:#?}");
+        assert_eq!(messages[0]["content"], "message 0");
+        assert_eq!(messages[3]["content"], "the task");
+    }
 
     static COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -2208,6 +2533,7 @@ mod tests {
 
     fn req(name: &str, allowed: Option<Vec<String>>) -> SubagentRequest {
         SubagentRequest {
+            fork_context: false,
             subagent_name: name.to_string(),
             description: "do the thing".to_string(),
             allowed_tools: allowed,
@@ -2220,6 +2546,7 @@ mod tests {
     /// cares about scheduling wants.
     fn parent_run() -> ParentRun {
         ParentRun {
+            conversation: None,
             model: "m".to_string(),
             budget_remaining: None,
             send_reasoning: true,
@@ -2235,7 +2562,7 @@ mod tests {
         let reg = registry_with("reviewer", None);
         let p = ToolPermissions::allow_all();
         let resolved = resolve_dispatch(&reg, &req("reviewer", None), &p).expect("resolves");
-        let on = child_body(&resolved, "task", &parent_run());
+        let on = child_body(&resolved, "task", &parent_run(), None);
         assert!(
             on.get("send_reasoning").is_none(),
             "the default is inherited implicitly: {on}"
@@ -2247,6 +2574,7 @@ mod tests {
                 send_reasoning: false,
                 ..parent_run()
             },
+            None,
         );
         assert_eq!(off["send_reasoning"], serde_json::json!(false));
     }
@@ -2269,6 +2597,7 @@ mod tests {
             allowed_tools: Some(vec!["read".to_string()]),
             system_prompt: Some("You are a one-off.".to_string()),
             isolate: None,
+            fork_context: false,
         };
         let resolved = resolve_dispatch(&reg, &request, &p).unwrap();
         assert_eq!(resolved.definition.system_prompt, "You are a one-off.");
