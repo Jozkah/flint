@@ -15,7 +15,7 @@ import {
   MCPSettings,
   DEFAULT_MCP_SETTINGS,
 } from '@/hooks/useMCPServers'
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import AddEditMCPServer from '@/containers/dialogs/AddEditMCPServer'
 import DeleteMCPServerConfirm from '@/containers/dialogs/DeleteMCPServerConfirm'
 import EditJsonMCPserver from '@/containers/dialogs/EditJsonMCPserver'
@@ -36,7 +36,22 @@ import { McpRouterModelPicker } from '@/containers/McpRouterModelPicker'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import { normalizeAppError } from '@/utils/appError'
 import { McpServerAuth } from '@/containers/McpServerAuth'
-import { useMcpAuth, needsAuthDetail } from '@/hooks/useMcpAuth'
+import { useMcpAuth } from '@/hooks/useMcpAuth'
+import {
+  activationConfirmed,
+  activationFailed,
+  beginActivation,
+  classifyActivationFailure,
+  deriveConnectionState,
+  runtimeCleared,
+  type McpServerRuntime,
+} from '@/lib/mcpConnectionState'
+import { deriveMcpServerProfile, transportOf } from '@/lib/mcpServerProfile'
+import {
+  McpServerDetails,
+  McpServerStatus,
+  mcpServerErrorId,
+} from '@/containers/McpServerConnectionDetails'
 
 
 // Function to mask sensitive URL parameters
@@ -165,6 +180,48 @@ function MCPServersDesktop() {
   }, [serviceHub])
   const setErrorMessage = useAppState((state) => state.setErrorMessage)
 
+  /** In-flight activation and last failure per server; see mcpConnectionState. */
+  const [runtime, setRuntime] = useState<Record<string, McpServerRuntime>>({})
+  /**
+   * Tool names per connected server: `undefined` while loading, `null` when
+   * the list could not be read.
+   */
+  const [serverTools, setServerTools] = useState<
+    Record<string, string[] | null>
+  >({})
+  const serviceHubRef = useRef(serviceHub)
+  serviceHubRef.current = serviceHub
+  // Server names may contain spaces ("Jan Browser MCP"), so join on NUL.
+  const connectedKey = connectedServers.join('\u0000')
+
+  useEffect(() => {
+    let cancelled = false
+    const names = connectedKey ? connectedKey.split('\u0000') : []
+    void Promise.all(
+      names.map(async (name) => {
+        try {
+          const tools = await serviceHubRef.current
+            .mcp()
+            .getToolsForServers([name])
+          return [
+            name,
+            tools
+              .filter((tool) => !tool.server || tool.server === name)
+              .map((tool) => tool.name),
+          ] as const
+        } catch (error) {
+          console.debug(`Could not list tools for MCP server ${name}:`, error)
+          return [name, null] as const
+        }
+      })
+    ).then((entries) => {
+      if (!cancelled) setServerTools(Object.fromEntries(entries))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [connectedKey])
+
   const updateToolCallTimeout = (rawValue: string) => {
     if (rawValue === '') {
       updateSettings({
@@ -284,6 +341,7 @@ function MCPServersDesktop() {
       }
 
       deleteServer(serverToDelete)
+      setRuntime((prev) => ({ ...prev, [serverToDelete]: runtimeCleared() }))
       toast.success(
         t('mcp-servers:deleteServer.success', { serverName: serverToDelete })
       )
@@ -376,7 +434,12 @@ function MCPServersDesktop() {
     try {
       await authorize(serverKey)
       toast.success(t('mcp-servers:auth.authorized', { serverName: serverKey }))
-      if (mcpServers[serverKey]?.active) {
+      // A start that failed for want of sign-in reverted the flag, but the
+      // user was trying to turn it on: finish what they started.
+      if (
+        mcpServers[serverKey]?.active ||
+        runtime[serverKey]?.failure?.needsAuth
+      ) {
         toggleServer(serverKey, true)
       }
     } catch (error) {
@@ -424,36 +487,49 @@ function MCPServersDesktop() {
       setLoadingServers((prev) => ({ ...prev, [serverKey]: true }))
       const config = getServerConfig(serverKey)
       if (active && config) {
+        const transport = transportOf(config)
+        setRuntime((prev) => ({ ...prev, [serverKey]: beginActivation() }))
+        let started = false
         serviceHub
           .mcp()
-          .activateMCPServer(serverKey, {
-            ...(config ?? (mcpServers[serverKey] as MCPServerConfig)),
-            active,
-          })
-          .then(() => {
-            // Save single server
-            editServer(serverKey, {
-              ...(config ?? (mcpServers[serverKey] as MCPServerConfig)),
-              active,
-            })
+          .activateMCPServer(serverKey, { ...config, active })
+          .then(async () => {
+            started = true
+            // `activate` resolving means the first start attempt returned.
+            // Only the backend's connected list says the server is up, so
+            // nothing is saved or announced until it appears there.
+            const connected = await serviceHub.mcp().getConnectedServers()
+            setConnectedServers(connected)
+            if (!connected.includes(serverKey)) {
+              throw new Error(t('mcp-servers:connection.notListedAfterStart'))
+            }
+            editServer(serverKey, { ...config, active })
             syncServers()
-            toast.success(
-              active
-                ? t('mcp-servers:serverStatusActive', { serverKey })
-                : t('mcp-servers:serverStatusInactive', { serverKey })
-            )
-            refreshConnectedServers()
+            setRuntime((prev) => ({
+              ...prev,
+              [serverKey]: activationConfirmed(),
+            }))
+            toast.success(t('mcp-servers:serverStatusActive', { serverKey }))
           })
           .catch((error) => {
-            editServer(serverKey, {
-              ...(config ?? (mcpServers[serverKey] as MCPServerConfig)),
-              active: false,
-            })
+            if (started) {
+              // It started but was not confirmed: stop it, so nothing keeps
+              // running behind a switch that shows off.
+              void Promise.resolve()
+                .then(() => serviceHub.mcp().deactivateMCPServer(serverKey))
+                .catch(() => {})
+                .finally(refreshConnectedServers)
+            }
+            editServer(serverKey, { ...config, active: false })
+            const failure = classifyActivationFailure(error, transport)
+            setRuntime((prev) => ({
+              ...prev,
+              [serverKey]: activationFailed(failure),
+            }))
             // A server that only needs signing in is not a misconfigured one:
             // the backend tags it, so point at the fix rather than telling the
             // user to check parameters they got right.
-            const authDetail = needsAuthDetail(error)
-            if (authDetail !== null) {
+            if (failure.needsAuth) {
               void refreshAuth()
               setErrorMessage({
                 message: t('mcp-servers:auth.needsAuth', {
@@ -464,7 +540,7 @@ function MCPServersDesktop() {
               return
             }
             setErrorMessage({
-              message: normalizeAppError(error),
+              message: failure.message,
               subtitle: t('mcp-servers:checkParams'),
             })
           })
@@ -472,6 +548,7 @@ function MCPServersDesktop() {
             setLoadingServers((prev) => ({ ...prev, [serverKey]: false }))
           })
       } else {
+        setRuntime((prev) => ({ ...prev, [serverKey]: runtimeCleared() }))
         editServer(serverKey, {
           ...(config ?? (mcpServers[serverKey] as MCPServerConfig)),
           active,
@@ -716,16 +793,31 @@ function MCPServersDesktop() {
                   {t('mcp-servers:noServers')}
                 </div>
               ) : (
-                Object.entries(mcpServers).map(([key, config], index) => (
+                Object.entries(mcpServers).map(([key, config], index) => {
+                  const authStatus = authStatuses[key]
+                  const profile = deriveMcpServerProfile(config, authStatus)
+                  const snapshot = deriveConnectionState({
+                    installed: true,
+                    enabled: !!config.active,
+                    connected: connectedServers.includes(key),
+                    runtime: runtime[key],
+                    authStatus,
+                    transport: profile.transport,
+                  })
+                  const toolNames = snapshot.connected
+                    ? serverTools[key]
+                    : undefined
+                  return (
                   <Card key={`${key}-${index}`}>
                     <CardItem
                       align="start"
                       title={
                         <div className="flex items-center gap-x-2">
                           <div
+                            aria-hidden="true"
                             className={twMerge(
                               'size-2 rounded-full',
-                              connectedServers.includes(key)
+                              snapshot.state === 'connected'
                                 ? 'bg-green-600 dark:bg-green-600'
                                 : 'bg-secondary'
                             )}
@@ -815,6 +907,23 @@ function MCPServersDesktop() {
                               />
                             </>
                           )}
+                          <McpServerStatus
+                            serverName={key}
+                            snapshot={snapshot}
+                            toolNames={toolNames}
+                            canAuthorize={!!authStatus?.canAuthenticate}
+                            onRetry={() => toggleServer(key, true)}
+                            onAuthorize={() => void handleAuthorize(key)}
+                          />
+                          <McpServerDetails
+                            profile={profile}
+                            toolNames={toolNames}
+                            authStateLabel={
+                              authStatus
+                                ? t(`mcp-servers:auth.state.${authStatus.state}`)
+                                : undefined
+                            }
+                          />
                           <div className="flex items-center gap-2 mt-2">
                             <Switch
                               checked={isServerApproved(key)}
@@ -867,8 +976,19 @@ function MCPServersDesktop() {
                           </Button>
                           <div className="ml-2">
                             <Switch
-                              checked={config.active}
-                              loading={!!loadingServers[key]}
+                              checked={snapshot.switchOn}
+                              loading={
+                                !!loadingServers[key] ||
+                                snapshot.state === 'connecting'
+                              }
+                              aria-label={t('mcp-servers:connection.toggleLabel', {
+                                serverName: key,
+                              })}
+                              aria-describedby={
+                                snapshot.failure
+                                  ? mcpServerErrorId(key)
+                                  : undefined
+                              }
                               onCheckedChange={(checked) =>
                                 toggleServer(key, checked)
                               }
@@ -878,7 +998,8 @@ function MCPServersDesktop() {
                       }
                     />
                   </Card>
-                ))
+                  )
+                })
               )}
             </div>
           </div>
@@ -892,6 +1013,7 @@ function MCPServersDesktop() {
         editingKey={editingKey}
         initialData={currentConfig}
         onSave={handleSaveServer}
+        existingNames={Object.keys(mcpServers)}
       />
 
       {/* Delete confirmation dialog */}
