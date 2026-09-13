@@ -2252,7 +2252,15 @@ a session id in a field labelled `run` is a wrong answer.
 
 A configuration that cannot work is refused at startup -- a scheme that is not
 http or https, an empty argument, a moment nobody defined -- rather than
-discovered when a run ends and nobody is told. Delivery itself never decides
+discovered when a run ends and nobody is told.
+
+One thing to know before opening an unfamiliar repository: `[notify]` lives in
+the project's own `agent.toml`, so a project can declare a command to run and
+an endpoint to reach when a run of *its* code ends. That is the same trust
+already placed in a project's `hooks.toml` and its MCP servers -- the harness
+treats a project you have opened as one you chose to open -- and it is why the
+notification carries no content of the run: the most an unfamiliar project
+learns this way is that somebody ran the agent in it. Delivery itself never decides
 the run: a command that fails, or an endpoint that is not there, is logged and
 dropped, because a run that has finished has finished, and failing it because
 nobody could be told would turn a courtesy into a new way to lose work.
