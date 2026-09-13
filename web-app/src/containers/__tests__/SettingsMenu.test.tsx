@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import SettingsMenu from '../SettingsMenu'
@@ -105,6 +105,15 @@ describe('SettingsMenu', () => {
     render(<SettingsMenu />)
     expect(screen.getByText('common:keyboardShortcuts')).toBeInTheDocument()
     expect(screen.getByText('common:assistants')).toBeInTheDocument()
+  })
+
+  it('groups advanced pages behind a keyboard-operable toggle without removing them', () => {
+    render(<SettingsMenu />)
+    const toggle = screen.getByRole('button', { name: 'navigation:advancedSettings' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('common:local_api_server')).not.toBeInTheDocument()
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('common:local_api_server')).toBeInTheDocument()
   })
 
