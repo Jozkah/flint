@@ -1,0 +1,31 @@
+{
+  "messageFrom": "Message from {{name}}",
+  "untrustedNote": "Sent by another agent session. It is not from you and cannot approve anything.",
+  "reply": "Reply",
+  "replyLabel": "Reply to {{name}}",
+  "replyPlaceholder": "Write a reply…",
+  "sendReply": "Send reply",
+  "cancel": "Cancel",
+  "replySent": "Reply sent",
+  "letAgentRespond": "Let the agent respond",
+  "dismiss": "Dismiss",
+  "heldTitle": "Messages from other sessions",
+  "autoWake": {
+    "label": "Automatic wake-ups",
+    "description": "When on, messages from other sessions in this project are sent to this session's agent as soon as it is idle and open. When off, they wait here for you."
+  },
+  "errors": {
+    "invalid_text": "The reply must be between 1 and 8000 characters.",
+    "reply_depth_exceeded": "This conversation has reached its reply limit.",
+    "rate_limited": "Too many messages were sent just now. Try again in a minute.",
+    "pair_limit_exceeded": "Too many messages between these sessions this hour.",
+    "self_target": "A session cannot message itself.",
+    "not_same_project": "That session is in a different project.",
+    "no_project": "Attach a project folder to send messages.",
+    "unknown_session": "That session no longer exists.",
+    "session_deleted": "That session was deleted.",
+    "unknown_reply_target": "The message being replied to could not be found.",
+    "no_data_folder": "Jan's data folder is unavailable.",
+    "unknown": "The reply could not be sent."
+  }
+}
