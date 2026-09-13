@@ -2138,3 +2138,21 @@ refusing a file leaving that file untouched; and, through the edit path, the
 diff being redrawn from the formatted text and naming the formatter and its
 evidence, a refusal leaving the diff and saying why, and a project with no
 declared formatter having nothing run against it.
+
+
+### Stopping a run that cannot execute anything
+
+A real run against a provider scripted to answer every request with a tool call
+whose arguments are a bare string, before and after:
+
+```
+before:  rc=124 after 130s      turns reached: 38   (killed by the harness timeout)
+after:   rc=76  after 15s       turns reached: 3
+  Error [invalid_response]: the model emitted 3 turns in a row whose tool calls
+  could not be executed, and nothing changed between them; the run was stopped
+  rather than repeating the same request indefinitely
+```
+
+Covered by test: a turn cycle with no turn ceiling and a provider that always
+answers the same unexecutable call stops on the third turn, with the typed
+error, having executed no tool at all.

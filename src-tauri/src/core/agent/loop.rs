@@ -4058,6 +4058,10 @@ async fn run_turn_cycle(
     // fixed turn cap.
     let unlimited = max_turns == 0;
     let mut turn: usize = 0;
+    /// How many turns in a row may produce nothing executable before the run
+    /// is stopped. See the check itself for why one is not enough.
+    const MAX_UNEXECUTABLE_TURNS: usize = 3;
+    let mut unexecutable_turns: usize = 0;
     // The budget notice is announced once, on the turn that crosses the
     // ceiling. Without the latch every later turn would push another copy and
     // the notice would crowd out the conversation it is annotating.
@@ -4542,6 +4546,29 @@ async fn run_turn_cycle(
                 )
             })
             .collect();
+        // A turn where every call was unexecutable changed nothing: the
+        // malformed calls are dropped from the live context, so the next
+        // request is the one just sent, and the reply will be the one just
+        // received. Left alone this spins forever -- a real run reached turn
+        // 456 doing exactly that -- because the token budget is the only other
+        // guard and a provider reporting no usage never moves it. Three such
+        // turns is enough to tell a confused model from a stuck one.
+        if executable.is_empty() && !error_outcomes.is_empty() {
+            unexecutable_turns += 1;
+            if unexecutable_turns >= MAX_UNEXECUTABLE_TURNS {
+                return Err(HarnessError::new(
+                    tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidResponse,
+                    format!(
+                        "the model emitted {MAX_UNEXECUTABLE_TURNS} turns in a row whose tool \
+                         calls could not be executed, and nothing changed between them; the run \
+                         was stopped rather than repeating the same request indefinitely"
+                    ),
+                )
+                .at(tauri_plugin_agent_tools::harness_error::Stage::Stream));
+            }
+        } else {
+            unexecutable_turns = 0;
+        }
         let mut tool_results: Vec<ToolOutcome> = if executable.is_empty() {
             Vec::new()
         } else {
@@ -6288,6 +6315,88 @@ mod tests {
             .last()
             .expect("a MessagesUpdated is published");
         assert_eq!(published.len(), original_len, "history untouched");
+    }
+
+    /// A provider that answers every request with the same reply, however many
+    /// times it is asked.
+    struct AlwaysModel {
+        reply: serde_json::Value,
+        calls: std::sync::Arc<StdMutex<usize>>,
+    }
+    #[async_trait]
+    impl ModelInvoker for AlwaysModel {
+        async fn invoke(
+            &self,
+            _request: &serde_json::Value,
+            _events: &mpsc::UnboundedSender<StreamEvent>,
+        ) -> Result<serde_json::Value, HarnessError> {
+            *self.calls.lock().unwrap() += 1;
+            Ok(self.reply.clone())
+        }
+    }
+
+    /// A model whose tool calls cannot be executed changes nothing by making
+    /// them: they are dropped from the live context, so the next request is the
+    /// one just sent. Without a guard this repeats forever -- a real run
+    /// reached turn 456 doing it -- because a token budget is the only other
+    /// ceiling and a provider reporting no usage never moves it.
+    #[tokio::test]
+    async fn a_run_that_can_execute_nothing_is_stopped_rather_than_repeated() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let calls = std::sync::Arc::new(StdMutex::new(0usize));
+        let model = AlwaysModel {
+            // Arguments that are not a JSON object: exactly what a confused
+            // model emits, and what the executability check refuses.
+            reply: json!({
+                "choices": [{
+                    "message": {
+                        "content": "",
+                        "tool_calls": [{
+                            "id": "c1",
+                            "type": "function",
+                            "function": { "name": "write", "arguments": "\"not an object\"" }
+                        }]
+                    }
+                }]
+            }),
+            calls: calls.clone(),
+        };
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "do it" })];
+
+        let err = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            // No turn ceiling: the budget and cancellation are the usual
+            // guards, and neither one moves here.
+            0,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("the run is stopped");
+
+        assert_eq!(
+            err.kind(),
+            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidResponse,
+            "{err}"
+        );
+        assert!(err.message().contains("could not be executed"), "{err}");
+        assert_eq!(*calls.lock().unwrap(), 3, "stopped on the third such turn");
+        assert!(
+            tool.calls.lock().unwrap().is_empty(),
+            "nothing was executed, which is the whole point"
+        );
     }
 
     struct ResultQueueModel {

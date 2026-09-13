@@ -2154,3 +2154,19 @@ be. The line underneath names the formatter and the evidence
 A formatter that will not start, misses the deadline, or refuses the file
 leaves the edit exactly as the model wrote it and says so under the original
 diff -- usually because the edit does not parse, which is worth knowing.
+
+
+## A run that can execute nothing is stopped
+
+A turn whose tool calls all fail the executability check changes nothing. The
+malformed calls are dropped from the live context before the next request, so
+that request is the one just sent, and the reply will be the one just received.
+A token budget is the only other ceiling, and a provider that reports no usage
+never moves it.
+
+Found in a real run while verifying something else: a mock provider answering
+with a tool call whose arguments were a bare string, and a run at turn 456
+still asking the same question. Three such turns in a row now end the run with
+a typed `invalid_response` that says what happened. Any turn that executes
+something -- or that produces an answer -- resets the count, so a model that is
+merely confused once is not cut off.
