@@ -101,6 +101,7 @@ import {
 } from '@/lib/permissionOutcome'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { TemporaryChatBanner } from '@/containers/TemporaryChatBanner'
+import { WhatJanIsUsing } from '@/containers/WhatJanIsUsing'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { redactDeep, redactText } from '@/lib/redactToolOutput'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
@@ -1875,7 +1876,10 @@ function ThreadDetail() {
       <HeaderPage>
         <div className="flex items-center justify-between w-full pr-2 gap-2">
           <DropdownModelProvider model={threadModel} />
-          <TemporaryChatBanner threadId={threadId} />
+          <div className="flex items-center gap-2">
+            <WhatJanIsUsing threadId={threadId} messages={chatMessages} />
+            <TemporaryChatBanner threadId={threadId} />
+          </div>
         </div>
       </HeaderPage>
       <div className="flex flex-1 flex-col h-full overflow-hidden">

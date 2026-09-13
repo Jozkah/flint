@@ -1,0 +1,79 @@
+{
+  "open": "What JAN is using",
+  "title": "What JAN is using in this conversation",
+  "description": "What is available to JAN, what was chosen for a request, and what was actually sent. Changes here affect future messages, not a reply already being written.",
+  "refresh": "Refresh",
+  "section": {
+    "model": "Model",
+    "instructions": "Instructions",
+    "attachments": "Attachments",
+    "memory": "Saved memory",
+    "tools": "Tools and connections",
+    "payload": "Exact request"
+  },
+  "state": {
+    "included-with-message": "Sent with its message",
+    "included-every-request": "Sent with every message",
+    "included-last-request": "Sent with the last message",
+    "pending-next-message": "Will be sent with your next message",
+    "available-on-search": "Available when JAN searches",
+    "available": "Available to JAN",
+    "not-offered": "Not used",
+    "not-recorded": "Not recorded"
+  },
+  "scope": {
+    "conversation": "This conversation",
+    "project": "This project",
+    "across-chats": "All conversations",
+    "app": "Whole app"
+  },
+  "reason": {
+    "location": {
+      "local": "Runs on this device or your network. Messages do not leave it.",
+      "remote": "Remote provider: your messages and included files are sent to it.",
+      "checking": "Still checking where this provider runs.",
+      "unknown": "Where this provider runs could not be determined."
+    },
+    "assistantInstructions": "The assistant's instructions are sent as the system prompt.",
+    "pendingInline": "Its text will be placed into your next message.",
+    "pendingEmbeddings": "It will be indexed; JAN reads the relevant parts only when it searches.",
+    "inlineSent": "Its text was placed into the message that attached it.",
+    "retrievalNotRecorded": "Indexed for search. Which parts JAN read is not recorded; only files it searched could have been used.",
+    "temporaryChat": "Temporary chats neither read nor save memory.",
+    "memoryNotSentYet": "No message has been sent from this window yet, so no memory selection is known. Saved memories are not all sent: JAN picks the ones that apply.",
+    "memoryInjected": "Chosen and sent with the last message.",
+    "memoryDetailsUnavailable": "Sent with the last message; its details could not be loaded.",
+    "memoryConflicts": "Memories that contradict each other are withheld until you resolve them.",
+    "memoryDropped": "Applicable memories that did not fit in the budget were left out.",
+    "modelWithoutTools": "The selected model does not support tools, so none are offered.",
+    "toolFromServer": "Offered to the model from this connection. JAN asks before using tools that need permission.",
+    "toolBuiltIn": "A built-in tool offered to the model.",
+    "toolsTurnedOff": "Tools you turned off are not offered in any conversation.",
+    "chatPayloadNotRecorded": "Normal conversations do not keep a copy of the exact request. Cowork sessions record a sanitized copy you can inspect."
+  },
+  "label": {
+    "temporary": "Memory is off in temporary chats",
+    "notSentYet": "Nothing sent from this window yet",
+    "conflicts": "Conflicting memories withheld",
+    "dropped": "Memories left out for space",
+    "tools": "Tools not offered",
+    "disabled": "Tools turned off",
+    "payload": "Exact request contents"
+  },
+  "empty": {
+    "noModel": "No model is selected.",
+    "noInstructions": "No assistant instructions. Normal conversations do not read project instruction files such as JAN.md; Cowork does.",
+    "noAttachments": "No files are attached to this conversation.",
+    "indexUnavailable": "Indexed files could not be listed.",
+    "noMemory": "No saved memory was sent with the last message.",
+    "noTools": "No tools are available."
+  },
+  "action": {
+    "remove-pending-attachment": "Remove",
+    "open-memory-settings": "Manage memory",
+    "open-tool-settings": "Manage connections",
+    "open-assistant-settings": "Edit assistant",
+    "open-provider-settings": "Model settings"
+  },
+  "memoryScopeNote": "Editing or forgetting a memory affects future messages only."
+}

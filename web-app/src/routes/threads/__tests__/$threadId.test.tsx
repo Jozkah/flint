@@ -294,6 +294,10 @@ vi.mock('@/lib/utils', () => ({
   cn: (...classes: any[]) => classes.filter(Boolean).join(' '),
 }))
 
+vi.mock('@/containers/WhatJanIsUsing', () => ({
+  WhatJanIsUsing: () => null,
+}))
+
 vi.mock('@/lib/instructionTemplate', () => ({
   renderInstructions: (i: string) => `rendered:${i}`,
 }))
