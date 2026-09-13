@@ -168,10 +168,13 @@ test('claiming "verified" without listed tests is rejected', () => {
   expectProblem(doc, 'requires the tests that verify it')
 })
 
+// The fixtures below build the state they test from an implemented item: the
+// registry no longer has to contain a "missing" item for them to mean anything
+// (every item reached implemented or beyond in phase 6).
 test('claiming "implemented" without listed files is rejected', () => {
   const doc = pristine()
-  const feature = doc.features.find((f) => f.status === 'missing')
-  feature.status = 'implemented'
+  const feature = doc.features.find((f) => f.status === 'implemented')
+  feature.files = []
   expectProblem(doc, 'requires the implementing files')
 })
 
@@ -191,7 +194,8 @@ test('an implemented item naming a file that is gone is reported', () => {
 
 test('a missing file on an unfinished item is not reported', () => {
   const doc = pristine()
-  const feature = doc.features.find((f) => f.status === 'missing')
+  const feature = doc.features.find((f) => f.status === 'implemented')
+  feature.status = 'missing'
   feature.files = ['src-tauri/not/written/yet.rs']
   assert.deepEqual(findMissingFiles(doc, REPO_ROOT), [])
 })
