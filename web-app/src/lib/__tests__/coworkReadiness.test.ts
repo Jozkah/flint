@@ -6,6 +6,7 @@ import {
   estimated,
   activeInstructions,
   classifyInstruction,
+  isMissingFileError,
   manifestMatches,
   measured,
   mutationBlockers,
@@ -137,6 +138,27 @@ describe('another harness’s instruction file', () => {
   })
 })
 
+// Found on Windows: a folder with no JAN.md was reported as having one that
+// could not be read, because the error said "cannot find the file".
+describe('isMissingFileError', () => {
+  it.each([
+    'JAN.md is unreadable: The system cannot find the file specified. (os error 2)',
+    'The system cannot find the path specified. (os error 3)',
+    'No such file or directory (os error 2)',
+    'ENOENT: no such file',
+    'file not found',
+  ])('reads %s as absent', (message) => {
+    expect(isMissingFileError(message)).toBe(true)
+  })
+
+  it.each([
+    'Access is denied. (os error 5)',
+    'SENSITIVE: looks like a credentials file',
+  ])('reads %s as a real failure', (message) => {
+    expect(isMissingFileError(message)).toBe(false)
+  })
+})
+
 describe('finding a skill request in a message', () => {
   const known = ['superpowers', 'brainstorming']
 
@@ -163,6 +185,33 @@ describe('finding a skill request in a message', () => {
     'use whatever you think is best',
   ])('does not read prose as a request: %s', (text) => {
     expect(parseSkillRequests(text, known)).toEqual([])
+  })
+
+  // AH-204: `@` also names files. Referencing one used to request a skill of
+  // that name, which resolved to `missing` and stopped every change.
+  it.each([
+    'fix @src/index.ts please',
+    'compare @README.md with the spec',
+    'look at @docs\\guide.md',
+    'see @src/index.ts:24-48',
+  ])('does not read the file reference in %s as a skill request', (text) => {
+    expect(parseSkillRequests(text, known)).toEqual([])
+  })
+
+  it('reads the typed @skill: form, and never @agent: or @alias:', () => {
+    expect(
+      parseSkillRequests('@skill:reviewer with @agent:bot and @alias:spec', known)
+    ).toEqual(['reviewer'])
+  })
+
+  it('still reads an @mention that names a known skill, even with a dot', () => {
+    expect(parseSkillRequests('@my.skill now', ['my.skill'])).toEqual([
+      'my.skill',
+    ])
+    // An unknown plain name is still an explicit request, resolved as missing.
+    expect(parseSkillRequests('@telekinesis now', known)).toEqual([
+      'telekinesis',
+    ])
   })
 
   it('does not invent a skill from a bare word the registry never heard of', () => {

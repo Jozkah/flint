@@ -87,7 +87,7 @@ describe('Shortcuts Settings Route', () => {
     render(<Component />)
 
     expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-menu')).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
     expect(screen.getByText('common:settings')).toBeInTheDocument()
   })
 
@@ -107,8 +107,8 @@ describe('Shortcuts Settings Route', () => {
     const container = screen.getByTestId('header-page')
     expect(container).toBeInTheDocument()
     
-    const settingsMenu = screen.getByTestId('settings-menu')
-    expect(settingsMenu).toBeInTheDocument()
+    // The shell's contextual sidebar renders the settings navigation.
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
   })
 
   it('should call translation function with correct keys', () => {
@@ -122,8 +122,8 @@ describe('Shortcuts Settings Route', () => {
     const Component = ShortcutsRoute.component as React.ComponentType
     render(<Component />)
 
-    const settingsContent = screen.getByTestId('settings-menu')
-    expect(settingsContent).toBeInTheDocument()
+    // The shell's contextual sidebar renders the settings navigation.
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
   })
 
   it('should render main content area', () => {
@@ -156,9 +156,8 @@ describe('Shortcuts Settings Route', () => {
     const Component = ShortcutsRoute.component as React.ComponentType
     render(<Component />)
 
-    const settingsMenu = screen.getByTestId('settings-menu')
-    expect(settingsMenu).toBeInTheDocument()
-    expect(settingsMenu).toHaveTextContent('Settings Menu')
+    // The shell's contextual sidebar renders the settings navigation.
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
   })
 
   it('should have header with settings title', () => {
@@ -179,8 +178,8 @@ describe('Shortcuts Settings Route', () => {
     expect(container).toBeInTheDocument()
     
     // Check the settings layout
-    const settingsMenu = screen.getByTestId('settings-menu')
-    expect(settingsMenu).toBeInTheDocument()
+    // The shell's contextual sidebar renders the settings navigation.
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
   })
 
   it('should render content in scrollable area', () => {

@@ -12,7 +12,7 @@ import {
   DialogHeader,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { IconTrash } from '@tabler/icons-react'
+import { Trash2 } from 'lucide-react'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { toast } from 'sonner'
 import { route } from '@/constants/routes'
@@ -84,7 +84,7 @@ export function DeleteThreadDialog({
       {!withoutTrigger && (
         <DialogTrigger asChild>
           <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-            <IconTrash />
+            <Trash2 />
             <span>{t('common:delete')}</span>
           </DropdownMenuItem>
         </DialogTrigger>

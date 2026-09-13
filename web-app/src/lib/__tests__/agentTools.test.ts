@@ -8,8 +8,7 @@ const sandboxStatus = vi.fn()
 const getJanDataFolder = vi.fn()
 
 vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
-  advertisedToolSchemas: (...args: unknown[]) =>
-    advertisedToolSchemas(...args),
+  advertisedToolSchemas: (...args: unknown[]) => advertisedToolSchemas(...args),
   executeTool: (...args: unknown[]) => executeTool(...args),
   threadWorkspaceDelete: (...args: unknown[]) => threadWorkspaceDelete(...args),
   threadWorkspaceSweep: (...args: unknown[]) => threadWorkspaceSweep(...args),
@@ -69,7 +68,16 @@ describe('agentTools', () => {
     advertisedToolSchemas.mockImplementation(async (projectRoot?: string) =>
       projectRoot
         ? advertising(['read', 'ls', 'write'])
-        : advertising([], [{ name: 'ls', component: 'filesystem', reason: 'workspace-unattached' }])
+        : advertising(
+            [],
+            [
+              {
+                name: 'ls',
+                component: 'filesystem',
+                reason: 'workspace-unattached',
+              },
+            ]
+          )
     )
     const { getAgentToolSchemas } = await import('../agentTools')
 
@@ -275,6 +283,20 @@ describe('agentTools', () => {
     expect(sandboxEnforces()).toBe(false)
   })
 
+  /// AH-202: the run id is what the backend journals a turn's file changes
+  /// under. Dropped here, nothing could ever be undone.
+  it('forwards the run a call belongs to, for undo', async () => {
+    executeTool.mockResolvedValue({ content: '', diff: null, isError: false })
+    const { executeAgentTool } = await import('../agentTools')
+    await executeAgentTool('write', { path: 'a.txt' }, 'session-1', {
+      scope: 'session',
+      undoRun: 'run-7',
+    })
+    const call = executeTool.mock.calls.at(-1) as unknown[]
+    expect(call[9]).toBe('session')
+    expect(call[11]).toBe('run-7')
+  })
+
   it('passes the network setting through to the plugin', async () => {
     executeTool.mockResolvedValue({ content: '', diff: null, isError: false })
     const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')
@@ -291,7 +313,10 @@ describe('agentTools', () => {
       false,
       undefined,
       undefined,
-      'thread'
+      'thread',
+      undefined,
+      undefined,
+      undefined
     )
 
     useAgentToolsConfig.getState().setBashNetworkEnabled(true)
@@ -306,7 +331,10 @@ describe('agentTools', () => {
       true,
       undefined,
       undefined,
-      'thread'
+      'thread',
+      undefined,
+      undefined,
+      undefined
     )
     useAgentToolsConfig.getState().setBashNetworkEnabled(false)
   })
@@ -343,7 +371,10 @@ describe('agentTools', () => {
       false,
       undefined,
       undefined,
-      'thread'
+      'thread',
+      undefined,
+      undefined,
+      undefined
     )
   })
 
@@ -369,7 +400,10 @@ describe('agentTools', () => {
       false,
       '/home/u/repo',
       undefined,
-      'thread'
+      'thread',
+      undefined,
+      undefined,
+      undefined
     )
   })
 
@@ -426,7 +460,10 @@ describe('agentTools', () => {
       false,
       undefined,
       undefined,
-      'thread'
+      'thread',
+      undefined,
+      undefined,
+      undefined
     )
   })
 

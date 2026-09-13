@@ -331,6 +331,12 @@ pub async fn open_dialog(
 
 #[tauri::command]
 pub async fn save_dialog(options: Option<DialogOpenOptions>) -> Result<Option<String>, String> {
+    // Test-only, as for `open_dialog`: the harness scripts the answer.
+    #[cfg(feature = "cowork-smoke")]
+    if let Some(scripted) = super::smoke_dialog::scripted_save_response() {
+        return Ok(scripted);
+    }
+
     let mut dialog = AsyncFileDialog::new();
 
     if let Some(opts) = options {

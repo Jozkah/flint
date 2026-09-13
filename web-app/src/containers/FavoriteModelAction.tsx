@@ -1,6 +1,7 @@
-import { IconStar, IconStarFilled } from '@tabler/icons-react'
+import { Star } from 'lucide-react'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 interface FavoriteModelActionProps {
   model: Model
@@ -12,16 +13,22 @@ export function FavoriteModelAction({ model }: FavoriteModelActionProps) {
 
   return (
     <Button
-      aria-label="Toggle favorite" 
+      aria-label="Toggle favorite"
+      aria-pressed={isModelFavorite}
       variant="ghost"
-      size="icon-xs"
+      size="icon-sm"
+      className="pointer-coarse:size-11"
       onClick={() => toggleFavorite(model)}
     >
-      {isModelFavorite ? (
-        <IconStarFilled size={18} className="text-muted-foreground" />
-      ) : (
-        <IconStar size={18} className="text-muted-foreground" />
-      )}
+      <Star
+        aria-hidden
+        className={cn(
+          'size-4',
+          isModelFavorite
+            ? 'fill-current text-brand-text'
+            : 'text-muted-foreground'
+        )}
+      />
     </Button>
   )
 }

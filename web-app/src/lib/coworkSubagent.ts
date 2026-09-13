@@ -8,6 +8,7 @@ import {
   type UIMessageChunk,
 } from 'ai'
 import type { Usage } from '@/types/coworkSession'
+import type { ToolActivityContext } from '@/lib/toolActivity'
 import type { SubagentDefinition } from '@/lib/coworkSubagentRegistry'
 import {
   ASK_TOOL_NAME,
@@ -17,6 +18,7 @@ import {
 } from '@/lib/coworkTools'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
 import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
+import { createUsageCollector } from '@/lib/tokenUsage'
 import {
   runTurn,
   type PendingToolCall,
@@ -24,6 +26,7 @@ import {
   type ToolOutcome,
 } from '@/lib/coworkRunner'
 import { buildSubagentSystemPrompt } from '@/lib/coworkPrompt'
+import { streamCutOff } from '@/lib/streamFinish'
 import type { StreamEvent } from '@/hooks/useCoworkRun'
 
 /**
@@ -94,6 +97,24 @@ export type ResolvedSubagent = {
   /** `null` inherits the parent's toolset minus what is withheld. */
   allowedTools: string[] | null
   model: string | null
+  /**
+   * Where the definition came from. `builtin` is one of Jan's roles
+   * (AH-094..099), which is what makes a change "changed by the reviewer role"
+   * rather than by an agent someone named (AH-110).
+   */
+  scope?: SubagentDefinition['scope']
+}
+
+/**
+ * The durable identity of a resolved subagent (AH-110): a role for a built-in,
+ * otherwise a named agent. Renaming the display name of a saved definition
+ * changes what is shown, never what past changes point at.
+ */
+export function subagentActorId(resolved: {
+  name: string
+  scope?: SubagentDefinition['scope']
+}): string {
+  return `${resolved.scope === 'builtin' ? 'role' : 'agent'}:${resolved.name}`
 }
 
 /** Reject a malformed `task` call rather than running an errand with no brief. */
@@ -192,6 +213,7 @@ export function resolveSubagent(
       systemPrompt: saved.system_prompt,
       allowedTools: narrowed.tools,
       model: saved.model,
+      scope: saved.scope,
     }
   }
   if (!req.system_prompt) {
@@ -313,6 +335,8 @@ export type RunSubagentOptions = {
   }
   /** Runs one of the child's tool calls. Same sandbox as the parent. */
   dispatch: (call: PendingToolCall, signal: AbortSignal) => Promise<ToolOutcome>
+  /** Who the child's calls are recorded as (see `RunDeps.activity`). */
+  activity?: () => ToolActivityContext
   signal: AbortSignal
   events: SubagentEvents
   /** Session tokens already spent, so a child cannot outrun the session cap. */
@@ -348,16 +372,14 @@ function childStep(opts: {
       tools: Object.keys(opts.tools).length > 0 ? opts.tools : undefined,
       toolChoice: Object.keys(opts.tools).length > 0 ? 'auto' : undefined,
     })
+    const usage = createUsageCollector()
     return result.toUIMessageStream({
       messageMetadata: ({ part }) => {
+        usage.observe(part)
         if (part.type !== 'finish') return undefined
-        const usage = (part as any).totalUsage
         return {
-          usage: {
-            inputTokens: usage?.inputTokens,
-            outputTokens: usage?.outputTokens,
-            totalTokens: usage?.totalTokens,
-          },
+          usage: usage.total((part as any).totalUsage),
+          streamCutOff: streamCutOff(part),
         }
       },
       onError: (error) =>
@@ -444,6 +466,7 @@ export async function runSubagent(
             signal,
           }),
         dispatch: opts.dispatch,
+        activity: opts.activity,
         sink,
         onStep: ({ result, outcomes }) => {
           if (result.text.trim()) finalText = result.text

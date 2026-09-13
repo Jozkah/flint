@@ -7,6 +7,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { MCPServerConfig, MCPServers, MCPSettings } from '@/hooks/useMCPServers'
 import CodeEditor from '@uiw/react-textarea-code-editor'
 import '@uiw/react-textarea-code-editor/dist.css'
@@ -82,7 +83,7 @@ export default function EditJsonMCPserver({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-2">
-          <div className="border  rounded-md overflow-hidden!">
+          <div className="overflow-hidden! rounded-md border border-border bg-sunken">
             <style>{`
               .w-tc-editor textarea {
                 word-break: break-all !important;
@@ -109,11 +110,15 @@ export default function EditJsonMCPserver({
               className="w-full text-sm! overflow-hidden break-all! font-mono!"
             />
           </div>
-          {error && <div className="text-destructive text-sm">{error}</div>}
+          {error && (
+            <div role="alert" className="text-destructive text-sm">
+              {error}
+            </div>
+          )}
         </div>
 
-        <DialogFooter>
-          <Button size="sm" onClick={handleSave}>{t('mcp-servers:editJson.save')}</Button>
+        <DialogFooter className={STICKY_DIALOG_FOOTER}>
+          <Button size="sm" className="pointer-coarse:h-11" onClick={handleSave}>{t('mcp-servers:editJson.save')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

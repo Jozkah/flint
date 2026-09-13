@@ -544,6 +544,102 @@ fn confine_limits(cmd: &mut Command) {
     }
 }
 
+/// The command as the shell should receive it, starting where it is meant to.
+///
+/// Windows PowerShell inside an AppContainer does not take its location from
+/// the process's working directory: measured on Windows 11, it starts at a
+/// drive root the container can see (`G:\` on the development machine) while
+/// `cmd` in the same container starts in the workspace. A command with a
+/// relative path then read or wrote somewhere other than the workspace the
+/// model was told about.
+///
+/// `Set-Location` straight into the workspace is refused there ("Access is
+/// denied"): PowerShell checks each ancestor of the path, and the container
+/// may not look at its parents. So the workspace is mounted as a drive of its
+/// own, whose root is the one directory the container can see, and the shell
+/// moves to it. The path is quoted as a PowerShell literal (see
+/// [`ps_literal`]). The process's own working directory is already the
+/// workspace, so native programs the command runs are unaffected.
+pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String {
+    match flavor {
+        ShellFlavor::PowerShell => format!(
+            "$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{}' -Scope Global; \
+             Set-Location JanWorkspace:\\; {command}",
+            ps_literal(&cwd.to_string_lossy())
+        ),
+        _ => command.to_string(),
+    }
+}
+
+/// Text to put between single quotes in a PowerShell command.
+///
+/// PowerShell ends a single-quoted string on `'` and also on the typographic
+/// quotes U+2018 to U+201B, so a folder named `Bob’s project` ended the
+/// literal early -- every command failed to parse, and a folder named to do
+/// so could run a command nobody approved. Each of them is doubled, which is
+/// how PowerShell escapes any of the five inside a literal.
+pub(crate) fn ps_literal(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 2);
+    for c in text.chars() {
+        out.push(c);
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            out.push(c);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod located_tests {
+    use super::*;
+
+    #[test]
+    fn every_quote_powershell_honours_is_doubled() {
+        assert_eq!(ps_literal("a'b"), "a''b");
+        for q in ['\u{2018}', '\u{2019}', '\u{201A}', '\u{201B}'] {
+            assert_eq!(ps_literal(&format!("x{q}y")), format!("x{q}{q}y"));
+        }
+        assert_eq!(ps_literal("plain \"text\""), "plain \"text\"");
+    }
+
+    /// A workspace whose name closes a PowerShell literal runs nothing, and
+    /// the command still starts inside it. Unsandboxed PowerShell parses the
+    /// prefix exactly as the sandboxed one does.
+    #[cfg(windows)]
+    #[test]
+    fn a_folder_named_to_close_the_literal_runs_nothing() {
+        let root = std::env::temp_dir().join(format!(
+            "jan-located-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let ws = root.join("Bob\u{2019}; Write-Output INJECTED; \u{2019}x");
+        std::fs::create_dir_all(&ws).unwrap();
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command"])
+            .arg(located(
+                ShellFlavor::PowerShell,
+                "Write-Output ('at:' + (Get-Item .).FullName)",
+                &ws,
+            ))
+            .current_dir(&ws)
+            .output()
+            .expect("powershell runs");
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            !text.lines().any(|l| l.trim() == "INJECTED"),
+            "the folder name ran a command: {text}"
+        );
+        assert!(
+            text.contains("at:") && text.contains("Write-Output INJECTED"),
+            "the command did not start in the workspace: {text} / {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
 pub async fn spawn(
     cfg: &ShellConfig,
     command: &str,
@@ -553,7 +649,7 @@ pub async fn spawn(
     let mut cmd = Command::new(&cfg.program);
     cmd.args(&cfg.args);
     if !cfg.via_stdin {
-        cmd.arg(command);
+        cmd.arg(located(cfg.flavor, command, cwd));
     }
     // Strip every inherited variable, then re-add only the allowlist so the
     // sandboxed process holds no host secrets regardless of which backend wraps
@@ -720,6 +816,145 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
         }
     }
     outcome
+}
+
+/// When the process holding `pid` was created, or `None` if nothing does.
+///
+/// Opened for query only: asking which process something *is* must not require
+/// the right to end it, and a durable job record checks pids that may by then
+/// belong to strangers -- that check is exactly what stops one of them being
+/// mistaken for ours (AH-101).
+#[cfg(windows)]
+pub(crate) fn creation_time_of_pid(pid: u32) -> Option<u64> {
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME};
+    use windows_sys::Win32::System::Threading::{
+        GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        return None;
+    }
+    let zero = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+    let ok = unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) };
+    unsafe { CloseHandle(handle) };
+    if ok == 0 {
+        return None;
+    }
+    let ticks = (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime);
+    (ticks != 0).then_some(ticks)
+}
+
+/// Whether the process holding `pid` has already ended, or `None` if nothing
+/// can be asked about that pid.
+///
+/// Needed beside the creation time: Windows keeps an ended process's record
+/// -- creation time included -- for as long as anything holds a handle to it,
+/// so a matching creation time alone reads a process that is gone as alive.
+#[cfg(windows)]
+pub(crate) fn has_exited_pid(pid: u32) -> Option<bool> {
+    use windows_sys::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0, WAIT_TIMEOUT};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, WaitForSingleObject, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+    };
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE, 0, pid) };
+    if handle.is_null() {
+        return None;
+    }
+    let waited = unsafe { WaitForSingleObject(handle, 0) };
+    unsafe { CloseHandle(handle) };
+    match waited {
+        WAIT_OBJECT_0 => Some(true),
+        WAIT_TIMEOUT => Some(false),
+        _ => None,
+    }
+}
+
+/// Whether the process holding `pid` has already ended, or `None` if unknown.
+/// A zombie -- ended, not yet reaped -- has ended.
+#[cfg(not(windows))]
+pub(crate) fn has_exited_pid(pid: u32) -> Option<bool> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let state = stat.rsplit_once(')')?.1.split_whitespace().next()?;
+    Some(matches!(state, "Z" | "X" | "x"))
+}
+
+/// When `handle`'s process was created, as a FILETIME count. `None` if unknown.
+#[cfg(all(windows, test))]
+pub(crate) fn creation_time(handle: windows_sys::Win32::Foundation::HANDLE) -> Option<u64> {
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::Threading::GetProcessTimes;
+    let zero = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+    let ok = unsafe { GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user) };
+    (ok != 0).then(|| ((created.dwHighDateTime as u64) << 32) | created.dwLowDateTime as u64)
+}
+
+/// Every live descendant of `root`, found from one process snapshot.
+///
+/// A process is a child of an ancestor only if its recorded parent id is the
+/// ancestor's *and* it was created no earlier than the ancestor was -- the
+/// check that keeps a recycled parent id from adopting a stranger. With no
+/// creation time for the root, nothing is claimed as a descendant.
+#[cfg(all(windows, test))]
+pub(crate) fn descendants_of(root: u32, root_created: Option<u64>) -> Vec<u32> {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+
+    let Some(root_created) = root_created else {
+        return Vec::new();
+    };
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snapshot == INVALID_HANDLE_VALUE {
+        return Vec::new();
+    }
+    let mut pairs: Vec<(u32, u32)> = Vec::new();
+    let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+    let mut more = unsafe { Process32FirstW(snapshot, &mut entry) } != 0;
+    while more {
+        pairs.push((entry.th32ProcessID, entry.th32ParentProcessID));
+        more = unsafe { Process32NextW(snapshot, &mut entry) } != 0;
+    }
+    unsafe { CloseHandle(snapshot) };
+
+    let created_at = |pid: u32| -> Option<u64> {
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if handle.is_null() {
+            return None;
+        }
+        let at = creation_time(handle);
+        unsafe { CloseHandle(handle) };
+        at
+    };
+
+    let mut found = Vec::new();
+    let mut frontier = vec![(root, root_created)];
+    while let Some((parent, parent_created)) = frontier.pop() {
+        for &(pid, ppid) in &pairs {
+            if ppid != parent || pid == parent || pid == root || found.contains(&pid) {
+                continue;
+            }
+            match created_at(pid) {
+                Some(at) if at >= parent_created => {
+                    found.push(pid);
+                    frontier.push((pid, at));
+                }
+                _ => {}
+            }
+        }
+    }
+    found
 }
 
 /// What a Win32 error from opening or terminating the root means.
@@ -931,13 +1166,42 @@ mod windows_tests {
         }
     }
 
-    /// A running command is killed and reported as such.
+    /// Is `pid` a running process? Asked of the OS directly, not of `taskkill`.
+    fn alive(pid: u32) -> bool {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        if handle.is_null() {
+            return false;
+        }
+        let mut code = 0u32;
+        let ok = unsafe { GetExitCodeProcess(handle, &mut code) } != 0;
+        unsafe { CloseHandle(handle) };
+        ok && code == 259
+    }
+
+    fn ping(seconds: u32) -> std::process::Child {
+        std::process::Command::new("ping")
+            .args(["-n", &seconds.to_string(), "127.0.0.1"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("ping starts")
+    }
+
+    /// The tree is stopped and the kill reports it, promptly.
     ///
     /// Spawned directly rather than through [`spawn`], which registers the pid
     /// in the process-wide table `kill_all` reaps from. Sharing that table with
     /// every other test in the binary meant this one's process could be gone
     /// before the kill it is testing, and the failure looked like `kill_tree`
     /// misreporting rather than like a test racing its neighbours.
+    ///
+    /// Bounded in time because the `taskkill` this replaced took about a
+    /// minute on some hosts and then reported failure.
     #[tokio::test]
     async fn kills_a_running_command_and_reports_it() {
         let cfg = shell();
@@ -960,8 +1224,11 @@ mod windows_tests {
         let mut child = command.spawn().unwrap();
         let pid = child.id().unwrap();
 
+        let started = std::time::Instant::now();
         assert_eq!(kill_tree(pid), KillOutcome::Signalled);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
         let _ = tokio::time::timeout(std::time::Duration::from_secs(10), child.wait()).await;
+        assert!(!alive(pid), "the process is still running");
     }
 
     /// Whether `pid` still names a running process.
@@ -1019,6 +1286,55 @@ mod windows_tests {
     #[test]
     fn a_pid_that_does_not_exist_reports_gone() {
         assert_eq!(kill_tree(u32::MAX - 7), KillOutcome::Gone);
+    }
+
+    /// A grandchild goes with its parent: `cmd` runs `ping` as a child, and
+    /// killing `cmd` stops `ping` too.
+    #[test]
+    fn kills_the_whole_tree() {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{
+            OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        let mut parent = std::process::Command::new("cmd")
+            .args(["/c", "ping -n 60 127.0.0.1 >nul"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("cmd starts");
+        let pid = parent.id();
+        let root = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+        let created = creation_time(root);
+        unsafe { CloseHandle(root) };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let children = loop {
+            let found = descendants_of(pid, created);
+            if !found.is_empty() || std::time::Instant::now() > deadline {
+                break found;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        };
+        assert!(!children.is_empty(), "cmd never started ping");
+
+        assert_eq!(kill_tree(pid), KillOutcome::Signalled);
+        let _ = parent.wait();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        for child in children {
+            assert!(!alive(child), "descendant {child} survived its parent");
+        }
+    }
+
+    /// Killing one tree leaves a process outside it running.
+    #[test]
+    fn an_unrelated_process_is_left_alone() {
+        let mut target = ping(60);
+        let mut bystander = ping(60);
+        assert_eq!(kill_tree(target.id()), KillOutcome::Signalled);
+        let _ = target.wait();
+        assert!(alive(bystander.id()), "a process outside the tree was killed");
+        let _ = bystander.kill();
+        let _ = bystander.wait();
     }
 
     /// A process that exited while its parent still holds it -- the state a

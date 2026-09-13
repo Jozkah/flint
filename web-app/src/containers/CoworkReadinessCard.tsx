@@ -26,7 +26,7 @@ const instructionSummaryKey = (file: InstructionFile): string =>
 
 const skillToneClass = (skill: ResolvedSkill): string =>
   skill.state === 'active'
-    ? 'text-main-view-fg/80'
+    ? 'text-ink-2'
     : // Everything else means the user asked for something they did not get.
       'text-destructive'
 
@@ -39,7 +39,7 @@ function Row({
 }) {
   return (
     <div className="flex min-w-0 gap-2">
-      <dt className="shrink-0 text-main-view-fg/50">{label}</dt>
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
       <dd className="min-w-0 truncate">{children}</dd>
     </div>
   )
@@ -82,7 +82,7 @@ export function CoworkReadinessCard({
   return (
     <section
       aria-label={t('common:readiness.title')}
-      className="rounded-md border border-border bg-main-view-fg/2 px-3 py-2 text-xs"
+      className="rounded-md border border-border bg-sunken/60 px-3 py-2 text-xs"
     >
       <dl className="grid gap-1 sm:grid-cols-2">
         <Row label={t('common:readiness.repository')}>
@@ -149,8 +149,8 @@ export function CoworkReadinessCard({
                   key={file.name}
                   className={
                     file.active
-                      ? 'text-main-view-fg/80'
-                      : 'text-main-view-fg/50'
+                      ? 'text-ink-2'
+                      : 'text-muted-foreground'
                   }
                 >
                   {file.name} · {t(instructionSummaryKey(file))}
@@ -199,14 +199,14 @@ export function CoworkReadinessCard({
           // AH-068 / AH-069 / AH-070. What the model will be told about how
           // this project builds and tests, shown with the same evidence.
           <div className="flex min-w-0 gap-2 sm:col-span-2" data-testid="readiness-tooling">
-            <dt className="shrink-0 text-main-view-fg/50">
+            <dt className="shrink-0 text-muted-foreground">
               {t('common:readiness.tooling.label')}
             </dt>
             <dd className="min-w-0">
               {manifest.tooling.state === 'loading' ? (
                 t('common:readiness.tooling.loading')
               ) : manifest.tooling.state === 'failed' ? (
-                <span className="text-main-view-fg/60">
+                <span className="text-muted-foreground">
                   {t('common:readiness.tooling.failed', {
                     kind: manifest.tooling.error.kind,
                   })}
@@ -229,8 +229,8 @@ export function CoworkReadinessCard({
                       })}
                       className={
                         fact.confidence === 'high'
-                          ? 'text-main-view-fg/80'
-                          : 'text-main-view-fg/50'
+                          ? 'text-ink-2'
+                          : 'text-muted-foreground'
                       }
                     >
                       {fact.value}
@@ -248,7 +248,7 @@ export function CoworkReadinessCard({
                 </span>
               ) : null}
               {manifest.tooling.state === 'ready' && manifest.tooling.truncated ? (
-                <span className="block text-main-view-fg/50">
+                <span className="block text-muted-foreground">
                   {t('common:readiness.tooling.incomplete', {
                     reason: manifest.tooling.truncated,
                   })}

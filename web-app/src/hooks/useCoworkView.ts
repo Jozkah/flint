@@ -6,6 +6,7 @@ export type CoworkRail =
   | { kind: 'diff' }
   | { kind: 'code' }
   | { kind: 'tasks' }
+  | { kind: 'timeline' }
   | null
 
 /**

@@ -76,6 +76,9 @@ vi.mock('@janhq/tauri-plugin-llamacpp-api', () => ({
 }))
 vi.mock('@/lib/agentTools', () => ({
   executeAgentTool: h.executeAgentTool,
+  // Main's approval prompt asks for the diff first (AH-146); the real one
+  // never throws and resolves to nothing when there is no diff.
+  previewAgentChange: vi.fn(async () => undefined),
   sandboxEnforces: () => true,
   getSandboxStatus: vi.fn(async () => ({ backend: 'bubblewrap', enforces: true })),
 }))
@@ -134,6 +137,11 @@ vi.mock('@/lib/coworkTransport', () => ({
       this.config = config
     }
     unfreezeTools() {}
+    // Project memory is bound per run from the session's own folder.
+    memoryBinding: unknown = null
+    setMemoryBinding(binding: unknown) {
+      this.memoryBinding = binding
+    }
     async refreshTools() {}
     measureContext() {
       return {
@@ -425,6 +433,15 @@ describe('a run belongs to the session that started it', () => {
       takenB = b.opts.deps.takeSteering()
     })
     expect(takenB.map((m: any) => m.parts[0].text)).toEqual(['for B only'])
+    // Each delivery is in its own session's execution record, and the record
+    // says only that input arrived: the words stay in the transcript.
+    const steering = () =>
+      h.invoke.mock.calls
+        .filter(([cmd, args]: any[]) => cmd === 'tool_activity_record' && args?.event?.lifecycle === 'steering')
+        .map(([, args]: any[]) => args.event)
+    await waitFor(() => expect(steering()).toHaveLength(3))
+    expect(steering().map((e: any) => e.session).sort()).toEqual(['A', 'A', 'B'])
+    expect(JSON.stringify(steering())).not.toMatch(/use pnpm|then test|for B only/)
   })
 
   it('holds input a failed run did not take, and does not send it on its own', async () => {

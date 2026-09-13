@@ -93,8 +93,65 @@ export function useCompatManifest(input: {
     savedAgentNames,
   }
 
+  /**
+   * The last scan's findings, kept so a change to what they are resolved
+   * against can be applied without scanning the disk again.
+   *
+   * Without this, inputs that arrived after the scan were simply ignored: the
+   * saved subagents load independently of the scan, and when they landed
+   * second an imported agent reusing a saved name was never reported as a
+   * duplicate -- it stayed "missing dependency" until something else forced a
+   * rescan. The same held for the advertised tool list, which is only known
+   * once a run has built it.
+   */
+  const lastScan = useRef<{
+    key: string
+    probes: Parameters<typeof resolveCompatibility>[0]
+  } | null>(null)
+
+  const resolveFrom = (probes: Parameters<typeof resolveCompatibility>[0]) =>
+    resolveCompatibility(probes, {
+      binding,
+      enabled,
+      enabledSkills: latest.current.enabledSkills,
+      availableTools: latest.current.availableTools,
+      savedAgentNames: latest.current.savedAgentNames ?? [],
+      consentedMcp: new Set(consent ?? []),
+      initializedMcp: new Set(
+        Object.entries(runtime ?? {})
+          .filter(([, record]) => record.state === 'active')
+          .map(([name]) => name)
+      ),
+      failedMcp: new Map(
+        Object.entries(runtime ?? {})
+          .filter(([, record]) => record.state === 'init-failed')
+          .map(([name, record]) => [name, record.reason ?? 'did not start'])
+      ),
+      // What this platform can actually enforce, asked of the backend
+      // rather than assumed. A local server is refused wherever nothing
+      // would confine it, which is the whole platform story for stdio.
+      confinement: { stdio: sandboxEnforces() },
+    })
+
+  // Compared by content: the caller builds new arrays and sets every render.
+  const inputsKey = JSON.stringify([
+    [...enabledSkills].sort(),
+    [...availableTools].sort(),
+    [...(savedAgentNames ?? [])].sort(),
+  ])
+
+  useEffect(() => {
+    const scan = lastScan.current
+    if (!scan || scan.key !== bindingKey(binding)) return
+    setManifest(resolveFrom(scan.probes))
+    // Re-resolves when what the findings are judged against changes; the
+    // scan itself is the other effect's job.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputsKey])
+
   useEffect(() => {
     if (!folder) {
+      lastScan.current = null
       setManifest(emptyManifest(binding))
       return
     }
@@ -154,31 +211,9 @@ export function useCompatManifest(input: {
       // Kept so consent can be given against the definition actually on disk
       // rather than against the manifest's rendering of it.
       lastProbes.current = probes.mcp
+      lastScan.current = { key: startedFor, probes }
 
-      setManifest(
-        resolveCompatibility(probes, {
-          binding,
-          enabled,
-          enabledSkills: latest.current.enabledSkills,
-          availableTools: latest.current.availableTools,
-          savedAgentNames: latest.current.savedAgentNames ?? [],
-          consentedMcp: new Set(consent ?? []),
-          initializedMcp: new Set(
-            Object.entries(runtime ?? {})
-              .filter(([, record]) => record.state === 'active')
-              .map(([name]) => name)
-          ),
-          failedMcp: new Map(
-            Object.entries(runtime ?? {})
-              .filter(([, record]) => record.state === 'init-failed')
-              .map(([name, record]) => [name, record.reason ?? 'did not start'])
-          ),
-          // What this platform can actually enforce, asked of the backend
-          // rather than assumed. A local server is refused wherever nothing
-          // would confine it, which is the whole platform story for stdio.
-          confinement: { stdio: sandboxEnforces() },
-        })
-      )
+      setManifest(resolveFrom(probes))
     })()
 
     return () => {

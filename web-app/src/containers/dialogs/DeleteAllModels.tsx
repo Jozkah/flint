@@ -16,7 +16,8 @@ import { formatBytes } from '@/lib/utils'
 import { useAppState } from '@/hooks/useAppState'
 import { useShallow } from 'zustand/shallow'
 
-import { IconTrash } from '@tabler/icons-react'
+import { Trash2 } from 'lucide-react'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
@@ -128,8 +129,8 @@ export const DialogDeleteAllModels = ({
   return (
     <Dialog open={open} onOpenChange={(o) => !isDeleting && setOpen(o)}>
       <DialogTrigger asChild>
-        <Button variant="secondary" size="sm">
-          <IconTrash size={18} className="text-muted-foreground" />
+        <Button variant="destructive" size="sm" className="pointer-coarse:h-11">
+          <Trash2 aria-hidden />
           <span>{t('providers:deleteAllModels.button')}</span>
         </Button>
       </DialogTrigger>
@@ -142,11 +143,11 @@ export const DialogDeleteAllModels = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center justify-between rounded-md bg-main-view-fg/5 px-3 py-2 text-sm">
+        <div className="flex items-center justify-between gap-3 rounded-md bg-sunken px-3 py-2 text-sm">
           <span className="text-muted-foreground">
             {t('providers:deleteAllModels.sizeLabel')}
           </span>
-          <span className="font-medium text-foreground">
+          <span className="font-medium tabular-nums text-foreground">
             {totalBytes === undefined
               ? t('providers:deleteAllModels.calculating')
               : formatBytes(totalBytes, { fallback: '—' })}
@@ -161,15 +162,21 @@ export const DialogDeleteAllModels = ({
           </p>
         )}
 
-        <DialogFooter className="mt-2">
+        <DialogFooter className={STICKY_DIALOG_FOOTER}>
           <DialogClose asChild>
-            <Button variant="ghost" size="sm" disabled={isDeleting}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="pointer-coarse:h-11"
+              disabled={isDeleting}
+            >
               {t('providers:deleteModel.cancel')}
             </Button>
           </DialogClose>
           <Button
             variant="destructive"
             size="sm"
+            className="pointer-coarse:h-11"
             onClick={handleDeleteAll}
             disabled={isDeleting}
             autoFocus

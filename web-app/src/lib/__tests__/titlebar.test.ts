@@ -1,9 +1,52 @@
 import { describe, it, expect } from 'vitest'
 import {
+  appDrawnButtonCounts,
   detectMacOverlay,
+  detectWindowChrome,
+  headerDragsWindow,
   resolveSidebarTitlebar,
   resolveHeaderInset,
 } from '@/lib/titlebar'
+
+describe('detectWindowChrome', () => {
+  it('uses the native title bar outside macOS and Linux', () => {
+    expect(detectWindowChrome({ macOverlay: false, linux: false })).toBe(
+      'native'
+    )
+  })
+
+  it('keeps the macOS overlay and the borderless Linux window', () => {
+    expect(detectWindowChrome({ macOverlay: true, linux: false })).toBe(
+      'mac-overlay'
+    )
+    expect(detectWindowChrome({ macOverlay: false, linux: true })).toBe(
+      'custom'
+    )
+  })
+
+  it('defaults to native in a build with no platform define', () => {
+    // vitest defines neither IS_MACOS nor IS_LINUX as true, and no Tauri shell.
+    expect(detectWindowChrome()).toBe('native')
+  })
+})
+
+describe('native chrome owns dragging and the caption buttons', () => {
+  it('declares no header drag region under a native title bar', () => {
+    expect(headerDragsWindow('native')).toBe(false)
+    expect(headerDragsWindow('mac-overlay')).toBe(true)
+    expect(headerDragsWindow('custom')).toBe(true)
+  })
+
+  it('counts no app-drawn buttons unless the app draws the chrome', () => {
+    const layout = { left: 1, right: 3 }
+    expect(appDrawnButtonCounts('native', layout)).toEqual({ left: 0, right: 0 })
+    expect(appDrawnButtonCounts('mac-overlay', layout)).toEqual({
+      left: 0,
+      right: 0,
+    })
+    expect(appDrawnButtonCounts('custom', layout)).toEqual(layout)
+  })
+})
 
 describe('resolveSidebarTitlebar', () => {
   it('reserves the corner and hides the wordmark under the macOS overlay', () => {

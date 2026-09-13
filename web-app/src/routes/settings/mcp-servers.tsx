@@ -1,14 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import HeaderPage from '@/containers/HeaderPage'
-import SettingsMenu from '@/containers/SettingsMenu'
-import { Card, CardItem } from '@/containers/Card'
 import {
-  IconPencil,
-  IconPlus,
-  IconTrash,
-  IconCodeCircle,
-} from '@tabler/icons-react'
+  SettingsPageHeader,
+} from '@/containers/SettingsPageHeader'
+import { Card, CardItem } from '@/containers/Card'
+import { Braces, FileText, Pencil, Plus, Trash2 } from 'lucide-react'
 import {
   useMCPServers,
   MCPServerConfig,
@@ -19,9 +15,9 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import AddEditMCPServer from '@/containers/dialogs/AddEditMCPServer'
 import DeleteMCPServerConfirm from '@/containers/dialogs/DeleteMCPServerConfirm'
 import EditJsonMCPserver from '@/containers/dialogs/EditJsonMCPserver'
+import McpServerLogDialog from '@/containers/dialogs/McpServerLogDialog'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
-import { twMerge } from 'tailwind-merge'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { toast } from 'sonner'
@@ -32,7 +28,6 @@ import { useAppState } from '@/hooks/useAppState'
 import { listen } from '@tauri-apps/api/event'
 import { SystemEvent } from '@/types/events'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { McpRouterModelPicker } from '@/containers/McpRouterModelPicker'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
@@ -144,6 +139,9 @@ function MCPServersDesktop() {
   const [currentConfig, setCurrentConfig] = useState<
     MCPServerConfig | undefined
   >(undefined)
+
+  // Per-server log dialog state (AH-140)
+  const [logServer, setLogServer] = useState<string | null>(null)
 
   // Delete confirmation dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -685,29 +683,29 @@ function MCPServersDesktop() {
 
   return (
     <Fragment>
-      <div className="flex flex-col h-svh w-full">
-        <HeaderPage>
-          <div className={cn("flex items-center justify-between w-full mr-2 pr-3", !IS_MACOS && "pr-30")}>
-            <span className='font-medium text-base font-studio'>{t('common:settings')}</span>
-            <Button variant="outline" size="sm" onClick={() => handleOpenDialog()} className="relative z-50">
-              <IconPlus size={18} className="text-muted-foreground" />
-              {t('mcp-servers:addServer')}
-            </Button>
-          </div>
-        </HeaderPage>
-        <div className="flex h-[calc(100%-60px)]">
-          <SettingsMenu />
-          <div className="p-4 pt-0 w-full overflow-y-auto">
-            <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+      <div className="flex flex-col h-full w-full">
+        <SettingsPageHeader>
+          <Button
+            size="sm"
+            className="pointer-coarse:h-11"
+            onClick={() => handleOpenDialog()}
+          >
+            <Plus aria-hidden />
+            {t('mcp-servers:addServer')}
+          </Button>
+        </SettingsPageHeader>
+        <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
+          <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
+            <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
               <Card
                 header={
-                  <div className="flex flex-col mb-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <h1 className="text-foreground font-medium text-base font-studio">
+                  <div className="mb-4 flex flex-col">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <h1 className="font-display text-xl font-normal text-foreground">
                           {t('mcp-servers:title')}
                         </h1>
-                        <div className="text-xs bg-secondary border text-muted-foreground rounded-full py-0.5 px-2">
+                        <div className="rounded-full bg-warning-tint px-2 py-0.5 text-xs text-warning">
                           <span>{t('mcp-servers:experimental')}</span>
                         </div>
                       </div>
@@ -716,23 +714,22 @@ function MCPServersDesktop() {
                         <Button
                           onClick={() => handleOpenJsonEditor()}
                           title={t('mcp-servers:editAllJson')}
-                          size="icon-xs"
-                          variant="ghost"
+                          aria-label={t('mcp-servers:editAllJson')}
+                          size="icon-sm"
+                          variant="outline"
+                          className="pointer-coarse:size-11"
                         >
-                          <IconCodeCircle
-                            size={18}
-                            className="text-muted-foreground"
-                          />
+                          <Braces className="text-muted-foreground" aria-hidden />
                         </Button>
                       </div>
                     </div>
-                    <p className="text-sm mt-1">
+                    <p className="mt-1 text-sm text-muted-foreground">
                       {t('mcp-servers:findMore')}{' '}
                       <a
                         href="https://mcp.so/"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-primary hover:underline"
+                        className="text-brand-text underline-offset-4 hover:underline"
                       >
                         mcp.so
                       </a>
@@ -745,7 +742,7 @@ function MCPServersDesktop() {
                   title={t('mcp-servers:allowPermissions')}
                   description={t('mcp-servers:allowPermissionsDesc')}
                   actions={
-                    <div className="shrink-0 ml-4">
+                    <div className="shrink-0">
                       <Switch
                         checked={allowAllMCPPermissions}
                         onCheckedChange={setAllowAllMCPPermissions}
@@ -804,7 +801,7 @@ function MCPServersDesktop() {
                     'mcp-servers:runtimeSettings.smartToolRoutingDesc'
                   )}
                   actions={
-                    <div className="shrink-0 ml-4">
+                    <div className="shrink-0">
                       <Switch
                         checked={settings.enableSmartToolRouting}
                         onCheckedChange={(checked) => {
@@ -831,7 +828,7 @@ function MCPServersDesktop() {
                     'mcp-servers:runtimeSettings.useLightweightRouterModelDesc'
                   )}
                   actions={
-                    <div className="shrink-0 ml-4">
+                    <div className="shrink-0">
                       <Switch
                         checked={settings.useLightweightRouterModel}
                         disabled={!settings.enableSmartToolRouting}
@@ -889,7 +886,7 @@ function MCPServersDesktop() {
               </Card>
 
               {Object.keys(mcpServers).length === 0 ? (
-                <div className="py-4 text-center font-medium text-muted-foreground">
+                <div className="rounded-lg border border-dashed border-line-strong bg-card px-4 py-8 text-center font-medium text-muted-foreground">
                   {t('mcp-servers:noServers')}
                 </div>
               ) : (
@@ -912,21 +909,14 @@ function MCPServersDesktop() {
                     <CardItem
                       align="start"
                       title={
-                        <div className="flex items-center gap-x-2">
-                          <div
-                            aria-hidden="true"
-                            className={twMerge(
-                              'size-2 rounded-full',
-                              snapshot.state === 'connected'
-                                ? 'bg-green-600 dark:bg-green-600'
-                                : 'bg-secondary'
-                            )}
-                          />
-                          <h1 className="text-foreground text-base capitalize font-studio">
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                          {/* The connection state is the chip under the
+                              title; a coloured dot here only repeated it. */}
+                          <h1 className="min-w-0 break-words font-display text-lg font-normal capitalize text-foreground">
                             {key}
                           </h1>
                           {config.official && (
-                            <div className="flex items-center gap-1.5 px-2 py-0.5 text-xs bg-secondary border rounded-sm">
+                            <div className="flex items-center gap-1.5 rounded-sm bg-sunken px-2 py-0.5 text-xs text-ink-2">
                               <img
                                 src="/images/jan-logo.png"
                                 alt="Jan"
@@ -938,22 +928,27 @@ function MCPServersDesktop() {
                         </div>
                       }
                       descriptionOutside={
-                        <div className="text-sm text-muted-foreground">
+                        <div className="min-w-0 pt-2 text-sm text-muted-foreground">
                           <div className="mb-1">
                             Transport:{' '}
-                            <span className="uppercase">
+                            <span className="font-mono text-xs uppercase text-ink-2">
                               {config.type || 'stdio'}
                             </span>
                           </div>
 
                           {config.type === 'stdio' || !config.type ? (
                             <>
-                              <div>
-                                {t('mcp-servers:command')}: {config.command}
+                              <div className="break-all">
+                                {t('mcp-servers:command')}:{' '}
+                                <span className="font-mono text-xs text-ink-2">
+                                  {config.command}
+                                </span>
                               </div>
                               <div className="my-1 break-all">
                                 {t('mcp-servers:args')}:{' '}
-                                {config?.args?.join(', ')}
+                                <span className="font-mono text-xs text-ink-2">
+                                  {config?.args?.join(', ')}
+                                </span>
                               </div>
                               {config.env &&
                                 Object.keys(config.env).length > 0 && (
@@ -974,7 +969,7 @@ function MCPServersDesktop() {
                                     href="https://chromewebstore.google.com/detail/jan-browser-mcp/mkciifcjehgnpaigoiaakdgabbpfppal"
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-blue-500 hover:underline"
+                                    className="text-brand-text underline-offset-4 hover:underline"
                                   >
                                     Install Extension →
                                   </a>
@@ -984,7 +979,10 @@ function MCPServersDesktop() {
                           ) : (
                             <>
                               <div className="break-all">
-                                URL: {maskSensitiveUrl(config.url || '')}
+                                URL:{' '}
+                                <span className="font-mono text-xs text-ink-2">
+                                  {maskSensitiveUrl(config.url || '')}
+                                </span>
                               </div>
                               {config.headers &&
                                 Object.keys(config.headers).length > 0 && (
@@ -1024,7 +1022,7 @@ function MCPServersDesktop() {
                                 : undefined
                             }
                           />
-                          <div className="flex items-center gap-2 mt-2">
+                          <div className="mt-3 flex min-h-11 items-center gap-2 border-t border-border pt-3 sm:min-h-0">
                             <Switch
                               checked={isServerApproved(key, fingerprints[key])}
                               aria-label={t('mcp-servers:autoApproveServer')}
@@ -1037,12 +1035,14 @@ function MCPServersDesktop() {
                                 void handleAutoApprove(key, checked)
                               }
                             />
-                            <span>{t('mcp-servers:autoApproveServer')}</span>
+                            <span className="text-foreground">
+                              {t('mcp-servers:autoApproveServer')}
+                            </span>
                           </div>
                           {approvalChanged(key) && (
                             <p
                               id={`mcp-approval-changed-${key.replace(/[^a-zA-Z0-9_-]/g, '_')}`}
-                              className="mt-1 text-xs text-destructive"
+                              className="mt-1 text-xs text-warning"
                             >
                               {t('mcp-servers:approval.changedSinceApproval')}
                             </p>
@@ -1050,43 +1050,56 @@ function MCPServersDesktop() {
                         </div>
                       }
                       actions={
-                        <div className="flex items-center gap-0.5">
+                        <div className="flex flex-wrap items-center justify-start gap-1 sm:justify-end">
                           <Button
-                            size="icon-xs"
+                            size="icon-sm"
                             variant="ghost"
+                            className="pointer-coarse:size-11"
                             onClick={() => handleOpenJsonEditor(key)}
                             title={t('mcp-servers:editJson.title', {
                               serverName: key,
                             })}
+                            aria-label={t('mcp-servers:editJson.title', {
+                              serverName: key,
+                            })}
                           >
-                            <IconCodeCircle
-                              size={18}
-                              className="text-muted-foreground"
-                            />
+                            <Braces className="text-muted-foreground" aria-hidden />
                           </Button>
                           <Button
-                            size="icon-xs"
+                            size="icon-sm"
                             variant="ghost"
+                            className="pointer-coarse:size-11"
+                            onClick={() => setLogServer(key)}
+                            title={t('mcp-servers:serverLog.title', {
+                              serverName: key,
+                            })}
+                            aria-label={t('mcp-servers:serverLog.title', {
+                              serverName: key,
+                            })}
+                          >
+                            <FileText className="text-muted-foreground" aria-hidden />
+                          </Button>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="pointer-coarse:size-11"
                             onClick={() => handleEdit(key)}
                             title={t('mcp-servers:editServer')}
+                            aria-label={`${t('mcp-servers:editServer')}: ${key}`}
                           >
-                            <IconPencil
-                              size={18}
-                              className="text-muted-foreground"
-                            />
+                            <Pencil className="text-muted-foreground" aria-hidden />
                           </Button>
                           <Button
-                            size="icon-xs"
+                            size="icon-sm"
                             variant="ghost"
+                            className="text-muted-foreground hover:text-destructive pointer-coarse:size-11"
                             onClick={() => handleDeleteClick(key)}
                             title={t('mcp-servers:deleteServer.title')}
+                            aria-label={`${t('mcp-servers:deleteServer.title')}: ${key}`}
                           >
-                            <IconTrash
-                              size={18}
-                              className="text-muted-foreground"
-                            />
+                            <Trash2 aria-hidden />
                           </Button>
-                          <div className="ml-2">
+                          <div className="ml-1 flex min-h-11 items-center sm:min-h-0">
                             <Switch
                               checked={snapshot.switchOn}
                               loading={
@@ -1126,6 +1139,12 @@ function MCPServersDesktop() {
         initialData={currentConfig}
         onSave={handleSaveServer}
         existingNames={Object.keys(mcpServers)}
+      />
+
+      <McpServerLogDialog
+        open={logServer !== null}
+        onOpenChange={(o) => !o && setLogServer(null)}
+        serverName={logServer ?? ''}
       />
 
       {/* Delete confirmation dialog */}

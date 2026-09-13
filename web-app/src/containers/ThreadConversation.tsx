@@ -1,0 +1,2348 @@
+import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
+import { addSnapshotSink } from '@/lib/providerFetch'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { cn } from '@/lib/utils'
+
+import HeaderPage from '@/containers/HeaderPage'
+import { useThreads } from '@/hooks/useThreads'
+import ChatInput from '@/containers/ChatInput'
+import { useShallow } from 'zustand/react/shallow'
+import { MessageItem } from '@/containers/MessageItem'
+
+import { useMessages } from '@/hooks/useMessages'
+import { useMessageErrors } from '@/stores/message-errors'
+import { useServiceHub } from '@/hooks/useServiceHub'
+import { useTools } from '@/hooks/useTools'
+import { useAppState } from '@/hooks/useAppState'
+import { SESSION_STORAGE_PREFIX, TEMPORARY_CHAT_ID } from '@/constants/chat'
+import { useChat } from '@/hooks/use-chat'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { engineSlotsIdle } from '@janhq/tauri-plugin-llamacpp-api'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
+import { deriveToolOutputCap } from '@/lib/context-manager'
+import { renderInstructions } from '@/lib/instructionTemplate'
+import {
+  contextIsResizable,
+  knownContextWindow,
+  stoppedAtContextLimit,
+} from '@/lib/knownContextWindow'
+import {
+  Conversation,
+  ConversationContent,
+  ConversationScrollButton,
+} from '@/components/ai-elements/conversation'
+import { generateId, lastAssistantMessageIsCompleteWithToolCalls } from 'ai'
+import type { UIMessage } from '@ai-sdk/react'
+import { useChatSessions } from '@/stores/chat-session-store'
+import {
+  convertThreadMessagesToUIMessages,
+  extractContentPartsFromUIMessage,
+  uiMessageHasMeaningfulContent,
+  threadMessageIsEmpty,
+} from '@/lib/messages'
+import { newUserThreadContent } from '@/lib/completion'
+import {
+  computeActivePath,
+  backfillParentIds,
+  makeSibling,
+  withActiveChild,
+  getParentId,
+  getSiblings,
+  getVersionInfo,
+  hasBranching,
+  repairDetachedAssistants,
+  removeFromTree,
+  repairDanglingParents,
+  planContinuation,
+} from '@/lib/message-branching'
+import {
+  ThreadMessage,
+  MessageStatus,
+  ChatCompletionRole,
+} from '@janhq/core'
+import {
+  createImageAttachment,
+  createAudioAttachment,
+  createVideoAttachment,
+} from '@/types/attachment'
+import {
+  useChatAttachments,
+  NEW_THREAD_ATTACHMENT_KEY,
+} from '@/hooks/useChatAttachments'
+import { processAttachmentsForSend } from '@/lib/attachmentProcessing'
+import { useAttachments } from '@/hooks/useAttachments'
+import { PromptProgress } from '@/components/PromptProgress'
+import { useToolAvailable } from '@/hooks/useToolAvailable'
+import {
+  OUT_OF_CONTEXT_SIZE,
+  isContextOverflowMessage,
+  parseContextOverflow,
+} from '@/utils/error'
+import { useTranslation } from '@/i18n/react-i18next-compat'
+import {
+  parseServerContextLimit,
+  rememberServerLimit,
+} from '@/lib/contextLimitRecovery'
+import { Button } from '@/components/ui/button'
+import { CircleAlert, Folder, Loader2, RefreshCw } from 'lucide-react'
+import { useToolApproval } from '@/hooks/useToolApproval'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
+import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
+import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
+import {
+  recordToolActivity,
+  resourceOf,
+  withToolActivity,
+} from '@/lib/toolActivity'
+import {
+  APPROVAL_CANCELLED_TEXT,
+  APPROVAL_DENIED_TEXT,
+} from '@/lib/permissionOutcome'
+import DropdownModelProvider from '@/containers/DropdownModelProvider'
+import { TemporaryChatBanner } from '@/containers/TemporaryChatBanner'
+import { WhatJanIsUsing } from '@/containers/WhatJanIsUsing'
+import { MemoryProposalList } from '@/containers/MemoryProposalCard'
+import { redactDeep, redactText } from '@/lib/redactToolOutput'
+import { useMemoryProposals } from '@/hooks/useMemoryProposals'
+import { route } from '@/constants/routes'
+import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
+import { ExtensionManager } from '@/lib/extension'
+import { Shimmer } from '@/components/ai-elements/shimmer'
+import { useMessageQueue } from '@/stores/message-queue-store'
+import { generateThreadTitle } from '@/lib/thread-title-summarizer'
+import { useAutoScroll } from '@/hooks/useAutoScroll'
+import {
+  resolveThreadModelSelection,
+  useConversationModel,
+  useConversationPane,
+} from '@/hooks/useConversationPane'
+import { SECONDARY_DRAFT_SCOPE } from '@/hooks/useSplitConversation'
+
+const CHAT_STATUS = {
+  STREAMING: 'streaming',
+  SUBMITTED: 'submitted',
+} as const
+
+const TITLE_REFRESH_EVERY_N_ASSISTANT_MESSAGES = 4
+
+// The MCP server a tool belongs to, so an approval prompt can offer to trust
+// the whole server rather than this one tool.
+function serverForTool(toolName: string): string | undefined {
+  return useAppState.getState().tools.find((tool) => tool.name === toolName)
+    ?.server
+}
+
+// Internal tools never prompt: RAG and the native web tools are Jan's own, and
+// the built-in agent tools are gated in Rust (execute_tool refuses anything
+// needing approval), so only workspace-confined calls ever reach here.
+function isAutoAllowedTool(toolName: string): boolean {
+  return (
+    useAppState.getState().ragToolNames.has(toolName) ||
+    isNativeWebTool(toolName) ||
+    AGENT_TOOL_NAMES.has(toolName)
+  )
+}
+
+// Persist the out-of-context error onto the latest user message so the banner
+// survives thread switches, mirroring how LlamacppOomListener stamps oom/backend.
+function stampContextErrorOnThread(
+  threadId: string,
+  message: string = OUT_OF_CONTEXT_SIZE
+) {
+  const messages = useMessages.getState().getMessages(threadId)
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m.role !== 'user') continue
+    const meta = (m.metadata as Record<string, unknown> | undefined) ?? {}
+    if (typeof meta.contextError === 'string') return
+    useMessages.getState().updateMessage({
+      ...m,
+      metadata: { ...meta, contextError: message },
+    })
+    return
+  }
+}
+
+type ThreadModel = {
+  id: string
+  provider: string
+}
+
+export type ThreadConversationProps = {
+  /** The thread this conversation shows. Everything below is keyed by it. */
+  threadId: string
+  /** A model named in the URL, which wins over the thread's own. */
+  searchThreadModel?: ThreadModel
+  /** Controls beside the conversation's identity in the context bar (Split). */
+  contextControls?: ReactNode
+  /** Controls in a split pane's own header (change conversation, close pane). */
+  paneControls?: ReactNode
+}
+
+/**
+ * One Chat conversation: its messages, stream, tools and approvals, and its
+ * composer. Rendered once by `/threads/$threadId`, or once per pane when the
+ * conversation is split -- which is why it takes its thread id as a prop and
+ * never reads the route.
+ */
+export function ThreadConversation({
+  threadId,
+  searchThreadModel,
+  contextControls,
+  paneControls,
+}: ThreadConversationProps) {
+  const serviceHub = useServiceHub()
+  // Which pane this is. With the split closed there is one pane, always active.
+  const pane = useConversationPane()
+  const isSplit = Boolean(pane?.isSplit)
+  const isActive = !pane?.isSplit || pane.isActive
+  const paneId = pane?.paneId ?? 'primary'
+  // Read from callbacks the AI SDK captured when the session's Chat was made.
+  const isSplitRef = useRef(isSplit)
+  isSplitRef.current = isSplit
+  const threadIdRef = useRef(threadId)
+  threadIdRef.current = threadId
+  // This conversation's tool call ids as of the last commit (see below).
+  const toolCallIdsRef = useRef<string[]>([])
+  const fontSize = useInterfaceSettings((state) => state.fontSize)
+  const messageZoom = useInterfaceSettings((state) => state.messageZoom)
+  const setCurrentThreadId = useThreads((state) => state.setCurrentThreadId)
+  const setMessages = useMessages((state) => state.setMessages)
+  const addMessage = useMessages((state) => state.addMessage)
+  const updateMessage = useMessages((state) => state.updateMessage)
+  const deleteMessage = useMessages((state) => state.deleteMessage)
+  const currentThread = useRef<string | undefined>(undefined)
+
+  useTools()
+
+  // Get attachments for this thread
+  const attachmentsKey = threadId ?? NEW_THREAD_ATTACHMENT_KEY
+  const getAttachments = useChatAttachments((state) => state.getAttachments)
+  const clearAttachmentsForThread = useChatAttachments(
+    (state) => state.clearAttachments
+  )
+
+  // Session data for tool call tracking
+  const getSessionData = useChatSessions((state) => state.getSessionData)
+  const sessionData = getSessionData(threadId)
+
+  // AbortController for cancelling tool calls
+  const toolCallAbortController = useRef<AbortController | null>(null)
+
+  // Approval promises started in onToolCall (so the popup appears immediately)
+  // and awaited by the onFinish execution loop, keyed by toolCallId. Executing
+  // stays in onFinish so the tool result lands on a completed assistant message
+  // and the AI SDK's auto-resubmit (sendAutomaticallyWhen) fires.
+  const toolApprovalPromises = useRef<Map<string, Promise<boolean>>>(new Map())
+
+  const titleAbortRef = useRef<AbortController | null>(null)
+
+  // Check if we should follow up with tool calls (respects abort signal)
+  const followUpMessage = useCallback(
+    ({ messages }: { messages: UIMessage[] }) => {
+      if (
+        !toolCallAbortController.current ||
+        toolCallAbortController.current?.signal.aborted
+      ) {
+        return false
+      }
+      return lastAssistantMessageIsCompleteWithToolCalls({ messages })
+    },
+    []
+  )
+
+  // Subscribe directly to the thread data to ensure updates when model changes
+  const thread = useThreads(useShallow((state) => state.threads[threadId]))
+
+  // This conversation's model: in a split pane its own thread's, otherwise
+  // the global picker, exactly as before.
+  const { selectedModel, selectedProvider } = useConversationModel()
+  const getProviderByName = useModelProvider((state) => state.getProviderByName)
+  // The same selection, read at call time from callbacks.
+  const getModelSelection = useCallback(
+    () =>
+      isSplitRef.current
+        ? resolveThreadModelSelection(threadId)
+        : useModelProvider.getState(),
+    [threadId]
+  )
+  // Handed to the transport while split, so each pane sends with its own model.
+  const resolvePaneModel = useCallback(
+    () => resolveThreadModelSelection(threadId),
+    [threadId]
+  )
+  const threadRef = useRef(thread)
+  const projectId = threadRef.current?.metadata?.project?.id
+
+  // Get system message from thread's assistant instructions (if thread has an assigned assistant)
+  // Only use assistant instructions if the thread was created with one (e.g., via a project)
+  const threadAssistant = thread?.assistants?.[0]
+  const systemMessage = threadAssistant?.instructions
+    ? renderInstructions(threadAssistant.instructions)
+    : undefined
+
+  // AH-032/AH-083: the transport takes a snapshot of every request and has
+  // nowhere to return it -- the AI SDK owns the call -- so it hands it here.
+  // Chat records which payload each request sent, which is what lets a Chat
+  // turn be replayed from the record, and what lets a memory's use name the
+  // exact request it went out in.
+  useEffect(
+    () =>
+      addSnapshotSink((session, ref) => {
+        if (session !== threadId) return
+        recordChatDispatch(session, ref)
+      }),
+    [threadId]
+  )
+
+  useEffect(() => {
+    threadRef.current = thread
+  }, [thread])
+
+  // Holds the partial assistant message while the model reloads after a
+  // context-limit hit, so the user sees it instead of a blank gap.
+  const [pendingContinueMessage, setPendingContinueMessage] =
+    useState<UIMessage | null>(null)
+  const [contextLimitError, setContextLimitError] = useState<Error | null>(null)
+  // Per-thread so the shimmer survives navigating away and back while the
+  // embedding run is still in flight.
+  const processingEmbeddings = useAppState(
+    (s) => !!s.embeddingThreads[threadId]
+  )
+  const { t } = useTranslation()
+
+  // llama-server's overflow string is raw English; localize it, interpolating
+  // the parsed request/context token counts when available.
+  const contextBannerMessage = useMemo(() => {
+    const raw = contextLimitError?.message
+    if (!raw) return undefined
+    // A refusal is the one moment a server names its own window without being
+    // asked. Recorded against this exact provider/endpoint/model before the
+    // message is turned into prose, so the next turn plans against the real
+    // number instead of the same guess that just failed.
+    if (selectedModel?.id) {
+      const provider = getProviderByName(selectedProvider)
+      rememberServerLimit(
+        {
+          provider: selectedProvider ?? '',
+          baseUrl: (provider?.base_url as string) ?? '',
+          model: selectedModel.id,
+        },
+        parseServerContextLimit(contextLimitError, raw)
+      )
+    }
+    const info = parseContextOverflow(raw)
+    if (info)
+      return t('model-errors:contextOverflowDetail', {
+        request: info.requestTokens.toLocaleString(),
+        context: info.contextTokens.toLocaleString(),
+      })
+    return t('model-errors:contextOverflowGeneric')
+  }, [contextLimitError, t])
+
+  // Refs so onFinish (captured in closure) always calls the latest callbacks
+  const globalOomError = useAppState((s) => s.oomError)
+  const setOomError = useAppState((s) => s.setOomError)
+  const globalBackendError = useAppState((s) => s.backendError)
+  const setBackendError = useAppState((s) => s.setBackendError)
+  // The router banners are app-wide state that follows the current thread.
+  // In a split, the pane the user is not working in shows what its own
+  // thread's messages recorded instead (see the resync effect below).
+  const [ownBanner, setOwnBanner] = useState<{
+    oom?: string
+    backend?: string
+  }>({})
+  const oomErrorRaw = isActive ? globalOomError : ownBanner.oom
+  const backendErrorRaw = isActive ? globalBackendError : ownBanner.backend
+
+  // These signals come from the llamacpp router via global Tauri events.
+  // Mask them when the active provider isn't llamacpp so a router crash
+  // doesn't decorate chats running against MLX / OpenAI / Anthropic / etc.
+  const isLlamacppActive = selectedProvider === 'llamacpp'
+  const oomError = isLlamacppActive ? oomErrorRaw : undefined
+  const backendError = isLlamacppActive ? backendErrorRaw : undefined
+
+  const handleContextSizeIncreaseRef = useRef<(() => void) | null>(null)
+  const setContinueFromContentRef = useRef<((content: string) => void) | null>(
+    null
+  )
+  const setChatMessagesRef = useRef<
+    ((updater: (prev: UIMessage[]) => UIMessage[]) => void) | null
+  >(null)
+  // Holds the partial assistant output captured when the model stops with
+  // `finishReason === 'length'`. Consumed by `handleContextSizeIncrease` so
+  // the manual "Increase Context Size" button resumes from where the stream
+  // stopped rather than regenerating from scratch.
+  const pendingContinuationRef = useRef<{
+    message: UIMessage
+    text: string
+  } | null>(null)
+  // Set before a generation when the resulting assistant message should be
+  // linked to a specific parent (versioning). Consumed once in onFinish.
+  const pendingAssistantParentId = useRef<string | null>(null)
+  // Holds the id of a stopped assistant message being resumed. Continuing must
+  // extend the turn in place, not fork a new version, so onFinish deletes this
+  // stale partial once the continued reply is persisted.
+  const continueReplaceIdRef = useRef<string | null>(null)
+
+  // Use the AI SDK chat hook
+  const {
+    messages: chatMessages,
+    status,
+    error,
+    sendMessage,
+    regenerate,
+    setMessages: setChatMessages,
+    stop,
+    addToolOutput,
+    updateRagToolsAvailability,
+    setContinueFromContent,
+  } = useChat({
+    sessionId: threadId,
+    sessionTitle: thread?.title,
+    systemMessage,
+    resolveModelSelection: isSplit ? resolvePaneModel : undefined,
+    experimental_throttle: 50,
+    onFinish: ({ message, isAbort }) => {
+      const msgMeta = message.metadata as Record<string, unknown> | undefined
+      const finishReason = msgMeta?.finishReason as string | undefined
+      // Consume once per generation so a skipped persist (error/empty) can't
+      // leak the replace target into a later, unrelated turn.
+      const continueReplaceId = continueReplaceIdRef.current
+      continueReplaceIdRef.current = null
+
+      // Context limit hit: send partial content as prefill so the model continues
+      // from where it stopped. The stream wrapper injects it as the first text-delta
+      // of the new message, so the user sees the partial text immediately.
+      if (!isAbort && finishReason === 'length') {
+        const modelSelection = getModelSelection()
+        const selectedModelState = modelSelection.selectedModel
+        const usage = msgMeta?.usage as
+          | { inputTokens?: number; outputTokens?: number }
+          | undefined
+        const totalTokens =
+          (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
+        // The window Jan actually knows, never a guess: a missing ctx_len used
+        // to read as 32,768, which mislabelled output-cap stops on large
+        // remote models and missed real overflows on small ones
+        // (janhq/jan#8760). Unknown is not a context-limit verdict.
+        const modelProviderState = useModelProvider.getState()
+        const isContextLimit = stoppedAtContextLimit(
+          totalTokens,
+          knownContextWindow(
+            selectedModelState as unknown as Parameters<
+              typeof knownContextWindow
+            >[0],
+            modelProviderState.getProviderByName(
+              modelSelection.selectedProvider
+            ) as unknown as Parameters<typeof knownContextWindow>[1]
+          )
+        )
+
+        if (isContextLimit) {
+          // Stash the partial so the manual "Increase Context Size" button can
+          // resume from here. Surface the standard banner with the manual
+          // button — auto-increase was removed; the user explicitly opts in.
+          const partialText = message.parts
+            .filter((p) => p.type === 'text')
+            .map((p) => (p as { type: 'text'; text: string }).text)
+            .join('')
+          if (partialText) {
+            pendingContinuationRef.current = { message, text: partialText }
+          }
+          stampContextErrorOnThread(threadId)
+          setContextLimitError(new Error(OUT_OF_CONTEXT_SIZE))
+          return
+        }
+        // Non-context-limit length truncation: fall through and persist the
+        // partial marked as stopped so the "Continue" button can resume it.
+      }
+
+      if (!isAbort && message.parts.length) setPendingContinueMessage(null)
+
+      // The turn ended before completion (user hit Stop, or the model hit its
+      // output-token cap). Persist the partial marked `stopped` so the UI can
+      // offer a "Continue" affordance, and stamp the live message so the button
+      // appears without waiting for a reload.
+      const isStoppedTurn = isAbort || finishReason === 'length'
+
+      // Persist assistant message to backend (skip if aborted).
+      // For continuations, message.parts already contains partial + new content
+      // because the stream wrapper prepended the partial text as the first delta.
+      if (
+        message.role === 'assistant' &&
+        uiMessageHasMeaningfulContent(message)
+      ) {
+        const contentParts = extractContentPartsFromUIMessage(message)
+        const messageMetadata = {
+          ...((message.metadata || {}) as Record<string, unknown>),
+          ...(isStoppedTurn ? { stopped: true } : {}),
+        }
+
+        if (isStoppedTurn) {
+          setChatMessagesRef.current?.((prev) =>
+            prev.map((m) =>
+              m.id === message.id
+                ? {
+                    ...m,
+                    metadata: {
+                      ...(m.metadata as Record<string, unknown> | undefined),
+                      stopped: true,
+                    },
+                  }
+                : m
+            )
+          )
+        }
+
+        // A continuation resumes a stopped turn: the stale partial is deleted
+        // below so the continued reply takes its place instead of forking a new
+        // version. Inherit the partial's parent so the branch link holds.
+        const continuation = planContinuation(
+          useMessages.getState().getMessages(threadId),
+          message.id,
+          continueReplaceId,
+          pendingAssistantParentId.current
+        )
+        pendingAssistantParentId.current = null
+
+        let parentForAssistant = continuation.parentId
+
+        // Never persist a detached assistant in a branched thread: if the
+        // pending link was lost (e.g. a multi-step turn consumed the ref before
+        // this reply finished), fall back to the user message this reply
+        // answers. A null parentId would make computeActivePath treat the
+        // assistant as a phantom root and drop it from the visible path.
+        if (
+          parentForAssistant == null &&
+          hasBranching(useMessages.getState().getMessages(threadId))
+        ) {
+          parentForAssistant = resolveAssistantParent(undefined)
+        }
+
+        const assistantMessage: ThreadMessage = {
+          type: 'text',
+          role: ChatCompletionRole.Assistant,
+          content: contentParts,
+          id: message.id,
+          object: 'thread.message',
+          thread_id: threadId,
+          status: MessageStatus.Ready,
+          created_at: Date.now(),
+          completed_at: Date.now(),
+          metadata:
+            parentForAssistant != null
+              ? { ...messageMetadata, parentId: parentForAssistant }
+              : messageMetadata,
+        }
+
+        const existingMessages = useMessages.getState().getMessages(threadId)
+        const existingMessage = existingMessages.find(
+          (m) => m.id === message.id
+        )
+
+        if (existingMessage) {
+          // Preserve the existing branch link on re-runs of onFinish.
+          const existingParent = getParentId(existingMessage)
+          updateMessage(
+            existingParent != null
+              ? {
+                  ...assistantMessage,
+                  metadata: {
+                    ...assistantMessage.metadata,
+                    parentId: existingParent,
+                  },
+                }
+              : assistantMessage
+          )
+        } else {
+          addMessage(assistantMessage)
+          // New generation becomes the active branch under its parent so
+          // version navigation lands on the latest reply by default.
+          if (parentForAssistant) {
+            const parent = existingMessages.find(
+              (m) => m.id === parentForAssistant
+            )
+            if (parent) updateMessage(withActiveChild(parent, assistantMessage.id))
+          }
+        }
+
+        // Drop the stale partial so the resumed turn replaces it in place
+        // rather than appearing as a separate version of the same reply.
+        if (continuation.deletePartialId) {
+          deleteMessage(threadId, continuation.deletePartialId)
+          useMessageErrors.getState().clearError(continuation.deletePartialId)
+        }
+
+        for (const m of existingMessages) {
+          const meta = m.metadata as Record<string, unknown> | undefined
+          if (meta?.error) {
+            const rest = { ...meta }
+            delete rest.error
+            updateMessage({ ...m, metadata: rest })
+          }
+          useMessageErrors.getState().clearError(m.id)
+        }
+      }
+
+      // Everything a tool produced is written through here, never through
+      // `addToolOutput` directly. The transcript is a file that outlives the
+      // run and gets exported, so a credential a tool happened to print -- a
+      // `curl -v` trace, an error quoting a header -- must not reach it. One
+      // entry point, because a call site that forgets is a call site that
+      // silently persists the credential. AH-045.
+      const persistToolOutput = async (
+        part: Parameters<typeof addToolOutput>[0]
+      ) => {
+        if ('errorText' in part && typeof part.errorText === 'string') {
+          addToolOutput({ ...part, errorText: await redactText(part.errorText) })
+          return
+        }
+        if ('output' in part) {
+          addToolOutput({ ...part, output: await redactDeep(part.output) })
+          return
+        }
+        addToolOutput(part)
+      }
+
+      // Execute tool calls here, after the assistant message has completed, so
+      // each addToolOutput lands on a finished message and the SDK's
+      // auto-resubmit (sendAutomaticallyWhen) fires. Approval is requested
+      // earlier in onToolCall (popup appears without waiting for this callback);
+      // we await that already-started promise here rather than prompting again.
+      toolCallAbortController.current = new AbortController()
+      const signal = toolCallAbortController.current.signal
+
+      const ragToolNames = useAppState.getState().ragToolNames
+      const mcpToolNames = useAppState.getState().mcpToolNames
+
+      // Keep the thread marked busy while awaiting approval and executing tools,
+      // since streaming has already ended and isSessionBusy's tools-array read isn't reactive.
+      useAppState.getState().setThreadBusy(threadId, true)
+
+      // Tools run one at a time below, so the rest are genuinely queued.
+      useToolCallRuntime
+        .getState()
+        .enqueue(sessionData.tools.map((tc) => tc.toolCallId))
+
+      ;(async () => {
+        for (const toolCall of sessionData.tools) {
+          if (signal.aborted) {
+            break
+          }
+
+          try {
+            const toolName = toolCall.toolName
+            // The same record Cowork writes (AH-050): Chat's tool calls are
+            // part of what the conversation did, and a timeline or an audit
+            // export that only knew Cowork's would be missing them.
+            const activityCall = {
+              toolCallId: toolCall.toolCallId,
+              toolName,
+              input: toolCall.input,
+            }
+            // AH-004: the run and the request that asked for this call, so
+            // Chat's tool events join the same record Cowork writes instead of
+            // standing alone with an empty run.
+            const chatRun = chatRunOf(threadId)
+            const activityCtx = {
+              session: threadId,
+              run: chatRun?.run ?? '',
+              invocation: chatRun?.invocation ?? '',
+              agentId: 'agent',
+              source: 'chat' as const,
+            }
+            const permissionEvent = {
+              call: toolCall.toolCallId,
+              tool: toolName,
+              session: threadId,
+              source: 'chat',
+              resource: resourceOf(toolCall.input),
+            }
+
+            const needsApproval = !isAutoAllowedTool(toolName)
+            if (needsApproval) {
+              void recordToolActivity({
+                ...permissionEvent,
+                phase: 'awaiting-permission',
+              })
+            }
+            const approved = !needsApproval
+              ? true
+              : await (toolApprovalPromises.current.get(toolCall.toolCallId) ??
+                  useToolApprovalRequests
+                    .getState()
+                    .requestApproval(
+                      toolCall.toolCallId,
+                      toolName,
+                      threadId,
+                      serverForTool(toolName),
+                      {
+                        input: toolCall.input,
+                        threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
+                      }
+                    ))
+            toolApprovalPromises.current.delete(toolCall.toolCallId)
+
+            if (!approved) {
+              // A prompt withdrawn because the conversation stopped is not a
+              // "no" from the user, and the transcript should not say it was.
+              const refusal = useToolApprovalRequests
+                .getState()
+                .takeRefusal?.(toolCall.toolCallId)
+              await recordToolActivity({
+                ...permissionEvent,
+                phase: 'refused',
+                detail:
+                  refusal === 'cancelled'
+                    ? 'cancelled before the user answered'
+                    : 'denied by the user',
+              })
+              await persistToolOutput({
+                state: 'output-error',
+                tool: toolCall.toolName,
+                toolCallId: toolCall.toolCallId,
+                errorText:
+                  refusal === 'cancelled'
+                    ? APPROVAL_CANCELLED_TEXT
+                    : APPROVAL_DENIED_TEXT,
+              })
+              continue
+            }
+            if (needsApproval) {
+              void recordToolActivity({ ...permissionEvent, phase: 'allowed' })
+            }
+
+            // Timed from here, not from approval, so a long approval wait is
+            // not reported as the tool being slow.
+            useToolCallRuntime.getState().markRunning(toolCall.toolCallId)
+
+            // The diff is kept for the record as well as shown; see below.
+            let chatDiff: string | undefined
+            const runChatTool = async () => {
+            let result
+
+            if (isNativeWebTool(toolName)) {
+              result = await executeWebTool(toolName, toolCall.input)
+            } else if (AGENT_TOOL_NAMES.has(toolName)) {
+              const agentResult = await executeAgentTool(
+                toolName,
+                toolCall.input,
+                threadId
+              )
+              // The diff is display-only, so it goes to the runtime store rather
+              // than into `result`: anything in `result` reaches the model, and a
+              // full diff there would duplicate the file it just wrote.
+              const { diff, ...rest } = agentResult
+              if (diff) {
+                useToolCallRuntime
+                  .getState()
+                  .recordDiff(toolCall.toolCallId, diff)
+                chatDiff = diff
+              }
+              result = rest
+            } else if (ragToolNames.has(toolName)) {
+              result = await serviceHub.rag().callTool({
+                toolName,
+                arguments: toolCall.input,
+                threadId,
+                projectId: projectId,
+                scope: projectId ? 'project' : 'thread',
+              })
+            } else if (mcpToolNames.has(toolName)) {
+              // An MCP result is injected into conversation history verbatim, so
+              // a page-sized one can exhaust the context on its own. Give the
+              // backend a budget scaled to the window this model actually has;
+              // it narrows that against the user's configured ceiling.
+              const ctxLen = getModelSelection().selectedModel?.settings
+                ?.ctx_len?.controller_props?.value
+              // AH-041. The backend keeps the record of which servers the user
+              // trusts and refuses a call to any other, so an approval that
+              // happened here has to be handed over as something it issued.
+              // Minted for every call rather than only untrusted ones: trust
+              // can be withdrawn between the approval and the call, and an
+              // unused ticket simply expires. Bound to the server definition
+              // the approval was for, so a server edited in between is
+              // refused rather than called.
+              const server = serverForTool(toolName)
+              const approvedFingerprint = useToolApprovalRequests
+                .getState()
+                .takeApprovedFingerprint?.(toolCall.toolCallId)
+              const approvalTicket = server
+                ? await serviceHub
+                    .mcp()
+                    .allowOnceForServer(server, toolName, approvedFingerprint)
+                    .catch(() => undefined)
+                : undefined
+              result = await serviceHub.mcp().callTool({
+                toolName,
+                serverName: server,
+                arguments: toolCall.input,
+                approvalTicket,
+                maxOutputChars: deriveToolOutputCap(
+                  typeof ctxLen === 'number' ? ctxLen : undefined
+                ),
+              })
+            } else {
+              result = {
+                error: `Tool '${toolName}' not found in any service`,
+              }
+            }
+            return result
+            }
+
+            // Recorded around the execution itself: requested, running, and
+            // how it ended, with its (redacted, bounded) output and its diff.
+            const result = await withToolActivity(
+              activityCall,
+              activityCtx,
+              signal,
+              async () => {
+                const raw = await runChatTool()
+                return {
+                  ...raw,
+                  diff: chatDiff,
+                  isError: Boolean(raw.error),
+                }
+              }
+            )
+
+            if (result.error) {
+              await persistToolOutput({
+                state: 'output-error',
+                tool: toolCall.toolName,
+                toolCallId: toolCall.toolCallId,
+                errorText: `Error: ${result.error}`,
+              })
+            } else {
+              await persistToolOutput({
+                tool: toolCall.toolName,
+                toolCallId: toolCall.toolCallId,
+                output: result.content,
+              })
+            }
+          } catch (error) {
+            if ((error as Error).name !== 'AbortError') {
+              console.error('Tool call error:', error)
+              await persistToolOutput({
+                state: 'output-error',
+                tool: toolCall.toolName,
+                toolCallId: toolCall.toolCallId,
+                errorText: `Error: ${JSON.stringify(error)}`,
+              })
+            }
+          } finally {
+            // Covers every exit from the iteration, including the denied path.
+            useToolCallRuntime.getState().markSettled(toolCall.toolCallId)
+          }
+        }
+
+        useToolCallRuntime.getState().settleRemaining()
+        sessionData.tools = []
+        toolApprovalPromises.current.clear()
+        toolCallAbortController.current = null
+        useAppState.getState().setThreadBusy(threadId, false)
+      })().catch((error) => {
+        if (error.name !== 'AbortError') {
+          console.error('Tool call error:', error)
+        }
+        useToolCallRuntime.getState().settleRemaining()
+        sessionData.tools = []
+        toolApprovalPromises.current.clear()
+        toolCallAbortController.current = null
+        useAppState.getState().setThreadBusy(threadId, false)
+      })
+
+      if (!isAbort) {
+        const localMessages = useMessages.getState().getMessages(threadId)
+        const assistantCount = localMessages.filter(
+          (m) => m.role === 'assistant'
+        ).length
+        const isRefreshTick =
+          assistantCount === 1 ||
+          (assistantCount > 0 &&
+            assistantCount % TITLE_REFRESH_EVERY_N_ASSISTANT_MESSAGES === 0)
+        const currentThread = useThreads.getState().threads[threadId]
+        const autoGenerateTitle =
+          useInterfaceSettings.getState().autoGenerateTitle
+        if (
+          autoGenerateTitle &&
+          isRefreshTick &&
+          !currentThread?.metadata?.titleSetManually
+        ) {
+          const TITLE_TRANSCRIPT_MAX_TURNS = 8
+          const recent = localMessages.slice(-TITLE_TRANSCRIPT_MAX_TURNS)
+          const inputText =
+            recent
+              .map((m) => {
+                const text = m.content
+                  ?.map((c) => c?.text?.value ?? '')
+                  .join('')
+                  .trim()
+                if (!text) return ''
+                const role = m.role === 'assistant' ? 'Assistant' : 'User'
+                return `${role}: ${text}`
+              })
+              .filter(Boolean)
+              .join('\n\n') ||
+            useThreads.getState().threads[threadId]?.title
+          if (inputText) {
+            const titleSelection = getModelSelection()
+            const provider = titleSelection.selectedProvider
+            const modelId = titleSelection.selectedModel?.id
+            ;(async () => {
+              if (provider === 'llamacpp' && modelId) {
+                let idle = false
+                for (let attempt = 0; attempt < 6; attempt++) {
+                  try {
+                    idle = await engineSlotsIdle(modelId)
+                  } catch {
+                    idle = true
+                    break
+                  }
+                  if (idle) break
+                  await new Promise((r) => setTimeout(r, 150))
+                }
+                if (!idle) return
+              }
+              titleAbortRef.current?.abort()
+              const controller = new AbortController()
+              titleAbortRef.current = controller
+              const title = await generateThreadTitle(
+                inputText,
+                controller.signal,
+                threadId
+              )
+              if (!title || controller.signal.aborted) return
+              useThreads.getState().updateThread(threadId, { title })
+              titleAbortRef.current = null
+            })()
+          }
+        }
+      }
+    },
+    onToolCall: ({ toolCall }) => {
+      // Collect the tool for the onFinish execution loop, and request approval
+      // right now so the popup appears immediately instead of waiting for the
+      // stream's terminal finish chunk (a stalled stream would otherwise leave
+      // the tool at "Running..." with no popup). Execution itself stays in
+      // onFinish so the tool result lands on a completed message. Internal tools
+      // never prompt (see isAutoAllowedTool).
+      sessionData.tools.push(toolCall)
+      if (
+        !isAutoAllowedTool(toolCall.toolName) &&
+        !toolApprovalPromises.current.has(toolCall.toolCallId)
+      ) {
+        toolApprovalPromises.current.set(
+          toolCall.toolCallId,
+          useToolApprovalRequests
+            .getState()
+            .requestApproval(
+              toolCall.toolCallId,
+              toolCall.toolName,
+              threadId,
+              serverForTool(toolCall.toolName),
+              {
+                input: toolCall.input,
+                threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
+              }
+            )
+        )
+      }
+    },
+    sendAutomaticallyWhen: followUpMessage,
+  })
+
+  // Our error banners (oom/backend/context) can arrive out-of-band for the
+  // router path, leaving the SDK stream stuck at 'submitted' so the
+  // "Using tools…" indicator shimmers forever. Force a terminal status when a
+  // banner is up — regenerate/reload restarts the turn anyway.
+  const hasBannerError = !!(oomError || backendError || contextLimitError)
+  const effectiveStatus = hasBannerError ? 'ready' : status
+
+  // Kept as of the last commit, so leaving this conversation while split
+  // forgets exactly its own runtime entries (cleanups run before new effects).
+  useEffect(() => {
+    toolCallIdsRef.current = chatMessages.flatMap((m) =>
+      m.parts.flatMap((p) => {
+        const id = (p as { toolCallId?: string }).toolCallId
+        return id ? [id] : []
+      })
+    )
+  }, [chatMessages])
+
+  /**
+   * Memories this chat proposed and nobody has answered yet.
+   *
+   * A temporary chat records nothing, so it never has anything to ask about.
+   */
+  const {
+    proposals: memoryProposals,
+    location: memoryLocation,
+    reload: reloadMemoryProposals,
+    onResolved: onMemoryProposalResolved,
+  } = useMemoryProposals({
+    sessionId: threadId,
+    // So a project memory proposed in this chat can be listed and approved.
+    janProjectId: thread?.metadata?.project?.id,
+    enabled: threadId !== TEMPORARY_CHAT_ID,
+  })
+  const navigate = useNavigate()
+
+  // Re-read once the turn is over. A proposal is written by a tool call during
+  // the turn, so polling mid-stream would only find the previous turn's.
+  useEffect(() => {
+    if (status !== 'ready') return
+    void reloadMemoryProposals()
+  }, [status, reloadMemoryProposals])
+
+  // Global disabled-tools set; re-run the effect below when it changes.
+  const disabledTools = useToolAvailable((state) => state.disabledTools)
+
+  // Update RAG tools availability when documents, model, or tool availability changes
+  useEffect(() => {
+    const checkDocumentsAvailability = async () => {
+      const hasThreadDocuments = Boolean(thread?.metadata?.hasDocuments)
+      let hasProjectDocuments = false
+
+      // Check if thread belongs to a project and if that project has files
+      const projectId = thread?.metadata?.project?.id
+      if (projectId) {
+        try {
+          const ext = ExtensionManager.getInstance().get<VectorDBExtension>(
+            ExtensionTypeEnum.VectorDB
+          )
+          if (ext?.listAttachmentsForProject) {
+            const projectFiles = await ext.listAttachmentsForProject(projectId)
+            hasProjectDocuments = projectFiles.length > 0
+          }
+        } catch (error) {
+          console.warn('Failed to check project files:', error)
+        }
+      }
+
+      const hasDocuments = hasThreadDocuments || hasProjectDocuments
+      const ragFeatureAvailable = Boolean(useAttachments.getState().enabled)
+      const modelSupportsTools =
+        selectedModel?.capabilities?.includes('tools') ?? false
+
+      updateRagToolsAvailability(
+        hasDocuments,
+        modelSupportsTools,
+        ragFeatureAvailable
+      )
+    }
+
+    checkDocumentsAvailability()
+  }, [
+    thread?.metadata?.hasDocuments,
+    thread?.metadata?.project?.id,
+    selectedModel?.capabilities,
+    updateRagToolsAvailability,
+    disabledTools, // Re-run when tools are enabled/disabled
+  ])
+
+  // Auto-scroll the reasoning container during streaming, pausing when the user scrolls up
+  const {
+    containerRef: reasoningContainerRef,
+    isAtBottom: isReasoningAtBottom,
+    handleScroll: handleReasoningScroll,
+    scrollToBottom: scrollReasoningToBottom,
+    forceScrollToBottom: forceScrollReasoningToBottom,
+    reset: resetReasoningScroll,
+  } = useAutoScroll()
+
+  const lastIsAssistant = useMemo(() => {
+    const last = chatMessages[chatMessages.length - 1]
+    return !!last && last.role === 'assistant'
+  }, [chatMessages])
+
+  useEffect(() => {
+    if (status === 'streaming') {
+      resetReasoningScroll()
+    }
+  }, [status, resetReasoningScroll])
+
+  useEffect(() => {
+    if (status === 'streaming') {
+      scrollReasoningToBottom()
+    }
+  }, [status, chatMessages, scrollReasoningToBottom])
+
+  // The current thread is the conversation the user is working in: this one
+  // on its own, or the active pane's in a split.
+  useEffect(() => {
+    if (isActive) setCurrentThreadId(threadId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId, isActive])
+
+  useEffect(() => {
+    titleAbortRef.current?.abort()
+    titleAbortRef.current = null
+  }, [threadId])
+
+  // Load messages on first mount
+  useEffect(() => {
+    // Skip if chat already has messages (e.g., returning to a streaming conversation)
+    const existingSession = useChatSessions.getState().sessions[threadId]
+    if (
+      existingSession?.chat.messages.length > 0 ||
+      existingSession?.isStreaming ||
+      currentThread.current === threadId
+    ) {
+      return
+    }
+
+    serviceHub
+      .messages()
+      .fetchMessages(threadId)
+      .then((fetchedMessages) => {
+        if (fetchedMessages && fetchedMessages.length > 0) {
+          const currentLocalMessages = useMessages
+            .getState()
+            .getMessages(threadId)
+
+          let messagesToSet = fetchedMessages
+
+          // Merge with local-only messages if needed
+          if (currentLocalMessages && currentLocalMessages.length > 0) {
+            const fetchedIds = new Set(fetchedMessages.map((m) => m.id))
+            const localOnlyMessages = currentLocalMessages.filter(
+              (m) => !fetchedIds.has(m.id)
+            )
+
+            if (localOnlyMessages.length > 0) {
+              messagesToSet = [...fetchedMessages, ...localOnlyMessages].sort(
+                (a, b) => (a.created_at || 0) - (b.created_at || 0)
+              )
+            }
+          }
+
+          // Drop and delete any persisted empty assistant rows produced by
+          // the old bug where errored generations were written as empty-text
+          // messages. Lossless cleanup — these carry no information.
+          const emptyAssistantIds = messagesToSet
+            .filter(threadMessageIsEmpty)
+            .map((m) => m.id)
+          if (emptyAssistantIds.length > 0) {
+            // A user turn sent after an errored generation hangs off the empty
+            // row; re-link it before the row goes, or the rest of the
+            // conversation goes with it (janhq/jan#8495).
+            const relinked = removeFromTree(messagesToSet, emptyAssistantIds)
+            if (relinked.length > 0) {
+              const byId = new Map(relinked.map((m) => [m.id, m]))
+              messagesToSet = messagesToSet.map((m) => byId.get(m.id) ?? m)
+              for (const m of relinked) updateMessage(m)
+            }
+            messagesToSet = messagesToSet.filter(
+              (m) => !emptyAssistantIds.includes(m.id)
+            )
+            for (const id of emptyAssistantIds) {
+              deleteMessage(threadId, id)
+            }
+          }
+
+          // Migrate threads corrupted by the pre-#8357 bug: assistant replies
+          // saved with parentId:null are phantom roots that computeActivePath
+          // drops. Re-parent them to the user turn they answer and persist.
+          const repaired = repairDetachedAssistants(messagesToSet)
+          if (repaired.length > 0) {
+            const byId = new Map(repaired.map((m) => [m.id, m]))
+            messagesToSet = messagesToSet.map((m) => byId.get(m.id) ?? m)
+            for (const m of repaired) updateMessage(m)
+          }
+
+          // Threads already damaged by the old delete path: messages whose
+          // parent is gone are unreachable and render as missing replies.
+          const reattached = repairDanglingParents(messagesToSet)
+          if (reattached.length > 0) {
+            const byId = new Map(reattached.map((m) => [m.id, m]))
+            messagesToSet = messagesToSet.map((m) => byId.get(m.id) ?? m)
+            for (const m of reattached) updateMessage(m)
+          }
+
+          setMessages(threadId, messagesToSet)
+
+          const hydrated: Record<string, string> = {}
+          for (const m of messagesToSet) {
+            const err = (m.metadata as Record<string, unknown> | undefined)
+              ?.error
+            if (typeof err === 'string' && err.length > 0) {
+              hydrated[m.id] = err
+            }
+          }
+          useMessageErrors.getState().hydrate(hydrated)
+
+          const activeRootId = (
+            useThreads.getState().threads[threadId]?.metadata as
+              | Record<string, unknown>
+              | undefined
+          )?.activeRootId as string | undefined
+          const uiMessages = convertThreadMessagesToUIMessages(
+            computeActivePath(messagesToSet, activeRootId)
+          )
+          setChatMessages(uiMessages)
+          currentThread.current = threadId
+        }
+      })
+      .catch((error) =>
+        console.error('Failed to fetch messages for thread:', threadId, error)
+      )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId, serviceHub])
+
+  useEffect(() => {
+    return () => {
+      titleAbortRef.current?.abort()
+      // In a split the other pane may be the current thread by now.
+      if (
+        !isSplitRef.current ||
+        useThreads.getState().currentThreadId === threadIdRef.current
+      ) {
+        setCurrentThreadId(undefined)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // The route component is reused across thread switches (no remount), so tear
+  // down the in-flight tool loop and release approvals waiting on the thread we
+  // are leaving. Cleanup captures the previous threadId; without this the
+  // unresolved approval promise keeps that thread marked busy forever.
+  useEffect(() => {
+    // Stable ref object (never reassigned) — capture for the cleanup closure.
+    const approvalPromises = toolApprovalPromises.current
+    return () => {
+      toolCallAbortController.current?.abort()
+      toolCallAbortController.current = null
+      approvalPromises.clear()
+      useToolApprovalRequests.getState().clearPendingForThread(threadId)
+      // Drop per-thread timing/progress/diff state from the shared runtime
+      // store. The cards for the thread we leave are unmounting, so a thread a
+      // later visit cannot show another thread's diff. (code.tsx re-hydrates
+      // its own diffs on mount, so it is unaffected by clearing here.) In a
+      // split the other pane's cards are still on screen, so only this
+      // conversation's entries go.
+      if (isSplitRef.current) {
+        useToolCallRuntime.getState().forget(toolCallIdsRef.current)
+      } else {
+        useToolCallRuntime.getState().reset()
+      }
+    }
+  }, [threadId])
+
+  // Resync the OOM/backend banner from message metadata on every thread switch.
+  // Persisted by LlamacppOomListener at error time; unset state when this
+  // thread carries no such metadata so the banner doesn't leak across threads.
+  const threadMessagesForBanner = useMessages((s) => s.messages?.[threadId])
+  useEffect(() => {
+    let oom: string | undefined
+    let be: string | undefined
+    let ctx: string | undefined
+    for (const m of threadMessagesForBanner ?? []) {
+      const meta = m.metadata as Record<string, unknown> | undefined
+      const o = meta?.oomError
+      if (typeof o === 'string' && o.length > 0) oom = o
+      const b = meta?.backendError
+      if (typeof b === 'string' && b.length > 0) be = b
+      const c = meta?.contextError
+      if (typeof c === 'string' && c.length > 0) ctx = c
+    }
+    // Only the conversation the user is working in writes the app-wide router
+    // banners; a split's other pane keeps its own copy.
+    if (isActive) {
+      useAppState.getState().setOomError(oom)
+      useAppState.getState().setBackendError(be)
+    }
+    setOwnBanner((prev) =>
+      prev.oom === oom && prev.backend === be ? prev : { oom, backend: be }
+    )
+    setContextLimitError(ctx ? new Error(ctx) : null)
+  }, [threadId, threadMessagesForBanner, isActive])
+
+  // Consolidated function to process and send a message
+  const processAndSendMessage = useCallback(
+    async (
+      text: string,
+      files?: Array<{ type: string; mediaType: string; url: string }>
+    ) => {
+      // Cancel any in-flight title summarization so it doesn't compete with this request
+      titleAbortRef.current?.abort()
+      titleAbortRef.current = null
+
+      // Get all attachments from the store (media transferred from the
+      // new-thread key, plus documents).
+      const allAttachments = getAttachments(attachmentsKey)
+
+      // In-thread sends pass media inline via `files`; reconstruct typed by
+      // mediaType (image/audio/video — not all images). New-thread sends pass
+      // no media in `files` (quota), so fall back to media already in the store.
+      const fileMediaAttachments = (files ?? []).map((file) => {
+        const base64 = file.url.split(',')[1] || ''
+        const size = Math.ceil((base64.length * 3) / 4) // Estimate from base64
+        if (file.mediaType.startsWith('audio/')) {
+          return createAudioAttachment({
+            name: `audio-${Date.now()}`,
+            mimeType: file.mediaType,
+            dataUrl: file.url,
+            base64,
+            audioFormat: file.mediaType === 'audio/mpeg' ? 'mp3' : 'wav',
+            size,
+          })
+        }
+        if (file.mediaType.startsWith('video/')) {
+          return createVideoAttachment({
+            name: `video-${Date.now()}`,
+            mimeType: file.mediaType,
+            dataUrl: file.url,
+            base64,
+            size,
+          })
+        }
+        return createImageAttachment({
+          name: `image-${Date.now()}`,
+          mimeType: file.mediaType,
+          dataUrl: file.url,
+          base64,
+          size,
+        })
+      })
+
+      const storeMediaAttachments = allAttachments.filter(
+        (a) => a.type === 'image' || a.type === 'audio' || a.type === 'video'
+      )
+      const mediaAttachments = fileMediaAttachments.length
+        ? fileMediaAttachments
+        : storeMediaAttachments
+
+      // Combine media attachments with document attachments from the store
+      const combinedAttachments = [
+        ...mediaAttachments,
+        ...allAttachments.filter((a) => a.type === 'document'),
+      ]
+
+      const messageId = generateId()
+      const hasDocuments = combinedAttachments.some(
+        (a) => a.type === 'document' && !a.processed
+      )
+      const hasEmbeddingDocuments = combinedAttachments.some(
+        (a) =>
+          a.type === 'document' &&
+          !a.processed &&
+          a.parseMode !== 'inline'
+      )
+
+      // When there are unprocessed documents (e.g. first-message flow),
+      // show the user message in the conversation immediately so the UI
+      // doesn't hang while embeddings are generated.
+      if (hasDocuments) {
+        const previewMessage = newUserThreadContent(
+          threadId,
+          text,
+          combinedAttachments,
+          messageId
+        )
+        const previewUI =
+          convertThreadMessagesToUIMessages([previewMessage])
+        setChatMessages((prev) => [...prev, ...previewUI])
+      }
+
+      // Clear attachment chips from the input — they are now either
+      // about to be sent or visible in the preview message above.
+      clearAttachmentsForThread(attachmentsKey)
+
+      // Process attachments (ingest images, parse/index documents)
+      let processedAttachments = combinedAttachments
+      const projectId = thread?.metadata?.project?.id
+      if (combinedAttachments.length > 0) {
+        if (hasEmbeddingDocuments) {
+          useAppState.getState().setThreadEmbedding(threadId, true)
+          useAppState.getState().setThreadBusy(threadId, true)
+        }
+        try {
+          const parsePreference = useAttachments.getState().parseMode
+          const result = await processAttachmentsForSend({
+            attachments: combinedAttachments,
+            threadId,
+            projectId,
+            serviceHub,
+            selectedProvider,
+            parsePreference,
+          })
+          processedAttachments = result.processedAttachments
+
+          // Update thread metadata if documents were embedded
+          if (result.hasEmbeddedDocuments) {
+            const toolApproval = useToolApproval.getState()
+            const ragTools = useAppState.getState().ragToolNames
+            for (const toolName of ragTools) {
+              toolApproval.approveToolForThread(threadId, toolName)
+            }
+            useThreads.getState().updateThread(threadId, {
+              metadata: { hasDocuments: true },
+            })
+          }
+        } catch (error) {
+          console.error('Failed to process attachments:', error)
+          // Remove the preview message on failure
+          if (hasDocuments) {
+            setChatMessages((prev) =>
+              prev.filter((m) => m.id !== messageId)
+            )
+          }
+          return
+        } finally {
+          useAppState.getState().setThreadEmbedding(threadId, false)
+          useAppState.getState().setThreadBusy(threadId, false)
+        }
+      }
+
+      // Remove the preview before sendMessage adds the real user message
+      // with the same id — this prevents duplicates.
+      if (hasDocuments) {
+        setChatMessages((prev) => prev.filter((m) => m.id !== messageId))
+      }
+
+      // Persist the final message to backend
+      const baseUserMessage = newUserThreadContent(
+        threadId,
+        text,
+        processedAttachments,
+        messageId
+      )
+      // Once a thread has branches, link new turns into the active path so the
+      // assistant reply attaches to this message. Legacy threads stay linear.
+      const branchedMessages = useMessages.getState().getMessages(threadId)
+      let userMessage = baseUserMessage
+      if (hasBranching(branchedMessages)) {
+        const activeRootId = (
+          useThreads.getState().threads[threadId]?.metadata as
+            | Record<string, unknown>
+            | undefined
+        )?.activeRootId as string | undefined
+        const path = computeActivePath(branchedMessages, activeRootId)
+        const parentId = path.length ? path[path.length - 1].id : null
+        userMessage = {
+          ...baseUserMessage,
+          metadata: { ...(baseUserMessage.metadata ?? {}), parentId },
+        }
+        pendingAssistantParentId.current = messageId
+      }
+      addMessage(userMessage)
+
+      // Build parts for AI SDK. Derive media file parts from the resolved
+      // attachments (not the raw `files` arg) so the first-message flow — where
+      // media lives in the store and `files` is empty — still renders live.
+      const parts: Array<
+        | { type: 'text'; text: string }
+        | { type: 'file'; mediaType: string; url: string }
+      > = [
+        {
+          type: 'text',
+          text: userMessage.content[0].text?.value ?? text,
+        },
+      ]
+
+      mediaAttachments.forEach((a) => {
+        if (a.dataUrl && a.mimeType) {
+          parts.push({
+            type: 'file',
+            mediaType: a.mimeType,
+            url: a.dataUrl,
+          })
+        }
+      })
+
+      sendMessage({
+        parts,
+        id: messageId,
+        metadata: { ...userMessage.metadata, createdAt: new Date() },
+      })
+    },
+    [
+      sendMessage,
+      threadId,
+      thread,
+      addMessage,
+      getAttachments,
+      attachmentsKey,
+      setChatMessages,
+      clearAttachmentsForThread,
+      serviceHub,
+      selectedProvider,
+    ]
+  )
+
+  // Sends a text-only queued message, bypassing attachment processing entirely.
+  // This prevents stale or new attachments from leaking into auto-sent queue items.
+  const sendQueuedMessage = useCallback(
+    async (text: string) => {
+      const messageId = generateId()
+      const userMessage = newUserThreadContent(threadId, text, [], messageId)
+      addMessage(userMessage)
+
+      sendMessage({
+        parts: [{ type: 'text', text }],
+        id: messageId,
+        metadata: userMessage.metadata,
+      })
+    },
+    [sendMessage, threadId, addMessage]
+  )
+
+  // Check for and send initial message from sessionStorage
+  const initialMessageSentRef = useRef(false)
+
+  useEffect(() => {
+    // Prevent duplicate sends
+    if (initialMessageSentRef.current) return
+
+    const initialMessageKey = `${SESSION_STORAGE_PREFIX.INITIAL_MESSAGE}${threadId}`
+
+    const storedMessage = sessionStorage.getItem(initialMessageKey)
+
+    if (storedMessage) {
+      // Mark as sent immediately to prevent duplicate sends
+      sessionStorage.removeItem(initialMessageKey)
+      initialMessageSentRef.current = true
+
+      // Process message asynchronously
+      ;(async () => {
+        try {
+          const message = JSON.parse(storedMessage) as {
+            text: string
+            files?: Array<{ type: string; mediaType: string; url: string }>
+          }
+
+          await processAndSendMessage(message.text, message.files)
+        } catch (error) {
+          console.error('Failed to parse initial message:', error)
+        }
+      })()
+    }
+  }, [threadId, processAndSendMessage])
+
+  const stripBannerMetadata = useCallback(() => {
+    const tmsgs = useMessages.getState().getMessages(threadId)
+    for (const m of tmsgs) {
+      const meta = m.metadata as Record<string, unknown> | undefined
+      if (!meta) continue
+      if (
+        meta.oomError == null &&
+        meta.backendError == null &&
+        meta.contextError == null
+      )
+        continue
+      const nextMeta = { ...meta }
+      delete nextMeta.oomError
+      delete nextMeta.backendError
+      delete nextMeta.contextError
+      updateMessage({ ...m, metadata: nextMeta })
+    }
+  }, [threadId, updateMessage])
+
+  // Dismiss any active thread-level banner error and strip its persisted
+  // metadata. The banner stands in for a failed last assistant turn (hidden by
+  // the render filter), so leaving it set would blank a healthy assistant on
+  // whatever branch we navigate to next.
+  const clearBannerErrors = useCallback(() => {
+    if (oomError) setOomError(undefined)
+    if (backendError) setBackendError(undefined)
+    if (contextLimitError) setContextLimitError(null)
+    if (oomError || backendError || contextLimitError) stripBannerMetadata()
+  }, [
+    oomError,
+    setOomError,
+    backendError,
+    setBackendError,
+    contextLimitError,
+    stripBannerMetadata,
+  ])
+
+  // Handle submit from ChatInput
+  const handleSubmit = useCallback(
+    async (
+      text: string,
+      files?: Array<{ type: string; mediaType: string; url: string }>
+    ) => {
+      clearBannerErrors()
+      await processAndSendMessage(text, files)
+    },
+    [processAndSendMessage, clearBannerErrors]
+  )
+
+  // Versioning helpers --------------------------------------------------------
+
+  // Assign parentId along the current linear path the first time a thread forks,
+  // so siblings and subtrees are well-defined. Idempotent. Returns the store.
+  const ensureBranched = useCallback(() => {
+    const msgs = useMessages.getState().getMessages(threadId)
+    if (hasBranching(msgs)) return msgs
+    const filled = backfillParentIds(msgs)
+    filled.forEach((m) => updateMessage(m))
+    return useMessages.getState().getMessages(threadId)
+  }, [threadId, updateMessage])
+
+  // Make `node` the active branch under its parent (or active root).
+  const setActiveBranch = useCallback(
+    (node: ThreadMessage) => {
+      const parentId = getParentId(node)
+      if (!parentId) {
+        const t = useThreads.getState().threads[threadId]
+        useThreads.getState().updateThread(threadId, {
+          metadata: {
+            ...((t?.metadata as Record<string, unknown> | undefined) ?? {}),
+            activeRootId: node.id,
+          },
+        })
+        return
+      }
+      const parent = useMessages
+        .getState()
+        .getMessages(threadId)
+        .find((m) => m.id === parentId)
+      if (parent) updateMessage(withActiveChild(parent, node.id))
+    },
+    [threadId, updateMessage]
+  )
+
+  // Rebuild the rendered conversation from the active path in the store.
+  const syncActivePath = useCallback(() => {
+    const msgs = useMessages.getState().getMessages(threadId)
+    const activeRootId = (
+      useThreads.getState().threads[threadId]?.metadata as
+        | Record<string, unknown>
+        | undefined
+    )?.activeRootId as string | undefined
+    setChatMessages(
+      convertThreadMessagesToUIMessages(computeActivePath(msgs, activeRootId))
+    )
+  }, [threadId, setChatMessages])
+
+  // Switch the visible version of a message (the `< n/m >` control).
+  const handleSwitchVersion = useCallback(
+    (messageId: string, dir: -1 | 1) => {
+      const msgs = useMessages.getState().getMessages(threadId)
+      const target = msgs.find((m) => m.id === messageId)
+      if (!target) return
+      const siblings = getSiblings(msgs, target)
+      const idx = siblings.findIndex((m) => m.id === messageId)
+      const next = siblings[idx + dir]
+      if (!next) return
+      titleAbortRef.current?.abort()
+      titleAbortRef.current = null
+      clearBannerErrors()
+      setActiveBranch(next)
+      syncActivePath()
+    },
+    [threadId, setActiveBranch, syncActivePath, clearBannerErrors]
+  )
+
+  // Resolve the user message that an assistant reply hangs off of.
+  const resolveAssistantParent = useCallback(
+    (messageId: string | undefined): string | null => {
+      const msgs = useMessages.getState().getMessages(threadId)
+      const activeRootId = (
+        useThreads.getState().threads[threadId]?.metadata as
+          | Record<string, unknown>
+          | undefined
+      )?.activeRootId as string | undefined
+      const path = computeActivePath(msgs, activeRootId)
+      const idx =
+        messageId == null
+          ? path.length - 1
+          : path.findIndex((m) => m.id === messageId)
+      if (idx === -1) return null
+      const sel = path[idx]
+      if (sel.role === 'user') return sel.id
+      for (let i = idx; i >= 0; i--) {
+        if (path[i].role === 'user') return path[i].id
+      }
+      return null
+    },
+    [threadId]
+  )
+
+  // Regenerate keeps the previous reply as a prior version (no deletion); the
+  // new reply arrives in onFinish as a sibling and becomes the active branch.
+  const handleRegenerate = useCallback(
+    (messageId?: string) => {
+      const hadBannerError =
+        useAppState.getState().oomError != null ||
+        useAppState.getState().backendError != null ||
+        contextLimitError != null
+      if (useAppState.getState().oomError) {
+        useAppState.getState().setOomError(undefined)
+      }
+      if (useAppState.getState().backendError) {
+        useAppState.getState().setBackendError(undefined)
+      }
+      if (contextLimitError) setContextLimitError(null)
+      if (hadBannerError) stripBannerMetadata()
+      titleAbortRef.current?.abort()
+      titleAbortRef.current = null
+
+      ensureBranched()
+      pendingAssistantParentId.current = resolveAssistantParent(messageId)
+
+      regenerate(messageId ? { messageId } : undefined)
+    },
+    [
+      regenerate,
+      stripBannerMetadata,
+      contextLimitError,
+      ensureBranched,
+      resolveAssistantParent,
+    ]
+  )
+
+  // Resume a turn that was stopped before it finished: replay the partial text
+  // as an assistant prefill so the model continues from where it left off. The
+  // transport re-emits the partial as the first delta, so the regenerated
+  // message reconstitutes partial + new content and the KV cache is reused.
+  const handleContinue = useCallback(
+    (messageId: string) => {
+      const msg = chatMessages.find((m) => m.id === messageId)
+      if (!msg) return
+      const collect = (type: 'text' | 'reasoning') =>
+        msg.parts
+          .filter((p) => p.type === type)
+          .map((p) => (p as { text: string }).text)
+          .join('')
+      const text = collect('text')
+      const reasoning = collect('reasoning')
+      if (!text && !reasoning) return
+      setContinueFromContent({ text, reasoning })
+      continueReplaceIdRef.current = messageId
+      handleRegenerate(messageId)
+    },
+    [chatMessages, setContinueFromContent, handleRegenerate]
+  )
+
+  // Editing forks a new sibling version (the original + its subtree are kept).
+  // User edits regenerate a reply for the new branch; assistant edits don't.
+  const handleEditMessage = useCallback(
+    (messageId: string, newText: string) => {
+      const msgs = ensureBranched()
+      const target = msgs.find((m) => m.id === messageId)
+      if (!target) return
+
+      useMessageErrors.getState().clearError(messageId)
+      titleAbortRef.current?.abort()
+      titleAbortRef.current = null
+
+      const newId = generateId()
+      const sibling = makeSibling(target, {
+        id: newId,
+        createdAt: Date.now(),
+        text: newText,
+      })
+      addMessage(sibling)
+      setActiveBranch(sibling)
+
+      if (target.role === 'user') {
+        pendingAssistantParentId.current = newId
+        syncActivePath()
+        regenerate({ messageId: newId })
+      } else {
+        syncActivePath()
+      }
+    },
+    [
+      ensureBranched,
+      addMessage,
+      setActiveBranch,
+      syncActivePath,
+      regenerate,
+    ]
+  )
+
+  // Handle delete message
+  const handleDeleteMessage = useCallback(
+    (messageId: string) => {
+      // Re-link what hangs below the message before it goes. Deleting only the
+      // row stranded its children behind a parent that no longer existed, and
+      // the rest of the conversation disappeared from view (janhq/jan#8495).
+      const stored = useMessages.getState().getMessages(threadId)
+      const branched = hasBranching(stored)
+      for (const m of removeFromTree(stored, [messageId])) updateMessage(m)
+      deleteMessage(threadId, messageId)
+      useMessageErrors.getState().clearError(messageId)
+
+      if (branched) {
+        syncActivePath()
+        return
+      }
+      // Update chat messages for UI
+      const updatedChatMessages = chatMessages.filter(
+        (msg) => msg.id !== messageId
+      )
+      setChatMessages(updatedChatMessages)
+    },
+    [
+      threadId,
+      deleteMessage,
+      updateMessage,
+      syncActivePath,
+      chatMessages,
+      setChatMessages,
+    ]
+  )
+
+  // Handler for increasing context size
+  const handleContextSizeIncrease = useCallback(async () => {
+    if (!selectedModel) return
+
+    const updateProvider = useModelProvider.getState().updateProvider
+    const provider = getProviderByName(selectedProvider)
+    if (!provider) return
+
+    const modelIndex = provider.models.findIndex(
+      (m) => m.id === selectedModel.id
+    )
+    if (modelIndex === -1) return
+
+    const model = provider.models[modelIndex]
+
+    // Increase context length in steps: <8192 -> 8192 -> 32768 -> x1.5
+    const currentCtxLen =
+      (model.settings?.ctx_len?.controller_props?.value as number) ?? 8192
+    const maxCtxLen =
+      (model.settings?.ctx_len?.controller_props?.max as number) || 131072
+
+    let newCtxLen: number
+    if (currentCtxLen < 8192) {
+      newCtxLen = 8192
+    } else if (currentCtxLen < 32768) {
+      newCtxLen = 32768
+    } else {
+      newCtxLen = Math.round(currentCtxLen * 1.5)
+    }
+
+    newCtxLen = Math.min(newCtxLen, maxCtxLen)
+    if (newCtxLen <= currentCtxLen) {
+      stampContextErrorOnThread(threadId)
+      setContextLimitError(new Error(OUT_OF_CONTEXT_SIZE))
+      return
+    }
+
+    const updatedModel = {
+      ...model,
+      settings: {
+        ...model.settings,
+        ctx_len: {
+          ...(model.settings?.ctx_len ?? {}),
+          controller_props: {
+            ...(model.settings?.ctx_len?.controller_props ?? {}),
+            value: newCtxLen,
+          },
+        },
+      },
+    }
+
+    const updatedModels = [...provider.models]
+    updatedModels[modelIndex] = updatedModel as Model
+
+    updateProvider(provider.provider, {
+      models: updatedModels,
+    })
+
+    // For llamacpp the router reads ctx-size from the preset, not from any
+    // request param — so we must write model.yml and bounce the router before
+    // the regenerate, otherwise the next load picks up the OLD context size.
+    // Other providers consume the new Zustand value directly on next load.
+    if (provider.provider === 'llamacpp') {
+      try {
+        await serviceHub
+          .models()
+          .updateModelSettings(selectedModel.id, { ctx_len: newCtxLen })
+      } catch (e) {
+        updateProvider(provider.provider, {
+          models: provider.models,
+        })
+        console.error('Failed to persist increased ctx_len', e)
+        stampContextErrorOnThread(threadId)
+        setContextLimitError(new Error(OUT_OF_CONTEXT_SIZE))
+        return
+      }
+    } else {
+      await serviceHub.models().stopModel(selectedModel.id)
+    }
+
+    // Consume any pending partial captured at the `finishReason === 'length'`
+    // event so the regenerate resumes from where the stream stopped, and the
+    // "Growing the Mind…" shimmer renders while the model reloads.
+    const pending = pendingContinuationRef.current
+    pendingContinuationRef.current = null
+    if (pending) {
+      setContinueFromContentRef.current?.(pending.text)
+      setPendingContinueMessage(pending.message)
+    }
+
+    setTimeout(() => {
+      handleRegenerate()
+    }, 1000)
+  }, [
+    selectedModel,
+    selectedProvider,
+    getProviderByName,
+    serviceHub,
+    handleRegenerate,
+    threadId,
+  ])
+
+  // Keep refs in sync so onFinish always calls the latest versions
+  handleContextSizeIncreaseRef.current = handleContextSizeIncrease
+  setContinueFromContentRef.current = setContinueFromContent
+  setChatMessagesRef.current = setChatMessages
+
+  useEffect(() => {
+    if (
+      (oomError || backendError || contextLimitError) &&
+      (status === 'streaming' || status === 'submitted')
+    ) {
+      try {
+        stop()
+      } catch (e) {
+        console.warn('router error stop() threw:', e)
+      }
+    }
+  }, [oomError, backendError, contextLimitError, status, stop])
+
+  useEffect(() => {
+    if (status === 'streaming' && pendingContinuationRef.current) {
+      // The new turn is now flowing; drop the saved partial so it can't be
+      // consumed by a later, unrelated "Increase Context Size" click.
+      pendingContinuationRef.current = null
+    }
+    if (status === 'error' && pendingContinueMessage) {
+      setPendingContinueMessage(null)
+    }
+  }, [status]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Message queue: auto-send the next queued message when the stream finishes.
+  // No reactive subscription to the queue here — ChatInput owns the UI.
+  // We only read the store imperatively when status transitions to 'ready'.
+  const processingQueueRef = useRef(false)
+
+  useEffect(() => {
+    if (status !== 'ready' || processingQueueRef.current) return
+    if (sessionData.tools.length > 0) return
+
+    const next = useMessageQueue.getState().dequeue(threadId)
+    if (!next) return
+
+    processingQueueRef.current = true
+    sendQueuedMessage(next.text)
+      .catch((err) => {
+        console.error('Failed to send queued message:', err)
+      })
+      .finally(() => {
+        processingQueueRef.current = false
+      })
+  }, [status, threadId, sendQueuedMessage, sessionData.tools.length])
+
+  // If streaming errors out, discard any queued messages so they don't sit there stuck
+  useEffect(() => {
+    if (status === 'error') {
+      useMessageQueue.getState().clearQueue(threadId)
+    }
+  }, [status, threadId])
+
+  // Attach the error to the assistant turn it belongs to so the banner renders
+  // alongside any tool-call parts the model already produced. Falls back to the
+  // last user message if no assistant message exists yet (e.g. provider 4xx
+  // before streaming starts).
+  useEffect(() => {
+    if (!error) return
+    let targetId: string | undefined
+    let lastUserIdx = -1
+    for (let i = chatMessages.length - 1; i >= 0; i--) {
+      if (chatMessages[i].role === 'user') {
+        lastUserIdx = i
+        break
+      }
+    }
+    for (let i = chatMessages.length - 1; i > lastUserIdx; i--) {
+      if (chatMessages[i].role === 'assistant') {
+        targetId = chatMessages[i].id
+        break
+      }
+    }
+    if (!targetId && lastUserIdx >= 0) {
+      targetId = chatMessages[lastUserIdx].id
+    }
+    if (!targetId) return
+    const errMessage =
+      error instanceof Error ? error.message : String(error || 'Error')
+    // Context overflow is owned by the global "Increase Context Size" banner;
+    // a per-message Regenerate would just re-overflow the same prompt.
+    if (isContextOverflowMessage(errMessage)) {
+      stampContextErrorOnThread(threadId, errMessage)
+      setContextLimitError(new Error(errMessage))
+      useMessageErrors.getState().clearError(targetId)
+      return
+    }
+    useMessageErrors.getState().setError(targetId, errMessage)
+    const tm = useMessages.getState().getMessages(threadId).find(
+      (m) => m.id === targetId
+    )
+    if (tm) {
+      const existingError = (tm.metadata as Record<string, unknown> | undefined)
+        ?.error
+      if (existingError !== errMessage) {
+        updateMessage({
+          ...tm,
+          metadata: { ...(tm.metadata || {}), error: errMessage },
+        })
+      }
+    }
+  }, [status, error, threadId, chatMessages, updateMessage])
+
+  // Persist whenever the user message lands in useMessages — covers the race
+  // where the stamping effect ran before addMessage's commit was observable.
+  const localThreadMessages = useMessages((s) => s.messages?.[threadId])
+  const errorEntries = useMessageErrors((s) => s.errors)
+  useEffect(() => {
+    if (!localThreadMessages) return
+    for (const m of localThreadMessages) {
+      const err = errorEntries[m.id]
+      if (typeof err !== 'string' || !err) continue
+      const existing = (m.metadata as Record<string, unknown> | undefined)
+        ?.error
+      if (existing === err) continue
+      updateMessage({
+        ...m,
+        metadata: { ...(m.metadata || {}), error: err },
+      })
+    }
+  }, [localThreadMessages, errorEntries, updateMessage])
+
+  // Clear the queue when navigating away from this thread
+  useEffect(() => {
+    return () => {
+      useMessageQueue.getState().clearQueue(threadId)
+    }
+  }, [threadId])
+
+  const threadModel = useMemo(
+    () => searchThreadModel ?? thread?.model,
+    [searchThreadModel, thread]
+  )
+
+  // The title as text: search highlighting can leave span markup in it.
+  const plainThreadTitle = (thread?.title || t('common:newThread')).replace(
+    /<span[^>]*>|<\/span>/g,
+    ''
+  )
+
+  // Who this conversation is: title, project, model.
+  const identity = (
+    <div className="flex min-w-0 flex-1 items-center gap-2">
+      <h1
+        data-testid="conversation-title"
+        className={cn(
+          'min-w-0 truncate text-sm font-semibold text-foreground',
+          isSplit ? 'block max-w-[45%]' : 'hidden max-w-[40%] sm:block'
+        )}
+        title={plainThreadTitle}
+      >
+        {plainThreadTitle}
+      </h1>
+      {thread?.metadata?.project?.name && !isSplit && (
+        <span
+          className="hidden min-w-0 max-w-40 items-center gap-1 truncate text-xs text-ink-2 lg:inline-flex"
+          title={thread.metadata.project.name}
+        >
+          <Folder className="size-3.5 shrink-0" aria-hidden />
+          <span className="truncate">{thread.metadata.project.name}</span>
+        </span>
+      )}
+      <div className="min-w-0 shrink">
+        <DropdownModelProvider model={threadModel} />
+      </div>
+    </div>
+  )
+
+  // What acts on it, plus whatever the surrounding layout adds.
+  const controlsWith = (extra: ReactNode) => (
+    <div className="flex shrink-0 items-center gap-1.5">
+      <WhatJanIsUsing threadId={threadId} messages={chatMessages} />
+      <TemporaryChatBanner threadId={threadId} />
+      {extra}
+    </div>
+  )
+
+  // Per-message version counts for the `< n/m >` navigation control.
+  const versionInfoById = useMemo(() => {
+    const map: Record<string, { index: number; count: number }> = {}
+    if (!localThreadMessages || !hasBranching(localThreadMessages)) return map
+    for (const m of localThreadMessages) {
+      const info = getVersionInfo(localThreadMessages, m)
+      if (info.count > 1) map[m.id] = info
+    }
+    return map
+  }, [localThreadMessages])
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      {isSplit ? (
+        // A pane's own header: the same identity and controls, sized for a
+        // pane, with the accent on the pane the user is working in.
+        <div
+          data-testid={`conversation-pane-header-${paneId}`}
+          data-active={isActive}
+          className={cn(
+            'flex h-12 shrink-0 items-center gap-2 border-b border-border bg-card px-2 md:px-3',
+            isActive && 'shadow-[inset_0_2px_0_0_var(--brand)]'
+          )}
+        >
+          {identity}
+          {controlsWith(paneControls)}
+        </div>
+      ) : (
+        <HeaderPage>
+          {/* Conversation identity first -- title, project, model -- then
+              the controls that act on it. The title gives way first on a
+              phone. */}
+          <div className="flex w-full min-w-0 items-center justify-between gap-2 md:pr-2">
+            {identity}
+            {controlsWith(contextControls)}
+          </div>
+        </HeaderPage>
+      )}
+      <div className="flex flex-1 flex-col h-full min-h-0 min-w-0 overflow-hidden">
+        {/* Messages Area */}
+        <div
+          className="message-zoom flex-1 relative min-w-0"
+          style={
+            {
+              '--font-size-base': `calc(${fontSize} * ${messageZoom})`,
+            } as CSSProperties
+          }
+        >
+          <Conversation className="absolute inset-0 text-start">
+            <ConversationContent
+              className={cn(
+                'mx-auto w-full min-w-0 max-w-[720px] px-3 pt-6 pb-4 md:px-4'
+              )}
+            >
+              {chatMessages.map((message, index) => {
+                const isLastMessage = index === chatMessages.length - 1
+                const isFirstMessage = index === 0
+                // A banner error stands in for the failed assistant turn:
+                // regenerate/reload restarts it from scratch, so hide the
+                // partial (tool calls, "Worked for Ns") and show only the banner.
+                if (
+                  isLastMessage &&
+                  hasBannerError &&
+                  message.role === 'assistant'
+                )
+                  return null
+                return (
+                  <MessageItem
+                    key={message.id}
+                    message={message}
+                    isFirstMessage={isFirstMessage}
+                    isLastMessage={isLastMessage}
+                    status={effectiveStatus}
+                    reasoningContainerRef={reasoningContainerRef}
+                    isReasoningAtBottom={isReasoningAtBottom}
+                    onReasoningScroll={handleReasoningScroll}
+                    onReasoningScrollToBottom={forceScrollReasoningToBottom}
+                    onRegenerate={handleRegenerate}
+                    onContinue={handleContinue}
+                    onEdit={handleEditMessage}
+                    onDelete={handleDeleteMessage}
+                    versionInfo={versionInfoById[message.id]}
+                    onSwitchVersion={handleSwitchVersion}
+                    isAnimating={!pendingContinueMessage}
+                    hideActions={!!pendingContinueMessage}
+                  />
+                )
+              })}
+              {pendingContinueMessage && status === 'submitted' && (
+                <MessageItem
+                  key={`continue-placeholder-${pendingContinueMessage.id}`}
+                  message={pendingContinueMessage}
+                  isFirstMessage={false}
+                  isLastMessage={true}
+                  status={effectiveStatus}
+                  reasoningContainerRef={reasoningContainerRef}
+                  isReasoningAtBottom={isReasoningAtBottom}
+                  onReasoningScroll={handleReasoningScroll}
+                  onReasoningScrollToBottom={forceScrollReasoningToBottom}
+                  onRegenerate={handleRegenerate}
+                  onEdit={handleEditMessage}
+                  onDelete={handleDeleteMessage}
+                  hideActions
+                  isAnimating={false}
+                />
+              )}
+              {memoryLocation && (
+                <MemoryProposalList
+                  className="my-2"
+                  proposals={memoryProposals}
+                  location={memoryLocation}
+                  onResolved={onMemoryProposalResolved}
+                  onOpenSettings={() =>
+                    navigate({ to: route.settings.memory })
+                  }
+                />
+              )}
+              {processingEmbeddings && (
+                <div
+                  role="status"
+                  className="flex items-start gap-3 px-4 py-3 my-2 rounded-lg border border-border bg-card"
+                >
+                  <Loader2 className="size-4 text-brand shrink-0 mt-0.5 motion-safe:animate-spin" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground mb-0.5">
+                      {t('chat:embeddings.title')}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {t('chat:embeddings.description')}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {!oomError &&
+                !backendError &&
+                !contextLimitError &&
+                status === CHAT_STATUS.SUBMITTED && (
+                <div className="flex flex-row items-center gap-2">
+                  {pendingContinueMessage && (
+                    <Shimmer duration={1}>Growing the Mind...</Shimmer>
+                  )}
+                  {!pendingContinueMessage && !lastIsAssistant && (
+                    <PromptProgress />
+                  )}
+                </div>
+              )}
+              {(contextLimitError || oomError || backendError) && (
+                <div
+                  role="alert"
+                  data-testid="conversation-error-notice"
+                  className="px-4 py-3 my-2 rounded-lg border border-destructive/30 bg-destructive-tint"
+                >
+                  <div className="flex items-start gap-3">
+                    <CircleAlert className="size-4 text-destructive shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-destructive mb-1">
+                        {oomError
+                          ? 'llama.cpp ran out of memory'
+                          : backendError
+                            ? 'GGML backend encountered an error'
+                            : 'Model ran out of context size'}
+                      </p>
+                      <div className="table table-fixed w-full">
+                        <span
+                          className={
+                            (oomError || backendError
+                              ? 'text-xs font-mono'
+                              : 'text-sm') +
+                            ' text-ink-2 table-cell align-middle'
+                          }
+                          style={{ wordWrap: 'break-word' }}
+                        >
+                          {oomError ?? backendError ?? contextBannerMessage}
+                        </span>
+                      </div>
+                      {oomError && (
+                        <ul className="mt-2 list-disc pl-5 text-xs text-ink-2 space-y-0.5">
+                          <li>Reduce context size (ctx-size)</li>
+                          <li>Disable MTP (Multi-Token Prediction)</li>
+                          <li>Lower n-gpu-layers or switch to a CPU backend</li>
+                          <li>Use a smaller / more quantized model</li>
+                        </ul>
+                      )}
+                      {((error ?? contextLimitError)?.message
+                        ?.toLowerCase()
+                        .includes('context') &&
+                        ((error ?? contextLimitError)?.message
+                          ?.toLowerCase()
+                          .includes('size') ||
+                          (error ?? contextLimitError)?.message
+                            ?.toLowerCase()
+                            .includes('length') ||
+                          (error ?? contextLimitError)?.message
+                            ?.toLowerCase()
+                            .includes('limit'))) ||
+                      (error ?? contextLimitError)?.message ===
+                        OUT_OF_CONTEXT_SIZE ? (
+                        // Only where Jan sets the window at load. For any
+                        // other provider the server owns it, and raising a
+                        // setting nothing sends cannot help (janhq/jan#8760).
+                        contextIsResizable(selectedProvider) ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3 pointer-coarse:h-11"
+                            onClick={handleContextSizeIncrease}
+                          >
+                            <CircleAlert className="size-4" />
+                            Increase Context Size
+                          </Button>
+                        ) : (
+                          <div className="mt-3 space-y-2">
+                            <p className="text-sm text-ink-2">
+                              This model's context window is set by its server,
+                              so Jan cannot enlarge it. Start a new chat, shorten
+                              the conversation, or raise the limit on the server.
+                            </p>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="pointer-coarse:h-11"
+                              onClick={() => handleRegenerate()}
+                            >
+                              <RefreshCw className="size-4" />
+                              Regenerate
+                            </Button>
+                          </div>
+                        )
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-3 pointer-coarse:h-11"
+                          onClick={() => handleRegenerate()}
+                        >
+                          <RefreshCw className="size-4" />
+                          {oomError || backendError ? 'Reload' : 'Regenerate'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </ConversationContent>
+            <ConversationScrollButton />
+          </Conversation>
+        </div>
+
+        {/* Chat Input - Fixed at bottom. The shell sizes the page to the
+            visual viewport, so this stays above a phone keyboard. */}
+        <div className="mx-auto w-full min-w-0 max-w-[752px] px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-4 md:pb-4">
+
+          <ChatInput
+            model={threadModel}
+            onSubmit={handleSubmit}
+            onStop={stop}
+            chatStatus={effectiveStatus}
+            // Named, not inferred from the current thread: in a split the
+            // current thread is the other pane half the time.
+            threadId={threadId}
+            draftScope={
+              paneId === 'secondary' ? SECONDARY_DRAFT_SCOPE : undefined
+            }
+            takeFocus={isActive}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}

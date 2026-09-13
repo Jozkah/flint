@@ -2,9 +2,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 
 import { useEffect, useState, useRef } from 'react'
+import { ScrollText } from 'lucide-react'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import type { LogEntry } from '@/services/app/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { SystemPageHeader } from '@/containers/SystemPageHeader'
+import { CopyLogsButton, LogViewer } from '@/containers/LogViewer'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.localApiServerlogs as any)({
@@ -62,58 +65,19 @@ function LogsViewer() {
     }
   }
 
-  // Function to get appropriate color for log level
-  const getLogLevelColor = (level: string) => {
-    switch (level) {
-      case 'error':
-        return 'text-red-500'
-      case 'warn':
-        return 'text-yellow-500'
-      case 'info':
-        return 'text-blue-500'
-      case 'debug':
-        return 'text-gray-500'
-      default:
-        return 'text-gray-500'
-    }
-  }
-
-  // Format timestamp to be more readable
-  const formatTimestamp = (timestamp: string | number) => {
-    const date = new Date(timestamp)
-    return date.toLocaleTimeString('en-US', {
-      hour12: false,
-      timeZone: 'UTC',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    })
-  }
-
   return (
-    <div className="flex flex-col h-full bg-background">
-      <div className="flex-1 overflow-auto" ref={logsContainerRef}>
-        <div className="font-mono p-2">
-          {logs.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8">
-              {t('logs:noLogs')}
-            </div>
-          ) : (
-            logs.map((log, index) => (
-              <div key={index} className="mb-1 flex">
-                <span className="text-muted-foreground mr-2">
-                  [{formatTimestamp(log.timestamp)}]
-                </span>
-                <span
-                  className={`mr-2 font-semibold ${getLogLevelColor(log.level)}`}
-                >
-                  {log.level.toUpperCase()}
-                </span>
-                <span>{log.message}</span>
-              </div>
-            ))
-          )}
-        </div>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background">
+      <SystemPageHeader
+        title={t('logs:serverTitle')}
+        icon={<ScrollText className="size-4" />}
+        actions={<CopyLogsButton logs={logs} />}
+      />
+      <div className="flex min-h-0 flex-1 flex-col p-3 md:p-4">
+        <LogViewer
+          ref={logsContainerRef}
+          logs={logs}
+          emptyText={t('logs:noLogs')}
+        />
       </div>
     </div>
   )

@@ -883,9 +883,10 @@ pub async fn claude_plan_summary(fallback: &str) -> String {
     else {
         return fallback.to_string();
     };
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
+    let client = match crate::core::net::tls::apply12(
+        reqwest::Client::builder().timeout(std::time::Duration::from_secs(15)),
+    )
+    .build()
     {
         Ok(client) => client,
         Err(_) => return fallback.to_string(),

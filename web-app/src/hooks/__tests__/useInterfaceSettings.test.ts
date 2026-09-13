@@ -48,10 +48,10 @@ describe('useInterfaceSettings', () => {
     const { result } = renderHook(() => useInterfaceSettings())
 
     expect(result.current.fontSize).toBe('16px')
-    expect(result.current.accentColor).toBe('gray')
+    expect(result.current.accent).toEqual({ preset: 'vermilion' })
     expect(result.current.notificationPosition).toBe('top-right')
     expect(typeof result.current.setFontSize).toBe('function')
-    expect(typeof result.current.setAccentColor).toBe('function')
+    expect(typeof result.current.setAccent).toBe('function')
     expect(typeof result.current.resetInterface).toBe('function')
   })
 
@@ -65,33 +65,48 @@ describe('useInterfaceSettings', () => {
     expect(result.current.fontSize).toBe('18px')
   })
 
-  describe('accent color', () => {
-    it('should update accent color', () => {
+  describe('accent', () => {
+    it('applies a preset and a custom colour', () => {
       const { result } = renderHook(() => useInterfaceSettings())
 
       act(() => {
-        result.current.setAccentColor('blue')
+        result.current.setAccent({ preset: 'moss' })
       })
+      expect(result.current.accent).toEqual({ preset: 'moss' })
 
-      expect(result.current.accentColor).toBe('blue')
+      act(() => {
+        result.current.setAccent({ custom: '#3b6ea5' })
+      })
+      expect(result.current.accent).toEqual({ custom: '#3B6EA5' })
     })
 
-    it('should not update for invalid accent color', () => {
+    it('ignores invalid accents instead of resetting the choice', () => {
       const { result } = renderHook(() => useInterfaceSettings())
 
-      // First reset to default state
       act(() => {
-        result.current.resetInterface()
+        result.current.setAccent({ preset: 'ink' })
+      })
+      act(() => {
+        result.current.setAccent({ custom: '#12G4Z9' })
+        result.current.setAccent({ preset: 'invalid' } as any)
       })
 
-      const currentColor = result.current.accentColor
+      expect(result.current.accent).toEqual({ preset: 'ink' })
+    })
+
+    it('resets the accent alone to Vermilion', () => {
+      const { result } = renderHook(() => useInterfaceSettings())
 
       act(() => {
-        result.current.setAccentColor('invalid' as any)
+        result.current.setFontSize('18px')
+        result.current.setAccent({ custom: '#101820' })
+      })
+      act(() => {
+        result.current.resetAccent()
       })
 
-      // Should remain unchanged
-      expect(result.current.accentColor).toBe(currentColor)
+      expect(result.current.accent).toEqual({ preset: 'vermilion' })
+      expect(result.current.fontSize).toBe('18px')
     })
   })
 
@@ -101,7 +116,7 @@ describe('useInterfaceSettings', () => {
     // Change some values first
     act(() => {
       result.current.setFontSize('18px')
-      result.current.setAccentColor('blue')
+      result.current.setAccent({ preset: 'ink' })
     })
 
     // Reset
@@ -110,7 +125,7 @@ describe('useInterfaceSettings', () => {
     })
 
     expect(result.current.fontSize).toBe('16px')
-    expect(result.current.accentColor).toBe('gray')
+    expect(result.current.accent).toEqual({ preset: 'vermilion' })
     expect(result.current.notificationPosition).toBe('top-right')
   })
 
@@ -143,6 +158,7 @@ describe('useInterfaceSettings', () => {
       Object.defineProperty(document.documentElement, 'style', {
         value: {
           setProperty: vi.fn(),
+          removeProperty: vi.fn(),
         },
         writable: true,
       })

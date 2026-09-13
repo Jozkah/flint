@@ -4,19 +4,27 @@
  * One call is one item that moves through phases. It is never replaced by its
  * result and never removed: a timeline that drops a finished call cannot
  * answer "what did this run actually do", which is the question the record
- * exists for. Ordering comes from when a call was requested, so two calls that
- * finish out of order still read in the order they were made.
+ * exists for. Ordering comes from the sequence the backend stamps on each
+ * event as it writes it, so two calls that finish out of order still read in
+ * the order they were made.
  *
- * Everything is written through `dispatchCoworkTool`, which is the single
- * place a tool call is routed -- the main agent, a subagent, a background
- * task and an MCP server all arrive there -- so nothing can execute without
- * appearing here.
+ * Every tool call is written through `withToolActivity`: Cowork routes through
+ * `dispatchCoworkTool` (the main agent, subagents, background tasks and MCP
+ * servers all arrive there) and Chat through its tool loop in the thread
+ * route. The run's own lifecycle -- a subagent dispatched or stopped, a
+ * background job stopped, a context compaction -- is recorded into the same
+ * sequence with `recordLifecycle`, so there is one execution-event model and
+ * not several stores that can disagree.
  */
+import type { ChangeActorInput } from '@janhq/tauri-plugin-agent-tools-api'
 import { invoke } from '@tauri-apps/api/core'
 import { summarizeToolInput } from '@/lib/toolInputSummary'
+import { backgroundJobId } from '@/lib/coworkTasks'
+import { bashExitCode } from '@/lib/redact'
 
 export type ToolActivityPhase =
   | 'requested'
+  | 'queued'
   | 'awaiting-permission'
   | 'allowed'
   | 'refused'
@@ -48,40 +56,102 @@ export function isHideablePhase(phase: ToolActivityPhase): boolean {
   return phase === 'succeeded'
 }
 
+/** What a call did to one file, counted from the diff that call produced. */
+export type FileChange = {
+  path: string
+  /** `created` / `edited` / `deleted` / `renamed` / `binary`. */
+  kind: string
+  from?: string
+  added?: number
+  removed?: number
+  /** The diff was stored and `loadToolDiff` returns it. */
+  diffStored: boolean
+  /** Larger than the backend keeps: counted, not stored. */
+  oversized: boolean
+}
+
+export type EventType = 'tool' | 'lifecycle'
+
+/** Which surface recorded an event. */
+export type ActivitySource = 'cowork' | 'chat' | 'cli' | 'subagent'
+
 export type ToolActivityEvent = {
   v: number
   at: string
+  at_ms?: number | null
+  seq?: number | null
   session: string
   run: string
   call: string
   invocation: string
   agent: string
+  /** The agent's durable identity (AH-110): `agent`, `agent:<name>`, `role:<name>`. */
+  agent_id?: string
   project: string
+  source?: string
+  parent?: string
+  supersedes?: string
+  event_type?: EventType
+  lifecycle?: string
   tool: string
   capability: string
   kind: string
   resource: string
   summary: string
+  input?: string | null
   phase: ToolActivityPhase
   elapsed_ms?: number | null
   exit_code?: number | null
   detail: string
+  /** On a harness refusal: its kind (`tool-not-offered`, `invalid-call`). */
+  refusal?: string | null
+  output?: string | null
+  output_truncated?: boolean
+  job_id?: string
+  task_id?: string
+  change?: FileChange | null
+  /** The call's diff; the backend stores it beside the log, never inline. */
+  diff?: string | null
+  /** What the call's command used (AH-174). */
+  resources?: unknown
 }
 
 export type ToolActivityItem = {
+  /** Session and call together: a provider call id alone is not unique. */
+  id?: string
   call: string
   tool: string
   session: string
   run: string
   invocation: string
   agent: string
+  /** The agent's durable identity, empty when the event carried none. */
+  agent_id?: string
+  source?: string
+  parent?: string
+  supersedes?: string
+  event_type?: EventType
+  lifecycle?: string
   resource: string
   summary: string
+  input?: string | null
   phase: ToolActivityPhase
+  seq?: number | null
   requested_at: string
+  requested_at_ms?: number | null
+  finished_at?: string | null
+  finished_at_ms?: number | null
   elapsed_ms: number | null
   exit_code: number | null
   detail: string
+  refusal?: string | null
+  output?: string | null
+  output_truncated?: boolean
+  /** `available` / `truncated` / `unavailable` / `pending`. */
+  output_state?: string
+  job_id?: string
+  task_id?: string
+  change?: FileChange | null
   history: ToolActivityPhase[]
 }
 
@@ -156,12 +226,37 @@ export function resourceOf(input: unknown): string {
         })()
       : input
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return ''
-  const fields = ['path', 'file_path', 'filePath', 'command', 'url', 'pattern']
+  const fields = [
+    'path',
+    'file_path',
+    'filePath',
+    'command',
+    'url',
+    'pattern',
+    'query',
+  ]
   for (const field of fields) {
     const value = (parsed as Record<string, unknown>)[field]
     if (typeof value === 'string' && value.trim()) return value.trim()
   }
   return ''
+}
+
+/** Longest input sent for the record; the backend redacts and bounds again. */
+const MAX_INPUT_CHARS = 4096
+
+/** A call's arguments as text for the record, bounded. */
+export function inputOf(input: unknown): string | undefined {
+  if (input == null) return undefined
+  let text: string
+  try {
+    text = typeof input === 'string' ? input : JSON.stringify(input)
+  } catch {
+    return undefined
+  }
+  return text.length > MAX_INPUT_CHARS
+    ? `${text.slice(0, MAX_INPUT_CHARS)}…`
+    : text
 }
 
 /** Identity the events of a run are written under. */
@@ -170,7 +265,36 @@ export type ToolActivityContext = {
   run: string
   invocation?: string
   agent?: string
+  /**
+   * The agent's durable identity in the subject spelling (AH-110): `agent`,
+   * `agent:<name>`, `role:<name>`. Absent means the primary agent, or -- for a
+   * subagent -- derived from `agent`, which is why a renameable display name is
+   * never the only identifier on a change.
+   */
+  agentId?: string
+  /** The agent that dispatched this one, same spelling. */
+  parentAgent?: string
   project?: string
+  source?: ActivitySource
+  /** The task or workflow this call runs under. */
+  parent?: string
+}
+
+/** What a change should be attributed to, from the identity a call runs under. */
+export function actorFor(
+  ctx: Partial<ToolActivityContext> | undefined
+): ChangeActorInput | undefined {
+  if (!ctx) return undefined
+  const name = ctx.agent?.trim()
+  const id = ctx.agentId?.trim() || (name && name !== 'main' ? `agent:${name}` : 'agent')
+  if (!id) return undefined
+  return {
+    id,
+    label: name && name !== 'main' ? name : undefined,
+    parent: ctx.parentAgent?.trim() || undefined,
+    invocation: ctx.invocation || undefined,
+    task: ctx.parent || undefined,
+  }
 }
 
 /**
@@ -196,18 +320,26 @@ export function recordToolActivity(
     Pick<ToolActivityEvent, 'call' | 'tool' | 'phase'>
 ): Promise<void> {
   // Stamped when the event happened, not when its turn in the queue comes up.
-  const at = new Date().toISOString()
+  const atMs = Date.now()
+  const at = new Date(atMs).toISOString()
   const write = async () => {
     try {
       await invoke('tool_activity_record', {
         event: {
-          v: 1,
+          v: 2,
           at,
+          at_ms: atMs,
           session: '',
           run: '',
           invocation: '',
           agent: '',
+          agent_id: '',
           project: '',
+          source: '',
+          parent: '',
+          supersedes: '',
+          event_type: 'tool',
+          lifecycle: '',
           capability: capabilityOf(event.tool),
           kind: kindOf(event.tool),
           resource: '',
@@ -215,6 +347,8 @@ export function recordToolActivity(
           detail: '',
           elapsed_ms: null,
           exit_code: null,
+          job_id: '',
+          task_id: '',
           ...event,
         },
       })
@@ -224,6 +358,51 @@ export function recordToolActivity(
   }
   queue = queue.then(write, write)
   return queue as Promise<void>
+}
+
+/**
+ * Record something the run itself did, into the same sequence as its tool
+ * calls: a subagent dispatched, queued, finished or stopped; a background job
+ * stopped; a context compaction. One item per `id`, moving through phases
+ * like a tool call does.
+ */
+export function recordLifecycle(
+  ctx: ToolActivityContext,
+  event: {
+    /** Stable for the life of the thing: the same id for every phase. */
+    id: string
+    /** `subagent`, `background-job`, `compaction`, `steering`, `approval`. */
+    lifecycle: string
+    phase: ToolActivityPhase
+    summary?: string
+    detail?: string
+    jobId?: string
+    taskId?: string
+    elapsedMs?: number
+  }
+): Promise<void> {
+  return recordToolActivity({
+    call: event.id,
+    tool: event.lifecycle,
+    phase: event.phase,
+    event_type: 'lifecycle',
+    lifecycle: event.lifecycle,
+    session: ctx.session,
+    run: ctx.run,
+    invocation: ctx.invocation ?? '',
+    agent: ctx.agent ?? '',
+    agent_id: actorFor(ctx)?.id ?? '',
+    project: ctx.project ?? '',
+    source: ctx.source ?? '',
+    parent: ctx.parent ?? '',
+    summary: event.summary ?? '',
+    detail: event.detail ?? '',
+    job_id: event.jobId ?? '',
+    task_id: event.taskId ?? '',
+    elapsed_ms: event.elapsedMs ?? null,
+    capability: 'read',
+    kind: 'process',
+  })
 }
 
 /** The durable timeline for a session, rebuilt from the record on disk. */
@@ -242,6 +421,52 @@ export async function loadToolActivity(
   }
 }
 
+/** The diff one call produced, as stored when it ended; `null` when none was. */
+export async function loadToolDiff(
+  session: string,
+  call: string
+): Promise<string | null> {
+  try {
+    const diff = await invoke<string | null>('tool_activity_diff', {
+      session,
+      call,
+    })
+    return typeof diff === 'string' ? diff : null
+  } catch {
+    return null
+  }
+}
+
+/** One session's permission decisions and execution record, as JSON. AH-200. */
+export async function exportAudit(session: string): Promise<string> {
+  return await invoke<string>('audit_export', { session })
+}
+
+/**
+ * The parts of a tool's outcome the record keeps, whichever surface ran it:
+ * Cowork's `{output, isError, diff}`, Chat's `{content, error}` and an MCP
+ * result all read the same.
+ */
+export type RecordableOutcome = {
+  isError?: boolean
+  output?: unknown
+  content?: unknown
+  error?: unknown
+  diff?: string | null
+  resources?: unknown
+}
+
+function outcomeText(outcome: RecordableOutcome): string | undefined {
+  const pick = outcome.error ?? outcome.output ?? outcome.content
+  if (pick == null) return undefined
+  if (typeof pick === 'string') return pick
+  try {
+    return JSON.stringify(pick)
+  } catch {
+    return undefined
+  }
+}
+
 /**
  * Run one tool call and record its whole life.
  *
@@ -249,7 +474,7 @@ export async function loadToolActivity(
  * covered without being told to be. The outcome is passed through untouched --
  * recording must not change what the model is told happened.
  */
-export async function withToolActivity<T extends { isError?: boolean }>(
+export async function withToolActivity<T extends RecordableOutcome>(
   call: { toolCallId: string; toolName: string; input: unknown },
   ctx: ToolActivityContext,
   signal: AbortSignal | undefined,
@@ -262,7 +487,10 @@ export async function withToolActivity<T extends { isError?: boolean }>(
     run: ctx.run,
     invocation: ctx.invocation ?? '',
     agent: ctx.agent ?? '',
+    agent_id: actorFor(ctx)?.id ?? '',
     project: ctx.project ?? '',
+    source: ctx.source ?? '',
+    parent: ctx.parent ?? '',
     resource: resourceOf(call.input),
     summary: summarizeToolInput(call.input),
   }
@@ -270,7 +498,11 @@ export async function withToolActivity<T extends { isError?: boolean }>(
 
   // Not awaited: the queue keeps the order, and a tool must start when the
   // model asked for it rather than when its audit line reached disk.
-  void recordToolActivity({ ...base, phase: 'requested' })
+  void recordToolActivity({
+    ...base,
+    phase: 'requested',
+    input: inputOf(call.input) ?? null,
+  })
   void recordToolActivity({ ...base, phase: 'running' })
 
   try {
@@ -278,21 +510,30 @@ export async function withToolActivity<T extends { isError?: boolean }>(
     // An aborted run reports its calls as cancelled, not failed: the user
     // stopping work is not the tool going wrong, and the timeline has to keep
     // the two apart.
+    const failed = outcome.isError || Boolean(outcome.error)
     const phase: ToolActivityPhase = signal?.aborted
       ? 'cancelled'
-      : outcome.isError
+      : failed
         ? 'failed'
         : 'succeeded'
+    const text = outcomeText(outcome)
+    const jobId =
+      call.toolName === 'bash' ? (backgroundJobId(text) ?? '') : ''
     await recordToolActivity({
       ...base,
       phase,
       elapsed_ms: Date.now() - startedAt,
+      output: text ?? null,
+      exit_code: call.toolName === 'bash' ? (bashExitCode(text) ?? null) : null,
+      job_id: jobId,
+      diff: outcome.diff ?? null,
+      ...(outcome.resources ? { resources: outcome.resources } : {}),
     })
     return outcome
   } catch (error) {
-    // `dispatchCoworkTool` resolves rather than throws, so reaching here means
-    // something unforeseen went wrong -- which is exactly the case the record
-    // must not lose.
+    // The router resolves rather than throws, so reaching here means something
+    // unforeseen went wrong -- which is exactly the case the record must not
+    // lose.
     await recordToolActivity({
       ...base,
       phase: signal?.aborted ? 'cancelled' : 'failed',

@@ -38,12 +38,15 @@ pub struct Access {
     pub project_store: Option<PathBuf>,
     /// The permanent store holding user and session records.
     pub permanent_store: Option<PathBuf>,
+    /// Why the named project folder was not usable for memory, when it was
+    /// refused (a link, the data folder, a path that does not resolve).
+    pub project_refused: Option<String>,
 }
 
 impl Access {
     /// Where records of this scope live, or `None` when the caller has no
     /// standing to see that scope at all.
-    fn store_for(&self, scope: Scope) -> Option<&Path> {
+    pub(crate) fn store_for(&self, scope: Scope) -> Option<&Path> {
         match scope {
             Scope::Project => self.project_store.as_deref(),
             Scope::User | Scope::Session => self.permanent_store.as_deref(),
@@ -55,7 +58,7 @@ impl Access {
     /// The same containment the prompt path applies, enforced again here
     /// because a management surface is a second way to read memory and must not
     /// be a weaker one.
-    fn may_see(&self, record: &MemoryRecord) -> bool {
+    pub(crate) fn may_see(&self, record: &MemoryRecord) -> bool {
         match record.scope {
             Scope::User => true,
             Scope::Project => match (&record.project_id, &self.project_id) {
@@ -137,6 +140,18 @@ pub struct MemoryView {
     /// A short preview for a dense list, so the renderer never has to truncate
     /// content itself and accidentally cut a redaction marker in half.
     pub preview: String,
+    /// `None` when the record predates versions: shown as unknown.
+    pub version: Option<u32>,
+    pub content_hash: String,
+    /// "user-authored", "agent-authored", "imported", "extracted" or "system".
+    pub source_type: String,
+    pub source_run_id: Option<String>,
+    pub source_project_id: Option<String>,
+    pub history: Vec<super::record::Revision>,
+    /// The most recent dispatches that carried it, newest last.
+    pub uses: Vec<super::record::MemoryUse>,
+    /// Set for an imported memory: the export it came in and its origin there.
+    pub imported_from: Option<super::record::ImportedFrom>,
 }
 
 fn preview_of(content: &str) -> String {
@@ -151,7 +166,7 @@ fn preview_of(content: &str) -> String {
 }
 
 impl MemoryView {
-    fn from_record(record: &MemoryRecord) -> Self {
+    pub(crate) fn from_record(record: &MemoryRecord) -> Self {
         Self {
             id: record.id.to_string(),
             content: record.content.clone(),
@@ -183,6 +198,14 @@ impl MemoryView {
             source_deleted: record.provenance.source_deleted,
             supersedes: record.supersedes.as_ref().map(MemoryId::to_string),
             preview: preview_of(&record.content),
+            version: record.version,
+            content_hash: record.content_hash.clone(),
+            source_type: record.source_type().to_string(),
+            source_run_id: record.provenance.run_id.clone(),
+            source_project_id: record.provenance.source_project_id.clone(),
+            history: record.history.clone(),
+            uses: record.provenance.uses.clone(),
+            imported_from: record.provenance.imported_from.clone(),
         }
     }
 }
@@ -216,6 +239,11 @@ pub fn list(
     offset: usize,
     limit: usize,
 ) -> Result<Page, Denied> {
+    if scope == Scope::Project {
+        if let Some(why) = &access.project_refused {
+            return Err(Denied::ScopeUnavailable(format!("project: {why}")));
+        }
+    }
     let store_root = access
         .store_for(scope)
         .ok_or_else(|| Denied::ScopeUnavailable(scope_word(scope).to_string()))?;
@@ -243,6 +271,10 @@ pub fn list(
         // own card; showing it here would put something nobody has agreed to
         // among the things Jan says it remembers.
         .filter(|r| !matches!(r.status, super::record::Status::Proposed { .. }))
+        // A forgotten memory is a tombstone with no text left. Listing it
+        // among "what Jan remembers" would contradict the forget; undo is the
+        // toast's job, holding the text the tombstone no longer has.
+        .filter(|r| !matches!(r.status, super::record::Status::Deleted))
         .filter(|r| match &needle {
             Some(q) => r.content.to_lowercase().contains(q),
             None => true,
@@ -321,9 +353,10 @@ pub fn edit(
         ));
     }
 
-    record.content = normalised;
-    record.content_hash = super::record::content_hash(&record.content);
-    record.updated_at = now;
+    if normalised == record.content {
+        return Ok(MemoryView::from_record(&record));
+    }
+    record.revise(normalised, now);
     record.last_confirmed_at = Some(now);
 
     let store_root = access.store_for(scope).expect("checked in find");
@@ -425,6 +458,8 @@ pub struct StorageSummary {
     pub deleted_count: usize,
     pub conflicted_count: usize,
     pub bytes: u64,
+    /// Stores that could not be read in full, in words for the UI.
+    pub issues: Vec<String>,
 }
 
 pub fn storage_summary(access: &Access) -> StorageSummary {
@@ -434,6 +469,9 @@ pub fn storage_summary(access: &Access) -> StorageSummary {
             continue;
         };
         let loaded = store::load(root, scope);
+        if let Some(issue) = loaded.issue(scope) {
+            out.issues.push(issue);
+        }
         let visible: Vec<&MemoryRecord> = loaded
             .records
             .iter()
@@ -485,6 +523,7 @@ mod tests {
                 project_id: Some("p1".into()),
                 project_store: Some(project.clone()),
                 permanent_store: Some(permanent.clone()),
+                project_refused: None,
             },
             project,
             permanent,

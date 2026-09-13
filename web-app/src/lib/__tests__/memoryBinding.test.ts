@@ -93,7 +93,7 @@ describe('memory binding in the chat transport', () => {
     await refresh(t)
     expect(memoryRetrieve).toHaveBeenCalledWith(
       { dataFolder: '/data', janProjectId: 'pA', sessionId: 't1' },
-      { temporary: false }
+      expect.objectContaining({ temporary: false })
     )
     expect(t.memoryBindingForLastRequest()).toMatchObject({
       janProjectId: 'pA',
@@ -110,7 +110,7 @@ describe('memory binding in the chat transport', () => {
     await refresh(t)
     expect(memoryRetrieve).toHaveBeenCalledWith(
       { dataFolder: '/data', sessionId: TEMPORARY_CHAT_ID },
-      { temporary: true }
+      expect.objectContaining({ temporary: true })
     )
   })
 
@@ -126,7 +126,7 @@ describe('memory binding in the chat transport', () => {
     await refresh(t)
     expect(memoryRetrieve).toHaveBeenLastCalledWith(
       { dataFolder: '/data', janProjectId: 'pB', sessionId: 't1' },
-      { temporary: false }
+      expect.objectContaining({ temporary: false })
     )
     expect(t.memoryUsed()?.injectedIds).toEqual(['mem-b'])
   })
@@ -140,7 +140,7 @@ describe('memory binding in the chat transport', () => {
     await refresh(t)
     expect(memoryRetrieve).toHaveBeenLastCalledWith(
       { dataFolder: '/data', sessionId: 't1' },
-      { temporary: false }
+      expect.objectContaining({ temporary: false })
     )
   })
 
@@ -167,7 +167,7 @@ describe('memory binding in the chat transport', () => {
     await refresh(t)
     expect(memoryRetrieve).toHaveBeenLastCalledWith(
       expect.objectContaining({ janProjectId: 'pB' }),
-      { temporary: false }
+      expect.objectContaining({ temporary: false })
     )
   })
 })

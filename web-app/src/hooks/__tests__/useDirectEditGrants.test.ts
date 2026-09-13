@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const bindings = vi.hoisted(() => ({
   directEditCapability: vi.fn(),
+  managedWorktreeCapability: vi.fn(),
   directEditAuthorize: vi.fn(),
   directEditRevoke: vi.fn(),
   directEditRevokeSession: vi.fn(),
@@ -27,6 +28,7 @@ beforeEach(() => {
     generation: 0,
   })
   bindings.directEditCapability.mockResolvedValue(true)
+  bindings.managedWorktreeCapability.mockResolvedValue(true)
   bindings.directEditAuthorize.mockResolvedValue('grant-1')
   bindings.directEditRevoke.mockResolvedValue(true)
   bindings.directEditRevokeSession.mockResolvedValue(1)
@@ -35,10 +37,29 @@ beforeEach(() => {
 describe('asking the backend what it can enforce', () => {
   it('takes the answer from the backend rather than deciding here', async () => {
     bindings.directEditCapability.mockResolvedValue(false)
+    bindings.managedWorktreeCapability.mockResolvedValue(false)
 
     await store().refreshCapability()
 
-    expect(store().capability).toEqual({ known: true, directEdit: false })
+    expect(store().capability).toEqual({
+      known: true,
+      directEdit: false,
+      managedWorktree: false,
+    })
+  })
+
+  // Windows: each mode is asked about separately, and they differ.
+  it('asks about Managed worktree separately from direct editing', async () => {
+    bindings.directEditCapability.mockResolvedValue(false)
+    bindings.managedWorktreeCapability.mockResolvedValue(true)
+
+    await store().refreshCapability()
+
+    expect(store().capability).toEqual({
+      known: true,
+      directEdit: false,
+      managedWorktree: true,
+    })
   })
 
   // An unanswered question is not a yes.

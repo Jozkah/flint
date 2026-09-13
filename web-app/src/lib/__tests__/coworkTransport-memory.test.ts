@@ -86,7 +86,7 @@ describe('memory in a Cowork run', () => {
     await internals(t).refreshMemory()
     expect(memoryRetrieve).toHaveBeenCalledWith(
       { dataFolder: '/data', projectRoot: '/work/api', sessionId: 's1' },
-      { temporary: false }
+      expect.objectContaining({ temporary: false })
     )
     expect(JSON.stringify(memoryRetrieve.mock.calls[0])).not.toContain('/sandbox/')
   })
@@ -96,7 +96,7 @@ describe('memory in a Cowork run', () => {
     await internals(t).refreshMemory()
     expect(memoryRetrieve).toHaveBeenCalledWith(
       { dataFolder: '/data', sessionId: 's1' },
-      { temporary: false }
+      expect.objectContaining({ temporary: false })
     )
   })
 

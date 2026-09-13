@@ -1,18 +1,20 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useRef, type ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import {
-  IconSearch,
-  IconMessage,
-  IconHistory,
-  IconCirclePlus,
-  IconFolder,
-} from '@tabler/icons-react'
+  CirclePlus,
+  Folder,
+  History,
+  MessageSquare,
+  Search,
+} from 'lucide-react'
 import { useThreads } from '@/hooks/useThreads'
 import { localStorageKey } from '@/constants/localStorage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -24,6 +26,25 @@ const MAX_RECENT_SEARCHES = 5
 interface SearchDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+}
+
+/**
+ * A result row. The keyboard selection is the accent tint with a 2px marker,
+ * the same treatment as a selected item anywhere else in the shell.
+ */
+const itemClass = (selected: boolean) =>
+  cn(
+    'relative flex w-full min-h-10 cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-sunken pointer-coarse:min-h-11',
+    selected &&
+      'bg-brand-tint hover:bg-brand-tint before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-brand'
+  )
+
+function GroupLabel({ children }: { children: ReactNode }) {
+  return (
+    <span className="text-xs font-medium tracking-wide text-muted-foreground [font-variant-caps:all-small-caps]">
+      {children}
+    </span>
+  )
 }
 
 export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
@@ -205,38 +226,50 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-xl p-0 gap-0 overflow-hidden"
+        // Phone: a full-screen sheet, so the results are not squeezed between
+        // the keyboard and a bottom sheet's top edge.
+        className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-xl sm:pb-0 max-sm:top-0 max-sm:h-(--app-vvh,100dvh) max-sm:max-h-none max-sm:rounded-none max-sm:border-0 max-sm:pb-[env(safe-area-inset-bottom)]"
         showCloseButton={false}
         aria-describedby={undefined}
+        data-testid="search-dialog"
       >
         <VisuallyHidden>
           <DialogTitle>{t('common:search')}</DialogTitle>
         </VisuallyHidden>
 
         {/* Search Input */}
-        <div className="flex items-center border-b  px-3">
-          <IconSearch className="size-4 text-muted-foreground shrink-0" />
+        <div className="flex shrink-0 items-center gap-1 border-b border-border px-3">
+          <Search className="size-4 shrink-0 text-muted-foreground" />
           <input
             ref={inputRef}
             type="text"
             placeholder={t('common:searchThreads')}
-            className="flex-1 h-12 px-3 bg-transparent placeholder:text-muted-foreground focus:outline-none"
+            aria-label={t('common:searchThreads')}
+            className="h-12 min-w-0 flex-1 bg-transparent px-2 text-base placeholder:text-muted-foreground focus:outline-none md:text-sm"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleKeyDown}
           />
+          <DialogClose asChild>
+            <Button variant="ghost" size="sm" className="h-11 sm:hidden">
+              {t('common:cancel')}
+            </Button>
+          </DialogClose>
         </div>
 
         {/* Results */}
-        <div ref={listRef} className="max-h-80 overflow-y-auto px-1 py-2">
+        <div
+          ref={listRef}
+          className="min-h-0 flex-1 overflow-y-auto px-1.5 py-2 sm:max-h-80 sm:flex-none"
+        >
           {/* Empty state when searching */}
           {searchQuery && !hasResults && (
-            <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-              <IconSearch className="size-6 text-muted-foreground mb-2" />
-              <h3 className="text-base font-medium mb-1">
+            <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+              <Search className="mb-2 size-6 text-muted-foreground" />
+              <h3 className="mb-1 font-display text-lg text-foreground">
                 {t('common:noResultsFound')}
               </h3>
-              <p className="text-xs leading-relaxed text-muted-foreground w-1/2 mx-auto">
+              <p className="mx-auto max-w-xs text-xs leading-relaxed text-muted-foreground">
                 {t('common:noResultsFoundDesc')}
               </p>
             </div>
@@ -244,31 +277,29 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
 
           {/* Start new chat - shown when no search query */}
           {showStartNewChat && (
-            <div className="p-1">
+            <div className="p-0.5">
               <button
+                type="button"
                 data-index={0}
+                data-selected={selectedIndex === 0}
                 onClick={handleStartNewChat}
-                className={cn(
-                  'w-full flex items-center gap-2 px-3 py-2 rounded-md text-left hover:bg-secondary/60 transition-colors cursor-pointer',
-                  selectedIndex === 0 && 'bg-secondary/50'
-                )}
+                className={itemClass(selectedIndex === 0)}
               >
-                <IconCirclePlus className="size-4 text-muted-foreground" />
-                <span className="text-sm">{t('common:newChat')}</span>
+                <CirclePlus className="size-4 shrink-0 text-muted-foreground" />
+                <span>{t('common:newChat')}</span>
               </button>
             </div>
           )}
 
           {/* Recent searches - shown when search is empty */}
           {!searchQuery && recentSearches.length > 0 && (
-            <div className="p-1">
-              <div className="px-3 pt-1.5 flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-muted-foreground">
-                  {t('common:recents')}
-                </span>
+            <div className="p-0.5">
+              <div className="mb-0.5 flex items-center justify-between px-3 pt-2">
+                <GroupLabel>{t('common:recents')}</GroupLabel>
                 <button
+                  type="button"
                   onClick={handleClearRecent}
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  className="cursor-pointer rounded-sm text-xs text-muted-foreground transition-colors hover:text-foreground pointer-coarse:min-h-11"
                 >
                   {t('common:clearRecent')}
                 </button>
@@ -277,16 +308,15 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
                 const itemIndex = 1 + index // +1 for new chat option
                 return (
                   <button
+                    type="button"
                     key={thread.id}
                     data-index={itemIndex}
+                    data-selected={selectedIndex === itemIndex}
                     onClick={() => handleSelectThread(thread.id)}
-                    className={cn(
-                      'w-full flex items-center gap-2 px-3 py-2 rounded-md text-left hover:bg-secondary/60 transition-colors cursor-pointer',
-                      selectedIndex === itemIndex && 'bg-secondary/50'
-                    )}
+                    className={itemClass(selectedIndex === itemIndex)}
                   >
-                    <IconHistory className="size-4 text-muted-foreground shrink-0" />
-                    <span className="text-sm truncate">{thread.title}</span>
+                    <History className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{thread.title}</span>
                   </button>
                 )
               })}
@@ -295,27 +325,29 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
 
           {/* Search results with project name */}
           {searchQuery && searchResults.withProject.length > 0 && (
-            <div className="p-1">
+            <div className="p-0.5">
+              <div className="mb-0.5 px-3 pt-2">
+                <GroupLabel>{t('common:searchGroup.inProjects')}</GroupLabel>
+              </div>
               {searchResults.withProject.map(({ thread, projectName }, index) => {
                 const itemIndex = index
                 return (
                   <button
+                    type="button"
                     key={thread.id}
                     data-index={itemIndex}
+                    data-selected={selectedIndex === itemIndex}
                     onClick={() => handleSelectThread(thread.id)}
-                    className={cn(
-                      'w-full flex items-center gap-2 px-3 py-2 rounded-md text-left hover:bg-secondary/60 transition-colors cursor-pointer',
-                      selectedIndex === itemIndex && 'bg-secondary/50'
-                    )}
+                    className={itemClass(selectedIndex === itemIndex)}
                   >
-                    <IconMessage className="size-4 text-muted-foreground shrink-0" />
-                    <div className="flex items-center min-w-0">
-                      <span className="text-xs text-muted-foreground flex items-center gap-1">
-                        <IconFolder className="size-3" />
+                    <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="flex min-w-0 items-center">
+                      <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                        <Folder className="size-3" />
                         {projectName} -&nbsp;
                       </span>
-                      <span className="text-sm truncate">{thread.title}</span>
-                    </div>
+                      <span className="truncate">{thread.title}</span>
+                    </span>
                   </button>
                 )
               })}
@@ -324,22 +356,24 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
 
           {/* Search results without project name */}
           {searchQuery && searchResults.withoutProject.length > 0 && (
-            <div className="p-1">
+            <div className="p-0.5">
+              <div className="mb-0.5 px-3 pt-2">
+                <GroupLabel>{t('common:searchGroup.conversations')}</GroupLabel>
+              </div>
               {searchResults.withoutProject.map((thread, index) => {
                 const itemIndex =
                   searchResults.withProject.length + index
                 return (
                   <button
+                    type="button"
                     key={thread.id}
                     data-index={itemIndex}
+                    data-selected={selectedIndex === itemIndex}
                     onClick={() => handleSelectThread(thread.id)}
-                    className={cn(
-                      'w-full flex items-center gap-2 px-3 py-2 rounded-md text-left hover:bg-secondary/60 transition-colors cursor-pointer',
-                      selectedIndex === itemIndex && 'bg-secondary/50'
-                    )}
+                    className={itemClass(selectedIndex === itemIndex)}
                   >
-                    <IconMessage className="size-4 text-muted-foreground shrink-0" />
-                    <span className="text-sm truncate">{thread.title}</span>
+                    <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{thread.title}</span>
                   </button>
                 )
               })}
@@ -347,24 +381,24 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
           )}
         </div>
 
-        {/* Footer with keyboard hints */}
-        <div className="flex items-center justify-between border-t  px-3 py-2 text-xs text-muted-foreground">
+        {/* Footer with keyboard hints; phones have no arrow keys to hint at. */}
+        <div className="hidden shrink-0 items-center justify-between border-t border-border bg-sunken px-3 py-2 text-xs text-muted-foreground sm:flex">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 bg-secondary/10 rounded text-[10px]">
+              <kbd className="rounded border border-border bg-card px-1.5 py-0.5 text-[10px]">
                 ↑↓
               </kbd>
               {t('common:toNavigate')}
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 bg-secondary/10 rounded text-[10px]">
+              <kbd className="rounded border border-border bg-card px-1.5 py-0.5 text-[10px]">
                 ↵
               </kbd>
               {t('common:toSelect')}
             </span>
           </div>
           <span className="flex items-center gap-1">
-            <kbd className="px-1.5 py-0.5 bg-secondary/10 rounded text-[10px]">
+            <kbd className="rounded border border-border bg-card px-1.5 py-0.5 text-[10px]">
               esc
             </kbd>
             {t('common:toClose')}

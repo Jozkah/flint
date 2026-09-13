@@ -2,7 +2,7 @@ import { cn } from '@/lib/utils'
 
 /** Blinking block that reads as the model typing into the bar. */
 export const Caret = () => (
-  <span className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.15em] animate-pulse bg-foreground/70" />
+  <span className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.15em] motion-safe:animate-pulse bg-brand" />
 )
 
 export type ToolBarProps = {
@@ -45,7 +45,7 @@ export const ToolBar = ({
     !value && 'text-muted-foreground/60'
   )
   return (
-    <div className="flex items-center gap-2 rounded-full border bg-card/40 px-3 py-1.5">
+    <div className="flex min-w-0 items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5">
       <span className="shrink-0 text-muted-foreground">{icon}</span>
       {onActivate ? (
         <button

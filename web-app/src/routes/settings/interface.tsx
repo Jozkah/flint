@@ -1,12 +1,11 @@
 ﻿import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import SettingsMenu from '@/containers/SettingsMenu'
-import HeaderPage from '@/containers/HeaderPage'
+import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ThemeSwitcher } from '@/containers/ThemeSwitcher'
 import { FontSizeSwitcher } from '@/containers/FontSizeSwitcher'
-import { AccentColorPicker } from '@/containers/AccentColorPicker'
+import { AccentSettings } from '@/containers/AccentSettings'
 import { NotificationPositionSwitcher } from '@/containers/NotificationPositionSwitcher'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { Button } from '@/components/ui/button'
@@ -33,16 +32,11 @@ function InterfaceSettings() {
   } = useInterfaceSettings()
 
   return (
-    <div className="flex flex-col h-svh w-full">
-      <HeaderPage>
-        <div className="flex items-center gap-2 w-full">
-          <span className='font-medium text-base font-studio'>{t('common:settings')}</span>
-        </div>
-      </HeaderPage>
-      <div className="flex h-[calc(100%-60px)]">
-        <SettingsMenu />
-        <div className="p-4 pt-0 w-full overflow-y-auto">
-          <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
+    <div className="flex flex-col h-full w-full">
+      <SettingsPageHeader />
+      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
+        <div className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-6">
+          <div className="mx-auto flex w-full max-w-4xl min-w-0 flex-col gap-4">
             {/* Interface */}
             <Card title={t('settings:interface.title')}>
               <CardItem
@@ -58,10 +52,12 @@ function InterfaceSettings() {
                 actions={<FontSizeSwitcher />}
               />
               <CardItem
-                title="Accent color"
-                description="Customize the accent color of the application."
-                className="flex-col sm:flex-row items-start sm:items-center sm:justify-between gap-y-2"
-                actions={<AccentColorPicker />}
+                anchor="settings-appearance-accent"
+                title={t('settings:accent.title')}
+                description={t('settings:accent.description')}
+                column
+                className="flex-col items-start gap-y-3"
+                actions={<AccentSettings />}
               />
               <CardItem
                 anchor="settings-appearance-notification-position"
@@ -95,7 +91,7 @@ function InterfaceSettings() {
                 title={
                   <span className="inline-flex items-center gap-2">
                     <span>{t('settings:interface.renderHtmlArtifacts')}</span>
-                    <span className="text-xs bg-secondary border text-muted-foreground rounded-full py-0.5 px-2">
+                    <span className="rounded-full bg-warning-tint px-2 py-0.5 text-xs font-normal text-warning">
                       {t('common:experimental')}
                     </span>
                   </span>

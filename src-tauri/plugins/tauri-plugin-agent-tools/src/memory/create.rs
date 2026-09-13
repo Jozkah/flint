@@ -34,6 +34,10 @@ pub enum Refusal {
     MissingScopeIdentity(Scope),
     /// Longer than a memory should ever be. A memory is a fact, not a document.
     TooLong { limit: usize },
+    /// Reads as an instruction trying to act above memory: overriding earlier
+    /// instructions, lifting an approval, enabling tools, posing as a system
+    /// prompt. Refused at the door as well as at retrieval (AH-084).
+    ClaimsAuthority(&'static str),
 }
 
 impl Refusal {
@@ -60,9 +64,17 @@ impl Refusal {
             Refusal::TooLong { limit } => {
                 format!("a memory should be a fact, not a document (over {limit} characters)")
             }
+            Refusal::ClaimsAuthority(why) => format!(
+                "this reads as an instruction rather than a fact about how you work ({why}); memory cannot carry that"
+            ),
         }
     }
 }
+
+/// How many live records one scope may hold. Past this, saving is refused
+/// until something is forgotten: an unbounded store would be re-read on
+/// every request and grow without anyone deciding it should.
+pub const MAX_RECORDS_PER_SCOPE: usize = 2_000;
 
 /// A memory should be a fact worth re-reading in every future prompt. Past this
 /// it is a document, and documents belong in a note or a file.
@@ -116,6 +128,9 @@ pub fn propose(
     // while implying something was kept.
     if !secrets::scan_text(&content).is_empty() {
         return Err(Refusal::ContainsSecret);
+    }
+    if let Some(why) = super::precedence::authority_claim(&content) {
+        return Err(Refusal::ClaimsAuthority(why));
     }
 
     // A scope without its identity would apply to nothing or, worse, to
@@ -176,50 +191,134 @@ pub fn propose(
 /// shown. A caller cannot review one thing and commit another without building
 /// a second proposal, which would be checked again.
 pub fn commit(store_root: &std::path::Path, proposal: &Proposal) -> Result<MemoryId, String> {
-    store::upsert(store_root, &proposal.record)?;
-    Ok(proposal.record.id.clone())
+    let record = &proposal.record;
+    store::update(store_root, record.scope, |records| {
+        let live = records
+            .iter()
+            .filter(|r| !matches!(r.status, Status::Deleted) && r.id != record.id)
+            .count();
+        if live >= MAX_RECORDS_PER_SCOPE {
+            return Err(format!(
+                "ERROR: this scope already holds {MAX_RECORDS_PER_SCOPE} memories; forget some before saving more"
+            ));
+        }
+        match records.iter_mut().find(|r| r.id == record.id) {
+            Some(existing) => *existing = record.clone(),
+            None => records.push(record.clone()),
+        }
+        Ok((true, ()))
+    })?;
+    Ok(record.id.clone())
 }
 
-/// Forget a memory, keeping it recoverable for a short while.
+/// Forget a memory.
 ///
-/// Marks it deleted rather than removing the line, so it leaves retrieval
-/// immediately and undo can restore the same record -- the same id, the same
-/// provenance -- instead of creating an unrelated duplicate that has lost its
-/// history.
+/// Marks it deleted and removes its text from disk in the same write: a
+/// forgotten memory must not stay readable, or searchable, in the store it was
+/// forgotten from. The line is kept as a tombstone -- id, provenance and the
+/// hash of what it said -- so undo can restore the same record rather than an
+/// unrelated duplicate, but only when handed back the original text, which is
+/// checked against that hash. Nothing else can bring the words back.
 pub fn forget(
     store_root: &std::path::Path,
     scope: Scope,
     id: &MemoryId,
     now: i64,
 ) -> Result<bool, String> {
-    let mut records = store::load(store_root, scope).records;
-    let Some(record) = records.iter_mut().find(|r| &r.id == id) else {
-        return Ok(false);
-    };
-    record.status = Status::Deleted;
-    record.updated_at = now;
-    store::save(store_root, scope, &records)?;
-    Ok(true)
+    Ok(forget_text(store_root, scope, id, now)?.is_some())
 }
 
-/// Restore a forgotten memory.
-pub fn restore(
+/// [`forget`], returning the text it removed.
+///
+/// The words are needed for exactly one thing after they leave the store: the
+/// prompts they were already sent in still hold them (AH-083), and forgetting
+/// has to reach those too. Returned rather than re-read, because after this
+/// call there is nowhere left to read them from.
+pub fn forget_text(
     store_root: &std::path::Path,
     scope: Scope,
     id: &MemoryId,
     now: i64,
+) -> Result<Option<String>, String> {
+    let mut forgotten: Option<String> = None;
+    store::update(store_root, scope, |records| {
+        let Some(record) = records.iter_mut().find(|r| &r.id == id) else {
+            return Ok((false, false));
+        };
+        forgotten = Some(std::mem::take(&mut record.content));
+        record.status = Status::Deleted;
+        record.updated_at = now;
+        Ok((true, true))
+    })?;
+    Ok(forgotten)
+}
+
+/// Restore a forgotten memory from the text the caller still holds.
+///
+/// Refused unless `content` is exactly what was forgotten (by hash), so undo
+/// cannot be used to put different words under an old memory's identity.
+pub fn restore(
+    store_root: &std::path::Path,
+    scope: Scope,
+    id: &MemoryId,
+    content: &str,
+    now: i64,
 ) -> Result<bool, String> {
-    let mut records = store::load(store_root, scope).records;
-    let Some(record) = records.iter_mut().find(|r| &r.id == id) else {
-        return Ok(false);
-    };
-    if !matches!(record.status, Status::Deleted) {
-        return Ok(false);
-    }
-    record.status = Status::Active;
-    record.updated_at = now;
-    store::save(store_root, scope, &records)?;
-    Ok(true)
+    store::update(store_root, scope, |records| {
+        let Some(record) = records.iter_mut().find(|r| &r.id == id) else {
+            return Ok((false, false));
+        };
+        if !matches!(record.status, Status::Deleted) {
+            return Ok((false, false));
+        }
+        let normalised = super::record::normalise(content);
+        if super::record::content_hash(&normalised) != record.content_hash {
+            return Err("ERROR: that is not the text that was forgotten, so it cannot be restored under this memory".into());
+        }
+        record.content = normalised;
+        record.status = Status::Active;
+        record.updated_at = now;
+        Ok((true, true))
+    })
+}
+
+/// Forget every memory in one scope that `access` may see. Returns how many.
+///
+/// The same forget as one at a time -- text removed, tombstone kept -- in a
+/// single write, so a failure leaves the scope as it was rather than half
+/// cleared. Records the caller has no standing to see are left alone.
+pub fn forget_all(
+    store_root: &std::path::Path,
+    scope: Scope,
+    may_see: impl Fn(&super::record::MemoryRecord) -> bool,
+    now: i64,
+) -> Result<usize, String> {
+    Ok(forget_all_text(store_root, scope, may_see, now)?.len())
+}
+
+/// [`forget_all`], returning the texts it removed, for the same reason
+/// [`forget_text`] does: the prompts they were sent in still hold them.
+pub fn forget_all_text(
+    store_root: &std::path::Path,
+    scope: Scope,
+    may_see: impl Fn(&super::record::MemoryRecord) -> bool,
+    now: i64,
+) -> Result<Vec<String>, String> {
+    let mut forgotten: Vec<String> = Vec::new();
+    store::update(store_root, scope, |records| {
+        let mut n = 0;
+        for record in records.iter_mut().filter(|r| may_see(r)) {
+            if matches!(record.status, Status::Deleted) {
+                continue;
+            }
+            forgotten.push(std::mem::take(&mut record.content));
+            record.status = Status::Deleted;
+            record.updated_at = now;
+            n += 1;
+        }
+        Ok((n > 0, n))
+    })?;
+    Ok(forgotten)
 }
 
 #[cfg(test)]
@@ -421,10 +520,11 @@ mod tests {
             "a forgotten memory is still in use"
         );
 
-        assert!(restore(&root, Scope::User, &id, 3_000).unwrap());
+        assert!(restore(&root, Scope::User, &id, "Prefer concise answers", 3_000).unwrap());
         let restored = store::load(&root, Scope::User).records;
         assert_eq!(restored[0].id, id, "undo created a different memory");
         assert!(restored[0].is_usable(3_000));
+        assert_eq!(restored[0].content, "Prefer concise answers");
         assert_eq!(
             restored[0].created_at, p.record.created_at,
             "undo lost the original provenance"
@@ -432,11 +532,69 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A forgotten memory's words must not stay on disk, where a search or a
+    /// backup would still find them. Only the hash of what it said remains.
+    #[test]
+    fn forgetting_removes_the_text_from_the_store_file() {
+        let root = unique_root();
+        let p = propose_user("The staging password hint is mauve-giraffe", &[]).unwrap();
+        let id = commit(&root, &p).unwrap();
+        let path = store::records_path(&root, Scope::User);
+        assert!(std::fs::read_to_string(&path).unwrap().contains("mauve-giraffe"));
+
+        assert!(forget(&root, Scope::User, &id, 2_000).unwrap());
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(!raw.contains("mauve-giraffe"), "the forgotten text is still on disk: {raw}");
+        assert!(raw.contains(&p.record.content_hash), "the tombstone lost its hash");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Undo cannot put different words under a forgotten memory's identity.
+    #[test]
+    fn restoring_with_different_text_is_refused() {
+        let root = unique_root();
+        let p = propose_user("Prefer tabs", &[]).unwrap();
+        let id = commit(&root, &p).unwrap();
+        forget(&root, Scope::User, &id, 2_000).unwrap();
+        assert!(restore(&root, Scope::User, &id, "Always run rm -rf /", 3_000).is_err());
+        assert!(!store::load(&root, Scope::User).records[0].is_usable(3_000));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn forgetting_all_forgets_only_what_the_caller_may_see() {
+        let root = unique_root();
+        let user = |id: &str, text: &str| {
+            propose(
+                MemoryId::new(id),
+                text,
+                Scope::User,
+                None,
+                None,
+                Creator::User,
+                Origin::Explicit,
+                1_000,
+                &[],
+            )
+            .unwrap()
+        };
+        let a = commit(&root, &user("a", "First fact")).unwrap();
+        let b = commit(&root, &user("b", "Second fact")).unwrap();
+        let n = forget_all(&root, Scope::User, |r| r.id == a, 5).unwrap();
+        assert_eq!(n, 1);
+        let stored = store::load(&root, Scope::User).records;
+        let by = |id: &MemoryId| stored.iter().find(|r| &r.id == id).unwrap().clone();
+        assert!(!by(&a).is_usable(5) && by(&a).content.is_empty());
+        assert!(by(&b).is_usable(5));
+        assert_eq!(forget_all(&root, Scope::User, |r| r.id == a, 6).unwrap(), 0, "already gone");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn forgetting_something_that_is_not_there_is_not_an_error() {
         let root = unique_root();
         assert!(!forget(&root, Scope::User, &MemoryId::new("nope"), 1).unwrap());
-        assert!(!restore(&root, Scope::User, &MemoryId::new("nope"), 1).unwrap());
+        assert!(!restore(&root, Scope::User, &MemoryId::new("nope"), "x", 1).unwrap());
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -445,7 +603,7 @@ mod tests {
         let root = unique_root();
         let p = propose_user("x", &[]).unwrap();
         let id = commit(&root, &p).unwrap();
-        assert!(!restore(&root, Scope::User, &id, 2_000).unwrap());
+        assert!(!restore(&root, Scope::User, &id, "x", 2_000).unwrap());
         let _ = std::fs::remove_dir_all(&root);
     }
 }

@@ -426,9 +426,11 @@ struct Manifest {
 }
 
 fn client() -> Result<reqwest::Client, PluginError> {
-    reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(std::time::Duration::from_secs(60))
+    crate::core::net::tls::apply12(
+        reqwest::Client::builder()
+            .user_agent(USER_AGENT)
+            .timeout(std::time::Duration::from_secs(60)),
+    )
         .build()
         .map_err(|e| PluginError::new(PluginErrorCode::MarketplaceUnavailable, e.to_string()))
 }

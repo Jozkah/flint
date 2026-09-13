@@ -148,7 +148,7 @@ export function PermissionRequestDetails({
                 </div>
                 <pre
                   tabIndex={0}
-                  className="max-h-48 overflow-auto rounded-md border bg-secondary p-2 font-mono whitespace-pre-wrap break-all"
+                  className="max-h-48 overflow-auto rounded-md border border-border bg-sunken p-2 font-mono whitespace-pre-wrap break-all"
                 >
                   {technicalDetails.argumentsJson}
                 </pre>
@@ -171,12 +171,15 @@ export function PermissionScopeChoices({
   onDecision,
   denyRef,
   autoFocusDeny = false,
+  disabled = false,
   className,
 }: {
   request: PermissionRequestDescription
   onDecision: (decision: PermissionDecision) => void
   denyRef?: React.Ref<HTMLButtonElement>
   autoFocusDeny?: boolean
+  /** Paused, e.g. just after the request shown here changed. */
+  disabled?: boolean
   className?: string
 }) {
   const { t } = useTranslation()
@@ -195,6 +198,7 @@ export function PermissionScopeChoices({
           variant="destructive"
           type="button"
           autoFocus={autoFocusDeny}
+          disabled={disabled}
           onClick={() => onDecision('deny')}
         >
           {t('permissions:scope.deny')}
@@ -213,12 +217,13 @@ export function PermissionScopeChoices({
                 type="button"
                 aria-describedby={explanationId}
                 data-scope={scope}
+                disabled={disabled}
                 onClick={() => onDecision(scope)}
               >
                 {formatPermissionMessage(t, info.label)}
               </Button>
               {info.broader && (
-                <span className="rounded-full border border-amber-500/40 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300">
+                <span className="rounded-full border border-warning/40 bg-warning-tint px-2 py-0.5 text-xs text-warning">
                   {t('permissions:scope.broader')}
                 </span>
               )}

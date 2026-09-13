@@ -15,12 +15,13 @@ import {
   LANES,
   PHASES,
   findCycles,
+  findMissingFiles,
   loadRegistry,
   phaseForId,
   renderMarkdown,
   validateRegistry,
 } from './registry.mjs'
-import { JSON_PATH, MARKDOWN_PATH } from './paths.mjs'
+import { JSON_PATH, MARKDOWN_PATH, REPO_ROOT } from './paths.mjs'
 
 const pristine = () => structuredClone(loadRegistry(JSON_PATH))
 
@@ -167,11 +168,36 @@ test('claiming "verified" without listed tests is rejected', () => {
   expectProblem(doc, 'requires the tests that verify it')
 })
 
+// The fixtures below build the state they test from an implemented item: the
+// registry no longer has to contain a "missing" item for them to mean anything
+// (every item reached implemented or beyond in phase 6).
 test('claiming "implemented" without listed files is rejected', () => {
   const doc = pristine()
-  const feature = doc.features.find((f) => f.status === 'missing')
-  feature.status = 'implemented'
+  const feature = doc.features.find((f) => f.status === 'implemented')
+  feature.files = []
   expectProblem(doc, 'requires the implementing files')
+})
+
+test('every file an implemented or verified item lists exists', () => {
+  assert.deepEqual(findMissingFiles(pristine(), REPO_ROOT), [])
+})
+
+test('an implemented item naming a file that is gone is reported', () => {
+  const doc = pristine()
+  const feature = doc.features.find((f) => f.status === 'implemented')
+  feature.files = [...feature.files, 'src-tauri/harness/src/envelope.rs']
+  const problems = findMissingFiles(doc, REPO_ROOT)
+  assert.equal(problems.length, 1)
+  assert.ok(problems[0].startsWith(`${feature.id}:`), problems[0])
+  assert.ok(problems[0].includes('src-tauri/harness/src/envelope.rs'), problems[0])
+})
+
+test('a missing file on an unfinished item is not reported', () => {
+  const doc = pristine()
+  const feature = doc.features.find((f) => f.status === 'implemented')
+  feature.status = 'missing'
+  feature.files = ['src-tauri/not/written/yet.rs']
+  assert.deepEqual(findMissingFiles(doc, REPO_ROOT), [])
 })
 
 test('a feature with no acceptance criteria is rejected', () => {

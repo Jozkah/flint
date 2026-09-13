@@ -73,11 +73,11 @@ const STATE_ICON: Record<ReadinessState, typeof Check> = {
 }
 
 const STATE_CLASS: Record<ReadinessState, string> = {
-  checking: 'text-main-view-fg/50',
-  ready: 'text-main-view-fg/60',
+  checking: 'text-muted-foreground',
+  ready: 'text-muted-foreground',
   degraded: 'text-accent',
   unavailable: 'text-destructive',
-  blocked: 'text-main-view-fg/60',
+  blocked: 'text-muted-foreground',
 }
 
 /**
@@ -214,12 +214,12 @@ export function CoworkEnvironmentReadiness({
 
   return (
     <section
-      className="rounded-md border border-main-view-fg/10"
+      className="rounded-md border border-border"
       data-testid="environment-readiness"
       aria-label="Environment readiness"
     >
       <header className="flex items-center gap-2 px-3 py-2">
-        <h3 className="text-xs font-medium text-main-view-fg/80">
+        <h3 className="text-xs font-medium text-ink-2">
           Environment
         </h3>
         {unready > 0 && (
@@ -240,7 +240,7 @@ export function CoworkEnvironmentReadiness({
           >
             <RefreshCw
               size={12}
-              className={cn(busy === 'all' && 'animate-spin')}
+              className={cn(busy === 'all' && 'motion-safe:animate-spin')}
             />
             Retry all
           </Button>
@@ -263,7 +263,7 @@ export function CoworkEnvironmentReadiness({
         </p>
       )}
 
-      <ul className="divide-y divide-main-view-fg/5">
+      <ul className="divide-y divide-border">
         {(readiness?.components ?? []).map((report) => {
           const Icon = STATE_ICON[report.state]
           const isOpen = expanded === report.component
@@ -273,7 +273,7 @@ export function CoworkEnvironmentReadiness({
             <li key={report.component} data-testid={`readiness-row-${report.component}`}>
               <button
                 type="button"
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-main-view-fg/5"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-sunken"
                 onClick={() =>
                   setExpanded(isOpen ? null : report.component)
                 }
@@ -283,15 +283,15 @@ export function CoworkEnvironmentReadiness({
                   size={13}
                   className={cn(
                     STATE_CLASS[report.state],
-                    report.state === 'checking' && 'animate-spin'
+                    report.state === 'checking' && 'motion-safe:animate-spin'
                   )}
                   aria-hidden
                 />
-                <span className="w-24 shrink-0 text-xs text-main-view-fg/80">
+                <span className="w-24 shrink-0 text-xs text-ink-2">
                   {ROW_LABEL[report.component] ?? report.component}
                 </span>
                 <span
-                  className="truncate text-xs text-main-view-fg/60"
+                  className="truncate text-xs text-muted-foreground"
                   data-testid={`readiness-summary-${report.component}`}
                 >
                   {summary}
@@ -300,7 +300,7 @@ export function CoworkEnvironmentReadiness({
                 <ChevronRight
                   size={12}
                   className={cn(
-                    'ml-auto shrink-0 text-main-view-fg/40 transition-transform',
+                    'ml-auto shrink-0 text-muted-foreground transition-transform',
                     isOpen && 'rotate-90'
                   )}
                   aria-hidden
@@ -309,7 +309,7 @@ export function CoworkEnvironmentReadiness({
 
               {isOpen && (
                 <div className="space-y-1 px-3 pb-2 pl-[2.1rem]">
-                  <p className="text-xs text-main-view-fg/70">
+                  <p className="text-xs text-ink-2">
                     {report.message}
                   </p>
                   {report.details.length > 0 && (
@@ -317,14 +317,14 @@ export function CoworkEnvironmentReadiness({
                       {report.details.map((detail) => (
                         <li
                           key={detail}
-                          className="font-mono text-[11px] text-main-view-fg/50"
+                          className="font-mono text-[11px] text-muted-foreground"
                         >
                           {detail}
                         </li>
                       ))}
                     </ul>
                   )}
-                  <p className="text-[11px] text-main-view-fg/40">
+                  <p className="text-[11px] text-muted-foreground">
                     {lastChecked(report.checkedAtMs, now)} · {report.reason}
                   </p>
                   <div className="flex flex-wrap gap-1 pt-0.5">
@@ -339,7 +339,7 @@ export function CoworkEnvironmentReadiness({
                         <RefreshCw
                           size={11}
                           className={cn(
-                            busy === report.component && 'animate-spin'
+                            busy === report.component && 'motion-safe:animate-spin'
                           )}
                         />
                         Retry

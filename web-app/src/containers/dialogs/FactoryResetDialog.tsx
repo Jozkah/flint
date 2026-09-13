@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import type { FactoryResetOptions } from '@/services/app/types'
+import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 interface FactoryResetDialogProps {
   onReset: (options: FactoryResetOptions) => void
@@ -42,7 +43,7 @@ export function FactoryResetDialog({
     <Dialog>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent
-        className="sm:max-w-[425px] max-w-[90vw]"
+        className="sm:max-w-[425px]"
         onOpenAutoFocus={(e) => {
           e.preventDefault()
           resetButtonRef.current?.focus()
@@ -54,12 +55,12 @@ export function FactoryResetDialog({
             {t('settings:general.factoryResetDesc')}
           </DialogDescription>
           <div className="flex flex-col gap-3 pt-2">
-            <label className="flex items-start gap-2 cursor-pointer">
+            <label className="flex min-h-11 cursor-pointer items-start gap-2 rounded-md py-1 sm:min-h-0">
               <input
                 type="checkbox"
                 checked={keepAppData}
                 onChange={(e) => setKeepAppData(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                className="mt-0.5 h-4 w-4 rounded border-border accent-brand-fill cursor-pointer"
               />
               <div className="flex flex-col">
                 <span className="text-sm font-medium text-foreground">
@@ -70,12 +71,12 @@ export function FactoryResetDialog({
                 </span>
               </div>
             </label>
-            <label className="flex items-start gap-2 cursor-pointer">
+            <label className="flex min-h-11 cursor-pointer items-start gap-2 rounded-md py-1 sm:min-h-0">
               <input
                 type="checkbox"
                 checked={keepModelsAndConfigs}
                 onChange={(e) => setKeepModelsAndConfigs(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                className="mt-0.5 h-4 w-4 rounded border-border accent-brand-fill cursor-pointer"
               />
               <div className="flex flex-col">
                 <span className="text-sm font-medium text-foreground">
@@ -86,12 +87,12 @@ export function FactoryResetDialog({
                 </span>
               </div>
             </label>
-            <label className="flex items-start gap-2 cursor-pointer">
+            <label className="flex min-h-11 cursor-pointer items-start gap-2 rounded-md py-1 sm:min-h-0">
               <input
                 type="checkbox"
                 checked={clearWebData}
                 onChange={(e) => setClearWebData(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
+                className="mt-0.5 h-4 w-4 rounded border-border accent-brand-fill cursor-pointer"
               />
               <div className="flex flex-col">
                 <span className="text-sm font-medium text-foreground">
@@ -103,12 +104,12 @@ export function FactoryResetDialog({
               </div>
             </label>
           </div>
-          <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <DialogFooter className={STICKY_DIALOG_FOOTER}>
             <DialogClose asChild>
               <Button 
                 variant="ghost" 
                 size="sm" 
-                className="hover:no-underline w-full sm:w-auto"
+                className="w-full sm:w-auto pointer-coarse:h-11"
               >
                 {t('settings:general.cancel')}
               </Button>
@@ -120,7 +121,7 @@ export function FactoryResetDialog({
                 onClick={handleReset}
                 onKeyDown={handleKeyDown}
                 size="sm"
-                className="w-full sm:w-auto"
+                className="w-full sm:w-auto pointer-coarse:h-11"
                 aria-label={t('settings:general.reset')}
               >
                 {t('settings:general.reset')}

@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { IconCheck, IconCircle } from '@tabler/icons-react'
+import { Check, Circle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { route } from '@/constants/routes'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -39,7 +39,7 @@ export function GettingStartedCard() {
     return (
       <section
         aria-label={t('onboarding:guideRegion')}
-        className="mb-4 rounded-xl border bg-card/60 p-4 text-sm"
+        className="mb-4 rounded-lg border border-border bg-card p-4 text-sm"
         data-testid="getting-started"
       >
         <div className="flex items-start justify-between gap-3">
@@ -126,9 +126,9 @@ function GuideStep({
     <li className="flex gap-2">
       <span className="mt-0.5 shrink-0" aria-hidden>
         {done ? (
-          <IconCheck size={16} className="text-green-600 dark:text-green-400" />
+          <Check className="size-4 text-success" />
         ) : (
-          <IconCircle size={16} className="text-muted-foreground" />
+          <Circle className="size-4 text-muted-foreground" />
         )}
       </span>
       <div className="min-w-0 space-y-1">

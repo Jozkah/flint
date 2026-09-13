@@ -539,11 +539,12 @@ describe('settling on load', () => {
       task({ id: 'call-2', sessionId: OTHER_SESSION, workflowId: 'run-2' })
     )
     const settled = settleOnLoad(state, T0 + 50, 'restart')
-    expect(settled.tasks[idOf('call-1')].status).toBe('cancelled')
-    expect(settled.tasks[idOf('job')].status).toBe('cancelled')
+    // Interrupted, not cancelled: the app exiting stopped this, not a person.
+    expect(settled.tasks[idOf('call-1')].status).toBe('interrupted')
+    expect(settled.tasks[idOf('job')].status).toBe('interrupted')
     expect(
       settled.tasks[idOf('call-2', OTHER_SESSION, 'run-2')].status
-    ).toBe('cancelled')
+    ).toBe('interrupted')
   })
 })
 
@@ -749,7 +750,7 @@ describe('matching a backend job id to its task', () => {
       'restart'
     )
     expect(settled.tasks[idOf('a')].jobId).toBeUndefined()
-    expect(settled.tasks[idOf('a')].status).toBe('cancelled')
+    expect(settled.tasks[idOf('a')].status).toBe('interrupted')
     expect(findTaskByJob(settled, 'bash-0')).toBeUndefined()
   })
 })

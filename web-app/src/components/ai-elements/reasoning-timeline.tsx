@@ -40,7 +40,7 @@ export const StepRow = ({
     ) : (
       <div
         dir="auto"
-        className="select-text whitespace-pre-wrap wrap-break-word text-sm text-main-view-fg/70"
+        className="select-text whitespace-pre-wrap wrap-break-word text-sm text-ink-2"
       >
         {text}
       </div>
@@ -72,8 +72,8 @@ export const ReasoningActiveStep = memo(
         key={index}
         dir="auto"
         className={cn(
-          'select-text whitespace-pre-wrap wrap-break-word text-sm text-main-view-fg/70',
-          'animate-in fade-in-0 slide-in-from-top-1 duration-300 ease-out'
+          'select-text whitespace-pre-wrap wrap-break-word text-sm text-ink-2',
+          'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-top-1 duration-300 ease-out'
         )}
       >
         {current}

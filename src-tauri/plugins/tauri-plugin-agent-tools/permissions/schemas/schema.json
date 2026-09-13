@@ -535,6 +535,30 @@
           "markdownDescription": "Denies the mailbox_take_for_delivery command without any pre-configured scope."
         },
         {
+          "description": "Enables the managed_worktree_capability command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-managed-worktree-capability",
+          "markdownDescription": "Enables the managed_worktree_capability command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the managed_worktree_capability command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-managed-worktree-capability",
+          "markdownDescription": "Denies the managed_worktree_capability command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_conflicts command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-conflicts",
+          "markdownDescription": "Enables the memory_conflicts command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_conflicts command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-conflicts",
+          "markdownDescription": "Denies the memory_conflicts command without any pre-configured scope."
+        },
+        {
           "description": "Enables the memory_delete command without any pre-configured scope.",
           "type": "string",
           "const": "allow-memory-delete",
@@ -545,6 +569,30 @@
           "type": "string",
           "const": "deny-memory-delete",
           "markdownDescription": "Denies the memory_delete command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_export command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-export",
+          "markdownDescription": "Enables the memory_export command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_export command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-export",
+          "markdownDescription": "Denies the memory_export command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_import command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-import",
+          "markdownDescription": "Enables the memory_import command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_import command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-import",
+          "markdownDescription": "Denies the memory_import command without any pre-configured scope."
         },
         {
           "description": "Enables the memory_list command without any pre-configured scope.",
@@ -715,6 +763,18 @@
           "markdownDescription": "Denies the memory_record_set_expiration command without any pre-configured scope."
         },
         {
+          "description": "Enables the memory_record_uses command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-record-uses",
+          "markdownDescription": "Enables the memory_record_uses command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_record_uses command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-record-uses",
+          "markdownDescription": "Denies the memory_record_uses command without any pre-configured scope."
+        },
+        {
           "description": "Enables the memory_records_list command without any pre-configured scope.",
           "type": "string",
           "const": "allow-memory-records-list",
@@ -737,6 +797,18 @@
           "type": "string",
           "const": "deny-memory-retrieve",
           "markdownDescription": "Denies the memory_retrieve command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the memory_scope_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-memory-scope-clear",
+          "markdownDescription": "Enables the memory_scope_clear command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the memory_scope_clear command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-memory-scope-clear",
+          "markdownDescription": "Denies the memory_scope_clear command without any pre-configured scope."
         },
         {
           "description": "Enables the memory_settings_get command without any pre-configured scope.",
@@ -799,6 +871,30 @@
           "markdownDescription": "Denies the permission_audit_recent command without any pre-configured scope."
         },
         {
+          "description": "Enables the preview_change command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-preview-change",
+          "markdownDescription": "Enables the preview_change command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the preview_change command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-preview-change",
+          "markdownDescription": "Denies the preview_change command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the project_init_accept command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-project-init-accept",
+          "markdownDescription": "Enables the project_init_accept command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the project_init_accept command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-project-init-accept",
+          "markdownDescription": "Denies the project_init_accept command without any pre-configured scope."
+        },
+        {
           "description": "Enables the project_list_dir command without any pre-configured scope.",
           "type": "string",
           "const": "allow-project-list-dir",
@@ -821,6 +917,30 @@
           "type": "string",
           "const": "deny-project-read-file",
           "markdownDescription": "Denies the project_read_file command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the project_survey command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-project-survey",
+          "markdownDescription": "Enables the project_survey command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the project_survey command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-project-survey",
+          "markdownDescription": "Denies the project_survey command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the redo_turn command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-redo-turn",
+          "markdownDescription": "Enables the redo_turn command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the redo_turn command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-redo-turn",
+          "markdownDescription": "Denies the redo_turn command without any pre-configured scope."
         },
         {
           "description": "Enables the sandbox_status command without any pre-configured scope.",
@@ -967,6 +1087,18 @@
           "markdownDescription": "Denies the thread_workspace_sweep command without any pre-configured scope."
         },
         {
+          "description": "Enables the tool_resources_finish_run command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-tool-resources-finish-run",
+          "markdownDescription": "Enables the tool_resources_finish_run command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the tool_resources_finish_run command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-tool-resources-finish-run",
+          "markdownDescription": "Denies the tool_resources_finish_run command without any pre-configured scope."
+        },
+        {
           "description": "Enables the tool_schemas command without any pre-configured scope.",
           "type": "string",
           "const": "allow-tool-schemas",
@@ -977,6 +1109,30 @@
           "type": "string",
           "const": "deny-tool-schemas",
           "markdownDescription": "Denies the tool_schemas command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the undo_journal command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-undo-journal",
+          "markdownDescription": "Enables the undo_journal command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the undo_journal command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-undo-journal",
+          "markdownDescription": "Denies the undo_journal command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the undo_turn command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-undo-turn",
+          "markdownDescription": "Enables the undo_turn command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the undo_turn command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-undo-turn",
+          "markdownDescription": "Denies the undo_turn command without any pre-configured scope."
         },
         {
           "description": "Enables the workspace_path command without any pre-configured scope.",
@@ -991,10 +1147,10 @@
           "markdownDescription": "Denies the workspace_path command without any pre-configured scope."
         },
         {
-          "description": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-secrets-redact`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-memory-records-list`\n- `allow-memory-record-get`\n- `allow-memory-record-edit`\n- `allow-memory-record-propose`\n- `allow-memory-record-propose-inferred`\n- `allow-memory-proposals-list`\n- `allow-memory-proposal-resolve`\n- `allow-memory-record-commit`\n- `allow-memory-record-forget`\n- `allow-memory-record-restore`\n- `allow-memory-record-pin`\n- `allow-memory-record-set-expiration`\n- `allow-memory-record-move-scope`\n- `allow-memory-storage-summary`\n- `allow-memory-settings-get`\n- `allow-memory-settings-update`\n- `allow-memory-retrieve`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-environment-readiness`\n- `allow-environment-readiness-retry`\n- `allow-advertised-tool-schemas`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`\n- `allow-permission-audit-recent`\n- `allow-mailbox-session-register`\n- `allow-mailbox-session-status`\n- `allow-mailbox-session-heartbeat`\n- `allow-mailbox-session-remove`\n- `allow-mailbox-take-for-delivery`\n- `allow-mailbox-pending`\n- `allow-mailbox-mark-read`\n- `allow-mailbox-reply`\n- `allow-mailbox-list-sessions`",
+          "description": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-managed-worktree-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-secrets-redact`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-memory-records-list`\n- `allow-memory-record-get`\n- `allow-memory-record-edit`\n- `allow-memory-record-propose`\n- `allow-memory-record-propose-inferred`\n- `allow-memory-proposals-list`\n- `allow-memory-proposal-resolve`\n- `allow-memory-record-commit`\n- `allow-memory-record-forget`\n- `allow-memory-record-restore`\n- `allow-memory-record-pin`\n- `allow-memory-record-set-expiration`\n- `allow-memory-record-move-scope`\n- `allow-memory-storage-summary`\n- `allow-memory-settings-get`\n- `allow-memory-settings-update`\n- `allow-memory-retrieve`\n- `allow-memory-conflicts`\n- `allow-memory-scope-clear`\n- `allow-memory-export`\n- `allow-memory-import`\n- `allow-memory-record-uses`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-environment-readiness`\n- `allow-environment-readiness-retry`\n- `allow-advertised-tool-schemas`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-tool-resources-finish-run`\n- `allow-undo-journal`\n- `allow-undo-turn`\n- `allow-redo-turn`\n- `allow-preview-change`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-project-survey`\n- `allow-project-init-accept`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`\n- `allow-permission-audit-recent`\n- `allow-mailbox-session-register`\n- `allow-mailbox-session-status`\n- `allow-mailbox-session-heartbeat`\n- `allow-mailbox-session-remove`\n- `allow-mailbox-take-for-delivery`\n- `allow-mailbox-pending`\n- `allow-mailbox-mark-read`\n- `allow-mailbox-reply`\n- `allow-mailbox-list-sessions`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-secrets-redact`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-memory-records-list`\n- `allow-memory-record-get`\n- `allow-memory-record-edit`\n- `allow-memory-record-propose`\n- `allow-memory-record-propose-inferred`\n- `allow-memory-proposals-list`\n- `allow-memory-proposal-resolve`\n- `allow-memory-record-commit`\n- `allow-memory-record-forget`\n- `allow-memory-record-restore`\n- `allow-memory-record-pin`\n- `allow-memory-record-set-expiration`\n- `allow-memory-record-move-scope`\n- `allow-memory-storage-summary`\n- `allow-memory-settings-get`\n- `allow-memory-settings-update`\n- `allow-memory-retrieve`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-environment-readiness`\n- `allow-environment-readiness-retry`\n- `allow-advertised-tool-schemas`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`\n- `allow-permission-audit-recent`\n- `allow-mailbox-session-register`\n- `allow-mailbox-session-status`\n- `allow-mailbox-session-heartbeat`\n- `allow-mailbox-session-remove`\n- `allow-mailbox-take-for-delivery`\n- `allow-mailbox-pending`\n- `allow-mailbox-mark-read`\n- `allow-mailbox-reply`\n- `allow-mailbox-list-sessions`"
+          "markdownDescription": "Default permissions for the agent tools plugin: skill/memory management plus built-in tool execution\n#### This default permission set includes:\n\n- `allow-workspace-path`\n- `allow-thread-workspace-path`\n- `allow-thread-workspace-delete`\n- `allow-thread-workspace-sweep`\n- `allow-session-workspace-path`\n- `allow-session-workspace-delete`\n- `allow-session-workspace-sweep`\n- `allow-direct-edit-capability`\n- `allow-managed-worktree-capability`\n- `allow-direct-edit-authorize`\n- `allow-direct-edit-revoke`\n- `allow-direct-edit-revoke-session`\n- `allow-secrets-redact`\n- `allow-skill-list`\n- `allow-skill-read`\n- `allow-skill-write`\n- `allow-skill-delete`\n- `allow-memory-list`\n- `allow-memory-read`\n- `allow-memory-write`\n- `allow-memory-delete`\n- `allow-memory-records-list`\n- `allow-memory-record-get`\n- `allow-memory-record-edit`\n- `allow-memory-record-propose`\n- `allow-memory-record-propose-inferred`\n- `allow-memory-proposals-list`\n- `allow-memory-proposal-resolve`\n- `allow-memory-record-commit`\n- `allow-memory-record-forget`\n- `allow-memory-record-restore`\n- `allow-memory-record-pin`\n- `allow-memory-record-set-expiration`\n- `allow-memory-record-move-scope`\n- `allow-memory-storage-summary`\n- `allow-memory-settings-get`\n- `allow-memory-settings-update`\n- `allow-memory-retrieve`\n- `allow-memory-conflicts`\n- `allow-memory-scope-clear`\n- `allow-memory-export`\n- `allow-memory-import`\n- `allow-memory-record-uses`\n- `allow-tool-schemas`\n- `allow-sandbox-status`\n- `allow-environment-readiness`\n- `allow-environment-readiness-retry`\n- `allow-advertised-tool-schemas`\n- `allow-execute-tool`\n- `allow-execute-tool-streaming`\n- `allow-tool-resources-finish-run`\n- `allow-undo-journal`\n- `allow-undo-turn`\n- `allow-redo-turn`\n- `allow-preview-change`\n- `allow-project-list-dir`\n- `allow-project-read-file`\n- `allow-project-survey`\n- `allow-project-init-accept`\n- `allow-bash-jobs-list`\n- `allow-bash-job-kill`\n- `allow-permission-audit-recent`\n- `allow-mailbox-session-register`\n- `allow-mailbox-session-status`\n- `allow-mailbox-session-heartbeat`\n- `allow-mailbox-session-remove`\n- `allow-mailbox-take-for-delivery`\n- `allow-mailbox-pending`\n- `allow-mailbox-mark-read`\n- `allow-mailbox-reply`\n- `allow-mailbox-list-sessions`"
         }
       ]
     }

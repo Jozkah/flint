@@ -9,7 +9,8 @@
  * Deliberately dependency-free: it runs on a bare `node` before `yarn install`,
  * which is what lets it gate the registry in CI and in a pre-commit hook.
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 export const STATUSES = [
   'missing',
@@ -47,7 +48,7 @@ export const SECURITY_IMPACTS = ['none', 'low', 'medium', 'high', 'critical']
  * Adding items is allowed and removing them is not: the count is a floor that
  * this constant records, so a deletion still fails validation.
  */
-export const EXPECTED_FEATURE_COUNT = 210
+export const EXPECTED_FEATURE_COUNT = 211
 
 /** Inclusive id ranges per delivery phase, in dependency order. */
 export const PHASES = [
@@ -60,10 +61,10 @@ export const PHASES = [
   { phase: 6, name: 'Compatibility and integrations', from: 114, to: 145 },
   { phase: 7, name: 'Coding and Git workflows', from: 146, to: 171 },
   { phase: 8, name: 'UX, automation and operations', from: 172, to: 200 },
-  // AH-201..AH-210 are their own phase rather than an extension of phase 8:
+  // AH-201..AH-211 are their own phase rather than an extension of phase 8:
   // they were approved after the original 200 were planned, and folding them
   // into phase 8 would misreport when they were decided.
-  { phase: 9, name: 'Approved additions', from: 201, to: 210 },
+  { phase: 9, name: 'Approved additions', from: 201, to: 211 },
 ]
 
 export const LANES = [
@@ -220,6 +221,27 @@ export function validateRegistry(doc) {
     bad(`dependency cycle: ${cycle.join(' -> ')}`)
   }
 
+  return problems
+}
+
+/**
+ * Lists `implemented` and `verified` items whose listed files are not on disk.
+ *
+ * Kept apart from `validateRegistry`, which stays a pure check of the document:
+ * this one reads the working tree, relative to `root`. It exists because six
+ * items once kept claiming a crate that a merge had dropped, and nothing
+ * noticed. Unfinished items are exempt -- their files may name work to come.
+ */
+export function findMissingFiles(doc, root) {
+  const problems = []
+  for (const feature of doc?.features ?? []) {
+    if (!['implemented', 'verified'].includes(feature?.status)) continue
+    for (const file of feature.files ?? []) {
+      if (!existsSync(join(root, file))) {
+        problems.push(`${feature.id}: status "${feature.status}" lists ${file}, which does not exist`)
+      }
+    }
+  }
   return problems
 }
 

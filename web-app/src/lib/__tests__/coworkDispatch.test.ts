@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { executeAgentTool } = vi.hoisted(() => ({ executeAgentTool: vi.fn() }))
-vi.mock('@/lib/agentTools', () => ({ executeAgentTool }))
+const { previewAgentChange } = vi.hoisted(() => ({
+  previewAgentChange: vi.fn(async (): Promise<string | undefined> => undefined),
+}))
+vi.mock('@/lib/agentTools', () => ({ executeAgentTool, previewAgentChange }))
 
 const { executeWebTool } = vi.hoisted(() => ({ executeWebTool: vi.fn() }))
 vi.mock('@/lib/webSearchTool', () => ({
@@ -46,7 +49,52 @@ describe('dispatchCoworkTool', () => {
       readOnlyProject: null,
       scope: 'session',
       writeGrant: undefined,
+      // AH-174: the call's id, so what its command uses is kept against it.
+      callId: 'c1',
     })
+  })
+
+  // AH-110: the backend journals a change under the agent that made it, so
+  // the identity has to travel with the call, not be guessed afterwards.
+  it('tells the backend which agent is making the call', async () => {
+    await dispatchCoworkTool(call('write', { path: 'a', content: 'x' }), ctx({
+      activity: { session: 's1', run: 'run-1', invocation: 'inv-1', agent: 'main' },
+    }))
+    expect(executeAgentTool).toHaveBeenLastCalledWith(
+      'write',
+      { path: 'a', content: 'x' },
+      's1',
+      expect.objectContaining({
+        undoRun: 'run-1',
+        actor: { id: 'agent', label: undefined, parent: undefined, invocation: 'inv-1', task: undefined },
+      })
+    )
+
+    await dispatchCoworkTool(call('write', { path: 'b', content: 'y' }), ctx({
+      activity: {
+        session: 's1',
+        run: 'run-1',
+        invocation: 'inv-2',
+        agent: 'reviewer',
+        agentId: 'role:reviewer',
+        parentAgent: 'agent',
+        parent: 'task-9',
+      },
+    }))
+    expect(executeAgentTool).toHaveBeenLastCalledWith(
+      'write',
+      { path: 'b', content: 'y' },
+      's1',
+      expect.objectContaining({
+        actor: {
+          id: 'role:reviewer',
+          label: 'reviewer',
+          parent: 'agent',
+          invocation: 'inv-2',
+          task: 'task-9',
+        },
+      })
+    )
   })
 
   it('routes the client-only tools to their handlers', async () => {
@@ -79,9 +127,51 @@ describe('dispatchCoworkTool', () => {
       call('write', { path: 'a' }),
       ctx({ mode: 'ask', onApprove })
     )
-    expect(onApprove).toHaveBeenCalledWith('c1', 'write', { path: 'a' })
+    // No preview (the mock returns none) and no run signal in this call.
+    expect(onApprove).toHaveBeenCalledWith(
+      'c1',
+      'write',
+      { path: 'a' },
+      undefined,
+      undefined
+    )
     expect(out.isError).toBeUndefined()
     expect(executeAgentTool).toHaveBeenCalled()
+  })
+
+  // AH-146: the prompt carries the change, computed by the backend where the
+  // call would land -- the session's own workspace and grant.
+  it('puts the change a write would make in front of the person asked', async () => {
+    previewAgentChange.mockResolvedValueOnce('@@ created file @@\n+    1 | hi')
+    const onApprove = vi.fn(async () => true)
+    await dispatchCoworkTool(
+      call('write', { path: 'a', content: 'hi' }),
+      ctx({ mode: 'ask', onApprove, writeGrant: 'g1' })
+    )
+    expect(previewAgentChange).toHaveBeenCalledWith(
+      'write',
+      { path: 'a', content: 'hi' },
+      's1',
+      { scope: 'session', writeGrant: 'g1' }
+    )
+    expect(onApprove).toHaveBeenCalledWith(
+      'c1',
+      'write',
+      { path: 'a', content: 'hi' },
+      '@@ created file @@\n+    1 | hi',
+      undefined
+    )
+  })
+
+  it('still asks, without a diff, when no preview can be made', async () => {
+    previewAgentChange.mockRejectedValueOnce(new Error('backend gone'))
+    const onApprove = vi.fn(async () => false)
+    const out = await dispatchCoworkTool(
+      call('edit', { path: 'a' }),
+      ctx({ mode: 'ask', onApprove })
+    )
+    expect(out.isError).toBe(true)
+    expect(executeAgentTool).not.toHaveBeenCalled()
   })
 
   it('does not run a mutation the user refused', async () => {
@@ -142,6 +232,7 @@ describe('dispatchCoworkTool', () => {
       readOnlyProject: '/repo',
       scope: 'session',
       writeGrant: undefined,
+      callId: 'c1',
     })
   })
 
@@ -687,5 +778,51 @@ describe('missing reads in review mode', () => {
     const out = await dispatchCoworkTool(call('read', { path: 'y' }), review)
     expect(out.output).toBe('ERROR: permission denied (os error 13)')
     expect(review.onAsk).not.toHaveBeenCalled()
+  })
+})
+
+describe('an approval prompt whose run is stopped', () => {
+  beforeEach(() => {
+    executeAgentTool.mockReset()
+    executeAgentTool.mockResolvedValue({ content: 'ok' })
+  })
+
+  it('hands the prompt the run signal, and stops waiting the moment the run stops', async () => {
+    const run = new AbortController()
+    let seen: AbortSignal | undefined
+    // A prompt nobody answers: only the stop can end the wait.
+    const onApprove = vi.fn(
+      (_c: string, _t: string, _i: unknown, _p?: string, signal?: AbortSignal) => {
+        seen = signal
+        return new Promise<boolean>(() => {})
+      }
+    )
+    const pending = dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'ask', onApprove }),
+      run.signal
+    )
+    await vi.waitFor(() => expect(onApprove).toHaveBeenCalled())
+    expect(seen).toBe(run.signal)
+    run.abort('cancelled')
+    const out = await pending
+    expect(out.isError).toBe(true)
+    expect(out.output).toMatch(/stopped/)
+    expect(executeAgentTool).not.toHaveBeenCalled()
+  })
+
+  it('never runs a call whose approval arrives after the run stopped', async () => {
+    const run = new AbortController()
+    const onApprove = vi.fn(async () => {
+      run.abort('cancelled')
+      return true
+    })
+    const out = await dispatchCoworkTool(
+      call('write', { path: 'a' }),
+      ctx({ mode: 'ask', onApprove }),
+      run.signal
+    )
+    expect(out.isError).toBe(true)
+    expect(executeAgentTool).not.toHaveBeenCalled()
   })
 })

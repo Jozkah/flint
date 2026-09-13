@@ -1,4 +1,4 @@
-import { IconSettings } from '@tabler/icons-react'
+import { SlidersHorizontal } from 'lucide-react'
 import debounce from 'lodash.debounce'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -258,17 +258,20 @@ export function ModelSetting({
       <SheetTrigger asChild>
         <Button
           variant="ghost"
-          size="icon-xs"
+          size="icon-sm"
+          className="text-muted-foreground pointer-coarse:size-11"
           aria-label={t('common:modelSettings.title', {
             modelId: getModelDisplayName(model),
           })}
         >
-          <IconSettings size={18} className="text-muted-foreground" />
+          <SlidersHorizontal aria-hidden />
         </Button>
       </SheetTrigger>
-      <SheetContent>
-        <SheetHeader>
-          <SheetTitle>
+      {/* The Atelier inspector: paper, 360px beside the page on desktop, the
+          whole screen on a phone. */}
+      <SheetContent className="w-full max-w-none gap-0 border-l border-border bg-card sm:w-[var(--inspector-w)] sm:max-w-[var(--inspector-w)]">
+        <SheetHeader className="border-b border-border px-5 py-4">
+          <SheetTitle className="font-display text-xl font-normal leading-tight">
             {t('common:modelSettings.title', {
               modelId: getModelDisplayName(model),
             })}
@@ -278,7 +281,7 @@ export function ModelSetting({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="px-4 space-y-8 pb-4 flex-1 min-h-0 overflow-y-auto">
+        <div className="flex-1 min-h-0 space-y-6 overflow-y-auto overscroll-contain px-5 py-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
           {provider.provider === 'llamacpp' && (
             <SpecDraftPanel modelId={model.id} />
           )}

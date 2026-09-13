@@ -35,7 +35,9 @@ import {
 import {
   useMessageQueue,
   type QueuedMessage,
+  type QueuedMessageSender,
 } from '@/stores/message-queue-store'
+import type { AgentMessageAttribution } from '@/types/coworkSession'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
@@ -46,6 +48,16 @@ type DeliveryMailbox = Pick<
 >
 
 type QueueState = { queues: Record<string, QueuedMessage[]> }
+
+/** The sender fields a transcript row carries, from a queued message's sender. */
+export function agentAttribution(from: QueuedMessageSender): AgentMessageAttribution {
+  return {
+    sessionId: from.sessionId,
+    displayName: from.displayName,
+    messageId: from.messageId,
+    replyTo: from.replyTo ?? null,
+  }
+}
 
 export function envelopeToQueued(
   envelope: MailEnvelope,

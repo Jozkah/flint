@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAttachmentIngestionPrompt } from '@/hooks/useAttachmentIngestionPrompt'
 import { useTranslation } from '@/i18n'
@@ -24,22 +25,25 @@ export default function AttachmentIngestionDialog() {
           <DialogTitle>
             {t('common:attachmentsIngestion.title')}
             {totalCount > 1 && (
-              <span className="text-sm font-normal text-muted-foreground ml-2">
+              <span className="ml-2 text-sm font-normal tabular-nums text-muted-foreground">
                 ({currentIndex + 1} of {totalCount})
               </span>
             )}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-ink-2">
             {t('common:attachmentsIngestion.description')}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="border rounded-md p-3 bg-secondary">
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate font-medium" title={currentAttachment.name}>
-              {currentAttachment.name}
+        <div className="min-w-0 rounded-md border border-border bg-sunken p-3">
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-2">
+              <FileText className="size-4 shrink-0 text-muted-foreground" />
+              <span className="truncate font-medium" title={currentAttachment.name}>
+                {currentAttachment.name}
+              </span>
             </span>
-            <span className="text-xs text-muted-foreground shrink-0">
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
               {currentAttachment.size && currentAttachment.size > 0
                 ? formatBytes(currentAttachment.size, {
                     decimals: (value, unit) =>
@@ -50,18 +54,25 @@ export default function AttachmentIngestionDialog() {
           </div>
         </div>
 
-        <DialogFooter className="flex gap-2 sm:justify-end">
-          <Button size="sm" variant="ghost" onClick={cancel}>
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            className="pointer-coarse:h-11"
+            onClick={cancel}
+          >
             {t('common:cancel')}
           </Button>
           <Button
-            size="sm"
             variant="outline"
+            className="pointer-coarse:h-11"
             onClick={() => choose('embeddings')}
           >
             {t('common:attachmentsIngestion.embeddings')}
           </Button>
-          <Button size="sm" onClick={() => choose('inline')}>
+          <Button
+            className="pointer-coarse:h-11"
+            onClick={() => choose('inline')}
+          >
             {t('common:attachmentsIngestion.inline')}
           </Button>
         </DialogFooter>

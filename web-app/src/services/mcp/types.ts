@@ -36,6 +36,8 @@ export interface MCPAuthStatus {
     | 'authenticated'
     | 'expired'
     | 'staleResource'
+    | 'scopeMismatch'
+    | 'invalidScopes'
     | 'unauthenticated'
   /** Whether an interactive sign-in is possible and would mean something. */
   canAuthenticate: boolean
@@ -48,6 +50,14 @@ export interface MCPAuthStatus {
   renewable: boolean
   /** Unix seconds the access token expires at, when known. */
   expiresAt: number | null
+  /** What the server's configuration declares: what a sign-in asks for (AH-135). */
+  declaredScopes: string[]
+  /** What the stored token was asked for under. */
+  requestedScopes: string[]
+  /** What the provider granted the stored token; never wider than requested. */
+  grantedScopes: string[]
+  /** Why the state is what it is, when that is not obvious from the state. */
+  detail: string | null
 }
 
 /** Why a server's grants are being forgotten. */
@@ -86,6 +96,8 @@ export interface MCPService {
   getToolsForServers(serverNames: string[]): Promise<MCPTool[]>
   /** Return name/capabilities/description for all connected servers. */
   getServerSummaries(): Promise<ServerSummary[]>
+  /** One server's own stderr log, scrubbed and bounded, newest last (AH-140). */
+  getServerLog(serverName: string, lines?: number): Promise<string[]>
   getConnectedServers(): Promise<string[]>
   /**
    * `maxOutputChars` is a per-result character budget derived from the active

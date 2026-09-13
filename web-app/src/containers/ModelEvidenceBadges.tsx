@@ -53,17 +53,17 @@ export function ModelEvidenceBadges({
   return (
     <span className="flex shrink-0 items-center gap-1">
       {isDefault && (
-        <span className="rounded-full border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+        <span className="rounded-full border border-border bg-sunken px-1.5 py-0.5 text-[10px] text-ink-2">
           {t('model-fit:badge.default')}
         </span>
       )}
       {unsupported && (
-        <span className="rounded-full border border-destructive/40 px-1.5 py-0.5 text-[10px] text-destructive">
+        <span className="rounded-full bg-destructive-tint px-1.5 py-0.5 text-[10px] text-destructive">
           {t('model-fit:badge.unsupported')}
         </span>
       )}
       {worked && (
-        <span className="rounded-full border border-green-500/40 px-1.5 py-0.5 text-[10px] text-green-700 dark:text-green-400">
+        <span className="rounded-full bg-success-tint px-1.5 py-0.5 text-[10px] text-success">
           {t('model-fit:badge.worked')}
         </span>
       )}

@@ -35,7 +35,7 @@ export function NavChats() {
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel>{t('common:chats')}</SidebarGroupLabel>
           <div className="flex items-center justify-center py-2">
-            <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            <Loader2 className="size-4 motion-safe:animate-spin text-muted-foreground" />
           </div>
         </SidebarGroup>
       )
@@ -49,7 +49,7 @@ export function NavChats() {
       {threadsWithoutProject.length > 1 && 
         <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
           <DropdownMenuTrigger asChild>
-            <SidebarGroupAction className="hover:bg-sidebar-foreground/8">
+            <SidebarGroupAction className="hover:bg-sunken pointer-coarse:size-9">
               <MoreHorizontal className="text-muted-foreground" />
               <span className="sr-only">More</span>
             </SidebarGroupAction>

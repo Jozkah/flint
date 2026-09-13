@@ -32,9 +32,9 @@ export function CoworkEmptyState({ folder, onPick }: Props) {
   return (
     <div className="absolute inset-0 flex flex-col justify-end px-3 pb-2">
       <div className="mx-auto w-full md:w-4/5 xl:w-4/6">
-        <div className="animate-in fade-in-0 duration-500 motion-reduce:animate-none">
-          <Handshake size={20} className="text-primary" aria-hidden />
-          <h1 className="mt-3 font-studio text-2xl font-medium tracking-tight">
+        <div className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-500">
+          <Handshake size={20} className="text-brand-text" aria-hidden />
+          <h1 className="mt-3 font-display text-3xl font-normal tracking-tight text-foreground">
             {t('common:coworkEmpty.title')}
           </h1>
           <p className="mt-1.5 max-w-lg text-sm text-muted-foreground">
@@ -43,10 +43,10 @@ export function CoworkEmptyState({ folder, onPick }: Props) {
               : t('common:coworkEmpty.subtitleSandbox')}
           </p>
 
-          <p className="mt-6 text-xs font-medium uppercase tracking-wider text-muted-foreground/60">
+          <p className="mt-6 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             {t('common:coworkEmpty.try')}
           </p>
-          <div className="mt-1 flex flex-col items-start">
+          <div className="mt-1 flex flex-col items-start gap-0.5">
             {EXAMPLE_KEYS.map((key) => {
               const text = t(`common:coworkEmpty.${scope}.${key}`, {
                 folder: name,
@@ -56,7 +56,7 @@ export function CoworkEmptyState({ folder, onPick }: Props) {
                   key={key}
                   type="button"
                   onClick={() => onPick(text)}
-                  className="max-w-full rounded-lg px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="max-w-full rounded-md border border-transparent px-2 py-1.5 text-left text-sm text-ink-2 outline-none transition-colors hover:border-border hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
                 >
                   {text}
                 </button>

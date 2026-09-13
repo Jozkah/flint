@@ -58,8 +58,7 @@ pub(crate) async fn discover_models(
     credential: &str,
     oauth: bool,
 ) -> Result<Vec<String>, LoginError> {
-    let client = reqwest::Client::builder()
-        .timeout(VERIFY_TIMEOUT)
+    let client = crate::core::net::tls::apply12(reqwest::Client::builder().timeout(VERIFY_TIMEOUT))
         .build()
         .map_err(|e| LoginError::Unavailable(format!("could not build an HTTP client: {e}")))?;
     let url = format!(
@@ -138,8 +137,7 @@ pub(crate) async fn discover_codex_models(
     } else {
         base_url
     };
-    let client = reqwest::Client::builder()
-        .timeout(VERIFY_TIMEOUT)
+    let client = crate::core::net::tls::apply12(reqwest::Client::builder().timeout(VERIFY_TIMEOUT))
         .build()
         .map_err(|e| LoginError::Unavailable(format!("could not build an HTTP client: {e}")))?;
 

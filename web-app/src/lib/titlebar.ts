@@ -18,8 +18,51 @@
 // check, and the pure layout maths live in one tested place both components
 // consume.
 
-/** Build-time define (vite `define`), absent/false in unit tests. */
+/** Build-time defines (vite `define`), absent/false in unit tests. */
 declare const IS_MACOS: boolean
+declare const IS_LINUX: boolean
+
+/**
+ * Who draws the window's title bar.
+ *
+ *  - `native`: the operating system draws a real title bar (Windows). It owns
+ *    dragging, double-click maximise, Snap Layouts, the system menu and the
+ *    caption buttons, so the app must not reserve space for buttons of its own
+ *    or declare any drag region -- a drag region inside the client area would
+ *    only turn clicks on the page into window drags.
+ *  - `mac-overlay`: macOS draws the traffic lights over the web content, and the
+ *    app supplies the drag region.
+ *  - `custom`: the window is borderless and the app draws everything (Linux,
+ *    where GTK3 cannot negotiate a slim server-side bar on Wayland).
+ */
+export type WindowChrome = 'native' | 'mac-overlay' | 'custom'
+
+export function detectWindowChrome(opts?: {
+  macOverlay?: boolean
+  linux?: boolean
+}): WindowChrome {
+  const macOverlay = opts?.macOverlay ?? detectMacOverlay()
+  if (macOverlay) return 'mac-overlay'
+  const linux = opts?.linux ?? (typeof IS_LINUX !== 'undefined' && IS_LINUX)
+  return linux ? 'custom' : 'native'
+}
+
+/** Whether the page header must act as the window's drag handle. */
+export function headerDragsWindow(chrome: WindowChrome): boolean {
+  return chrome !== 'native'
+}
+
+/**
+ * Window-control buttons the app itself has to draw. Only a borderless window
+ * has any; with native chrome the system's own buttons are in the title bar
+ * above the page, so reserving room for app-drawn ones leaves a dead strip.
+ */
+export function appDrawnButtonCounts(
+  chrome: WindowChrome,
+  layout: { left: number; right: number }
+): { left: number; right: number } {
+  return chrome === 'custom' ? layout : { left: 0, right: 0 }
+}
 
 /**
  * Whether the native macOS traffic-light overlay owns the window's top-left,

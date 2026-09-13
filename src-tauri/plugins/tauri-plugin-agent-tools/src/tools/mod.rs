@@ -12,6 +12,7 @@ pub mod handlers;
 pub mod image;
 pub mod jail;
 pub mod mcp_confine;
+pub mod owned;
 pub mod proc;
 /// Path containment for the filesystem tools. Distinct from [`jail`], which is
 /// kernel-level confinement for spawned commands.
@@ -99,6 +100,36 @@ pub struct ToolContext<'a> {
     /// from -- `memory_propose` scopes and attributes by it. `None` on a
     /// surface with no conversation, such as a one-shot CLI run.
     pub session_id: Option<&'a str>,
+    /// Which run this call belongs to, as the harness knows it (AH-008).
+    ///
+    /// Supplied by the loop, never by the model: it is the sender's identity
+    /// where one run writes to another (AH-103), so a value a model could
+    /// choose would be no identity at all.
+    pub run_id: Option<&'a str>,
+    /// The Jan data folder, where a run's mailbox is stored. `None` on a
+    /// surface that keeps no durable state.
+    pub data_folder: Option<&'a std::path::Path>,
+    /// What this run may do, and who it is doing it as (AH-040).
+    ///
+    /// Carried so a skill that declares the tools it needs can be withheld
+    /// where those tools are denied, instead of handing over instructions
+    /// whose every step will be refused. It can only withhold: nothing here
+    /// grants a tool.
+    pub permissions: Option<&'a crate::permissions::ToolPermissions>,
+    pub subject: Option<&'a crate::subject::Subject>,
+    /// Whether a file this run edits is handed to the project's own formatter
+    /// before its diff is shown (AH-149). Off unless the surface says
+    /// otherwise: running a program the user did not ask for is a thing to opt
+    /// into, and a formatter is still a program.
+    pub format_on_edit: bool,
+    /// Every tool this run could call, built-in and MCP alike (AH-124).
+    ///
+    /// Carried so a skill that declares a tool nothing here provides is
+    /// withheld, rather than handing over instructions whose first step names
+    /// something that does not exist. `None` means the surface did not say,
+    /// and the check is skipped: an unrecognised name is not evidence of
+    /// absence when nobody supplied the list.
+    pub available_tools: Option<&'a [String]>,
     /// A temporary chat neither reads nor records memory.
     ///
     /// Carried rather than inferred from a missing session id: an unsaved chat
@@ -151,6 +182,22 @@ pub struct ToolContext<'a> {
     /// together with `session_id`. `None` everywhere else -- chat threads, the
     /// CLI, subagent children -- and the mailbox tools refuse without it.
     pub mailbox_root: Option<&'a Path>,
+    /// Who owns the background commands this call starts or touches: the
+    /// conversation. `bash` job listing, status, collection and cancellation
+    /// are confined to it, so a job id learned from one session is useless in
+    /// another. Kept apart from `session_id`, which also decides what memory a
+    /// call may read and write.
+    pub job_owner: Option<&'a str>,
+    /// Where a background job's durable record is written (AH-101/AH-102).
+    ///
+    /// The in-memory registry dies with the app, so a job that was running is
+    /// a job nobody has any record of. `None` records nothing, which is what
+    /// a surface with no data folder wants.
+    pub job_record_to: Option<&'a Path>,
+    /// The user's own skills, shared by every project (AH-121). `skill_list`
+    /// and `skill_read` consult it after `store_root`, which shadows it. `None`
+    /// where the store already is the user store (the desktop) or none exists.
+    pub user_skills_root: Option<&'a Path>,
 }
 
 impl std::fmt::Debug for ToolContext<'_> {
@@ -173,6 +220,9 @@ impl std::fmt::Debug for ToolContext<'_> {
             .field("write_roots", &self.write_roots)
             .field("call_id", &self.call_id)
             .field("mailbox_root", &self.mailbox_root)
+            .field("job_owner", &self.job_owner)
+            .field("job_record_to", &self.job_record_to)
+            .field("user_skills_root", &self.user_skills_root)
             .finish()
     }
 }
@@ -196,6 +246,12 @@ impl<'a> ToolContext<'a> {
             home_readonly: false,
             scratch_root: None,
             session_id: None,
+            run_id: None,
+            data_folder: None,
+            permissions: None,
+            subject: None,
+            format_on_edit: false,
+            available_tools: None,
             temporary: false,
             sandbox: true,
             on_output: None,
@@ -203,12 +259,78 @@ impl<'a> ToolContext<'a> {
             write_roots: &[],
             call_id: None,
             mailbox_root: None,
+            job_owner: None,
+            job_record_to: None,
+            user_skills_root: None,
         }
     }
 
     /// Give the session-messaging tools a mailbox. See [`Self::mailbox_root`].
     pub fn with_mailbox(mut self, data_folder: &'a Path) -> Self {
         self.mailbox_root = Some(data_folder);
+        self
+    }
+
+    /// Offer the user's own skills beside the store's. See
+    /// [`Self::user_skills_root`].
+    pub fn with_user_skills(mut self, user_skills_root: Option<&'a Path>) -> Self {
+        self.user_skills_root = user_skills_root;
+        self
+    }
+
+    /// Confine the background commands this call starts or touches to
+    /// Where a background job's durable record goes. See
+    /// [`Self::job_record_to`].
+    pub fn with_job_record_to(mut self, data_folder: &'a Path) -> Self {
+        self.job_record_to = Some(data_folder);
+        self
+    }
+
+    /// `owner`. See [`Self::job_owner`].
+    /// Say what this run may do, so a skill can be checked against it.
+    pub fn with_permissions(
+        mut self,
+        permissions: &'a crate::permissions::ToolPermissions,
+        subject: &'a crate::subject::Subject,
+    ) -> Self {
+        self.permissions = Some(permissions);
+        self.subject = Some(subject);
+        self
+    }
+
+    /// Hand an edited file to the project's formatter before showing its diff
+    /// (AH-149).
+    pub fn with_format_on_edit(mut self, on: bool) -> Self {
+        self.format_on_edit = on;
+        self
+    }
+
+    /// Say which tools this run actually has, so a skill naming one nothing
+    /// provides is withheld rather than loaded (AH-124).
+    pub fn with_available_tools(mut self, tools: &'a [String]) -> Self {
+        self.available_tools = Some(tools);
+        self
+    }
+
+    /// Say which run is executing this call, and where its mail lives.
+    pub fn with_run(mut self, run_id: &'a str, data_folder: &'a std::path::Path) -> Self {
+        self.run_id = Some(run_id);
+        self.data_folder = Some(data_folder);
+        self
+    }
+
+    /// The run this call belongs to, for attributing what its command uses
+    /// (AH-174), on a surface that keeps no mailbox. Never replaces a run id
+    /// already set by [`Self::with_run`].
+    pub fn with_measured_run(mut self, run_id: &'a str) -> Self {
+        if self.run_id.is_none() {
+            self.run_id = Some(run_id);
+        }
+        self
+    }
+
+    pub fn with_job_owner(mut self, owner: &'a str) -> Self {
+        self.job_owner = Some(owner);
         self
     }
 
@@ -373,6 +495,20 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
     // Dedicated skill/memory tools. They operate on `.jan/agent/{skills,memory}/`
     // by name (never a path), so they are always workspace-scoped and never
     // prompt. `path_args` is empty: there is no path to sandbox-check.
+    // AH-103: one run saying something to another while both are still
+    // running. `message_send` writes to a mailbox and `message_check` reads
+    // this run's own; neither touches the filesystem, so `path_args` is empty
+    // and there is nothing to sandbox-check.
+    BuiltinTool {
+        name: "message_send",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "message_check",
+        capability: Capability::Read,
+        path_args: &[],
+    },
     BuiltinTool {
         name: "memory_list",
         capability: Capability::Read,
@@ -454,7 +590,7 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
 /// The session-messaging tools. Auto-allowed by the gate (an agent.toml deny
 /// still wins), offered only in session scope, and withheld from subagents.
 pub fn is_mailbox_tool(name: &str) -> bool {
-    crate::mailbox::TOOL_NAMES.contains(&name)
+    crate::session_mailbox::TOOL_NAMES.contains(&name)
 }
 
 /// Whether a built-in may be advertised to a call in this scope. Only the
@@ -513,16 +649,16 @@ mod tests {
     #[test]
     fn builtin_count_matches_expected() {
         // 8 coding tools + 7 dedicated skill/memory tools + 2 native web tools
-        // + 4 session-messaging tools.
+        // + 2 run-to-run message tools (AH-103) + 4 session-messaging tools.
         // The seventh memory tool is `memory_propose`: the typed path by which
         // a model says a fact is worth remembering, so that Jan decides rather
         // than the app parsing an intention out of prose.
-        assert_eq!(BUILTIN_TOOLS.len(), 21);
+        assert_eq!(BUILTIN_TOOLS.len(), 23);
     }
 
     #[test]
     fn mailbox_tools_are_read_with_no_paths_and_session_only() {
-        for name in crate::mailbox::TOOL_NAMES {
+        for name in crate::session_mailbox::TOOL_NAMES {
             let t = lookup(name).expect("mailbox tool is builtin");
             assert_eq!(t.capability, Capability::Read);
             assert!(t.path_args.is_empty());
