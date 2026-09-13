@@ -34,6 +34,10 @@ export const localStorageKey = {
   coworkActivity: 'cowork-activity',
   claudeCompat: 'claude-compat',
   coworkCheckpoints: 'cowork-checkpoints',
+  /** Measured model test results, preferred default model, dismissed hints. */
+  modelEvidence: 'model-evidence',
+  /** First-run guide progress: chosen intention, current step, skipped/done. */
+  onboardingGuide: 'onboarding-guide',
 }
 
 export const CACHE_EXPIRY_MS = 1000 * 60 * 60 * 24

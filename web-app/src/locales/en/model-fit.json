@@ -1,0 +1,104 @@
+{
+  "triggerLabel": "Will this model run on this device? {{status}}. Show details",
+  "title": "Will this model run on this device?",
+  "subtitle": "What has been measured here, and what is only estimated.",
+  "measuredHeading": "Measured on this device",
+  "estimateHeading": "Estimate",
+  "evidence": {
+    "ran-successfully": "Ran successfully on this device with these settings.",
+    "failed-with-settings": "Failed on this device with these settings. Other settings may work.",
+    "unsupported": "Unsupported by this runtime: the llama.cpp engine in this version of JAN does not recognise the model's architecture. Changing settings will not help; an app update might.",
+    "stale": "Tested before, but something has changed since, so that result may not apply.",
+    "not-tested": "Not tested on this device."
+  },
+  "verdict": {
+    "fits": "Estimated to fit in memory.",
+    "fits-partial-offload": "Estimated to fit, with part of the model running on the CPU. It will work but respond more slowly.",
+    "tight": "May require adjusted settings: very little memory would be left. A smaller context size helps.",
+    "exceeds": "Estimated not to fit. Estimates can be wrong; you can still try it or test it.",
+    "unknown": "Not enough information to estimate."
+  },
+  "memoryModel": {
+    "unified": "Unified memory: {{ram}} shared by the CPU and GPU. By default the GPU can use about {{gpu}} of it.",
+    "discrete-gpu": "Dedicated GPU memory {{vram}} plus {{ram}} of system memory. Layers that do not fit on the GPU run on the CPU.",
+    "integrated-gpu": "Integrated graphics share the {{ram}} of system memory, so it is counted once.",
+    "cpu-only": "No GPU was detected for this runtime: the model runs on the CPU using {{ram}} of system memory.",
+    "unknown": "Device memory has not been detected yet."
+  },
+  "showReasons": "Show how this was estimated",
+  "breakdown": {
+    "weights": "Model file",
+    "kvCache": "Conversation memory for {{tokens}} tokens",
+    "mmproj": "Vision component",
+    "overhead": "Runtime overhead",
+    "total": "Estimated need",
+    "budget": "Estimated available",
+    "otherLoaded": "Already used by other loaded models"
+  },
+  "assumption": {
+    "kv-from-metadata": "Conversation memory is calculated from the model's own architecture and the configured cache types.",
+    "kv-heuristic": "The model's architecture could not be read, so conversation memory is approximated from the file size.",
+    "kv-sliding-window-midpoint": "This model keeps only recent tokens in some layers; the exact split is unknown, so the midpoint is used.",
+    "context-capped-to-trained": "The context size is capped at what the model was trained for.",
+    "unified-gpu-working-set": "macOS limits how much unified memory the GPU uses by default; beyond that, layers run on the CPU.",
+    "integrated-gpu-shares-ram": "Integrated graphics memory is part of system memory and is not added on top of it.",
+    "discrete-vram-reserve": "About 512 MB per dedicated GPU is left for the driver and display.",
+    "system-reserve": "About 2 GB of system memory is left for the operating system and other apps.",
+    "runtime-overhead": "Compute buffers and the runtime are estimated at 300 MB plus 2% of the model file.",
+    "cpu-only-by-setting": "GPU layers are set to 0, so the GPU is not used.",
+    "other-models-loaded": "Models already loaded are subtracted, but where they sit (GPU or CPU) is not observable.",
+    "mmap-not-counted": "Memory-mapped loading can let a model start in less memory than shown, at a large speed cost; that is not counted.",
+    "mmproj-unknown": "A vision component exists but its size is unknown."
+  },
+  "uncertainty": {
+    "low": "Confidence: reasonably good. Real use can still differ.",
+    "medium": "Confidence: moderate. Testing on this device gives a real answer.",
+    "high": "Confidence: low. The result is close to the limit or rests on rough assumptions; test it to know."
+  },
+  "difference": {
+    "settings": "Settings changed since the test: {{keys}}.",
+    "runtime": "The app was updated since the test ({{recorded}} to {{current}}).",
+    "device": "The device's memory or GPU configuration changed.",
+    "modelFile": "The model file changed."
+  },
+  "otherSuccess": "It did run on this device with a context size of {{context}}.",
+  "testScope": "A test proves only a short reply with the settings used. Longer conversations, larger context or other loaded models can still run out of memory.",
+  "testedAt": "Tested {{when}} with {{settings}}.",
+  "defaultSettings": "default settings",
+  "metric": {
+    "load": "Load time",
+    "generation": "Generation speed",
+    "prompt": "Prompt reading speed"
+  },
+  "test": {
+    "run": "Test on this device",
+    "runAgain": "Test again",
+    "cancel": "Cancel test",
+    "running": "Testing: loading the model and asking for a short reply…",
+    "succeeded": "Test passed: the model loaded and replied.",
+    "failed": "Test failed: {{reason}}",
+    "cancelled": "Test cancelled. Nothing the test loaded is still loaded.",
+    "cancelledNotReleased": "Test cancelled, but the model could not be unloaded. Unload it from the model settings.",
+    "notReleased": "The model could not be unloaded afterwards; it is still using memory.",
+    "couldNotRun": "The test could not run: {{reason}}",
+    "needsConfirmation": "Testing needs to unload another model first.",
+    "confirmUnload": "To test, JAN has to unload {{models}}. Any reply it is generating will stop. It is not reloaded automatically.",
+    "unloadAndTest": "Unload and test",
+    "dontTest": "Don't test"
+  },
+  "testExplainer": "Testing uses the model file already on this device; nothing is downloaded. It loads the model with its current settings, asks for a one-word reply, and unloads it again if it was not already loaded.",
+  "adjustSettings": "Adjust settings",
+  "setDefault": "Use for new chats",
+  "removeDefault": "Stop using for new chats",
+  "hideHint": "Hide this hint",
+  "showHint": "Show this hint",
+  "badge": {
+    "worked": "Worked here",
+    "default": "Default"
+  },
+  "location": {
+    "local": "Runs on this device or your network",
+    "remote": "Remote: messages are sent to this provider"
+  },
+  "providerSettings": "{{provider}} settings"
+}

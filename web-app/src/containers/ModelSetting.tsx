@@ -26,11 +26,16 @@ import { paramsSettings, samplerKeysForProvider } from '@/lib/predefinedParams'
 type ModelSettingProps = {
   provider: ProviderObject
   model: Model
+  /** Controlled open state, so other surfaces can open the settings. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 export function ModelSetting({
   model,
   provider,
+  open,
+  onOpenChange,
 }: ModelSettingProps) {
   const { updateProvider } = useModelProvider()
   const { t } = useTranslation()
@@ -249,9 +254,15 @@ export function ModelSetting({
   const fitCtxSetting = provider.settings?.find((s) => s.key === 'fit_ctx')
 
   return (
-    <Sheet>
+    <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon-xs">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={t('common:modelSettings.title', {
+            modelId: getModelDisplayName(model),
+          })}
+        >
           <IconSettings size={18} className="text-muted-foreground" />
         </Button>
       </SheetTrigger>

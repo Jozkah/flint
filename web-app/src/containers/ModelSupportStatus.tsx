@@ -1,49 +1,120 @@
-import { useEffect, useState } from 'react'
-import { cn } from '@/lib/utils'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { findSessionByModel, readGgufMetadata } from '@janhq/tauri-plugin-llamacpp-api'
+import { cn, formatBytes } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useHardware } from '@/hooks/useHardware'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { useAppState } from '@/hooks/useAppState'
+import { useModelEvidence } from '@/hooks/useModelEvidence'
+import { useTranslation } from '@/i18n/react-i18next-compat'
+import { providerFetch } from '@/lib/providerFetch'
 import {
+  assessModelFit,
   DEFAULT_CTX_LENGTH,
-  estimateModelFit,
+  kvArchitectureFromGguf,
+  tierForVerdict,
+  type FitAssessment,
   type FitTier,
+  type KvArchitecture,
 } from '@/lib/modelCompatibility'
+import {
+  deviceSignature,
+  evidenceFor,
+  resultKey,
+  settingsFromModel,
+  type ConditionDifference,
+  type EvidenceState,
+  type TestMetrics,
+} from '@/lib/modelEvidence'
+import {
+  runCompatibilityTest,
+  type CompatibilityTestPlan,
+} from '@/lib/modelCompatibilityTest'
 
 interface ModelSupportStatusProps {
   modelId: string | undefined
   provider: string | undefined
   contextSize: number
   className?: string
+  /** Opens the model's settings so a failed configuration can be adjusted. */
+  onAdjustSettings?: () => void
 }
 
-const TIER_STYLES: Record<FitTier, { dot: string; label: string }> = {
-  green: { dot: 'bg-green-500', label: 'Should run comfortably on your device' },
-  yellow: {
-    dot: 'bg-yellow-500',
-    label: 'Will run but leaves little memory headroom',
-  },
-  red: { dot: 'bg-red-500', label: 'Likely exceeds your available memory' },
-  unknown: { dot: 'bg-secondary', label: 'Fit unknown' },
+const DOT_CLASS: Record<FitTier, string> = {
+  green: 'bg-green-500',
+  yellow: 'bg-yellow-500',
+  red: 'bg-red-500',
+  unknown: 'bg-secondary',
 }
+
+/** A measured result outranks the estimate for the colour of the dot. */
+function tierFor(state: EvidenceState, assessment: FitAssessment): FitTier {
+  if (state === 'ran-successfully') return 'green'
+  if (state === 'failed-with-settings' || state === 'unsupported') return 'red'
+  return tierForVerdict(assessment.verdict)
+}
+
+export const runtimeVersion = (): string =>
+  typeof VERSION !== 'undefined' ? VERSION : 'unknown'
+
+const bytes = (value: number) => formatBytes(value, { decimals: 1 })
+
+type TestState =
+  | { phase: 'idle' }
+  | { phase: 'running' }
+  | { phase: 'confirm'; plan: CompatibilityTestPlan }
 
 export const ModelSupportStatus = ({
   modelId,
   provider,
   contextSize,
   className,
+  onAdjustSettings,
 }: ModelSupportStatusProps) => {
+  const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const hardwareData = useHardware((s) => s.hardwareData)
-  const [sizeBytes, setSizeBytes] = useState<number | null>(null)
+  const providerObject = useModelProvider((s) =>
+    provider ? s.getProviderByName(provider) : undefined
+  )
+  const activeModels = useAppState((s) => s.activeModels)
+  const setActiveModels = useAppState((s) => s.setActiveModels)
+  const results = useModelEvidence((s) =>
+    provider && modelId ? s.results[resultKey(provider, modelId)] : undefined
+  )
+  const preferredModel = useModelEvidence((s) => s.preferredModel)
+  const dismissed = useModelEvidence((s) =>
+    provider && modelId
+      ? s.dismissedHints.includes(resultKey(provider, modelId))
+      : false
+  )
+  const { addResult, setPreferredModel, dismissHint, restoreHint } =
+    useModelEvidence.getState()
+
+  const [sizes, setSizes] = useState<Record<string, number>>({})
+  const [modelPath, setModelPath] = useState<string | undefined>()
+  const [architecture, setArchitecture] = useState<KvArchitecture | null>(null)
+  const [testState, setTestState] = useState<TestState>({ phase: 'idle' })
+  const [notice, setNotice] = useState<string>('')
+  const abortRef = useRef<AbortController | null>(null)
+
+  const isLocalEngine = provider === 'llamacpp'
 
   useEffect(() => {
-    if (!modelId || provider !== 'llamacpp') {
-      setSizeBytes(null)
+    if (!modelId || !isLocalEngine) {
+      setSizes({})
+      setModelPath(undefined)
       return
     }
     let cancelled = false
@@ -52,48 +123,503 @@ export const ModelSupportStatus = ({
       .fetchModels()
       .then((infos) => {
         if (cancelled) return
-        const match = infos.find(
-          (i) => i.id === modelId && i.providerId === provider
+        const next: Record<string, number> = {}
+        for (const info of infos) {
+          if (info.providerId === provider && info.sizeBytes) {
+            next[info.id] = info.sizeBytes
+          }
+        }
+        setSizes(next)
+        setModelPath(
+          infos.find((i) => i.id === modelId && i.providerId === provider)?.path
         )
-        setSizeBytes(match?.sizeBytes ?? null)
       })
       .catch(() => {
-        if (!cancelled) setSizeBytes(null)
+        if (!cancelled) setSizes({})
       })
     return () => {
       cancelled = true
     }
-  }, [modelId, provider, serviceHub])
+  }, [modelId, provider, isLocalEngine, serviceHub])
 
-  if (!modelId || provider !== 'llamacpp') return null
+  // The attention shape turns the KV estimate from a guess into arithmetic.
+  useEffect(() => {
+    if (!modelPath) {
+      setArchitecture(null)
+      return
+    }
+    let cancelled = false
+    readGgufMetadata(modelPath)
+      .then((meta) => {
+        if (!cancelled) setArchitecture(kvArchitectureFromGguf(meta?.metadata))
+      })
+      .catch(() => {
+        if (!cancelled) setArchitecture(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [modelPath])
 
-  const tier = estimateModelFit(
-    sizeBytes,
-    contextSize || DEFAULT_CTX_LENGTH,
-    hardwareData
+  // Leaving mid-test cancels it, and the runner releases what it loaded.
+  useEffect(() => () => abortRef.current?.abort(), [])
+
+  const modelConfig = providerObject?.models.find((m) => m.id === modelId)
+  const settings = useMemo(() => settingsFromModel(modelConfig), [modelConfig])
+  const sizeBytes = modelId ? (sizes[modelId] ?? null) : null
+  const otherLoadedBytes = activeModels
+    .filter((id) => id !== modelId)
+    .reduce((sum, id) => sum + (sizes[id] ?? 0), 0)
+
+  const assessment = useMemo(
+    () =>
+      assessModelFit({
+        weightsBytes: sizeBytes,
+        ctxLength: contextSize || DEFAULT_CTX_LENGTH,
+        hardware: hardwareData,
+        architecture,
+        cacheTypeK:
+          typeof settings.cache_type_k === 'string'
+            ? settings.cache_type_k
+            : undefined,
+        cacheTypeV:
+          typeof settings.cache_type_v === 'string'
+            ? settings.cache_type_v
+            : undefined,
+        gpuLayers: typeof settings.ngl === 'number' ? settings.ngl : undefined,
+        otherLoadedBytes,
+      }),
+    [
+      sizeBytes,
+      contextSize,
+      hardwareData,
+      architecture,
+      settings,
+      otherLoadedBytes,
+    ]
   )
-  if (tier === 'unknown') return null
 
-  const style = TIER_STYLES[tier]
-  const tooltip = `${style.label} (estimated)`
+  const currentConditions = useMemo(
+    () => ({
+      modelSizeBytes: sizeBytes,
+      settings,
+      runtimeVersion: runtimeVersion(),
+      device: deviceSignature(hardwareData),
+    }),
+    [sizeBytes, settings, hardwareData]
+  )
+  const evidence = useMemo(
+    () => evidenceFor(results, currentConditions),
+    [results, currentConditions]
+  )
+
+  const runTest = useCallback(
+    async (allowUnload: string[] = []) => {
+      if (!modelId || !providerObject) return
+      const controller = new AbortController()
+      abortRef.current = controller
+      setTestState({ phase: 'running' })
+      setNotice(t('model-fit:test.running'))
+      const modelsMax = Number(
+        providerObject.settings?.find((s) => s.key === 'models_max')
+          ?.controller_props?.value ?? 1
+      )
+      const startedConditions = currentConditions
+      try {
+        const outcome = await runCompatibilityTest(
+          {
+            modelId,
+            modelsMax: Number.isFinite(modelsMax) ? modelsMax : 1,
+            allowUnload,
+            signal: controller.signal,
+          },
+          {
+            getActiveModels: () =>
+              serviceHub.models().getActiveModels('llamacpp'),
+            startModel: (id) =>
+              serviceHub.models().startModel(providerObject, id),
+            stopModel: (id) => serviceHub.models().stopModel(id, 'llamacpp'),
+            findSession: findSessionByModel,
+            fetch: providerFetch,
+            now: () => performance.now(),
+          }
+        )
+        if (outcome.kind === 'needs-confirmation') {
+          setTestState({ phase: 'confirm', plan: outcome.plan })
+          setNotice(t('model-fit:test.needsConfirmation'))
+          return
+        }
+        if (outcome.kind === 'cancelled') {
+          setTestState({ phase: 'idle' })
+          setNotice(
+            outcome.released
+              ? t('model-fit:test.cancelled')
+              : t('model-fit:test.cancelledNotReleased')
+          )
+          return
+        }
+        addResult({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          provider: 'llamacpp',
+          modelId,
+          testedAt: Date.now(),
+          outcome: outcome.outcome,
+          workload: 'short-reply',
+          conditions: {
+            ...startedConditions,
+            concurrentModels: outcome.concurrentModels,
+          },
+          metrics: outcome.metrics,
+          ...(outcome.error ? { error: outcome.error } : {}),
+          unloadedModels: outcome.unloadedModels,
+        })
+        setTestState({ phase: 'idle' })
+        const summary =
+          outcome.outcome === 'success'
+            ? t('model-fit:test.succeeded')
+            : t('model-fit:test.failed', {
+                reason: outcome.error?.message ?? '',
+              })
+        setNotice(
+          outcome.released
+            ? summary
+            : `${summary} ${t('model-fit:test.notReleased')}`
+        )
+      } catch (error) {
+        setTestState({ phase: 'idle' })
+        setNotice(
+          t('model-fit:test.couldNotRun', {
+            reason: error instanceof Error ? error.message : String(error),
+          })
+        )
+      } finally {
+        abortRef.current = null
+        serviceHub
+          .models()
+          .getActiveModels()
+          .then((models) => setActiveModels(models || []))
+          .catch(() => {})
+      }
+    },
+    [
+      modelId,
+      providerObject,
+      currentConditions,
+      serviceHub,
+      addResult,
+      setActiveModels,
+      t,
+    ]
+  )
+
+  if (!modelId || !provider || !isLocalEngine) return null
+  if (assessment.verdict === 'unknown' && evidence.state === 'not-tested') {
+    return null
+  }
+
+  const tier = dismissed ? 'unknown' : tierFor(evidence.state, assessment)
+  const headline = evidenceHeadline(evidence.state, t)
+  const estimate = t(`model-fit:verdict.${assessment.verdict}`)
+  const isPreferred =
+    preferredModel?.provider === provider && preferredModel?.model === modelId
+  const running = testState.phase === 'running'
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            className={cn(
-              'size-2 flex items-center justify-center rounded-full',
-              style.dot,
-              className
+    // The picker's trigger wraps this; keep clicks and keys from toggling it.
+    <div
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+      className={cn('flex items-center', className)}
+    >
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="flex size-5 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={t('model-fit:triggerLabel', {
+              status: dismissed ? estimate : `${headline}. ${estimate}`,
+            })}
+          >
+            <span
+              className={cn('size-2 rounded-full', DOT_CLASS[tier])}
+              aria-hidden
+            />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          className="w-96 max-w-[90vw] max-h-[70vh] overflow-y-auto text-sm space-y-3"
+        >
+          <div>
+            <h3 className="font-medium">{t('model-fit:title')}</h3>
+            <p className="text-muted-foreground text-xs mt-0.5">
+              {t('model-fit:subtitle')}
+            </p>
+          </div>
+
+          <section aria-labelledby="model-fit-measured" className="space-y-1">
+            <h4 id="model-fit-measured" className="text-xs font-medium uppercase text-muted-foreground">
+              {t('model-fit:measuredHeading')}
+            </h4>
+            <p>{headline}</p>
+            {evidence.latest && evidence.state !== 'not-tested' && (
+              <MeasuredDetails
+                metrics={evidence.latest.metrics}
+                testedAt={evidence.latest.testedAt}
+                settings={evidence.latest.conditions.settings}
+                error={evidence.latest.error?.message}
+                outcome={evidence.latest.outcome}
+              />
             )}
-            aria-label={`Device compatibility: ${tier}`}
-          />
-        </TooltipTrigger>
-        <TooltipContent>
-          <p>{tooltip}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+            {evidence.state === 'stale' && (
+              <ul className="list-disc pl-5 text-xs text-muted-foreground">
+                {evidence.differences.map((d, i) => (
+                  <li key={i}>{describeDifference(d, t)}</li>
+                ))}
+              </ul>
+            )}
+            {evidence.state === 'failed-with-settings' && evidence.otherSuccess && (
+              <p className="text-xs text-muted-foreground">
+                {t('model-fit:otherSuccess', {
+                  context:
+                    evidence.otherSuccess.conditions.settings.ctx_len ?? '—',
+                })}
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {t('model-fit:testScope')}
+            </p>
+          </section>
+
+          <section aria-labelledby="model-fit-estimate" className="space-y-1">
+            <h4 id="model-fit-estimate" className="text-xs font-medium uppercase text-muted-foreground">
+              {t('model-fit:estimateHeading')}
+            </h4>
+            <p>{estimate}</p>
+            <p className="text-xs text-muted-foreground">
+              {t(`model-fit:memoryModel.${assessment.memoryModel}`, {
+                ram: bytes(assessment.budgets.systemRam),
+                vram: bytes(assessment.budgets.dedicatedVram),
+                gpu: bytes(assessment.budgets.gpu),
+              })}
+            </p>
+            <Collapsible>
+              <CollapsibleTrigger className="text-xs underline underline-offset-2 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {t('model-fit:showReasons')}
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-2 space-y-2 text-xs">
+                <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5">
+                  <dt>{t('model-fit:breakdown.weights')}</dt>
+                  <dd className="text-right">{bytes(assessment.required.weights)}</dd>
+                  <dt>
+                    {t('model-fit:breakdown.kvCache', {
+                      tokens: assessment.effectiveContext.toLocaleString(),
+                    })}
+                  </dt>
+                  <dd className="text-right">{bytes(assessment.required.kvCache)}</dd>
+                  {assessment.required.mmproj > 0 && (
+                    <>
+                      <dt>{t('model-fit:breakdown.mmproj')}</dt>
+                      <dd className="text-right">{bytes(assessment.required.mmproj)}</dd>
+                    </>
+                  )}
+                  <dt>{t('model-fit:breakdown.overhead')}</dt>
+                  <dd className="text-right">{bytes(assessment.required.runtimeOverhead)}</dd>
+                  <dt className="font-medium">{t('model-fit:breakdown.total')}</dt>
+                  <dd className="text-right font-medium">{bytes(assessment.required.total)}</dd>
+                  <dt>{t('model-fit:breakdown.budget')}</dt>
+                  <dd className="text-right">{bytes(assessment.budgets.total)}</dd>
+                  {assessment.budgets.otherLoaded > 0 && (
+                    <>
+                      <dt>{t('model-fit:breakdown.otherLoaded')}</dt>
+                      <dd className="text-right">{bytes(assessment.budgets.otherLoaded)}</dd>
+                    </>
+                  )}
+                </dl>
+                <ul className="list-disc pl-5 space-y-0.5 text-muted-foreground">
+                  {assessment.assumptions.map((a) => (
+                    <li key={a}>{t(`model-fit:assumption.${a}`)}</li>
+                  ))}
+                </ul>
+                <p className="text-muted-foreground">
+                  {t(`model-fit:uncertainty.${assessment.uncertainty}`)}
+                </p>
+              </CollapsibleContent>
+            </Collapsible>
+          </section>
+
+          {testState.phase === 'confirm' && (
+            <div
+              role="alertdialog"
+              aria-labelledby="model-fit-confirm"
+              className="rounded-md border p-2 space-y-2"
+            >
+              <p id="model-fit-confirm">
+                {t('model-fit:test.confirmUnload', {
+                  models: testState.plan.willUnload.join(', '),
+                })}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setTestState({ phase: 'idle' })
+                    setNotice('')
+                  }}
+                >
+                  {t('model-fit:test.dontTest')}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => runTest(testState.plan.willUnload)}
+                >
+                  {t('model-fit:test.unloadAndTest')}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <p role="status" aria-live="polite" className="text-xs min-h-4">
+            {notice}
+          </p>
+
+          <div className="flex flex-wrap gap-2">
+            {running ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => abortRef.current?.abort()}
+              >
+                {t('model-fit:test.cancel')}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={() => runTest()}
+                disabled={testState.phase === 'confirm' || !providerObject}
+              >
+                {evidence.state === 'not-tested'
+                  ? t('model-fit:test.run')
+                  : t('model-fit:test.runAgain')}
+              </Button>
+            )}
+            {onAdjustSettings && (
+              <Button size="sm" variant="outline" onClick={onAdjustSettings}>
+                {t('model-fit:adjustSettings')}
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              aria-pressed={isPreferred}
+              onClick={() =>
+                setPreferredModel(
+                  isPreferred ? null : { provider, model: modelId }
+                )
+              }
+            >
+              {isPreferred
+                ? t('model-fit:removeDefault')
+                : t('model-fit:setDefault')}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                dismissed
+                  ? restoreHint(provider, modelId)
+                  : dismissHint(provider, modelId)
+              }
+            >
+              {dismissed ? t('model-fit:showHint') : t('model-fit:hideHint')}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t('model-fit:testExplainer')}
+          </p>
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
+}
+
+type Translate = (key: string, options?: Record<string, unknown>) => string
+
+function evidenceHeadline(state: EvidenceState, t: Translate): string {
+  return t(`model-fit:evidence.${state}`)
+}
+
+function describeDifference(d: ConditionDifference, t: Translate): string {
+  switch (d.kind) {
+    case 'settings':
+      return t('model-fit:difference.settings', { keys: d.keys.join(', ') })
+    case 'runtime':
+      return t('model-fit:difference.runtime', {
+        recorded: d.recorded,
+        current: d.current,
+      })
+    case 'device':
+      return t('model-fit:difference.device')
+    case 'model-file':
+      return t('model-fit:difference.modelFile')
+  }
+}
+
+function MeasuredDetails({
+  metrics,
+  testedAt,
+  settings,
+  error,
+  outcome,
+}: {
+  metrics: TestMetrics
+  testedAt: number
+  settings: Record<string, unknown>
+  error?: string
+  outcome: 'success' | 'failure'
+}) {
+  const { t } = useTranslation()
+  const rows: [string, string][] = []
+  if (metrics.loadMs !== undefined) {
+    rows.push([t('model-fit:metric.load'), `${(metrics.loadMs / 1000).toFixed(1)} s`])
+  }
+  if (metrics.generationTokensPerSecond !== undefined) {
+    rows.push([
+      t('model-fit:metric.generation'),
+      `${metrics.generationTokensPerSecond.toFixed(1)} tok/s`,
+    ])
+  }
+  if (metrics.promptTokensPerSecond !== undefined) {
+    rows.push([
+      t('model-fit:metric.prompt'),
+      `${metrics.promptTokensPerSecond.toFixed(1)} tok/s`,
+    ])
+  }
+  const settingText = Object.entries(settings)
+    .map(([k, v]) => `${k}=${String(v)}`)
+    .join(', ')
+  return (
+    <div className="text-xs space-y-1">
+      <p className="text-muted-foreground">
+        {t('model-fit:testedAt', {
+          when: new Date(testedAt).toLocaleString(),
+          settings: settingText || t('model-fit:defaultSettings'),
+        })}
+      </p>
+      {outcome === 'failure' && error && (
+        <p className="text-destructive break-words">{error}</p>
+      )}
+      {rows.length > 0 && (
+        <dl className="grid grid-cols-[1fr_auto] gap-x-3">
+          {rows.map(([label, value]) => (
+            <div key={label} className="contents">
+              <dt>{label}</dt>
+              <dd className="text-right">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
   )
 }
