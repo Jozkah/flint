@@ -1782,3 +1782,12 @@ uncommitted changes refused on a switch and carried on a create; nine names
 that are flags, paths or empty refused as `invalid_input` with nothing created
 by any of them; and a branch a second worktree holds listed as held and
 refused on a switch.
+
+
+### The fixture library (AH-011)
+
+Five tests on the builders themselves -- a workspace that is real and is gone
+when it drops, a git workspace that is a real repository with a real commit,
+recorded events that come back in the order and shape the harness writes,
+ids that belong to each other, and rules that mean what they say -- and the
+six golden-repository tests built on them.

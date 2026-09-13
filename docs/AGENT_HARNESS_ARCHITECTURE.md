@@ -1813,3 +1813,24 @@ having is the refusals a shell command cannot give:
   not merged yet.
 
 Listing is a read and is offered in Plan mode; create and switch are not.
+
+
+### The fixture library (AH-011)
+
+Every module that needed a repository, a session's events or a set of
+permission rules was building them by hand. That is how two tests come to
+disagree about what a run looks like, and how a test ends up asserting against
+a shape the harness never produces.
+
+`core::agent::fixtures` builds the real things: `Workspace` (files, an
+`agent.toml`, a real `git init`, removed when it drops -- including after a
+panic), `Events` (envelopes through the same `event_log::append` every surface
+uses, with the ordinary run shape in one call), `ids` (the session, run and
+invocation ids already parsed, so the relationships between them are not
+spelled by hand), and `Rules` (permissions without each test re-deciding what
+the defaults mean).
+
+They are ordinary code rather than `#[cfg(test)]` items on purpose: the
+integration tests under `tests/` and the smoke harness need them too, and a
+fixture only unit tests can reach is one that gets hand-rolled again in the
+places that cannot. The golden-repository suite is built on them.

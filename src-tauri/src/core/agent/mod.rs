@@ -30,6 +30,7 @@ pub mod project;
 pub mod proposals;
 pub mod reminder;
 pub mod diagnostics;
+pub mod fixtures;
 pub mod impact;
 pub mod index;
 pub mod vcs;

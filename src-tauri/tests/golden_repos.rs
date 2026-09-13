@@ -21,67 +21,20 @@
 //! paths". A golden string would fail on every unrelated improvement and be
 //! updated without being read, which is worse than no test.
 
-use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use app_lib::core::agent::fixtures::Workspace;
 use app_lib::core::agent::{impact, vcs};
 
 /// One repository, built from nothing each run.
-struct Golden {
-    root: PathBuf,
-}
-
-impl Golden {
-    fn new(tag: &str, files: &[(&str, &str)]) -> Golden {
-        let root = std::env::temp_dir().join(format!(
-            "jan-golden-{tag}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
-        for (path, body) in files {
-            let full = root.join(path);
-            std::fs::create_dir_all(full.parent().unwrap()).unwrap();
-            std::fs::write(full, body).unwrap();
-        }
-        Golden { root }
-    }
-
-    fn git(&self, args: &[&str]) -> String {
-        let out = Command::new("git")
-            .arg("-C")
-            .arg(&self.root)
-            .args(args)
-            .output()
-            .expect("git is on the path");
-        String::from_utf8_lossy(&out.stdout).trim().to_string()
-    }
-
-    /// Make it a repository with one commit, so the vcs readers have
-    /// something real to read.
-    fn commit_everything(&self) -> &Golden {
-        self.git(&["init", "-q", "-b", "main"]);
-        self.git(&["config", "user.email", "golden@example.invalid"]);
-        self.git(&["config", "user.name", "Golden"]);
-        self.git(&["add", "-A"]);
-        self.git(&["commit", "-qm", "the repository as it stands"]);
-        self
-    }
-
-    fn path(&self) -> &Path {
-        &self.root
-    }
-}
-
-impl Drop for Golden {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.root);
-    }
-}
+///
+/// The builder is the harness's own (AH-011), so these repositories are made
+/// the same way every other test makes one -- and a real `git init`, so what
+/// the readers see is what git produces.
+type Golden = Workspace;
 
 fn typescript_app() -> Golden {
-    Golden::new(
-        "ts-app",
+    Workspace::new("golden-ts").files(
         &[
             (
                 "package.json",
@@ -115,8 +68,7 @@ fn typescript_app() -> Golden {
 }
 
 fn python_package() -> Golden {
-    Golden::new(
-        "py-pkg",
+    Workspace::new("golden-py").files(
         &[
             ("pyproject.toml", "[project]\nname = \"pkg\"\nversion = \"0.1.0\"\n"),
             ("pkg/__init__.py", ""),
@@ -185,17 +137,15 @@ fn no_golden_repository_can_be_asked_about_a_path_outside_it() {
 /// resolves nothing.
 #[test]
 fn a_repository_with_a_stopped_merge_is_reported_and_left_alone() {
-    let repo = Golden::new(
-        "merge",
-        &[("file.txt", "one\n"), ("README.md", "# golden\n")],
-    );
-    repo.commit_everything();
-    repo.git(&["switch", "-q", "-c", "theirs"]);
+    let repo = Workspace::new("golden-merge")
+        .files(&[("file.txt", "one\n"), ("README.md", "# golden\n")])
+        .git();
+    repo.git_run(&["switch", "-q", "-c", "theirs"]);
     std::fs::write(repo.path().join("file.txt"), "one\ntheirs\n").unwrap();
-    repo.git(&["commit", "-qam", "theirs"]);
-    repo.git(&["switch", "-q", "main"]);
+    repo.git_run(&["commit", "-qam", "theirs"]);
+    repo.git_run(&["switch", "-q", "main"]);
     std::fs::write(repo.path().join("file.txt"), "one\nours\n").unwrap();
-    repo.git(&["commit", "-qam", "ours"]);
+    repo.git_run(&["commit", "-qam", "ours"]);
     // Expected to fail: this is the conflict.
     let _ = Command::new("git")
         .arg("-C")
@@ -217,7 +167,7 @@ fn a_repository_with_a_stopped_merge_is_reported_and_left_alone() {
     // A repository with no remote is not mistaken for one that is in sync.
     let standing = vcs::divergence(repo.path()).unwrap();
     assert_eq!(standing.standing, vcs::Standing::NoUpstream);
-    repo.git(&["merge", "--abort"]);
+    repo.git_run(&["merge", "--abort"]);
 }
 
 /// Nothing the harness reads about a repository leaks a credential that is
@@ -226,8 +176,7 @@ fn a_repository_with_a_stopped_merge_is_reported_and_left_alone() {
 /// produces are pasted into transcripts and exports.
 #[test]
 fn nothing_read_from_a_repository_carries_a_credential_out_of_it() {
-    let repo = Golden::new(
-        "secrets",
+    let repo = Workspace::new("golden-secrets").files(
         &[
             (".env", "OPENAI_API_KEY=sk-not-a-real-key-1234567890\n"),
             ("src/a.ts", "export const a = 1\n"),
@@ -248,7 +197,7 @@ fn nothing_read_from_a_repository_carries_a_credential_out_of_it() {
 /// than quietly answering about a subset.
 #[test]
 fn a_repository_larger_than_the_bounds_says_the_answer_is_partial() {
-    let repo = Golden::new("big", &[("src/a.ts", "export const a = 1\n")]);
+    let repo = Workspace::new("golden-big").file("src/a.ts", "export const a = 1\n");
     std::fs::write(
         repo.path().join("src/huge.ts"),
         "x".repeat((impact::MAX_FILE_BYTES + 1) as usize),

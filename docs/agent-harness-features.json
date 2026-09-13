@@ -396,14 +396,17 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-004",
         "AH-009"
       ],
       "owner": "lane-01-architecture-registry",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/fixtures.rs",
+        "src-tauri/tests/golden_repos.rs"
+      ],
       "securityImpact": "none",
       "acceptanceCriteria": [
         "Shared builders produce runs, events, permission rules and workspaces so harness tests do not hand-roll state.",
@@ -413,10 +416,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/fixtures.rs",
+        "src-tauri/tests/golden_repos.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (EventStreamBuilder, sample_run) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/fixtures.rs` if it is to be restored."
+      "auditNote": "Implemented 2026-09-12 (Phase 5). core::agent::fixtures builds workspaces (files, an agent.toml, a real git init, removed on drop), events (through the same event_log::append every surface uses, with the ordinary run shape in one call), parsed ids whose relationships hold, and permission rules. Ordinary code rather than cfg(test) items, because the integration tests and the smoke harness need them too. The golden-repository suite is built on them; the older per-module helpers remain where they encode something specific to that module."
     },
     {
       "id": "AH-012",
