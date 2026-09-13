@@ -910,8 +910,35 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     ReturnType<typeof useModelProvider.getState>,
     'selectedProvider' | 'selectedModel'
   > {
+    // A conversation shown as one of two split panes sends with its own
+    // thread's model; the global picker follows whichever pane is active.
+    const scoped = this.modelSelectionResolver?.()
+    if (scoped) return scoped
     const { selectedProvider, selectedModel } = useModelProvider.getState()
     return { selectedProvider, selectedModel }
+  }
+
+  private modelSelectionResolver?: () =>
+    | Pick<
+        ReturnType<typeof useModelProvider.getState>,
+        'selectedProvider' | 'selectedModel'
+      >
+    | undefined
+
+  /**
+   * Answer `getModelSelection` from somewhere other than the global picker, or
+   * pass `undefined` to go back to it. Set by a split conversation pane for as
+   * long as it shows this transport's thread.
+   */
+  setModelSelectionResolver(
+    resolver?: () =>
+      | Pick<
+          ReturnType<typeof useModelProvider.getState>,
+          'selectedProvider' | 'selectedModel'
+        >
+      | undefined
+  ): void {
+    this.modelSelectionResolver = resolver
   }
 
   setLastUserMessage(message: string): void {

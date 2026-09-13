@@ -52,6 +52,7 @@ import { BotIcon } from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useConversationModel } from '@/hooks/useConversationPane'
 import { useTokensCount } from '@/hooks/useTokensCount'
 import { ReasoningEffortSlider } from '@/containers/ReasoningEffortSlider'
 import {
@@ -206,6 +207,24 @@ type ChatInputProps = {
    * across surfaces.
    */
   tokenSource?: TokenUsageSource
+  /**
+   * The thread this composer writes to, when that is not the current thread:
+   * a split conversation pane passes its own, because the current thread is
+   * whichever pane is active. Defaults to useThreads' currentThreadId.
+   */
+  threadId?: string
+  /**
+   * Keeps this composer's draft apart from the main one. The second pane of a
+   * split conversation passes a scope; without one the shared main draft is
+   * used, as before.
+   */
+  draftScope?: string
+  /**
+   * Whether the composer may take focus on its own -- on mount, on a thread
+   * change, when a reply finishes. A split pane the user is not working in
+   * must not pull focus away from the one they are.
+   */
+  takeFocus?: boolean
 }
 
 // Video containers llama-server can decode via ffmpeg/ffprobe into frames.
@@ -241,6 +260,9 @@ const ChatInput = memo(function ChatInput({
   surfaceControls,
   stopControl,
   tokenSource,
+  threadId: threadIdProp,
+  draftScope,
+  takeFocus = true,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [isFocused, setIsFocused] = useState(false)
@@ -269,11 +291,34 @@ const ChatInput = memo(function ChatInput({
   const abortControllers = useAppState((state) => state.abortControllers)
   const tools = useAppState((state) => state.tools)
   const cancelToolCall = useAppState((state) => state.cancelToolCall)
-  const prompt = usePrompt((state) => state.prompt)
-  const setPrompt = usePrompt((state) => state.setPrompt)
+  // The main draft, or this composer's own when it has a scope (the second
+  // pane of a split conversation), so typing in one never edits the other.
+  const mainPrompt = usePrompt((state) => state.prompt)
+  const scopedPrompt = usePrompt((state) =>
+    draftScope ? (state.scoped?.[draftScope]?.prompt ?? '') : ''
+  )
+  const prompt = draftScope ? scopedPrompt : mainPrompt
+  const setMainPrompt = usePrompt((state) => state.setPrompt)
+  const setScopedPrompt = usePrompt((state) => state.setScopedPrompt)
+  const setPrompt = useCallback(
+    (value: string) =>
+      draftScope ? setScopedPrompt(draftScope, value) : setMainPrompt(value),
+    [draftScope, setScopedPrompt, setMainPrompt]
+  )
   const addToHistory = usePrompt((state) => state.addToHistory)
-  const navigateHistory = usePrompt((state) => state.navigateHistory)
-  const currentThreadId = useThreads((state) => state.currentThreadId)
+  const navigateMainHistory = usePrompt((state) => state.navigateHistory)
+  const navigateScopedHistory = usePrompt(
+    (state) => state.navigateScopedHistory
+  )
+  const navigateHistory = useCallback(
+    (direction: 'up' | 'down') =>
+      draftScope
+        ? navigateScopedHistory(draftScope, direction)
+        : navigateMainHistory(direction),
+    [draftScope, navigateScopedHistory, navigateMainHistory]
+  )
+  const routeThreadId = useThreads((state) => state.currentThreadId)
+  const currentThreadId = threadIdProp ?? routeThreadId
   // Subscribed to the map, not read through getState(), so the control
   // re-renders when this chat's overrides change.
   const overridesByThread = useModelOverrides((state) => state.byThread)
@@ -282,7 +327,9 @@ const ChatInput = memo(function ChatInput({
     : undefined
   const setThreadOverride = useModelOverrides((state) => state.setForThread)
   const clearThreadOverride = useModelOverrides((state) => state.clearForThread)
-  const currentThread = useThreads((state) => state.getCurrentThread())
+  const currentThread = useThreads((state) =>
+    threadIdProp ? state.threads?.[threadIdProp] : state.getCurrentThread()
+  )
   const updateCurrentThreadAssistant = useThreads(
     (state) => state.updateCurrentThreadAssistant
   )
@@ -591,7 +638,10 @@ const ChatInput = memo(function ChatInput({
   const maxRows = 10
   const ATTACHMENT_AUTO_INLINE_FALLBACK_BYTES = 512 * 1024
 
-  const selectedModel = useModelProvider((state) => state.selectedModel)
+  // This conversation's model: a split pane's own thread model, otherwise the
+  // global picker.
+  const conversationModel = useConversationModel()
+  const selectedModel = conversationModel.selectedModel
 
   /** What the picker offers, which follows the model's actual capabilities. */
   const attachmentAccept = useMemo(
@@ -603,7 +653,7 @@ const ChatInput = memo(function ChatInput({
       }),
     [selectedModel?.capabilities]
   )
-  const selectedProvider = useModelProvider((state) => state.selectedProvider)
+  const selectedProvider = conversationModel.selectedProvider
   const selectModelProvider = useModelProvider(
     (state) => state.selectModelProvider
   )
@@ -701,8 +751,9 @@ const ChatInput = memo(function ChatInput({
   useEffect(() => {
     // Only the general chat migrates a draft: it composes under the "new
     // thread" key until the thread exists. A scopeKey caller has a stable id
-    // from the start, so there is nothing to move.
-    if (scopeKey) return
+    // from the start, so there is nothing to move. Nor does a split's second
+    // pane: the home screen's draft belongs to the conversation it started.
+    if (scopeKey || draftScope) return
     if (
       currentThreadId &&
       lastTransferredThreadId.current !== currentThreadId
@@ -710,7 +761,7 @@ const ChatInput = memo(function ChatInput({
       transferAttachments(NEW_THREAD_ATTACHMENT_KEY, currentThreadId)
       lastTransferredThreadId.current = currentThreadId
     }
-  }, [scopeKey, currentThreadId, transferAttachments])
+  }, [scopeKey, draftScope, currentThreadId, transferAttachments])
 
   // Check for mmproj existence or vision capability when model changes
   useEffect(() => {
@@ -943,9 +994,10 @@ const ChatInput = memo(function ChatInput({
 
   // Focus when component mounts
   useEffect(() => {
-    if (textareaRef.current) {
+    if (takeFocus && textareaRef.current) {
       textareaRef.current.focus()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -956,20 +1008,21 @@ const ChatInput = memo(function ChatInput({
 
   // Focus when thread changes
   useEffect(() => {
-    if (textareaRef.current) {
+    if (takeFocus && textareaRef.current) {
       textareaRef.current.focus()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentThreadId])
 
   // Focus when streaming content finishes
   useEffect(() => {
-    if (chatStatus !== 'submitted' && textareaRef.current) {
+    if (takeFocus && chatStatus !== 'submitted' && textareaRef.current) {
       // Small delay to ensure UI has updated
       setTimeout(() => {
         textareaRef.current?.focus()
       }, 10)
     }
-  }, [chatStatus])
+  }, [chatStatus, takeFocus])
 
   const stopStreaming = useCallback(
     (threadId: string) => {
@@ -2460,7 +2513,7 @@ const ChatInput = memo(function ChatInput({
               }}
               onPaste={handlePaste}
               placeholder={t('common:placeholder.chatInput')}
-              autoFocus
+              autoFocus={takeFocus}
               spellCheck={spellCheckChatInput}
               data-gramm={spellCheckChatInput}
               data-gramm_editor={spellCheckChatInput}

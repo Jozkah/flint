@@ -44,7 +44,7 @@ import {
 import { CopyButton } from './CopyButton'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { formatDate } from '@/utils/formatDate'
-import { useModelProvider } from '@/hooks/useModelProvider'
+import { useConversationModel } from '@/hooks/useConversationPane'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMessageErrors } from '@/stores/message-errors'
 import { EditMessageDialog } from '@/containers/dialogs/EditMessageDialog'
@@ -113,7 +113,8 @@ export const MessageItem = memo(
     onSwitchVersion,
   }: MessageItemProps) => {
     const { t } = useTranslation()
-    const selectedModel = useModelProvider((state) => state.selectedModel)
+    // This conversation's model, so a split pane gates on its own.
+    const { selectedModel } = useConversationModel()
     const coloredUserBubble = useInterfaceSettings((s) => s.coloredUserBubble)
     const metadata = message.metadata as Record<string, unknown> | undefined
     const messageError = useMessageErrors((s) => s.errors[message.id])

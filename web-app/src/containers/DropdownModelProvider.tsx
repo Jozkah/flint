@@ -19,6 +19,10 @@ import { ArrowUpDown, Settings, X } from 'lucide-react'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { useThreads } from '@/hooks/useThreads'
+import {
+  selectionForThreadModel,
+  useConversationPane,
+} from '@/hooks/useConversationPane'
 import { ModelSetting } from '@/containers/ModelSetting'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import { ModelSupportStatus } from '@/containers/ModelSupportStatus'
@@ -197,12 +201,41 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     getProviderByName,
     selectModelProvider,
     getModelBy,
-    selectedProvider,
-    selectedModel,
+    selectedProvider: globalProvider,
+    selectedModel: globalModel,
     updateProvider,
   } = useModelProvider()
   const [displayModel, setDisplayModel] = useState<string>('')
-  const { updateCurrentThreadModel } = useThreads()
+  const { updateCurrentThreadModel, updateThreadModel, threads } = useThreads()
+  // In a split conversation each pane shows, and changes, its own thread's
+  // model. Only the pane the user is working in moves the global picker, which
+  // the rest of the app -- and a conversation shown on its own -- reads.
+  const pane = useConversationPane()
+  const inSplitPane = Boolean(pane?.isSplit)
+  const drivesGlobalSelection = !pane?.isSplit || pane.isActive
+  const paneThreadModel = pane?.isSplit
+    ? threads?.[pane.threadId]?.model
+    : undefined
+  const { selectedProvider, selectedModel } = useMemo(
+    () =>
+      inSplitPane
+        ? selectionForThreadModel(paneThreadModel, {
+            selectedProvider: globalProvider,
+            selectedModel: globalModel,
+            getProviderByName,
+          })
+        : { selectedProvider: globalProvider, selectedModel: globalModel },
+    // `providers` is why getProviderByName's answer can change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      inSplitPane,
+      paneThreadModel,
+      globalProvider,
+      globalModel,
+      getProviderByName,
+      providers,
+    ]
+  )
   const navigate = useNavigate()
   const { t } = useTranslation()
   const { favoriteModels } = useFavoriteModel()
@@ -304,6 +337,9 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   // Initialize model provider - avoid race conditions with manual selections
   useEffect(() => {
     const initializeModel = async () => {
+      // A split pane the user is not working in leaves the global picker to
+      // the pane they are; it becomes the one deciding when it is activated.
+      if (!drivesGlobalSelection) return
       // Auto select model when existing thread is passed
       if (model) {
         selectModelProvider(model?.provider as string, model?.id as string)
@@ -381,6 +417,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     updateProvider,
     getProviderByName,
     checkAndUpdateModelVisionCapability,
+    drivesGlobalSelection,
 
     // selectedModel and selectedProvider intentionally excluded to prevent race conditions
   ])
@@ -586,14 +623,18 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       setSearchValue('')
       setOpen(false)
 
-      selectModelProvider(
-        searchableModel.provider.provider,
-        searchableModel.model.id
-      )
-      ;(onModelChange ?? updateCurrentThreadModel)({
+      const choice = {
         id: searchableModel.model.id,
         provider: searchableModel.provider.provider,
-      })
+      }
+      if (drivesGlobalSelection) {
+        selectModelProvider(choice.provider, choice.id)
+      }
+      if (onModelChange) onModelChange(choice)
+      // A split pane records the choice on its own thread, not on whichever
+      // thread happens to be current.
+      else if (pane?.isSplit) updateThreadModel(pane.threadId, choice)
+      else updateCurrentThreadModel(choice)
 
       // Store the selected model as last used
       setLastUsedModel(
@@ -638,6 +679,9 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       selectModelProvider,
       updateCurrentThreadModel,
       onModelChange,
+      updateThreadModel,
+      drivesGlobalSelection,
+      pane,
       updateProvider,
       getProviderByName,
       checkAndUpdateModelVisionCapability,
