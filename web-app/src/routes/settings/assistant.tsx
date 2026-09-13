@@ -11,7 +11,6 @@ import { DeleteAssistantDialog } from '@/containers/dialogs'
 import { AvatarEmoji } from '@/containers/AvatarEmoji'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
-import SettingsMenu from '@/containers/SettingsMenu'
 import { cn } from '@/lib/utils'
 import { Card, CardItem } from '@/containers/Card'
 import {
@@ -70,7 +69,7 @@ function AssistantContent() {
   const defaultAssistant = sortedAssistants.find((a) => a.id === defaultAssistantId)
 
   return (
-    <div className="flex flex-col h-svh w-full">
+    <div className="flex flex-col h-full w-full">
       <HeaderPage>
         <div className={cn("flex items-center justify-between w-full mr-2 pr-3", !IS_MACOS && "pr-30")}>
           <span className="font-medium text-base font-studio">
@@ -90,9 +89,8 @@ function AssistantContent() {
           </Button>
         </div>
       </HeaderPage>
-      <div className="flex h-[calc(100%-60px)]">
+      <div className="flex h-[calc(100%-var(--ctx-h))]">
         <div className="flex size-full">
-          <SettingsMenu />
           <div className="flex flex-col gap-4 p-4 pt-4 w-full overflow-y-auto">
             {/* Default Assistant */}
             <Card>

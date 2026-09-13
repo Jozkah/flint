@@ -3560,7 +3560,7 @@ function CoworkPage() {
   }, [session?.id])
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-(env(safe-area-inset-bottom)+env(safe-area-inset-top)))]">
+    <div className="flex flex-col h-full min-h-0">
       <HeaderPage>
         {/* The same row component the chat page uses, so the selector and the
             control beside it match in size, spacing and order. */}

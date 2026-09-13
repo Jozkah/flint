@@ -1936,7 +1936,7 @@ function ThreadDetail() {
   }, [localThreadMessages])
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-(env(safe-area-inset-bottom)+env(safe-area-inset-top)))]">
+    <div className="flex flex-col h-full min-h-0">
       <HeaderPage>
         <div className="flex items-center justify-between w-full pr-2 gap-2">
           <DropdownModelProvider model={threadModel} />

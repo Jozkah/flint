@@ -257,6 +257,11 @@
   --brand-soft: #56342B;
 }
 
+/* Hidden while a phone keyboard is open (see hooks/useAppViewport). */
+html.kb-open .kb-hidden {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

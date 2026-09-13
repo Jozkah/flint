@@ -42,7 +42,12 @@ import {
   type SettingsPageId,
 } from '@/lib/settingsSearch'
 
-const SettingsMenu = () => {
+type SettingsMenuProps = {
+  /** `sidebar`: rendered by the shell's contextual sidebar, full width. */
+  variant?: 'column' | 'sidebar'
+}
+
+const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
   const { t } = useTranslation()
   const [expandedProviders, setExpandedProviders] = useState(true)
 
@@ -218,6 +223,11 @@ const SettingsMenu = () => {
     ),
   }
 
+  // Selected rows use the accent tint and a side marker, like every other
+  // contextual list in the shell.
+  const menuLinkClass =
+    'relative block px-2 py-1.5 pointer-coarse:py-2.5 w-full cursor-pointer rounded-md text-ink-2 hover:bg-sunken hover:text-foreground [&.active]:bg-brand-tint [&.active]:text-foreground [&.active]:before:absolute [&.active]:before:left-0 [&.active]:before:inset-y-1.5 [&.active]:before:w-0.5 [&.active]:before:rounded-full [&.active]:before:bg-brand'
+
   const withIcon = (page: SettingsPage) => ({
     ...page,
     title: page.titleKey,
@@ -232,17 +242,23 @@ const SettingsMenu = () => {
 
   return (
     <>
-      <div className="h-full w-58 shrink-0 flex flex-col overflow-auto">
+      <div
+        data-testid="settings-menu"
+        className={cn(
+          'h-full shrink-0 flex flex-col overflow-auto',
+          variant === 'column' ? 'w-58' : 'w-full'
+        )}
+      >
         <SettingsSearch />
-        <div className="flex flex-col gap-1 w-full px-1.5 font-medium">
+        <div className="flex flex-col gap-0.5 w-full px-1.5 font-medium">
           {/* Core settings */}
           {coreSettings.map((menu) => (
             <div key={menu.title}>
               <Link
                 to={menu.route}
-                className="block px-2 gap-1.5 cursor-pointer hover:dark:bg-secondary/60 hover:bg-secondary py-1 w-full rounded-sm [&.active]:dark:bg-secondary/80 [&.active]:bg-secondary"
+                className={menuLinkClass}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <menu.icon size={18} className="shrink-0 text-muted-foreground" />
                   <span>{t(menu.title)}</span>
                 </div>
@@ -252,18 +268,18 @@ const SettingsMenu = () => {
 
           {/* Integrations section */}
           <div className="mt-4">
-            <span className="px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <span className="px-2 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
               {t('common:integrations')}
-              <span className="text-[11px] capitalize ml-2 font-medium px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400">
+              <span className="text-[11px] normal-case tracking-normal ml-2 font-medium px-2 py-0.5 rounded-full bg-sunken text-ink-2">
                 {t('common:experimental')}
               </span>
             </span>
-            <div className="mt-1 flex flex-col gap-1">
+            <div className="mt-1 flex flex-col gap-0.5">
               {integrationSettings.map((menu) => (
                 <Link
                   key={menu.title}
                   to={menu.route}
-                  className="flex items-center gap-2 px-2 py-1 cursor-pointer hover:dark:bg-secondary/60 hover:bg-secondary rounded-sm [&.active]:dark:bg-secondary/80 [&.active]:bg-secondary"
+                  className={cn(menuLinkClass, 'flex items-center gap-2.5')}
                 >
                   <menu.icon size={18} className="shrink-0 text-muted-foreground" />
                   <span>{t(menu.title)}</span>

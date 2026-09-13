@@ -236,11 +236,11 @@ function SetupScreen() {
   }
 
   return (
-    <div className="relative flex flex-col h-svh w-full overflow-hidden">
-      <div className="flex flex-col h-svh w-full">
+    <div className="relative flex flex-col h-full w-full overflow-hidden">
+      <div className="flex flex-col h-full w-full">
         <HeaderPage />
 
-        <div className="flex h-[calc(100%-60px)] items-center justify-center px-6">
+        <div className="flex h-[calc(100%-var(--ctx-h))] items-center justify-center px-6">
           <div
             className="w-full max-w-[460px] rounded-2xl border bg-card/60 p-7 shadow-xl pointer-events-auto"
             data-testid="setup-wizard"

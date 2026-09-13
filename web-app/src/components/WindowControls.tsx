@@ -75,14 +75,14 @@ export const WindowControls = () => {
   return (
     <>
       {layout.left.length > 0 && (
-        <div className="absolute top-0 z-[60] left-4 h-15">
+        <div className="absolute top-0 z-[60] left-4 h-13">
           <div className="flex items-center h-full">
             {renderGroup(layout.left)}
           </div>
         </div>
       )}
       {layout.right.length > 0 && (
-        <div className="absolute top-0 z-[60] right-4 h-15">
+        <div className="absolute top-0 z-[60] right-4 h-13">
           <div className="flex items-center h-full">
             {renderGroup(layout.right)}
           </div>

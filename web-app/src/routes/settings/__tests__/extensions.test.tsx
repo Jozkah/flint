@@ -92,7 +92,7 @@ describe('Extensions Settings Route', () => {
     render(<Component />)
 
     expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-menu')).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
     expect(screen.getByText('common:settings')).toBeInTheDocument()
   })
 
@@ -171,8 +171,8 @@ describe('Extensions Settings Route', () => {
     const headerPage = screen.getByTestId('header-page')
     expect(headerPage).toBeInTheDocument()
     
-    const settingsMenu = screen.getByTestId('settings-menu')
-    expect(settingsMenu).toBeInTheDocument()
+    // The shell's contextual sidebar renders the settings navigation.
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
   })
 
   it('should render card items with proper structure', () => {
@@ -223,7 +223,9 @@ describe('Extensions Settings Route', () => {
     const Component = ExtensionsRoute.component as React.ComponentType
     render(<Component />)
 
-    const settingsContent = screen.getByTestId('settings-menu').nextElementSibling
+    // The settings navigation lives in the shell's sidebar now.
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
+    const settingsContent = screen.getAllByTestId('card-item')[0].closest('.overflow-y-auto')
     expect(settingsContent).toHaveClass('p-4', 'pt-0', 'w-full', 'overflow-y-auto')
   })
 })

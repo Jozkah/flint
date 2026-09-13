@@ -1403,5 +1403,41 @@
       "cancelled": "Cancelled",
       "interrupted": "Interrupted"
     }
+  },
+  "appRail": {
+    "label": "Global navigation",
+    "home": "JAN home",
+    "working": "Agents are working",
+    "workspace": "Workspace",
+    "library": "Library",
+    "models": "Models",
+    "tools": "Tools",
+    "search": "Search",
+    "system": "System",
+    "settings": "Settings"
+  },
+  "statusBar": {
+    "label": "Status",
+    "modelsTitle": "Models loaded into memory on this device",
+    "modelsLoaded_one": "{{count}} model loaded",
+    "modelsLoaded_other": "{{count}} models loaded",
+    "runsTitle": "Cowork runs in progress across all sessions",
+    "runsActive_one": "{{count}} run in progress",
+    "runsActive_other": "{{count}} runs in progress",
+    "runsNone": "No runs in progress",
+    "approvalsWaiting_one": "{{count}} approval waiting",
+    "approvalsWaiting_other": "{{count}} approvals waiting",
+    "serverTitle": "Local API server",
+    "serverRunning": "Local API on {{address}}",
+    "serverStarting": "Local API starting",
+    "serverStopped": "Local API off"
+  },
+  "shell": {
+    "openNavigation": "Open navigation",
+    "closeNavigation": "Close navigation",
+    "showContent": "Content",
+    "showDetails": "Details",
+    "showOutput": "Output",
+    "back": "Back"
   }
 }

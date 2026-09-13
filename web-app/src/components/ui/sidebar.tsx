@@ -26,14 +26,15 @@ import { ShortcutAction } from "@/lib/shortcuts";
 
 const SIDEBAR_COOKIE_NAME = "sidebar:state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
-const SIDEBAR_WIDTH = "15rem";
-const SIDEBAR_WIDTH_MOBILE = "18rem";
+const SIDEBAR_WIDTH = "16rem";
+const SIDEBAR_WIDTH_MOBILE = "16rem";
 const SIDEBAR_WIDTH_ICON = "5rem";
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
 //* new constants for sidebar resizing
-const MIN_SIDEBAR_WIDTH = "14rem";
-const MAX_SIDEBAR_WIDTH = "20rem";
+// JAN Atelier: 220px to 300px.
+const MIN_SIDEBAR_WIDTH = "13.75rem";
+const MAX_SIDEBAR_WIDTH = "18.75rem";
 
 type SidebarContext = {
 	state: "expanded" | "collapsed";
@@ -52,6 +53,11 @@ type SidebarContext = {
 };
 
 const SidebarContext = React.createContext<SidebarContext | null>(null);
+
+/** The sidebar context when rendered inside a provider, otherwise null. */
+function useOptionalSidebar() {
+	return React.useContext(SidebarContext);
+}
 
 function useSidebar() {
 	const context = React.useContext(SidebarContext);
@@ -205,7 +211,7 @@ const SidebarProvider = React.forwardRef<
 							} as React.CSSProperties
 						}
 						className={cn(
-							"group/sidebar-wrapper flex min-h-svh w-full has-data-[variant=inset]:bg-sidebar",
+							"group/sidebar-wrapper flex h-full min-h-0 w-full has-data-[variant=inset]:bg-sidebar",
 							className,
 						)}
 						ref={ref}
@@ -226,6 +232,10 @@ const Sidebar = React.forwardRef<
 		side?: "left" | "right";
 		variant?: "sidebar" | "floating" | "inset";
 		collapsible?: "offcanvas" | "icon" | "none";
+		/** Rendered beside the sidebar inside the phone navigation sheet. */
+		mobileLeading?: React.ReactNode;
+		/** Accessible name of the phone navigation sheet. */
+		mobileLabel?: string;
 	}
 >(
 	(
@@ -235,6 +245,8 @@ const Sidebar = React.forwardRef<
 			collapsible = "offcanvas",
 			className,
 			children,
+			mobileLeading,
+			mobileLabel,
 			...props
 		},
 		ref,
@@ -252,7 +264,7 @@ const Sidebar = React.forwardRef<
 			return (
 				<div
 					className={cn(
-						"flex h-full w-(--sidebar-width) flex-col bg-clip-padding bg-linear-to-b from-sidebar dark:from-sidebar/70 to-background text-sidebar-foreground",
+						"flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground",
 						className,
 					)}
 					ref={ref}
@@ -269,7 +281,8 @@ const Sidebar = React.forwardRef<
 					<SheetContent
 						data-sidebar="sidebar"
 						data-mobile="true"
-						className="w-(--sidebar-width) bg-clip-padding bg-linear-to-b from-sidebar dark:from-sidebar/70 to-background p-0 text-sidebar-foreground [&>button]:hidden"
+						aria-label={mobileLabel}
+						className="flex w-[min(calc(var(--rail-w)+var(--sidebar-width)),calc(100vw-2.5rem))] max-w-none flex-row gap-0 border-r-0 bg-sidebar p-0 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] text-sidebar-foreground sm:max-w-none [&>button]:hidden"
 						style={
 							{
 								"--sidebar-width": SIDEBAR_WIDTH_MOBILE,
@@ -277,7 +290,8 @@ const Sidebar = React.forwardRef<
 						}
 						side={side}
 					>
-						<div className="flex h-full w-full flex-col">{children}</div>
+						{mobileLeading}
+						<div className="flex h-full min-w-0 flex-1 flex-col">{children}</div>
 					</SheetContent>
 				</Sheet>
 			);
@@ -286,7 +300,7 @@ const Sidebar = React.forwardRef<
 		return (
 			<div
 				ref={ref}
-				className="group peer hidden md:block text-sidebar-foreground"
+				className="group peer relative hidden h-full shrink-0 md:block text-sidebar-foreground"
 				data-state={state}
 				data-collapsible={state === "collapsed" ? collapsible : ""}
 				data-variant={variant}
@@ -297,7 +311,7 @@ const Sidebar = React.forwardRef<
 				{/* This is what handles the sidebar gap on desktop */}
 				<div
 					className={cn(
-						"duration-200 relative h-svh w-(--sidebar-width) bg-transparent transition-[width] ease-linear",
+						"duration-200 relative h-full w-(--sidebar-width) bg-transparent transition-[width] ease-linear",
 						"group-data-[collapsible=offcanvas]:w-0",
 						"group-data-[side=right]:rotate-180",
 						variant === "floating" || variant === "inset"
@@ -309,13 +323,16 @@ const Sidebar = React.forwardRef<
 				/>
 				<div
 					className={cn(
-						"duration-200 fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] ease-linear md:flex",
+						// Inside the shell, beside the rail: positioned within the sidebar's
+						// own column rather than fixed to the window, so the rail and the
+						// status bar keep their space.
+						"duration-200 absolute inset-y-0 z-10 hidden h-full w-(--sidebar-width) transition-[left,right,width] ease-linear md:flex",
 						side === "left"
 							? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
 							: "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
 						// Adjust the padding for floating and inset variants.
 						variant === "floating" || variant === "inset"
-							? "p-2 pr-0 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
+							? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
 							: "group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l",
 						//* set duration to 0 for all elements when dragging
 						"group-data-[dragging=true]:duration-0! group-data-[dragging=true]_*:duration-0!",
@@ -325,7 +342,7 @@ const Sidebar = React.forwardRef<
 				>
 					<div
 						data-sidebar="sidebar"
-						className="flex bg-clip-padding h-full w-full flex-col bg-linear-to-b from-sidebar dark:from-sidebar/70 to-background group-data-[variant=floating]:rounded-xl group-data-[variant=floating]:shadow group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border"
+						className="flex h-full w-full flex-col bg-sidebar border-r border-sidebar-border"
 					>
 						{children}
 					</div>
@@ -431,7 +448,7 @@ const SidebarInset = React.forwardRef<
 			className={cn(
 				// min-w-0 prevents flex-1 children from expanding beyond the flex container
 				// when they contain non-breakable content (e.g. long URLs without whitespace).
-				"relative flex min-h-svh flex-1 flex-col bg-background min-w-0",
+				"relative flex h-full min-h-0 flex-1 flex-col bg-background min-w-0",
 				"peer-data-[variant=inset]:min-h-[calc(100svh-(--spacing(4)))] md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm",
 				className,
 			)}
@@ -845,6 +862,7 @@ const SidebarMenuSubButton = React.forwardRef<
 SidebarMenuSubButton.displayName = "SidebarMenuSubButton";
 
 export {
+	useOptionalSidebar,
 	Sidebar,
 	SidebarContent,
 	SidebarFooter,

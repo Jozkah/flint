@@ -1,10 +1,10 @@
 import { useLeftPanel } from '@/hooks/useLeftPanel'
 import { cn } from '@/lib/utils'
-import {
-  IconLayoutSidebar,
-} from '@tabler/icons-react'
+import { Menu, PanelLeft } from 'lucide-react'
 import { ReactNode, memo, useMemo } from 'react'
 import { Button } from "@/components/ui/button"
+import { useOptionalSidebar } from '@/components/ui/sidebar'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useTitlebarLayout } from '@/stores/titlebar-layout-store'
 import {
   appDrawnButtonCounts,
@@ -17,8 +17,16 @@ import {
 type HeaderPageProps = {
   children?: ReactNode
 }
+
+/**
+ * The 52px context bar at the top of every page: the page's identity and its
+ * primary controls. On phones it also carries the button that opens the
+ * navigation sheet, since the rail and sidebar are not on screen.
+ */
 const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
+  const { t } = useTranslation()
   const { open, setLeftPanel } = useLeftPanel()
+  const sidebar = useOptionalSidebar()
   // Collapsed, this header owns the top-left strip and must clear the window
   // controls. The reservation is resolved centrally (see lib/titlebar) so the
   // sidebar and this header can never disagree, and so the macOS traffic-light
@@ -48,13 +56,17 @@ const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
       // empty space. Tauri drags only when the pressed element *is* the drag
       // region, so the controls inside this bar keep working.
       {...dragRegion}
+      data-testid="context-bar"
       className={cn(
-        'h-15 flex items-center shrink-0',
+        'flex items-center shrink-0 border-b border-border bg-card pr-3',
         drags && 'cursor-grab active:cursor-grabbing',
-        inset.macLeftPad ? 'pl-24' : ' pl-4',
+        inset.macLeftPad ? 'pl-24' : 'pl-3 md:pl-6',
         children === undefined && 'border-none'
       )}
       style={{
+        // The shell's context bar height (52px), from one token.
+        height: 'var(--ctx-h)',
+        minHeight: 'var(--ctx-h)',
         ...(inset.leftPx ? { paddingLeft: inset.leftPx } : {}),
         ...(inset.rightPx ? { paddingRight: inset.rightPx } : {}),
       }}
@@ -67,23 +79,31 @@ const HeaderPage = memo(function HeaderPage({ children }: HeaderPageProps) {
         // not carry the attribute.
         {...dragRegion}
         className={cn(
-          'flex items-center w-full gap-1',
+          'flex items-center w-full min-w-0 gap-1',
         )}
       >
+        {sidebar && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative z-50 shrink-0 md:hidden pointer-coarse:size-11"
+            onClick={() => sidebar.setOpenMobile(true)}
+            aria-label={t('common:shell.openNavigation')}
+            data-testid="open-navigation"
+          >
+            <Menu className="size-5 text-foreground" />
+          </Button>
+        )}
         {!open && (
-          <>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className='rounded-full relative z-50'
-              onClick={() => setLeftPanel(!open)}
-              aria-label="Toggle sidebar"
-            >
-              <IconLayoutSidebar
-                className="text-muted-foreground relative size-4.5"
-              />
-            </Button>
-          </>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className='relative z-50 hidden md:inline-flex'
+            onClick={() => setLeftPanel(!open)}
+            aria-label="Toggle sidebar"
+          >
+            <PanelLeft className="text-muted-foreground relative size-4.5" />
+          </Button>
         )}
         <div
           // The stretch that fills the rest of the bar. Whatever a page puts

@@ -98,7 +98,7 @@ describe('Interface Settings Route', () => {
     render(<Component />)
 
     expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-menu')).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
     expect(screen.getByText('common:settings')).toBeInTheDocument()
   })
 
@@ -180,7 +180,7 @@ describe('Interface Settings Route', () => {
     const headerPage = screen.getByTestId('header-page')
     expect(headerPage).toBeInTheDocument()
 
-    const settingsMenu = screen.getByTestId('settings-menu')
-    expect(settingsMenu).toBeInTheDocument()
+    // The shell's contextual sidebar renders the settings navigation.
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
   })
 })

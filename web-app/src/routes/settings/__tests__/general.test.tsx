@@ -320,7 +320,7 @@ describe('General Settings Route', () => {
     })
 
     expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-menu')).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
     expect(screen.getByText('common:settings')).toBeInTheDocument()
   })
 
@@ -415,7 +415,7 @@ describe('General Settings Route', () => {
 
     // Test that component renders without errors
     expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-menu')).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
   })
 
   it('should handle copy to clipboard', async () => {
@@ -426,7 +426,7 @@ describe('General Settings Route', () => {
 
     // Test that component renders without errors
     expect(screen.getByTestId('header-page')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-menu')).toBeInTheDocument()
+    expect(screen.queryByTestId('settings-menu')).toBeNull()
   })
 
   it('should handle factory reset dialog', async () => {

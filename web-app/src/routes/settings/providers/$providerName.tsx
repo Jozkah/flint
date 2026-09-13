@@ -2,7 +2,6 @@
 import { Card, CardItem } from '@/containers/Card'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import HeaderPage from '@/containers/HeaderPage'
-import SettingsMenu from '@/containers/SettingsMenu'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { cn, getProviderTitle, getModelDisplayName, isLocalProvider } from '@/lib/utils'
 import { sortModels } from '@/lib/modelSort'
@@ -629,7 +628,7 @@ function ProviderDetail() {
   }
 
   return (
-    <div className="flex flex-col h-svh w-full">
+    <div className="flex flex-col h-full w-full">
       <HeaderPage>
         <div className="flex items-center gap-2 w-full">
           <span className="font-medium text-base font-studio">
@@ -637,8 +636,7 @@ function ProviderDetail() {
           </span>
         </div>
       </HeaderPage>
-      <div className="flex h-[calc(100%-60px)]">
-        <SettingsMenu />
+      <div className="flex h-[calc(100%-var(--ctx-h))]">
         <div className="p-4 pt-0 w-full overflow-y-auto">
           <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
             <div className="flex items-center justify-between">

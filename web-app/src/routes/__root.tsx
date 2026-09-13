@@ -22,6 +22,8 @@ import { GlobalEventHandler } from '@/providers/GlobalEventHandler'
 import { ServiceHubProvider } from '@/providers/ServiceHubProvider'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { LeftSidebar } from '@/components/left-sidebar'
+import { AppRail } from '@/components/shell/AppRail'
+import { StatusBar } from '@/components/shell/StatusBar'
 import { WindowControls } from '@/components/WindowControls'
 import { WindowResizeGrips } from '@/components/WindowResizeGrips'
 import ErrorDialog from '@/containers/dialogs/ErrorDialog'
@@ -30,6 +32,7 @@ import LlamacppOomListener from '@/containers/dialogs/LlamacppOomListener'
 import MissingDependenciesDialog from '@/containers/dialogs/MissingDependenciesDialog'
 import { TemporaryChatGuard } from '@/containers/TemporaryChatGuard'
 import { useWindowTitle } from '@/hooks/useWindowTitle'
+import { useAppViewport } from '@/hooks/useAppViewport'
 import { detectWindowChrome } from '@/lib/titlebar'
 
 export const Route = createRootRoute({
@@ -37,11 +40,18 @@ export const Route = createRootRoute({
   errorComponent: ({ error }) => <GlobalError error={error} />,
 })
 
+/**
+ * The JAN Atelier shell: graphite rail | contextual sidebar | page, with the
+ * status bar across the bottom. One shell for every route; pages supply their
+ * own context bar (HeaderPage) and content. On phones the rail and sidebar
+ * move into one navigation sheet opened from the context bar.
+ */
 const AppLayout = () => {
   // The settings-search query outlives each settings page on purpose; it must
   // not outlive the section. Mounted here because this layout stays put.
   useClearSettingsSearchOnExit()
   useWindowTitle()
+  useAppViewport()
   const appDrawsChrome = detectWindowChrome() === 'custom'
   const {
     open: isLeftPanelOpen,
@@ -51,12 +61,16 @@ const AppLayout = () => {
   } = useLeftPanel()
 
   return (
-    <div className="bg-neutral-50 dark:bg-background size-full relative">
+    <div
+      data-testid="app-shell"
+      className="relative flex h-(--app-vvh,100dvh) w-full flex-col overflow-hidden bg-background"
+    >
       <SidebarProvider
         open={isLeftPanelOpen}
         onOpenChange={setLeftPanel}
         defaultWidth={sidebarWidth}
         onWidthChange={setLeftPanelWidth}
+        className="min-h-0 flex-1"
       >
         <KeyboardShortcutsProvider />
         <TemporaryChatGuard />
@@ -66,13 +80,15 @@ const AppLayout = () => {
             over the page pretending to be one (see lib/titlebar). */}
         {appDrawsChrome && <WindowControls />}
         {appDrawsChrome && <WindowResizeGrips />}
+        <AppRail className="hidden md:flex" />
         <LeftSidebar />
         <SidebarInset>
-          <div className="bg-neutral-50 dark:bg-background size-full">
+          <div className="size-full min-h-0 bg-background">
             <Outlet />
           </div>
         </SidebarInset>
       </SidebarProvider>
+      <StatusBar />
     </div>
   )
 }
@@ -80,7 +96,7 @@ const AppLayout = () => {
 const LogsLayout = () => {
   return (
     <Fragment>
-      <main className="relative h-svh text-sm antialiased select-text bg-app">
+      <main className="relative h-svh text-sm antialiased select-text bg-background">
         <div className="flex h-full">
           {/* Main content panel */}
           <div className="h-full flex w-full">
@@ -119,7 +135,7 @@ function RootLayout() {
             <DataProvider />
             <GlobalEventHandler />
             {/* One mount, above every route: Search is offered from the
-                sidebar and from Cowork's own header, and a dialog that lived
+                rail and from Cowork's own header, and a dialog that lived
                 inside the sidebar simply did not exist on a surface that did
                 not render it. */}
             <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} />

@@ -4,7 +4,6 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { route } from '@/constants/routes'
 import HeaderPage from '@/containers/HeaderPage'
-import SettingsMenu from '@/containers/SettingsMenu'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -553,7 +552,6 @@ function MemorySettings() {
         <h1 className="font-medium">{t('common:settings')}</h1>
       </HeaderPage>
       <div className="flex h-full w-full">
-        <SettingsMenu />
         <div className="p-4 w-full h-[calc(100%-32px)] overflow-y-auto">
           <div className="flex flex-col justify-between gap-4 gap-y-3 w-full">
             <Card title="Memory">
