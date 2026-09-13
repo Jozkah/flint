@@ -820,6 +820,10 @@ struct CompositeToolInvoker {
     /// (AH-100), so a dispatch asked to fork has something to copy. Shared
     /// rather than passed because the turn loop sees only the trait.
     live_conversation: std::sync::Arc<std::sync::Mutex<Vec<serde_json::Value>>>,
+    /// Whether an edited file is handed to the project's own formatter before
+    /// its diff is shown (AH-149). Resolved once per run from
+    /// `[tools].format_on_edit`.
+    format_on_edit: bool,
     /// Every tool this run could actually call: the built-ins plus whatever
     /// the connected MCP servers offer, narrowed by the allowlist (AH-124).
     /// Resolved once per run so a skill that names a tool nothing here
@@ -994,6 +998,8 @@ struct ResolvedSettings {
     allow_network: bool,
     allow_home_read: bool,
     sandbox: bool,
+    /// `[tools].format_on_edit` (AH-149): unset is off, on every surface.
+    format_on_edit: bool,
 }
 
 /// Kept out of the invoker's struct literal so it is reachable from a test.
@@ -1009,6 +1015,7 @@ fn resolve_run_settings(
         allow_network: resolve_allow_network(settings.allow_network),
         allow_home_read: resolve_allow_home_read(settings.allow_home_read),
         sandbox: resolve_sandbox(sandbox_flag, settings.sandbox),
+        format_on_edit: settings.format_on_edit,
     }
 }
 
@@ -1200,6 +1207,9 @@ impl CompositeToolInvoker {
         // AH-124: and what this run has at all, so a skill that names a tool
         // nothing provides is withheld rather than loaded.
         .with_available_tools(&self.available_tools)
+        // AH-149: whether an edited file goes through the project's formatter
+        // before its diff is shown.
+        .with_format_on_edit(self.format_on_edit)
     }
 
     /// The same context, plus who this run is for the mailbox (AH-103).
@@ -3610,6 +3620,7 @@ async fn orchestrate_inner(
         }
         let available_tools = available_tool_names(&mcp_tools, allowed_names.as_ref());
         let tools = CompositeToolInvoker {
+            format_on_edit: settings.format_on_edit,
             available_tools,
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             allowed_tools: allowed_names.clone(),
@@ -6861,6 +6872,7 @@ mod tests {
         subject: tauri_plugin_agent_tools::subject::Subject,
     ) -> CompositeToolInvoker {
         CompositeToolInvoker {
+            format_on_edit: false,
             available_tools: tauri_plugin_agent_tools::tools::BUILTIN_TOOLS
                 .iter()
                 .map(|t| t.name.to_string())

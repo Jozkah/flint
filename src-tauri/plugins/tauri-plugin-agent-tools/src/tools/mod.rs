@@ -110,6 +110,11 @@ pub struct ToolContext<'a> {
     /// grants a tool.
     pub permissions: Option<&'a crate::permissions::ToolPermissions>,
     pub subject: Option<&'a crate::subject::Subject>,
+    /// Whether a file this run edits is handed to the project's own formatter
+    /// before its diff is shown (AH-149). Off unless the surface says
+    /// otherwise: running a program the user did not ask for is a thing to opt
+    /// into, and a formatter is still a program.
+    pub format_on_edit: bool,
     /// Every tool this run could call, built-in and MCP alike (AH-124).
     ///
     /// Carried so a skill that declares a tool nothing here provides is
@@ -229,6 +234,7 @@ impl<'a> ToolContext<'a> {
             data_folder: None,
             permissions: None,
             subject: None,
+            format_on_edit: false,
             available_tools: None,
             temporary: false,
             sandbox: true,
@@ -266,6 +272,13 @@ impl<'a> ToolContext<'a> {
     ) -> Self {
         self.permissions = Some(permissions);
         self.subject = Some(subject);
+        self
+    }
+
+    /// Hand an edited file to the project's formatter before showing its diff
+    /// (AH-149).
+    pub fn with_format_on_edit(mut self, on: bool) -> Self {
+        self.format_on_edit = on;
         self
     }
 

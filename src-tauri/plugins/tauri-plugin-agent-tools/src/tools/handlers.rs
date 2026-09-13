@@ -776,6 +776,19 @@ pub async fn execute_builtin_with_diff(
     match tool.name {
         "write" | "edit" => {
             let diff = preview_diff(tool, args, ctx).await;
+            // Kept from before the call so the post-format diff can be drawn
+            // against the file as the model saw it, rather than against what
+            // the model wrote and the formatter then rewrote.
+            let before = match arg_str(args, "path") {
+                Some(p) => tokio::fs::read_to_string(resolve_path(
+                    ctx.project_root,
+                    ctx.scratch_root,
+                    p,
+                ))
+                .await
+                .ok(),
+                None => None,
+            };
 
             // A credential in what this change *adds* stops it before it
             // lands. AH-157. Catching it afterwards is not the same thing: a
@@ -817,6 +830,10 @@ pub async fn execute_builtin_with_diff(
             if content.starts_with("ERROR") {
                 return (content, None, None);
             }
+            // AH-149: the project's own formatter has the last word on layout,
+            // and the diff a person reviews should be what the file now holds
+            // -- not a version the next `cargo fmt` will rewrite.
+            let diff = format_after_edit(args, ctx, before.as_deref(), diff).await;
             (content, diff, images)
         }
         "read" => {
@@ -824,6 +841,51 @@ pub async fn execute_builtin_with_diff(
             (content, None, images)
         }
         _ => (execute_builtin(tool, args, ctx).await.0, None, None),
+    }
+}
+
+/// Hand the edited file to the project's formatter, and redraw the diff
+/// against what the file now holds (AH-149, AH-150).
+///
+/// The diff is redrawn rather than annotated because the point of showing one
+/// is that it is what happened. A formatter that could not run, or refused the
+/// file, leaves the original diff exactly as it was and says so underneath:
+/// silence there would read as "nothing to format".
+async fn format_after_edit(
+    args: &serde_json::Value,
+    ctx: &ToolContext<'_>,
+    before: Option<&str>,
+    diff: Option<String>,
+) -> Option<String> {
+    if !ctx.format_on_edit {
+        return diff;
+    }
+    let path = arg_str(args, "path")?;
+    let file = resolve_path(ctx.project_root, ctx.scratch_root, path);
+    let formatter = crate::format::detect(ctx.project_root, &file)?;
+    let project_root = ctx.project_root.to_path_buf();
+    let running = formatter.clone();
+    let outcome = tokio::task::spawn_blocking(move || {
+        crate::format::run(&running, &project_root, &file)
+    })
+    .await
+    .unwrap_or_else(|e| crate::format::Formatted::Failed(format!("the formatter could not be run: {e}")));
+    match outcome {
+        crate::format::Formatted::Unchanged => diff,
+        crate::format::Formatted::Failed(why) => Some(format!(
+            "{}\n[{}]",
+            diff.unwrap_or_default().trim_end(),
+            why
+        )),
+        crate::format::Formatted::Changed(after) => {
+            let redrawn = render_hunk_diff(before.unwrap_or(""), &after, 1);
+            Some(format!(
+                "{}\n[formatted with {} ({})]",
+                redrawn.trim_end(),
+                formatter.name,
+                formatter.evidence
+            ))
+        }
     }
 }
 
@@ -5923,6 +5985,101 @@ on_failure = \"warn\"
         .await
         .0;
         assert_eq!(body, "run it");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// AH-149/AH-150: what the agent wrote goes through the project's own
+    /// formatter, and the diff a person reviews is what the file now holds --
+    /// not the version the next `cargo fmt` would rewrite.
+    #[tokio::test]
+    async fn an_edited_file_is_formatted_before_its_diff_is_shown() {
+        let root = unique_root();
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"x\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        let store = crate::workspace::project_store(&root);
+        let badly_laid_out = "pub fn main( ) {let  x  =  1;}\n";
+
+        // Off: the file is left exactly as the model wrote it.
+        let plain = ToolContext::new(&root, &store, &[]);
+        let (_, diff, _) = super::execute_builtin_with_diff(
+            lookup("write").unwrap(),
+            &json!({"path": "a.rs", "content": badly_laid_out}),
+            &plain,
+        )
+        .await;
+        assert_eq!(std::fs::read_to_string(root.join("a.rs")).unwrap(), badly_laid_out);
+        let diff = diff.expect("a diff");
+        assert!(!diff.contains("formatted with"), "{diff}");
+
+        // On: the formatter runs, the file is what it left, and the diff says
+        // which formatter and on what evidence.
+        std::fs::write(root.join("a.rs"), "pub fn main() {}\n").unwrap();
+        let formatting = ToolContext::new(&root, &store, &[]).with_format_on_edit(true);
+        let (_, diff, _) = super::execute_builtin_with_diff(
+            lookup("write").unwrap(),
+            &json!({"path": "a.rs", "content": badly_laid_out}),
+            &formatting,
+        )
+        .await;
+        let on_disk = std::fs::read_to_string(root.join("a.rs")).unwrap();
+        assert!(on_disk.contains("let x = 1;"), "{on_disk}");
+        let diff = diff.expect("a diff");
+        assert!(diff.contains("formatted with rustfmt"), "{diff}");
+        assert!(diff.contains("Cargo.toml (edition 2021)"), "{diff}");
+        // The diff is the formatted text, not what the model wrote.
+        assert!(diff.contains("let x = 1;"), "{diff}");
+        assert!(!diff.contains("let  x  =  1;"), "{diff}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A formatter that refuses the file leaves the edit and its diff alone,
+    /// and says so rather than staying silent about having tried.
+    #[tokio::test]
+    async fn a_formatter_that_refuses_leaves_the_diff_and_says_why() {
+        let root = unique_root();
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"x\"\nedition = \"2021\"\n",
+        )
+        .unwrap();
+        let store = crate::workspace::project_store(&root);
+        let not_rust = "fn main( { this is not rust\n";
+        let ctx = ToolContext::new(&root, &store, &[]).with_format_on_edit(true);
+        let (_, diff, _) = super::execute_builtin_with_diff(
+            lookup("write").unwrap(),
+            &json!({"path": "a.rs", "content": not_rust}),
+            &ctx,
+        )
+        .await;
+        assert_eq!(std::fs::read_to_string(root.join("a.rs")).unwrap(), not_rust);
+        let diff = diff.expect("a diff");
+        assert!(diff.contains("rustfmt refused the file"), "{diff}");
+        assert!(!diff.contains("formatted with"), "{diff}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A project that says nothing about how it is formatted has nothing run
+    /// against it, however familiar the file extension looks.
+    #[tokio::test]
+    async fn a_project_with_no_declared_formatter_has_nothing_run() {
+        let root = unique_root();
+        std::fs::create_dir_all(&root).unwrap();
+        let store = crate::workspace::project_store(&root);
+        let content = "const   x=1\n";
+        let ctx = ToolContext::new(&root, &store, &[]).with_format_on_edit(true);
+        let (_, diff, _) = super::execute_builtin_with_diff(
+            lookup("write").unwrap(),
+            &json!({"path": "a.ts", "content": content}),
+            &ctx,
+        )
+        .await;
+        assert_eq!(std::fs::read_to_string(root.join("a.ts")).unwrap(), content);
+        assert!(!diff.unwrap_or_default().contains("formatted"), "nothing should have run");
         let _ = std::fs::remove_dir_all(&root);
     }
 

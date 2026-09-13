@@ -5266,13 +5266,19 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-150"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/format.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
+        "src-tauri/src/core/agent/project.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Edited files are formatted with the project's formatter before the diff is shown.",
@@ -5281,10 +5287,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/format.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). `[tools].format_on_edit` (off unless asked for: a formatter is a program, and running one nobody asked for is a change nobody asked for) hands the file a write/edit just produced to the formatter AH-150 detected -- that file only, inside the project, with a 20-second deadline -- and then redraws the diff against what the file now holds, with a line naming the formatter and its evidence. The diff is redrawn rather than annotated because the point of showing one is that it is what happened. A formatter that cannot start, misses the deadline or refuses the file leaves the edit as written and says so under the original diff. Proven by a real headless run writing the same badly laid-out Rust file with the setting off and on."
     },
     {
       "id": "AH-150",
@@ -5292,13 +5301,19 @@
       "category": "git-workflows",
       "phase": 7,
       "phaseName": "Coding and Git workflows",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-069"
       ],
       "owner": "lane-08-git-pr-workflows",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/format.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
+        "src-tauri/src/core/agent/project.rs",
+        "src-tauri/src/core/agent/loop.rs"
+      ],
       "securityImpact": "none",
       "acceptanceCriteria": [
         "The project's formatter and its invocation are detected.",
@@ -5307,10 +5322,13 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/format.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). `format::detect` answers which formatter a project uses for one file, on evidence only: Cargo.toml with an edition (rustfmt, invoked at that edition -- reading it rather than assuming, since a 2021 crate formatted as 2015 fails on the first async fn), a .prettierrc* or a prettier mention in package.json, pyproject.toml [tool.ruff] then [tool.black], go.mod. The program must also resolve -- node_modules/.bin first, then PATH, with Windows extensions -- so a config for a formatter nobody installed is not a formatter this run can use. A file extension alone is never evidence. What the evidence was is returned with the answer, so a person can be told why something ran."
     },
     {
       "id": "AH-151",

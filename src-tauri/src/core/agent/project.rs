@@ -163,6 +163,13 @@ pub(crate) struct ToolsSection {
     /// checks it out.
     #[serde(default)]
     pub sandbox: Option<bool>,
+    /// Whether a file the agent edits is handed to this project's own
+    /// formatter before its diff is shown (AH-149). Off unless asked for: a
+    /// formatter is a program, and running one nobody asked for is a change
+    /// nobody asked for. It only ever runs where the project itself says which
+    /// formatter it uses (AH-150).
+    #[serde(default)]
+    pub format_on_edit: Option<bool>,
 }
 
 const AGENT_TOML_TEMPLATE: &str = r#"[agent]
@@ -214,6 +221,11 @@ allow_write = []
 # ~/.jan/config.toml; the desktop always confines. Set it here to require
 # confinement for anyone working in this project.
 # sandbox = true
+# Whether a file the agent edits is run through this project's own formatter
+# before you are shown the diff. Only ever runs a formatter the project itself
+# declares (rustfmt.toml/Cargo.toml, .prettierrc, pyproject [tool.ruff]/[tool.black],
+# go.mod) and that is actually installed.
+# format_on_edit = true
 
 [skills]
 enabled = []
@@ -252,6 +264,8 @@ pub(crate) struct RunSettings {
     /// `[tools].sandbox`; `None` when unset, so the caller applies the default
     /// appropriate to its surface.
     pub sandbox: Option<bool>,
+    /// `[tools].format_on_edit` (AH-149); unset is off.
+    pub format_on_edit: bool,
 }
 
 /// A missing or malformed config yields defaults rather than an error: a project
@@ -265,6 +279,7 @@ pub(crate) fn run_settings(project_root: &Path) -> RunSettings {
         allow_network: cfg.tools.allow_network,
         allow_home_read: cfg.tools.allow_home_read,
         sandbox: cfg.tools.sandbox,
+        format_on_edit: cfg.tools.format_on_edit.unwrap_or(false),
     }
 }
 

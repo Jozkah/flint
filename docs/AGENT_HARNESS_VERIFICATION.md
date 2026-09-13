@@ -2107,3 +2107,34 @@ an `opencode.json` (with a `"model"`-only file refused as declaring none); a
 dry run writing nothing and a real import writing a loadable definition, with a
 second import refused unless overwritten; and one malformed definition stopping
 a whole directory.
+
+
+### Formatter detection and formatting on edit (AH-150, AH-149)
+
+Nine tests plus a real headless run writing the same badly laid-out file twice,
+with the setting off and on:
+
+```
+=== format_on_edit = false
+file on disk:
+  pub fn main( ) {let  x  =  1;  let  y=x+1;}
+
+=== format_on_edit = true
+file on disk:
+  pub fn main() {
+      let x = 1;
+      let y = x + 1;
+  }
+```
+
+Covered by test: a language with no declared formatter detecting nothing (Rust,
+Python and TypeScript alike); a crate formatted at the edition it declares, and
+a manifest without one detecting nothing rather than guessing; prettier claimed
+only when a config or a `package.json` mention *and* an installed program agree,
+with `node_modules/.bin` preferred over `PATH`; Python following what
+`pyproject.toml` declares, ruff winning where both are declared; a formatter run
+reporting what it changed and reporting no change as no change; a formatter
+refusing a file leaving that file untouched; and, through the edit path, the
+diff being redrawn from the formatted text and naming the formatter and its
+evidence, a refusal leaving the diff and saying why, and a project with no
+declared formatter having nothing run against it.

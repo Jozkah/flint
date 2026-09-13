@@ -2116,3 +2116,41 @@ description is what says when to dispatch it), no prompt, an unreadable
 `mode`. Reading happens before any writing, so a directory with one malformed
 definition imports none of them -- a half-imported directory is a state nobody
 can reason about -- and `--dry-run` writes nothing at all.
+
+
+## The project's own formatter (AH-150, AH-149)
+
+Every project already has an opinion about layout, and writes it down: a
+`rustfmt.toml`, a `.prettierrc`, a `[tool.ruff]` table, a `go.mod`. An edit
+that ignores it produces a diff half made of whitespace, and a commit the next
+`cargo fmt` rewrites anyway.
+
+**Detection (AH-150)** is evidence-based, never conventional. A formatter is
+claimed only when the project says it uses one *and* the program is actually
+there -- in `node_modules/.bin` first, since a project's own copy is the one it
+means, then on `PATH`. A file extension is not evidence: plenty of
+repositories hold a `.py` and no Python formatter. What the evidence was
+travels with the answer, so a person can be told why something ran.
+
+| File | Evidence required | Run as |
+| --- | --- | --- |
+| `.rs` | `Cargo.toml` with an `edition` (plus `rustfmt.toml` if present) | `rustfmt --edition <edition>` |
+| `.ts`/`.js`/`.css`/`.md`/… | a `.prettierrc*`, or prettier in `package.json` | `prettier --write` |
+| `.py` | `pyproject.toml` `[tool.ruff]`, else `[tool.black]` | `ruff format -q` / `black -q` |
+| `.go` | `go.mod` | `gofmt -w` |
+
+The Rust edition is read rather than assumed: formatting a 2021 crate as 2015
+fails on the first `async fn`, and a manifest that does not say has not said.
+
+**Formatting on edit (AH-149)** is `[tools].format_on_edit`, off unless asked
+for -- a formatter is a program, and running one nobody asked for is a change
+nobody asked for. When it is on, the file the agent just wrote is handed to the
+detected formatter, on its own, inside the project, with a 20-second deadline,
+and then the diff is **redrawn against what the file now holds**. The point of
+showing a diff is that it is what happened; annotating a stale one would not
+be. The line underneath names the formatter and the evidence
+(`[formatted with rustfmt (Cargo.toml (edition 2021))]`).
+
+A formatter that will not start, misses the deadline, or refuses the file
+leaves the edit exactly as the model wrote it and says so under the original
+diff -- usually because the edit does not parse, which is worth knowing.
