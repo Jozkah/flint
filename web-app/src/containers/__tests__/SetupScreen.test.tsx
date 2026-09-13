@@ -676,6 +676,21 @@ describe('SetupScreen', () => {
       })
     })
 
+    it('moves and selects intentions with arrow keys, as a radio group does', async () => {
+      await renderSetup()
+      const group = screen.getByRole('radiogroup')
+      await act(async () => {
+        fireEvent.keyDown(group, { key: 'ArrowDown' })
+      })
+      expect(screen.getByTestId('setup-intent-question')).toHaveAttribute('aria-checked', 'true')
+      expect(screen.getByTestId('setup-intent-question')).toHaveFocus()
+      await act(async () => {
+        fireEvent.keyDown(group, { key: 'ArrowUp' })
+      })
+      expect(screen.getByTestId('setup-intent-project')).toHaveAttribute('aria-checked', 'true')
+      expect(useOnboardingGuide.getState().intent).toBe('project')
+    })
+
     it('lets the user skip the guide without skipping setup', async () => {
       await renderSetup()
       await act(async () => {

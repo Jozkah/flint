@@ -281,9 +281,12 @@ function SetupScreen() {
       <div className="flex flex-col h-svh w-full">
         <HeaderPage />
 
-        <div className="flex h-[calc(100%-60px)] items-center justify-center px-6">
+        {/* Scrolls rather than clips: on a short window the intentions and the
+            finish page are taller than the space, and centring with
+            items-center pushed the primary actions out of reach. */}
+        <div className="flex h-[calc(100%-60px)] min-h-0 overflow-y-auto px-6 py-6">
           <div
-            className="w-full max-w-[460px] rounded-2xl border bg-card/60 p-7 shadow-xl pointer-events-auto"
+            className="m-auto w-full max-w-[460px] rounded-2xl border bg-card/60 p-7 shadow-xl pointer-events-auto"
             data-testid="setup-wizard"
             data-page={currentPage?.id ?? 'done'}
           >
@@ -373,6 +376,33 @@ function SetupScreen() {
                         role="radiogroup"
                         aria-label={t('onboarding:intentHeading')}
                         className="mt-2 flex flex-col gap-1.5"
+                        onKeyDown={(event) => {
+                          // Arrow keys move and select within the group, as a
+                          // native radio group does; Tab still leaves it.
+                          const step =
+                            event.key === 'ArrowDown' || event.key === 'ArrowRight'
+                              ? 1
+                              : event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+                                ? -1
+                                : 0
+                          if (!step) return
+                          event.preventDefault()
+                          // With nothing chosen yet, the first arrow picks the
+                          // first (down) or last (up) option.
+                          const current = guide.intent
+                            ? INTENTS.indexOf(guide.intent)
+                            : step > 0
+                              ? -1
+                              : 0
+                          const next =
+                            INTENTS[(current + step + INTENTS.length) % INTENTS.length]
+                          guide.setIntent(next)
+                          ;(
+                            event.currentTarget.querySelector(
+                              `[data-testid="setup-intent-${next}"]`
+                            ) as HTMLElement | null
+                          )?.focus()
+                        }}
                       >
                         {INTENTS.map((intent) => {
                           const isChosen = guide.intent === intent
