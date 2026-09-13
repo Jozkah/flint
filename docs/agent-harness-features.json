@@ -4786,14 +4786,21 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-133"
       ],
       "owner": "lane-07-mcp-skills-plugins",
       "files": [
-        "src-tauri/src/core/mcp/oauth.rs"
+        "src-tauri/src/bin/jan.rs",
+        "src-tauri/src/core/app/commands.rs",
+        "src-tauri/src/core/cli/mcp.rs",
+        "src-tauri/src/core/mcp/helpers.rs",
+        "src-tauri/src/core/mcp/models.rs",
+        "src-tauri/src/core/mcp/oauth.rs",
+        "src-tauri/src/core/server/provider_secrets.rs",
+        "src-tauri/tests/fixtures/mock_oauth_server.py"
       ],
       "securityImpact": "critical",
       "acceptanceCriteria": [
@@ -4805,10 +4812,14 @@
         "Security: a negative test proves authority cannot be escalated through this path.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/cli/tui.rs",
+        "src-tauri/src/core/mcp/models.rs",
+        "src-tauri/src/core/mcp/oauth.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Refresh and expiry handling are not verified as complete."
+      "auditNote": "Refresh and expiry handling are not verified as complete. 2026-09-13 (Phase 6): implemented. MCP OAuth tokens live in the OS secret store (keyring, encrypted-file fallback), keyed by data folder and server; plaintext mcp_oauth.json records migrate on first read and the file is deleted when empty. Refreshed at connect and ahead of expiry by a per-connection refresher that ends with the connection; an omitted refresh token is kept. Typed failures (authentication/transport/io). CLI auth-status / auth-clear. Proven by a real CLI run against an OAuth + MCP fixture using Windows Credential Manager, plus fixture-backed integration tests."
     },
     {
       "id": "AH-135",

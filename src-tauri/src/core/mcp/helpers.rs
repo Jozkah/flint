@@ -532,7 +532,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
         // own `Authorization` header, which the base client already sends.
         let authorized = oauth::authorized_client(&app_path, &name, &url, &config, base.clone())
             .await
-            .map_err(|detail| oauth::NEEDS_AUTH_PREFIX.to_string() + &detail)?;
+            .map_err(|detail| oauth::NEEDS_AUTH_PREFIX.to_string() + &detail.to_string())?;
         let had_credentials = authorized.is_some();
 
         let label = if transport == "http" {

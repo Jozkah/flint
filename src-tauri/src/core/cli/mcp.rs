@@ -414,7 +414,7 @@ async fn connect_in(
                     .await
                     .map_err(|detail| ConnectError::NeedsAuth {
                         server: name.to_string(),
-                        detail,
+                        detail: detail.to_string(),
                     })?;
                 let authorized = auth.is_some();
                 let result = match (transport, auth) {

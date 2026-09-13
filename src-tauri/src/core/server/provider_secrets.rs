@@ -405,7 +405,7 @@ pub fn delete_secret_record(key: &str) -> Result<(), String> {
 /// lets unit tests exercise the file path without touching the developer's
 /// keychain. Every caller is a `cli`-feature test, so the desktop build would
 /// otherwise carry it unused.
-#[cfg(all(test, feature = "cli"))]
+#[cfg(test)]
 pub(crate) fn force_file_secrets() {
     KEYRING_DOWN.store(true, Ordering::Relaxed);
 }

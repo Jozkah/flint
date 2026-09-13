@@ -856,6 +856,16 @@ enum McpCommands {
         #[arg(long, default_value_t = 100)]
         lines: usize,
     },
+    /// Show a server's OAuth state as JSON, without touching the network (AH-134)
+    AuthStatus {
+        /// Server name
+        name: String,
+    },
+    /// Forget a server's stored OAuth tokens (AH-134)
+    AuthClear {
+        /// Server name
+        name: String,
+    },
 }
 
 // ── ASCII logo ─────────────────────────────────────────────────────────────
@@ -2317,6 +2327,22 @@ async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
             let config = build_mcp_config(command, args, env, &r#type, url, header, active)?;
             mcp::upsert_server(&name, &config)?;
             println!("saved server '{name}' to mcp_config.json");
+            Ok(())
+        }
+        McpCommands::AuthStatus { name } => {
+            let entry = app_lib::core::cli::mcp::get_server(&name)
+                .ok_or_else(|| format!("no MCP server named '{name}'"))?;
+            let info: app_lib::core::mcp::oauth::AuthStatusInfo =
+                app_lib::core::cli::mcp::auth_status(&name, &entry.config).into();
+            println!("{}", serde_json::to_string_pretty(&info).unwrap_or_default());
+            Ok(())
+        }
+        McpCommands::AuthClear { name } => {
+            if app_lib::core::cli::mcp::clear_auth(&name)? {
+                println!("Forgot the stored tokens for '{name}'");
+            } else {
+                println!("No tokens were stored for '{name}'");
+            }
             Ok(())
         }
         McpCommands::Logs { name, lines } => {
