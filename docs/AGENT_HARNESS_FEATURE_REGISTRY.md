@@ -28,14 +28,14 @@ and the latter two require a recorded `blockedReason`.
 | 0 | Foundation | 0 | 0 | 0 | 12 | 0 | 0 | 0 | 12 |
 | 1 | Core execution | 0 | 0 | 0 | 20 | 0 | 0 | 0 | 20 |
 | 2 | Security and permissions | 0 | 0 | 0 | 20 | 0 | 0 | 0 | 20 |
-| 3 | Repository intelligence | 3 | 0 | 0 | 14 | 3 | 0 | 0 | 20 |
+| 3 | Repository intelligence | 1 | 0 | 0 | 16 | 3 | 0 | 0 | 20 |
 | 4 | Context and memory | 0 | 0 | 0 | 16 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 1 | 0 | 0 | 24 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 0 | 0 | 0 | 32 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 5 | 0 | 0 | 21 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 2 | 0 | 0 | 26 | 0 | 0 | 1 | 29 |
 | 9 | Approved additions | 0 | 0 | 0 | 11 | 0 | 0 | 0 | 11 |
-| **all** | | **11** | **0** | **0** | **196** | **3** | **0** | **1** | **211** |
+| **all** | | **9** | **0** | **0** | **198** | **3** | **0** | **1** | **211** |
 
 ## Ownership lanes
 
@@ -126,8 +126,8 @@ per-OS evidence log rather than backlog items.
 | `AH-054` | Initial index build | 3 | repo-intelligence | P1 | `implemented` | low | `AH-053` |
 | `AH-055` | Incremental index updates | 3 | repo-intelligence | P1 | `implemented` | low | `AH-053` |
 | `AH-056` | Index invalidation on branch change | 3 | repo-intelligence | P2 | `implemented` | low | `AH-055` |
-| `AH-057` | LSP client integration | 3 | repo-intelligence | P1 | `missing` | medium | `AH-053` |
-| `AH-058` | LSP server lifecycle management | 3 | repo-intelligence | P1 | `missing` | medium | `AH-057` |
+| `AH-057` | LSP client integration | 3 | repo-intelligence | P1 | `implemented` | medium | `AH-053` |
+| `AH-058` | LSP server lifecycle management | 3 | repo-intelligence | P1 | `implemented` | medium | `AH-057` |
 | `AH-059` | Symbol search | 3 | repo-intelligence | P1 | `implemented` | low | `AH-057` |
 | `AH-060` | Find references | 3 | repo-intelligence | P1 | `implemented` | low | `AH-059` |
 | `AH-061` | Go to definition | 3 | repo-intelligence | P1 | `implemented` | low | `AH-059` |
@@ -329,6 +329,8 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-054` Initial index build** - Implemented 2026-09-12 (Phase 5). The first build walks the repository, skipping dotted, vendored and generated directories and files past the size bound, and says when a bound stopped it. Measured on this repository: 1,665 files and 27,516 symbols in 0.77s. A build can be cancelled, and then writes nothing at all -- half an index that looks whole is worse than none.
 - **`AH-055` Incremental index updates** - Implemented 2026-09-12 (Phase 5). A later pass re-reads only files whose size or modification time differs from what was stored -- any difference, not a newer one, so a file restored to an older copy is still re-read -- and reports added/changed/unchanged/removed so incremental is checkable rather than claimed. Second pass on this repository: 0 files read, 1,665 reused, 0.22s.
 - **`AH-056` Index invalidation on branch change** - Implemented 2026-09-12 (Phase 5). The index records the commit it was built at; when that has moved, every entry is re-checked against disk and the update says reconciled. Still incremental: unchanged files are stat-compared rather than re-read. Proven with a real branch switch in which one file differed and exactly one file was re-read.
+- **`AH-057` LSP client integration** - Implemented 2026-09-13 (Phase 6). core/agent/lsp.rs speaks LSP (JSON-RPC over stdio with Content-Length framing) to a language server and the agent asks it through the read-only `lsp` tool: definition, references, implementation, hover, diagnostics, status, with files kept in sync with the disk and 1-based character positions converted to UTF-16. Go files go to the gopls already on PATH; nothing is installed and the server runs with GOPROXY=off, GOTOOLCHAIN=local and an allowlisted environment. Refusals are typed. Evidence: failing index test first (the index indexes no Go func), 10 lsp tests against the real gopls, loop test for Plan mode, real CLI exercise 15/15 on attempt 2. Review defects R10 (answer after cancellation) and R11 (project files shown as outside the project) fixed with regression tests.
+- **`AH-058` LSP server lifecycle management** - Implemented 2026-09-13 (Phase 6). LspPool, owned by the run's tool invoker: a server starts on first use and is reused; it is health-checked before each use (an exited or wedged server is replaced), restarted at most MAX_RESTARTS times and then refused as failing, and shut down with shutdown/exit then a tree stop when the run ends. Cancellation stops a waiting request at once; the server's pid is adopted by the run's cancellation token, registered for application shutdown reaping, and run in a process tree stopped as a unit (tools::owned: a kill-on-close Windows job object, a Unix process group). Evidence: restart and restart-limit test, cancellation test, pool drop test and the plugin owned test against real processes; in the real CLI exercise no gopls survived the run, and killing jan outright ended its gopls.
 - **`AH-059` Symbol search** - Implemented 2026-09-12 (Phase 5) from the index rather than from a language server (AH-057 and AH-058 remain missing). find_symbol looks a name up in the stored index, exact matches first and then names containing the query, and the model reaches it through the symbol_find tool. Proven in a real run.
 - **`AH-060` Find references** - Implemented 2026-09-12 (Phase 5). find_references lists every use of a name across the indexed files, whole-word only (load does not match payload) and never outside what the index calls source, with definition lines marked so a use is not mistaken for the definition. Bounded at 500. It locates rather than resolves: two unrelated things with one name are both reported, which is said rather than hidden.
 - **`AH-061` Go to definition** - Implemented 2026-09-12 (Phase 5). A name resolves to the file and line the index recorded the definition at, through the same symbol_find tool and jan cli agent index --symbol. Verified in a real run: src/store.rs:3 defines load_settings (Function).

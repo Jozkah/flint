@@ -12,6 +12,7 @@ pub mod handlers;
 pub mod image;
 pub mod jail;
 pub mod mcp_confine;
+pub mod owned;
 pub mod proc;
 /// Path containment for the filesystem tools. Distinct from [`jail`], which is
 /// kernel-level confinement for spawned commands.

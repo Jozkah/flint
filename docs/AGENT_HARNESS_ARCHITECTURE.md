@@ -2662,3 +2662,21 @@ Before this, a sign-in to a remote MCP server asked for no scopes at all (`start
 * *At refresh.* A refresh that comes back with a scope beyond the grant is refused and not stored, both at connect and in the live refresher, which also puts the connection back on the token it had.
 
 Records written before scopes existed deserialize as requested and granted nothing, so a server that declares none keeps working unchanged.
+
+
+## Language servers (AH-057, AH-058)
+
+The project index (`index.rs`, AH-059..061) locates names by reading text; by its own documentation it does not resolve them. It cannot say which of two `Close` methods `f.Close()` calls, and for a language whose declarations it does not recognise it cannot say anything: Go is read with JS/TS keywords, so no Go `func` is indexed at all. A language server type-checks the code and can answer. `core/agent/lsp.rs` is the client; the agent asks it through the `lsp` tool.
+
+**The protocol (AH-057).** JSON-RPC 2.0 over the server's stdin and stdout with `Content-Length` framing (`encode`/`decode`; a message over 32 MiB, a frame without a length or a cut-short body is a protocol error, not an allocation). The client sends `initialize`/`initialized` with the project as the workspace folder, keeps each file it asks about in sync with the disk (`didOpen`, then a full-text `didChange` when the file's contents changed), and asks `textDocument/definition`, `references` (with the declaration), `implementation` and `hover`. `publishDiagnostics` notifications are kept per file; `diagnostics` waits, bounded, for one published after the file was synced. Requests the server makes of the client (`workspace/configuration`, progress creation) are answered with defaults so a server that asks is never left waiting. Positions are converted between the model's 1-based characters and LSP's 0-based UTF-16 units in both directions. Locations are shown relative to the project, and a location outside it (the standard library) is marked as such.
+
+**The tool.** `lsp` takes `action` (definition, references, implementation, hover, diagnostics, status), `path`, `line`, `column`. The path is resolved inside the project like every path the model names and refused when it escapes. It is read-only, so it is offered and answered in Plan mode, and it does not depend on the subagent context. Errors are typed: a file no known server covers, or `[tools] lsp = false` in `agent.toml`, is `unsupported`; a server that is not on PATH is `tool_unavailable` and says Jan installs nothing; a server that does not finish starting, crashes, or keeps failing is `tool_failed`; a request past its deadline is `timeout`; a stopped run is `cancelled`; an unreadable answer is `invalid_response`.
+
+**Which servers.** `SERVERS` lists only what has been exercised: Go files go to `gopls`. A server is used only when it is already on PATH. It is started with `GOPROXY=off` and `GOTOOLCHAIN=local`, so starting one never fetches a module or a toolchain, and with the shell's environment allowlist plus the toolchain's own variables -- never the host's whole environment, so API keys a run holds do not reach it.
+
+**Lifecycle (AH-058).** `LspPool` is owned by the run's tool invoker. A server is started on first use and reused for the rest of the run.
+
+* *Health.* Before every use the process is checked, so an exited server is noticed before a request waits on it; a request that outlives its deadline marks the server unhealthy and it is replaced on the next use rather than asked again.
+* *Restart.* A dead or wedged server is restarted at most `MAX_RESTARTS` (3) times in a run; after that the refusal says it kept failing.
+* *Shutdown with the run.* Dropping the pool -- when the run ends -- sends `shutdown` and `exit`, waits briefly, then stops the process tree and joins the reader thread.
+* *Cancellation.* A waiting request stops at once and sends `$/cancelRequest`. The server's process is adopted by the run's cancellation token, so stopping the run stops it; it is registered for the application's shutdown reaping; and it runs in a process tree stopped as a unit (`tools::owned::OwnedChild`): on Windows a kill-on-close job object, so it cannot outlive Jan even when Jan is killed, and on Unix its own process group.

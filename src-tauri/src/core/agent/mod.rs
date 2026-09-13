@@ -38,6 +38,7 @@ pub mod fixtures;
 pub mod impact;
 pub mod health;
 pub mod index;
+pub mod lsp;
 pub mod licenses;
 pub mod vcs;
 pub mod replay;

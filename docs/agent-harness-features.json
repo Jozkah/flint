@@ -1984,13 +1984,18 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-053"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/owned.rs",
+        "src-tauri/src/core/agent/index.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/lsp.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "The harness speaks the Language Server Protocol to at least one language server.",
@@ -1999,12 +2004,20 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/index.rs::the_index_cannot_say_which_method_a_go_call_reaches",
+        "src-tauri/src/core/agent/lsp.rs::a_message_round_trips_and_a_bad_frame_is_refused",
+        "src-tauri/src/core/agent/lsp.rs::a_method_call_resolves_to_the_one_method_it_reaches",
+        "src-tauri/src/core/agent/lsp.rs::columns_are_characters_for_the_model_and_utf16_for_the_server",
+        "src-tauri/src/core/agent/lsp.rs::diagnostics_follow_the_file_on_disk",
+        "src-tauri/src/core/agent/lsp.rs::the_server_gets_no_secrets_and_cannot_fetch",
+        "src-tauri/src/core/agent/lsp.rs::what_cannot_be_asked_is_refused_by_kind_and_starts_nothing"
+      ],
       "platformRequirements": [
         "a language server for the target language available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 6). core/agent/lsp.rs speaks LSP (JSON-RPC over stdio with Content-Length framing) to a language server and the agent asks it through the read-only `lsp` tool: definition, references, implementation, hover, diagnostics, status, with files kept in sync with the disk and 1-based character positions converted to UTF-16. Go files go to the gopls already on PATH; nothing is installed and the server runs with GOPROXY=off, GOTOOLCHAIN=local and an allowlisted environment. Refusals are typed. Evidence: failing index test first (the index indexes no Go func), 10 lsp tests against the real gopls, loop test for Plan mode, real CLI exercise 15/15 on attempt 2. Review defects R10 (answer after cancellation) and R11 (project files shown as outside the project) fixed with regression tests."
     },
     {
       "id": "AH-058",
@@ -2012,13 +2025,17 @@
       "category": "repo-intelligence",
       "phase": 3,
       "phaseName": "Repository intelligence",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-057"
       ],
       "owner": "lane-04-repo-index-lsp",
-      "files": [],
+      "files": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/owned.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/agent/lsp.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Language servers are started, health-checked, restarted and shut down with the run.",
@@ -2027,12 +2044,17 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/owned.rs::dropping_the_owner_ends_the_child_and_what_it_started",
+        "src-tauri/src/core/agent/lsp.rs::a_cancelled_request_stops_waiting_and_a_stopped_run_ends_the_server",
+        "src-tauri/src/core/agent/lsp.rs::a_dead_server_is_restarted_and_one_that_keeps_dying_is_refused",
+        "src-tauri/src/core/agent/lsp.rs::a_method_call_resolves_to_the_one_method_it_reaches"
+      ],
       "platformRequirements": [
         "a language server for the target language available on PATH"
       ],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 6). LspPool, owned by the run's tool invoker: a server starts on first use and is reused; it is health-checked before each use (an exited or wedged server is replaced), restarted at most MAX_RESTARTS times and then refused as failing, and shut down with shutdown/exit then a tree stop when the run ends. Cancellation stops a waiting request at once; the server's pid is adopted by the run's cancellation token, registered for application shutdown reaping, and run in a process tree stopped as a unit (tools::owned: a kill-on-close Windows job object, a Unix process group). Evidence: restart and restart-limit test, cancellation test, pool drop test and the plugin owned test against real processes; in the real CLI exercise no gopls survived the run, and killing jan outright ended its gopls."
     },
     {
       "id": "AH-059",

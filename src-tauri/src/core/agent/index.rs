@@ -1067,3 +1067,52 @@ mod tests {
         assert_eq!(missing.kind, IndexErrorKind::NoProject);
     }
 }
+
+/// AH-057 evidence. Written before the LSP client existed, as a test that the
+/// index resolves `f.Close()` to the one method it calls; it failed, and not
+/// only for the reason expected: Go declarations are read with JS/TS keywords,
+/// so no Go `func` -- function or method -- is indexed at all. What the index
+/// cannot do is kept here as a statement of that limit, and the question it
+/// could not answer is asked of the language server in `lsp.rs`.
+#[cfg(test)]
+pub(crate) mod resolve_evidence {
+    use super::*;
+
+    pub(crate) const GO_FIXTURE: &str = "package probe
+
+type Closer interface{ Close() error }
+
+type File struct{}
+
+func (f *File) Close() error { return nil }
+
+type Socket struct{}
+
+func (s *Socket) Close() error { return nil }
+
+func Shut(c Closer) error { return c.Close() }
+
+func UseFile() error {
+	f := &File{}
+	return f.Close()
+}
+";
+
+    #[test]
+    fn the_index_cannot_say_which_method_a_go_call_reaches() {
+        let data = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join("go.mod"), "module example.com/probe
+
+go 1.22
+").unwrap();
+        std::fs::write(project.path().join("probe.go"), GO_FIXTURE).unwrap();
+        let cancel = std::sync::atomic::AtomicBool::new(false);
+        let (index, _) = refresh(data.path(), project.path(), &cancel).unwrap();
+        let close: Vec<_> = find_symbol(&index, "Close", 20).into_iter().filter(|d| d.name == "Close").collect();
+        assert!(close.is_empty(), "the index now reads Go methods; revisit lsp.rs's comparison: {close:?}");
+        // A name-based lookup would be ambiguous even if it did: both methods
+        // are named Close.
+        assert_eq!(GO_FIXTURE.matches(") Close() error").count(), 2);
+    }
+}

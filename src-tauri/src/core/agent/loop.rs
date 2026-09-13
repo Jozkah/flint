@@ -935,6 +935,9 @@ struct CompositeToolInvoker {
     /// under it, so stopping the run stops the calls and stopping one run never
     /// reaches another. AH-023.
     cancel_scope: tauri_plugin_agent_tools::lifecycle::Scope,
+    /// The language servers this run has started (AH-057/058). Owned by the
+    /// invoker, so they end with the run.
+    lsp: std::sync::Arc<crate::core::agent::lsp::LspPool>,
 }
 
 /// Default for the sandboxed shell's network namespace, used when
@@ -1340,6 +1343,51 @@ impl CompositeToolInvoker {
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
         decision
+    }
+
+    /// `lsp`: one question for the language server that covers a file
+    /// (AH-057). The path is resolved inside the project like any other path
+    /// the model names; the request runs off the async runtime and is stopped
+    /// by the run's own cancellation.
+    async fn handle_lsp_tool(&self, args: &serde_json::Value) -> String {
+        use crate::core::agent::lsp::{Action, LspError, Query};
+        let text = |key: &str| args.get(key).and_then(|v| v.as_str()).unwrap_or_default().trim().to_string();
+        let number = |key: &str| args.get(key).and_then(serde_json::Value::as_u64).unwrap_or(0) as usize;
+        let failed = |e: &LspError| {
+            let harness: tauri_plugin_agent_tools::harness_error::HarnessError = e.into();
+            format!("ERROR [{}]: {}", harness.kind().tag(), e.message)
+        };
+        let Some(action) = Action::parse(&text("action")) else {
+            return "ERROR [invalid_input]: lsp takes action definition, references, implementation, hover, diagnostics or status.".to_string();
+        };
+        let project = self.project_root.clone();
+        let mut path = std::path::PathBuf::new();
+        if action != Action::Status {
+            let raw = text("path");
+            if raw.is_empty() {
+                return "ERROR [invalid_input]: lsp needs the `path` of a file inside the project.".to_string();
+            }
+            if tauri_plugin_agent_tools::tools::sandbox::escapes_project(&project, None, &raw).unwrap_or(true) {
+                return format!("ERROR [sandbox_denied]: {raw:?} is outside this project.");
+            }
+            path = tauri_plugin_agent_tools::tools::sandbox::resolve_path(&project, None, &raw);
+            if !path.is_file() {
+                return format!("ERROR [invalid_input]: {raw:?} is not a file in this project.");
+            }
+        }
+        let query = Query { action, path, line: number("line"), column: number("column") };
+        let pool = self.lsp.clone();
+        let token = tauri_plugin_agent_tools::lifecycle::current();
+        let watch = token.clone();
+        let answered = tokio::task::spawn_blocking(move || {
+            pool.run(&query, token, &|| watch.as_ref().is_some_and(|t| t.is_stopped()))
+        })
+        .await;
+        match answered {
+            Ok(Ok(text)) => text,
+            Ok(Err(e)) => failed(&e),
+            Err(e) => format!("ERROR [internal]: the language server request did not finish: {e}"),
+        }
     }
 
     /// Execute one subagent tool call, returning the model-facing result string
@@ -2325,6 +2373,24 @@ impl CompositeToolInvoker {
                 out.push(ToolOutcome::plain(id, content));
                 continue;
             }
+            // AH-057: read-only, so it is answered in Plan mode as well, and it
+            // needs no subagent context.
+            if name == "lsp" {
+                let id = tc
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let args: serde_json::Value = tc
+                    .get("function")
+                    .and_then(|f| f.get("arguments"))
+                    .and_then(|v| v.as_str())
+                    .and_then(|value| serde_json::from_str(value).ok())
+                    .unwrap_or(serde_json::Value::Object(Default::default()));
+                let content = self.handle_lsp_tool(&args).await;
+                out.push(ToolOutcome::plain(id, content));
+                continue;
+            }
             // Subagent tools are handled ahead of the fs/exec gate and the MCP
             // fallback: they orchestrate nested runs, not filesystem access.
             if name == "symbol_find"
@@ -3025,6 +3091,29 @@ fn advertise_local_tools(
         // (never for a child run, capping recursion depth at one) and the run
         // isn't in read-only Plan mode (a dispatched subagent could mutate).
         if let Some(_root) = project_root {
+            // AH-057: asking the language server what a name at a position
+            // actually refers to. Offered in Plan mode too: it reads.
+            let lsp_schema = serde_json::json!({
+                "type": "function",
+                "function": {
+                    "name": "lsp",
+                    "description": "Ask this project's language server about code instead of guessing from text. `definition`: where the symbol at a position is defined -- the one it actually refers to, which symbol_find cannot tell apart from others with the same name. `references`: every use of it. `implementation`: what implements an interface or its method. `hover`: its type and documentation. `diagnostics`: the problems the server reports for a file (no position needed). `status`: which servers are running. Positions are 1-based line and column. Only languages whose server is already on PATH can be asked (Go: gopls); Jan installs nothing.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "action": { "type": "string", "enum": ["definition", "references", "implementation", "hover", "diagnostics", "status"] },
+                            "path": { "type": "string", "description": "The file, inside the project." },
+                            "line": { "type": "integer", "description": "1-based line of the symbol." },
+                            "column": { "type": "integer", "description": "1-based column of a character inside the symbol's name." }
+                        },
+                        "required": ["action"]
+                    }
+                }
+            });
+            let named = lsp_schema["function"]["name"].as_str().unwrap_or_default();
+            if !permissions.is_denied(named, subject) && allowed_names.is_none_or(|allow| allow.contains(named)) {
+                openai_tools.push(lsp_schema);
+            }
             // AH-059/060/061: looking a name up in the project's own index,
             // instead of grepping for it and reading whatever matched. Offered
             // in Plan mode too: it reads.
@@ -3775,6 +3864,7 @@ async fn orchestrate_inner(
             .map(|cfg| crate::core::agent::routing::rules(&cfg.routing).unwrap_or_default())
             .unwrap_or_default();
         let tools = CompositeToolInvoker {
+            lsp: std::sync::Arc::new(crate::core::agent::lsp::LspPool::new(root.as_path())),
             routing,
             format_on_edit: settings.format_on_edit,
             available_tools,
@@ -7246,6 +7336,35 @@ mod tests {
         );
     }
 
+    /// AH-057: `lsp` reads, so a Plan-mode run is answered rather than refused,
+    /// and it is not routed through the subagent tools' Plan refusal. A path
+    /// outside the project is refused before any server is involved.
+    #[tokio::test]
+    async fn lsp_is_answered_in_plan_mode_and_refuses_paths_outside_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut invoker = build_prompting_invoker(root, tx, Arc::new(tokio::sync::Mutex::new(HashMap::new())));
+        invoker.run_mode = crate::core::agent::plan::RunMode::Plan;
+        let calls = vec![
+            serde_json::json!({
+                "id": "call_lsp_status",
+                "type": "function",
+                "function": { "name": "lsp", "arguments": "{\"action\":\"status\"}" }
+            }),
+            serde_json::json!({
+                "id": "call_lsp_outside",
+                "type": "function",
+                "function": { "name": "lsp", "arguments": "{\"action\":\"definition\",\"path\":\"../elsewhere.go\",\"line\":1,\"column\":1}" }
+            }),
+        ];
+        let outcomes = invoker.invoke(&calls).await.unwrap();
+        assert_eq!(outcomes.len(), 2);
+        assert!(outcomes[0].content.contains("go (gopls):"), "status was not answered in Plan mode: {}", outcomes[0].content);
+        assert!(!outcomes[0].content.to_lowercase().contains("plan mode"), "{}", outcomes[0].content);
+        assert!(outcomes[1].content.starts_with("ERROR [sandbox_denied]"), "{}", outcomes[1].content);
+    }
+
     fn build_prompting_invoker(
         root: std::path::PathBuf,
         events: mpsc::UnboundedSender<StreamEvent>,
@@ -7270,6 +7389,7 @@ mod tests {
         subject: tauri_plugin_agent_tools::subject::Subject,
     ) -> CompositeToolInvoker {
         CompositeToolInvoker {
+            lsp: std::sync::Arc::new(crate::core::agent::lsp::LspPool::disabled()),
             routing: Vec::new(),
             format_on_edit: false,
             available_tools: tauri_plugin_agent_tools::tools::BUILTIN_TOOLS
