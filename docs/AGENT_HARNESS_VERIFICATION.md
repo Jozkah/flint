@@ -1896,3 +1896,29 @@ recorded and not overwritten by a second attempt; addressed refused until the
 file changes, and refused outright for a comment that names no file; replies
 surviving on disk for a later process to read; a review that is not one
 refused four ways; and a credential in a comment scrubbed before it is stored.
+
+
+### The agent surfaces without a pointer, and read aloud (AH-179 / AH-180)
+
+The panels already carried roles, labels, live regions and roving tabindex.
+What they did not have was anything holding them to it: a missing
+`aria-label`, a `div` that becomes clickable, a status that stops announcing --
+each is a one-line change no test noticed, and each makes the surface unusable
+for somebody who cannot see it or cannot use a mouse.
+
+`agentSurfaceAccessibility.test.tsx` is that check, in two parts.
+
+*Every agent surface, read as source.* 43 `Cowork*`, `PromptSnapshot*` and
+`cowork*` files are scanned for a click target a keyboard cannot reach: an
+element that is not natively interactive, carrying `onClick`, without all
+three of `role`, `tabIndex` and a key handler. The result today is zero, which
+is the point -- the test exists so that stays true. The scanner tracks brace
+and quote depth rather than matching `<div[^>]*>`, because every arrow
+function contains `>` and the obvious pattern stops early and reports elements
+that are in fact fine; it is checked against both a compliant and an offending
+snippet, so a scan that quietly matched nothing would fail rather than pass.
+
+*The timeline, rendered.* Its list is a named `feed` with `aria-busy`; its
+following/paused state sits in a polite live region; its filters are a named
+group of toggles each carrying `aria-pressed`; and a filter can be focused and
+operated with no pointer involved.

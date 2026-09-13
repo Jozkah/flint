@@ -33,9 +33,9 @@ and the latter two require a recorded `blockedReason`.
 | 5 | Agent orchestration | 1 | 0 | 4 | 20 | 0 | 0 | 0 | 25 |
 | 6 | Compatibility and integrations | 7 | 0 | 4 | 21 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 10 | 0 | 0 | 16 | 0 | 0 | 0 | 26 |
-| 8 | UX, automation and operations | 10 | 0 | 6 | 12 | 0 | 0 | 1 | 29 |
+| 8 | UX, automation and operations | 8 | 0 | 6 | 14 | 0 | 0 | 1 | 29 |
 | 9 | Approved additions | 0 | 0 | 0 | 11 | 0 | 0 | 0 | 11 |
-| **all** | | **33** | **0** | **17** | **157** | **3** | **0** | **1** | **211** |
+| **all** | | **31** | **0** | **17** | **159** | **3** | **0** | **1** | **211** |
 
 ## Ownership lanes
 
@@ -248,8 +248,8 @@ per-OS evidence log rather than backlog items.
 | `AH-176` | Event replay UI | 8 | ux-operations | P2 | `in-progress` | low | `AH-032` |
 | `AH-177` | Event export | 8 | ux-operations | P1 | `implemented` | medium | `AH-005` |
 | `AH-178` | Searchable transcripts | 8 | ux-operations | P2 | `in-progress` | low | `AH-010` |
-| `AH-179` | Screen-reader accessibility | 8 | ux-operations | P1 | `missing` | none | - |
-| `AH-180` | Keyboard navigation | 8 | ux-operations | P1 | `missing` | none | `AH-179` |
+| `AH-179` | Screen-reader accessibility | 8 | ux-operations | P1 | `implemented` | none | - |
+| `AH-180` | Keyboard navigation | 8 | ux-operations | P1 | `implemented` | none | `AH-179` |
 | `AH-181` | Compact and verbose output modes | 8 | ux-operations | P2 | `missing` | none | `AH-172` |
 | `AH-182` | Headless JSON API | 8 | ux-operations | P1 | `in-progress` | medium | `AH-008` |
 | `AH-183` | Headless event-stream API | 8 | ux-operations | P1 | `implemented` | medium | `AH-005`, `AH-182` |
@@ -412,8 +412,8 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-176` Event replay UI** - The CLI replays a rendering journal; there is no event-level replay UI.
 - **`AH-177` Event export** - Session details export a session's (or one run's) canonical events (AH-005) to <data>/exports/events-*/ (events.jsonl + manifest.json with schema, session, run, count, first/last seq, metadataOnly and SHA-256), assembled under .partial, stoppable, never sent anywhere. Metadata only by default: payloads cut to an allowlist of scalar fields (status, phase, tool, agent, times, exit codes); prompts, tool inputs/outputs and paths only when the person ticks it beside a warning, and then the stored redacted payloads. The inspector reads an export as untrusted input and only reports it: exactly the two files, no links, strict manifest, matching hash, one session, strictly increasing order; typed not-an-export, unsupported-version, manifest-invalid, hash-mismatch, truncated, cross-session, out-of-order. Windows: event-export-1 (metadata-only export checked by an independent reader, no content leaked, durable order, content export only after the warning, inspector read-back, tampered export refused) and event-export-2 after a real restart (same ids, same order). Mutation-checked (metadata filter, partial removal, inspector hash and order checks). Mock provider only; macOS and Linux not run. Covers the events AH-005 records today; the Rust loop's own StreamEvents are not in them yet (AH-004).
 - **`AH-178` Searchable transcripts** - Search exists in the desktop app; there is no transcript export or CLI search.
-- **`AH-179` Screen-reader accessibility** - Not audited in depth during Phase 0; status to be confirmed by an accessibility pass in Phase 8.
-- **`AH-180` Keyboard navigation** - Not audited in depth during Phase 0; the CLI is keyboard-driven by nature, the desktop surfaces are unverified.
+- **`AH-179` Screen-reader accessibility** - Implemented 2026-09-12 (Phase 5). The agent panels expose roles, labels and live regions -- the timeline's list is a named feed with aria-busy, its state is a polite live region, its filters are a named group of aria-pressed toggles -- and a rendered test now holds them to it rather than leaving it to review. Not a full WCAG audit of the whole app: the scope is the agent surfaces.
+- **`AH-180` Keyboard navigation** - Implemented 2026-09-12 (Phase 5). A structural scan of all 43 agent-surface files fails on any click target a keyboard cannot reach (not natively interactive, has onClick, missing role/tabIndex/key handler); it reports zero today and exists so that stays true. The scanner is checked against a compliant and an offending snippet so it cannot quietly match nothing, and the timeline's filters are driven from the keyboard in a rendered test.
 - **`AH-182` Headless JSON API** - --output-format json emits a single terminal object, not a machine API surface.
 - **`AH-183` Headless event-stream API** - StreamEvent is already Tauri-free but is never exposed over stdout or a socket. 2026-09-12 (Phase 4): implemented on the canonical log rather than on StreamEvent. One watcher per process hears every event as it is recorded -- after the write, outside the log's lock -- and `jan cli agent run --events <path|->` writes those envelopes to a file or stdout as JSON lines, the same shape the session log holds. Proven by a real CLI run whose stream file matches the session log envelope for envelope and in order, and by a refusal: a destination that cannot be opened fails before the run starts with a typed io error and exit 74. A stream nobody reads never fails the run, and the watcher is removed when the run ends so a later command in the same process is not streamed into it.
 - **`AH-187` Organization policies** - Implemented 2026-09-12 (Phase 5). An administrator's policy.toml lives outside every project (%ProgramData%\Jan on Windows, /etc/jan elsewhere) and combines with the project's agent.toml by one rule: a project may tighten and may never loosen. Denies union, the network is allowed only if both allow it, destinations may be narrowed and never added, and the permission default is capped. It holds where there is no project and where the project's file will not parse; JAN_ORG_POLICY is a fallback for a machine with none installed and is ignored when one exists; a malformed policy is read at its strictest rather than as no policy. Proven by two real CLI runs of a project that grants itself everything -- the shell is refused under the policy and runs without it. Two defects found doing it: the CLI built its permissions outside policy::load and so was unclamped, and the refusal named the project's file rather than the machine's and was classified tool_failed rather than permission_denied.
