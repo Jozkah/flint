@@ -68,7 +68,7 @@ function DialogContent({
         className={cn(
           // Phone: a bottom sheet within the visual viewport, so the primary
           // action stays above the keyboard and the home indicator.
-          "bg-card text-card-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed z-50 grid w-full gap-4 border border-border p-5 shadow-overlay duration-200 outline-none overflow-y-auto",
+          "bg-card text-card-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed z-50 grid w-full gap-4 border border-border p-5 shadow-overlay duration-200 outline-hidden overflow-y-auto",
           "inset-x-0 bottom-0 max-h-[calc(var(--app-vvh,100dvh)-1.5rem)] rounded-t-xl pb-[calc(1.25rem+env(safe-area-inset-bottom))]",
           "sm:inset-x-auto sm:bottom-auto sm:top-[50%] sm:left-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-lg sm:rounded-lg sm:pb-5 sm:max-h-[85vh] sm:data-[state=closed]:zoom-out-95 sm:data-[state=open]:zoom-in-95 lg:max-w-2xl xl:max-w-3xl",
           className
