@@ -264,6 +264,8 @@ fn load_plugin_agents(project_root: &Path, out: &mut Vec<SubagentDefinition>) {
     let Ok(rd) = std::fs::read_dir(&dir) else {
         return;
     };
+    // `[plugins].disabled` plugins stay installed but contribute no agents.
+    let disabled = crate::core::agent::project::disabled_plugins(project_root);
     for entry in rd.flatten() {
         let path = entry.path();
         if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
@@ -272,7 +274,7 @@ fn load_plugin_agents(project_root: &Path, out: &mut Vec<SubagentDefinition>) {
         let Some(plugin) = path.file_name().and_then(|s| s.to_str()) else {
             continue;
         };
-        if plugin.starts_with(".installing-") {
+        if plugin.starts_with(".installing-") || disabled.iter().any(|d| d == plugin) {
             continue;
         }
         scan_agent_dir(&path.join("agents"), out);
@@ -379,8 +381,7 @@ fn map_claude_tools(tools: &[String]) -> Option<Vec<String>> {
 }
 
 /// Agent definitions one plugin ships (`(name, description)`), for the
-/// `/plugin list` detail view (cli only).
-#[cfg(feature = "cli")]
+/// `/plugin list` detail view and the desktop plugin details.
 pub(crate) fn plugin_agent_metas(root: &Path, plugin: &str) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let base = crate::core::agent::skills::plugins_dir(root)
