@@ -407,6 +407,18 @@ enum AgentCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Tokens and, where a price is declared, what they cost (AH-175)
+    Spend {
+        /// A window like 7d, 24h or 30m. Omitted: everything recorded.
+        #[arg(long)]
+        since: Option<String>,
+        /// One conversation only.
+        #[arg(long)]
+        session: Option<String>,
+        /// Print it as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
     /// What this harness writes to disk, at which version (AH-010)
     State {
         /// Print it as JSON instead of text.
@@ -1271,6 +1283,25 @@ async fn handle_agent(cmd: AgentCommands) {
                         update.removed,
                         if update.reconciled { "; the checkout moved, so every entry was re-checked" } else { "" }
                     );
+                })
+        }
+        AgentCommands::Spend {
+            since,
+            session,
+            json,
+        } => {
+            let data = app_lib::core::app::commands::resolve_jan_data_folder();
+            app_lib::core::agent::spend::report(&data, since.as_deref(), session.as_deref())
+                .map_err(|e| HarnessError::from(&e))
+                .map(|report| {
+                    if json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&report).unwrap_or_default()
+                        );
+                    } else {
+                        print!("{}", app_lib::core::agent::spend::render(&report));
+                    }
                 })
         }
         AgentCommands::State { json } => {

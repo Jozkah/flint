@@ -1956,3 +1956,34 @@ Claude Code uses. The harness reads it as a *ceiling claim*, never a grant:
 The tool context now carries the run's permissions and subject, which is what
 makes the check possible at the point the skill is handed over rather than
 three calls later.
+
+
+## What a run cost, where somebody said what things cost (AH-175)
+
+Tokens have been counted for a long time and money has never appeared
+anywhere. The reason is worth keeping in front of whoever changes this: the
+harness does not know what a model costs. Prices change, they differ by
+account and by region, and a number invented here would be wrong in a way that
+looks authoritative. A dashboard that quietly multiplies by last year's rate is
+worse than one that says nothing.
+
+So a price is something a person declares, in `<data folder>/prices.toml`, in
+dollars per million tokens, and `jan cli agent spend [--since 7d] [--session]`
+reports what was used and -- only for the models declared there -- what it
+cost.
+
+* A model nobody priced is shown with its tokens and the words **not priced**,
+  and is listed under the total rather than folded into it as zero. A total
+  that silently omits a model is a wrong total.
+* An estimate is said to be one: dispatches Jan counted itself are reported
+  separately from the provider's own counts, the same distinction `usage.rs`
+  draws, carried through to money instead of flattened.
+* Cached input is charged at the cached rate where one is declared, which is
+  the reason anybody looks at a cache figure in the first place.
+* A price file that will not parse, or that carries a negative or non-finite
+  rate, is refused whole -- half a price list produces a confident wrong
+  number.
+
+It reads both records that carry a dispatch: the desktop's payload-usage log
+and the `usage.reported` events a headless run writes, joined on the
+invocation so a dispatch in both is counted once.

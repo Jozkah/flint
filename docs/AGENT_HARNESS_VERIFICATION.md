@@ -1949,3 +1949,33 @@ the property that matters most: the check withholds and never grants.
 
 The second test covers the skill that declares nothing -- it is handed over as
 before, and its calls meet the gate when they are made.
+
+
+### Spend (AH-175)
+
+Seven tests plus a real exchange with `v100:8555`. The same run, reported
+twice -- before and after a price was declared:
+
+```
+$ jan cli agent spend
+  v100/pxa-27b       1 dispatch(es)  in   6909  out   2  not priced
+  $0.0000 across the models that have a declared price
+  not in that figure, because nobody has said what they cost: v100/pxa-27b
+
+$ printf '[models."pxa-27b"]\ninput = 3.0\noutput = 15.0\n' > prices.toml
+$ jan cli agent spend
+  v100/pxa-27b       1 dispatch(es)  in   6909  out   2  $0.0208
+  $0.0208 across the models that have a declared price
+```
+
+A defect the real run found: the report read only the desktop's payload-usage
+log, so a headless run that really had spent 6,909 tokens reported "nothing".
+It now also reads the `usage.reported` events the CLI writes, joined on the
+invocation.
+
+Covered by test: an unpriced model counted and never totalled as zero; a
+declared price applied to the tokens it covers; a price found with or without
+the provider's prefix; an estimate counted and named as one; periods read
+(`30m`, `24h`, `7d`) and refused (`7x`, `d`, `-3d`, `0h`, `lots`); a window
+leaving out what is older than it; and a price file that is malformed or
+negative refused whole, while no price file at all is simply no prices.

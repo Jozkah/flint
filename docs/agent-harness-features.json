@@ -6097,13 +6097,16 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-073"
       ],
       "owner": "lane-09-ux-observability",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/spend.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "low",
       "acceptanceCriteria": [
         "Token and monetary spend are shown per run and per period.",
@@ -6112,10 +6115,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/spend.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Tokens are tracked; there is no pricing model or cost figure anywhere in the product."
+      "auditNote": "Implemented 2026-09-12 (Phase 5), closing the gap that tokens were tracked with no pricing model anywhere. Prices are declared by a person in <data folder>/prices.toml (dollars per million tokens); `jan cli agent spend` reports per model and per window, with an unpriced model shown as 'not priced' and listed outside the total rather than folded in as zero. Estimates are counted and named as estimates, cached input is charged at the cached rate where declared, and a malformed or negative price file is refused whole. The harness never invents a rate. A defect the real run found: the report read only the desktop's usage log and said 'nothing' after a headless run; it now also reads the usage.reported events, joined on the invocation."
     },
     {
       "id": "AH-176",

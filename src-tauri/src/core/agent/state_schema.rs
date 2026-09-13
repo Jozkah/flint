@@ -91,7 +91,7 @@ pub fn stores() -> Vec<Store> {
             holds: "the canonical per-session event log",
             version: tauri_plugin_agent_tools::event_log::ENVELOPE_VERSION as u32,
             owner: DataFolder,
-            location: "events/<session>.jsonl",
+            location: "events/<hash of session>.jsonl",
             migration: SkipsUnreadableLines,
         },
         Store {
@@ -99,7 +99,7 @@ pub fn stores() -> Vec<Store> {
             holds: "tool activity, as the timeline shows it",
             version: tauri_plugin_agent_tools::activity::SCHEMA_VERSION,
             owner: DataFolder,
-            location: "activity/<session>.jsonl",
+            location: "audit/tool-activity.jsonl",
             migration: SkipsUnreadableLines,
         },
         Store {
@@ -107,7 +107,7 @@ pub fn stores() -> Vec<Store> {
             holds: "permission decisions and tool invocations",
             version: tauri_plugin_agent_tools::audit::SCHEMA_VERSION,
             owner: DataFolder,
-            location: "audit/<session>.jsonl",
+            location: "audit/permissions.jsonl",
             migration: SkipsUnreadableLines,
         },
         Store {
@@ -115,7 +115,7 @@ pub fn stores() -> Vec<Store> {
             holds: "the request each turn sent, for replay and inspection",
             version: tauri_plugin_agent_tools::snapshot::SCHEMA_VERSION,
             owner: DataFolder,
-            location: "snapshots/<session>.jsonl",
+            location: "audit/prompts.jsonl",
             migration: SkipsUnreadableLines,
         },
         Store {
@@ -123,7 +123,7 @@ pub fn stores() -> Vec<Store> {
             holds: "tokens and cost per run",
             version: tauri_plugin_agent_tools::usage::SCHEMA_VERSION,
             owner: DataFolder,
-            location: "usage/<session>.jsonl",
+            location: "audit/payload-usage.jsonl",
             migration: SkipsUnreadableLines,
         },
         Store {
@@ -163,7 +163,7 @@ pub fn stores() -> Vec<Store> {
             holds: "replays of recorded turns and how they compared",
             version: crate::core::agent::replay::SCHEMA_VERSION,
             owner: DataFolder,
-            location: "replays/<session>.jsonl",
+            location: "replays/<hash of session>.json",
             migration: SkipsUnreadableLines,
         },
         Store {
@@ -171,7 +171,7 @@ pub fn stores() -> Vec<Store> {
             holds: "changes a run proposes, before anybody applies them",
             version: tauri_plugin_agent_tools::proposal::SCHEMA_VERSION,
             owner: DataFolder,
-            location: "proposals/<session>.jsonl",
+            location: "proposals/ and proposals/blobs/",
             migration: SkipsUnreadableLines,
         },
         Store {
@@ -179,7 +179,7 @@ pub fn stores() -> Vec<Store> {
             holds: "what a tool changed, so it can be put back",
             version: tauri_plugin_agent_tools::undo::SCHEMA_VERSION,
             owner: DataFolder,
-            location: "undo/<session>.jsonl",
+            location: "undo/<session>.jsonl (one journal per session)",
             migration: SkipsUnreadableLines,
         },
         Store {
@@ -203,7 +203,7 @@ pub fn stores() -> Vec<Store> {
             holds: "a team run's children and what each produced",
             version: crate::core::agent::team_children::SCHEMA_VERSION,
             owner: DataFolder,
-            location: "teams/<session>.json",
+            location: "team-children/<hash of owner>.json",
             migration: RefusedAndKept,
         },
         Store {
@@ -243,7 +243,7 @@ pub fn stores() -> Vec<Store> {
             holds: "the harness's own small settings",
             version: tauri_plugin_agent_tools::utility::SCHEMA_VERSION,
             owner: DataFolder,
-            location: "utility.json",
+            location: "audit/utility-agents.jsonl",
             migration: ReadsOlderInPlace,
         },
     ]
@@ -361,6 +361,59 @@ mod tests {
             crate::core::agent::index::refresh(data.path(), project.path(), &cancel).unwrap();
         assert_eq!(rebuilt.version, crate::core::agent::index::INDEX_VERSION);
         assert!(update.added > 0, "a rebuild reads the files again: {update:?}");
+    }
+
+    /// The locations are checked against the functions that build them, for
+    /// every store that exposes one. The first version of this catalogue was
+    /// written from each store's name and sent a reader to five paths that do
+    /// not exist -- which is what a catalogue is for, and what makes it worth
+    /// deriving rather than describing.
+    #[test]
+    fn the_catalogued_locations_are_where_the_code_actually_writes() {
+        use crate::core::agent::fixtures::Workspace;
+        let data = Workspace::new("schema-paths");
+        let root = data.path();
+        let shown = |needle: &str| {
+            stores()
+                .into_iter()
+                .find(|s| s.module.ends_with(needle))
+                .unwrap_or_else(|| panic!("{needle} is not catalogued"))
+                .location
+                .to_string()
+        };
+        let under = |path: std::path::PathBuf| {
+            path.strip_prefix(root)
+                .expect("inside the data folder")
+                .to_string_lossy()
+                .replace('\\', "/")
+        };
+
+        // Each of these is the real path, with the variable part replaced by
+        // the placeholder the catalogue uses.
+        let usage = under(tauri_plugin_agent_tools::usage::log_path(root));
+        assert_eq!(usage, shown("usage.rs"));
+
+        let prompts = under(tauri_plugin_agent_tools::snapshot::log_path(root));
+        assert_eq!(prompts, shown("snapshot.rs"));
+
+        let permissions = under(tauri_plugin_agent_tools::audit::log_path(root));
+        assert_eq!(permissions, shown("audit.rs"));
+
+        let activity = under(tauri_plugin_agent_tools::activity::log_path(root));
+        assert_eq!(activity, shown("activity.rs"));
+
+        let index = under(crate::core::agent::index::path_for(root, std::path::Path::new("/p")));
+        assert!(index.starts_with("index/"), "{index} vs {}", shown("index.rs"));
+        assert!(shown("index.rs").starts_with("index/"));
+
+        let mail = tauri_plugin_agent_tools::identity::RunId::parse("s#run-1").unwrap();
+        let mail = under(tauri_plugin_agent_tools::mailbox::path_for(root, &mail));
+        assert!(mail.starts_with("mail/"), "{mail}");
+        assert!(shown("mailbox.rs").starts_with("mail/"));
+
+        let events = under(tauri_plugin_agent_tools::event_log::log_path(root, "s"));
+        assert!(events.starts_with("events/"), "{events}");
+        assert!(shown("event_log.rs").starts_with("events/"));
     }
 
     #[test]
