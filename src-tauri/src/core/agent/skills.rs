@@ -262,7 +262,22 @@ pub(crate) fn invocation_wrapper(name: &str, kind: &str) -> String {
 /// Each installed plugin is scanned conventionally: a `skills/` subdirectory
 /// (folder and flat forms, same rules as project skills) plus an optional
 /// single `SKILL.md` at the plugin root (a repo that is itself one skill).
+///
+/// Plugins listed in `[plugins].disabled` are skipped: a disabled plugin's
+/// skills are neither advertised nor resolvable. Management views that must
+/// show what a disabled plugin ships use [`discover_plugins_including_disabled`].
 pub(crate) fn discover_plugins(root: &Path) -> Vec<SkillEntry> {
+    let disabled = crate::core::agent::project::disabled_plugins(root);
+    scan_plugin_skills(root, &disabled)
+}
+
+/// Every plugin skill on disk, disabled plugins included. For listings and
+/// details only; never for anything offered to the model or the human.
+pub(crate) fn discover_plugins_including_disabled(root: &Path) -> Vec<SkillEntry> {
+    scan_plugin_skills(root, &[])
+}
+
+fn scan_plugin_skills(root: &Path, disabled: &[String]) -> Vec<SkillEntry> {
     let dir = plugins_dir(root);
     let Ok(rd) = std::fs::read_dir(&dir) else {
         return Vec::new();
@@ -280,6 +295,9 @@ pub(crate) fn discover_plugins(root: &Path) -> Vec<SkillEntry> {
         // command/agent loaders: a partially-copied plugin must not leak its
         // skills into the catalog during an install.
         if plugin.starts_with(".installing-") {
+            continue;
+        }
+        if disabled.iter().any(|d| d == plugin) {
             continue;
         }
         let mut tagged = Vec::new();
@@ -353,6 +371,11 @@ fn resolve(root: &Path, name: &str) -> Result<SkillEntry, String> {
 /// caller-supplied name can never escape the plugins directory.
 fn resolve_in_plugin(root: &Path, plugin: &str, plain: &str) -> Option<SkillEntry> {
     if safe_stem(plugin).ok()? != plugin || safe_stem(plain).ok()? != plain {
+        return None;
+    }
+    // A disabled plugin's skills are not resolvable by their qualified name
+    // either, or disabling would only hide them from the catalog.
+    if crate::core::agent::project::plugin_disabled(root, plugin) {
         return None;
     }
     let base = plugins_dir(root).join(plugin);

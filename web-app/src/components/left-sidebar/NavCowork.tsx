@@ -33,6 +33,7 @@ import {
   FileClock,
   GitFork,
   MoreHorizontal,
+  Puzzle,
   Trash2,
   type LucideIcon,
 } from 'lucide-react'
@@ -58,6 +59,7 @@ import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { FileActivityDialog } from '@/containers/dialogs/FileActivityDialog'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
+import PluginsManagerDialog from '@/containers/dialogs/PluginsManagerDialog'
 
 type CoworkNavItem = {
   title: string
@@ -216,6 +218,7 @@ export function NavCowork() {
   const sessions = useCoworkSessions((s) => s.sessions)
   const currentId = useCoworkSessions((s) => s.currentId)
   const [skillsOpen, setSkillsOpen] = useState(false)
+  const [pluginsOpen, setPluginsOpen] = useState(false)
   // Session pending deletion; drives the confirm dialog (null = closed).
   const [pendingDelete, setPendingDelete] = useState<{
     id: string
@@ -257,6 +260,11 @@ export function NavCowork() {
       title: t('common:customize'),
       icon: SlidersHorizontal,
       onClick: () => setSkillsOpen(true),
+    },
+    {
+      title: t('plugins:navLabel'),
+      icon: Puzzle,
+      onClick: () => setPluginsOpen(true),
     },
   ]
 
@@ -345,6 +353,7 @@ export function NavCowork() {
       )}
 
       <SkillsManagerDialog open={skillsOpen} onOpenChange={setSkillsOpen} />
+      <PluginsManagerDialog open={pluginsOpen} onOpenChange={setPluginsOpen} />
 
       <Dialog
         open={pendingDelete !== null}

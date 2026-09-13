@@ -158,39 +158,99 @@ pub async fn agent_skill_invoke(
         .map_err(ui_error)
 }
 
-/// List installed plugins under `<project>/.jan/agent/plugins/` with metadata
-/// and skill counts.
-#[tauri::command]
-pub async fn agent_plugin_list(project: String) -> Result<Vec<plugins::InstalledPlugin>, String> {
-    let root = std::path::PathBuf::from(&project);
-    Ok(plugins::installed(&root))
+// Plugin lifecycle. Every command returns a typed `PluginError`
+// (`{ code, message }`) so the UI can map a refusal to actionable text rather
+// than parse a sentence. Plugins are per project: `project` is the folder whose
+// `.jan/agent/plugins/` is managed. `id` is the plugin's directory name.
+
+/// Run blocking plugin filesystem work off the async runtime.
+async fn plugin_blocking<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, plugins::PluginError> + Send + 'static,
+) -> Result<T, plugins::PluginError> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| {
+            plugins::PluginError::new(plugins::PluginErrorCode::Io, e.to_string())
+        })?
 }
 
-/// Install a plugin from a git URL or configured marketplace name.
+/// List installed plugins with metadata, enabled state and component counts.
+#[tauri::command]
+pub async fn agent_plugin_list(
+    project: String,
+) -> Result<Vec<plugins::InstalledPlugin>, plugins::PluginError> {
+    plugin_blocking(move || Ok(plugins::installed(std::path::Path::new(&project)))).await
+}
+
+/// Full details of one installed plugin: identity, provenance, component
+/// names, whether it ships an (unloaded) `.mcp.json`, and its script files.
+#[tauri::command]
+pub async fn agent_plugin_details(
+    project: String,
+    id: String,
+) -> Result<plugins::PluginDetails, plugins::PluginError> {
+    plugin_blocking(move || plugins::details(std::path::Path::new(&project), &id)).await
+}
+
+/// Which install sources are usable: the configured marketplace (if any) and
+/// whether git can run. Reads config and runs `git --version`; no network.
+#[tauri::command]
+pub async fn agent_plugin_sources(
+    project: String,
+) -> Result<plugins::PluginSources, plugins::PluginError> {
+    plugin_blocking(move || Ok(plugins::sources(std::path::Path::new(&project)))).await
+}
+
+/// Install a plugin from an explicit source (`local` folder copy, `git` clone,
+/// or configured `marketplace` name). `install_id` is chosen by the caller so
+/// `agent_plugin_install_cancel` can stop this install; a cancelled install
+/// leaves no files behind.
 #[tauri::command]
 pub async fn agent_plugin_install(
     project: String,
-    spec: String,
-) -> Result<plugins::InstalledPlugin, String> {
+    source: plugins::InstallSource,
+    install_id: String,
+) -> Result<plugins::InstalledPlugin, plugins::PluginError> {
+    let guard = plugins::begin_install(&install_id)?;
     let root = std::path::PathBuf::from(&project);
-    plugins::install(&root, &spec).await.map_err(ui_error)
+    plugins::install_from_source(&root, source, guard.ctx()).await
 }
 
-/// Remove an installed plugin by directory name.
+/// Cancel a running install. `false` when no install of that id is running.
 #[tauri::command]
-pub async fn agent_plugin_remove(project: String, name: String) -> Result<(), String> {
-    let root = std::path::PathBuf::from(&project);
-    plugins::remove(&root, &name).map_err(ui_error)
+pub fn agent_plugin_install_cancel(install_id: String) -> bool {
+    plugins::cancel_install(&install_id)
 }
 
-/// Search the configured plugin marketplace.
+/// Enable or disable an installed plugin for this project
+/// (`[plugins].disabled` in agent.toml). Returns the plugin's new state.
+#[tauri::command]
+pub async fn agent_plugin_set_enabled(
+    project: String,
+    id: String,
+    enabled: bool,
+) -> Result<plugins::InstalledPlugin, plugins::PluginError> {
+    plugin_blocking(move || plugins::set_enabled(std::path::Path::new(&project), &id, enabled))
+        .await
+}
+
+/// Remove an installed plugin and the config entries that name it.
+#[tauri::command]
+pub async fn agent_plugin_remove(
+    project: String,
+    id: String,
+) -> Result<plugins::RemoveReport, plugins::PluginError> {
+    plugin_blocking(move || plugins::remove_plugin(std::path::Path::new(&project), &id)).await
+}
+
+/// Search the configured plugin marketplace (contacts the index URL).
 #[tauri::command]
 pub async fn agent_plugin_search(
     project: String,
     query: String,
-) -> Result<Vec<plugins::MarketEntry>, String> {
+) -> Result<Vec<plugins::MarketEntry>, plugins::PluginError> {
     let root = std::path::PathBuf::from(&project);
-    plugins::search(&root, &query).await.map_err(ui_error)
+    plugins::search_typed(&root, &query).await
 }
 
 /// Return the git branch name for the project at `project`, or `None` when the
