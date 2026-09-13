@@ -1834,3 +1834,27 @@ They are ordinary code rather than `#[cfg(test)]` items on purpose: the
 integration tests under `tests/` and the smoke harness need them too, and a
 fixture only unit tests can reach is one that gets hand-rolled again in the
 places that cannot. The golden-repository suite is built on them.
+
+
+### An MCP server's documents (AH-137)
+
+MCP servers offer *resources* as well as tools: documents a client may read,
+where reading runs nothing on the server. Jan connected to servers and never
+asked for them, so a server whose whole purpose was to expose a wiki or a
+schema looked empty.
+
+`mcp_resource_list` lists what every connected server offers;
+`mcp_resource_read` reads one, by server and uri. Both are reads, so Plan mode
+keeps them, and they are advertised only when a server is actually connected.
+
+Three properties worth stating:
+
+* *The server is named, not guessed.* Two servers can offer the same uri, and
+  reading the wrong one silently is worse than being asked which.
+* *What comes back is the server's content, and says so.* The answer is
+  prefixed as that server's document rather than presented as instructions --
+  the fixture's resource is deliberately instruction-shaped, so the test would
+  catch the opposite.
+* *Bounded and scrubbed.* 200 resources listed, 32 KB of one read, secrets
+  scrubbed, and a binary blob named as bytes rather than pasted as base64 into
+  a transcript that has to hold it.

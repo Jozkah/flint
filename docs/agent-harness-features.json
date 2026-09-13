@@ -4805,13 +4805,18 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-136"
       ],
       "owner": "lane-07-mcp-skills-plugins",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/upstream.rs",
+        "src-tauri/src/core/state.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/tests/fixtures/mcp_stdio_server.py"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "MCP resources are listable and readable by the agent.",
@@ -4821,10 +4826,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/mcp/tests.rs::mcp_resource_tests"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-12 (Phase 5). mcp_resource_list and mcp_resource_read reach the resources every connected server offers, through the same rmcp client the tool path uses. The server is named rather than guessed (two servers can offer one uri), the answer is labelled as that server's content rather than as instructions, and it is bounded (200 listed, 32KB read), scrubbed, with binary blobs named rather than pasted. Exercised over the real protocol against a fixture that serves resources, including a uri it does not have."
     },
     {
       "id": "AH-138",

@@ -117,6 +117,30 @@ impl RunningServiceEnum {
         }
     }
 
+    /// What this server offers to read (AH-137).
+    ///
+    /// A resource is a document rather than a tool: listing or reading one
+    /// runs nothing on the server.
+    pub async fn list_all_resources(
+        &self,
+    ) -> Result<Vec<rmcp::model::Resource>, ServiceError> {
+        match self {
+            Self::NoInit(s) => s.list_all_resources().await,
+            Self::WithInit(s) => s.list_all_resources().await,
+        }
+    }
+
+    /// Read one resource by uri (AH-137).
+    pub async fn read_resource(
+        &self,
+        params: rmcp::model::ReadResourceRequestParam,
+    ) -> Result<rmcp::model::ReadResourceResult, ServiceError> {
+        match self {
+            Self::NoInit(s) => s.read_resource(params).await,
+            Self::WithInit(s) => s.read_resource(params).await,
+        }
+    }
+
     /// The `initialize` response: what the server said it implements. Read by
     /// the `/mcp` detail screen for its capabilities and version lines.
     pub fn peer_info(&self) -> Option<rmcp::model::InitializeResult> {

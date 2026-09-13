@@ -31,11 +31,11 @@ and the latter two require a recorded `blockedReason`.
 | 3 | Repository intelligence | 4 | 0 | 0 | 13 | 3 | 0 | 0 | 20 |
 | 4 | Context and memory | 0 | 0 | 1 | 15 | 0 | 0 | 0 | 16 |
 | 5 | Agent orchestration | 1 | 0 | 4 | 20 | 0 | 0 | 0 | 25 |
-| 6 | Compatibility and integrations | 8 | 0 | 4 | 20 | 0 | 0 | 0 | 32 |
+| 6 | Compatibility and integrations | 7 | 0 | 4 | 21 | 0 | 0 | 0 | 32 |
 | 7 | Coding and Git workflows | 12 | 0 | 0 | 14 | 0 | 0 | 0 | 26 |
 | 8 | UX, automation and operations | 10 | 0 | 6 | 12 | 0 | 0 | 1 | 29 |
 | 9 | Approved additions | 0 | 0 | 0 | 11 | 0 | 0 | 0 | 11 |
-| **all** | | **36** | **0** | **17** | **154** | **3** | **0** | **1** | **211** |
+| **all** | | **35** | **0** | **17** | **155** | **3** | **0** | **1** | **211** |
 
 ## Ownership lanes
 
@@ -206,7 +206,7 @@ per-OS evidence log rather than backlog items.
 | `AH-134` | MCP token refresh and storage | 6 | integrations | P1 | `in-progress` | critical | `AH-133` |
 | `AH-135` | MCP scopes | 6 | integrations | P2 | `missing` | high | `AH-133` |
 | `AH-136` | MCP tools | 6 | integrations | P0 | `implemented` | high | `AH-041` |
-| `AH-137` | MCP resources | 6 | integrations | P1 | `missing` | medium | `AH-136` |
+| `AH-137` | MCP resources | 6 | integrations | P1 | `implemented` | medium | `AH-136` |
 | `AH-138` | MCP prompts | 6 | integrations | P2 | `missing` | medium | `AH-136` |
 | `AH-139` | MCP server health checks | 6 | integrations | P1 | `implemented` | medium | `AH-136` |
 | `AH-140` | MCP server logs | 6 | integrations | P2 | `in-progress` | low | `AH-136` |
@@ -384,6 +384,7 @@ Recorded during the Phase 0 audit of `main`. Each note says why an item is not a
 - **`AH-128` Hook sandboxing and timeouts** - Implemented 2026-09-12 (Phase 5). A hook runs through the shell the jail can confine, under the same policy bash gets on that surface, and under a harness deadline (1..=120s, the file cannot ask for more). Where no confinable shell can run the command as written the hook is refused as unsupported rather than handed to a different shell. A hook that outlives its deadline is stopped and its process tree with it -- asserted by the marker a surviving hook would have written never appearing -- and is never retried on the harness's own initiative.
 - **`AH-129` Hook failure policy** - Implemented 2026-09-12 (Phase 5). on_failure is declared per hook and enforced: block refuses the call the hook ran before and skips the hooks after it, warn lets the call through and appends the failure where the model and the reader both see it, ignore is recorded only. block is accepted only for pre-tool, because the other events fire after the thing they would refuse. A malformed hooks file refuses every tool call with invalid_input rather than silently meaning no hooks.
 - **`AH-134` MCP token refresh and storage** - Refresh and expiry handling are not verified as complete.
+- **`AH-137` MCP resources** - Implemented 2026-09-12 (Phase 5). mcp_resource_list and mcp_resource_read reach the resources every connected server offers, through the same rmcp client the tool path uses. The server is named rather than guessed (two servers can offer one uri), the answer is labelled as that server's content rather than as instructions, and it is bounded (200 listed, 32KB read), scrubbed, with binary blobs named rather than pasted. Exercised over the real protocol against a fixture that serves resources, including a uri it does not have.
 - **`AH-139` MCP server health checks** - Liveness is probed by calling a tool that happens to be named `ping`, not by the protocol ping. 2026-09-11 (Phase 2): the desktop health monitor now probes each server with the MCP protocol ping (ClientRequest::PingRequest through the rmcp client) every 30s instead of tools/list. Any answer, a JSON-RPC error included, is a live server; a server that ignores ping gets one tools/list before it is called unresponsive, and is logged as not answering ping; a closed transport is gone. A dead or unresponsive server is removed and restarted with the existing backoff. Evidence: 5 integration tests through the real rmcp client against an in-process JSON-RPC peer (answers, errors, ignores ping, ignores everything, hangs up; the probe sends no tools/list to a server that answers ping), and the WebView scenario mcp-liveness-uses-the-protocol-ping: the seeded stdio fixture recorded two pings ~30s apart with one initialize, the harness then stopped exactly that fixture (by its own pid file, checked to be python), the next probe logged "failed health check", the app started it again (new pid, new initialize) and pinged the new process. First attempt, retries off. Limit: the check_jan_browser_extension_connected command still calls the browser server's tool named ping, which tests the extension link rather than the server; the CLI has no monitor.
 - **`AH-140` MCP server logs** - Server stderr goes to the application logger with no per-server view.
 - **`AH-144` MCP per-server budgets** - Truncation is global, not per server, and is not budget-aware.
