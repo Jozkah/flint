@@ -1,11 +1,11 @@
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import {
-  IconCopy,
-  IconCopyCheck,
-  IconEye,
-  IconEyeOff,
-} from '@tabler/icons-react'
+  Copy,
+  CopyCheck,
+  Eye,
+  EyeOff,
+} from 'lucide-react'
 import { useState } from 'react'
 
 type SecretInputProps = Omit<
@@ -42,7 +42,7 @@ export function SecretInput({ className, value, ...props }: SecretInputProps) {
           className="p-1 rounded text-muted-foreground hover:bg-secondary/50"
           onClick={() => setRevealed((v) => !v)}
         >
-          {revealed ? <IconEyeOff size={16} /> : <IconEye size={16} />}
+          {revealed ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
         <button
           type="button"
@@ -53,9 +53,9 @@ export function SecretInput({ className, value, ...props }: SecretInputProps) {
           onClick={handleCopy}
         >
           {copied ? (
-            <IconCopyCheck size={16} className="text-primary" />
+            <CopyCheck size={16} className="text-primary" />
           ) : (
-            <IconCopy size={16} />
+            <Copy size={16} />
           )}
         </button>
       </div>

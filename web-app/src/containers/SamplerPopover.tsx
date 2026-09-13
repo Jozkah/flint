@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
 import {
-  IconAdjustmentsHorizontal,
-  IconChevronDown,
-  IconSettings,
-  IconUser,
-} from '@tabler/icons-react'
+  SlidersHorizontal,
+  ChevronDown,
+  Settings,
+  User,
+} from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 
 import { route } from '@/constants/routes'
@@ -170,7 +170,7 @@ export function SamplerPopover({
               className="relative"
               disabled={assistantsLoading}
             >
-              <IconAdjustmentsHorizontal
+              <SlidersHorizontal
                 size={18}
                 className={cn(
                   'text-muted-foreground',
@@ -214,7 +214,7 @@ export function SamplerPopover({
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon-sm" asChild>
                   <Link to={route.settings.assistant}>
-                    <IconSettings size={16} className="text-muted-foreground" />
+                    <Settings size={16} className="text-muted-foreground" />
                   </Link>
                 </Button>
               </TooltipTrigger>
@@ -267,7 +267,7 @@ function AssistantHeader({
           textClassName="text-sm"
         />
       ) : (
-        <IconUser size={14} className="text-muted-foreground" />
+        <User size={14} className="text-muted-foreground" />
       )}
       <span className="text-sm font-medium truncate">
         {currentAssistant?.name ?? t('common:noAssistant')}
@@ -288,7 +288,7 @@ function AssistantHeader({
           className="-ml-2 h-7 px-2 gap-1 min-w-0"
         >
           {label}
-          <IconChevronDown size={14} className="text-muted-foreground" />
+          <ChevronDown size={14} className="text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

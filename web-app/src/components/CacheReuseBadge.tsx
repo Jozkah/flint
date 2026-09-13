@@ -1,4 +1,4 @@
-import { IconBolt, IconCircleDashed, IconQuestionMark } from '@tabler/icons-react'
+import { Zap, CircleDashed, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   cacheReusePercent,
@@ -56,7 +56,7 @@ export function CacheReuseBadge({
       : ''
   const detail = `${TEXT[status]}. ${exactUsageText(usage)}.${counts}${partial}`
   const Icon =
-    status === 'reused' ? IconBolt : status === 'none' ? IconCircleDashed : IconQuestionMark
+    status === 'reused' ? Zap : status === 'none' ? CircleDashed : HelpCircle
   return (
     <span
       role="img"

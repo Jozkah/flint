@@ -17,15 +17,15 @@ import {
 } from '@/lib/tokenUsage'
 import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
 import {
-  IconBrain,
-  IconSum,
-  IconRulerMeasure,
-  IconStack2,
-  IconPhoto,
-  IconMicrophone,
-  IconMoon,
-  IconAdjustmentsAlt,
-} from '@tabler/icons-react'
+  Brain,
+  Sigma,
+  Ruler,
+  Layers2,
+  Image,
+  Mic,
+  Moon,
+  Sliders,
+} from 'lucide-react'
 
 interface TokenCounterProps {
   messages?: ThreadMessage[]
@@ -260,7 +260,7 @@ export const TokenCounter = memo(function TokenCounter({
         >
           {/* Header */}
           <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
-            <IconBrain className="size-4 text-muted-foreground shrink-0" />
+            <Brain className="size-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium text-foreground">
                 Context window
@@ -272,7 +272,7 @@ export const TokenCounter = memo(function TokenCounter({
               )}
             </div>
             {modelProps?.isSleeping && (
-              <IconMoon
+              <Moon
                 className="size-3.5 text-muted-foreground"
                 aria-label="Model sleeping"
               />
@@ -333,7 +333,7 @@ export const TokenCounter = memo(function TokenCounter({
           <div className="px-3 py-2 border-t border-border space-y-1.5">
             <TokenUsageBreakdown usage={breakdown} scope={scope} />
             <Row
-              icon={<IconRulerMeasure className="size-3.5" />}
+              icon={<Ruler className="size-3.5" />}
               label="Remaining"
               value={formatExact(remaining)}
             />
@@ -349,14 +349,14 @@ export const TokenCounter = memo(function TokenCounter({
                   className="flex items-center gap-1"
                   title={`Configured ctx_len: ${formatExact(tokenData.configuredCtxLen!)}`}
                 >
-                  <IconAdjustmentsAlt className="size-3" />
+                  <Sliders className="size-3" />
                   Fitted to {formatTokenCount(tokenData.maxTokens)}
                 </span>
               )}
               {modelProps?.totalSlots !== undefined &&
                 modelProps.totalSlots > 1 && (
                   <span className="flex items-center gap-1">
-                    <IconStack2 className="size-3" />
+                    <Layers2 className="size-3" />
                     {modelProps.totalSlots} slots
                   </span>
                 )}
@@ -365,7 +365,7 @@ export const TokenCounter = memo(function TokenCounter({
                   className="flex items-center gap-1"
                   title="Vision input supported"
                 >
-                  <IconPhoto className="size-3" />
+                  <Image className="size-3" />
                   Vision
                 </span>
               )}
@@ -374,7 +374,7 @@ export const TokenCounter = memo(function TokenCounter({
                   className="flex items-center gap-1"
                   title="Audio input supported"
                 >
-                  <IconMicrophone className="size-3" />
+                  <Mic className="size-3" />
                   Audio
                 </span>
               )}
@@ -413,7 +413,7 @@ function TokenCountOnly({
             className={cn('relative cursor-default', className)}
           >
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-background border border-border">
-              <IconSum className="size-3.5 text-muted-foreground shrink-0" />
+              <Sigma className="size-3.5 text-muted-foreground shrink-0" />
               <span className="text-xs font-medium tabular-nums text-foreground">
                 {formatTokenCount(totalTokens)}
               </span>
@@ -429,7 +429,7 @@ function TokenCountOnly({
           data-testid="token-usage-popover"
         >
           <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
-            <IconBrain className="size-4 text-muted-foreground shrink-0" />
+            <Brain className="size-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium text-foreground">
                 Token usage
