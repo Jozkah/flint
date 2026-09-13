@@ -65,8 +65,11 @@ const mockServiceHub = {
     cancelToolCall: vi.fn().mockResolvedValue(undefined),
     // AH-041: server trust lives in the backend.
     trustedServers: vi.fn().mockResolvedValue([]),
+    trustReport: vi.fn().mockResolvedValue({ trusted: [], invalidated: [] }),
+    serverFingerprints: vi.fn().mockResolvedValue({}),
     trustServer: vi.fn().mockResolvedValue(undefined),
     revokeServer: vi.fn().mockResolvedValue(undefined),
+    forgetServer: vi.fn().mockResolvedValue(undefined),
     allowOnceForServer: vi.fn().mockResolvedValue('ticket-test'),
     activateMCPServer: vi.fn().mockResolvedValue(undefined),
     deactivateMCPServer: vi.fn().mockResolvedValue(undefined),

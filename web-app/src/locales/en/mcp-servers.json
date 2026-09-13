@@ -27,10 +27,20 @@
   "deleteServer": {
     "title": "Delete MCP Server",
     "description": "Delete the MCP server {{serverName}}? JAN stops it and removes its configuration. This action cannot be undone.",
-    "approvalsKept": "Tool approvals you gave this server are not removed. Its auto-approve setting and any \"always allow\" answer stay recorded under this name and apply again if you later add a server with the same name.",
-    "disableInstead": "To keep the configuration but stop using the server, turn it off instead.",
+    "approvalsRemoved": "Every approval you gave this server is removed, along with its stored sign-in. A server you add later with the same name starts with no approvals. Your record of past decisions is kept.",
+    "disableInstead": "To keep the configuration and its approvals but stop using the server, turn it off instead.",
     "delete": "Delete",
-    "success": "MCP server {{serverName}} deleted successfully"
+    "success": "MCP server {{serverName}} deleted successfully",
+    "forgetFailed": "{{serverName}} was deleted, but JAN could not remove its approvals or sign-in"
+  },
+  "renameServer": {
+    "approvalsReset": "Approvals for {{oldName}} do not carry over to {{newName}}",
+    "approvalsResetDesc": "Its stored sign-in was also cleared. JAN asks again before using its tools.",
+    "forgetFailed": "{{oldName}} was renamed, but JAN could not remove the approvals or sign-in stored under the old name"
+  },
+  "approval": {
+    "changedSinceApproval": "Configuration changed since you approved it. Turn auto-approve on again to renew.",
+    "autoApproveFailed": "Could not change auto-approve for {{serverName}}"
   },
   "validation": {
     "nameRequired": "Enter a server name.",
@@ -106,9 +116,9 @@
     "usageExample": "Once it is connected, ask in a chat for something its tools can do. JAN asks before calling a tool unless you have allowed it.",
     "toolNames": "Tools: {{names}}",
     "effects": "Turn off, clear sign-in, or delete",
-    "effectDisable": "Turn off: stays configured but is not started, so its tools are unavailable in every chat.",
-    "effectClearAuth": "Clear authentication: forgets the stored sign-in and disconnects. The server stays on and reconnects after you sign in again.",
-    "effectRemove": "Delete: stops the server and removes its configuration. Tool approvals you gave it are kept."
+    "effectDisable": "Turn off: stays configured but is not started, so its tools are unavailable in every chat. Approvals are kept.",
+    "effectClearAuth": "Clear authentication: forgets the stored sign-in and disconnects. The server stays on, keeps its approvals, and reconnects after you sign in again.",
+    "effectRemove": "Delete: stops the server, removes its configuration, and removes every approval and stored sign-in it had. Renaming it also resets approvals, and changing its command, arguments, URL, environment or header names means approving it again."
   },
   "editJson": {
     "title": "Edit JSON for MCP Server: {{serverName}}",

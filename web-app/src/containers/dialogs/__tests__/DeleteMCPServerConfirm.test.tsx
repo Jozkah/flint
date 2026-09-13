@@ -25,7 +25,7 @@ describe('DeleteMCPServerConfirm', () => {
       screen.getByText(/mcp-servers:deleteServer\.description.*github/)
     ).toBeInTheDocument()
     expect(
-      screen.getByText('mcp-servers:deleteServer.approvalsKept')
+      screen.getByText('mcp-servers:deleteServer.approvalsRemoved')
     ).toBeInTheDocument()
     expect(
       screen.getByText('mcp-servers:deleteServer.disableInstead')

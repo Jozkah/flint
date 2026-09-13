@@ -38,11 +38,17 @@ const request = (id: string, tool: string, thread: string, server?: string) =>
   useToolApprovalRequests.getState().requestApproval(id, tool, thread, server)
 
 beforeEach(() => {
-  useToolApprovalRequests.setState({ pending: {}, refusals: {} })
+  useToolApprovalRequests.setState({
+    pending: {},
+    refusals: {},
+    approvedFingerprints: {},
+  })
   useToolApproval.setState({
     approvedTools: {},
+    approvedMcpTools: {},
     approvedServers: [],
     approvedToolsGlobal: [],
+    invalidatedServers: [],
     allowAllMCPPermissions: false,
   })
 })
@@ -67,9 +73,17 @@ describe('grant reuse', () => {
   })
 
   it('trusting a server covers its other tools in other threads', async () => {
-    await withMcp({ trustServer: vi.fn().mockResolvedValue(undefined) }, async () => {
+    const trustServer = vi.fn().mockResolvedValue(undefined)
+    await withMcp({
+      trustServer,
+      serverFingerprints: vi.fn().mockResolvedValue({ github: 'sha256:gh' }),
+    }, async () => {
       const first = request('tc1', 'create_issue', 'thread-1', 'github')
+      await vi.waitFor(() =>
+        expect(useToolApprovalRequests.getState().pending.tc1).toBeDefined()
+      )
       useToolApprovalRequests.getState().resolveApproval('tc1', 'allow-always')
+      expect(trustServer).toHaveBeenCalledWith('github', 'sha256:gh')
       await expect(first).resolves.toBe(true)
       await expect(request('tc2', 'list_repos', 'thread-9', 'github')).resolves.toBe(
         true
@@ -139,7 +153,7 @@ describe('revocation', () => {
   it('revokes server trust with the backend first, then locally', async () => {
     const revokeServer = vi.fn().mockResolvedValue(undefined)
     await withMcp({ revokeServer }, async () => {
-      useToolApproval.getState().approveServer('github')
+      useToolApproval.getState().approveServer('github', 'sha256:gh')
       await useToolApproval.getState().revokeServerTrust('github')
       expect(revokeServer).toHaveBeenCalledWith('github')
       expect(useToolApproval.getState().approvedServers).toEqual([])
@@ -151,11 +165,13 @@ describe('revocation', () => {
   it('keeps a server trusted locally when the backend refuses to revoke it', async () => {
     const revokeServer = vi.fn().mockRejectedValue(new Error('disk full'))
     await withMcp({ revokeServer }, async () => {
-      useToolApproval.getState().approveServer('github')
+      useToolApproval.getState().approveServer('github', 'sha256:gh')
       await expect(
         useToolApproval.getState().revokeServerTrust('github')
       ).rejects.toThrow('disk full')
-      expect(useToolApproval.getState().approvedServers).toEqual(['github'])
+      expect(useToolApproval.getState().approvedServers).toEqual([
+        { name: 'github', fingerprint: 'sha256:gh' },
+      ])
     })
   })
 })

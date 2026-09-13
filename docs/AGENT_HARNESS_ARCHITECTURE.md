@@ -162,6 +162,17 @@ reaches first. Trust is therefore recorded per server, persisted, and checked in
 answer is a single-use, short-lived ticket that is never written to disk, so it
 cannot quietly become a standing permission.
 
+A server *name* is not an identity either, so a grant (and a ticket) is bound to
+the name **and** the definition's fingerprint from `mcp_identity`: a sha256 over
+transport, command, args, normalized URL, cwd, environment and header *names*,
+and import confinement, with secret values excluded. Editing any of those stops
+the grant from permitting and records it as needing renewal; deleting or renaming
+a server revokes its grants and clears its OAuth tokens; turning it off or
+clearing its sign-in keeps them. The trust file is schema 2, and schema 1 names
+are explicitly invalidated rather than carried over. Every grant, revocation,
+invalidation and allow-once decision is written to the permission audit log.
+The Cowork session gate keys MCP grants by `(server, tool)`.
+
 ### AHD-007: fail closed
 
 Absent policy denies. Absent sandbox backend withholds `bash` rather than running

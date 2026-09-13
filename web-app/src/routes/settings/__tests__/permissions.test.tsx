@@ -45,7 +45,8 @@ vi.mock('@/hooks/useCoworkSessions', () => ({
 }))
 
 const mcp = {
-  trustedServers: vi.fn(),
+  trustReport: vi.fn(),
+  serverFingerprints: vi.fn(),
   revokeServer: vi.fn(),
 }
 vi.mock('@/hooks/useServiceHub', () => ({
@@ -68,15 +69,36 @@ const Page = () => {
   return <Component />
 }
 
+const GH = 'sha256:github'
+const LOCAL = 'sha256:local'
+
+const trusted = (name: string, fingerprint: string, current: string | null) => ({
+  name,
+  fingerprint,
+  grantedAt: '2026-09-13T00:00:00Z',
+  currentFingerprint: current,
+})
+
 beforeEach(() => {
   vi.clearAllMocks()
-  mcp.trustedServers.mockResolvedValue(['github'])
+  mcp.trustReport.mockResolvedValue({
+    trusted: [trusted('github', GH, GH)],
+    invalidated: [],
+  })
+  mcp.serverFingerprints.mockResolvedValue({ github: GH, 'local-only': LOCAL })
   mcp.revokeServer.mockResolvedValue(undefined)
   auditRecent.mockResolvedValue([])
   useToolApproval.setState({
     approvedTools: { 'thread-1': ['bash', 'write'], 'session-7': ['edit'] },
-    approvedServers: ['github', 'local-only'],
+    approvedMcpTools: {
+      'thread-1': [{ server: 'github', tool: 'create_issue', fingerprint: GH }],
+    },
+    approvedServers: [
+      { name: 'github', fingerprint: GH },
+      { name: 'local-only', fingerprint: LOCAL },
+    ],
     approvedToolsGlobal: ['web_fetch'],
+    invalidatedServers: [],
     allowAllMCPPermissions: false,
   })
 })
@@ -87,6 +109,9 @@ describe('Permissions settings', () => {
     expect(screen.getByText('Fix the parser')).toBeInTheDocument()
     expect(screen.getByText('Forma cleanup')).toBeInTheDocument()
     expect(screen.getByText('permissions:settings.toolLabel:bash')).toBeInTheDocument()
+    expect(
+      screen.getByText('permissions:settings.mcpToolLabel:github')
+    ).toBeInTheDocument()
     expect(
       screen.getByText('permissions:settings.toolLabel:web_fetch')
     ).toBeInTheDocument()
@@ -99,6 +124,9 @@ describe('Permissions settings', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('permissions:settings.serverAppOnly')).toBeInTheDocument()
     expect(screen.getByText('permissions:settings.revokeEffect')).toBeInTheDocument()
+    expect(
+      screen.queryByText('permissions:settings.serverChanged')
+    ).not.toBeInTheDocument()
   })
 
   it('revokes a conversation grant', async () => {
@@ -113,6 +141,17 @@ describe('Permissions settings', () => {
     expect(
       screen.queryByText('permissions:settings.toolLabel:bash')
     ).not.toBeInTheDocument()
+  })
+
+  it('revokes a server-bound conversation grant', async () => {
+    const user = userEvent.setup()
+    render(<Page />)
+    await user.click(
+      screen.getByRole('button', {
+        name: 'permissions:settings.revokeLabel:github create_issue (Fix the parser)',
+      })
+    )
+    expect(useToolApproval.getState().approvedMcpTools).toEqual({})
   })
 
   it('revokes a tool allowed everywhere', async () => {
@@ -138,7 +177,9 @@ describe('Permissions settings', () => {
       ).not.toBeInTheDocument()
     )
     expect(mcp.revokeServer).toHaveBeenCalledWith('github')
-    expect(useToolApproval.getState().approvedServers).toEqual(['local-only'])
+    expect(useToolApproval.getState().approvedServers).toEqual([
+      { name: 'local-only', fingerprint: LOCAL },
+    ])
   })
 
   // The backend still trusts it, so showing it as revoked would be false.
@@ -146,19 +187,105 @@ describe('Permissions settings', () => {
     mcp.revokeServer.mockRejectedValue(new Error('disk full'))
     const user = userEvent.setup()
     render(<Page />)
-    await user.click(
-      await screen.findByRole('button', {
-        name: 'permissions:settings.revokeLabel:github',
-      })
-    )
+    const button = await screen.findByRole('button', {
+      name: 'permissions:settings.revokeLabel:github',
+    })
+    await user.click(button)
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('permissions:settings.revokeFailed:github')
     expect(alert).toHaveTextContent('disk full')
+    // The error is associated with the control that failed.
+    expect(button).toHaveAttribute('aria-describedby', alert.id)
     const row = alert.closest('li')!
     expect(
       within(row).getByText('permissions:settings.serverLabel:github')
     ).toBeInTheDocument()
-    expect(useToolApproval.getState().approvedServers).toContain('github')
+    expect(useToolApproval.getState().approvedServers).toContainEqual({
+      name: 'github',
+      fingerprint: GH,
+    })
+  })
+
+  it('says when a server changed after it was approved', async () => {
+    mcp.trustReport.mockResolvedValue({
+      trusted: [trusted('github', GH, 'sha256:github-edited')],
+      invalidated: [],
+    })
+    render(<Page />)
+    expect(
+      await screen.findByText('permissions:settings.serverChanged')
+    ).toBeInTheDocument()
+  })
+
+  it('says when an approved server is no longer configured', async () => {
+    mcp.trustReport.mockResolvedValue({
+      trusted: [trusted('github', GH, null)],
+      invalidated: [],
+    })
+    render(<Page />)
+    expect(
+      await screen.findByText('permissions:settings.serverMissing')
+    ).toBeInTheDocument()
+  })
+
+  it('flags an app-side grant whose server definition changed', async () => {
+    mcp.serverFingerprints.mockResolvedValue({
+      github: GH,
+      'local-only': 'sha256:local-edited',
+    })
+    render(<Page />)
+    const label = await screen.findByText(
+      'permissions:settings.serverLabel:local-only'
+    )
+    const row = label.closest('li')!
+    expect(
+      await within(row).findByText('permissions:settings.serverChanged')
+    ).toBeInTheDocument()
+  })
+
+  it('lists approvals that need renewing, with the reason, and dismisses them', async () => {
+    mcp.trustReport.mockResolvedValue({
+      trusted: [],
+      invalidated: [
+        { name: 'files', reason: 'schema-v1', at: 'x', fingerprint: null },
+      ],
+    })
+    useToolApproval.setState({
+      approvedServers: [],
+      invalidatedServers: [
+        { name: 'notes', reason: 'configuration-changed', at: 'x' },
+      ],
+    })
+    const user = userEvent.setup()
+    render(<Page />)
+    expect(
+      await screen.findByText('permissions:settings.needsRenewalLabel:files')
+    ).toBeInTheDocument()
+    expect(screen.getByText('permissions:settings.reasonLegacy')).toBeInTheDocument()
+    expect(
+      screen.getByText('permissions:settings.needsRenewalLabel:notes')
+    ).toBeInTheDocument()
+    expect(screen.getByText('permissions:settings.reasonChanged')).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: 'permissions:settings.dismissLabel:notes' })
+    )
+    expect(mcp.revokeServer).toHaveBeenCalledWith('notes')
+    await waitFor(() =>
+      expect(
+        screen.queryByText('permissions:settings.needsRenewalLabel:notes')
+      ).not.toBeInTheDocument()
+    )
+    expect(useToolApproval.getState().invalidatedServers).toEqual([])
+
+    await user.click(
+      screen.getByRole('button', { name: 'permissions:settings.dismissLabel:files' })
+    )
+    await waitFor(() =>
+      expect(
+        screen.queryByText('permissions:settings.needsRenewalLabel:files')
+      ).not.toBeInTheDocument()
+    )
   })
 
   it('turns off allow-all', async () => {
