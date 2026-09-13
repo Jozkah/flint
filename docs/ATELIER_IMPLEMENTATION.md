@@ -36,7 +36,8 @@ workflow behaviour).
 | Contextual sidebar | 256px, resizable 220-300px, 72px header | `components/left-sidebar/index.tsx`, `components/ui/sidebar.tsx`, `hooks/useLeftPanel.ts` |
 | Context bar | 52px | `containers/HeaderPage.tsx` |
 | Status bar | 28px | `components/shell/StatusBar.tsx` |
-| Phone navigation | Rail and sidebar in one sheet below 768px | `Sidebar` `mobileLeading`, `HeaderPage` menu button |
+| Narrow navigation | Rail and sidebar in one sheet below 1024px (phones, phone landscape, portrait tablets) | `Sidebar` `mobileLeading`, `useIsNarrowShell`, `HeaderPage` menu button |
+| System navigation | Monitor, app logs, local API server logs | `components/left-sidebar/NavSystem.tsx` |
 | Viewport | `--app-vvh`, `html.kb-open` | `hooks/useAppViewport.ts` |
 
 Rail destinations are existing routes: Workspace `/` (chats, projects,
@@ -72,7 +73,37 @@ is only "restyled" when its behaviour and tests are unchanged.
 
 ## Verification log
 
-Recorded per commit on `feat/atelier-design`:
+### Integration branch `feat/atelier-integration`
+
+Mock-backed unit and component tests (vitest, jsdom) prove state, persistence
+and UI contracts; they are not real-app evidence. Real-app runs use the
+`cowork-smoke` build of the actual Tauri app with the local model fixture (a
+controlled OpenAI-compatible server), not a real model.
+
+- Final gate, JavaScript half (at `614621023`): plugin API build, typecheck,
+  lint, production web build, web tests (516 files; 6,706 passed, 3 skipped),
+  core 171, extensions 320, registry validation and render consistency,
+  local-only guard, `git diff --check`: all pass. Script tests: 2 registry tests
+  failed on the phase-6 baseline as well (they assumed a "missing" item exists);
+  fixed in `9eb9a0221`, script tests now 46/46.
+- Final gate, Rust half (at `0dcd5dfd8`; later commits change web and script
+  files only): desktop library tests 1,232 passed; CLI library 1,925; `jan` bin
+  16; golden repositories 6; agent-tools 1,111 passed, 1 ignored (with the
+  sandbox helper); LSP 10; TLS 6; semantic 9; clippy (desktop and CLI) no
+  errors; `jan` and harness builds pass.
+- Real app, `atelier-explore` scenario driven over the WebView2 DevTools
+  protocol (`real-journeys.cjs`): shell geometry (rail 80, context bar 52,
+  status bar 28), chat send and streamed reply, split conversation, accent
+  preset / invalid hex refused / reset / persistence across reload, dark theme,
+  Cowork Changes inspector, models, tools, permissions, memory, library and
+  system pages, keyboard focus ring, and viewport emulation at 390×844,
+  844×390 and 768×1024 with no horizontal overflow. Emulation is not phone
+  hardware: touch, virtual keyboards and safe-area insets were not tested on a
+  device.
+
+### Design branch `feat/atelier-design`
+
+Recorded per commit:
 
 - `9b49766d2` tokens, fonts, accent: `tsc -b` exit 0; vitest accent, AccentSettings, useInterfaceSettings, interface route, locale keys: 53/53.
 - `c6065e809` primitives: vitest `src/components/ui`: 241/241.
