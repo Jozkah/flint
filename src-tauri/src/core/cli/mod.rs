@@ -11,6 +11,7 @@ pub mod file_log;
 pub mod inflight;
 pub mod journal;
 pub mod json_api;
+pub mod bench;
 pub mod login;
 pub mod mcp;
 mod model_capabilities;

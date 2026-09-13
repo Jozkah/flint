@@ -284,6 +284,40 @@ enum CliCommands {
         #[command(subcommand)]
         cmd: NetCommands,
     },
+    /// Measure the agent harness against a fixed task set (AH-196)
+    #[command(display_order = 15)]
+    Bench {
+        #[command(subcommand)]
+        cmd: BenchCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum BenchCommands {
+    /// Run every task in a task set through the real headless agent and write
+    /// a report
+    Run {
+        /// The task set (TOML)
+        #[arg(long)]
+        tasks: String,
+        /// Model ID to run the tasks with
+        #[arg(long)]
+        model: String,
+        /// Where to write the JSON report
+        #[arg(long)]
+        out: String,
+        /// What is being measured: a commit, a branch, a setting
+        #[arg(long, default_value = "")]
+        label: String,
+    },
+    /// Compare two reports of the same task set; exits non-zero when a task that
+    /// passed before fails now
+    Compare {
+        /// The earlier report
+        before: String,
+        /// The later report
+        after: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1240,6 +1274,82 @@ async fn handle_cli(cmd: CliCommands) {
             }
         }
         CliCommands::Net { cmd } => handle_net(cmd),
+        CliCommands::Bench { cmd } => handle_bench(cmd),
+    }
+}
+
+/// `jan cli bench`: measure the harness against a fixed task set (AH-196).
+fn handle_bench(cmd: BenchCommands) {
+    use app_lib::core::cli::bench;
+    use tauri_plugin_agent_tools::harness_error::ErrorKind;
+    let result: Result<i32, HarnessError> = match cmd {
+        BenchCommands::Run { tasks, model, out, label } => (|| {
+            let (set, digest) = bench::load_tasks(std::path::Path::new(&tasks))?;
+            let program = std::env::current_exe()
+                .map_err(|e| HarnessError::new(ErrorKind::Io, format!("this program cannot find itself: {e}")))?;
+            let temp = std::env::temp_dir();
+            // What an earlier benchmark that was killed outright left behind.
+            for swept in bench::sweep_stale_scratch(&temp) {
+                eprintln!("  removed scratch left by an earlier benchmark: {}", swept.display());
+            }
+            let scratch = bench::scratch_dir(&temp, std::process::id());
+            // The first Ctrl-C stops the task in flight -- its whole process
+            // tree -- and the report is written as incomplete.
+            let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            {
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    if let Ok(runtime) = tokio::runtime::Builder::new_current_thread().enable_all().build() {
+                        if runtime.block_on(tokio::signal::ctrl_c()).is_ok() {
+                            eprintln!("  stopping: the task in flight is being ended and the report written");
+                            stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                        }
+                    }
+                });
+            }
+            let runner = bench::ProcessRunner { program, model: model.clone() };
+            let report = bench::run_tasks(
+                &set,
+                &digest,
+                &model,
+                &label,
+                &scratch,
+                &runner,
+                &|| stop.load(std::sync::atomic::Ordering::SeqCst),
+                &mut |t| eprintln!("  {:<24} {:<14} {:>6} ms  {}", t.id, t.state, t.duration_ms, t.notes.first().map(String::as_str).unwrap_or("")),
+            );
+            let _ = std::fs::remove_dir_all(&scratch);
+            let report = report?;
+            let body = serde_json::to_string_pretty(&report).unwrap_or_default();
+            std::fs::write(&out, body)
+                .map_err(|e| HarnessError::new(ErrorKind::Io, format!("the report could not be written to {out}: {e}")))?;
+            println!(
+                "{} of {} tasks passed{} -- report written to {out}",
+                report.passed(),
+                set.tasks.len(),
+                if report.complete { "" } else { " (stopped before every task ran)" }
+            );
+            Ok(if report.complete { 0 } else { 130 })
+        })(),
+        BenchCommands::Compare { before, after } => (|| {
+            let b = bench::load_report(std::path::Path::new(&before))?;
+            let a = bench::load_report(std::path::Path::new(&after))?;
+            let comparison = bench::compare(&b, &a)?;
+            println!("{}", serde_json::to_string_pretty(&comparison).unwrap_or_default());
+            if !comparison.regressions.is_empty() {
+                eprintln!("Regressed: {}", comparison.regressions.join(", "));
+                return Ok(1);
+            }
+            Ok(0)
+        })(),
+    };
+    match result {
+        Ok(0) => {}
+        Ok(code) => std::process::exit(code),
+        Err(e) => {
+            eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+            std::process::exit(e.exit_code());
+        }
     }
 }
 

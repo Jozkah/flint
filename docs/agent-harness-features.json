@@ -7063,13 +7063,17 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-011"
       ],
       "owner": "lane-12-security-regression-review",
-      "files": [],
+      "files": [
+        "src-tauri/src/bin/jan.rs",
+        "src-tauri/src/core/cli/bench.rs",
+        "src-tauri/src/core/cli/mod.rs"
+      ],
       "securityImpact": "none",
       "acceptanceCriteria": [
         "Harness changes can be measured against a fixed task set.",
@@ -7078,10 +7082,17 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/cli/bench.rs::a_cancelled_benchmark_is_marked_incomplete_and_leaves_nothing",
+        "src-tauri/src/core/cli/bench.rs::a_task_set_is_checked_before_anything_runs",
+        "src-tauri/src/core/cli/bench.rs::reports_of_different_task_sets_are_not_compared",
+        "src-tauri/src/core/cli/bench.rs::scratch_left_by_a_dead_benchmark_is_swept_and_a_live_ones_is_kept",
+        "src-tauri/src/core/cli/bench.rs::tasks_run_in_fresh_copies_are_checked_and_leave_nothing_behind",
+        "src-tauri/src/core/cli/bench.rs::the_process_runner_stops_a_task_past_its_deadline"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "2026-09-13 (Phase 6): jan cli bench run/compare. A fixed TOML task set (refused by kind before anything runs, SHA-256 recorded) runs through the real headless agent, one owned process per task in a fresh scratch copy under a deadline; reports record outcome, failed checks, turns and duration; compare refuses unlike task sets and exits 1 on regressions; interruption stops the agent tree and the next run sweeps a killed benchmark's scratch. Evidence: failing CLI evidence first, 6 unit/integration tests, real CLI exercise ALL PASS against the scripted local provider."
     },
     {
       "id": "AH-197",
