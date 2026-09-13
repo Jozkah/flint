@@ -478,11 +478,28 @@ impl Ctx {
     }
 
     fn click_rail(&self, rail: &str) -> ScenarioResult {
-        let clicked = self.eval_bool(&format!(
+        // The Changes button carries its summary in its name ("Changes — 1
+        // file changed · +2 −1"), and a route that was only just opened may
+        // not have drawn the rail yet, so wait for it rather than look once.
+        let script = format!(
             r#"const el = [...document.querySelectorAll('button')].find(b =>
-                 (b.getAttribute('aria-label') || b.textContent || '').trim() === {rail:?});
+                 {{ const name = (b.getAttribute('aria-label') || b.textContent || '').trim();
+                    return name === {rail:?} || name.startsWith({rail:?} + ' — '); }});
                if (!el) return false; el.click(); return true;"#
-        ))?;
+        );
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let clicked = loop {
+            if self.eval_bool(&script)? {
+                break true;
+            }
+            if Instant::now() >= deadline {
+                break false;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        };
+        if !clicked {
+            let _ = self.describe("rail");
+        }
         ensure!(clicked, "rail button {rail:?} was not present");
         std::thread::sleep(Duration::from_millis(900));
         Ok(())
@@ -1932,7 +1949,9 @@ fn open_picker_through_the_pill(ctx: &Ctx) -> ScenarioResult {
         let _ = ctx.eval(
             "const pill = [...document.querySelectorAll('button')].find(b =>
                /attached read-only|project folder/i.test(b.getAttribute('aria-label') || ''));
-             if (pill) pill.click();
+             // The popover stays open after attaching; clicking its trigger
+             // again would close it, so only open it when it is closed.
+             if (pill && pill.getAttribute('aria-expanded') !== 'true') pill.click();
              return true;",
         );
         std::thread::sleep(Duration::from_millis(700));
@@ -1945,11 +1964,15 @@ fn open_picker_through_the_pill(ctx: &Ctx) -> ScenarioResult {
         std::thread::sleep(Duration::from_millis(900));
     }
 
-    ctx.wait_until(
+    let pill = ctx.wait_until(
         "the workspace pill",
         &format!("return !!({PILL_JS});"),
         Duration::from_secs(30),
-    )?;
+    );
+    if pill.is_err() {
+        let _ = ctx.describe("workspace-pill");
+    }
+    pill?;
     ctx.eval(&format!("({PILL_JS}).click(); return true;"))?;
     ctx.wait_until(
         "the pill popover's attach action",
@@ -2461,13 +2484,13 @@ fn scenario_stop_withdraws_approval(ctx: &Ctx) -> ScenarioResult {
         send_without_waiting(ctx, "write the file, then wait")?;
         ctx.wait_until(
             "the approval prompt",
-            "return [...document.querySelectorAll('button')].some(x => (x.textContent || '').trim() === 'Allow Once');",
+            "return [...document.querySelectorAll('button')].some(x => /^allow once$/i.test((x.textContent || '').trim()));",
             Duration::from_secs(90),
         )?;
         stop_current(ctx)?;
         ctx.wait_until(
             "the prompt to be withdrawn",
-            "return ![...document.querySelectorAll('button')].some(x => (x.textContent || '').trim() === 'Allow Once');",
+            "return ![...document.querySelectorAll('button')].some(x => /^allow once$/i.test((x.textContent || '').trim()));",
             Duration::from_secs(20),
         )?;
         ctx.wait_until(
@@ -6430,13 +6453,16 @@ fn scenario_external_edit_diff(ctx: &Ctx) -> ScenarioResult {
     .map_err(|e| Failure(format!("could not edit the fixture: {e}")))?;
 
     ctx.goto("/cowork")?;
-    ctx.click_rail("Changes")?;
+    // The rail button is a toggle and an earlier scenario may have left the
+    // panel open, so make sure it is open rather than clicking it blindly.
+    ctx.ensure_rail_open("Changes", "[data-testid=\"cowork-diff-panel\"]")?;
     std::thread::sleep(Duration::from_secs(1));
 
     // The panel holds the last scan; an edit made outside Jan only appears once
     // it rescans, so ask it to.
     ctx.eval(
-        "const b = [...document.querySelectorAll('button')].find(x =>
+        "const panel = document.querySelector('[data-testid=\"cowork-diff-panel\"]') || document;
+         const b = [...panel.querySelectorAll('button')].find(x =>
            /refresh|rescan|reload/i.test((x.getAttribute('aria-label') || '')
              + ' ' + (x.getAttribute('title') || '')));
          if (b) b.click();
@@ -8655,7 +8681,7 @@ fn run_state_page(ctx: &Ctx) -> String {
            return JSON.stringify({
              visibility: document.visibilityState,
              focused: document.hasFocus(),
-             approvalAsked: t.includes('needs your approval'),
+             approvalAsked: t.includes('needs your approval') || !!document.querySelector('[data-testid="inline-approval-card"]'),
              allowOnceButtons: allow,
              stopShown: !!document.querySelector('[data-test-id="stop-button"], [aria-label*="Stop" i]'),
              composer: !!input,
@@ -11569,10 +11595,10 @@ fn scenario_memory_session_after_restart(ctx: &Ctx) -> ScenarioResult {
     // that found nothing on one run in two after a restart.
     ctx.wait_until(
         "the memory scope tabs",
-        "return [...document.querySelectorAll('[role=\"tab\"]')].some(t => /this chat/i.test(t.textContent || ''));",
+        "return [...document.querySelectorAll('[role=\"tab\"]')].some(t => /this (chat|conversation)/i.test(t.textContent || ''));",
         Duration::from_secs(30),
     )?;
-    ctx.click_matching("[role=\"tab\"]", "This chat")?;
+    ctx.click_matching("[role=\"tab\"]", "This conversation")?;
     let picked = ctx.eval_bool(&format!(
         "const s = document.querySelector('[data-testid=\"memory-session-picker\"]');
          if (!s) return false;
@@ -12002,7 +12028,7 @@ fn scenario_memory_user_scope(ctx: &Ctx) -> ScenarioResult {
     send_cowork(ctx, "user memory probe, project two")?;
     let b = current_cowork_session(ctx)?;
 
-    // Written on the page, in the "Across chats" tab.
+    // Written on the page, in the "All conversations" tab.
     goto_memory_page(ctx)?;
     ctx.type_into("[data-testid=\"memory-new-content\"]", USER_TEXT)?;
     ctx.wait_until(
@@ -13979,12 +14005,13 @@ fn scenario_chat_execution_record(ctx: &Ctx) -> ScenarioResult {
         ctx.eval("document.querySelector('[data-test-id=\"send-message-button\"]').click(); return true;")?;
         ctx.wait_until(
             "the approval request",
-            "return (document.body.innerText || '').includes('This tool needs your approval before it runs.');",
+            "return !!document.querySelector('[data-testid=\"inline-approval-card\"]')
+               || (document.body.innerText || '').includes('This tool needs your approval before it runs.');",
             Duration::from_secs(60),
         )?;
         let clicked = ctx.eval_bool(
             "const b = [...document.querySelectorAll('button')]
-               .find(x => (x.textContent || '').trim() === 'Allow Once');
+               .find(x => /^allow once$/i.test((x.textContent || '').trim()));
              if (!b) return false; b.click(); return true;",
         )?;
         ensure!(clicked, "no Allow Once control on the approval card");
@@ -15297,7 +15324,7 @@ fn scenario_delete_keeps_later_replies(ctx: &Ctx) -> ScenarioResult {
                                        && !(r.innerText || '').includes('message bravo'));
                if (!row) return 'no row';
                const buttons = [...row.querySelectorAll('button')].filter(b => b.querySelector('svg'));
-               const trash = buttons.find(b => b.querySelector('svg.tabler-icon-trash'))
+               const trash = buttons.find(b => b.querySelector('svg.lucide-trash-2, svg.tabler-icon-trash'))
                  || buttons[buttons.length - 1];
                if (!trash) return 'no button';
                trash.click();
@@ -16625,7 +16652,7 @@ fn enable_tools(ctx: &Ctx, model: &str) -> ScenarioResult {
            if (!h) return false;
            let row = h;
            for (let i = 0; i < 8 && row; i++) {{
-             const pencil = row.querySelector('svg.tabler-icon-pencil');
+             const pencil = row.querySelector('svg.lucide-pencil, svg.tabler-icon-pencil');
              if (pencil) {{ (pencil.closest('.cursor-pointer') || pencil).click(); return true; }}
              row = row.parentElement;
            }}

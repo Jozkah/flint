@@ -100,6 +100,15 @@ controlled OpenAI-compatible server), not a real model.
   844×390 and 768×1024 with no horizontal overflow. Emulation is not phone
   hardware: touch, virtual keyboards and safe-area insets were not tested on a
   device.
+- Real app, scenario matrix (`cowork-smoke`, one process per unit, fresh
+  profile each, retries off, real-provider units excluded): 94 runs on the
+  integrated build, 86 passed on the first run. The 8 failures were harness
+  selectors that still expected the pre-redesign labels, Tabler icons and
+  approval text, a unit grouping that skipped a prerequisite scenario, and one
+  timing-sensitive scenario that also fails intermittently on the phase-6
+  baseline. The harness was updated and every failed unit passed when run
+  again. One product fix came out of it: the edit and delete buttons on a
+  message had no accessible name.
 
 ### Design branch `feat/atelier-design`
 
