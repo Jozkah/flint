@@ -1,0 +1,103 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { createPresenceSync, notifySessionRemoved, __presenceTesting } from '../mailboxPresence'
+import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
+import { useCoworkRun } from '@/hooks/useCoworkRun'
+
+const session = (id: string, title = id, folder: string | null = null): CoworkSession =>
+  ({ id, title, folder, turns: [], messages: [], updated: 0 }) as CoworkSession
+
+const fake = () => ({
+  register: vi.fn(async () => undefined),
+  setStatus: vi.fn(async () => undefined),
+  heartbeat: vi.fn(async () => undefined),
+  remove: vi.fn(async () => undefined),
+})
+
+describe('mailbox presence', () => {
+  let mailbox: ReturnType<typeof fake>
+  let stop: () => void
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    __presenceTesting.reset()
+    useCoworkSessions.setState({ sessions: [session('A', 'Alpha', '/p')], currentId: 'A' })
+    useCoworkRun.setState({ runs: {} })
+    mailbox = fake()
+    stop = createPresenceSync(mailbox, { debounceMs: 100, heartbeatMs: 30_000 }).start()
+  })
+  afterEach(() => {
+    stop()
+    vi.useRealTimers()
+  })
+
+  it('registers existing sessions, debounced', () => {
+    expect(mailbox.register).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(100)
+    expect(mailbox.register).toHaveBeenCalledWith({
+      sessionId: 'A',
+      displayName: 'Alpha',
+      folder: '/p',
+    })
+  })
+
+  it('registers a new session, and a rename or folder change once each', () => {
+    vi.advanceTimersByTime(100)
+    mailbox.register.mockClear()
+    useCoworkSessions.setState((s) => ({ sessions: [session('B'), ...s.sessions] }))
+    vi.advanceTimersByTime(100)
+    expect(mailbox.register).toHaveBeenCalledTimes(1)
+    expect(mailbox.register).toHaveBeenLastCalledWith({ sessionId: 'B', displayName: 'B', folder: null })
+
+    // Typing a title: many updates, one registration with the final value.
+    for (const t of ['R', 'Re', 'Renamed']) {
+      useCoworkSessions.getState().setTitle('A', t)
+      vi.advanceTimersByTime(30)
+    }
+    vi.advanceTimersByTime(100)
+    expect(mailbox.register).toHaveBeenCalledTimes(2)
+    expect(mailbox.register).toHaveBeenLastCalledWith({ sessionId: 'A', displayName: 'Renamed', folder: '/p' })
+
+    useCoworkSessions.getState().setFolder('A', '/other')
+    vi.advanceTimersByTime(100)
+    expect(mailbox.register).toHaveBeenLastCalledWith({ sessionId: 'A', displayName: 'Renamed', folder: '/other' })
+
+    // An unrelated change registers nothing.
+    useCoworkSessions.getState().setTodos('A', { phases: [] })
+    vi.advanceTimersByTime(100)
+    expect(mailbox.register).toHaveBeenCalledTimes(3)
+  })
+
+  it('removes a deleted session once, whichever path sees it first', () => {
+    notifySessionRemoved('A')
+    useCoworkSessions.getState().deleteSession('A')
+    vi.advanceTimersByTime(100)
+    expect(mailbox.remove).toHaveBeenCalledTimes(1)
+    expect(mailbox.remove).toHaveBeenCalledWith('A')
+  })
+
+  it('reports running with heartbeats, then idle', () => {
+    useCoworkRun.getState().startRun('A', 'r1')
+    expect(mailbox.setStatus).toHaveBeenCalledWith({ sessionId: 'A', running: true, runId: 'r1' })
+    vi.advanceTimersByTime(30_000)
+    vi.advanceTimersByTime(30_000)
+    expect(mailbox.heartbeat).toHaveBeenCalledTimes(2)
+    expect(mailbox.heartbeat).toHaveBeenCalledWith({ sessionId: 'A', runId: 'r1' })
+    useCoworkRun.getState().finishRun('A', 'r1', null)
+    expect(mailbox.setStatus).toHaveBeenLastCalledWith({ sessionId: 'A', running: false })
+    vi.advanceTimersByTime(90_000)
+    expect(mailbox.heartbeat).toHaveBeenCalledTimes(2)
+  })
+
+  it('never throws into the UI when the backend fails', async () => {
+    mailbox.setStatus.mockRejectedValue(new Error('down'))
+    mailbox.register.mockImplementation(() => {
+      throw new Error('sync throw')
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(() => useCoworkRun.getState().startRun('A', 'r2')).not.toThrow()
+    expect(() => vi.advanceTimersByTime(100)).not.toThrow()
+    await vi.runOnlyPendingTimersAsync()
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+})
