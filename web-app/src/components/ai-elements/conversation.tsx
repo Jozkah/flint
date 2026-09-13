@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { IconArrowDown } from '@tabler/icons-react'
+import { ArrowDown } from 'lucide-react'
 import type { ComponentProps } from 'react'
 import { useCallback, memo } from 'react'
 import { StickToBottom, useStickToBottomContext } from 'use-stick-to-bottom'
@@ -81,7 +81,7 @@ export const ConversationScrollButton = ({
     !isAtBottom && (
       <Button
         className={cn(
-          'absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full',
+          'absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full shadow-sm pointer-coarse:size-11',
           className
         )}
         onClick={handleScrollToBottom}
@@ -90,7 +90,7 @@ export const ConversationScrollButton = ({
         variant="outline"
         {...props}
       >
-        <IconArrowDown className="size-4" />
+        <ArrowDown className="size-4" />
       </Button>
     )
   )

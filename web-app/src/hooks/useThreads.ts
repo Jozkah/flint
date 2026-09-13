@@ -37,6 +37,12 @@ type ThreadState = {
     isTemporary?: boolean
   ) => Promise<Thread>
   updateCurrentThreadModel: (model: ThreadModel) => void
+  /**
+   * Record a model on a named thread. `updateCurrentThreadModel` is this for
+   * the current thread; a split conversation pane names its own, since the
+   * current thread is whichever pane is active.
+   */
+  updateThreadModel: (threadId: string, model: ThreadModel) => void
   getFilteredThreads: (searchTerm: string) => Thread[]
   updateCurrentThreadAssistant: (assistant: Assistant) => void
   updateThreadTimestamp: (threadId: string) => void
@@ -424,8 +430,12 @@ export const useThreads = create<ThreadState>()((set, get) => ({
     })
   },
   updateCurrentThreadModel: (model) => {
+    const currentThreadId = get().currentThreadId
+    if (!currentThreadId) return
+    get().updateThreadModel(currentThreadId, model)
+  },
+  updateThreadModel: (threadId, model) => {
     set((state) => {
-      if (!state.currentThreadId) return { ...state }
       // The new model may not define every setting this chat had overridden.
       // Such an override is already inert — `resolveModel` ignores a key the
       // model does not have — but leaving it in the record would let it come
@@ -433,20 +443,20 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       useModelOverrides
         .getState()
         .pruneForThread(
-          state.currentThreadId,
+          threadId,
           model.provider,
           useModelProvider.getState().getModelBy(model.id)
         )
-      const currentThread = state.getCurrentThread()
-      if (currentThread)
+      const thread = state.threads[threadId]
+      if (thread)
         getServiceHub()
           .threads()
-          .updateThread({ ...currentThread, model })
+          .updateThread({ ...thread, model })
       return {
         threads: {
           ...state.threads,
-          [state.currentThreadId as string]: {
-            ...state.threads[state.currentThreadId as string],
+          [threadId]: {
+            ...state.threads[threadId],
             model,
           },
         },

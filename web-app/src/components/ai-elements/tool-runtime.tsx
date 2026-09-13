@@ -90,10 +90,10 @@ export const ToolProgressRow = memo(
             aria-valuenow={Math.round(update.percent)}
             aria-valuemin={0}
             aria-valuemax={100}
-            className="h-1 w-full overflow-hidden rounded-full bg-main-view-fg/10"
+            className="h-1 w-full overflow-hidden rounded-full bg-sunken"
           >
             <div
-              className="h-full rounded-full bg-accent transition-[width] duration-300 ease-out"
+              className="h-full rounded-full bg-brand motion-safe:transition-[width] duration-300 ease-out"
               style={{ width: `${update.percent}%` }}
             />
           </div>

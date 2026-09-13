@@ -22,6 +22,14 @@ type CustomChatOptions = Omit<ChatInit<UIMessage>, 'transport'> &
     sessionTitle?: string
     systemMessage?: string
     onTokenUsage?: (usage: TokenUsage, messageId: string) => void;
+    /**
+     * The model this conversation sends with, when it is not the global
+     * picker's: a split conversation pane passes its own thread's model.
+     * Return `undefined` to use the global picker.
+     */
+    resolveModelSelection?: Parameters<
+      CustomChatTransport['setModelSelectionResolver']
+    >[0]
   }
 
 // This is a wrapper around the AI SDK's useChat hook
@@ -36,6 +44,7 @@ export function useChat(
     sessionTitle,
     systemMessage,
     onTokenUsage,
+    resolveModelSelection,
     ...chatInitOptions
   } = options ?? {}
   const ensureSession = useChatSessions((state) => state.ensureSession)
@@ -74,6 +83,16 @@ export function useChat(
 
   // Which project's memory this chat uses, and whether it is temporary.
   useChatMemoryBinding(sessionId, transportRef.current)
+
+  // The transport outlives this component (it lives on the session), so the
+  // resolver is withdrawn on unmount: a thread later shown on its own must go
+  // back to the global picker.
+  useEffect(() => {
+    const transport = transportRef.current
+    if (!transport || !resolveModelSelection) return
+    transport.setModelSelectionResolver(resolveModelSelection)
+    return () => transport.setModelSelectionResolver(undefined)
+  }, [resolveModelSelection, sessionId])
 
   // Update the token usage callback when it changes
   useEffect(() => {

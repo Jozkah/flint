@@ -11,13 +11,13 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { IconFile, IconPencil, IconX } from '@tabler/icons-react'
+import { File as FileIcon, Pencil, X } from 'lucide-react'
 import {
   extractFilesFromPrompt,
   injectFilesIntoPrompt,
   FileMetadata,
 } from '@/lib/fileMetadata'
-import { useModelProvider } from '@/hooks/useModelProvider'
+import { useConversationModel } from '@/hooks/useConversationPane'
 
 interface EditMessageDialogProps {
   message: string
@@ -42,7 +42,7 @@ export function EditMessageDialog({
   const [keptImages, setKeptImages] = useState<string[]>(imageUrls || [])
   const [keptFiles, setKeptFiles] = useState<FileMetadata[]>(initialFiles)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const selectedModel = useModelProvider((state) => state.selectedModel)
+  const { selectedModel } = useConversationModel()
 
   useEffect(() => {
     const { files, cleanPrompt } = extractFilesFromPrompt(message)
@@ -86,6 +86,7 @@ export function EditMessageDialog({
       role="button"
       tabIndex={0}
       disabled={!selectedModel}
+      className="size-7 text-ink-2 hover:text-foreground pointer-coarse:size-11"
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -93,7 +94,7 @@ export function EditMessageDialog({
         }
       }}
     >
-      <IconPencil size={16} />
+      <Pencil className="size-4" />
     </Button>
   )
 
@@ -109,44 +110,48 @@ export function EditMessageDialog({
                 {keptImages.map((imageUrl, index) => (
                   <div
                     key={`img-${index}`}
-                    className="relative border rounded-lg size-14"
+                    className="relative border border-border rounded-md size-14"
                   >
                     <img
-                      className="object-cover w-full h-full rounded-lg"
+                      className="object-cover w-full h-full rounded-md"
                       src={imageUrl}
                       alt={`Attached image ${index + 1}`}
                     />
-                    <div
-                      className="absolute -top-1 -right-2.5 bg-destructive size-5 flex rounded-full items-center justify-center cursor-pointer"
+                    <button
+                      type="button"
+                      aria-label={t('common:dismiss')}
+                      className="absolute -top-1.5 -right-2 flex size-5 items-center justify-center rounded-full border border-line-strong bg-card text-ink-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-7"
                       onClick={() =>
                         setKeptImages((prev) =>
                           prev.filter((_, i) => i !== index)
                         )
                       }
                     >
-                      <IconX className="text-destructive-fg" size={16} />
-                    </div>
+                      <X className="size-3.5" />
+                    </button>
                   </div>
                 ))}
                 {keptFiles.map((file) => (
                   <div
                     key={file.id}
-                    className="relative border rounded-lg px-3 py-2 flex items-center gap-2 bg-muted"
+                    className="relative border border-border rounded-md px-3 py-2 flex items-center gap-2 bg-sunken"
                   >
-                    <IconFile size={16} className="text-muted-foreground" />
-                    <span className="text-sm max-w-32 truncate">
+                    <FileIcon className="size-4 text-muted-foreground" />
+                    <span className="text-sm max-w-32 truncate" title={file.name}>
                       {file.name}
                     </span>
-                    <div
-                      className="absolute -top-1 -right-2.5 bg-destructive size-5 flex rounded-full items-center justify-center cursor-pointer"
+                    <button
+                      type="button"
+                      aria-label={t('common:dismiss')}
+                      className="absolute -top-1.5 -right-2 flex size-5 items-center justify-center rounded-full border border-line-strong bg-card text-ink-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-7"
                       onClick={() =>
                         setKeptFiles((prev) =>
                           prev.filter((f) => f.id !== file.id)
                         )
                       }
                     >
-                      <IconX className="text-destructive-fg" size={16} />
-                    </div>
+                      <X className="size-3.5" />
+                    </button>
                   </div>
                 ))}
               </div>

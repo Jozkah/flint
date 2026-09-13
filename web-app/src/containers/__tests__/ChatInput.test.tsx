@@ -17,6 +17,12 @@ const setPromptMock = vi.fn((val: string) => {
 })
 const addToHistoryMock = vi.fn()
 const navigateHistoryMock = vi.fn()
+// A split conversation's second composer keeps its draft under a scope.
+let scopedPromptState: Record<string, { prompt: string }> = {}
+const setScopedPromptMock = vi.fn((scope: string, val: string) => {
+  scopedPromptState = { ...scopedPromptState, [scope]: { prompt: val } }
+})
+const navigateScopedHistoryMock = vi.fn()
 
 vi.mock('@/hooks/usePrompt', () => ({
   usePrompt: (selector: any) =>
@@ -25,6 +31,9 @@ vi.mock('@/hooks/usePrompt', () => ({
       setPrompt: setPromptMock,
       addToHistory: addToHistoryMock,
       navigateHistory: navigateHistoryMock,
+      scoped: scopedPromptState,
+      setScopedPrompt: setScopedPromptMock,
+      navigateScopedHistory: navigateScopedHistoryMock,
     }),
 }))
 
@@ -655,16 +664,17 @@ describe('ChatInput', () => {
   })
 
   describe('tool controls', () => {
+    // The composer draws Lucide icons, which carry `lucide-<name>` classes.
     const icons = (cls: string) =>
-      document.querySelectorAll(`.tabler-icon-${cls}`).length
+      document.querySelectorAll(`.lucide-${cls}`).length
 
     // Web access is a global capability both surfaces honour -- Cowork reads
     // the same store when it builds its tool set -- so the toggle travels.
     it('offers the web-search toggle on every surface', () => {
       renderInput()
-      expect(icons('world-search')).toBe(1)
+      expect(icons('globe')).toBe(1)
       renderInput({ ownsToolSet: false })
-      expect(icons('world-search')).toBeGreaterThan(0)
+      expect(icons('globe')).toBeGreaterThan(0)
     })
 
     // Its only switch is Settings > Agent Tools now. In the composer it read as
@@ -678,6 +688,62 @@ describe('ChatInput', () => {
       renderInput({ ownsToolSet: false })
       // The composer still works: the textarea and attachments stay.
       expect(getTextarea()).toBeInTheDocument()
+    })
+  })
+
+  // Split conversations render two composers. Each must write its own draft
+  // and queue, whatever the current thread is.
+  describe('as one pane of a split conversation', () => {
+    beforeEach(() => {
+      scopedPromptState = {}
+      setScopedPromptMock.mockClear()
+      navigateScopedHistoryMock.mockClear()
+    })
+
+    it('writes a scoped draft and leaves the main draft alone', () => {
+      promptState = 'main pane draft'
+      renderInput({ draftScope: 'split:secondary', threadId: 'thread-2' })
+      // The scoped draft is empty; the main one is not shown here.
+      expect(getTextarea()).toHaveValue('')
+      fireEvent.change(getTextarea(), { target: { value: 'second pane' } })
+      expect(setScopedPromptMock).toHaveBeenCalledWith(
+        'split:secondary',
+        'second pane'
+      )
+      expect(setPromptMock).not.toHaveBeenCalledWith('second pane')
+    })
+
+    it('walks history for its own draft', () => {
+      renderInput({ draftScope: 'split:secondary', threadId: 'thread-2' })
+      fireEvent.keyDown(getTextarea(), { key: 'ArrowUp' })
+      expect(navigateScopedHistoryMock).toHaveBeenCalledWith(
+        'split:secondary',
+        'up'
+      )
+      expect(navigateHistoryMock).not.toHaveBeenCalled()
+    })
+
+    it('queues for its own thread, not the current one', async () => {
+      promptState = ''
+      scopedPromptState = { 'split:secondary': { prompt: 'queued in pane' } }
+      renderInput({
+        draftScope: 'split:secondary',
+        threadId: 'thread-2',
+        onSubmit: vi.fn(),
+        chatStatus: 'streaming',
+      })
+      fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+      await waitFor(() =>
+        expect(enqueueMock).toHaveBeenCalledWith(
+          'thread-2',
+          expect.objectContaining({ text: 'queued in pane' })
+        )
+      )
+    })
+
+    it('does not take focus when it is not the active pane', () => {
+      renderInput({ threadId: 'thread-2', takeFocus: false })
+      expect(document.activeElement).not.toBe(getTextarea())
     })
   })
 
