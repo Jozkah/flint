@@ -32,6 +32,14 @@ export default function DeleteMCPServerConfirm({
             {t('mcp-servers:deleteServer.description', { serverName })}
           </DialogDescription>
         </DialogHeader>
+        {/* Deleting does not revoke trust: the frontend auto-approve list and
+            the backend `mcp_trust` store are both keyed by server name and
+            neither is touched by removing the config. Say so rather than let
+            a re-added server inherit approval unannounced. */}
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p>{t('mcp-servers:deleteServer.approvalsKept')}</p>
+          <p>{t('mcp-servers:deleteServer.disableInstead')}</p>
+        </div>
         <DialogFooter>
           <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
             {t('common:cancel')}
