@@ -942,6 +942,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_mcp_server_log,
     },
     Scenario {
+        name: "compaction-policy-set-in-settings",
+        run: scenario_compaction_policy_set,
+    },
+    Scenario {
         name: "model-picker-search",
         run: scenario_model_picker,
     },
@@ -1302,6 +1306,10 @@ const LANE_SCENARIOS: &[Scenario] = &[
 /// Scenarios for a second process started on a kept profile
 /// (`COWORK_SMOKE_KEEP`): what a real restart has to bring back.
 const RESTART_SCENARIOS: &[Scenario] = &[
+    Scenario {
+        name: "compaction-policy-survives-a-restart",
+        run: scenario_compaction_policy_after_restart,
+    },
     // AH-109 phase two: what a restart brings back of a team's children.
     Scenario {
         name: "team-review-persist-2",
@@ -1590,6 +1598,79 @@ fn scenario_mcp_settings(ctx: &Ctx) -> ScenarioResult {
         switches.as_u64().unwrap_or(0) > 0,
         "no MCP enable/disable switches rendered"
     );
+    Ok(())
+}
+
+/// AH-076: the shared compaction policy, edited in Settings > Agent Tools.
+///
+/// The change goes through the UI control, is written by the backend, and is
+/// read back from the backend -- not from React state -- so what is asserted is
+/// what the CLI and the agent loop will read too.
+fn scenario_compaction_policy_set(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/settings/agent-tools")?;
+    ctx.wait_until(
+        "the compaction settings",
+        "return !!document.querySelector('select[aria-label=\"Strategy\"]');",
+        Duration::from_secs(30),
+    )?;
+    let changed = ctx.eval_bool(
+        "const s = document.querySelector('select[aria-label=\"Strategy\"]');
+         const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set;
+         setter.call(s, 'trim');
+         s.dispatchEvent(new Event('change', { bubbles: true }));
+         return true;",
+    )?;
+    ensure!(changed, "the strategy control was not present");
+    let keep = ctx.eval_bool(
+        "const i = document.querySelector('input[aria-label=\"Recent messages kept\"]');
+         if (!i) return false;
+         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+         i.focus(); setter.call(i, '12');
+         i.dispatchEvent(new Event('input', { bubbles: true }));
+         i.dispatchEvent(new Event('change', { bubbles: true }));
+         i.blur(); i.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+         return true;",
+    )?;
+    ensure!(keep, "the keep-recent control was not present");
+    ctx.wait_until(
+        "the backend's policy to carry both changes",
+        "return window.__TAURI_INTERNALS__.invoke('get_compaction_policy', { project: null })
+           .then(p => p.strategy === 'trim' && p.keepRecent === 12 && p.origins.keepRecent === 'user');",
+        Duration::from_secs(20),
+    )?;
+    // An out-of-range value is the backend's refusal, shown, and not saved.
+    ctx.eval_bool(
+        "const i = document.querySelector('input[aria-label=\"Recent messages kept\"]');
+         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+         i.focus(); setter.call(i, '1');
+         i.dispatchEvent(new Event('input', { bubbles: true }));
+         i.blur(); i.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+         return true;",
+    )?;
+    ctx.wait_until(
+        "the refusal to be shown",
+        "return [...document.querySelectorAll('[role=\"alert\"]')].some(a => a.innerText.includes('keepRecent must be between'));",
+        Duration::from_secs(20),
+    )?;
+    let still = ctx.eval_bool(
+        "return window.__TAURI_INTERNALS__.invoke('get_compaction_policy', { project: null })
+           .then(p => p.keepRecent === 12);",
+    )?;
+    ensure!(still, "a refused value changed the saved policy");
+    Ok(())
+}
+
+/// AH-076, second half: the policy the first half saved is what a fresh
+/// process reads and shows.
+fn scenario_compaction_policy_after_restart(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/settings/agent-tools")?;
+    ctx.wait_until(
+        "the saved policy shown after a restart",
+        "const s = document.querySelector('select[aria-label=\"Strategy\"]');
+         const i = document.querySelector('input[aria-label=\"Recent messages kept\"]');
+         return !!s && !!i && s.value === 'trim' && i.value === '12';",
+        Duration::from_secs(30),
+    )?;
     Ok(())
 }
 

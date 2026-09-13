@@ -471,6 +471,11 @@ enum AgentCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Show the effective compaction policy and where each value came from (AH-076)
+    Compaction {
+        #[arg(long, default_value = ".")]
+        project: String,
+    },
     /// Write this project's agents, skills, commands and policy as one bundle (AH-145)
     BundleExport {
         #[arg(long, default_value = ".")]
@@ -1565,6 +1570,14 @@ async fn handle_agent(cmd: AgentCommands) {
                         print!("{}", quota::render(&standings));
                     }
                 })
+        }
+        AgentCommands::Compaction { project } => {
+            tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
+                Some(&app_lib::core::app::commands::resolve_jan_data_folder()),
+                Some(std::path::Path::new(&project)),
+                None,
+            )
+            .map(|p| println!("{}", serde_json::to_string_pretty(&p).unwrap_or_default()))
         }
         AgentCommands::BundleExport { project, out } => {
             use app_lib::core::agent::agent_bundle;

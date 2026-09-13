@@ -61,6 +61,7 @@ import {
   type ContextManagerConfig,
 } from './context-manager'
 import { recordLifecycle } from '@/lib/toolActivity'
+import { getCompactionPolicy, outputHeadroom, DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
 import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, endChatRun, markChatAwaitingTools, nextChatInvocation, recordChatMessage, recordChatUsage } from '@/lib/chatRun'
 import { usageEventPayload } from '@/lib/executionTimeline'
 import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
@@ -1548,7 +1549,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       liveContextTokens,
       contextShiftEnabled
     )
+    // AH-076: the shared compaction policy -- the same file the desktop agent
+    // loop and the CLI read. A policy file the backend refuses fails the
+    // request rather than silently compacting at a default point.
+    const compaction =
+      maxContextTokens > 0 ? await getCompactionPolicy() : DEFAULT_COMPACTION_POLICY
+    // The per-model parameter still opts a model in; the policy opts every
+    // surface in or out.
     const autoCompact =
+      compaction.auto ||
       inferenceParams.auto_compact === true ||
       inferenceParams.auto_compact === 'true'
 
@@ -1556,7 +1565,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     if (maxContextTokens > 0) {
       const contextConfig: ContextManagerConfig = {
         maxContextTokens,
-        maxOutputTokens: maxOutputTokens ?? 2048,
+        // The reserve is headroom kept free; a model's own output cap, when
+        // larger, still wins.
+        maxOutputTokens: outputHeadroom(maxContextTokens, maxOutputTokens ?? 2048, compaction),
         autoCompact: !!autoCompact,
       }
 
@@ -1565,13 +1576,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       const systemPromptTokens = effectiveSystem
         ? estimateTokens(effectiveSystem) + 4
         : 0
-      if (autoCompact && !contextShiftEnabled && this.model) {
+      if (autoCompact && compaction.strategy === 'summarize' && !contextShiftEnabled && this.model) {
         const compactResult = await compactMessages(
           messagesToConvert,
           contextConfig,
           this.model,
           systemPromptTokens,
-          { session: options.chatId ?? '', modelId: selectedModel?.id ?? '' }
+          { session: options.chatId ?? '', modelId: selectedModel?.id ?? '' },
+          compaction.summaryMaxTokens
         )
         effectiveMessages = compactResult.messages
         if (compactResult.trimmedCount > 0) {

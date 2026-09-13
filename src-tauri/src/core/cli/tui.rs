@@ -1655,6 +1655,10 @@ struct App {
     configured_context_window: Option<u64>,
     /// Tokens to reserve for the model's response (compaction triggers at limit - reserve).
     reserve_tokens: u64,
+    /// Whether to compact proactively, and the tail an automatic compaction
+    /// keeps, from the shared policy (AH-076).
+    compaction_auto: bool,
+    compaction_keep_recent: usize,
     /// Per-request output cap forwarded to the model as OpenAI `max_tokens`.
     /// `None` omits the field (model default).
     max_tokens: Option<u64>,
@@ -2290,6 +2294,8 @@ impl App {
                 _ => None,
             },
             reserve_tokens: limits.reserve_tokens,
+            compaction_auto: limits.compaction.auto,
+            compaction_keep_recent: limits.compaction.keep_recent,
             max_tokens: limits.max_tokens,
             max_session_tokens: limits.max_session_tokens,
             repo_root,
@@ -5169,8 +5175,13 @@ impl App {
     /// override, catalog, or fallback), so proactive compaction never silently
     /// stands down on accepted prompt usage.
     fn should_auto_compact(&self) -> bool {
-        let limit = self.context_window.saturating_sub(self.reserve_tokens);
-        self.tokens > limit && self.tokens > 0 && self.history.len() > 4
+        // AH-076: `auto = false` in the shared policy turns this off on every
+        // surface; an overflow still compacts reactively.
+        // The reserve never exceeds a quarter of the window, the same rule
+        // `compaction_policy::Policy::effective_reserve` applies everywhere.
+        let reserve = self.reserve_tokens.min(self.context_window / 4);
+        let limit = self.context_window.saturating_sub(reserve);
+        self.compaction_auto && self.tokens > limit && self.tokens > 0 && self.history.len() > 4
     }
 
     /// Warn once as the context window fills (AH-077), before auto-compaction
@@ -8085,6 +8096,7 @@ async fn chat_loop<B: Backend>(
                 let args = args.clone();
                 let model = app.model.clone();
                 let history = app.history.clone();
+                let keep = kind.keep_recent(app.compaction_keep_recent);
                 compact_base = history.len();
                 app.compacting = Some(kind);
                 app.compact_started = Some(Instant::now());
@@ -8093,7 +8105,7 @@ async fn chat_loop<B: Backend>(
                         &args,
                         &model,
                         &history,
-                        kind.keep_recent(),
+                        keep,
                     )
                     .await
                 }));
@@ -10468,10 +10480,11 @@ enum CompactKind {
 }
 
 impl CompactKind {
-    fn keep_recent(self) -> usize {
+    fn keep_recent(self, auto_keep: usize) -> usize {
         match self {
             CompactKind::Manual => crate::core::agent::compaction::MANUAL_KEEP_RECENT,
-            CompactKind::Auto => crate::core::agent::compaction::DEFAULT_KEEP_RECENT,
+            // AH-076: the automatic tail is the shared policy's.
+            CompactKind::Auto => auto_keep,
         }
     }
 
@@ -16728,6 +16741,7 @@ mod tests {
             context_window_source:
                 crate::core::cli::model_capabilities::ContextWindowSource::Fallback,
             reserve_tokens: 16_384,
+            compaction: Default::default(),
             max_tokens: None,
             max_session_tokens: 128_000,
         };
@@ -17024,6 +17038,7 @@ mod tests {
                     context_window_source:
                         crate::core::cli::model_capabilities::ContextWindowSource::Fallback,
                     reserve_tokens: 16_384,
+            compaction: Default::default(),
                     max_tokens: None,
                     max_session_tokens: 128_000,
                 },

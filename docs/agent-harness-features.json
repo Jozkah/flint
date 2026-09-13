@@ -2599,14 +2599,25 @@
       "category": "context-memory",
       "phase": 4,
       "phaseName": "Context and memory",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P1",
       "dependencies": [
         "AH-075"
       ],
       "owner": "lane-05-context-memory",
       "files": [
-        "src-tauri/src/core/agent/compaction.rs"
+        "src-tauri/examples/cowork_smoke.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/compaction_policy.rs",
+        "src-tauri/src/bin/jan.rs",
+        "src-tauri/src/core/agent/commands.rs",
+        "src-tauri/src/core/agent/compaction.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/cli/mod.rs",
+        "src-tauri/src/core/cli/tui.rs",
+        "web-app/src/containers/CompactionPolicySettings.tsx",
+        "web-app/src/lib/compactionPolicy.ts",
+        "web-app/src/lib/context-manager.ts",
+        "web-app/src/lib/custom-chat-transport.ts"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -2617,10 +2628,16 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/compaction_policy.rs",
+        "src-tauri/src/core/agent/compaction.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "web-app/src/containers/__tests__/CompactionPolicySettings.test.tsx",
+        "web-app/src/lib/__tests__/compactionPolicy.test.ts"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Two independent implementations (Rust and TypeScript) with different behaviour and thresholds."
+      "auditNote": "Two independent implementations (Rust and TypeScript) with different behaviour and thresholds. 2026-09-13 (Phase 6): implemented. One policy (auto, reserveTokens, keepRecent, strategy, summaryMaxTokens) in compaction_policy, layered defaults < <data>/compaction.json < project .jan/agent/compaction.json (legacy [agent].compaction_reserve_tokens honoured), origins recorded. Read by the CLI/TUI, the Rust loop (overflow and budget compactions) and the chat transport; trim never calls a model; the reserve is clamped to a quarter of the window everywhere. Invalid files refused by name with invalid_input on every surface. Editable in Settings > Agent Tools, viewable via `jan cli agent compaction`. Proven by a real desktop scenario plus restart half and a CLI read of the file the desktop wrote."
     },
     {
       "id": "AH-077",

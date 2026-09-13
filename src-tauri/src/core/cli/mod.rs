@@ -769,7 +769,7 @@ struct PersistTarget {
 
 /// Per-run limits resolved from agent.toml. Grouped rather than passed as a
 /// run of bare numbers, which would be trivial to transpose at a call site.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct SessionLimits {
     /// Context window limit in tokens for the model. Resolution order is the
     /// configured `[agent].context_window` override, then the built-in model
@@ -781,6 +781,9 @@ pub(crate) struct SessionLimits {
     /// Tokens reserved for the model's response. Defaults to 16K if unset.
     /// Compaction triggers at `context_window - reserve_tokens`.
     pub reserve_tokens: u64,
+    /// The shared compaction policy (AH-076); `reserve_tokens` is its
+    /// `reserve_tokens`.
+    pub compaction: tauri_plugin_agent_tools::compaction_policy::Policy,
     /// Per-request output cap forwarded to the model as OpenAI `max_tokens`.
     /// `None` omits the field (model default).
     pub max_tokens: Option<u64>,
@@ -1044,6 +1047,15 @@ fn prepare_agent_session(
         cfg.agent.context_window,
     );
 
+    // AH-076: the same policy the loop reads, with the legacy
+    // `[agent].compaction_reserve_tokens` still honoured as a project value.
+    let compaction = tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
+        Some(&crate::core::app::commands::resolve_jan_data_folder()),
+        Some(&resolve_project_root(project)),
+        cfg.agent.compaction_reserve_tokens,
+    )
+    .map_err(|e| e.message().to_string())?;
+
     Ok(AgentSession {
         args,
         permission_requests,
@@ -1052,7 +1064,8 @@ fn prepare_agent_session(
         limits: SessionLimits {
             context_window: resolved_window.tokens,
             context_window_source: resolved_window.source,
-            reserve_tokens: cfg.agent.compaction_reserve_tokens.unwrap_or(16_384),
+            reserve_tokens: compaction.reserve_tokens,
+            compaction: compaction.clone(),
             max_tokens: cfg.agent.max_tokens,
             max_session_tokens: cfg.budget.max_tokens.unwrap_or(DEFAULT_MAX_SESSION_TOKENS),
         },

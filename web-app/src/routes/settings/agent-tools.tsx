@@ -43,6 +43,7 @@ import {
   type SkillMeta,
 } from '@/lib/agentWorkspace'
 import { errorText } from '@/lib/errorText'
+import { CompactionPolicySettings } from '@/containers/CompactionPolicySettings'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.agent_tools as any)({
@@ -330,6 +331,7 @@ function AgentToolsContent() {
               )}
             </Card>
 
+            <CompactionPolicySettings />
             <Card header={sectionHeader('settings:agentTools.memories', 'memory')}>
               {memories.length === 0 ? (
                 <CardItem

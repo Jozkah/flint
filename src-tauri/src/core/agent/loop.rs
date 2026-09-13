@@ -3417,6 +3417,18 @@ async fn orchestrate_inner(
         .as_deref()
         .map(|root| resolve_run_settings(root, *sandbox, profile.as_deref()));
 
+    // AH-076: the one compaction policy, for every surface that runs through
+    // here -- the CLI, the desktop's agent runs and the API server. A policy
+    // file that cannot be honoured refuses the run rather than compacting at
+    // a point nobody chose.
+    let compaction = tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
+        (!jan_data_folder.is_empty()).then(|| std::path::Path::new(jan_data_folder.as_str())),
+        project_root.as_deref(),
+        None,
+    )?;
+    let annotated_body = attach_compaction(json_body, &compaction);
+    let json_body = &annotated_body;
+
     let system_prompt = build_run_system_prompt(
         assistant_instructions.as_deref(),
         system_prompt_override.as_deref(),
@@ -3872,6 +3884,43 @@ fn strip_assistant_reasoning(messages: &[serde_json::Value]) -> Vec<serde_json::
 }
 
 /// Build one OpenAI chat-completion request from the current conversation.
+#[cfg(test)]
+mod compaction_policy_body_tests {
+    /// AH-076: the policy reaches the turn cycle, and never the provider:
+    /// the keys it adds are not chat parameters.
+    #[test]
+    fn the_policy_is_on_the_body_and_not_in_the_request() {
+        let mut policy = tauri_plugin_agent_tools::compaction_policy::Policy::default();
+        policy.keep_recent = 3;
+        policy.strategy = tauri_plugin_agent_tools::compaction_policy::Strategy::Trim;
+        let body = super::attach_compaction(&serde_json::json!({ "temperature": 0.2 }), &policy);
+        let options = crate::core::agent::compaction::CompactOptions::from_body(&body);
+        assert_eq!((options.keep_recent, options.trim), (3, true));
+        let request = super::build_completion_request("m", &[], &[], &body, None);
+        let text = request.to_string();
+        assert!(!text.contains("jan_compaction"), "{text}");
+        assert!(text.contains("temperature"), "ordinary parameters still travel: {text}");
+    }
+}
+
+/// A run's body with the compaction policy on it, for the turn cycle.
+fn attach_compaction(
+    body: &serde_json::Value,
+    policy: &tauri_plugin_agent_tools::compaction_policy::Policy,
+) -> serde_json::Value {
+    use crate::core::agent::compaction::{BODY_KEEP_RECENT, BODY_SUMMARY_MAX_TOKENS, BODY_TRIM};
+    let mut body = body.clone();
+    if let Some(map) = body.as_object_mut() {
+        map.insert(BODY_KEEP_RECENT.into(), serde_json::json!(policy.keep_recent));
+        map.insert(
+            BODY_TRIM.into(),
+            serde_json::json!(policy.strategy == tauri_plugin_agent_tools::compaction_policy::Strategy::Trim),
+        );
+        map.insert(BODY_SUMMARY_MAX_TOKENS.into(), serde_json::json!(policy.summary_max_tokens));
+    }
+    body
+}
+
 fn build_completion_request(
     model_id: &str,
     conversation_messages: &[serde_json::Value],
@@ -3968,8 +4017,20 @@ pub(crate) async fn compact_history(
             kind: tauri_plugin_agent_tools::snapshot::DispatchKind::Compaction,
         },
     };
-    crate::core::agent::compaction::compact_conversation(messages, model_id, &model, keep_recent)
-        .await
+    // AH-076: the manual and automatic compactions a surface asks for follow
+    // the same strategy and summary cap as the run's own.
+    let policy = tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
+        (!args.jan_data_folder.is_empty()).then(|| std::path::Path::new(args.jan_data_folder.as_str())),
+        args.project_root.as_deref(),
+        None,
+    )?;
+    crate::core::agent::compaction::compact_conversation_with(
+        messages,
+        model_id,
+        &model,
+        &crate::core::agent::compaction::CompactOptions::from_policy(&policy, keep_recent),
+    )
+    .await
 }
 
 /// Run one stateless `/goal` evaluation against `smol_model_id` (the session's
@@ -4196,7 +4257,8 @@ async fn run_turn_cycle(
         // Compaction runs progressively (a smaller kept tail each attempt) and
         // the loop gives up if a pass fails to shrink the message list.
         let completion = {
-            let mut keep_recent = crate::core::agent::compaction::DEFAULT_KEEP_RECENT;
+            let policy_options = crate::core::agent::compaction::CompactOptions::from_body(json_body);
+            let mut keep_recent = policy_options.keep_recent;
             let mut attempts = 0usize;
             loop {
                 let request_value = build_completion_request(
@@ -4224,11 +4286,14 @@ async fn run_turn_cycle(
                                 }),
                             );
                         }
-                        let compacted = match crate::core::agent::compaction::compact_conversation(
+                        let compacted = match crate::core::agent::compaction::compact_conversation_with(
                             &conversation_messages,
                             model_id,
                             model,
-                            keep_recent,
+                            &crate::core::agent::compaction::CompactOptions {
+                                keep_recent,
+                                ..policy_options
+                            },
                         )
                         .await
                         {
@@ -4420,11 +4485,11 @@ async fn run_turn_cycle(
                         }),
                     );
                 }
-                match crate::core::agent::compaction::compact_conversation(
+                match crate::core::agent::compaction::compact_conversation_with(
                     &conversation_messages,
                     model_id,
                     model,
-                    crate::core::agent::compaction::DEFAULT_KEEP_RECENT,
+                    &crate::core::agent::compaction::CompactOptions::from_body(json_body),
                 )
                 .await
                 {

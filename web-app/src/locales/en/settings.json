@@ -411,5 +411,22 @@
     "storedDesc": "How many memories are kept in each scope, and how much space they use.",
     "remembered": "Remembered",
     "rememberedDesc": "Search, edit, pin and forget what Jan remembers for this chat, this project, or across chats."
+  },
+  "compaction": {
+    "title": "Context compaction",
+    "auto": "Compact automatically",
+    "autoDescription": "Make room before a conversation outgrows the model's context window. Shared by Chat, Cowork and the CLI.",
+    "reserveTokens": "Reserved tokens",
+    "reserveDescription": "Headroom kept free: compaction starts once a conversation uses more than the window minus this.",
+    "keepRecent": "Recent messages kept",
+    "keepRecentDescription": "The most recent messages an agent run always keeps word for word.",
+    "strategy": "Strategy",
+    "strategyDescription": "Summarize older messages with the model, or drop them with a note.",
+    "summarize": "Summarize",
+    "trim": "Drop with a note",
+    "summaryMaxTokens": "Summary length",
+    "summaryDescription": "The longest summary, in tokens.",
+    "projectOverride": "(A project overrides this.)",
+    "saveFailed": "The compaction policy could not be saved"
   }
 }

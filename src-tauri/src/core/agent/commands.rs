@@ -80,6 +80,51 @@ pub async fn agent_skill_list(project: String) -> Result<Vec<SkillMeta>, String>
     Ok(skills::list_meta(&workspace::project_store(&root)))
 }
 
+/// The effective compaction policy (AH-076): defaults, the user's file, then
+/// the project's when one is given.
+#[tauri::command]
+pub async fn get_compaction_policy(
+    app: tauri::AppHandle,
+    project: Option<String>,
+) -> Result<tauri_plugin_agent_tools::compaction_policy::Policy, String> {
+    let data = get_jan_data_folder_path(app);
+    tauri_plugin_agent_tools::compaction_policy::Policy::resolve(
+        Some(&data),
+        project.as_deref().map(std::path::Path::new),
+        None,
+    )
+    .map_err(|e| e.message().to_string())
+}
+
+/// Change the user's compaction policy (AH-076). Only the fields given are
+/// changed; the rest of the user's file is kept. Validated before writing.
+#[tauri::command]
+pub async fn set_compaction_policy(
+    app: tauri::AppHandle,
+    layer: tauri_plugin_agent_tools::compaction_policy::Layer,
+) -> Result<tauri_plugin_agent_tools::compaction_policy::Policy, String> {
+    use tauri_plugin_agent_tools::compaction_policy::{save_user, user_path, Layer, Policy};
+    let data = get_jan_data_folder_path(app);
+    let mut current = Layer::read(&user_path(&data)).map_err(|e| e.message().to_string())?;
+    if layer.auto.is_some() {
+        current.auto = layer.auto;
+    }
+    if layer.reserve_tokens.is_some() {
+        current.reserve_tokens = layer.reserve_tokens;
+    }
+    if layer.keep_recent.is_some() {
+        current.keep_recent = layer.keep_recent;
+    }
+    if layer.strategy.is_some() {
+        current.strategy = layer.strategy;
+    }
+    if layer.summary_max_tokens.is_some() {
+        current.summary_max_tokens = layer.summary_max_tokens;
+    }
+    save_user(&data, &current).map_err(|e| e.message().to_string())?;
+    Policy::resolve(Some(&data), None, None).map_err(|e| e.message().to_string())
+}
+
 /// Read one skill's raw SKILL.md (frontmatter included) for the editor.
 #[tauri::command]
 pub async fn agent_skill_read(project: String, name: String) -> Result<String, String> {

@@ -15,6 +15,7 @@ pub mod format;
 pub mod event_export;
 pub mod event_log;
 /// How a harness failure is classified: kind, retryability, audience (AH-009).
+pub mod compaction_policy;
 pub mod context_report;
 pub mod harness_error;
 pub mod hooks;
