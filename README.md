@@ -1,208 +1,155 @@
-# Jan - Open-source ChatGPT replacement
+# JAN
 
-<img width="2048" height="280" alt="github jan banner" src="https://github.com/user-attachments/assets/f3f87889-c133-433b-b250-236218150d3f" />
+A private, local-first AI workspace for your desktop: chat with models on your own computer, let an agent work on files and projects with your approval, and see exactly what it used and changed.
 
-<p align="center">
-  <strong>English</strong> ·
-  <a href="README.zh.md">中文</a> ·
-  <a href="README.ja.md">日本語</a>
-</p>
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-parallel-agents.png" alt="JAN Cowork with parallel agents and a live timeline" width="100%">
 
 <p align="center">
-  <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-  <img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/m/janhq/jan"/>
-  <img alt="Github Last Commit" src="https://img.shields.io/github/last-commit/janhq/jan"/>
-  <img alt="Github Contributors" src="https://img.shields.io/github/contributors/janhq/jan"/>
-  <img alt="GitHub closed issues" src="https://img.shields.io/github/issues-closed/janhq/jan"/>
-  <img alt="Discord" src="https://img.shields.io/discord/1107178041848909847?label=discord"/>
+  <a href="#install">Install</a> ·
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#a-visual-tour">Visual tour</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#build-from-source">Build from source</a>
 </p>
 
-<p align="center">
-  <a href="https://jan.ai/docs/desktop">Getting Started</a>
-  - <a href="https://discord.gg/Exe46xPMbK">Community</a>
-  - <a href="https://jan.ai/changelog">Changelog</a>
-  - <a href="https://github.com/janhq/jan/issues">Bug reports</a>
-</p>
+---
 
-Jan is bringing the best of open-source AI in an easy-to-use product. Download and run LLMs with **full control** and **privacy**.
+## What JAN is
 
-## This build is local-only
+JAN puts two ways of working side by side:
 
-This fork has had every service that reaches the network on its own removed.
-It does not phone home, and it will not fetch anything you did not ask it for.
+- **Chat** for questions, writing and documents. Conversations stay on your computer, can be grouped into projects, and can run side by side in a split view.
+- **Cowork** for tasks that touch files. An agent reads, writes and runs commands in a sandbox or a managed copy of your project, asks before it does anything you have not allowed, and ends every run with a plain summary of what happened, what it checked and what is left to review.
 
-**Removed**
+Everything is designed to be understandable without prior AI experience: plain-language approvals, a short first-run guide, and explanations of technical terms where they appear.
 
-- **Telemetry and analytics.** No PostHog, no product analytics, no consent
-  prompt, no analytics settings, and no `POSTHOG_KEY` / `POSTHOG_HOST` build
-  variables. Nothing counts what you do.
-- **Update checking.** No updater plugin and no update endpoint. The app never
-  asks whether a newer version exists — update it the way you installed it.
-- **Vendor services.** No `jan.ai` URLs, no documentation, release, repository,
-  community or issue-tracker links, and no vendor identification headers on
-  outbound provider requests. Downloads no longer pass through the
-  `apps.jan.ai` Hugging Face mirror, and the Flatpak manifest builds from a
-  local artifact instead of a hosted catalogue.
-- **The CLI's self-updater and its install id.** `jan update` and the TUI's
-  `/update` are gone, along with the anonymous identity the update check
-  carried. `jan --version` still reports a version — that is not a check.
+### Local-only by design
 
-**You bring your own models.** There is no model catalogue and no
-downloader. Point the app at models already on your machine: add a local GGUF
-through **Settings → Model Providers → llama.cpp → Import**, or an MLX model
-through the MLX provider. Handing an import a URL is refused rather than
-fetched.
+This build does not phone home. There is no telemetry, no analytics, no update check, no model catalogue and no downloader. Nothing reaches the network until you set it up yourself:
 
-First run ends on a page that says so: it lists whatever local models it can
-see and lets you start on one, or finish without any and add one later.
-
-**What can still reach the network, only if you set it up.** Nothing below is
-configured out of the box, and nothing happens until you enter a credential:
-
-| Capability | Reaches the network when |
+| Capability | Reaches the network only when |
 |---|---|
-| Cloud model providers | You enter your own API key for one |
-| MCP servers | You add a server that is not on localhost |
-| Web search | You enable it and supply a key |
+| Cloud model providers | You add your own API key for one |
+| MCP servers | You add a server that is not on your machine |
+| Web search | You turn it on and supply a key |
 
-Leave them alone and the app makes no outbound request at all — not at
-startup, not while you use it.
+Automated guards in `web-app/src/__tests__/localOnly.test.ts` and `scripts/local-only-guard.mjs` fail the build if telemetry, update checks, vendor services or download sources are reintroduced.
 
-Guards live in `web-app/src/__tests__/localOnly.test.ts`, and cover the whole
-repository rather than just the web app: the suite fails if an analytics SDK,
-an update check, a usage identity, a `jan.ai` URL, a download mirror, a
-download extension, or a hosted packaging source is reintroduced.
+## Install
 
+This repository does not publish installers. Build JAN from source (below); the result is a normal desktop app for Windows, macOS or Linux.
 
-## Installation
+**You bring your own models.** Use a GGUF model file you already have (Settings → Models → llama.cpp → Import), an MLX model on Apple silicon, or a cloud provider with your own key. Nothing is downloaded for you.
 
-<p align="center">
-  <table>
-    <tr>
-      <!-- Microsoft Store Badge -->
-      <td align="center" valign="middle">
-        <a href="https://apps.microsoft.com/detail/xpdcnfn5cpzlqb">
-          <img height="60"
-            width="200"
-               alt="Get it from Microsoft Store"
-               src="https://get.microsoft.com/images/en-us%20dark.svg"/>
-        </a>
-      </td>
-      <!-- Spacer -->
-      <td width="20"></td>
-      <!-- Flathub Official Badge -->
-      <td align="center" valign="middle">
-        <a href="https://flathub.org/apps/ai.jan.Jan">
-          <img height="60"
-            width="200"
-               alt="Get it on Flathub"
-               src="https://flathub.org/assets/badges/flathub-badge-en.svg"/>
-        </a>
-      </td>
-    </tr>
-  </table>
+## Getting started
+
+1. **Open JAN.** The first-run guide asks what you want to do — ask a question, work with documents, or build or change a project — and explains the difference between local and cloud processing. You can skip the guide at any time and reopen it from Settings → General.
+2. **Choose a model.** Import a local model or add a provider in **Models**. Each model shows whether it is loaded, and the fit indicator separates what was *measured on this device* from what is only *estimated*. Estimates never block you from trying a model.
+3. **Start a chat.** Type in the composer and press Enter. Attach files with **+**. Open **What JAN is using** in the conversation header to see the model, instructions, attachments, memory and tools that apply to the conversation.
+4. **Try Cowork for file work.** Open **Cowork** from the Workspace sidebar, attach a project folder or work in the session sandbox, and describe the task. When the agent wants to change a file or run a command you have not allowed, JAN shows what it wants to do, the files involved, the scope of the permission and what happens if you deny it.
+5. **Review the result.** The run summary explains what happened, where the result is, which commands were actually run and checked, and what is still unresolved. The **Changes** panel shows real diffs; checkpoints let you restore earlier states.
+
+## A visual tour
+
+Screenshots of the real app with demo content. Phone layouts are the same app in a 390×844 window.
+
+### Chat
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-chat-conversation.png" alt="A conversation with a formatted table and code" width="100%">
+Replies render tables, lists and code, and everything stays on your computer.
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-split-conversations.png" alt="Two independent conversations side by side" width="100%">
+**Split conversations.** Two chats side by side, each with its own model, draft and stream.
+
+### Cowork: agents that work on your files
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-managed-worktree-review.png" alt="Reviewing an agent's changes from a managed worktree" width="100%">
+**Managed worktrees and review.** The agent works in an isolated copy of your project. You review each file and hunk, then apply what you want or reject it.
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-parallel-agents.png" alt="A team of agents working in parallel with a live timeline" width="100%">
+**Parallel agents.** Explorer, security, reviewer and planner roles work at the same time, and the timeline shows each dispatch as it happens.
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-cowork-tool-call-timeline.png" alt="The execution timeline with tool call details" width="100%">
+**Tool call history.** Every call is recorded with its phases, approvals, duration, input and output, and the diff it produced.
+
+### Context and token usage
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-what-jan-is-using.png" alt="The What JAN is using panel" width="100%">
+**What JAN is using.** See the model, instructions, memory and tools that apply to a conversation, and what was verified in the request that was actually sent.
+
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-message-token-usage.png" alt="Token usage for one message" width="100%">
+**Token usage.** Input, cached input and output for each message, marked "Not reported" when a provider does not report a figure.
+
+### Phone-sized windows
+
+<p>
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-phone-chat.png" alt="A conversation on a phone-sized window" width="240">
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-phone-split-switch.png" alt="Switching between split panes on a phone-sized window" width="240">
+<img src="https://gist.githubusercontent.com/Jozkah/47ba31b0bf01179589eaa2daa1dd9268/raw/c5578ef64d07db5fdcb238916c166c4ef302c829/jan-phone-navigation.png" alt="The navigation sheet on a phone-sized window" width="240">
 </p>
-
-The easiest way to get started is by downloading one of the following versions for your respective operating system:
-
-<table>
-  <tr>
-    <td><b>Platform</b></td>
-    <td><b>Download</b></td>
-  </tr>
-  <tr>
-    <td><b>Windows</b></td>
-    <td><a href='https://app.jan.ai/download/latest/win-x64'>jan.exe</a></td>
-  </tr>
-  <tr>
-    <td><b>macOS</b></td>
-    <td><a href='https://app.jan.ai/download/latest/mac-universal'>jan.dmg</a></td>
-  </tr>
-  <tr>
-    <td><b>Linux (deb)</b></td>
-    <td><a href='https://app.jan.ai/download/latest/linux-amd64-deb'>jan.deb</a></td>
-  </tr>
-  <tr>
-    <td><b>Linux (AppImage)</b></td>
-    <td><a href='https://app.jan.ai/download/latest/linux-amd64-appimage'>jan.AppImage</a></td>
-  </tr>
-  <tr>
-    <td><b>Linux (Arm64)</b></td>
-    <td><a href='https://github.com/janhq/jan/issues/4543#issuecomment-4142429792'>How-to</a></td>
-  </tr>
-</table>
-
-
-Download from [jan.ai](https://jan.ai/) or [GitHub Releases](https://github.com/janhq/jan/releases).
 
 ## Features
 
-- **Local AI Models**: Download and run LLMs (Llama, Gemma, Qwen, GPT-oss etc.) from HuggingFace
-- **Cloud Integration**: Connect to GPT models via OpenAI, Claude models via Anthropic, Mistral, Groq, MiniMax, and others
-- **Custom Assistants**: Create specialized AI assistants for your tasks
-- **OpenAI-Compatible API**: Local server at `localhost:1337` for other applications
-- **Model Context Protocol**: MCP integration for agentic capabilities
-- **Privacy First**: Everything runs locally when you want it to
+### The workspace
+- One layout everywhere: a rail for **Workspace, Library, Models, Tools, Search, System and Settings**, a resizable sidebar for the current area, a context bar for the current page, and a status bar that shows loaded models, runs in progress, waiting approvals and the local API server.
+- Works at any window size: below 1024px the navigation moves into a sheet, dialogs become bottom sheets on phones, and touch targets are at least 44px.
+- Light, dark and system themes, with an accent colour you choose: Vermilion, Ink, Moss or any hex value. Text and focus colours are adjusted for contrast in both themes; success, warning and error colours never change.
 
-### Workspace edition highlights
+### Chat
+- Streaming replies with Stop, Retry, message editing and deletion, attachments, temporary chats, and per-chat model and reasoning settings.
+- **Split conversations**: two conversations side by side, each with its own model, draft, attachments, approvals and stream.
+- **Projects** group conversations with shared instructions and files.
+- **What JAN is using** shows what applies to a conversation and distinguishes what is available, selected, and actually sent.
 
-This fork extends Jan with a more complete desktop workspace for coding and
-long-running agent tasks:
+### Cowork
+- Agent runs in a session sandbox or a managed worktree, with Autonomous, Ask-before-changes and review modes.
+- Output panel with **Preview, Code, Changes, Activity and Timeline**; per-hunk review of proposals; checkpoints with safe restore (a safety checkpoint is taken first).
+- Plain-language approvals and run summaries; steering a running agent; sub-agents and background jobs with a full execution record.
 
-- **Unified workspace rail**: Open Files, Code, Changes, and Activity from one
-  discoverable toolbar without leaving the conversation.
-- **Read-only code workspace**: Browse project files, open referenced files from
-  tool output or assistant messages, inspect syntax-highlighted source, and send
-  only the selected code back into the conversation.
-- **Git working-tree review**: Review modified and untracked files as real diffs
-  in the Changes panel, including safe handling for symlinks and inaccessible
-  paths.
-- **Background activity tracking**: Follow running shell jobs from the Activity
-  panel, status chip, or conversation; inspect their state and cancel individual
-  jobs when needed.
-- **Search across Settings**: Find settings globally, see results grouped by
-  section, and jump directly to the relevant control with keyboard focus.
-- **Temporary chats**: Start conversations that are not saved automatically,
-  then explicitly keep or discard them, with protection against accidentally
-  leaving an unfinished temporary chat.
-- **Per-chat model controls**: Override the model and reasoning effort for an
-  individual conversation and see the selected reasoning level at a glance.
-- **Project-aware instructions**: Agent sessions automatically use the active
-  project's `JAN.md` guidance while keeping project file access isolated.
-- **Clickable local file references**: Open safe `@path` references from
-  assistant messages directly in the Code panel.
-- **macOS window polish**: Keeps the Jan header and navigation clear of the
-  native close, minimize, and zoom controls.
+### Models
+- Local llama.cpp models (and MLX on Apple silicon), plus cloud providers with your own keys.
+- Evidence-based compatibility: a real on-device test, measured results kept per settings, and honest estimates that never block you.
+- A preferred default model, model settings in an inspector, and a status for every model.
 
-## Build from Source
+### Tools, memory and permissions
+- MCP servers with validated setup, clear connection states and trust bound to each server's configuration.
+- Skills and plugins, including project skills.
+- Memory scoped to a conversation, a project or all conversations, with proposals you approve and conflicts you settle.
+- A Permissions page listing every standing grant with a Revoke button, plus an audit of recent decisions.
 
-For those who enjoy the scenic route:
+### For developers
+- OpenAI-compatible local API server (default port 1337).
+- `jan` command-line agent and TUI built from the same core.
+
+## Build from source
 
 ### Prerequisites
 
-- Node.js ≥ 20.0.0
-- Yarn ≥ 4.5.3
-- Make ≥ 3.81
-- Rust (for Tauri)
-- (macOS Apple Silicon only) MetalToolchain `xcodebuild -downloadComponent MetalToolchain`
+- Node.js 20 or newer and Yarn 4.5.3 (`corepack enable`)
+- Rust (stable) for Tauri
+- Make
+- Windows: Visual Studio 2022 Build Tools (MSVC x64 and Windows SDK), LLVM (`clang-cl`), Ninja and CMake; run `make` from Git Bash
+- macOS on Apple silicon: the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`)
+- CUDA Toolkit only for CUDA engine builds
 
-### Run with Make
+### Run in development
 
 ```bash
-git clone https://github.com/janhq/jan
+git clone <this repository>
 cd jan
 make dev
 ```
 
-This handles everything: installs dependencies, builds core components, and launches the app.
+`make dev` installs dependencies, builds the core packages and the engine, and launches the app.
 
-**Available make targets:**
-- `make dev` - Full development setup and launch
-- `make build` - Production build
-- `make test` - Run tests and linting
-- `make clean` - Delete everything and start fresh
+### Other targets
 
-### Manual Commands
+- `make build` — production build
+- `make test` — tests and linting
+- `make build-cli` — the `jan` command-line agent
+- `make clean` — remove build output
+
+Or with Yarn directly:
 
 ```bash
 yarn install
@@ -210,71 +157,28 @@ yarn build
 yarn dev
 ```
 
-### Building on Windows
+### Engine variants
 
-Run `make dev` from **Git Bash** (installed with Git for Windows) — make dispatches its recipes through `sh`, so a plain `cmd.exe` won't work.
-
-You do **not** need a "Native Tools Command Prompt for VS 2022". The bundled llama.cpp engine builds with Ninja + `clang-cl`, and `clang-cl` locates the MSVC toolchain and Windows SDK on its own. What has to be installed (and on `PATH` for `ninja`/`clang-cl`/`cmake`):
-
-- Visual Studio 2022 Build Tools (MSVC x64 workload + Windows SDK)
-- LLVM (provides `clang-cl`)
-- Ninja
-- CMake
-- CUDA Toolkit — only for `JAN_ENGINE_VARIANT=cuda12`/`cuda13` builds
-
-Engine variants are picked with `JAN_ENGINE_VARIANT` (tokens: `cpu`, `vulkan`, `metal`, `cuda12`, `cuda13`, `hip`/`rocm`, joined by `-`), e.g.:
+Choose the llama.cpp engine build with `JAN_ENGINE_VARIANT` (tokens `cpu`, `vulkan`, `metal`, `cuda12`, `cuda13`, `hip`/`rocm`, joined with `-`):
 
 ```bash
 make dev JAN_ENGINE_VARIANT=cuda13
 ```
 
-**"nvcc fatal : Could not open output file ...fattn-...cu.obj.d"** during `tauri-plugin-llamacpp(build)` means the build path crossed Windows' 260-character `MAX_PATH` limit — nvcc does not honor the long-path opt-in. The build script now detects this and automatically relocates the llama.cpp build tree to a short directory under `%LOCALAPPDATA%\jan-engine`. If you hit path-length errors anyway, set `JAN_ENGINE_BUILD_DIR` to a short path (e.g. `C:\jb`) or move the checkout closer to the drive root.
+On Windows, if an engine build fails with an nvcc "Could not open output file" error, the build path is too long: the build script relocates it automatically, or set `JAN_ENGINE_BUILD_DIR` to a short path such as `C:\jb`.
 
-## System Requirements
+## Documentation in this repository
 
-**Minimum specs for a decent experience:**
-
-- **macOS**: 13.6+ (8GB RAM for 3B models, 16GB for 7B, 32GB for 13B)
-- **Windows**: 10+ with GPU support for NVIDIA/AMD/Intel Arc
-- **Linux**: Most distributions work, GPU acceleration available
-
-For detailed compatibility, check our [installation guides](https://jan.ai/docs/desktop/mac).
-
-## Troubleshooting
-
-If things go sideways:
-
-1. Check our [troubleshooting docs](https://jan.ai/docs/desktop/troubleshooting)
-2. Copy your error logs and system specs
-3. Ask for help in our [Discord](https://discord.gg/FTk2MvZwJH) `#🆘|jan-help` channel
-
-
-## Contributing
-
-Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full spiel.
-
-## Links
-
-- [Documentation](https://jan.ai/docs) - The manual you should read
-- [API Reference](https://jan.ai/api-reference) - For the technically inclined
-- [Changelog](https://jan.ai/changelog) - What we broke and fixed
-- [Discord](https://discord.gg/FTk2MvZwJH) - Where the community lives
-
-## Contact
-
-- **Bugs**: [GitHub Issues](https://github.com/janhq/jan/issues)
-- **Business**: hello@jan.ai
-- **Jobs**: hr@jan.ai
-- **General Discussion**: [Discord](https://discord.gg/FTk2MvZwJH)
+- `docs/ATELIER_IMPLEMENTATION.md` — the design system, shell and feature map
+- `docs/BEGINNER_WORKFLOWS_HANDOFF.md` — onboarding, permissions, results and model-fit behaviour
+- `docs/IMPLEMENTATION_BASELINE.md` — contracts the interface relies on
+- `docs/AGENT_HARNESS_FEATURE_REGISTRY.md` — the agent capability registry
+- `CONTRIBUTING.md` — how to contribute
 
 ## License
 
-Apache 2.0 - Because sharing is caring.
+Apache 2.0.
 
 ## Acknowledgements
 
-Built on the shoulders of giants:
-
-- [Llama.cpp](https://github.com/ggerganov/llama.cpp)
-- [Tauri](https://tauri.app/)
-- [Scalar](https://github.com/scalar/scalar)
+Built on [llama.cpp](https://github.com/ggerganov/llama.cpp), [Tauri](https://tauri.app/) and [Scalar](https://github.com/scalar/scalar).
