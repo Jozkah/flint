@@ -470,9 +470,23 @@ async fn connect_in(
                 };
                 let launch = crate::core::mcp::launch::ConfinedMcpLaunch::prepare(&params, build)
                     .map_err(ConnectError::Failed)?;
-                let (process, _stderr) = launch
-                    .spawn(Stdio::null())
+                // AH-140: stderr is kept -- line by line into the server's own
+                // log -- rather than discarded, so "why did it stop" has an
+                // answer from the CLI too.
+                let (process, stderr) = launch
+                    .spawn(Stdio::piped())
                     .map_err(|e| ConnectError::Failed(format!("failed to spawn '{name}': {e}")))?;
+                if let Some(stderr) = stderr {
+                    let server = name.to_string();
+                    let folder = data_folder.to_path_buf();
+                    tokio::spawn(async move {
+                        use tokio::io::AsyncBufReadExt;
+                        let mut lines = tokio::io::BufReader::new(stderr).lines();
+                        while let Ok(Some(line)) = lines.next_line().await {
+                            crate::core::mcp::server_log::append(&folder, &server, &line);
+                        }
+                    });
+                }
                 RunningServiceEnum::NoInit(().serve(process).await.map_err(|e| {
                     ConnectError::Failed(format!("failed to connect to '{name}': {e}"))
                 })?)

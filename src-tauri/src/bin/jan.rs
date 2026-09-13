@@ -471,6 +471,29 @@ enum AgentCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Write this project's agents, skills, commands and policy as one bundle (AH-145)
+    BundleExport {
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Where to write the bundle (JSON).
+        out: String,
+    },
+    /// Bring a bundle's agents, skills, commands and policy into this project (AH-145)
+    BundleImport {
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// The bundle file.
+        file: String,
+        /// Replace components that exist with different content.
+        #[arg(long)]
+        overwrite: bool,
+        /// Apply a policy that allows more than the project does now.
+        #[arg(long)]
+        accept_widening: bool,
+        /// Check and report, writing nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Import agent definitions written for OpenCode or Qwen Code into Jan's
     /// own subagent format (AH-118, AH-119)
     ImportAgents {
@@ -819,6 +842,14 @@ enum McpCommands {
     Disable {
         /// Server name
         name: String,
+    },
+    /// Print a server's own stderr log, newest last (AH-140)
+    Logs {
+        /// Server name
+        name: String,
+        /// How many lines
+        #[arg(long, default_value_t = 100)]
+        lines: usize,
     },
 }
 
@@ -1535,6 +1566,39 @@ async fn handle_agent(cmd: AgentCommands) {
                     }
                 })
         }
+        AgentCommands::BundleExport { project, out } => {
+            use app_lib::core::agent::agent_bundle;
+            agent_bundle::export(std::path::Path::new(&project)).and_then(|(bundle, report)| {
+                let text = serde_json::to_string_pretty(&bundle).unwrap_or_default();
+                let tmp = format!("{out}.partial");
+                std::fs::write(&tmp, format!("{text}\n"))
+                    .and_then(|()| std::fs::rename(&tmp, &out))
+                    .map_err(|e| {
+                        let _ = std::fs::remove_file(&tmp);
+                        HarnessError::new(
+                            tauri_plugin_agent_tools::harness_error::ErrorKind::Io,
+                            format!("the bundle could not be written to {out}: {e}"),
+                        )
+                    })?;
+                println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
+                Ok(())
+            })
+        }
+        AgentCommands::BundleImport { project, file, overwrite, accept_widening, dry_run } => {
+            use app_lib::core::agent::agent_bundle;
+            std::fs::read_to_string(&file)
+                .map_err(|e| {
+                    HarnessError::new(
+                        tauri_plugin_agent_tools::harness_error::ErrorKind::NotFound,
+                        format!("{file} could not be read: {e}"),
+                    )
+                })
+                .and_then(|text| agent_bundle::parse(&text))
+                .and_then(|bundle| {
+                    agent_bundle::import(std::path::Path::new(&project), &bundle, overwrite, accept_widening, dry_run)
+                })
+                .map(|report| println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default()))
+        }
         AgentCommands::ImportAgents {
             path,
             scope,
@@ -2240,6 +2304,20 @@ async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
             let config = build_mcp_config(command, args, env, &r#type, url, header, active)?;
             mcp::upsert_server(&name, &config)?;
             println!("saved server '{name}' to mcp_config.json");
+            Ok(())
+        }
+        McpCommands::Logs { name, lines } => {
+            let found = app_lib::core::mcp::server_log::tail(
+                &app_lib::core::app::commands::resolve_jan_data_folder(),
+                &name,
+                lines,
+            );
+            if found.is_empty() {
+                println!("'{name}' has not printed anything");
+            }
+            for line in found {
+                println!("{line}");
+            }
             Ok(())
         }
         McpCommands::Prompts { name } => {

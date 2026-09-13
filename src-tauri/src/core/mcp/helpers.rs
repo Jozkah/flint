@@ -730,6 +730,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
         // receiving SIGPIPE and to capture diagnostic output.
         if let Some(mut stderr_stream) = stderr {
             let stderr_name = name.clone();
+            let log_folder = crate::core::app::commands::resolve_jan_data_folder();
             tokio::spawn(async move {
                 let mut buf = [0u8; 1024];
                 while let Ok(n) = stderr_stream.read(&mut buf).await {
@@ -740,6 +741,12 @@ async fn schedule_mcp_start_task<R: Runtime>(
                         for line in text.lines() {
                             if !line.trim().is_empty() {
                                 log_mcp_stderr_line(&stderr_name, line);
+                                // AH-140: and into the server's own log.
+                                crate::core::mcp::server_log::append(
+                                    &log_folder,
+                                    &stderr_name,
+                                    line,
+                                );
                             }
                         }
                     }

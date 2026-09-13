@@ -8,6 +8,7 @@ import {
   IconPlus,
   IconTrash,
   IconCodeCircle,
+  IconFileText,
 } from '@tabler/icons-react'
 import {
   useMCPServers,
@@ -19,6 +20,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react'
 import AddEditMCPServer from '@/containers/dialogs/AddEditMCPServer'
 import DeleteMCPServerConfirm from '@/containers/dialogs/DeleteMCPServerConfirm'
 import EditJsonMCPserver from '@/containers/dialogs/EditJsonMCPserver'
+import McpServerLogDialog from '@/containers/dialogs/McpServerLogDialog'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { twMerge } from 'tailwind-merge'
@@ -124,6 +126,9 @@ function MCPServersDesktop() {
   const [currentConfig, setCurrentConfig] = useState<
     MCPServerConfig | undefined
   >(undefined)
+
+  // Per-server log dialog state (AH-140)
+  const [logServer, setLogServer] = useState<string | null>(null)
 
   // Delete confirmation dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -846,6 +851,22 @@ function MCPServersDesktop() {
                           <Button
                             size="icon-xs"
                             variant="ghost"
+                            onClick={() => setLogServer(key)}
+                            title={t('mcp-servers:serverLog.title', {
+                              serverName: key,
+                            })}
+                            aria-label={t('mcp-servers:serverLog.title', {
+                              serverName: key,
+                            })}
+                          >
+                            <IconFileText
+                              size={18}
+                              className="text-muted-foreground"
+                            />
+                          </Button>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
                             onClick={() => handleEdit(key)}
                             title={t('mcp-servers:editServer')}
                           >
@@ -892,6 +913,12 @@ function MCPServersDesktop() {
         editingKey={editingKey}
         initialData={currentConfig}
         onSave={handleSaveServer}
+      />
+
+      <McpServerLogDialog
+        open={logServer !== null}
+        onOpenChange={(o) => !o && setLogServer(null)}
+        serverName={logServer ?? ''}
       />
 
       {/* Delete confirmation dialog */}

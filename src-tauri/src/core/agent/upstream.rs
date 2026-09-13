@@ -709,6 +709,18 @@ pub(crate) async fn execute_mcp_tool_calls(
             continue;
         };
 
+        // AH-144: this server's own budget, checked before its arguments are
+        // sent -- a refusal after the call has already spent what it refuses.
+        let budget = crate::core::mcp::budget::ServerBudget::for_server(
+            &crate::core::app::commands::resolve_jan_data_folder(),
+            server_name,
+        );
+        if let Err(refusal) = crate::core::mcp::budget::check(server_name, &budget) {
+            results.push((tool_call_id, format!("ERROR: {refusal}")));
+            continue;
+        }
+        let server_cap = budget.result_cap(tool_output_cap);
+
         let tool_call = service.call_tool(CallToolRequestParam {
             name: tool_name.clone().into(),
             arguments: Some(args_map),
@@ -725,7 +737,14 @@ pub(crate) async fn execute_mcp_tool_calls(
         let tool_result_string = match result {
             // Same cap as the desktop path: this string is appended to the agent's
             // message history, so an unbounded result would blow the context here too.
-            Ok(res) => mcp_call_result_to_string(&truncate_tool_result(&res, tool_output_cap)),
+            Ok(res) => {
+                let capped = truncate_tool_result(&res, server_cap);
+                crate::core::mcp::budget::charge(
+                    server_name,
+                    crate::core::mcp::budget::result_chars(&capped),
+                );
+                mcp_call_result_to_string(&capped)
+            }
             Err(e) => format!("ERROR: {e}"),
         };
 

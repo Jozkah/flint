@@ -1535,7 +1535,7 @@ pub fn cli_policy_import(
     let root = resolve_project_root(project);
     let path = agent_dir_for(&root).join("agent.toml");
     let existing = std::fs::read_to_string(&path).unwrap_or_default();
-    let rewritten = replace_tools_section(&existing, &to_toml(&document));
+    let rewritten = crate::core::agent::project::replace_tools_section(&existing, &to_toml(&document));
     std::fs::create_dir_all(agent_dir_for(&root)).map_err(|e| {
         HarnessError::new(ErrorKind::Io, format!("the project's config directory is not writable: {e}"))
             .at(Stage::Persistence)
@@ -1550,38 +1550,6 @@ pub fn cli_policy_import(
 /// Put `section` where the file's `[tools]` block was, keeping everything
 /// else exactly as it is: a policy import must not rewrite a project's model,
 /// budget or skills.
-fn replace_tools_section(existing: &str, section: &str) -> String {
-    let mut out = String::new();
-    let mut skipping = false;
-    let mut replaced = false;
-    for line in existing.lines() {
-        let heading = line.trim_start().starts_with('[') && line.trim_end().ends_with(']');
-        if heading {
-            if line.trim() == "[tools]" {
-                out.push_str(section);
-                // A blank line before whatever section follows, so the file
-                // reads the way the user wrote it.
-                out.push('\n');
-                skipping = true;
-                replaced = true;
-                continue;
-            }
-            skipping = false;
-        }
-        if !skipping {
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    if !replaced {
-        if !out.is_empty() && !out.ends_with('\n') {
-            out.push('\n');
-        }
-        out.push_str(section);
-    }
-    out
-}
-
 /// Send this run's canonical events somewhere as they happen (AH-183).
 ///
 /// `-` is stdout, anything else a file that is created or truncated. The

@@ -75,6 +75,10 @@ export class TauriMCPService extends DefaultMCPService {
     return invoke('get_server_summaries')
   }
 
+  async getServerLog(serverName: string, lines?: number): Promise<string[]> {
+    return invoke('get_mcp_server_log', { name: serverName, lines })
+  }
+
   async getConnectedServers(): Promise<string[]> {
     return window.core?.api?.getConnectedServers()
   }

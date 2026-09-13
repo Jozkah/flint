@@ -98,5 +98,11 @@
     "clearFailed": "Could not clear credentials for {{serverName}}",
     "renew": "Renew session",
     "expiredAgo": "expired {{duration}} ago"
+  },
+  "serverLog": {
+    "title": "Log for MCP server {{serverName}}",
+    "description": "What this server printed to its error stream, newest last. Secrets are removed before anything is written.",
+    "empty": "This server has not printed anything.",
+    "refresh": "Refresh"
   }
 }

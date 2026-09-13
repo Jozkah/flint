@@ -59,6 +59,8 @@ export interface MCPService {
   getToolsForServers(serverNames: string[]): Promise<MCPTool[]>
   /** Return name/capabilities/description for all connected servers. */
   getServerSummaries(): Promise<ServerSummary[]>
+  /** One server's own stderr log, scrubbed and bounded, newest last (AH-140). */
+  getServerLog(serverName: string, lines?: number): Promise<string[]>
   getConnectedServers(): Promise<string[]>
   /**
    * `maxOutputChars` is a per-result character budget derived from the active

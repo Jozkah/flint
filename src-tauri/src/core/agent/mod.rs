@@ -7,6 +7,7 @@
 //! one implementation. This module owns orchestration only.
 
 // Tauri IPC surface for the desktop agent; the CLI drives the loop directly.
+pub mod agent_bundle;
 pub mod agent_import;
 pub mod bundle_import;
 pub mod checkpoint;

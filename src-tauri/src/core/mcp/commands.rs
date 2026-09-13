@@ -449,6 +449,16 @@ pub async fn get_prompt(
         .map_err(|e| format!("prompts/get failed: {e}"))
 }
 
+/// One server's own log, newest last (AH-140).
+#[tauri::command]
+pub async fn get_mcp_server_log(name: String, lines: Option<usize>) -> Result<Vec<String>, String> {
+    Ok(crate::core::mcp::server_log::tail(
+        &crate::core::app::commands::resolve_jan_data_folder(),
+        &name,
+        lines.unwrap_or(200).min(2000),
+    ))
+}
+
 #[tauri::command]
 pub async fn mcp_trusted_servers() -> Result<Vec<String>, String> {
     Ok(tauri_plugin_agent_tools::mcp_trust::trusted(
@@ -588,6 +598,18 @@ pub async fn call_tool(
             return Err(refusal.message());
         }
 
+        // AH-144: the server's own budget, before its arguments are sent.
+        let budget = crate::core::mcp::budget::ServerBudget::for_server(
+            &crate::core::app::commands::resolve_jan_data_folder(),
+            srv_name,
+        );
+        if let Err(refusal) = crate::core::mcp::budget::check(srv_name, &budget) {
+            cleanup_cancellation_token(&state, &cancellation_token).await;
+            return Err(refusal);
+        }
+        let server_cap = budget.result_cap(tool_output_cap);
+        let charged_server = srv_name.to_string();
+
         // Call the tool with timeout and cancellation support
         let tool_call = service.call_tool(CallToolRequestParam {
             name: tool_name.clone().into(),
@@ -636,7 +658,14 @@ pub async fn call_tool(
         // Cap here rather than at each caller: this is the single point every
         // desktop MCP tool result passes through on its way into conversation
         // history, so an unbounded result can never reach the model.
-        return result.map(|res| truncate_tool_result(&res, tool_output_cap));
+        return result.map(|res| {
+            let capped = truncate_tool_result(&res, server_cap);
+            crate::core::mcp::budget::charge(
+                &charged_server,
+                crate::core::mcp::budget::result_chars(&capped),
+            );
+            capped
+        });
     }
 
     // No server had the tool — check if it's because of transport errors

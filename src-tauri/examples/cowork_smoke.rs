@@ -938,6 +938,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_mcp_settings,
     },
     Scenario {
+        name: "mcp-server-log-is-viewable-in-the-app",
+        run: scenario_mcp_server_log,
+    },
+    Scenario {
         name: "model-picker-search",
         run: scenario_model_picker,
     },
@@ -1586,6 +1590,69 @@ fn scenario_mcp_settings(ctx: &Ctx) -> ScenarioResult {
         switches.as_u64().unwrap_or(0) > 0,
         "no MCP enable/disable switches rendered"
     );
+    Ok(())
+}
+
+/// AH-140: a server's own log, opened from its row in MCP settings.
+///
+/// The active web-search fixture prints one stderr line with a
+/// credential-shaped value when it starts. The dialog must show that line,
+/// with the value redacted, for that server -- read from the server's own log
+/// file, not the application log.
+fn scenario_mcp_server_log(ctx: &Ctx) -> ScenarioResult {
+    ctx.goto("/settings/mcp-servers")?;
+    ctx.wait_until(
+        "MCP server list",
+        "return document.body.innerText.includes('MCP Servers');",
+        Duration::from_secs(30),
+    )?;
+    let label = format!("Log for MCP server {SMOKE_MCP_WEB_SEARCH}");
+    // The server starts asynchronously; its line may take a moment to land.
+    let deadline = Instant::now() + Duration::from_secs(45);
+    loop {
+        ctx.click_matching("button", &label)?;
+        let shown = ctx.eval_string(
+            "const d = document.querySelector('[role=\"dialog\"]');
+             return d ? d.innerText : '';",
+        )?;
+        if shown.contains("smoke web search ready") {
+            println!("      dialog: {}", shown.replace('\n', " | "));
+            ensure!(
+                !shown.contains("AAAABBBB"),
+                "the credential was shown verbatim: {shown}"
+            );
+            ensure!(
+                shown.to_lowercase().contains("[redacted]"),
+                "the credential was not marked redacted: {shown}"
+            );
+            ensure!(
+                shown.contains(&label),
+                "the dialog is not titled for that server: {shown}"
+            );
+            break;
+        }
+        ensure!(
+            Instant::now() < deadline,
+            "the server's line never appeared in its log dialog; last dialog text: {shown}"
+        );
+        ctx.eval_detached(
+            "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));",
+        )?;
+        std::thread::sleep(Duration::from_millis(1500));
+    }
+    // A server that has printed nothing says so, rather than showing an empty box.
+    ctx.eval_detached(
+        "document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));",
+    )?;
+    std::thread::sleep(Duration::from_millis(500));
+    let quiet = format!("Log for MCP server {SMOKE_MCP_USER_SERVER}");
+    ctx.click_matching("button", &quiet)?;
+    ctx.wait_until(
+        "the empty-log message for a server that never ran",
+        "const d = document.querySelector('[role=\"dialog\"]');
+         return !!d && d.innerText.includes('has not printed anything');",
+        Duration::from_secs(15),
+    )?;
     Ok(())
 }
 

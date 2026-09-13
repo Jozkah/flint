@@ -38,6 +38,11 @@ PROMPT = {
     ],
 }
 
+# AH-140: a line on stderr, so a server's own log has something real in it,
+# including a secret the harness must not write down.
+sys.stderr.write("fixture ready token=sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJ\n")
+sys.stderr.flush()
+
 for line in sys.stdin:
     line = line.strip()
     if not line:

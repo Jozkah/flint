@@ -4961,14 +4961,20 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-136"
       ],
       "owner": "lane-07-mcp-skills-plugins",
       "files": [
-        "src-tauri/src/core/mcp/helpers.rs"
+        "src-tauri/examples/cowork_smoke.rs",
+        "src-tauri/src/core/cli/mcp.rs",
+        "src-tauri/src/core/mcp/commands.rs",
+        "src-tauri/src/core/mcp/helpers.rs",
+        "src-tauri/src/core/mcp/server_log.rs",
+        "web-app/src/containers/dialogs/McpServerLogDialog.tsx",
+        "web-app/src/routes/settings/mcp-servers.tsx"
       ],
       "securityImpact": "low",
       "acceptanceCriteria": [
@@ -4979,10 +4985,14 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/examples/cowork_smoke.rs",
+        "src-tauri/src/core/mcp/server_log.rs",
+        "web-app/src/containers/dialogs/__tests__/McpServerLogDialog.test.tsx"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Server stderr goes to the application logger with no per-server view."
+      "auditNote": "Server stderr goes to the application logger with no per-server view. 2026-09-13 (Phase 6): implemented. Per-server logs under <data>/mcp-logs/<sha256(name)[..24]>.log, written by the desktop stderr pump and by the CLI (which previously discarded stderr), scrubbed, bounded, rotating at 512 KB. Viewable in the app from each server's row in MCP settings (dialog, keyboard-reachable, labelled) and via `jan cli mcp logs`. Proven in the real desktop app by scenario mcp-server-log-is-viewable-in-the-app and by a real CLI run whose server banner's token was redacted in the log."
     },
     {
       "id": "AH-141",
@@ -5084,13 +5094,16 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-017"
       ],
       "owner": "lane-07-mcp-skills-plugins",
       "files": [
+        "src-tauri/src/core/agent/upstream.rs",
+        "src-tauri/src/core/mcp/budget.rs",
+        "src-tauri/src/core/mcp/commands.rs",
         "src-tauri/src/core/mcp/truncate.rs"
       ],
       "securityImpact": "medium",
@@ -5102,10 +5115,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/mcp/budget.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "Truncation is global, not per server, and is not budget-aware."
+      "auditNote": "Truncation is global, not per server, and is not budget-aware. 2026-09-13 (Phase 6): implemented. mcp_config.json server entries may declare budget.maxResultChars (narrows, never widens, the global cap) and budget.maxSessionChars (bounds a server's total output this process session, checked before arguments are sent, refused with typed budget_exhausted naming the server, other servers unaffected). Token cost is an estimate (chars/4) and labelled as one. Applied on both the agent/CLI path and the desktop call_tool path. The ledger is per process session and resets on restart, stated in the refusal. Proven by a real CLI run whose third call to a real stdio MCP server was refused at 28 of 20 characters."
     },
     {
       "id": "AH-145",
@@ -5113,7 +5128,7 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-115",
@@ -5121,6 +5136,9 @@
       ],
       "owner": "lane-07-mcp-skills-plugins",
       "files": [
+        "src-tauri/src/bin/jan.rs",
+        "src-tauri/src/core/agent/agent_bundle.rs",
+        "src-tauri/src/core/agent/project.rs",
         "web-app/src/lib/claudeCompat.ts"
       ],
       "securityImpact": "medium",
@@ -5132,10 +5150,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/agent_bundle.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "CompatibilityManifest models an imported bundle and its components; there is no export path back out."
+      "auditNote": "CompatibilityManifest models an imported bundle and its components; there is no export path back out. 2026-09-13 (Phase 6): implemented the export path and a native round trip. `jan cli agent bundle-export` / `bundle-import` carry subagents, skills (text files), plugin command templates and the [tools] policy as one JSON bundle. Import is hostile-input safe: checked relative paths under the component roots only, SHA-256 per entry, no unknown fields, case-collision refusal, links neither followed nor written through, policy widening refused before any write unless accepted, conflicts refused unless --overwrite, staged all-or-nothing writes. Proven by a real export/import/export round trip with identical entries and policy, plus real refusals of a tampered entry, a path escape and a widening policy."
     },
     {
       "id": "AH-146",

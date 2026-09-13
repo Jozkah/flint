@@ -474,6 +474,41 @@ pub fn allowed_licenses(project_root: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Put `section` where the file's `[tools]` block was, keeping everything
+/// else exactly as it is: a policy import (AH-052) or a bundle import
+/// (AH-145) must not rewrite a project's model, budget or skills.
+pub(crate) fn replace_tools_section(existing: &str, section: &str) -> String {
+    let mut out = String::new();
+    let mut skipping = false;
+    let mut replaced = false;
+    for line in existing.lines() {
+        let heading = line.trim_start().starts_with('[') && line.trim_end().ends_with(']');
+        if heading {
+            if line.trim() == "[tools]" {
+                out.push_str(section);
+                // A blank line before whatever section follows, so the file
+                // reads the way the user wrote it.
+                out.push('\n');
+                skipping = true;
+                replaced = true;
+                continue;
+            }
+            skipping = false;
+        }
+        if !skipping {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if !replaced {
+        if !out.is_empty() && !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(section);
+    }
+    out
+}
+
 pub(crate) fn enabled_skills(project_root: &Path) -> Vec<String> {
     run_settings(project_root).enabled_skills
 }

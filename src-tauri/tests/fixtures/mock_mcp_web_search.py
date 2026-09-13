@@ -41,6 +41,12 @@ def main() -> int:
     parser.add_argument("--pid")
     args = parser.parse_args()
 
+    # AH-140: one line on stderr, carrying a credential-shaped value, so the
+    # server's own log in the app has something real to show -- and something
+    # it must not show verbatim.
+    sys.stderr.write("smoke web search ready api_key=sk-smoke-AAAABBBBCCCCDDDDEEEE\n")
+    sys.stderr.flush()
+
     if args.pid:
         import os
 

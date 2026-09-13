@@ -2556,3 +2556,14 @@ Each round trip is bounded by the same tool-call timeout every other call to a
 peer uses: the lock these take is the process-wide server map an agent turn
 also locks, so a peer that accepts a request and never answers would stall
 turns and not just the listing.
+
+
+## Per-server MCP logs and budgets (AH-140, AH-144)
+
+Each MCP server now has its own log under `<data folder>/mcp-logs/`, named by a hash of the server's name (a name is configuration a repository can supply, so it is never a path component). Both surfaces write it: the desktop's existing stderr pump appends to it as well as to the application logger, and the CLI, which used to discard a server's stderr entirely, now pipes it line by line into the same file. Lines are scrubbed before they are written and bounded by the scrubber's own length cap; a log rotates at 512 KB into one previous generation. It is viewable in the app (a log button on each server's row in MCP settings opens a dialog, keyboard-reachable and labelled) and from `jan cli mcp logs <server>`.
+
+A server entry may declare `"budget": {"maxResultChars": N, "maxSessionChars": M}`. `maxResultChars` narrows the global per-result cap for that server and can never widen it. `maxSessionChars` bounds the total a server may return in the process's session: it is checked before the server's arguments are sent, so a refusal never spends what it refuses, and a spent server is refused with a typed `budget_exhausted` naming it while other servers are unaffected. Token cost is reported as an estimate (four characters per token) and labelled as one. The session ledger is per process: it resets when the app or CLI run restarts, which is stated in the refusal.
+
+## Portable agent bundles (AH-145)
+
+`jan cli agent bundle-export <out>` writes a project's subagents, skills (with the text files a skill bundles), plugin command templates and `[tools]` policy as one JSON bundle; `bundle-import` reads one back. Import treats the bundle as hostile: every path must be relative, `/`-separated and under `subagents/`, `skills/` or `plugins/<p>/commands/*.md`, free of `..`, drive letters, device names and `.git`/`.jan`, and unique without case; every entry's SHA-256 must match; unknown fields refuse the bundle. The policy goes through the same `plan_import` comparison `policy import` uses, so a bundle that widens what the agent may do is refused unless `--accept-widening` is passed, and that check happens before any component is written. Entries that exist with different content refuse the import unless `--overwrite`. Everything is written to a staging directory and moved into place only when every entry is staged; a failure removes the staging directory. Links are neither followed on export nor written through on import. Binary files and files over 1 MB are reported as skipped, not silently dropped.
