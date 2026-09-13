@@ -1905,3 +1905,34 @@ time: `load` to read a review file, no arguments to see what is left, and
 * *Comments are data.* They are a reviewer's opinion about code, scrubbed and
   bounded on the way in, and presented as remarks rather than instructions --
   a comment that says "ignore your instructions" is still just a comment.
+
+
+## What is on disk, and what an upgrade does to it (AH-010)
+
+Twenty stores had a version constant each, declared next to the code that
+writes them and catalogued nowhere. That is fine until somebody has to answer
+one of these: what is on disk after a run, which of it survives an upgrade,
+what happens to a file written by a newer build, and where does a support
+request send someone to look.
+
+`state_schema.rs` is the catalogue -- each store with its version, where it
+lives, what it holds, and what reading an older or newer file actually does.
+`jan cli agent state` prints it.
+
+The version in each entry is *read from the writing module's constant*, not
+copied, and a test asserts the pairing, so the list cannot quietly go stale.
+That is the reason it is code rather than a document.
+
+Four migration behaviours, and every store declares one:
+
+* *reads older files in place* -- fields added since have defaults, and an
+  absent one reads as absent rather than as zero;
+* *rebuilt from its source* -- the file is derived (the repository index), so
+  an older or unreadable one is thrown away and rebuilt, losing nothing;
+* *refused and left alone* -- a bundle or export written by a build that knows
+  more than this one is declined rather than guessed at;
+* *skips lines it cannot read* -- append-only records where one bad line never
+  costs the rest of the file.
+
+Nothing rewrites a user's data on startup. That is the migration strategy that
+turns one bad release into lost work, and no store here uses it.

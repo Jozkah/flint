@@ -369,13 +369,16 @@
       "category": "foundation",
       "phase": 0,
       "phaseName": "Foundation",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P0",
       "dependencies": [
         "AH-008"
       ],
       "owner": "lane-01-architecture-registry",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/state_schema.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "On-disk run state has a declared, versioned schema with a documented migration path.",
@@ -385,10 +388,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/state_schema.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": "The jan-agent-harness crate (src-tauri/harness) was added by 7c48d71aa on the feat/agent-harness-phase-1 line and never reached the main line: merge 5534adb8e recorded that branch as incorporated with the integration tree kept, so its commits are ancestors of main but the crate is absent from main. A search of the tree found none of its types (RunRecord, RunStatus, StateStore, STATE_SCHEMA_VERSION) under another name, so the code was lost, not moved. The original is recoverable from `git show 7c48d71aa:src-tauri/harness/src/state.rs` if it is to be restored. thread.json and messages.jsonl (src-tauri/src/core/threads) remain unversioned."
+      "auditNote": "Implemented 2026-09-12 (Phase 5). state_schema.rs catalogues all 20 on-disk stores with their version, location, what they hold and what reading an older or newer file does -- read from each writing module's own constant rather than copied, with a test holding the pairing so the catalogue cannot go stale. Four declared behaviours: reads older in place, rebuilt from source, refused and kept, skips unreadable lines. Nothing rewrites user data on startup. Printed by `jan cli agent state`."
     },
     {
       "id": "AH-011",

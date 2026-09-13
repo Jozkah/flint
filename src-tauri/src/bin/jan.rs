@@ -407,6 +407,12 @@ enum AgentCommands {
         #[arg(long)]
         json: bool,
     },
+    /// What this harness writes to disk, at which version (AH-010)
+    State {
+        /// Print it as JSON instead of text.
+        #[arg(long)]
+        json: bool,
+    },
     /// Read or write a run's mailbox (AH-103)
     Mail {
         /// The run whose mailbox this is about.
@@ -1266,6 +1272,18 @@ async fn handle_agent(cmd: AgentCommands) {
                         if update.reconciled { "; the checkout moved, so every entry was re-checked" } else { "" }
                     );
                 })
+        }
+        AgentCommands::State { json } => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&app_lib::core::agent::state_schema::stores())
+                        .unwrap_or_default()
+                );
+            } else {
+                print!("{}", app_lib::core::agent::state_schema::render());
+            }
+            Ok(())
         }
         AgentCommands::Mail {
             run,

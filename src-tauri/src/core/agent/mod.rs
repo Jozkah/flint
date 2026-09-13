@@ -36,6 +36,7 @@ pub mod index;
 pub mod vcs;
 pub mod replay;
 pub mod review;
+pub mod state_schema;
 pub mod roles;
 pub mod session_bundle;
 pub mod session;

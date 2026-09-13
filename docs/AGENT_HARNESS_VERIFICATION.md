@@ -1922,3 +1922,17 @@ snippet, so a scan that quietly matched nothing would fail rather than pass.
 following/paused state sits in a polite live region; its filters are a named
 group of toggles each carrying `aria-pressed`; and a filter can be focused and
 operated with no pointer involved.
+
+
+### The on-disk catalogue (AH-010)
+
+Four tests: every catalogued version equals the constant its module declares
+(read, not copied); every entry has a location, a description and a version,
+no two entries claim the same place, and the count is asserted so a new store
+without an entry fails rather than slipping through; the promise made about
+the repository index is checked against the code -- an index written a version
+older is not loaded, and the next refresh reads the files again; and the
+rendering names every store, its location and its migration behaviour.
+
+`jan cli agent state` prints the catalogue, grouped by whether the file lives
+in the Jan data folder, in the project, or where a person chose.
