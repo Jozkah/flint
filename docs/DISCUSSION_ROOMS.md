@@ -364,7 +364,8 @@ limits (no pricing entered) and more than eight participants.
 | Check | Result |
 | --- | --- |
 | `tsc -b`, `scripts/local-only-guard.mjs` | exit 0 |
-| Full vitest | 540 files passed, 1 failed: `src/__tests__/main.test.tsx` cannot resolve `@fontsource/ibm-plex-sans/400.css`, a new dependency not installed in the shared `node_modules` (environment); 6900 tests passed |
+| Full vitest, shared `node_modules` | 540 files passed, 1 failed: `src/__tests__/main.test.tsx` cannot resolve `@fontsource/ibm-plex-sans/400.css`, a new dependency not installed there; 6900 tests passed |
+| Full vitest, with the three `@fontsource/*` 5.3.0 packages from the local Yarn cache linked in | 541 files passed, 6903 tests passed, 3 skipped, 0 failed (the failure above is environment-only) |
 | Rooms suites | 17 files, 145 passed |
 | `cargo test -j 4 --lib --no-default-features --features test-tauri rooms` | 14 passed |
 
