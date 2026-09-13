@@ -136,6 +136,10 @@ pub struct JobRecord {
     /// every listing and every export.
     #[serde(default)]
     pub token_hash: String,
+    /// What kind of job this is: empty for a shell command, `subagent` for a
+    /// durable subagent (AH-101). Older records read as a command.
+    #[serde(default)]
+    pub kind: String,
 }
 
 impl JobRecord {
@@ -163,6 +167,7 @@ impl JobRecord {
             output_path: String::new(),
             note: String::new(),
             token_hash: String::new(),
+            kind: String::new(),
         }
     }
 

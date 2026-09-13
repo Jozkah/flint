@@ -284,6 +284,7 @@ class Handler(BaseHTTPRequestHandler):
                 "routes",
                 "upstream",
                 "upstream_model",
+                "fresh_turns",
             ):
                 if field in control:
                     setattr(ARGS, field, control[field])
@@ -343,6 +344,18 @@ class Handler(BaseHTTPRequestHandler):
         carries_results = any(
             m.get("role") == "tool" for m in body.get("messages", [])
         )
+        # `fresh_turns` (opt-in): only results after the latest user message
+        # count, so a resumed conversation's new turn is answered as a new turn
+        # rather than as the follow-up to tool calls from an earlier run.
+        if getattr(ARGS, "fresh_turns", False):
+            messages = body.get("messages", [])
+            last_user = max(
+                (i for i, m in enumerate(messages) if m.get("role") == "user"),
+                default=-1,
+            )
+            carries_results = any(
+                m.get("role") == "tool" for m in messages[last_user + 1 :]
+            )
 
         if not body.get("stream"):
             return self._json(

@@ -1363,13 +1363,36 @@ impl CompositeToolInvoker {
             // time. Both are confined to this parent's registry, so a run id
             // from another run names nothing here.
             "list_subagent_runs" => {
-                crate::core::agent::subagent::format_subagent_runs(&ctx.bg.list())
+                let mut out = crate::core::agent::subagent::format_subagent_runs(&ctx.bg.list());
+                let durable = crate::core::agent::durable_subagent::list(
+                    std::path::Path::new(&ctx.parent_args.jan_data_folder),
+                    ctx.parent_args.session_id.as_deref().unwrap_or_default(),
+                );
+                if !durable.is_empty() {
+                    out.push_str("\n\n");
+                    out.push_str(&crate::core::agent::durable_subagent::format_durable(&durable));
+                }
+                out
             }
             "cancel_subagent" => {
                 let run_id = match parse_await_args(args) {
                     Ok(r) => r,
                     Err(e) => return format!("ERROR: {e}"),
                 };
+                let data = std::path::Path::new(&ctx.parent_args.jan_data_folder);
+                let owner = ctx.parent_args.session_id.as_deref().unwrap_or_default();
+                if crate::core::agent::durable_subagent::is_durable(data, owner, &run_id) {
+                    return match tauri_plugin_agent_tools::worker::cancel(data, owner, &run_id) {
+                        Ok(state) => {
+                            self.invocations.note(
+                                "agent.ended",
+                                serde_json::json!({ "child": run_id, "stoppedBy": "cancelled", "mode": "durable" }),
+                            );
+                            format!("Durable subagent {run_id} is now {}.", state.tag())
+                        }
+                        Err(e) => format!("ERROR [{}]: {}", e.kind().tag(), e.message()),
+                    };
+                }
                 let cancelled = ctx.bg.cancel(&run_id);
                 // Only a run this call actually stopped is an ending: one that
                 // had already finished, or was never this parent's, is not.
@@ -1672,6 +1695,37 @@ impl CompositeToolInvoker {
                     Err(e) => return format!("ERROR: {e}"),
                 };
                 let child_name = req.subagent_name.clone();
+                // AH-101: a durable child is a job of its own, not a task in
+                // this process.
+                if req.durable {
+                    return match crate::core::agent::durable_subagent::dispatch(
+                        &ctx.parent_args,
+                        req,
+                        &crate::core::agent::subagent::ParentRun {
+                            routing: self.routing.clone(),
+                            conversation: None,
+                            model: ctx.model_id.clone(),
+                            budget_remaining: ctx.max_session_tokens,
+                            send_reasoning: ctx.send_reasoning,
+                        },
+                    ) {
+                        Ok(run_id) => {
+                            self.invocations.note(
+                                "agent.dispatched",
+                                serde_json::json!({
+                                    "child": run_id,
+                                    "agent": child_name,
+                                    "mode": "durable",
+                                    "parentRun": self.cancel_scope.run,
+                                }),
+                            );
+                            format!(
+                                "Durable subagent started as a job of its own. run_id={run_id}. It keeps running if this run or the app ends. Call await_subagent with this run_id to collect its result -- also from a later run of this conversation; list_subagent_runs shows it and cancel_subagent stops it. Anything it would need approval for is denied, because nobody is attached to it."
+                            )
+                        }
+                        Err(e) => format!("ERROR: {e}"),
+                    };
+                }
                 // AH-100: a fork copies the conversation this turn is
                 // dispatching from. Read here rather than held by the child,
                 // so what it gets is what the parent had when it asked.
@@ -1726,7 +1780,21 @@ impl CompositeToolInvoker {
                     Ok(r) => r,
                     Err(e) => return format!("ERROR: {e}"),
                 };
-                let awaited = await_subagent(&ctx.bg, &run_id).await;
+                let data = std::path::Path::new(&ctx.parent_args.jan_data_folder);
+                let owner = ctx.parent_args.session_id.as_deref().unwrap_or_default();
+                let awaited = if crate::core::agent::durable_subagent::is_durable(data, owner, &run_id) {
+                    crate::core::agent::durable_subagent::await_child(
+                        data,
+                        owner,
+                        &run_id,
+                        std::time::Duration::from_millis(500),
+                        || false,
+                    )
+                    .await
+                    .map_err(|e| crate::core::agent::subagent::SubagentError::Upstream(e.message().to_string()))
+                } else {
+                    await_subagent(&ctx.bg, &run_id).await
+                };
                 // How the child ended, against the parent's run. Sizes only:
                 // the child's own report is its own record.
                 self.invocations.note(

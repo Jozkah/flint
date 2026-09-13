@@ -1737,6 +1737,105 @@ fn print_report(report: run_report::RunResult) {
     );
 }
 
+/// Run one durable subagent from its spec (AH-101). Started by a job
+/// supervisor as `jan cli agent run-subagent --spec <file>`; its answer is what
+/// it prints, which the supervisor keeps as the job's output.
+///
+/// Configured exactly as an in-process child is (`configure_child_args`,
+/// `child_body`). Nobody is attached to answer a permission prompt, so every
+/// prompt is denied and said so on stderr: a durable child does only what its
+/// project's rules already allow.
+pub async fn run_durable_subagent(
+    spec_file: &std::path::Path,
+) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
+    use crate::core::agent::subagent::{self as sub, SubagentRegistry, SubagentRequest};
+    use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError, Stage};
+
+    let spec = crate::core::agent::durable_subagent::read_spec(spec_file)?;
+    // The data folder the parent uses: its providers, and where the record of
+    // this run belongs. Set before anything reads it.
+    if !spec.data_folder.is_empty() {
+        std::env::set_var("JAN_DATA_FOLDER", &spec.data_folder);
+    }
+    let session = prepare_agent_session(
+        &spec.project,
+        Some(spec.model.clone()),
+        ProviderOverrides::default(),
+        SessionFlags {
+            require_model: true,
+            ..Default::default()
+        },
+    )
+    .map_err(|e| HarnessError::new(ErrorKind::InvalidInput, e).at(Stage::Startup))?;
+    let AgentSession {
+        mut args,
+        permission_requests,
+        mcp_task,
+        ..
+    } = session;
+    args.session_id = Some(spec.session.clone());
+    args.parent_run = (!spec.parent_run.is_empty()).then(|| spec.parent_run.clone());
+    let project_root = args
+        .project_root
+        .clone()
+        .ok_or_else(|| HarnessError::new(ErrorKind::InvalidInput, "no project").at(Stage::Startup))?;
+    let registry = SubagentRegistry::load(&project_root);
+    let request = SubagentRequest {
+        subagent_name: spec.subagent_name.clone(),
+        description: spec.description.clone(),
+        allowed_tools: spec.allowed_tools.clone(),
+        system_prompt: spec.system_prompt.clone(),
+        isolate: Some(false),
+        fork_context: false,
+        durable: true,
+    };
+    let resolved = sub::resolve_dispatch(&registry, &request, &args.permissions)
+        .map_err(|e| HarnessError::new(ErrorKind::InvalidInput, e.to_string()).at(Stage::Child))?;
+    let child_args = sub::configure_child_args(args, &resolved, &spec.dispatch_id);
+    let parent = sub::ParentRun {
+        routing: Vec::new(),
+        conversation: None,
+        model: spec.model.clone(),
+        budget_remaining: spec.max_session_tokens,
+        send_reasoning: spec.send_reasoning,
+    };
+    let mut body = sub::child_body(&resolved, &spec.description, &parent, None);
+    // Routed when it was dispatched; the child runs what its parent chose.
+    body["model"] = serde_json::json!(spec.model);
+
+    if let Some(task) = mcp_task {
+        let _ = task.await;
+    }
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<StreamEvent>();
+    let registry = permission_requests.clone();
+    let drain = tokio::spawn(async move {
+        while let Some(ev) = rx.recv().await {
+            if let StreamEvent::PermissionRequest {
+                request_id,
+                tool_name,
+                ..
+            } = ev
+            {
+                eprintln!("(durable subagent: {tool_name} needs approval and nobody is attached to give it; denied)");
+                if let Some(sender) = registry.lock().await.remove(&request_id) {
+                    let _ = sender.send(PermissionDecision::Deny);
+                }
+            }
+        }
+    });
+    let result =
+        crate::core::agent::r#loop::run_orchestration_streamed(&tx, &body, &child_args).await;
+    drop(tx);
+    let _ = drain.await;
+    match result {
+        Ok(completion) => {
+            println!("{}", sub::final_assistant_text(&completion));
+            Ok(())
+        }
+        Err(e) => Err(HarnessError::new(ErrorKind::ChildFailed, e.message().to_string()).at(Stage::Child)),
+    }
+}
+
 /// Answer a permission request without printing progress, for the JSON format.
 /// Leaving it unanswered would wedge the run: the loop waits on the reply.
 /// Every other event is silent -- stdout belongs to the envelope.

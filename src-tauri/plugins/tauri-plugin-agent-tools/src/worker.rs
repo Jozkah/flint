@@ -184,6 +184,33 @@ fn process_started_ms() -> u64 {
     *STARTED.get_or_init(crate::job_record::now_ms)
 }
 
+/// Start a job that runs this program with `argv` -- never through a shell --
+/// and outlives this process (AH-101). `summary` is what listings show; `kind`
+/// marks what the job is.
+pub fn start_argv(
+    data_folder: &Path,
+    supervisor: &Path,
+    owner: &str,
+    argv: &[String],
+    summary: &str,
+    kind: &str,
+    provenance: (&str, &str, &str),
+) -> Result<JobRecord, HarnessError> {
+    if argv.is_empty() {
+        return Err(HarnessError::new(ErrorKind::InvalidInput, "a job needs something to run").at(Stage::Job));
+    }
+    let encoded = serde_json::to_string(argv)
+        .map_err(|e| HarnessError::new(ErrorKind::Internal, e.to_string()).at(Stage::Job))?;
+    start_inner(data_folder, supervisor, owner, summary, Launch::Argv(encoded), kind, provenance)
+}
+
+enum Launch {
+    /// A line the host shell runs.
+    Shell(String),
+    /// A JSON array of arguments for this program.
+    Argv(String),
+}
+
 /// Start a job that will outlive this process.
 ///
 /// Returns the record as written. The supervisor is spawned detached: it is
@@ -195,19 +222,32 @@ pub fn start(
     command: &str,
     provenance: (&str, &str, &str),
 ) -> Result<JobRecord, HarnessError> {
-    let owner = crate::identity::SessionId::parse(owner)?;
     if command.trim().is_empty() {
         return Err(HarnessError::new(ErrorKind::InvalidInput, "a job needs a command")
             .at(Stage::Job));
     }
+    start_inner(data_folder, supervisor, owner, command, Launch::Shell(command.to_string()), "", provenance)
+}
+
+fn start_inner(
+    data_folder: &Path,
+    supervisor: &Path,
+    owner: &str,
+    summary: &str,
+    launch: Launch,
+    kind: &str,
+    provenance: (&str, &str, &str),
+) -> Result<JobRecord, HarnessError> {
+    let owner = crate::identity::SessionId::parse(owner)?;
     std::fs::create_dir_all(worker_dir(data_folder)).map_err(|e| {
         HarnessError::new(ErrorKind::Io, format!("the worker directory is not usable: {e}"))
             .at(Stage::Job)
     })?;
     let id = format!("job-{}-{}", now_ms(), &mint_token()[..8]);
     let token = mint_token();
-    let mut record = JobRecord::started(&id, owner.as_str(), command, ProcessIdentity::default())
+    let mut record = JobRecord::started(&id, owner.as_str(), summary, ProcessIdentity::default())
         .from_run(provenance.0, provenance.1, provenance.2);
+    record.kind = kind.to_string();
     record.token_hash = hash(&token);
     record.output_path = output_path(data_folder, &id).to_string_lossy().to_string();
     crate::job_record::save(data_folder, &record)
@@ -226,10 +266,12 @@ pub fn start(
         .arg("--owner")
         .arg(owner.as_str())
         .arg("--token")
-        .arg(&token)
-        .arg("--command")
-        .arg(command)
-        .stdin(std::process::Stdio::null())
+        .arg(&token);
+    match &launch {
+        Launch::Shell(command) => cmd.arg("--command").arg(command),
+        Launch::Argv(encoded) => cmd.arg("--argv-json").arg(encoded),
+    };
+    cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     let child = spawn_detached(&mut cmd).map_err(|e| {
@@ -324,6 +366,28 @@ pub fn supervise(
     token: &str,
     command: &str,
 ) -> Result<JobState, HarnessError> {
+    supervise_launch(data_folder, id, owner, token, Launch::Shell(command.to_string()))
+}
+
+/// [`supervise`] for a job started with [`start_argv`]: this program, with the
+/// arguments it was given, never a shell.
+pub fn supervise_argv(
+    data_folder: &Path,
+    id: &str,
+    owner: &str,
+    token: &str,
+    argv_json: &str,
+) -> Result<JobState, HarnessError> {
+    supervise_launch(data_folder, id, owner, token, Launch::Argv(argv_json.to_string()))
+}
+
+fn supervise_launch(
+    data_folder: &Path,
+    id: &str,
+    owner: &str,
+    token: &str,
+    launch: Launch,
+) -> Result<JobState, HarnessError> {
     use std::io::Write;
     let job = crate::identity::JobId::parse(id)?;
     let owner = crate::identity::SessionId::parse(owner)?;
@@ -332,11 +396,26 @@ pub fn supervise(
             .at(Stage::Job)
     })?;
 
-    let shell = crate::tools::proc::shell();
-    let mut cmd = std::process::Command::new(&shell.program);
-    cmd.args(&shell.args)
-        .arg(command)
-        .stdin(std::process::Stdio::null())
+    let mut cmd = match &launch {
+        Launch::Shell(command) => {
+            let shell = crate::tools::proc::shell();
+            let mut cmd = std::process::Command::new(&shell.program);
+            cmd.args(&shell.args).arg(command);
+            cmd
+        }
+        Launch::Argv(encoded) => {
+            let argv: Vec<String> = serde_json::from_str(encoded).map_err(|e| {
+                HarnessError::new(ErrorKind::InvalidInput, format!("the job's arguments are not valid: {e}")).at(Stage::Job)
+            })?;
+            let me = std::env::current_exe().map_err(|e| {
+                HarnessError::new(ErrorKind::Io, format!("the supervisor cannot find itself: {e}")).at(Stage::Job)
+            })?;
+            let mut cmd = std::process::Command::new(me);
+            cmd.args(argv);
+            cmd
+        }
+    };
+    cmd.stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| {
@@ -694,6 +773,41 @@ mod tests {
             output(&d, "theirs", "job-1", 1024).unwrap_err().kind(),
             ErrorKind::NotFound
         );
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// AH-101: a job started from arguments runs this program with exactly
+    /// those arguments -- never through a shell, so a shell metacharacter in
+    /// an argument is data. Run here with the test binary's own `--list`, which
+    /// prints matching test names and runs nothing.
+    #[test]
+    fn an_argv_job_runs_this_program_with_its_arguments_and_no_shell() {
+        let d = dir("argv");
+        let owner = "8c874013-e5ff-4005-beb5-86ea2ec185e7";
+        for (id, filter, expect_listed) in [
+            ("job-1-argvok01", "worker::tests::an_argv_job_runs_this_program_with_its_arguments_and_no_shell", true),
+            ("job-2-argvsh02", "nothing & echo pwned-by-a-shell", false),
+        ] {
+            let token = format!("secret-{id}");
+            let mut record = JobRecord::started(id, owner, "argv", ProcessIdentity::default());
+            record.token_hash = hash(&token);
+            record.kind = "subagent".to_string();
+            crate::job_record::save(&d, &record).unwrap();
+            let argv = serde_json::to_string(&["--list", "--exact", filter]).unwrap();
+            let state = supervise_argv(&d, id, owner, &token, &argv).unwrap();
+            assert_eq!(state, JobState::Completed, "{filter}");
+            let out = output(&d, owner, id, 64 * 1024).unwrap();
+            assert_eq!(out.contains(": test"), expect_listed, "{filter}: {out}");
+            assert!(!out.contains("pwned-by-a-shell"), "an argument was run by a shell: {out}");
+            let ended = find(&d, owner, id).unwrap();
+            assert_eq!(ended.kind, "subagent", "the kind survives the supervisor's writes");
+        }
+        // Arguments that are not a JSON list are refused before anything runs.
+        let mut record = JobRecord::started("job-3-argvbad3", owner, "argv", ProcessIdentity::default());
+        record.token_hash = hash("t");
+        crate::job_record::save(&d, &record).unwrap();
+        let refused = supervise_argv(&d, "job-3-argvbad3", owner, "t", "echo pwned").unwrap_err();
+        assert_eq!(refused.kind(), ErrorKind::InvalidInput);
         let _ = std::fs::remove_dir_all(&d);
     }
 

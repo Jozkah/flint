@@ -346,6 +346,13 @@ enum AgentCommands {
         #[arg(long, value_name = "DENSITY")]
         output_density: Option<String>,
     },
+    /// Run one durable subagent from its spec, as a job's supervisor starts it
+    /// (AH-101). Not meant to be run by hand.
+    #[command(hide = true)]
+    RunSubagent {
+        #[arg(long)]
+        spec: String,
+    },
     /// Serve a JSON-lines API on stdin/stdout: start runs, stream their events,
     /// answer their approvals, report status and cancel them (AH-182)
     Serve,
@@ -741,8 +748,12 @@ enum JobCommands {
         owner: String,
         #[arg(long)]
         token: String,
+        /// A line the host shell runs
+        #[arg(long, conflicts_with = "argv_json")]
+        command: Option<String>,
+        /// Arguments for this program, as a JSON array (never a shell line)
         #[arg(long)]
-        command: String,
+        argv_json: Option<String>,
     },
 }
 
@@ -1263,7 +1274,15 @@ fn handle_job(cmd: JobCommands) {
             owner,
             token,
             command,
-        } => worker::supervise(std::path::Path::new(&data), &id, &owner, &token, &command)
+            argv_json,
+        } => match (command, argv_json) {
+            (_, Some(argv)) => worker::supervise_argv(std::path::Path::new(&data), &id, &owner, &token, &argv),
+            (Some(command), None) => worker::supervise(std::path::Path::new(&data), &id, &owner, &token, &command),
+            (None, None) => Err(HarnessError::new(
+                tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                "a job needs --command or --argv-json",
+            )),
+        }
             .map(|state| {
                 // Nothing is printed on the happy path: the supervisor has no
                 // console, and what it has to say is in the record.
@@ -1334,6 +1353,9 @@ async fn handle_agent(cmd: AgentCommands) {
                 output_format,
             )
             .await
+        }
+        AgentCommands::RunSubagent { spec } => {
+            app_lib::core::cli::run_durable_subagent(std::path::Path::new(&spec)).await
         }
         AgentCommands::Serve => {
             app_lib::core::cli::json_api::serve_stdio().await;
