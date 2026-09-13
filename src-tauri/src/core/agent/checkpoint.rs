@@ -71,10 +71,17 @@ pub struct Checkpoint {
 
 /// Take a checkpoint before something that can change files.
 ///
-/// `changed` lists the paths touched since the previous checkpoint; only those
-/// are staged, so the cost is proportional to the turn rather than to the
-/// repository. Passing an empty list is meaningful and cheap: it records the
-/// state as it stands.
+/// **In a managed tree** the whole working tree is recorded as it stands and
+/// `changed` is not consulted. A hard restore discards whatever the snapshot
+/// does not hold, so a snapshot built only from reported paths would silently
+/// lose an edit nobody reported — a file a shell command wrote, or one changed
+/// after the previous point. Completeness is what makes a restore safe to
+/// offer, and it is worth a scan in a tree Jan owns.
+///
+/// **In the user's checkout** `changed` lists the paths touched since the
+/// previous checkpoint and only those are staged, so the cost is proportional
+/// to the turn rather than to the repository. That snapshot only ever feeds a
+/// reviewable patch, never a restore.
 pub fn capture(
     root: &Path,
     thread_id: &str,
@@ -83,7 +90,11 @@ pub fn capture(
     changed: &[PathBuf],
     destination: Destination,
 ) -> Result<Checkpoint, String> {
-    let sha = git::snapshot(root, parent, label, thread_id, changed)?;
+    let sha = if destination.may_hard_restore() {
+        git::snapshot_worktree(root, parent, label)?
+    } else {
+        git::snapshot(root, parent, label, thread_id, changed)?
+    };
     // Keeping the chain reachable is what stops garbage collection from
     // quietly making recovery impossible between one session and the next.
     git::update_ref(root, thread_id, &sha)?;
@@ -100,7 +111,17 @@ pub fn capture(
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum RewindPlan {
     /// Jan owns this tree, so it can be put back as it was.
-    Restore { sha: String },
+    Restore {
+        sha: String,
+        /// Every path the restore would change: the working tree as it stands,
+        /// compared with the checkpoint. Added, modified and deleted alike.
+        files: Vec<String>,
+        /// Paths that differ from `latest` — the state the tree was last known
+        /// to be in. Anything here changed after that point, and the caller
+        /// decides which of it Jan wrote.
+        #[serde(rename = "changedSinceLatest")]
+        changed_since_latest: Vec<String>,
+    },
     /// Jan does not own this tree. Here is the change, for the user to apply.
     Patch { diff: String },
 }
@@ -111,10 +132,22 @@ pub enum RewindPlan {
 /// and never anything else — not as a safety check that a determined caller
 /// could pass, but because there is no variant of this function that discards a
 /// user's files.
+///
+/// A restore plan names what it would touch, so a confirmation can show the
+/// scope instead of asking someone to agree to an unnamed overwrite.
 pub fn plan(checkpoint: &Checkpoint, latest: &str) -> Result<RewindPlan, String> {
     if checkpoint.destination.may_hard_restore() {
+        let root = PathBuf::from(&checkpoint.root);
+        let files = git::changed_since(&root, &checkpoint.sha)?;
+        let changed_since_latest = if latest == checkpoint.sha {
+            files.clone()
+        } else {
+            git::changed_since(&root, latest)?
+        };
         return Ok(RewindPlan::Restore {
             sha: checkpoint.sha.clone(),
+            files,
+            changed_since_latest,
         });
     }
     let root = PathBuf::from(&checkpoint.root);
@@ -365,8 +398,72 @@ mod tests {
         assert_eq!(
             plan(&point, &point.sha).unwrap(),
             RewindPlan::Restore {
-                sha: point.sha.clone()
+                sha: point.sha.clone(),
+                files: vec![],
+                changed_since_latest: vec![],
             }
+        );
+    }
+
+    #[test]
+    fn a_managed_checkpoint_holds_edits_nobody_reported() {
+        let (_d, root) = repo();
+        let id = thread_id("cp-unreported");
+        // Changed on disk, and not named in `changed`: a shell command's
+        // output, or an edit made in an editor.
+        std::fs::write(root.join("a.txt"), "two\n").unwrap();
+        std::fs::write(root.join("b.txt"), "new\n").unwrap();
+        let point = capture(&root, &id, None, "before", &[], Destination::Managed).unwrap();
+
+        std::fs::write(root.join("a.txt"), "three\n").unwrap();
+        std::fs::write(root.join("c.txt"), "later\n").unwrap();
+
+        match plan(&point, &point.sha).unwrap() {
+            RewindPlan::Restore {
+                files,
+                changed_since_latest,
+                ..
+            } => {
+                // b.txt is in the checkpoint and unchanged, so it is not in
+                // scope; a.txt and c.txt are what a restore would touch.
+                assert_eq!(files, vec!["a.txt".to_string(), "c.txt".to_string()]);
+                assert_eq!(changed_since_latest, files);
+            }
+            other => panic!("expected a restore, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_restore_preceded_by_a_safety_point_can_be_undone() {
+        let (_d, root) = repo();
+        let id = thread_id("cp-undo");
+        let point = capture(&root, &id, None, "before", &[], Destination::Managed).unwrap();
+
+        std::fs::write(root.join("a.txt"), "edited later\n").unwrap();
+        std::fs::write(root.join("new.txt"), "added later\n").unwrap();
+        let safety = capture(
+            &root,
+            &id,
+            Some(&point.sha),
+            "before restore",
+            &[],
+            Destination::Managed,
+        )
+        .unwrap();
+
+        restore(&point, &safety.sha).expect("restore");
+        assert_eq!(std::fs::read_to_string(root.join("a.txt")).unwrap(), "one\n");
+        assert!(!root.join("new.txt").exists());
+
+        // Going back to the safety point puts the overwritten work back.
+        restore(&safety, &safety.sha).expect("undo");
+        assert_eq!(
+            std::fs::read_to_string(root.join("a.txt")).unwrap(),
+            "edited later\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.join("new.txt")).unwrap(),
+            "added later\n"
         );
     }
 

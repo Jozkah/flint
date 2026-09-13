@@ -285,6 +285,90 @@ pub(crate) fn diff_between(repo: &Path, from: &str, to: &str) -> Result<String, 
     run(repo, None, &["diff", from, to])
 }
 
+/// Stage the working tree exactly as it stands into a scratch index.
+///
+/// The index is seeded from `base` first so that paths outside `repo` (when
+/// `repo` is a subdirectory of the repository) keep the content `base` gave
+/// them; `add -A` then records every addition, modification and deletion
+/// under `repo`, honouring `.gitignore`. The scratch index is the caller's to
+/// remove. The user's own index is never touched: everything goes through
+/// `GIT_INDEX_FILE`.
+fn stage_worktree(repo: &Path, idx: &Path, base: &str) -> Result<(), String> {
+    run(repo, Some(idx), &["read-tree", base])?;
+    run(repo, Some(idx), &["add", "-A", "--", "."])?;
+    Ok(())
+}
+
+/// Snapshot the whole working tree as it stands, as a commit object.
+///
+/// Unlike [`snapshot`], this scans the tree rather than staging a list of
+/// paths, so it cannot miss an edit nobody reported — a file changed in an
+/// editor, by a build, or by a shell command. That costs a full scan, which is
+/// why it is used only where Jan owns the tree and completeness is what makes
+/// a rewind safe to offer. Branch, HEAD and the real index are untouched.
+pub(crate) fn snapshot_worktree(
+    repo: &Path,
+    parent: Option<&str>,
+    msg: &str,
+) -> Result<String, String> {
+    let idx = temp_index();
+    let result = (|| {
+        let base = match parent {
+            Some(p) => p.to_string(),
+            None => run(repo, None, &["rev-parse", "--verify", "-q", "HEAD^{tree}"])
+                .ok()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| EMPTY_TREE.to_string()),
+        };
+        stage_worktree(repo, &idx, &base)?;
+        let tree = run(repo, Some(&idx), &["write-tree"])?;
+        let mut args: Vec<&str> = vec!["commit-tree", &tree];
+        if let Some(p) = parent {
+            args.push("-p");
+            args.push(p);
+        }
+        args.push("-m");
+        args.push(msg);
+        run(repo, None, &args)
+    })();
+    let _ = std::fs::remove_file(&idx);
+    result
+}
+
+/// Paths whose content in the working tree differs from snapshot `commit`.
+///
+/// Added, modified and deleted paths alike, relative to the repository root,
+/// ignored files excluded. Nothing is written except loose objects for the
+/// scratch staging, which garbage collection reclaims.
+pub(crate) fn changed_since(repo: &Path, commit: &str) -> Result<Vec<String>, String> {
+    let idx = temp_index();
+    let result = (|| {
+        stage_worktree(repo, &idx, commit)?;
+        let out = run(
+            repo,
+            Some(&idx),
+            &[
+                "-c",
+                "core.quotepath=false",
+                "diff",
+                "--cached",
+                "--name-only",
+                "--no-renames",
+                "-z",
+                commit,
+            ],
+        )?;
+        Ok(out
+            .split('\0')
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(str::to_string)
+            .collect())
+    })();
+    let _ = std::fs::remove_file(&idx);
+    result
+}
+
 /// Drop a thread's snapshot ref, letting the chain be collected.
 ///
 /// Idempotent: a ref that is already gone is success, because the caller's
