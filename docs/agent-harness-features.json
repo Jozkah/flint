@@ -4239,13 +4239,16 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-089"
       ],
       "owner": "lane-07-mcp-skills-plugins",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/agent_import.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "OpenCode agent definitions import into the native profile format.",
@@ -4255,10 +4258,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/agent_import.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). OpenCode agent definitions import: `.opencode/agent/<name>.md` (frontmatter over a markdown prompt, named by its file) and agents declared under \"agent\" in an opencode.json (prompt in a `prompt` field). OpenCode's `tools` map of on/off switches is read as an allowlist; a map that only switches things off is subtractive and becomes every tool an imported agent could name minus those -- not every Jan tool, because that author never had memory_write or screenshot. `mode: primary` is the agent a person talks to, so it is passed over by name rather than imported as a subagent, as is one its author disabled. `jan cli agent import-agents <path> [--scope user|project] [--dry-run] [--overwrite]` reads a definition file, a directory of them, or an opencode.json, and writes native <scope>/.jan/agent/subagents/<name>.toml. The importer does not guess: a known key is mapped, an unknown one is reported by name, and everything Jan has no room for (temperature, per-agent permission rules, colour) is named with the reason. A tool with no Jan equivalent is dropped and listed rather than dropped silently. Refusals are typed (invalid_input / not_found) and name the file: no frontmatter, no description, no prompt, an unreadable mode. Reading precedes writing, so one malformed definition imports none of the directory, and --dry-run writes nothing. A same-name subagent in the same scope refuses with policy_violation unless --overwrite. Proven by a real import of both dialects and a real run that dispatched an imported subagent, read from the provider's own request log."
     },
     {
       "id": "AH-119",
@@ -4266,13 +4271,16 @@
       "category": "integrations",
       "phase": 6,
       "phaseName": "Compatibility and integrations",
-      "status": "missing",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-089"
       ],
       "owner": "lane-07-mcp-skills-plugins",
-      "files": [],
+      "files": [
+        "src-tauri/src/core/agent/agent_import.rs",
+        "src-tauri/src/bin/jan.rs"
+      ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
         "Qwen agent definitions import into the native profile format.",
@@ -4282,10 +4290,12 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/src/core/agent/agent_import.rs"
+      ],
       "platformRequirements": [],
       "blockedReason": null,
-      "auditNote": ""
+      "auditNote": "Implemented 2026-09-13 (Phase 5). Qwen Code agent definitions import: `.qwen/agents/<name>.md`, whose name is in the frontmatter and whose `tools` is a list or a comma-separated string, mapped onto Jan's tools with unmapped names reported. Shares one reader with the OpenCode importer (AH-118), so the two cannot drift; which dialect a file was read as is decided by what the file carries and reported with each definition. `jan cli agent import-agents <path> [--scope user|project] [--dry-run] [--overwrite]` reads a definition file, a directory of them, or an opencode.json, and writes native <scope>/.jan/agent/subagents/<name>.toml. The importer does not guess: a known key is mapped, an unknown one is reported by name, and everything Jan has no room for (temperature, per-agent permission rules, colour) is named with the reason. A tool with no Jan equivalent is dropped and listed rather than dropped silently. Refusals are typed (invalid_input / not_found) and name the file: no frontmatter, no description, no prompt, an unreadable mode. Reading precedes writing, so one malformed definition imports none of the directory, and --dry-run writes nothing. A same-name subagent in the same scope refuses with policy_violation unless --overwrite. Proven by a real import of both dialects and a real run that dispatched an imported subagent, read from the provider's own request log."
     },
     {
       "id": "AH-120",

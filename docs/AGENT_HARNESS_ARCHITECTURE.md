@@ -2072,3 +2072,47 @@ The refusal reaches both surfaces: `skill_read` returns a typed
 `invalid_input` naming what is missing, `skill_list` does not advertise a skill
 that could not be loaded, and `/skill:<name>` refuses by name instead of
 handing over instructions that cannot be followed.
+
+
+## Agents written for somebody else's harness (AH-118, AH-119)
+
+Two ecosystems keep agent definitions in files Jan can read, and both describe
+roughly what a Jan subagent is -- a name, a description of when to use it, a
+prompt, and the tools it may use:
+
+* **OpenCode**: `.opencode/agent/<name>.md`, YAML frontmatter over a markdown
+  prompt, plus agents declared under `"agent"` in an `opencode.json`.
+* **Qwen Code**: `.qwen/agents/<name>.md`, the same shape with the Claude Code
+  key set.
+
+`jan cli agent import-agents <path> [--scope user|project] [--dry-run]
+[--overwrite]` reads a file, a directory of them, or an `opencode.json`, and
+writes native `<scope>/.jan/agent/subagents/<name>.toml`.
+
+The rule the importer is built on is that it does not guess:
+
+* A key it knows is mapped. A key it does not know is **reported by name** in
+  the import's notes. Nothing is dropped silently, so nobody has to diff two
+  directories to find out what survived.
+* What Jan has no room for is named too, and why: a per-agent `temperature`
+  (Jan has none per subagent), OpenCode `permission` rules (a subagent runs
+  under the run's permissions, narrowed by its tool list), `color`.
+* A tool with no Jan equivalent is not imported and is listed. Dropping it
+  silently would widen a deliberately narrow agent.
+* OpenCode writes `tools` as on/off switches. A map that only switches things
+  *off* is subtractive, so it becomes every tool an imported agent could name,
+  minus those -- not every Jan tool, because that author never had
+  `memory_write` or `screenshot`, and turning off `write` is not a request to
+  be handed them.
+* `mode: primary` is OpenCode's word for the agent a person talks to. It is
+  passed over by name, not imported as a subagent; so is one its author
+  disabled.
+* `model` is kept exactly as written. Rewriting it to a model Jan has would be
+  choosing one on the author's behalf; an unknown model fails at dispatch,
+  saying so.
+
+Refusals are typed and name the file: no frontmatter, no description (the
+description is what says when to dispatch it), no prompt, an unreadable
+`mode`. Reading happens before any writing, so a directory with one malformed
+definition imports none of them -- a half-imported directory is a state nobody
+can reason about -- and `--dry-run` writes nothing at all.

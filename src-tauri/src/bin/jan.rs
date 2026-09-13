@@ -371,6 +371,26 @@ enum AgentCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Import agent definitions written for OpenCode or Qwen Code into Jan's
+    /// own subagent format (AH-118, AH-119)
+    ImportAgents {
+        /// A definition file, a directory of them (`.opencode/agent`,
+        /// `.qwen/agents`), or an `opencode.json`.
+        path: String,
+        /// Where the imported subagents are written: `user` (~/.jan) or
+        /// `project` (<project>/.jan).
+        #[arg(long, default_value = "user")]
+        scope: String,
+        /// Project root, when importing into the project scope.
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Replace a subagent of the same name in that scope.
+        #[arg(long)]
+        overwrite: bool,
+        /// Read and report, writing nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Read this project's permission policy as a reviewable document (AH-052)
     PolicyExport {
         #[arg(long, default_value = ".")]
@@ -1126,6 +1146,50 @@ async fn handle_agent(cmd: AgentCommands) {
                 } else {
                     print!("{}", tauri_plugin_agent_tools::run_tree::render(&tree));
                 }
+            })
+        }
+        AgentCommands::ImportAgents {
+            path,
+            scope,
+            project,
+            overwrite,
+            dry_run,
+        } => {
+            use app_lib::core::agent::subagent::SubagentScope;
+            let resolved = match scope.as_str() {
+                "user" => app_lib::core::agent::subagent::user_subagents_dir()
+                    .map(|dir| (SubagentScope::User, dir))
+                    .ok_or_else(|| {
+                        HarnessError::new(
+                            tauri_plugin_agent_tools::harness_error::ErrorKind::NotFound,
+                            "the home directory could not be resolved, so there is no user scope to import into",
+                        )
+                    }),
+                "project" => Ok((
+                    SubagentScope::Project,
+                    app_lib::core::agent::subagent::project_subagents_dir(std::path::Path::new(
+                        &project,
+                    )),
+                )),
+                other => Err(HarnessError::new(
+                    tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                    format!("'{other}' is not a scope; use 'user' or 'project'"),
+                )),
+            };
+            resolved.and_then(|(scope, dir)| {
+                app_lib::core::agent::agent_import::import(
+                    std::path::Path::new(&path),
+                    &dir,
+                    scope,
+                    overwrite,
+                    dry_run,
+                )
+                .map(|report| {
+                    print!("{}", app_lib::core::agent::agent_import::render(&report));
+                    if !report.dry_run {
+                        println!("written to {}", dir.display());
+                    }
+                })
             })
         }
         AgentCommands::PolicyExport { project, out } => {

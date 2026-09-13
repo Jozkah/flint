@@ -2054,3 +2054,56 @@ carrying a declared version and omitting none where none was declared; the
 `skill_read`/`skill_list` pair refusing and un-advertising together; and
 `/skill:<name>` refused by name, then working once the dependency is installed
 at an allowed version.
+
+
+### Importing OpenCode and Qwen agents (AH-118, AH-119)
+
+Eight tests plus a real import and dispatch. The import, as the CLI prints it:
+
+```
+$ jan cli agent import-agents .opencode/agent --scope project --project . --dry-run
+would import 1 subagent(s)
+  reviewer (opencode, from .opencode/agent/reviewer.md)
+    tools: ask, bash, find, grep, ls, read, todo, web_fetch, web_search
+    note: tools were written as switches that only turn things off (write, edit);
+          imported as every tool an imported agent can name, except those
+    note: temperature (0.1) was not imported: Jan has no per-subagent temperature
+    note: per-agent permission rules were not imported: ...
+  skipped .opencode/agent/build.md: it is a primary agent, not a subagent
+files written: (none)
+
+$ jan cli agent import-agents .qwen/agents --scope project --project .
+imported 1 subagent(s)
+  test-runner (qwen, from .qwen/agents/test-runner.md)
+    tools: bash, read
+    note: these tools have no Jan equivalent and were not imported: NotebookEdit
+    note: color was not imported: Jan does not colour subagents
+```
+
+The definition it wrote, and the run that used it:
+
+```
+name = "test-runner"
+description = "Runs the test suite and reports what failed"
+system_prompt = "Run the suite. Report the first failure in full."
+allowed_tools = ["bash", "read"]
+
+$ jan cli agent import-agents .qwen/agents --scope project --project .
+Error [policy_violation]: a Project-scope subagent named 'test-runner' already
+exists; pass overwrite to replace it
+
+# a real run dispatching it, read from the provider's own request log:
+  the child ran with the imported prompt
+  tools offered to the child: ['bash', 'read', 'skill_list', 'skill_read']
+```
+
+Covered by test: an OpenCode agent with switches, mode, temperature and
+permission rules, each mapped or named as unmapped; a subtractive switch map
+becoming an allowlist; a Qwen agent whose tools are a comma-separated string
+and whose name is in its frontmatter; a primary agent and a disabled one passed
+over by name; refusals for no frontmatter, no description, no prompt, an
+unreadable mode and a path that does not exist, each typed; agents declared in
+an `opencode.json` (with a `"model"`-only file refused as declaring none); a
+dry run writing nothing and a real import writing a loadable definition, with a
+second import refused unless overwritten; and one malformed definition stopping
+a whole directory.
