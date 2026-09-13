@@ -257,6 +257,10 @@ pub struct ToolActivityEvent {
     /// the JSONL line.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diff: Option<String>,
+    /// CPU and memory the command this call ran used, or why that was not
+    /// measured (AH-174). Absent for a call that ran no command.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resources: Option<crate::resources::Resources>,
 }
 
 impl ToolActivityEvent {
@@ -298,6 +302,7 @@ impl ToolActivityEvent {
             output_truncated: false,
             job_id: String::new(),
             task_id: String::new(),
+            resources: None,
             change: None,
             diff: None,
         }
@@ -722,6 +727,8 @@ pub struct ToolActivityItem {
     pub job_id: String,
     pub task_id: String,
     pub change: Option<FileChange>,
+    /// What the call's command used (AH-174).
+    pub resources: Option<crate::resources::Resources>,
     /// Every phase it passed through, in order.
     pub history: Vec<Phase>,
 }
@@ -763,6 +770,7 @@ impl ToolActivityItem {
             job_id: event.job_id,
             task_id: event.task_id,
             change: event.change,
+            resources: event.resources,
             history: vec![event.phase],
         };
         item.output_state = output_state(&item);
@@ -798,6 +806,9 @@ impl ToolActivityItem {
         take(&mut self.job_id, event.job_id);
         take(&mut self.task_id, event.task_id);
         take(&mut self.parent, event.parent);
+        if event.resources.is_some() {
+            self.resources = event.resources;
+        }
         take(&mut self.invocation, event.invocation);
         if event.input.is_some() {
             self.input = event.input;

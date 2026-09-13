@@ -75,6 +75,10 @@ pub enum StreamEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         diff: Option<String>,
     },
+    /// What the commands a run started used, sent once as it ends (AH-174).
+    RunResources {
+        resources: tauri_plugin_agent_tools::resources::RunResources,
+    },
     /// A backgrounded subagent run began. `run_id` identifies the run so a
     /// consumer can attribute concurrent children; brackets the child's wrapped
     /// events with `SubagentEnd`.

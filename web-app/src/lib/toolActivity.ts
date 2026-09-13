@@ -112,6 +112,8 @@ export type ToolActivityEvent = {
   change?: FileChange | null
   /** The call's diff; the backend stores it beside the log, never inline. */
   diff?: string | null
+  /** What the call's command used (AH-174). */
+  resources?: unknown
 }
 
 export type ToolActivityItem = {
@@ -451,6 +453,7 @@ export type RecordableOutcome = {
   content?: unknown
   error?: unknown
   diff?: string | null
+  resources?: unknown
 }
 
 function outcomeText(outcome: RecordableOutcome): string | undefined {
@@ -524,6 +527,7 @@ export async function withToolActivity<T extends RecordableOutcome>(
       exit_code: call.toolName === 'bash' ? (bashExitCode(text) ?? null) : null,
       job_id: jobId,
       diff: outcome.diff ?? null,
+      ...(outcome.resources ? { resources: outcome.resources } : {}),
     })
     return outcome
   } catch (error) {

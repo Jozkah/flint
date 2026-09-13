@@ -35,6 +35,7 @@ pub(crate) struct RunReport {
     num_turns: u32,
     prompt_tokens: u64,
     completion_tokens: u64,
+    resources: Option<tauri_plugin_agent_tools::resources::RunResources>,
 }
 
 impl RunReport {
@@ -75,6 +76,9 @@ impl RunReport {
             }
             StreamEvent::Done { stop_reason, .. } => {
                 self.stop_reason = Some(stop_reason.clone());
+            }
+            StreamEvent::RunResources { resources } => {
+                self.resources = Some(resources.clone());
             }
             StreamEvent::Error { code, message } => {
                 self.error = Some((code.clone(), message.clone()));
@@ -125,6 +129,7 @@ impl RunReport {
                 completion_tokens: self.completion_tokens,
                 total_tokens: self.prompt_tokens + self.completion_tokens,
             },
+            resources: self.resources,
         }
     }
 }
@@ -148,6 +153,10 @@ pub(crate) struct RunResult {
     num_turns: u32,
     duration_ms: u64,
     usage: ReportUsage,
+    /// What the commands the run started used (AH-174). Absent when it
+    /// started none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resources: Option<tauri_plugin_agent_tools::resources::RunResources>,
 }
 
 #[derive(serde::Serialize)]
@@ -200,6 +209,27 @@ mod tests {
         StreamEvent::Token {
             text: text.to_string(),
         }
+    }
+
+    #[test]
+    fn the_runs_resources_reach_the_result_and_only_when_it_has_some() {
+        let mut report = RunReport::default();
+        report.observe(&StreamEvent::RunResources {
+            resources: tauri_plugin_agent_tools::resources::RunResources {
+                commands: 2,
+                measured_commands: 2,
+                cpu_ms: 1234,
+                peak_memory_bytes: 5_000_000,
+                processes: 3,
+                unmeasured_reason: None,
+            },
+        });
+        let out = value(report.finish(None, "m", 1, Some("ok")));
+        assert_eq!(out["resources"]["cpuMs"], 1234);
+        assert_eq!(out["resources"]["peakMemoryBytes"], 5_000_000);
+        assert_eq!(out["resources"]["commands"], 2);
+        let none = value(RunReport::default().finish(None, "m", 1, Some("ok")));
+        assert!(none.get("resources").is_none());
     }
 
     #[test]

@@ -4,12 +4,36 @@ export interface SkillMeta {
   description: string
 }
 
+/**
+ * What a command used, or why it was not measured (AH-174). `measured` false
+ * carries `reason` and no figures: an unmeasured command is never zero.
+ */
+export interface ToolResources {
+  measured: boolean
+  cpuMs?: number
+  peakMemoryBytes?: number
+  processes?: number
+  reason?: string
+}
+
+/** What all of a run's commands used (AH-174). */
+export interface RunResources {
+  commands: number
+  measuredCommands: number
+  cpuMs: number
+  peakMemoryBytes: number
+  processes: number
+  unmeasuredReason?: string
+}
+
 /** Outcome of a built-in tool execution. */
 export interface ToolResult {
   content: string
   /** Display-only diff for write/edit; never part of model context. */
   diff: string | null
   isError: boolean
+  /** Present for a call that ran a command under a run (AH-174). */
+  resources?: ToolResources
 }
 
 /**

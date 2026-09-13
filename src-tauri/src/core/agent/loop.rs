@@ -1284,8 +1284,11 @@ impl CompositeToolInvoker {
     /// combined stdout/stderr through the sink as it reads. A send failure is
     /// ignored -- the receiver is gone only when the run is over, and a dead
     /// display must not stop the command.
-    fn streaming_tool_context(&self, id: &str) -> tauri_plugin_agent_tools::tools::ToolContext<'_> {
+    fn streaming_tool_context<'s>(&'s self, id: &'s str) -> tauri_plugin_agent_tools::tools::ToolContext<'s> {
         self.tool_context_with_run()
+            // The call a command is measured against (AH-174), and the id a
+            // backgrounded job reports under.
+            .with_call_id(id)
             .with_output_sink(output_sink(&self.events, id))
     }
 
@@ -2188,6 +2191,7 @@ impl CompositeToolInvoker {
                 e.detail = outcome.content.chars().take(400).collect();
             }
             e.diff = outcome.diff.clone();
+            e.resources = tauri_plugin_agent_tools::resources::take_call(&self.cancel_scope.run, &outcome.id);
             tauri_plugin_agent_tools::activity::append(data, &e.redacted());
         }
     }
@@ -3811,20 +3815,27 @@ async fn orchestrate_inner(
                 let _ = tauri_plugin_agent_tools::mailbox::close(data, &run);
             }
         }
-        record_run(
-            "run.ended",
-            match &result {
-                Ok(_) => serde_json::json!({ "stoppedBy": "done", "source": "agent-loop" }),
-                // AH-009: how a run ended is the classification, so a run the
-                // user stopped is recorded as stopped and not as a failure,
-                // and every surface reading the record says the same thing.
-                Err(error) => serde_json::json!({
-                    "stoppedBy": if error.is_cancellation() { "cancelled" } else { "error" },
-                    "source": "agent-loop",
-                    "error": error.to_wire(),
-                }),
-            },
-        );
+        // AH-174: what the commands this run started used, in the record of
+        // how it ended and on the stream for a caller that reports it.
+        let run_resources = tauri_plugin_agent_tools::resources::finish_run(&tools.cancel_scope.run);
+        if let Some(resources) = run_resources.clone() {
+            let _ = events.send(StreamEvent::RunResources { resources });
+        }
+        let mut ended = match &result {
+            Ok(_) => serde_json::json!({ "stoppedBy": "done", "source": "agent-loop" }),
+            // AH-009: how a run ended is the classification, so a run the
+            // user stopped is recorded as stopped and not as a failure,
+            // and every surface reading the record says the same thing.
+            Err(error) => serde_json::json!({
+                "stoppedBy": if error.is_cancellation() { "cancelled" } else { "error" },
+                "source": "agent-loop",
+                "error": error.to_wire(),
+            }),
+        };
+        if let Some(resources) = run_resources {
+            ended["resources"] = serde_json::to_value(resources).unwrap_or_default();
+        }
+        record_run("run.ended", ended);
         // On a clean exit, wait for any subagents the model dispatched but never
         // explicitly awaited, so their in-flight work isn't aborted and lost by
         // `_bg_guard`. On an error, teardown still aborts them.

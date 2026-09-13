@@ -27,6 +27,26 @@ beforeEach(() => {
 })
 
 describe('what a recorded call carries', () => {
+  it('keeps what a command used on the end of its call, and nothing when there is none (AH-174)', async () => {
+    const used = { measured: true, cpuMs: 42, peakMemoryBytes: 1024, processes: 2 }
+    await withToolActivity(
+      { toolCallId: 'c9', toolName: 'bash', input: { command: 'echo hi' } },
+      { session: 's1', run: 'r1', source: 'cowork' },
+      undefined,
+      async () => ({ output: 'hi\n[exit 0]', isError: false, resources: used })
+    )
+    expect(sent().at(-1)).toMatchObject({ phase: 'succeeded', resources: used })
+
+    h.invoke.mockClear()
+    await withToolActivity(
+      { toolCallId: 'c10', toolName: 'read', input: { path: 'a' } },
+      { session: 's1', run: 'r1', source: 'cowork' },
+      undefined,
+      async () => ({ output: 'body', isError: false })
+    )
+    expect(sent().at(-1)).not.toHaveProperty('resources')
+  })
+
   it('keeps the input on the request and the outcome on the end', async () => {
     await withToolActivity(
       {

@@ -54,6 +54,7 @@ permissions = [
     "allow-advertised-tool-schemas",
     "allow-execute-tool",
     "allow-execute-tool-streaming",
+    "allow-tool-resources-finish-run",
     "allow-undo-journal",
     "allow-undo-turn",
     "allow-redo-turn",

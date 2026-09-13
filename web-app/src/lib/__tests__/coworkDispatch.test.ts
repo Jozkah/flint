@@ -49,6 +49,8 @@ describe('dispatchCoworkTool', () => {
       readOnlyProject: null,
       scope: 'session',
       writeGrant: undefined,
+      // AH-174: the call's id, so what its command uses is kept against it.
+      callId: 'c1',
     })
   })
 
@@ -230,6 +232,7 @@ describe('dispatchCoworkTool', () => {
       readOnlyProject: '/repo',
       scope: 'session',
       writeGrant: undefined,
+      callId: 'c1',
     })
   })
 

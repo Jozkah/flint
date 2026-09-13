@@ -79,6 +79,10 @@ pub struct ToolResult {
     /// The classified failure, when this is one. Versioned and scrubbed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<serde_json::Value>,
+    /// What the command this call ran used, or why that was not measured
+    /// (AH-174). Present only for a call that ran a command under a run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resources: Option<crate::resources::Resources>,
 }
 
 /// The permanent store root holding `memory/` and `skills/`.
@@ -873,6 +877,10 @@ async fn execute_tool_inner(
     if let Some(id) = call_id.as_deref() {
         ctx = ctx.with_call_id(id);
     }
+    // AH-174: the run a command's CPU and memory are kept against.
+    if let Some(run) = undo_run.as_deref() {
+        ctx = ctx.with_measured_run(run);
+    }
     if let Some(sink) = sink {
         ctx = ctx.with_output_sink(sink);
     }
@@ -920,12 +928,24 @@ async fn execute_tool_inner(
             eprintln!("undo journal: could not record {}: {e}", target.display());
         }
     }
+    let resources = match (undo_run.as_deref(), call_id.as_deref()) {
+        (Some(run), Some(call)) => crate::resources::take_call(run, call),
+        _ => None,
+    };
     Ok(ToolResult {
         content,
         diff,
         is_error,
         error: failure.as_ref().map(crate::harness_error::HarnessError::to_wire),
+        resources,
     })
+}
+
+/// What the commands a run started used, taken as the run ends (AH-174).
+/// `None` for a run that started no command. Forgotten once taken.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub async fn tool_resources_finish_run(run: String) -> Option<crate::resources::RunResources> {
+    crate::resources::finish_run(&run)
 }
 
 /// One turn's journaled file changes, as the UI lists them. AH-202.

@@ -14,6 +14,7 @@ pub mod audit;
 pub mod format;
 pub mod event_export;
 pub mod event_log;
+pub mod resources;
 pub mod run_replay;
 /// How a harness failure is classified: kind, retryability, audience (AH-009).
 pub mod compaction_policy;
@@ -123,6 +124,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::advertised_tool_schemas,
             commands::execute_tool,
             commands::execute_tool_streaming,
+            commands::tool_resources_finish_run,
             commands::undo_journal,
             commands::undo_turn,
             commands::redo_turn,

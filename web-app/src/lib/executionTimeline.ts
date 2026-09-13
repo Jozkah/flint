@@ -95,6 +95,49 @@ export type TimelineRow = {
    */
   fallback?: { from: string; to: string; reason?: string; kind?: string }
   usage?: TokenUsage
+  /** What a call's command, or a whole run's commands, used (AH-174). */
+  resources?: TimelineResources
+}
+
+/**
+ * CPU and memory attributed to a call or a run (AH-174). `measured` false
+ * carries the reason instead of figures: an unmeasured command is never zero.
+ */
+export type TimelineResources = {
+  measured: boolean
+  cpuMs?: number
+  peakMemoryBytes?: number
+  processes?: number
+  reason?: string
+  /** Run totals only: commands started, and how many were measured. */
+  commands?: number
+  measuredCommands?: number
+}
+
+export function resourcesOf(v: unknown): TimelineResources | undefined {
+  if (!v || typeof v !== 'object') return undefined
+  const r = v as Record<string, unknown>
+  const n = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : undefined)
+  if (typeof r.commands === 'number') {
+    const measured = n(r.measuredCommands) ?? 0
+    return {
+      measured: measured > 0,
+      cpuMs: measured > 0 ? n(r.cpuMs) : undefined,
+      peakMemoryBytes: measured > 0 ? n(r.peakMemoryBytes) : undefined,
+      processes: measured > 0 ? n(r.processes) : undefined,
+      reason: typeof r.unmeasuredReason === 'string' ? r.unmeasuredReason : undefined,
+      commands: r.commands as number,
+      measuredCommands: measured,
+    }
+  }
+  if (typeof r.measured !== 'boolean') return undefined
+  return {
+    measured: r.measured,
+    cpuMs: n(r.cpuMs),
+    peakMemoryBytes: n(r.peakMemoryBytes),
+    processes: n(r.processes),
+    reason: typeof r.reason === 'string' ? r.reason : undefined,
+  }
 }
 
 const str = (v: unknown): string | undefined =>
@@ -249,6 +292,7 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
       row.change = changeOf(p.change) ?? row.change
       row.elapsedMs = num(p.elapsed_ms) ?? num(p.elapsedMs) ?? row.elapsedMs
       row.exitCode = num(p.exit_code) ?? num(p.exitCode) ?? row.exitCode
+      row.resources = resourcesOf(p.resources) ?? row.resources
       row.refusal = str(p.refusal) ?? row.refusal
       // AH-009: the record says what kind of failure it was; the row shows
       // that rather than making a reader infer it from the words.
@@ -361,6 +405,7 @@ export function buildTimeline(envelopes: EventEnvelope[], session: string): Time
           categories: ['run'],
           title: 'Run ended',
           detail: by === 'done' || by === 'unknown' ? undefined : by,
+          resources: resourcesOf(p.resources),
           status:
             by === 'aborted' ? 'cancelled' : by === 'error' ? 'failed' : 'completed',
         })

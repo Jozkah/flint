@@ -6208,13 +6208,30 @@
       "category": "ux-operations",
       "phase": 8,
       "phaseName": "UX, automation and operations",
-      "status": "in-progress",
+      "status": "implemented",
       "priority": "P2",
       "dependencies": [
         "AH-173"
       ],
       "owner": "lane-09-ux-observability",
       "files": [
+        "src-tauri/examples/cowork_smoke.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/guest-js/index.ts",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/activity.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/commands.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/resources.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/handlers.rs",
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/tools/mod.rs",
+        "src-tauri/src/core/agent/events.rs",
+        "src-tauri/src/core/agent/loop.rs",
+        "src-tauri/src/core/cli/mod.rs",
+        "src-tauri/src/core/cli/run_report.rs",
+        "web-app/src/containers/CoworkTimelinePanel.tsx",
+        "web-app/src/lib/agentTools.ts",
+        "web-app/src/lib/coworkDispatch.ts",
+        "web-app/src/lib/executionTimeline.ts",
+        "web-app/src/lib/toolActivity.ts",
+        "web-app/src/routes/cowork.tsx",
         "web-app/src/routes/system-monitor.tsx"
       ],
       "securityImpact": "low",
@@ -6225,12 +6242,19 @@
         "Tests: unit and integration coverage for the success, refusal and cancellation paths.",
         "Documentation: described in docs/AGENT_HARNESS_ARCHITECTURE.md and covered by docs/AGENT_HARNESS_VERIFICATION.md."
       ],
-      "tests": [],
+      "tests": [
+        "src-tauri/plugins/tauri-plugin-agent-tools/src/resources.rs",
+        "src-tauri/src/core/cli/run_report.rs",
+        "web-app/src/lib/__tests__/coworkDispatch.test.ts",
+        "web-app/src/lib/__tests__/timelineResources.test.ts",
+        "web-app/src/lib/__tests__/toolActivityRecord.test.ts"
+      ],
       "platformRequirements": [
+        "Measured on Windows (job-object accounting); other platforms record each command as not measured, with the reason",
         "per-OS validation on macOS, Windows and Linux"
       ],
       "blockedReason": null,
-      "auditNote": "Only host-level CPU and RAM; nothing is attributed per run or per agent."
+      "auditNote": "Only host-level CPU and RAM; nothing is attributed per run or per agent. 2026-09-13 (Phase 6): implemented. Each bash command is measured as a process tree (Windows job object: CPU time, peak committed memory, processes, exited children included) and kept against its run and call; the call's reading is on its tool event, the run's totals on run.ended, the CLI/JSON result envelope and the desktop timeline. Other platforms record measured:false with a reason, never zero. Proven by a real CLI pair (1921 ms/113 MB/4 processes vs 15 ms/8 MB/2) and a real desktop scenario whose timeline row shows the recorded figures."
     },
     {
       "id": "AH-175",

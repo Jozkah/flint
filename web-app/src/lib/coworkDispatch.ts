@@ -547,6 +547,8 @@ async function routeCoworkTool(
         writeGrant: ctx.writeGrant,
         // The run the change belongs to, so it can be undone from it (AH-202).
         undoRun: ctx.activity?.run,
+        // And the call, so what its command uses is kept against both (AH-174).
+        callId: call.toolCallId,
         // And who is making it, so every change it journals names its agent
         // (AH-110) -- the primary agent, a named subagent, or a role.
         actor: actorFor(ctx.activity),
@@ -560,9 +562,10 @@ async function routeCoworkTool(
         return {
           output: result.error + missingReadGuidance(readPath),
           isError: true,
+          resources: result.resources,
         }
       }
-      return { output: result.error, isError: true }
+      return { output: result.error, isError: true, resources: result.resources }
     }
     // A path that reads now is not missing any more.
     if (readPath) ctx.readFailures?.delete(readPath)
@@ -572,6 +575,7 @@ async function routeCoworkTool(
           ? result.content
           : JSON.stringify(result.content ?? ''),
       diff: result.diff,
+      resources: result.resources,
     }
   } catch (e) {
     return {

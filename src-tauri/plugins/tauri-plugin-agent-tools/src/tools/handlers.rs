@@ -1587,6 +1587,15 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         Err(e) => return format!("ERROR: failed to run command: {e}"),
     };
     let pid = child.id();
+    // AH-174: measured from here to exit, as a process tree, and kept against
+    // the run and call that started it. A measurement that cannot start is
+    // recorded as such, never as zero.
+    let meter = match pid {
+        Some(pid) => crate::resources::Meter::attach(pid),
+        None => Err("the command exited before it could be measured".to_string()),
+    };
+    let measured_run = ctx.run_id.map(str::to_string);
+    let measured_call = ctx.call_id.map(str::to_string);
     // Captured before the command is moved into its task, so a job's elapsed
     // time counts from the spawn rather than from the timeout that shelved it.
     let job_started = std::time::Instant::now();
@@ -1622,6 +1631,13 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     let shell_description = shell.description;
     tokio::spawn(async move {
         let mut out = collect_and_format(child, spill_scratch, sink).await;
+        // The tree has exited (or been stopped): what it used is final.
+        let used = match &meter {
+            Ok(meter) => meter.read(),
+            Err(reason) => crate::resources::Resources::unmeasured(reason.clone()),
+        };
+        drop(meter);
+        crate::resources::record(measured_run.as_deref(), measured_call.as_deref(), used);
         // Appended inside the task so a backgrounded job carries the hint too.
         // `Permission denied` on its own tells the model nothing about *why*;
         // without this it retries the same command until it gives up. Only when

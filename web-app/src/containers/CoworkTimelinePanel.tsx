@@ -72,6 +72,19 @@ type Replay =
   | { phase: 'none' }
   | { phase: 'ready'; runs: FinishedRun[]; recording: RunRecording; step: number }
 
+/** Bytes as a person reads them. */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`
+}
+
 const time = (at: string) => {
   const d = new Date(at)
   return Number.isNaN(d.getTime()) ? at : d.toLocaleTimeString()
@@ -696,6 +709,33 @@ function TimelineDetail({ row, sessionId }: { row: TimelineRow; sessionId: strin
           <>
             <dt>{t('common:timeline.exitCode')}</dt>
             <dd className="font-mono">{row.exitCode}</dd>
+          </>
+        )}
+        {row.resources && (
+          <>
+            <dt>{t('common:timeline.resources')}</dt>
+            <dd
+              className="font-mono"
+              data-testid="timeline-detail-resources"
+              data-measured={row.resources.measured}
+              data-cpu-ms={row.resources.cpuMs ?? ''}
+              data-peak-bytes={row.resources.peakMemoryBytes ?? ''}
+            >
+              {row.resources.measured
+                ? t('common:timeline.resourcesValue', {
+                    cpu: row.resources.cpuMs ?? 0,
+                    memory: formatBytes(row.resources.peakMemoryBytes ?? 0),
+                    processes: row.resources.processes ?? 0,
+                  })
+                : t('common:timeline.resourcesUnmeasured', {
+                    reason: row.resources.reason ?? '',
+                  })}
+              {row.resources.commands !== undefined &&
+                ` · ${t('common:timeline.resourcesCommands', {
+                  measured: row.resources.measuredCommands ?? 0,
+                  count: row.resources.commands,
+                })}`}
+            </dd>
           </>
         )}
         {row.refusal && (

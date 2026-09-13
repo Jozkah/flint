@@ -104,6 +104,8 @@ export type ToolOutcome = {
   isError?: boolean
   /** Display-only unified diff. Never reaches the model. */
   diff?: string
+  /** What the call's command used (AH-174). Never reaches the model. */
+  resources?: unknown
   /**
    * Set when the harness declined the call rather than a tool failing, so a
    * caller branches on the kind instead of parsing `output`.

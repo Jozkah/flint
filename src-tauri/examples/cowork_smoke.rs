@@ -1110,6 +1110,10 @@ const SCENARIOS: &[Scenario] = &[
         run: scenario_execution_timeline,
     },
     Scenario {
+        name: "timeline-shows-what-a-command-used",
+        run: scenario_timeline_resources,
+    },
+    Scenario {
         name: "context-diff",
         run: scenario_context_diff,
     },
@@ -5225,6 +5229,136 @@ fn scenario_execution_timeline_restart(ctx: &Ctx) -> ScenarioResult {
     ensure!(rows == expected, "after a restart the timeline is {rows:?}, not {expected:?}");
     ensure!(mock_requests(ctx)?.is_empty(), "reading the timeline sent a request");
     println!("      same {} rows after the restart", rows.len());
+    Ok(())
+}
+
+/// AH-174: a command's CPU and memory, attributed to the call and the run that
+/// ran it, read from the recorded events and shown on the timeline. The run
+/// asks for one `bash` call; the timeline's row for it and the run's end both
+/// carry figures -- or, where the platform cannot measure, the reason -- and
+/// the figures shown are the ones in the session's event log.
+fn scenario_timeline_resources(ctx: &Ctx) -> ScenarioResult {
+    let bash_call = format!(
+        "bash:{}",
+        serde_json::json!({ "command": "echo resources-probe", "timeout": 60 })
+    );
+    let routes = serde_json::json!([
+        { "match": "RESOURCES-RUN", "tools": [bash_call], "summary": "resources run done" }
+    ]);
+    let port = ctx.mock_port;
+    ensure!(
+        ctx.eval_bool(&format!(
+            r#"const res = await fetch('http://127.0.0.1:{port}/__control', {{
+                 method: 'POST', headers: {{ 'Content-Type': 'application/json' }},
+                 body: JSON.stringify({{ script: 'plain', tools: [], routes: {routes} }}),
+               }});
+               return res.ok;"#
+        ))?,
+        "could not script the run"
+    );
+    ctx.goto("/cowork")?;
+    ctx.wait_until(
+        "the cowork composer",
+        "return !!document.querySelector('[data-testid=\"chat-input\"]');",
+        Duration::from_secs(30),
+    )?;
+    ctx.ensure_model_selected()?;
+    ctx.eval(
+        "const b = [...document.querySelectorAll('button')].find(x =>
+           /new session/i.test((x.textContent || '').trim()));
+         if (b) b.click();
+         return true;",
+    )?;
+    ctx.settle();
+    attach_project(ctx)?;
+    choose_mode(ctx, "Ask before changes")?;
+    let session = current_cowork_session(ctx)?;
+    ctx.type_into("[data-testid=\"chat-input\"]", "Run the probe command now. RESOURCES-RUN")?;
+    send_armed(ctx)?;
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        ctx.eval_bool(
+            "const b = [...document.querySelectorAll('button')].find(x =>
+               /^allow once$/i.test((x.textContent || '').trim()));
+             if (b) b.click();
+             return !!b;",
+        )?;
+        let done = ctx.eval_bool(
+            "return !!document.querySelector('[data-test-id=\"send-message-button\"]')
+               && /resources run done/.test(document.body.innerText || '');",
+        )?;
+        if done {
+            break;
+        }
+        ensure!(Instant::now() < deadline, "the run did not finish: {}", run_state_page(ctx));
+        std::thread::sleep(Duration::from_millis(600));
+    }
+    // The record first: what the log says the call and the run used.
+    let recorded = ctx.eval(&format!(
+        "const page = await window.__TAURI_INTERNALS__.invoke('agent_events_list', {{ session: {session:?}, afterSeq: 0, limit: null }});
+         const call = page.events.filter(e => e.kind === 'tool.succeeded' && e.payload.tool === 'bash').map(e => e.payload.resources);
+         const ended = page.events.filter(e => e.kind === 'run.ended' && e.payload.resources).map(e => e.payload.resources);
+         return {{ call, ended }};"
+    ))?;
+    println!("      recorded: {recorded}");
+    let call = recorded["call"].as_array().and_then(|a| a.first()).cloned().unwrap_or_default();
+    ensure!(call.is_object(), "the bash call's record carries no resources: {recorded}");
+    let measured = call["measured"] == true;
+    if measured {
+        ensure!(
+            call["cpuMs"].is_u64() && call["peakMemoryBytes"].as_u64().unwrap_or(0) > 0 && call["processes"].as_u64().unwrap_or(0) >= 1,
+            "a measured call without figures: {call}"
+        );
+    } else {
+        ensure!(
+            call["reason"].as_str().is_some_and(|r| !r.is_empty()) && call.get("cpuMs").is_none(),
+            "an unmeasured call without a reason, or with a zero standing in for one: {call}"
+        );
+    }
+    let ended = recorded["ended"].as_array().and_then(|a| a.first()).cloned().unwrap_or_default();
+    ensure!(ended["commands"].as_u64().unwrap_or(0) >= 1, "the run's end carries no resource totals: {recorded}");
+
+    // Then the timeline: the call's row shows exactly those figures.
+    show_timeline(ctx)?;
+    ctx.wait_until(
+        "the bash row on the timeline",
+        "return [...document.querySelectorAll('[data-testid=\"timeline-row\"]')].some(r => (r.dataset.categories || '').includes('tools') && r.dataset.status === 'completed');",
+        Duration::from_secs(20),
+    )?;
+    ctx.eval(
+        "const rows = [...document.querySelectorAll('[data-testid=\"timeline-row\"]')];
+         const row = rows.find(r => /bash|probe/i.test(r.getAttribute('aria-label') || '') && (r.dataset.categories || '').includes('tools'))
+           || rows.find(r => (r.dataset.categories || '').includes('tools'));
+         row.querySelector('[data-row-toggle]').click();
+         return true;",
+    )?;
+    let shown = ctx.wait_until(
+        "the call's resources in its detail",
+        "const d = document.querySelector('[data-testid=\"timeline-detail-resources\"]');
+         return !!d && (d.innerText || '').length > 0;",
+        Duration::from_secs(15),
+    );
+    shown?;
+    let detail = ctx.eval(
+        "const d = document.querySelector('[data-testid=\"timeline-detail-resources\"]');
+         return { measured: d.dataset.measured, cpu: d.dataset.cpuMs, peak: d.dataset.peakBytes, text: d.innerText };",
+    )?;
+    println!("      shown: {detail}");
+    ensure!(
+        detail["measured"] == (if measured { "true" } else { "false" }),
+        "the row says measured={} but the record says {measured}",
+        detail["measured"]
+    );
+    if measured {
+        ensure!(
+            detail["cpu"].as_str() == Some(&call["cpuMs"].to_string())
+                && detail["peak"].as_str() == Some(&call["peakMemoryBytes"].to_string()),
+            "the row's figures are not the recorded ones: {detail} vs {call}"
+        );
+        ensure!(detail["text"].as_str().is_some_and(|t| t.contains("CPU") && t.contains("peak memory")), "{detail}");
+    } else {
+        ensure!(detail["text"].as_str().is_some_and(|t| t.starts_with("Not measured")), "{detail}");
+    }
     Ok(())
 }
 

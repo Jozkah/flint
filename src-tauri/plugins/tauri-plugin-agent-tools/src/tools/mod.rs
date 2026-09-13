@@ -296,6 +296,16 @@ impl<'a> ToolContext<'a> {
         self
     }
 
+    /// The run this call belongs to, for attributing what its command uses
+    /// (AH-174), on a surface that keeps no mailbox. Never replaces a run id
+    /// already set by [`Self::with_run`].
+    pub fn with_measured_run(mut self, run_id: &'a str) -> Self {
+        if self.run_id.is_none() {
+            self.run_id = Some(run_id);
+        }
+        self
+    }
+
     pub fn with_job_owner(mut self, owner: &'a str) -> Self {
         self.job_owner = Some(owner);
         self

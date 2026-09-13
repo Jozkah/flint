@@ -19,6 +19,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import {
   bashJobsList,
+  finishRunResources,
   projectListDir,
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
@@ -1721,18 +1722,25 @@ function CoworkPage() {
       },
     ])
     const recordRunEnded = (ending: RunEnding | null) =>
-      recordEvents([
-        {
-          id: `run:${runId}:ended`,
-          session: sid,
-          run: runId,
-          kind: 'run.ended',
-          payload: {
-            stoppedBy: ending?.stoppedBy ?? 'unknown',
-            detail: ending?.errorText ?? '',
-          },
-        },
-      ])
+      // AH-174: what the run's commands used, taken as it ends. A backend
+      // that cannot say is an end without figures, never an end not recorded.
+      void finishRunResources(runId)
+        .catch(() => null)
+        .then((resources) =>
+          recordEvents([
+            {
+              id: `run:${runId}:ended`,
+              session: sid,
+              run: runId,
+              kind: 'run.ended',
+              payload: {
+                stoppedBy: ending?.stoppedBy ?? 'unknown',
+                detail: ending?.errorText ?? '',
+                ...(resources ? { resources } : {}),
+              },
+            },
+          ])
+        )
     // This run's live lane. Every write names the run, so once the run is
     // stopped, replaced or its session deleted, a late write is refused
     // rather than drawn under whatever session is in view.

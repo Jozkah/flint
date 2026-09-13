@@ -21,6 +21,16 @@ export {
   ToolSchema,
   WorkspaceScope,
 } from './types'
+export type { RunResources, ToolResources } from './types'
+import type { RunResources } from './types'
+
+/**
+ * What the commands a run started used, taken as the run ends (AH-174).
+ * `null` for a run that started none. Forgotten on the backend once taken.
+ */
+export async function finishRunResources(run: string): Promise<RunResources | null> {
+  return await invoke('plugin:agent-tools|tool_resources_finish_run', { run })
+}
 
 /**
  * Every call takes the Jan data folder, because the plugin derives its

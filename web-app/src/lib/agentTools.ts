@@ -1,4 +1,4 @@
-import type { ChangeActorInput } from '@janhq/tauri-plugin-agent-tools-api'
+import type { ChangeActorInput, ToolResources } from '@janhq/tauri-plugin-agent-tools-api'
 import {
   advertisedToolSchemas,
   executeTool,
@@ -160,6 +160,8 @@ type AgentToolResult = {
   error?: string
   /** Unified diff from `write`/`edit`. Display-only; never sent to the model. */
   diff?: string
+  /** What the call's command used (AH-174), failed or not. */
+  resources?: ToolResources
 }
 
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
@@ -216,6 +218,11 @@ export type AgentToolOptions = {
    */
   undoRun?: string
   /**
+   * The call's id. With `undoRun`, what its command uses is kept against the
+   * run and returned with the result (AH-174).
+   */
+  callId?: string
+  /**
    * Who is making the call (AH-110). Journaled with every file the call
    * changes, so a change can name the agent that made it after a restart. The
    * backend refuses an identity that is not an agent rather than attributing
@@ -250,12 +257,13 @@ export async function executeAgentTool(
       options.readOnlyProject ?? undefined,
       options.writeGrant ?? undefined,
       options.scope ?? ('thread' as WorkspaceScope),
-      undefined,
+      options.callId,
       options.undoRun,
       options.actor
     )
-    if (result.isError) return { error: result.content }
-    return { content: result.content, diff: result.diff ?? undefined }
+    const resources = result.resources ?? undefined
+    if (result.isError) return { error: result.content, resources }
+    return { content: result.content, diff: result.diff ?? undefined, resources }
   } catch (e) {
     return { error: messageOf(e) }
   }

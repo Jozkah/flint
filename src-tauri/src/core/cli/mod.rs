@@ -1860,6 +1860,26 @@ async fn print_event(ev: StreamEvent, registry: &PermissionRegistry, density: De
                 );
             }
         }
+        // AH-174: progress, not answer -- stderr, and only when something ran.
+        StreamEvent::RunResources { resources } => {
+            if density != Density::Compact {
+                let figures = if resources.measured_commands > 0 {
+                    format!(
+                        "CPU {} ms, peak memory {} bytes, {} processes",
+                        resources.cpu_ms, resources.peak_memory_bytes, resources.processes
+                    )
+                } else {
+                    format!(
+                        "not measured: {}",
+                        resources.unmeasured_reason.as_deref().unwrap_or("unknown")
+                    )
+                };
+                eprintln!(
+                    "[2m[resources] {figures} ({} of {} commands measured)[0m",
+                    resources.measured_commands, resources.commands
+                );
+            }
+        }
         StreamEvent::Done { stop_reason, usage } => {
             let tokens = usage.and_then(|u| u.total_tokens).unwrap_or(0);
             eprintln!("\n\x1b[2m[done] stop_reason={stop_reason} tokens={tokens}\x1b[0m");
